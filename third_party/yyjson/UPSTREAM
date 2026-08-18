@@ -1,0 +1,3 @@
+yyjson vendored from https://github.com/ibireme/yyjson
+commit 9365ddc7061033df656578bf86040048b5b5531a (version 0.12.0, MIT).
+Copied src/yyjson.c, src/yyjson.h, and LICENSE.

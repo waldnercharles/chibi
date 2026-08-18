@@ -1,0 +1,43 @@
+#include "pin_fmt.h"
+
+#include <stdio.h>
+
+#define PIN_FMT_RING 8
+#define PIN_FMT_CAP 64
+
+const char *pin_value_to_string(const pin_value *v)
+{
+    static char ring[PIN_FMT_RING][PIN_FMT_CAP];
+    static int slot;
+    char *buf = ring[slot];
+    slot = (slot + 1) % PIN_FMT_RING;
+
+    if (!v) {
+        snprintf(buf, PIN_FMT_CAP, "<null>");
+        return buf;
+    }
+
+    switch (v->type) {
+        case PIN_BOOL:
+            snprintf(buf, PIN_FMT_CAP, "%s", v->b ? "true" : "false");
+            break;
+        case PIN_I32: snprintf(buf, PIN_FMT_CAP, "%d", (int)v->i); break;
+        case PIN_U32: snprintf(buf, PIN_FMT_CAP, "%u", (unsigned)v->u); break;
+        case PIN_F32: snprintf(buf, PIN_FMT_CAP, "%g", (double)v->f); break;
+        case PIN_F64: snprintf(buf, PIN_FMT_CAP, "%g", v->d); break;
+        case PIN_STR:
+            snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
+            break;
+        case PIN_STRUCT:
+            snprintf(buf, PIN_FMT_CAP, "%s", v->type_name ? v->type_name : "struct");
+            break;
+        case PIN_ENUM:
+            if (v->type_name)
+                snprintf(buf, PIN_FMT_CAP, "%s(%d)", v->type_name, (int)v->e);
+            else snprintf(buf, PIN_FMT_CAP, "%d", (int)v->e);
+            break;
+        case PIN_FLOW:
+        default: snprintf(buf, PIN_FMT_CAP, "flow"); break;
+    }
+    return buf;
+}

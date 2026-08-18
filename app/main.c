@@ -1,10 +1,8 @@
-#include "app/demo_graph.h"
-#include "core/graph.h"
-#include "editor/editor.h"
-#include "editor/ne_abi.h"
+#include "../core/graph.h"
+#include "../editor/editor.h"
+#include "cute_host.h"
+#include "demo_graph.h"
 
-#include <cute.h>
-#include <dcimgui.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,12 +11,15 @@ int main(int argc, char **argv)
 {
     int frames = 0; /* 0 = run until the window closes */
     int seed = 1;
+    int flow_demo = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[i + 1]);
             i++;
         } else if (strcmp(argv[i], "--no-seed") == 0) {
             seed = 0;
+        } else if (strcmp(argv[i], "--flow-demo") == 0) {
+            flow_demo = 1;
         }
     }
 
@@ -44,13 +45,16 @@ int main(int argc, char **argv)
     graph_init(&g);
     editor *ed = editor_new(&g);
 
-    if (seed) demo_graph_seed(&g);
+    if (seed) {
+        if (flow_demo) demo_graph_seed_flow(&g);
+        else demo_graph_seed(&g);
+    }
 
     int frame = 0;
     while (cf_app_is_running()) {
         cf_app_update(NULL);
+        editor_tick(ed, CF_SECONDS);
         editor_draw(ed);
-        ne_spike_draw();
         cf_app_draw_onto_screen(true);
 
         if (frames > 0 && ++frame >= frames) break;

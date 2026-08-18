@@ -2,7 +2,6 @@
 #define CBLUEPRINT_NODES_H
 
 #include "node.h"
-#include "type.h"
 
 /* Make: struct fields (inputs) -> one struct instance (output), in the arena. */
 void node_eval_make(node *n, arena *a);

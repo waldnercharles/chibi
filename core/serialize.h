@@ -10,7 +10,8 @@ char *graph_save_json(const graph *g);
  * Returns NULL on error; the message is available via graph_last_error(). */
 graph *graph_load_json(const char *json);
 
-/* Message from the most recent failed graph_load_json. Not thread-safe. */
+/* Message from the most recent failed graph_load_json on this thread. A
+ * subsequent serialization call overwrites it. */
 const char *graph_last_error(void);
 
 /* Serialize only the nodes in subset (in subset order; ids local to the

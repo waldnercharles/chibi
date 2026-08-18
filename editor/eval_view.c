@@ -1,8 +1,8 @@
 #include "eval_view.h"
 
-#include "core/arena.h"
-#include "core/eval.h"
-#include "core/pin_fmt.h"
+#include "../core/arena.h"
+#include "../core/eval.h"
+#include "../core/pin_fmt.h"
 
 #include <stdlib.h>
 
@@ -11,6 +11,9 @@
 struct eval_view
 {
     arena a;
+    eval_context eval;
+    const flow_run *run;
+    const char *error;
 };
 
 eval_view *eval_view_new(void)
@@ -18,6 +21,7 @@ eval_view *eval_view_new(void)
     eval_view *v = (eval_view *)calloc(1, sizeof *v);
     if (!v) return NULL;
     arena_init(&v->a, EV_ARENA_CAP);
+    eval_context_init(&v->eval);
     return v;
 }
 
@@ -30,25 +34,56 @@ void eval_view_free(eval_view *v)
 
 void eval_view_refresh(eval_view *v, graph *g)
 {
+    v->error = NULL;
+    v->run = NULL;
+    eval_context_reset(&v->eval);
     graph_eval_reset(g);
     arena_reset(&v->a);
     for (int i = 0; i < g->node_count; i++) {
         node *n = g->nodes[i];
         for (int p = 0; p < n->desc->output_count; p++) {
+            if (n->desc->outputs[p].kind != PIN_DATA) continue;
             pin_value out;
-            graph_eval_output(g, n, p, &v->a, &out);
+            if (graph_eval_output(g, n, p, &v->a, &out, &v->eval) != 0 && !v->error) {
+                const eval_status *status = eval_context_status(&v->eval);
+                v->error = status && status->message ? status->message
+                                                     : "evaluation failed";
+            }
         }
     }
 }
 
-const char *eval_view_output(const node *n, int pin)
+void eval_view_set_run(eval_view *v, const flow_run *run)
 {
-    if (!n || pin < 0 || pin >= n->desc->output_count) return "";
+    if (v) v->run = run;
+}
+
+const char *eval_view_error(const eval_view *v)
+{ return v && v->error ? v->error : ""; }
+
+const char *eval_view_output(const eval_view *v, const node *n, int pin)
+{
+    if (!n || pin < 0 || pin >= n->desc->output_count ||
+        n->desc->outputs[pin].kind != PIN_DATA)
+        return "";
+    if (v && v->run) {
+        pin_value value;
+        if (flow_run_watch_output(v->run, n, pin, &value) != 0) return "";
+        return pin_value_to_string(&value);
+    }
     return pin_value_to_string(&n->outputs[pin]);
 }
 
-const char *eval_view_input(const graph *g, const node *n, int pin)
+const char *eval_view_input(const eval_view *v, const graph *g, const node *n, int pin)
 {
+    if (!n || pin < 0 || pin >= n->desc->input_count ||
+        n->desc->inputs[pin].kind != PIN_DATA)
+        return NULL;
+    if (v && v->run) {
+        pin_value value;
+        if (flow_run_watch_input(v->run, n, pin, &value) != 0) return "";
+        return pin_value_to_string(&value);
+    }
     node *src;
     int src_pin;
     if (graph_input_source(g, n, pin, &src, &src_pin)) return NULL;

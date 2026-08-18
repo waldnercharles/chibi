@@ -22,6 +22,7 @@ void node_eval_break(node *n, arena *a)
     (void)a;
     const type_desc *t = n->desc->type;
     const void *src = n->inputs[0].ptr;
+    if (!src) return;
     for (int i = 0; i < t->field_count; i++)
         pin_read_field(src, &t->fields[i], &n->outputs[i]);
 }

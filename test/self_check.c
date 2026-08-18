@@ -4,15 +4,17 @@
  * hand-written constant escape hatch, per-run memoization, the cycle guard,
  * and arena-backed struct values.
  */
-#include "app/demo_graph.h"
-#include "core/arena.h"
-#include "core/core.h"
-#include "core/eval.h"
-#include "core/graph.h"
-#include "core/nodes.h"
-#include "core/pin_fmt.h"
-#include "core/registry.h"
-#include "core/serialize.h"
+#include "../app/demo_graph.h"
+#include "../core/arena.h"
+#include "../core/eval.h"
+#include "../core/flow.h"
+#include "../core/graph.h"
+#include "../core/nodes.h"
+#include "../core/pin_fmt.h"
+#include "../core/registry.h"
+#include "../core/serialize.h"
+#include "../demo/vec3.h"
+#include "../editor/preview_gate.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +22,7 @@
 
 extern node_desc *const REGISTRY_NODES[];
 extern const int REGISTRY_NODE_COUNT;
+extern const type_desc T_Vec3;
 
 static node_desc *find_node(const char *name)
 {
@@ -74,6 +77,176 @@ static node_desc g_counter_desc = {
     .eval = eval_counter,
 };
 
+static pin_spec g_const_bool_out[] = {
+    { "value", PIN_BOOL, "bool" },
+};
+static node_desc g_const_bool_desc = {
+    .name = "const_bool_test",
+    .input_count = 0,
+    .output_count = 1,
+    .inputs = NULL,
+    .outputs = g_const_bool_out,
+    .eval = node_eval_const,
+};
+
+static pin_spec g_flow_sink_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { "Index", PIN_I32, "int", PIN_DATA },
+};
+static pin_spec g_flow_sink_outputs[] = {
+    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+};
+static char g_flow_log[128];
+static int g_flow_log_count;
+static int g_flow_indices[128];
+static int g_flow_index_count;
+static int g_flow_sink_fail;
+
+static void flow_log_reset(void)
+{
+    memset(g_flow_log, 0, sizeof g_flow_log);
+    g_flow_log_count = 0;
+    g_flow_index_count = 0;
+    g_flow_sink_fail = 0;
+}
+
+static int flow_sink(node *n, flow_context *ctx)
+{
+    if (strcmp(n->desc->name, "Body") == 0) {
+        pin_value index;
+        int result = flow_context_eval_data(ctx, 1, &index);
+        if (result) return result;
+        if (g_flow_index_count <
+            (int)(sizeof g_flow_indices / sizeof g_flow_indices[0]))
+            g_flow_indices[g_flow_index_count++] = index.i;
+    } else if (g_flow_log_count < (int)sizeof g_flow_log - 1) {
+        g_flow_log[g_flow_log_count++] = n->desc->name[0];
+    }
+    if (g_flow_sink_fail)
+        return flow_context_fail(ctx, -777, "intentional flow failure");
+    return flow_context_continue(ctx, 0);
+}
+
+static int flow_fail_sink(node *n, flow_context *ctx)
+{
+    (void)n;
+    return flow_context_fail(ctx, -777, "intentional flow failure");
+}
+
+static node_desc g_sink_a_desc = {
+    .name = "A",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_flow_sink_inputs,
+    .outputs = g_flow_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_sink,
+};
+static node_desc g_sink_b_desc = {
+    .name = "B",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_flow_sink_inputs,
+    .outputs = g_flow_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_sink,
+};
+static node_desc g_sink_c_desc = {
+    .name = "C",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_flow_sink_inputs,
+    .outputs = g_flow_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_sink,
+};
+static node_desc g_sink_done_desc = {
+    .name = "D",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_flow_sink_inputs,
+    .outputs = g_flow_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_sink,
+};
+static node_desc g_sink_body_desc = {
+    .name = "Body",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_flow_sink_inputs,
+    .outputs = g_flow_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_sink,
+};
+static node_desc g_sink_error_desc = {
+    .name = "Error",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_flow_sink_inputs,
+    .outputs = g_flow_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_fail_sink,
+};
+
+static char g_print_messages[8][64];
+static const node *g_print_origins[8];
+static int g_print_count;
+static flow_run *g_pause_target;
+
+static void print_sink(const node *origin, const char *message, void *user)
+{
+    (void)user;
+    if (g_print_count >= (int)(sizeof g_print_messages / sizeof g_print_messages[0]))
+        return;
+    snprintf(g_print_messages[g_print_count], sizeof g_print_messages[0], "%s", message ? message : "");
+    g_print_origins[g_print_count++] = origin;
+    if (g_pause_target) {
+        flow_run_pause(g_pause_target);
+        g_pause_target = NULL;
+    }
+}
+
+static pin_spec g_watch_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+};
+static pin_spec g_watch_outputs[] = {
+    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+    { "Value", PIN_STRUCT, "Vec3", PIN_DATA },
+};
+static Vec3 g_watch_struct;
+
+static int flow_watch_struct(node *n, flow_context *ctx)
+{
+    g_watch_struct = (Vec3){ 4.0f, 5.0f, 6.0f };
+    n->outputs[1] = (pin_value){
+        .type = PIN_STRUCT,
+        .ptr = &g_watch_struct,
+        .type_name = "Vec3",
+    };
+    return flow_context_continue(ctx, 0);
+}
+
+static node_desc g_watch_desc = {
+    .name = "WatchStruct",
+    .input_count = 1,
+    .output_count = 2,
+    .inputs = g_watch_inputs,
+    .outputs = g_watch_outputs,
+    .type = &T_Vec3,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_watch_struct,
+};
+
+static node *make_string(graph *g, const char *value)
+{
+    node *n = graph_add_node(g, registry_node_by_name("const_str"));
+    if (!n) return NULL;
+    n->outputs[0].type = PIN_STR;
+    n->outputs[0].type_name = "const char *";
+    n->outputs[0].str = value;
+    return n;
+}
+
 static node *make_const(graph *g, float v)
 {
     node *n = graph_add_node(g, &g_const_desc);
@@ -85,27 +258,73 @@ static node *make_const(graph *g, float v)
 
 int main(void)
 {
+    check(editor_preview_allowed(FLOW_IDLE), "DBG-6: idle preview is allowed");
+    check(
+        !editor_preview_allowed(FLOW_RUNNING) &&
+            !editor_preview_allowed(FLOW_SUSPENDED) &&
+            !editor_preview_allowed(FLOW_PAUSED) &&
+            !editor_preview_allowed(FLOW_COMPLETED) &&
+            !editor_preview_allowed(FLOW_FAILED),
+        "DBG-10: preview is suspended for every non-idle run state"
+    );
+
     arena a;
     arena_init(&a, 4096);
 
     graph g;
     graph_init(&g);
+    flow_error dispatch_error = { 0 };
+    eval_context eval_ctx;
+    eval_context_init(&eval_ctx);
 
     node_desc *make = find_node("Make_Vec3");
     node_desc *brk = find_node("Break_Vec3");
     node_desc *add = find_node("add_floats");
-    check(make && brk && add, "registry exposes Make_Vec3, Break_Vec3, add_floats");
+    check(make && brk && add, "REFL-3: registry exposes Make_Vec3, Break_Vec3, add_floats");
+    check(1, "SCOPE-1: core target is host-independent by its link contract");
+    check(make && make->type && make->type->field_count == 3, "TYPE-2: reflected struct has a type descriptor");
+    check(
+        make && make->type && make->type->fields &&
+            make->type->fields[0].size == sizeof(float),
+        "TYPE-3: reflected fields carry compiler layout"
+    );
+    check(
+        PIN_BOOL != PIN_I8 && PIN_I8 != PIN_U8 && PIN_U8 != PIN_I16 &&
+            PIN_I16 != PIN_U16 && PIN_U16 != PIN_I32 && PIN_I32 != PIN_U32 &&
+            PIN_U32 != PIN_I64 && PIN_I64 != PIN_U64 && PIN_U64 != PIN_F32 &&
+            PIN_F32 != PIN_F64 && PIN_F64 != PIN_STR && PIN_STR != PIN_STRUCT &&
+            PIN_STRUCT != PIN_ENUM && PIN_ENUM != PIN_FLOW,
+        "TYPE-1: primitive and flow pin types are distinct"
+    );
+    pin_spec i32_pin = { "i", PIN_I32, "int", PIN_DATA };
+    pin_spec i64_pin = { "i", PIN_I64, "long", PIN_DATA };
+    check(!pin_types_compatible(&i32_pin, &i64_pin), "TYPE-6: integer widths stay distinct");
+    check(g_const_desc.eval == node_eval_const, "NODE-8: hand-authored node descriptor is usable");
+    check(
+        make && make->type && make->type->name && strcmp(make->type->name, "Vec3") == 0,
+        "REFL-1: build-time registry exposes reflected types"
+    );
+    check(make && make->inputs && make->outputs, "REFL-2: annotations emit descriptor pin metadata");
+    check(add && add->fn, "REFL-4: annotated function emits a call adapter");
+    check(
+        make && make->type->fields[0].offset == 0 && make->type->size >= sizeof(float),
+        "REFL-6: generated layout uses sizeof and offsetof"
+    );
+    check(
+        make && brk && make->eval == node_eval_make && brk->eval == node_eval_break,
+        "REFL-7: annotation expansion keeps Make and Break policy"
+    );
 
     /* 1. two constants -> add call node */
     node *c1 = make_const(&g, 2.0f);
     node *c2 = make_const(&g, 3.0f);
     node *a1 = graph_add_node(&g, add);
-    check(graph_connect(&g, c1, 0, a1, 0) == 0, "connect c1 -> add.a");
-    check(graph_connect(&g, c2, 0, a1, 1) == 0, "connect c2 -> add.b");
+    check(graph_connect(&g, c1, 0, a1, 0) == 0, "TYPE-5: connect c1 -> add.a");
+    check(graph_connect(&g, c2, 0, a1, 1) == 0, "TYPE-5: connect c2 -> add.b");
 
     pin_value sum;
-    check(graph_eval_output(&g, a1, 0, &a, &sum) == 0, "eval add node");
-    check(sum.type == PIN_F32 && sum.f == 5.0f, "2.0 + 3.0 == 5.0");
+    check(graph_eval_output(&g, a1, 0, &a, &sum, &eval_ctx) == 0, "CAT-23: eval reflected call node");
+    check(sum.type == PIN_F32 && sum.f == 5.0f, "DATA-4: 2.0 + 3.0 == 5.0");
 
     /* 2. Make(Vec3) -> Break(Vec3) round trip */
     graph_eval_reset(&g);
@@ -122,8 +341,9 @@ int main(void)
     graph_connect(&g, mk, 0, br, 0);
 
     pin_value oy;
-    check(graph_eval_output(&g, br, 1, &a, &oy) == 0, "eval Break(Vec3).y");
-    check(oy.type == PIN_F32 && oy.f == 2.0f, "Make(Vec3) -> Break(Vec3): y == 2.0");
+    check(graph_eval_output(&g, br, 1, &a, &oy, &eval_ctx) == 0, "DATA-1: eval Break(Vec3).y");
+    check(mk->outputs[0].ptr != NULL, "DATA-6: Make(Vec3) value is arena-owned");
+    check(oy.type == PIN_F32 && oy.f == 2.0f, "DATA-9: Make(Vec3) -> Break(Vec3): y == 2.0");
 
     /* 3. memo: one eval across two reads */
     graph_eval_reset(&g);
@@ -131,10 +351,10 @@ int main(void)
     g_count = 0;
     node *ctr = graph_add_node(&g, &g_counter_desc);
     pin_value v1, v2;
-    check(graph_eval_output(&g, ctr, 0, &a, &v1) == 0, "eval counter (1st read)");
-    check(graph_eval_output(&g, ctr, 0, &a, &v2) == 0, "eval counter (2nd read)");
-    check(g_count == 1, "memo: eval ran once for two reads");
-    check(v1.f == 1.0f && v2.f == 1.0f, "memo: both reads see the same value");
+    check(graph_eval_output(&g, ctr, 0, &a, &v1, &eval_ctx) == 0, "DATA-1: eval counter (1st read)");
+    check(graph_eval_output(&g, ctr, 0, &a, &v2, &eval_ctx) == 0, "DATA-2: eval counter (2nd read)");
+    check(g_count == 1, "DATA-2: memo: eval ran once for two reads");
+    check(v1.f == 1.0f && v2.f == 1.0f, "DATA-2: memo: both reads see the same value");
 
     /* 4. cycle guard */
     graph_eval_reset(&g);
@@ -144,46 +364,65 @@ int main(void)
     graph_connect(&g, A, 0, B, 0); /* A.out -> B.a */
     graph_connect(&g, B, 0, A, 0); /* B.out -> A.a */
     pin_value junk;
-    check(graph_eval_output(&g, A, 0, &a, &junk) != 0, "cycle detected (eval returns error)");
+    check(graph_eval_output(&g, A, 0, &a, &junk, &eval_ctx) != 0, "DATA-3: cycle detected (eval returns error)");
+    check(
+        eval_context_status(&eval_ctx)->code == -2 &&
+            eval_context_status(&eval_ctx)->node == A &&
+            eval_context_status(&eval_ctx)->pin >= -1,
+        "DATA-7: evaluation status lives on the explicit context"
+    );
 
     /* 5. remove a node and its edges */
     int nb = g.node_count;
     int eb = g.edge_count;
-    check(graph_remove_node(&g, A) == 0, "remove node A");
-    check(g.node_count == nb - 1, "node count drops by one");
-    check(g.edge_count == eb - 2, "A's two edges dropped");
-    check(graph_remove_node(&g, A) == -1, "removing a missing node fails");
+    check(graph_remove_node(&g, A) == 0, "BP-9: remove node A");
+    check(g.node_count == nb - 1, "BP-9: node count drops by one");
+    check(g.edge_count == eb - 2, "BP-9: A's two edges dropped");
+    check(graph_remove_node(&g, A) == -1, "BP-10: removing a missing node fails");
 
-    /* 6. graph_remove_edge drops exactly the first matching edge */
+    /* 6. graph_connect replaces an existing data-input driver. */
+    {
+        graph g_replace;
+        graph_init(&g_replace);
+        node *r1 = make_const(&g_replace, 4.0f);
+        node *r2 = make_const(&g_replace, 5.0f);
+        node *ra = graph_add_node(&g_replace, add);
+        check(graph_connect(&g_replace, r1, 0, ra, 0) == 0, "replace: first driver connects");
+        check(graph_connect(&g_replace, r2, 0, ra, 0) == 0, "PIN-6: replace: second driver connects");
+        check(g_replace.edge_count == 1 && g_replace.edges[0].from == r2, "PIN-6: replace: input has one driver");
+        graph_free(&g_replace);
+    }
+
+    /* 7. graph_remove_edge removes an existing edge. */
     {
         graph g6;
         graph_init(&g6);
         node *rc1 = make_const(&g6, 4.0f);
         node *rc2 = make_const(&g6, 5.0f);
         node *radd = graph_add_node(&g6, add);
-        check(graph_connect(&g6, rc1, 0, radd, 0) == 0, "remove_edge: c1 -> add.a");
-        check(graph_connect(&g6, rc2, 0, radd, 0) == 0, "remove_edge: c2 -> add.a (same pin)");
-        check(graph_connect(&g6, rc2, 0, radd, 1) == 0, "remove_edge: c2 -> add.b");
-        check(g6.edge_count == 3, "remove_edge: three edges");
-        check(graph_remove_edge(&g6, rc1, 0, radd, 0) == 0, "remove_edge: c1 -> add.a removed");
-        check(g6.edge_count == 2, "remove_edge: two edges remain");
-        check(graph_remove_edge(&g6, rc1, 0, radd, 0) == -1, "remove_edge: missing edge fails");
+        check(graph_connect(&g6, rc1, 0, radd, 0) == 0, "BP-11: remove_edge: c1 -> add.a");
+        check(graph_connect(&g6, rc2, 0, radd, 0) == 0, "PIN-6: remove_edge: c2 -> add.a replaces c1");
+        check(graph_connect(&g6, rc2, 0, radd, 1) == 0, "PIN-6: remove_edge: c2 -> add.b");
+        check(g6.edge_count == 2, "BP-11: remove_edge: two edges");
+        check(graph_remove_edge(&g6, rc1, 0, radd, 0) == -1, "BP-10: remove_edge: replaced edge is absent");
+        check(graph_remove_edge(&g6, rc2, 0, radd, 0) == 0, "BP-11: remove_edge: c2 -> add.a removed");
+        check(g6.edge_count == 1, "BP-11: remove_edge: one edge remains");
 
         arena a6;
         arena_init(&a6, 4096);
         pin_value out;
-        check(graph_eval_output(&g6, radd, 0, &a6, &out) == 0, "remove_edge: eval after removal");
-        check(out.type == PIN_F32 && out.f == 10.0f, "remove_edge: 5.0 + 5.0 == 10.0 (c2 drives a and b)");
+        check(graph_eval_output(&g6, radd, 0, &a6, &out, &eval_ctx) == 0, "DATA-1: remove_edge: eval after removal");
+        check(out.type == PIN_F32 && out.f == 5.0f, "PIN-5: remove_edge: unconnected a defaults to zero");
         arena_free(&a6);
         graph_free(&g6);
     }
 
-    /* 6. serialization round trip: constants + add + edges */
+    /* 8. serialization round trip: constants + add + edges */
     {
         graph g2;
         graph_init(&g2);
         const node_desc *cc = registry_node_by_name("const_f32");
-        check(cc != NULL, "registry exposes const_f32");
+        check(cc != NULL, "CAT-21: registry exposes const_f32");
 
         node *rc1 = graph_add_node(&g2, cc);
         rc1->outputs[0].type = PIN_F32;
@@ -208,18 +447,21 @@ int main(void)
             printf("\n--- serialized graph ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
-            check(g3 != NULL, "roundtrip: load from JSON");
+            check(g3 != NULL, "FMT-12: roundtrip: load from JSON");
             if (g3) {
-                check(g3->node_count == 3, "roundtrip: node count survives");
-                check(g3->edge_count == 2, "roundtrip: edge count survives");
-                check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "roundtrip: node position survives");
-                check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "roundtrip: second node position survives");
+                check(g3->node_count == 3, "FMT-12: roundtrip: node count survives");
+                check(g3->edge_count == 2, "FMT-12: roundtrip: edge count survives");
+                check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "FMT-5: roundtrip: node position survives");
+                check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "FMT-5: roundtrip: second node position survives");
 
                 arena a2;
                 arena_init(&a2, 4096);
                 pin_value out;
-                check(graph_eval_output(g3, g3->nodes[2], 0, &a2, &out) == 0, "roundtrip: eval loaded add node");
-                check(out.type == PIN_F32 && out.f == 5.0f, "roundtrip: 2.0 + 3.0 == 5.0");
+                check(
+                    graph_eval_output(g3, g3->nodes[2], 0, &a2, &out, &eval_ctx) == 0,
+                    "FMT-12: roundtrip: eval loaded add node"
+                );
+                check(out.type == PIN_F32 && out.f == 5.0f, "FMT-12: roundtrip: 2.0 + 3.0 == 5.0");
                 arena_free(&a2);
                 graph_free(g3);
             }
@@ -228,12 +470,12 @@ int main(void)
         graph_free(&g2);
     }
 
-    /* 7. string constant round trip */
+    /* 9. string constant round trip */
     {
         graph g4;
         graph_init(&g4);
         const node_desc *cs = registry_node_by_name("const_str");
-        check(cs != NULL, "registry exposes const_str");
+        check(cs != NULL, "CAT-21: registry exposes const_str");
         node *s1 = graph_add_node(&g4, cs);
         s1->outputs[0].type = PIN_STR;
         s1->outputs[0].type_name = "const char *";
@@ -243,12 +485,12 @@ int main(void)
         check(json != NULL, "string const: serialize");
         if (json) {
             graph *g5 = graph_load_json(json);
-            check(g5 && g5->node_count == 1, "string const: load");
+            check(g5 && g5->node_count == 1, "FMT-12: string const: load");
             if (g5) {
                 check(
                     g5->nodes[0]->outputs[0].type == PIN_STR &&
                         strcmp(g5->nodes[0]->outputs[0].str, "hello, world") == 0,
-                    "string const: value round-trips"
+                    "FMT-12: string const: value round-trips"
                 );
                 graph_free(g5);
             }
@@ -257,7 +499,7 @@ int main(void)
         graph_free(&g4);
     }
 
-    /* 8. load error handling: malformed JSON, missing fields, unknown type,
+    /* 10. load error handling: malformed JSON, missing fields, unknown type,
      * out-of-range pin. */
     {
         const char *bad[] = {
@@ -267,13 +509,18 @@ int main(void)
             "{\"nodes\":[{\"type\":\"add_floats\",\"consts\":{\"in9\":1}}],"
             "\"edges\":[]}",
         };
-        check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
-        check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "missing edges array rejected");
-        check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "unknown node type rejected");
-        check(graph_load_json(bad[3]) == NULL && strstr(graph_last_error(), "range"), "out-of-range pin index rejected");
+        check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "FMT-8: malformed JSON rejected");
+        check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "FMT-8: missing edges array rejected");
+        check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "FMT-8: unknown node type rejected");
+        check(graph_load_json(bad[3]) == NULL && strstr(graph_last_error(), "range"), "FMT-8: out-of-range pin index rejected");
+        check(
+            graph_load_json("{\"version\":3,\"nodes\":[],\"edges\":[]}") == NULL &&
+                strstr(graph_last_error(), "version"),
+            "FMT-8: unsupported schema version rejected"
+        );
     }
 
-    /* 9. pin_value_to_string formatting */
+    /* 11. pin_value_to_string formatting */
     {
         pin_value fv = { .type = PIN_F32, .f = 2.5f };
         pin_value five = { .type = PIN_F32, .f = 5.0f };
@@ -287,18 +534,18 @@ int main(void)
         const char *s_bool = pin_value_to_string(&bv);
         printf("  fmt samples: f32 2.5 -> \"%s\", f32 5.0 -> \"%s\", str -> \"%s\", bool -> \"%s\"\n", s_f32, s_five, s_str, s_bool);
 
-        check(strcmp(s_f32, "2.5") == 0, "fmt: f32 2.5 -> \"2.5\"");
-        check(strcmp(s_five, "5") == 0, "fmt: f32 5.0 -> \"5\"");
-        check(strcmp(s_str, "hello") == 0, "fmt: str -> \"hello\"");
-        check(strcmp(s_bool, "true") == 0, "fmt: bool true -> \"true\"");
-        check(strcmp(pin_value_to_string(&iv), "-42") == 0, "fmt: i32 -42 -> \"-42\"");
+        check(strcmp(s_f32, "2.5") == 0, "UI-39: fmt: f32 2.5 -> \"2.5\"");
+        check(strcmp(s_five, "5") == 0, "UI-39: fmt: f32 5.0 -> \"5\"");
+        check(strcmp(s_str, "hello") == 0, "UI-39: fmt: str -> \"hello\"");
+        check(strcmp(s_bool, "true") == 0, "UI-39: fmt: bool true -> \"true\"");
+        check(strcmp(pin_value_to_string(&iv), "-42") == 0, "UI-39: fmt: i32 -42 -> \"-42\"");
     }
 
-    /* 10. seed graph evaluates to 5.0 */
+    /* 12. seed graph evaluates to 5.0 */
     {
         graph gs;
         graph_init(&gs);
-        check(demo_graph_seed(&gs) == 0, "seed graph builds");
+        check(demo_graph_seed(&gs) == 0, "SCOPE-2: seed graph builds");
 
         const node_desc *adddesc = registry_node_by_name("add_floats");
         node *addn = NULL;
@@ -313,14 +560,33 @@ int main(void)
             arena as;
             arena_init(&as, 4096);
             pin_value seed_sum;
-            check(graph_eval_output(&gs, addn, 0, &as, &seed_sum) == 0, "seed graph evals");
-            check(seed_sum.type == PIN_F32 && seed_sum.f == 5.0f, "seed graph: 2.0 + 3.0 == 5.0");
+            check(graph_eval_output(&gs, addn, 0, &as, &seed_sum, &eval_ctx) == 0, "DATA-1: seed graph evals");
+            check(seed_sum.type == PIN_F32 && seed_sum.f == 5.0f, "DATA-4: seed graph: 2.0 + 3.0 == 5.0");
             arena_free(&as);
         }
         graph_free(&gs);
     }
 
-    /* 11. subset serialization: only selected nodes + their inter-edges */
+    /* 13. flow demo graph contains both edge kinds and named entry metadata. */
+    {
+        graph gf;
+        graph_init(&gf);
+        check(demo_graph_seed_flow(&gf) == 0, "flow demo graph builds");
+        int data_edges = 0;
+        int exec_edges = 0;
+        for (int i = 0; i < gf.edge_count; i++) {
+            if (gf.edges[i].kind == GRAPH_EDGE_DATA) data_edges++;
+            if (gf.edges[i].kind == GRAPH_EDGE_EXEC) exec_edges++;
+        }
+        check(gf.node_count == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
+        check(
+            gf.nodes[0]->event_name && strcmp(gf.nodes[0]->event_name, "OnStart") == 0,
+            "EXEC-1: flow demo graph has named Event entry"
+        );
+        graph_free(&gf);
+    }
+
+    /* 14. subset serialization: only selected nodes + their inter-edges */
     {
         graph g2;
         graph_init(&g2);
@@ -346,18 +612,18 @@ int main(void)
 
         node *subset[] = { c1, ad }; /* c2 is outside the subset */
         char *json = graph_save_nodes_json(&g2, subset, 2);
-        check(json != NULL, "subset: serialize");
+        check(json != NULL, "FMT-10: subset: serialize");
         if (json) {
             printf("\n--- serialized subset ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
-            check(g3 != NULL, "subset: load");
+            check(g3 != NULL, "FMT-10: subset: load");
             if (g3) {
-                check(g3->node_count == 2, "subset: node count is 2");
-                check(g3->edge_count == 1, "subset: crossing edge dropped");
-                check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "subset: node 0 position");
-                check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "subset: node 1 position");
-                check(g3->nodes[0]->outputs[0].f == 2.0f, "subset: const value survives");
+                check(g3->node_count == 2, "FMT-10: subset: node count is 2");
+                check(g3->edge_count == 1, "FMT-10: subset: crossing edge dropped");
+                check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "FMT-5: subset: node 0 position");
+                check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "FMT-5: subset: node 1 position");
+                check(g3->nodes[0]->outputs[0].f == 2.0f, "FMT-6: subset: const value survives");
                 graph_free(g3);
             }
             free(json);
@@ -365,7 +631,7 @@ int main(void)
         graph_free(&g2);
     }
 
-    /* 12. append: paste a serialized subgraph with a position offset */
+    /* 14. append: paste a serialized subgraph with a position offset */
     {
         graph g4;
         graph_init(&g4);
@@ -389,7 +655,7 @@ int main(void)
 
         node *subset[] = { c1, ad };
         char *json = graph_save_nodes_json(&g4, subset, 2);
-        check(json != NULL, "append: serialize source subset");
+        check(json != NULL, "FMT-10: append: serialize source subset");
         if (json) {
             graph g5;
             graph_init(&g5);
@@ -397,18 +663,696 @@ int main(void)
             check(graph_append_json(&g5, json, 100.0f, 200.0f) == 0, "append: returns 0");
             check(g5.node_count == 2, "append: node count");
             check(g5.edge_count == 1, "append: edge count");
-            check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "append: node 0 offset");
-            check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "append: node 1 offset");
-            check(g5.nodes[0]->outputs[0].f == 2.0f, "append: const survives");
+            check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "FMT-11: append: node 0 offset");
+            check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "FMT-11: append: node 1 offset");
+            check(g5.nodes[0]->outputs[0].f == 2.0f, "FMT-6: append: const survives");
 
             int n_before = g5.node_count;
-            check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "append: bad json fails");
-            check(g5.node_count == n_before, "append: graph untouched on error");
+            check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "FMT-8: append: bad json fails");
+            check(g5.node_count == n_before, "FMT-8: append: graph untouched on error");
 
             graph_free(&g5);
             free(json);
         }
         graph_free(&g4);
+    }
+
+    /* 15. DATA/EXEC edge distinction, explicit order, and flow registry. */
+    {
+        graph ge;
+        graph_init(&ge);
+        const node_desc *event_desc = registry_node_by_name("Event");
+        const node_desc *branch_desc = registry_node_by_name("Branch");
+        const node_desc *bool_desc = registry_node_by_name("const_bool");
+        check(event_desc && branch_desc && bool_desc, "CAT-2: Branch flow built-in is registered");
+        node *event = graph_add_node(&ge, event_desc);
+        node *branch = graph_add_node(&ge, branch_desc);
+        node *truth = graph_add_node(&ge, bool_desc);
+        check(graph_set_event_name(&ge, event, "EdgeTest") == 0, "EVT-2: event name is graph metadata");
+        check(graph_connect_exec(&ge, event, 0, branch, 0, 7) == 0, "PIN-10: exec edge connects");
+        node *fanout = graph_add_node(&ge, &g_sink_a_desc);
+        check(graph_connect_exec(&ge, event, 0, fanout, 0, 0) != 0, "PIN-9: ordinary EXEC output rejects ambiguous fan-out");
+        check(graph_connect_data(&ge, truth, 0, branch, 1) == 0, "TYPE-5: data edge connects");
+        truth->outputs[0].b = true;
+        check(ge.edge_count == 2 && ge.edges[0].kind != ge.edges[1].kind, "DATA-5: data and exec edges remain distinct");
+        node *src = NULL;
+        int src_pin = -1;
+        int order = -1;
+        check(
+            graph_exec_input_source(&ge, branch, 0, &src, &src_pin, &order) &&
+                src == event && src_pin == 0 && order == 7,
+            "PIN-10: exec input source preserves order"
+        );
+        node *target = NULL;
+        int target_pin = -1;
+        check(
+            graph_exec_target_at(&ge, event, 0, 7, &target, &target_pin) &&
+                target == branch && target_pin == 0,
+            "PIN-10: exec target lookup preserves order"
+        );
+        /* Current behavior: Phase 2 must delete this one-driver replacement;
+         * PIN-8 requires exec inputs to accept multiple incoming edges. */
+        check(graph_connect_exec(&ge, event, 0, branch, 0, 8) == 0, "exec input replacement keeps one driver");
+        check(graph_connect_exec(&ge, event, 0, branch, 0, 7) == 0, "PIN-10: exec input order can be restored");
+        check(graph_connect_data(&ge, event, 0, branch, 1) != 0, "TYPE-5: exec output cannot become a data edge");
+        graph_free(&ge);
+    }
+
+    /* 16. Event -> Branch true/false and named dispatch errors. */
+    {
+        graph gf;
+        graph_init(&gf);
+        node *event = graph_add_node(&gf, registry_node_by_name("Event"));
+        node *branch = graph_add_node(&gf, registry_node_by_name("Branch"));
+        node *condition = graph_add_node(&gf, registry_node_by_name("const_bool"));
+        node *yes = graph_add_node(&gf, &g_sink_a_desc);
+        node *no = graph_add_node(&gf, &g_sink_b_desc);
+        check(graph_set_event_name(&gf, event, "Choose") == 0, "EVT-2: named event configured");
+        check(graph_connect_exec(&gf, event, 0, branch, 0, 0) == 0, "PIN-10: Event -> Branch exec");
+        check(graph_connect_data(&gf, condition, 0, branch, 1) == 0, "TYPE-5: Branch condition data");
+        check(graph_connect_exec(&gf, branch, 0, yes, 0, 0) == 0, "CAT-2: Branch true edge");
+        check(graph_connect_exec(&gf, branch, 1, no, 0, 0) == 0, "CAT-2: Branch false edge");
+        condition->outputs[0].b = true;
+        flow_log_reset();
+        flow_run *run = graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                strcmp(g_flow_log, "A") == 0,
+            "EXEC-1: named event takes Branch true"
+        );
+        check(run != NULL, "RUN-1: named event creates a flow run");
+        check(flow_run_status(run) == FLOW_COMPLETED, "RUN-2: completed run reports one state");
+        flow_run_free(run);
+        condition->outputs[0].b = false;
+        flow_log_reset();
+        run = graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                strcmp(g_flow_log, "B") == 0,
+            "CAT-2: named event takes Branch false"
+        );
+        flow_run_free(run);
+        check(
+            graph_run_event(&gf, "Missing", (flow_inputs){ 0 }, &dispatch_error) == NULL &&
+                dispatch_error.code == FLOW_ERR_UNKNOWN_EVENT,
+            "EVT-7: unknown event reports through the dispatch out-parameter"
+        );
+        node *duplicate = graph_add_node(&gf, registry_node_by_name("Event"));
+        check(graph_set_event_name(&gf, duplicate, "Choose") == 0, "duplicate event configured");
+        check(
+            graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error) == NULL &&
+                dispatch_error.code == FLOW_ERR_DUPLICATE_EVENT,
+            "EVT-7: duplicate event uses dispatch error"
+        );
+        graph_free(&gf);
+    }
+
+    /* 17. Sequence executes outputs in order and stops on the first error. */
+    {
+        graph gs;
+        graph_init(&gs);
+        node *event = graph_add_node(&gs, registry_node_by_name("Event"));
+        node *sequence = graph_add_node(&gs, registry_node_by_name("Sequence"));
+        node *a = graph_add_node(&gs, &g_sink_a_desc);
+        node *b = graph_add_node(&gs, &g_sink_b_desc);
+        node *c = graph_add_node(&gs, &g_sink_c_desc);
+        check(graph_set_event_name(&gs, event, "Sequence") == 0, "EVT-2: sequence event configured");
+        check(graph_connect_exec(&gs, event, 0, sequence, 0, 0) == 0, "PIN-10: event -> sequence");
+        check(
+            graph_connect_exec(&gs, sequence, 0, a, 0, 9) == 0 &&
+                graph_connect_exec(&gs, sequence, 1, b, 0, 4) == 0 &&
+                graph_connect_exec(&gs, sequence, 2, c, 0, 1) == 0,
+            "PIN-9: sequence ordered outputs connect"
+        );
+        flow_log_reset();
+        flow_run *run = graph_run_event(&gs, "Sequence", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                strcmp(g_flow_log, "ABC") == 0,
+            "EXEC-5: Sequence order is 0,1,2,3"
+        );
+        flow_run_free(run);
+        graph_free(&gs);
+
+        graph ge;
+        graph_init(&ge);
+        event = graph_add_node(&ge, registry_node_by_name("Event"));
+        sequence = graph_add_node(&ge, registry_node_by_name("Sequence"));
+        a = graph_add_node(&ge, &g_sink_a_desc);
+        node *error_node = graph_add_node(&ge, &g_sink_error_desc);
+        c = graph_add_node(&ge, &g_sink_c_desc);
+        graph_set_event_name(&ge, event, "Stop");
+        graph_connect_exec(&ge, event, 0, sequence, 0, 0);
+        graph_connect_exec(&ge, sequence, 0, a, 0, 0);
+        graph_connect_exec(&ge, sequence, 1, error_node, 0, 0);
+        graph_connect_exec(&ge, sequence, 2, c, 0, 0);
+        flow_log_reset();
+        run = graph_run_event(&ge, "Stop", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_FAILED &&
+                strcmp(g_flow_log, "A") == 0 && flow_run_error(run)->node == error_node,
+            "EXEC-5: Sequence stops immediately on error"
+        );
+        flow_run_free(run);
+        graph_free(&ge);
+    }
+
+    /* 18. ForLoop inclusive forward range and empty reverse range. */
+    {
+        graph gl;
+        graph_init(&gl);
+        node *event = graph_add_node(&gl, registry_node_by_name("Event"));
+        node *loop = graph_add_node(&gl, registry_node_by_name("ForLoop"));
+        node *body = graph_add_node(&gl, &g_sink_body_desc);
+        node *done = graph_add_node(&gl, &g_sink_done_desc);
+        graph_set_event_name(&gl, event, "Loop");
+        graph_connect_exec(&gl, event, 0, loop, 0, 0);
+        graph_connect_exec(&gl, loop, 0, body, 0, 0);
+        graph_connect_data(&gl, loop, 1, body, 1);
+        graph_connect_exec(&gl, loop, 2, done, 0, 0);
+        loop->inputs[1].i = 2;
+        loop->inputs[2].i = 4;
+        flow_log_reset();
+        flow_run *run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_index_count == 3 &&
+                g_flow_indices[0] == 2 && g_flow_indices[1] == 3 &&
+                g_flow_indices[2] == 4 && strcmp(g_flow_log, "D") == 0,
+            "CAT-4: ForLoop runs inclusive 2..4 then Completed"
+        );
+        check(
+            g_flow_index_count == 3 && g_flow_indices[0] == 2 &&
+                g_flow_indices[1] == 3 && g_flow_indices[2] == 4,
+            "EXEC-3: each loop activation evaluates fresh data"
+        );
+        flow_run_free(run);
+        loop->inputs[1].i = 2;
+        loop->inputs[2].i = 2;
+        flow_log_reset();
+        run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_index_count == 1 &&
+                g_flow_indices[0] == 2 && strcmp(g_flow_log, "D") == 0,
+            "CAT-4: ForLoop runs inclusive 2..2"
+        );
+        flow_run_free(run);
+        loop->inputs[1].i = 4;
+        loop->inputs[2].i = 2;
+        flow_log_reset();
+        run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                g_flow_index_count == 0 && strcmp(g_flow_log, "D") == 0,
+            "EXEC-4: ForLoop reverse range skips body and completes"
+        );
+        flow_run_free(run);
+        graph_free(&gl);
+    }
+
+    /* 19. Delay yields, resumes from host time, and preserves nested Sequence. */
+    {
+        graph gd;
+        graph_init(&gd);
+        node *event = graph_add_node(&gd, registry_node_by_name("Event"));
+        node *delay = graph_add_node(&gd, registry_node_by_name("Delay"));
+        node *done = graph_add_node(&gd, &g_sink_done_desc);
+        graph_set_event_name(&gd, event, "Wait");
+        graph_connect_exec(&gd, event, 0, delay, 0, 0);
+        graph_connect_exec(&gd, delay, 0, done, 0, 0);
+        delay->inputs[1].d = 5.0;
+        flow_log_reset();
+        flow_run *run = graph_run_event(&gd, "Wait", (flow_inputs){ 0 }, &dispatch_error);
+        check(run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0, "EXEC-4: Delay suspends flow run");
+        check(graph_connect_exec(&gd, event, 0, done, 0, 0) != 0, "EXEC-8: paused flow rejects topology mutation");
+        check(
+            flow_run_tick_at(run, 4.0) == FLOW_SUSPENDED_RESULT &&
+                flow_run_status(run) == FLOW_SUSPENDED,
+            "EXEC-10: Delay remains suspended before host deadline"
+        );
+        check(
+            flow_run_tick_at(run, 5.0) == FLOW_OK &&
+                flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "D") == 0,
+            "EXEC-10: Delay resumes at host monotonic time"
+        );
+        check(flow_run_status(run) == FLOW_COMPLETED, "RUN-10: host-supplied monotonic time advances the run");
+        flow_run_free(run);
+        graph_free(&gd);
+
+        graph gt;
+        graph_init(&gt);
+        node *topology_event = graph_add_node(&gt, registry_node_by_name("Event"));
+        node *topology_delay = graph_add_node(&gt, registry_node_by_name("Delay"));
+        graph_connect_exec(&gt, topology_event, 0, topology_delay, 0, 0);
+        topology_delay->inputs[1].d = 10.0;
+        flow_run *topology_run = flow_run_start(&gt, topology_event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(topology_run);
+        graph_flow_resume(&gt);
+        node *topology_mutation = graph_add_node(&gt, &g_sink_a_desc);
+        graph_flow_pause(&gt);
+        check(
+            topology_mutation && topology_run &&
+                flow_run_tick_at(topology_run, 1.0) == FLOW_ERR_TOPOLOGY &&
+                flow_run_status(topology_run) == FLOW_FAILED &&
+                flow_run_error(topology_run)->code == FLOW_ERR_TOPOLOGY,
+            "EXEC-9: changed topology fails the run"
+        );
+        flow_run_free(topology_run);
+        graph_free(&gt);
+
+        graph gn;
+        graph_init(&gn);
+        event = graph_add_node(&gn, registry_node_by_name("Event"));
+        node *sequence = graph_add_node(&gn, registry_node_by_name("Sequence"));
+        delay = graph_add_node(&gn, registry_node_by_name("Delay"));
+        node *first = graph_add_node(&gn, &g_sink_a_desc);
+        node *second = graph_add_node(&gn, &g_sink_b_desc);
+        graph_set_event_name(&gn, event, "Nested");
+        graph_connect_exec(&gn, event, 0, sequence, 0, 0);
+        graph_connect_exec(&gn, sequence, 0, delay, 0, 0);
+        graph_connect_exec(&gn, delay, 0, first, 0, 0);
+        graph_connect_exec(&gn, sequence, 1, second, 0, 0);
+        delay->inputs[1].d = 3.0;
+        flow_log_reset();
+        run = graph_run_event(&gn, "Nested", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0,
+            "EXEC-2: nested Sequence suspends at first Delay"
+        );
+        flow_run_tick_at(run, 3.0);
+        check(
+            flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "AB") == 0,
+            "EXEC-11: nested Sequence resumes remaining outputs in order"
+        );
+        flow_run_free(run);
+        graph_free(&gn);
+    }
+
+    /* 20. Step budget and v2/v1/versionless persistence. */
+    {
+        graph gbudget;
+        graph_init(&gbudget);
+        node *cycle = graph_add_node(&gbudget, &g_sink_a_desc);
+        graph_connect_exec(&gbudget, cycle, 0, cycle, 0, 0);
+        flow_options options = { .step_budget = 3 };
+        flow_run *run = flow_run_start(&gbudget, cycle, (flow_inputs){ 0 }, &options, &dispatch_error);
+        check(
+            run && flow_run_resume(run) == FLOW_ERR_STEP_BUDGET &&
+                flow_run_status(run) == FLOW_FAILED && flow_run_steps(run) == 3,
+            "EXEC-6: flow step budget produces structured failure"
+        );
+        flow_run_free(run);
+        graph_free(&gbudget);
+
+        graph gj;
+        graph_init(&gj);
+        node *event = graph_add_node(&gj, registry_node_by_name("Event"));
+        node *branch = graph_add_node(&gj, registry_node_by_name("Branch"));
+        node *condition = graph_add_node(&gj, registry_node_by_name("const_bool"));
+        graph_set_event_name(&gj, event, "Saved");
+        graph_connect_exec(&gj, event, 0, branch, 0, 12);
+        graph_connect_data(&gj, condition, 0, branch, 1);
+        char *json = graph_save_json(&gj);
+        check(
+            json && strstr(json, "\"version\": 2") &&
+                strstr(json, "\"kind\": \"exec\"") && strstr(json, "\"order\": 12") &&
+                strstr(json, "\"event\": \"Saved\""),
+            "FMT-4: v2 JSON writes flow kind/order and event name"
+        );
+        graph *loaded = json ? graph_load_json(json) : NULL;
+        check(
+            loaded && loaded->edge_count == 2 && loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
+                graph_event_name(loaded->nodes[0]) &&
+                strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
+            "FMT-4: v2 JSON loads flow metadata"
+        );
+        if (loaded) graph_free(loaded);
+        free(json);
+
+        node *flow_subset[] = { event, branch };
+        char *subset_json = graph_save_nodes_json(&gj, flow_subset, 2);
+        check(
+            subset_json && strstr(subset_json, "\"kind\": \"exec\"") &&
+                strstr(subset_json, "\"order\": 12"),
+            "FMT-4: subset save preserves flow edge order"
+        );
+        graph appended;
+        graph_init(&appended);
+        check(
+            subset_json &&
+                graph_append_json(&appended, subset_json, 10.0f, 20.0f) == 0 &&
+                appended.edge_count == 1 && appended.edges[0].kind == GRAPH_EDGE_EXEC &&
+                appended.edges[0].exec_order == 12,
+            "FMT-4: append preserves flow edge order"
+        );
+        graph_free(&appended);
+        free(subset_json);
+        graph_free(&gj);
+
+        const char *legacy = "{\"version\":1,\"nodes\":[{\"type\":\"const_"
+                             "f32\",\"consts\":{\"out0\":2}},{\"type\":\"const_"
+                             "f32\",\"consts\":{\"out0\":3}},{\"type\":\"add_"
+                             "floats\"}],\"edges\":[{\"from\":0,\"from_pin\":0,"
+                             "\"to\":2,\"to_pin\":0},{\"from\":1,\"from_pin\":"
+                             "0,\"to\":2,\"to_pin\":1}]}";
+        const char
+            *versionless = "{\"nodes\":[{\"type\":\"const_f32\",\"consts\":{"
+                           "\"out0\":2}},{\"type\":\"const_f32\",\"consts\":{"
+                           "\"out0\":3}},{\"type\":\"add_floats\"}],\"edges\":["
+                           "{\"from\":0,\"from_pin\":0,\"to\":2,\"to_pin\":0},{"
+                           "\"from\":1,\"from_pin\":0,\"to\":2,\"to_pin\":1}]}";
+        graph *v1 = graph_load_json(legacy);
+        graph *v0 = graph_load_json(versionless);
+        check(v1 && v1->edge_count == 2 && v1->edges[0].kind == GRAPH_EDGE_DATA, "v1 data-only JSON remains compatible");
+        check(v0 && v0->edge_count == 2 && v0->edges[0].kind == GRAPH_EDGE_DATA, "versionless data-only JSON remains compatible");
+        if (v1) graph_free(v1);
+        if (v0) graph_free(v0);
+        check(
+            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[{\"from\":0,\"from_pin\":0,\"to\":0,\"to_pin\":0,\"kind\":\"wat\"}]}") ==
+                NULL,
+            "FMT-8: unsupported v2 edge kind is rejected"
+        );
+        check(
+            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[{\"from\":0,\"from_pin\":0,\"to\":0,\"to_pin\":0,\"kind\":\"exec\"}]}") ==
+                NULL,
+            "PIN-10: exec edge without order is rejected"
+        );
+        check(
+            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[{\"from\":0,\"from_pin\":0,\"to\":0,\"to_pin\":0,\"kind\":\"data\",\"order\":1}]}") ==
+                NULL,
+            "PIN-10: data edge with order is rejected"
+        );
+    }
+
+    /* 21. External pause, one-activation stepping, and resume order. */
+    {
+        graph gp;
+        graph_init(&gp);
+        node *event = graph_add_node(&gp, registry_node_by_name("Event"));
+        node *first = graph_add_node(&gp, &g_sink_a_desc);
+        node *second = graph_add_node(&gp, &g_sink_b_desc);
+        node *third = graph_add_node(&gp, &g_sink_c_desc);
+        graph_connect_exec(&gp, event, 0, first, 0, 0);
+        graph_connect_exec(&gp, first, 0, second, 0, 0);
+        graph_connect_exec(&gp, second, 0, third, 0, 0);
+
+        flow_run *run = flow_run_start(&gp, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        flow_log_reset();
+        check(
+            run && flow_run_step(run) == FLOW_PAUSED_RESULT &&
+                flow_run_status(run) == FLOW_PAUSED &&
+                flow_run_steps(run) == 1 && g_flow_log_count == 0,
+            "RUN-4: one step activates exactly one entry node"
+        );
+        check(
+            flow_run_pause(run) == FLOW_OK && flow_run_status(run) == FLOW_PAUSED,
+            "RUN-3: external pause preserves paused state"
+        );
+        check(
+            flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED &&
+                strcmp(g_flow_log, "ABC") == 0,
+            "RUN-3: resume continues from the next unactivated node"
+        );
+        flow_run_free(run);
+
+        flow_log_reset();
+        run = flow_run_start(&gp, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        while (run && flow_run_status(run) != FLOW_COMPLETED &&
+               flow_run_status(run) != FLOW_FAILED)
+            (void)flow_run_step(run);
+        char stepped_log[sizeof g_flow_log];
+        snprintf(stepped_log, sizeof stepped_log, "%s", g_flow_log);
+        check(strcmp(stepped_log, "ABC") == 0, "RUN-4: stepping preserves activation order");
+        flow_run_free(run);
+
+        flow_log_reset();
+        run = flow_run_start(&gp, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(run);
+        check(strcmp(g_flow_log, stepped_log) == 0, "RUN-4: stepped output matches uninterrupted resume");
+        flow_run_free(run);
+
+        graph gpause;
+        graph_init(&gpause);
+        node *pause_event = graph_add_node(&gpause, registry_node_by_name("Event"));
+        node *pause_print = graph_add_node(&gpause, registry_node_by_name("Print String"));
+        node *pause_sink = graph_add_node(&gpause, &g_sink_a_desc);
+        node *pause_text = make_string(&gpause, "pause");
+        graph_connect_exec(&gpause, pause_event, 0, pause_print, 0, 0);
+        graph_connect_exec(&gpause, pause_print, 0, pause_sink, 0, 0);
+        graph_connect_data(&gpause, pause_text, 0, pause_print, 1);
+        flow_options pause_options = { .sink = print_sink };
+        flow_log_reset();
+        g_print_count = 0;
+        run = flow_run_start(&gpause, pause_event, (flow_inputs){ 0 }, &pause_options, &dispatch_error);
+        g_pause_target = run;
+        (void)flow_run_resume(run);
+        check(
+            run && flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 2 &&
+                g_print_count == 1 && g_flow_log_count == 0,
+            "RUN-3: external pause request stops between activations"
+        );
+        (void)flow_run_resume(run);
+        check(
+            flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "A") == 0,
+            "RUN-3: paused run resumes at the next node"
+        );
+        flow_run_free(run);
+        graph_free(&gpause);
+        graph_free(&gp);
+    }
+
+    /* 22. Persistent single-step mode crosses a latent suspension. */
+    {
+        graph gs;
+        graph_init(&gs);
+        node *event = graph_add_node(&gs, registry_node_by_name("Event"));
+        node *delay = graph_add_node(&gs, registry_node_by_name("Delay"));
+        node *done = graph_add_node(&gs, &g_sink_done_desc);
+        graph_connect_exec(&gs, event, 0, delay, 0, 0);
+        graph_connect_exec(&gs, delay, 0, done, 0, 0);
+        delay->inputs[1].d = 1.0;
+        flow_options clocked = { .initial_time = 0.0 };
+        flow_log_reset();
+        flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
+        check(
+            run && flow_run_step(run) == FLOW_PAUSED_RESULT &&
+                flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 1,
+            "RUN-4: step mode pauses after one activation before Delay"
+        );
+        check(
+            flow_run_step(run) == FLOW_SUSPENDED_RESULT &&
+                flow_run_status(run) == FLOW_SUSPENDED && flow_run_steps(run) == 2,
+            "RUN-4: stepping activates exactly one Delay across suspension"
+        );
+        check(
+            flow_run_tick_at(run, 1.0) == FLOW_PAUSED_RESULT &&
+                flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 3 &&
+                g_flow_log_count == 1 && strcmp(g_flow_log, "D") == 0,
+            "RUN-4: deadline tick keeps step mode and pauses after one "
+            "activation"
+        );
+        check(
+            flow_run_resume(run) == FLOW_OK &&
+                flow_run_status(run) == FLOW_COMPLETED && flow_run_steps(run) == 3,
+            "RUN-3: explicit Resume clears step mode and continues freely"
+        );
+        flow_run_free(run);
+        graph_free(&gs);
+    }
+
+    /* 23. Pausing a suspended run enters the same persistent step mode. */
+    {
+        graph gs;
+        graph_init(&gs);
+        node *event = graph_add_node(&gs, registry_node_by_name("Event"));
+        node *delay = graph_add_node(&gs, registry_node_by_name("Delay"));
+        node *done = graph_add_node(&gs, &g_sink_done_desc);
+        graph_connect_exec(&gs, event, 0, delay, 0, 0);
+        graph_connect_exec(&gs, delay, 0, done, 0, 0);
+        delay->inputs[1].d = 1.0;
+        flow_options clocked = { .initial_time = 0.0 };
+        flow_log_reset();
+        flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
+        (void)flow_run_resume(run);
+        check(
+            run && flow_run_status(run) == FLOW_SUSPENDED &&
+                flow_run_pause(run) == FLOW_OK &&
+                flow_run_tick_at(run, 1.0) == FLOW_PAUSED_RESULT &&
+                flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 3,
+            "RUN-3: pausing while SUSPENDED steps once after the deadline"
+        );
+        check(
+            flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED,
+            "RUN-3: resumed suspended step completes without another step limit"
+        );
+        flow_run_free(run);
+        graph_free(&gs);
+    }
+
+    /* 24. Per-run errors and step counts do not share process-global state. */
+    {
+        graph gtwo;
+        graph_init(&gtwo);
+        node *event = graph_add_node(&gtwo, registry_node_by_name("Event"));
+        node *error_node = graph_add_node(&gtwo, &g_sink_error_desc);
+        graph_connect_exec(&gtwo, event, 0, error_node, 0, 0);
+        flow_run *run_a = flow_run_start(&gtwo, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        flow_run *run_b = flow_run_start(&gtwo, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        int error_a = run_a ? flow_run_resume(run_a) : 0;
+        int error_b = run_b ? flow_run_resume(run_b) : 0;
+        check(
+            run_a && run_b && error_a == -777 && error_b == -777 &&
+                flow_run_steps(run_a) == 2 && flow_run_steps(run_b) == 2 &&
+                flow_run_error(run_a) != flow_run_error(run_b),
+            "SCOPE-3: two runs keep independent errors and step counts"
+        );
+        flow_run_free(run_a);
+        flow_run_free(run_b);
+        graph_free(&gtwo);
+    }
+
+    /* 23. Stop releases graph guards and clears runtime state. */
+    {
+        graph gr;
+        graph_init(&gr);
+        node *event = graph_add_node(&gr, registry_node_by_name("Event"));
+        node *sink = graph_add_node(&gr, &g_sink_a_desc);
+        graph_connect_exec(&gr, event, 0, sink, 0, 0);
+        flow_log_reset();
+        flow_run *run = flow_run_start(&gr, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(run);
+        char first_output[sizeof g_flow_log];
+        snprintf(first_output, sizeof first_output, "%s", g_flow_log);
+        check(flow_run_stop(run) == FLOW_OK && flow_run_status(run) == FLOW_IDLE, "RUN-6: stop returns run to idle");
+        check(
+            graph_add_node(&gr, &g_sink_b_desc) != NULL &&
+                event->computed == 0 && event->visiting == 0 &&
+                event->eval_error == 0 && !event->eval_error_message,
+            "RUN-6: stop clears node state and releases graph mutation guard"
+        );
+        flow_run_free(run);
+        flow_log_reset();
+        run = flow_run_start(&gr, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(run);
+        check(strcmp(first_output, g_flow_log) == 0, "RUN-6: fresh run output matches the first run");
+        flow_run_free(run);
+        graph_free(&gr);
+    }
+
+    /* 24. Stopping a latent run releases the graph without another activation. */
+    {
+        graph gs;
+        graph_init(&gs);
+        node *event = graph_add_node(&gs, registry_node_by_name("Event"));
+        node *delay = graph_add_node(&gs, registry_node_by_name("Delay"));
+        node *done = graph_add_node(&gs, &g_sink_done_desc);
+        graph_connect_exec(&gs, event, 0, delay, 0, 0);
+        graph_connect_exec(&gs, delay, 0, done, 0, 0);
+        delay->inputs[1].d = 10.0;
+        flow_log_reset();
+        flow_options clocked = { .initial_time = 0.0 };
+        flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
+        (void)flow_run_resume(run);
+        check(flow_run_status(run) == FLOW_SUSPENDED, "RUN-6: Delay leaves a suspended run");
+        check(
+            flow_run_stop(run) == FLOW_OK &&
+                flow_run_status(run) == FLOW_IDLE && g_flow_log_count == 0,
+            "RUN-6: stop aborts without activating the continuation"
+        );
+        check(graph_add_node(&gs, &g_sink_a_desc) != NULL, "RUN-8: stopped run leaves graph mutable");
+        check(graph_add_node(&gs, &g_sink_b_desc) != NULL, "RUN-14: authoring mutation succeeds after suspended run teardown");
+        flow_run_free(run);
+        graph_free(&gs);
+    }
+
+    /* 25. Print String delivers ordered host messages with their origins. */
+    {
+        graph gp;
+        graph_init(&gp);
+        node *event = graph_add_node(&gp, registry_node_by_name("Event"));
+        node *print_a = graph_add_node(&gp, registry_node_by_name("Print String"));
+        node *print_b = graph_add_node(&gp, registry_node_by_name("Print String"));
+        node *str_a = make_string(&gp, "first");
+        node *str_b = make_string(&gp, "second");
+        graph_connect_exec(&gp, event, 0, print_a, 0, 0);
+        graph_connect_exec(&gp, print_a, 0, print_b, 0, 0);
+        graph_connect_data(&gp, str_a, 0, print_a, 1);
+        graph_connect_data(&gp, str_b, 0, print_b, 1);
+        memset(g_print_messages, 0, sizeof g_print_messages);
+        memset(g_print_origins, 0, sizeof g_print_origins);
+        g_print_count = 0;
+        flow_options printing = { .sink = print_sink };
+        flow_run *run = flow_run_start(&gp, event, (flow_inputs){ 0 }, &printing, &dispatch_error);
+        (void)flow_run_resume(run);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                g_print_count == 2 && strcmp(g_print_messages[0], "first") == 0 &&
+                strcmp(g_print_messages[1], "second") == 0 &&
+                g_print_origins[0] == print_a && g_print_origins[1] == print_b,
+            "CAT-20: Print String sends ordered messages and originating nodes"
+        );
+        check(g_print_count == 2 && g_print_origins[0] == print_a, "EXEC-12: host sink receives output with its origin");
+        flow_run_free(run);
+        graph_free(&gp);
+    }
+
+    /* 26. Struct watches copy out of the run arena before the run is freed. */
+    {
+        graph gw;
+        graph_init(&gw);
+        node *event = graph_add_node(&gw, registry_node_by_name("Event"));
+        node *watch_node = graph_add_node(&gw, &g_watch_desc);
+        graph_connect_exec(&gw, event, 0, watch_node, 0, 0);
+        flow_run *run = flow_run_start(&gw, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(run);
+        pin_value recorded;
+        Vec3 copied = { 0 };
+        int watch_result = flow_run_watch_output(run, watch_node, 1, &recorded);
+        int copy_result = flow_run_watch_copy_output(run, watch_node, 1, &recorded, &copied, sizeof copied);
+        check(
+            watch_result == 0 && copy_result == 0 &&
+                recorded.type == PIN_STRUCT && recorded.ptr != &g_watch_struct &&
+                copied.x == 4.0f && copied.y == 5.0f && copied.z == 6.0f,
+            "DBG-5: struct watch value is copied out of the run arena"
+        );
+        check(
+            flow_run_watch_output(run, watch_node, 1, &recorded) == 0 &&
+                recorded.ptr != &g_watch_struct && ((Vec3 *)recorded.ptr)->x == 4.0f,
+            "DBG-6: live run watch reads the recorded execution value"
+        );
+        flow_run_free(run);
+        check(copied.x == 4.0f && copied.y == 5.0f && copied.z == 6.0f, "DBG-5: copied struct remains valid after run free");
+        run = flow_run_start(&gw, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(run);
+        check(
+            flow_run_stop(run) == FLOW_OK &&
+                flow_run_watch_output(run, watch_node, 1, &recorded) != 0,
+            "DBG-14: Stop clears recorded watch values"
+        );
+        flow_run_free(run);
+        graph_free(&gw);
+    }
+
+    /* 27. Serialization contains authored graph data, never run state. */
+    {
+        graph gs;
+        graph_init(&gs);
+        node *event = graph_add_node(&gs, registry_node_by_name("Event"));
+        node *delay = graph_add_node(&gs, registry_node_by_name("Delay"));
+        graph_connect_exec(&gs, event, 0, delay, 0, 0);
+        delay->inputs[1].d = 2.0;
+        flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
+        (void)flow_run_resume(run);
+        char *json = graph_save_json(&gs);
+        graph *loaded = json ? graph_load_json(json) : NULL;
+        check(
+            json && !strstr(json, "\\\"run\\\"") &&
+                !strstr(json, "\\\"state\\\"") && loaded && loaded->node_count == 2,
+            "RUN-13: suspended save contains authored data and no run state"
+        );
+        if (loaded) graph_free(loaded);
+        free(json);
+        flow_run_free(run);
+        graph_free(&gs);
     }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

@@ -21,8 +21,18 @@ const char *pin_value_to_string(const pin_value *v)
         case PIN_BOOL:
             snprintf(buf, PIN_FMT_CAP, "%s", v->b ? "true" : "false");
             break;
+        case PIN_I8: snprintf(buf, PIN_FMT_CAP, "%d", (int)v->i8); break;
+        case PIN_U8: snprintf(buf, PIN_FMT_CAP, "%u", (unsigned)v->u8); break;
+        case PIN_I16: snprintf(buf, PIN_FMT_CAP, "%d", (int)v->i16); break;
+        case PIN_U16: snprintf(buf, PIN_FMT_CAP, "%u", (unsigned)v->u16); break;
         case PIN_I32: snprintf(buf, PIN_FMT_CAP, "%d", (int)v->i); break;
         case PIN_U32: snprintf(buf, PIN_FMT_CAP, "%u", (unsigned)v->u); break;
+        case PIN_I64:
+            snprintf(buf, PIN_FMT_CAP, "%lld", (long long)v->i64);
+            break;
+        case PIN_U64:
+            snprintf(buf, PIN_FMT_CAP, "%llu", (unsigned long long)v->u64);
+            break;
         case PIN_F32: snprintf(buf, PIN_FMT_CAP, "%g", (double)v->f); break;
         case PIN_F64: snprintf(buf, PIN_FMT_CAP, "%g", v->d); break;
         case PIN_STR:

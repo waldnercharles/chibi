@@ -5,10 +5,39 @@
  * Make + Break node_desc per struct plus a call node_desc per "node:fn"
  * function.
  */
+#if __has_include(<clang-c/Index.h>)
 #include <clang-c/Index.h>
+#elif __has_include("/opt/homebrew/opt/llvm/include/clang-c/Index.h")
+#include "/opt/homebrew/opt/llvm/include/clang-c/Index.h"
+#elif __has_include("/usr/local/opt/llvm/include/clang-c/Index.h")
+#include "/usr/local/opt/llvm/include/clang-c/Index.h"
+#else
+#error "libclang headers are required to build reflect"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static int g_failed;
+static void reflect_error(CXCursor c, const char *message)
+{
+    CXSourceLocation loc = clang_getCursorLocation(c);
+    CXFile file = NULL;
+    unsigned line = 0, column = 0, offset = 0;
+    clang_getSpellingLocation(loc, &file, &line, &column, &offset);
+    CXString name = clang_getCursorSpelling(c);
+    fprintf(
+        stderr,
+        "reflect: %s:%u:%u: %s (%s)\n",
+        file ? clang_getCString(clang_getFileName(file)) : "<unknown>",
+        line,
+        column,
+        message,
+        clang_getCString(name)
+    );
+    clang_disposeString(name);
+    g_failed = 1;
+}
 
 /* ---------- dynamic lists ---------- */
 
@@ -193,21 +222,37 @@ static const char *pin_name(CXType t)
 {
     CXType canon = clang_getCanonicalType(t);
     switch (canon.kind) {
-        case CXType_Float: return "PIN_F32";
-        case CXType_Double: return "PIN_F64";
         case CXType_Bool: return "PIN_BOOL";
+        case CXType_Char_S:
+        case CXType_SChar: return "PIN_I8";
+        case CXType_Char_U:
+        case CXType_UChar: return "PIN_U8";
+        case CXType_Short: return "PIN_I16";
+        case CXType_UShort: return "PIN_U16";
         case CXType_Int: return "PIN_I32";
         case CXType_UInt: return "PIN_U32";
+        case CXType_Long:
+        case CXType_LongLong: {
+            long long size = clang_Type_getSizeOf(canon);
+            return size == 4 ? "PIN_I32" : size == 8 ? "PIN_I64" : NULL;
+        }
+        case CXType_ULong:
+        case CXType_ULongLong: {
+            long long size = clang_Type_getSizeOf(canon);
+            return size == 4 ? "PIN_U32" : size == 8 ? "PIN_U64" : NULL;
+        }
+        case CXType_Float: return "PIN_F32";
+        case CXType_Double: return "PIN_F64";
+        case CXType_Enum: return "PIN_ENUM";
         case CXType_Record: return "PIN_STRUCT";
         case CXType_Pointer: {
             CXType pointee = clang_getCanonicalType(clang_getPointeeType(t));
             if (pointee.kind == CXType_Char_U || pointee.kind == CXType_UChar ||
                 pointee.kind == CXType_Char_S || pointee.kind == CXType_SChar)
                 return "PIN_STR";
-            return "PIN_STRUCT";
+            return NULL;
         }
-        /* ponytail: unknown scalars -> PIN_STRUCT; extend when more pin types exist */
-        default: return "PIN_STRUCT";
+        default: return NULL;
     }
 }
 
@@ -224,7 +269,26 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor parent, CXClie
     f.name = cxstr(clang_getCursorSpelling(c));
     f.spelling = cxstr(clang_getTypeSpelling(t));
     f.pin = pin_name(t);
+    if (!f.pin) {
+        reflect_error(c, "unsupported field type");
+        free(f.name);
+        free(f.spelling);
+        return CXChildVisit_Continue;
+    }
     f.offset = clang_Cursor_getOffsetOfField(c) / 8; /* bits -> bytes */
+    if (clang_Cursor_isBitField(c)) {
+        reflect_error(c, "bit-fields are unsupported");
+        free(f.name);
+        free(f.spelling);
+        return CXChildVisit_Continue;
+    }
+    if (!strcmp(f.pin, "PIN_ENUM") &&
+        clang_Type_getSizeOf(clang_getCanonicalType(t)) != sizeof(int32_t)) {
+        reflect_error(c, "enum fields must use a 32-bit representation");
+        free(f.name);
+        free(f.spelling);
+        return CXChildVisit_Continue;
+    }
     field_push(l, f);
     return CXChildVisit_Continue;
 }
@@ -236,7 +300,13 @@ static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor parent, CXClie
         return CXChildVisit_Continue;
     fn_info *f = (fn_info *)data;
     CXType t = clang_getCursorType(c);
-    fn_add_param(f, cxstr(clang_getCursorSpelling(c)), cxstr(clang_getTypeSpelling(t)), pin_name(t));
+    const char *pin = pin_name(t);
+    if (!pin || (!strcmp(pin, "PIN_ENUM") &&
+                 clang_Type_getSizeOf(clang_getCanonicalType(t)) != sizeof(int32_t))) {
+        reflect_error(c, "unsupported parameter type");
+        return CXChildVisit_Continue;
+    }
+    fn_add_param(f, cxstr(clang_getCursorSpelling(c)), cxstr(clang_getTypeSpelling(t)), pin);
     return CXChildVisit_Continue;
 }
 
@@ -255,7 +325,13 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             s.fields.n = 0;
             s.fields.cap = 0;
             clang_visitChildren(c, field_visitor, &s.fields);
-            struct_push(&ctx->structs, s);
+            if (g_failed) {
+                free(s.name);
+                free(s.file);
+                free(s.fields.v);
+            } else {
+                struct_push(&ctx->structs, s);
+            }
         }
     } else if (k == CXCursor_FunctionDecl) {
         if (has_annotate(c, "node:fn")) {
@@ -263,6 +339,15 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             f.name = cxstr(clang_getCursorSpelling(c));
             f.ret = cxstr(clang_getTypeSpelling(clang_getCursorResultType(c)));
             f.ret_pin = pin_name(clang_getCursorResultType(c));
+            if (!f.ret_pin || (!strcmp(f.ret_pin, "PIN_ENUM") &&
+                               clang_Type_getSizeOf(clang_getCanonicalType(
+                                   clang_getCursorResultType(c)
+                               )) != sizeof(int32_t))) {
+                reflect_error(c, "unsupported return type");
+                free(f.name);
+                free(f.ret);
+                return CXChildVisit_Recurse;
+            }
             f.pname = NULL;
             f.ptype = NULL;
             f.ppin = NULL;
@@ -280,8 +365,14 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
 static const char *pin_member(const char *pin)
 {
     if (!strcmp(pin, "PIN_BOOL")) return "b";
+    if (!strcmp(pin, "PIN_I8")) return "i8";
+    if (!strcmp(pin, "PIN_U8")) return "u8";
+    if (!strcmp(pin, "PIN_I16")) return "i16";
+    if (!strcmp(pin, "PIN_U16")) return "u16";
     if (!strcmp(pin, "PIN_I32")) return "i";
     if (!strcmp(pin, "PIN_U32")) return "u";
+    if (!strcmp(pin, "PIN_I64")) return "i64";
+    if (!strcmp(pin, "PIN_U64")) return "u64";
     if (!strcmp(pin, "PIN_F32")) return "f";
     if (!strcmp(pin, "PIN_F64")) return "d";
     if (!strcmp(pin, "PIN_STR")) return "str";
@@ -307,7 +398,7 @@ static void emit_fn(FILE *out, const fn_info *f)
     fprintf(out, "    (void)nargs;\n");
     int struct_ret = !strcmp(f->ret_pin, "PIN_STRUCT");
     if (!struct_ret) fprintf(out, "    (void)a;\n");
-    fprintf(out, "    pin_value r;\n");
+    fprintf(out, "    pin_value r = { 0 };\n");
     fprintf(out, "    r.type = %s;\n", f->ret_pin);
     fprintf(out, "    r.type_name = \"%s\";\n", f->ret);
 
@@ -319,6 +410,7 @@ static void emit_fn(FILE *out, const fn_info *f)
         }
         fputs(");\n", out);
         fprintf(out, "    r.ptr = arena_alloc(a, sizeof(%s));\n", f->ret);
+        fputs("    if (!r.ptr) return r;\n", out);
         fprintf(out, "    *(%s *)r.ptr = __r;\n", f->ret);
     } else {
         fprintf(out, "    r.%s = %s(", pin_member(f->ret_pin), f->name);
@@ -354,6 +446,7 @@ static void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    .outputs = %s_make_outputs,\n", s->name);
     fprintf(out, "    .eval = node_eval_make,\n");
     fprintf(out, "    .type = &T_%s,\n", s->name);
+    fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
 
     fprintf(out, "static pin_spec %s_break_inputs[] = {\n", s->name);
@@ -376,6 +469,7 @@ static void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    .outputs = %s_break_outputs,\n", s->name);
     fprintf(out, "    .eval = node_eval_break,\n");
     fprintf(out, "    .type = &T_%s,\n", s->name);
+    fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
 }
 
@@ -401,6 +495,7 @@ static void emit_fn_node(FILE *out, const fn_info *f)
     fprintf(out, "    .outputs = %s_outputs,\n", f->name);
     fprintf(out, "    .eval = node_eval_call,\n");
     fprintf(out, "    .fn = __wrap_%s,\n", f->name);
+    fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
 }
 
@@ -516,6 +611,7 @@ int main(int argc, char **argv)
     unsigned ndiag = clang_getNumDiagnostics(tu);
     for (unsigned i = 0; i < ndiag; i++) {
         CXDiagnostic d = clang_getDiagnostic(tu, i);
+        if (clang_getDiagnosticSeverity(d) >= CXDiagnostic_Error) g_failed = 1;
         CXString s = clang_formatDiagnostic(d, clang_defaultDiagnosticDisplayOptions());
         fprintf(stderr, "reflect: %s\n", clang_getCString(s));
         clang_disposeString(s);
@@ -524,6 +620,11 @@ int main(int argc, char **argv)
 
     collect_ctx ctx = { { NULL, 0, 0 }, { NULL, 0, 0 } };
     clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, &ctx);
+    if (g_failed) {
+        clang_disposeTranslationUnit(tu);
+        clang_disposeIndex(idx);
+        return 1;
+    }
 
     FILE *out = fopen(output, "w");
     if (!out) {

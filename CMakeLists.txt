@@ -17,18 +17,26 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(cute_framework)
 
-# libclang (build tool only; runtime stays dependency-free)
-set(LIBCLANG_INCLUDE /opt/homebrew/opt/llvm/include)
-set(LIBCLANG_LIB /opt/homebrew/opt/llvm/lib)
+# libclang (build tool only; runtime stays dependency-free).
+set(LIBCLANG_ROOT "" CACHE PATH "LLVM installation prefix")
+find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
+    HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
+    PATH_SUFFIXES include)
+find_library(LIBCLANG_LIBRARY NAMES clang
+    HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
+    PATH_SUFFIXES lib)
+if(NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY)
+    message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
+endif()
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/generated)
 
 # --- reflect tool ---
 add_executable(reflect reflect/reflect.c)
-target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE})
-target_link_directories(reflect PRIVATE ${LIBCLANG_LIB})
-target_link_libraries(reflect PRIVATE clang)
-set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIB})
+target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE_DIR})
+target_link_libraries(reflect PRIVATE ${LIBCLANG_LIBRARY})
+get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
+set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIBRARY_DIR})
 
 # --- generated registry ---
 set(GEN_REGISTRY ${CMAKE_CURRENT_SOURCE_DIR}/generated/registry.c)
@@ -52,6 +60,8 @@ add_library(core STATIC
     core/core.c
     core/graph.c
     core/eval.c
+    core/flow.c
+    core/flow_nodes.c
     core/arena.c
     core/nodes.c
     core/type.c
@@ -77,41 +87,18 @@ target_include_directories(demo PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/demo
 )
 
-# --- imgui-node-editor C23 port (dcimgui + ckit) ---
-add_library(ne STATIC
-    editor/ne/ne_canvas.c
-    editor/ne/ne.c
-    third_party/ckit/ckit.c
-)
-target_include_directories(ne PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ckit
-)
-target_link_libraries(ne PUBLIC cute)
-
-# --- imnodes (C++) + hand-rolled C ABI shim ---
-add_library(ne_cpp STATIC
-    third_party/imnodes/imnodes.cpp
-    editor/ne_abi.cpp
-)
-target_compile_features(ne_cpp PRIVATE cxx_std_14)
-target_include_directories(ne_cpp PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imnodes
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-target_link_libraries(ne_cpp PUBLIC cute)
-
-# --- editor canvas (bridge: graph model <-> ne) ---
-add_library(editor STATIC editor/editor.c editor/eval_view.c)
-target_link_libraries(editor PRIVATE core ne)
+# --- editor canvas (graph model + native dcimgui widget) ---
+add_library(editor STATIC editor/editor.c editor/eval_view.c editor/preview_gate.c)
+target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(editor PRIVATE core cute)
 
 # --- app: cute_framework host loop ---
 add_executable(app app/main.c app/demo_graph.c)
-target_link_libraries(app PRIVATE editor core demo cute ne_cpp)
+target_link_libraries(app PRIVATE editor core demo cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---
-add_executable(self_check test/self_check.c app/demo_graph.c)
+add_executable(self_check test/self_check.c app/demo_graph.c editor/preview_gate.c)
 target_include_directories(self_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(self_check PRIVATE core demo)
 
@@ -131,8 +118,6 @@ if(CLANG_FORMAT)
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/editor/ne/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/editor/ne/*.h
   )
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} --style=file -i ${FORMAT_SOURCES}
@@ -145,7 +130,6 @@ if(CLANG_FORMAT)
   add_dependencies(core format)
   add_dependencies(demo format)
   add_dependencies(editor format)
-  add_dependencies(ne format)
   add_dependencies(app format)
   add_dependencies(self_check format)
   add_dependencies(reflect format)

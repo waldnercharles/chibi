@@ -1,6 +1,6 @@
 #include "demo_graph.h"
 
-#include "core/registry.h"
+#include "../core/registry.h"
 
 int demo_graph_seed(graph *g)
 {
@@ -29,5 +29,51 @@ int demo_graph_seed(graph *g)
 
     if (graph_connect(g, c1, 0, a, 0)) return -1;
     if (graph_connect(g, c2, 0, a, 1)) return -1;
+    return 0;
+}
+
+static node *flow_demo_node(graph *g, const char *name, float x, float y)
+{
+    const node_desc *desc = registry_node_by_name(name);
+    node *n = desc ? graph_add_node(g, desc) : NULL;
+    if (n) {
+        n->x = x;
+        n->y = y;
+    }
+    return n;
+}
+
+int demo_graph_seed_flow(graph *g)
+{
+    node *event = flow_demo_node(g, "Event", -560.0f, -120.0f);
+    node *sequence = flow_demo_node(g, "Sequence", -360.0f, -120.0f);
+    node *delay = flow_demo_node(g, "Delay", -140.0f, -120.0f);
+    node *branch = flow_demo_node(g, "Branch", 80.0f, -120.0f);
+    node *condition = flow_demo_node(g, "const_bool", -140.0f, 100.0f);
+    node *loop = flow_demo_node(g, "ForLoop", 300.0f, -120.0f);
+    node *body = flow_demo_node(g, "Sequence4", 540.0f, -220.0f);
+    node *completed = flow_demo_node(g, "Sequence4", 540.0f, 20.0f);
+    node *third = flow_demo_node(g, "Sequence4", 300.0f, 300.0f);
+    node *alternate = flow_demo_node(g, "Branch", -120.0f, 300.0f);
+    if (!event || !sequence || !delay || !branch || !condition || !loop ||
+        !body || !completed || !third || !alternate)
+        return -1;
+
+    if (graph_set_event_name(g, event, "OnStart")) return -1;
+    condition->outputs[0].b = true;
+    delay->inputs[1].d = 1.0;
+    loop->inputs[1].i = 2;
+    loop->inputs[2].i = 4;
+
+    if (graph_connect_exec(g, event, 0, sequence, 0, 0)) return -1;
+    if (graph_connect_exec(g, sequence, 0, delay, 0, 0)) return -1;
+    if (graph_connect_exec(g, delay, 0, branch, 0, 0)) return -1;
+    if (graph_connect_data(g, condition, 0, branch, 1)) return -1;
+    if (graph_connect_exec(g, branch, 0, loop, 0, 0)) return -1;
+    if (graph_connect_exec(g, loop, 0, body, 0, 0)) return -1;
+    if (graph_connect_exec(g, loop, 2, completed, 0, 0)) return -1;
+    if (graph_connect_exec(g, sequence, 1, alternate, 0, 0)) return -1;
+    if (graph_connect_data(g, condition, 0, alternate, 1)) return -1;
+    if (graph_connect_exec(g, sequence, 2, third, 0, 0)) return -1;
     return 0;
 }

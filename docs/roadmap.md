@@ -582,6 +582,14 @@ Deliverables:
    flow rate. `UI-44`.
 4. Edge heat: recently traversed edges thicken and brighten, then decay.
    `UI-45`.
+
+   Unreal's exec-flow envelope is attack, sustain, release, and its defaults are
+   worth copying rather than inventing. From `GraphEditorSettings.cpp`: attack
+   colour (1.0, 0.05, 0.0) at thickness 6.0, held 0.3s; decay over 0.4s with
+   exponent 1.8; sustain colour (1.0, 0.7, 0.4) at thickness 3.5, held 0.4s;
+   release over 1.5s with exponent 1.4 to colour (0.5, 0.5, 0.5) at thickness
+   1.5. Resting wire thickness is 1.5 for data and 2.5 for exec. The exponents
+   are what make the fade read as motion rather than a linear ramp.
 5. Node activation highlight with decay. `UI-46`.
 6. Data pin change flash. `UI-47`.
 7. One interpolation helper used by all four, driven by elapsed seconds, with

@@ -154,50 +154,36 @@ static float ed_max(float a, float b) { return a > b ? a : b; }
 
 static float ed_abs(float a) { return a < 0.0f ? -a : a; }
 
-typedef struct ed_node_colors
-{
-    ImVec4 background;
-    ImVec4 border;
-    ImVec4 title;
-} ed_node_colors;
-
+/* Unreal-compatible palette. Flow uses one title color here even though Unreal
+ * gives Branch a separate white title; variables will use their pin type in Phase 4. */
 static const ImVec4 ED_PIN_COLORS[] = {
-    [PIN_FLOW] = { 0.86f, 0.86f, 0.86f, 1.0f },
-    [PIN_BOOL] = { 1.0f, 0.63f, 0.47f, 1.0f },
-    [PIN_I8] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_U8] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_I16] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_U16] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_I32] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_U32] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_I64] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_U64] = { 0.43f, 0.86f, 0.63f, 1.0f },
-    [PIN_F32] = { 0.43f, 0.71f, 1.0f, 1.0f },
-    [PIN_F64] = { 0.43f, 0.71f, 1.0f, 1.0f },
-    [PIN_STR] = { 0.86f, 0.63f, 1.0f, 1.0f },
-    [PIN_STRUCT] = { 1.0f, 0.86f, 0.47f, 1.0f },
-    [PIN_ENUM] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_FLOW] = { 1.0f, 1.0f, 1.0f, 1.0f },
+    [PIN_BOOL] = { 0.300f, 0.0f, 0.0f, 1.0f },
+    [PIN_I8] = { 0.0f, 0.160f, 0.131270f, 1.0f },
+    [PIN_U8] = { 0.0f, 0.160f, 0.131270f, 1.0f },
+    [PIN_I16] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
+    [PIN_U16] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
+    [PIN_I32] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
+    [PIN_U32] = { 0.013575f, 0.770f, 0.429609f, 1.0f },
+    [PIN_I64] = { 0.413575f, 0.770f, 0.429609f, 1.0f },
+    [PIN_U64] = { 0.413575f, 0.770f, 0.429609f, 1.0f },
+    [PIN_F32] = { 0.357667f, 1.0f, 0.060f, 1.0f },
+    [PIN_F64] = { 0.357667f, 1.0f, 0.060f, 1.0f },
+    [PIN_STR] = { 1.0f, 0.0f, 0.660537f, 1.0f },
+    [PIN_STRUCT] = { 0.0f, 0.1f, 0.6f, 1.0f },
+    [PIN_ENUM] = { 0.0f, 0.160f, 0.131270f, 1.0f },
 };
 
-static const ed_node_colors ED_NODE_COLORS[] = {
-    [NODE_DISPLAY_PURE] = { { 0.48f, 0.32f, 0.52f, 1.0f },
-                            { 0.70f, 0.50f, 0.78f, 1.0f },
-                            { 0.34f, 0.22f, 0.42f, 1.0f } },
-    [NODE_DISPLAY_EVENT] = { { 0.48f, 0.34f, 0.20f, 1.0f },
-                             { 0.82f, 0.62f, 0.34f, 1.0f },
-                             { 0.55f, 0.36f, 0.18f, 1.0f } },
-    [NODE_DISPLAY_FUNCTION] = { { 0.24f, 0.40f, 0.52f, 1.0f },
-                                { 0.42f, 0.68f, 0.82f, 1.0f },
-                                { 0.18f, 0.32f, 0.46f, 1.0f } },
-    [NODE_DISPLAY_FLOW] = { { 0.30f, 0.38f, 0.24f, 1.0f },
-                            { 0.54f, 0.72f, 0.38f, 1.0f },
-                            { 0.22f, 0.32f, 0.18f, 1.0f } },
-    [NODE_DISPLAY_VARIABLE] = { { 0.46f, 0.30f, 0.24f, 1.0f },
-                                { 0.78f, 0.52f, 0.38f, 1.0f },
-                                { 0.36f, 0.22f, 0.18f, 1.0f } },
-    [NODE_DISPLAY_LITERAL] = { { 0.30f, 0.34f, 0.42f, 1.0f },
-                               { 0.56f, 0.62f, 0.74f, 1.0f },
-                               { 0.22f, 0.28f, 0.38f, 1.0f } },
+static const ImVec4 ED_NODE_BODY = { 0.188f, 0.200f, 0.239f, 1.0f };
+static const ImVec4 ED_NODE_BORDER = { 0.412f, 0.431f, 0.490f, 1.0f };
+static const ImVec4 ED_NODE_TITLES[] = {
+    [NODE_DISPLAY_PURE] = { 0.4f, 0.850f, 0.350f, 1.0f },
+    [NODE_DISPLAY_EVENT] = { 1.0f, 0.0f, 0.0f, 1.0f },
+    [NODE_DISPLAY_FUNCTION] = { 0.190525f, 0.583898f, 1.0f, 1.0f },
+    [NODE_DISPLAY_FLOW] = { 0.8f, 0.4f, 0.4f, 1.0f },
+    /* Unreal derives this from the variable's pin type; Phase 4 will do so too. */
+    [NODE_DISPLAY_VARIABLE] = { 0.36f, 0.22f, 0.18f, 1.0f },
+    [NODE_DISPLAY_LITERAL] = { 0.750f, 0.6f, 0.4f, 1.0f },
 };
 
 static ImVec4 ed_pin_color(pin_type t)
@@ -205,13 +191,13 @@ static ImVec4 ed_pin_color(pin_type t)
     return t >= PIN_FLOW && t <= PIN_ENUM ? ED_PIN_COLORS[t] : ED_PIN_COLORS[PIN_FLOW];
 }
 
-static ed_node_colors ed_node_colors_for(const node *n)
+static ImVec4 ed_node_title_color(const node *n)
 {
     node_display_class display = n && n->desc ? n->desc->display_class
                                               : NODE_DISPLAY_PURE;
     if (display < NODE_DISPLAY_PURE || display > NODE_DISPLAY_LITERAL)
         display = NODE_DISPLAY_PURE;
-    return ED_NODE_COLORS[display];
+    return ED_NODE_TITLES[display];
 }
 
 static ImU32 ed_color(ImVec4 c)
@@ -796,7 +782,7 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     ImVec4 base = source ? ed_spec_color(source) : ed_pin_color(PIN_FLOW);
     ImU32 color = ed_color(base);
     if (selected) color = ed_color((ImVec4){ 1.0f, 0.82f, 0.39f, 1.0f });
-    float thickness = selected ? 4.0f : 3.0f;
+    float thickness = selected ? 4.0f : (ed->kind == GRAPH_EDGE_EXEC ? 2.5f : 1.5f);
     ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, thickness, 0);
 }
 
@@ -805,14 +791,10 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
     node *n = v->n;
     const node_desc *d = n->desc;
     int selected = ed_node_selected(e, n);
-    ed_node_colors colors = ed_node_colors_for(n);
-    ImU32 bg = ed_color(colors.background);
-    ImU32 border = ed_color(colors.border);
-    ImU32 title = ed_color(colors.title);
-    if (selected) {
-        border = ed_color((ImVec4){ 0.78f, 0.86f, 1.0f, 1.0f });
-        title = ed_color((ImVec4){ 0.36f, 0.50f, 0.76f, 1.0f });
-    }
+    ImU32 bg = ed_color(ED_NODE_BODY);
+    ImU32 border = ed_color(ED_NODE_BORDER);
+    ImU32 title = ed_color(ed_node_title_color(n));
+    if (selected) border = ed_color((ImVec4){ 0.78f, 0.86f, 1.0f, 1.0f });
     if (n->disabled) {
         bg = ed_dim_color(bg, 0.55f);
         border = ed_dim_color(border, 0.65f);

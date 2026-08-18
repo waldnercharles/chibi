@@ -88,6 +88,19 @@ static const type_desc *find_type(const char *name)
     return NULL;
 }
 
+static int read_signed(yyjson_val *v, int64_t *out)
+{
+    if (yyjson_is_sint(v)) {
+        *out = yyjson_get_sint(v);
+        return 0;
+    }
+    if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT64_MAX) {
+        *out = (int64_t)yyjson_get_uint(v);
+        return 0;
+    }
+    return -1;
+}
+
 static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
 {
     memset(out, 0, sizeof *out);
@@ -97,41 +110,43 @@ static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
             if (!yyjson_is_bool(v)) return -1;
             out->b = yyjson_get_bool(v);
             break;
-        case PIN_I8:
-            if (!yyjson_is_sint(v) || yyjson_get_sint(v) < INT8_MIN ||
-                yyjson_get_sint(v) > INT8_MAX)
+        case PIN_I8: {
+            int64_t value;
+            if (read_signed(v, &value) || value < INT8_MIN || value > INT8_MAX)
                 return -1;
-            out->i8 = (int8_t)yyjson_get_sint(v);
+            out->i8 = (int8_t)value;
             break;
+        }
         case PIN_U8:
             if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT8_MAX) return -1;
             out->u8 = (uint8_t)yyjson_get_uint(v);
             break;
-        case PIN_I16:
-            if (!yyjson_is_sint(v) || yyjson_get_sint(v) < INT16_MIN ||
-                yyjson_get_sint(v) > INT16_MAX)
+        case PIN_I16: {
+            int64_t value;
+            if (read_signed(v, &value) || value < INT16_MIN || value > INT16_MAX)
                 return -1;
-            out->i16 = (int16_t)yyjson_get_sint(v);
+            out->i16 = (int16_t)value;
             break;
+        }
         case PIN_U16:
             if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT16_MAX)
                 return -1;
             out->u16 = (uint16_t)yyjson_get_uint(v);
             break;
-        case PIN_I32:
-            if (!yyjson_is_sint(v) || yyjson_get_sint(v) < INT32_MIN ||
-                yyjson_get_sint(v) > INT32_MAX)
+        case PIN_I32: {
+            int64_t value;
+            if (read_signed(v, &value) || value < INT32_MIN || value > INT32_MAX)
                 return -1;
-            out->i = (int32_t)yyjson_get_sint(v);
+            out->i = (int32_t)value;
             break;
+        }
         case PIN_U32:
             if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT32_MAX)
                 return -1;
             out->u = (uint32_t)yyjson_get_uint(v);
             break;
         case PIN_I64:
-            if (!yyjson_is_sint(v)) return -1;
-            out->i64 = yyjson_get_sint(v);
+            if (read_signed(v, &out->i64)) return -1;
             break;
         case PIN_U64:
             if (!yyjson_is_uint(v)) return -1;
@@ -416,7 +431,7 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
                                   .type_name = p->type_name,
                                   .ptr = block };
             } else if (read_const(p->type, def, &pv, g)) {
-                set_err("bad default for pin %d", i);
+                set_err("bad default for pin %d on %s (type %d)", i, n->desc->name, p->type);
                 return -1;
             }
             pv.type_name = p->type_name;

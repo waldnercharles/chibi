@@ -635,6 +635,19 @@ int flow_run_watch_copy_output(
 double flow_context_now(const struct flow_context *ctx)
 { return ctx && ctx->run ? ctx->run->current_time : 0.0; }
 
+static void flow_coerce_real(pin_value *value, const pin_spec *target)
+{
+    if (value->type == PIN_F32 && target->type == PIN_F64) {
+        value->type = PIN_F64;
+        value->type_name = target->type_name;
+        value->d = (double)value->f;
+    } else if (value->type == PIN_F64 && target->type == PIN_F32) {
+        value->type = PIN_F32;
+        value->type_name = target->type_name;
+        value->f = (float)value->d;
+    }
+}
+
 int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *out)
 {
     if (!ctx || !ctx->run || !out || input_pin < 0 || input_pin >= ctx->node->input_count)
@@ -662,6 +675,8 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
                 status && status->message ? status->message : "data evaluation failed"
             );
         }
+        flow_coerce_real(out, spec);
+        ctx->node->inputs[input_pin] = *out;
         return FLOW_OK;
     }
     *out = ctx->node->inputs[input_pin];

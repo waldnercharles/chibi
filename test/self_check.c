@@ -536,6 +536,90 @@ int main(void)
     }
 
     {
+        graph real;
+        graph_init(&real);
+        node *real_event = graph_add_node(&real, registry_node_by_name("Event"));
+        node *real_delay = graph_add_node(&real, registry_node_by_name("Delay"));
+        node *real_const = graph_add_node(&real, registry_node_by_name("const_f32"));
+        pin_value seconds = { .type = PIN_F32, .type_name = "float", .f = 2.5f };
+        graph_set_pin_default(&real, real_const, 1, 0, &seconds);
+        check(
+            graph_connect_data(&real, real_const, 0, real_delay, 1) == 0 &&
+                real_delay->input_pins[1].type == PIN_F64,
+            "TYPE-10: F32 output connects to F64 Real input"
+        );
+        static pin_spec int_output[] = { { "value", PIN_I32, "int" } };
+        static pin_spec int64_input[] = { { "value", PIN_I64, "int64" } };
+        static node_desc int_source = {
+            "test_int_source", 0, 1, NULL, int_output, node_eval_const
+        };
+        static node_desc int_target = { "test_int_target", 1,    0,
+                                        int64_input,       NULL, node_eval_const };
+        node *integer = graph_add_node(&real, &int_source);
+        node *integer64 = graph_add_node(&real, &int_target);
+        check(
+            graph_connect(&real, integer, 0, integer64, 0) != 0,
+            "TYPE-6: Integer output remains incompatible with Integer64 input"
+        );
+        graph_set_event_name(&real, real_event, "Real");
+        graph_connect_exec(&real, real_event, 0, real_delay, 0, 0);
+        flow_run *real_run = graph_run_event(&real, "Real", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            real_run && real_delay->inputs[1].type == PIN_F64 &&
+                real_delay->inputs[1].d == 2.5,
+            "TYPE-10: Real boundary converts F32 value to F64 for Delay"
+        );
+        if (real_run) flow_run_free(real_run);
+        graph_free(&real);
+    }
+
+    {
+        graph literals;
+        graph_init(&literals);
+        const char *names[] = { "const_bool",  "const_byte", "const_int",
+                                "const_int64", "const_real", "const_str" };
+        for (int i = 0; i < 6; i++)
+            check(registry_node_by_name(names[i]) != NULL, "CAT-28: Unreal literal is registered");
+        node *lb = graph_add_node(&literals, registry_node_by_name("const_bool"));
+        node *lbyte = graph_add_node(&literals, registry_node_by_name("const_byte"));
+        node *li = graph_add_node(&literals, registry_node_by_name("const_int"));
+        node *li64 = graph_add_node(&literals, registry_node_by_name("const_int64"));
+        node *lr = graph_add_node(&literals, registry_node_by_name("const_real"));
+        node *ls = graph_add_node(&literals, registry_node_by_name("const_str"));
+        pin_value vb = { .type = PIN_BOOL, .b = true },
+                  vbyte = { .type = PIN_U8, .u8 = 7 };
+        pin_value vi = { .type = PIN_I32, .i = 8 },
+                  vi64 = { .type = PIN_I64, .i64 = 9 };
+        pin_value vr = { .type = PIN_F64, .d = 2.5 },
+                  vs = { .type = PIN_STR, .str = "literal" };
+        graph_set_pin_default(&literals, lb, 1, 0, &vb);
+        graph_set_pin_default(&literals, lbyte, 1, 0, &vbyte);
+        graph_set_pin_default(&literals, li, 1, 0, &vi);
+        graph_set_pin_default(&literals, li64, 1, 0, &vi64);
+        graph_set_pin_default(&literals, lr, 1, 0, &vr);
+        graph_set_pin_default(&literals, ls, 1, 0, &vs);
+        char *literal_json = graph_save_json(&literals);
+        graph *literal_loaded = literal_json ? graph_load_json(literal_json) : NULL;
+        int literal_values = 0;
+        if (literal_loaded && literal_loaded->node_count == 6) {
+            for (int i = 0; i < literal_loaded->node_count; i++) {
+                node *n = literal_loaded->nodes[i];
+                if (strcmp(n->desc->name, "const_real") == 0 &&
+                    n->output_pins[0].default_value.d == 2.5)
+                    literal_values++;
+                if (strcmp(n->desc->name, "const_str") == 0 &&
+                    n->output_pins[0].default_value.str &&
+                    strcmp(n->output_pins[0].default_value.str, "literal") == 0)
+                    literal_values++;
+            }
+        }
+        check(literal_values == 2, "CAT-28: literals hold authored values through save/load");
+        if (literal_loaded) graph_free(literal_loaded);
+        free(literal_json);
+        graph_free(&literals);
+    }
+
+    {
         graph ordering;
         graph_init(&ordering);
         node *early = make_const(&ordering, 1.0f);

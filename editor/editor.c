@@ -8,6 +8,9 @@
 
 #include <assert.h>
 #include <dcimgui.h>
+
+CIMGUI_API void ImGui_ClearActiveID(void);
+
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -132,6 +135,8 @@ struct editor
     int controls_hovered;
     int has_context_link;
     ed_link_ref context_link;
+    char connect_error[ED_LOG_MESSAGE];
+    ImVec2 connect_error_pos;
 
     char **undo;
     int undo_count;
@@ -177,8 +182,8 @@ static const ImVec4 ED_PIN_COLORS[] = {
 static const ImVec4 ED_NODE_BODY = { 0.188f, 0.200f, 0.239f, 1.0f };
 static const ImVec4 ED_NODE_BORDER = { 0.412f, 0.431f, 0.490f, 1.0f };
 static const ImVec4 ED_NODE_TITLES[] = {
-    [NODE_DISPLAY_PURE] = { 0.4f, 0.850f, 0.350f, 1.0f },
-    [NODE_DISPLAY_EVENT] = { 1.0f, 0.0f, 0.0f, 1.0f },
+    [NODE_DISPLAY_PURE] = { 0.2f, 0.425f, 0.175f, 1.0f },
+    [NODE_DISPLAY_EVENT] = { 0.8f, 0.1f, 0.1f, 1.0f },
     [NODE_DISPLAY_FUNCTION] = { 0.190525f, 0.583898f, 1.0f, 1.0f },
     [NODE_DISPLAY_FLOW] = { 0.8f, 0.4f, 0.4f, 1.0f },
     /* Unreal derives this from the variable's pin type; Phase 4 will do so too. */
@@ -907,6 +912,13 @@ static void ed_draw_canvas(editor *e)
                                  : &e->link_pin.n->input_pins[e->link_pin.index];
         ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, ed_color(ed_spec_color(spec)), 3.0f, 0);
     }
+    if (e->connect_error[0])
+        ed_draw_text(
+            dl,
+            ed_add(e->connect_error_pos, (ImVec2){ 8.0f, 8.0f }),
+            IM_COL32(255, 110, 110, 255),
+            e->connect_error
+        );
 
     ImDrawList_PopClipRect(dl);
 }
@@ -1095,14 +1107,22 @@ static void ed_update_drag(editor *e, ImVec2 mouse)
 static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
     ed_begin_authoring_edit(e);
+    e->connect_error[0] = '\0';
     const ed_pin_view *output = a->kind == ED_PIN_OUTPUT ? a : b;
     const ed_pin_view *input = a->kind == ED_PIN_INPUT ? a : b;
     if (output->kind != ED_PIN_OUTPUT || input->kind != ED_PIN_INPUT) return 0;
     const pin_spec *out_spec = &output->n->output_pins[output->index];
     const pin_spec *in_spec = &input->n->input_pins[input->index];
-    if (out_spec->kind != in_spec->kind) return 0;
-    if (out_spec->kind == PIN_DATA && !pin_types_compatible(out_spec, in_spec))
+    const char *out_name = out_spec->type_name ? out_spec->type_name : "unknown";
+    const char *in_name = in_spec->type_name ? in_spec->type_name : "unknown";
+    if (out_spec->kind != in_spec->kind) {
+        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s to %s", out_name, in_name);
         return 0;
+    }
+    if (out_spec->kind == PIN_DATA && !pin_types_compatible(out_spec, in_spec)) {
+        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s to %s", out_name, in_name);
+        return 0;
+    }
     if (out_spec->kind == PIN_EXEC) {
         int order = output->n->desc->flow_kind == NODE_FLOW_SEQUENCE ? output->index
                                                                      : 0;
@@ -1474,8 +1494,10 @@ static void ed_handle_input(editor *e)
             ed_pin_view *target = ed_hit_pin(e, mouse);
             if (target && target->n != e->link_pin.n &&
                 ed_connect(e, &e->link_pin, target)) {
+                e->connect_error[0] = '\0';
                 ed_commit_snapshot(e);
             } else {
+                if (e->connect_error[0]) e->connect_error_pos = mouse;
                 ed_cancel_snapshot(e);
             }
             e->linking = 0;
@@ -1508,6 +1530,12 @@ static void ed_handle_input(editor *e)
     /* The canvas dummy is an ImGui item, so do not use global item-hover state
      * to gate gestures. Only real controls and active widgets block a new
      * canvas gesture. */
+    if (ImGui_IsKeyPressed(ImGuiKey_Escape) && ImGui_IsAnyItemActive()) {
+        ImGui_ClearActiveID();
+        return;
+    }
+    if (hovered && mouse_clicked && !e->controls_hovered && ImGui_IsAnyItemActive())
+        ImGui_ClearActiveID();
     if (ImGui_IsAnyItemActive() || e->controls_hovered) return;
 
     if (hovered && io->MouseWheel != 0.0f) {
@@ -1532,6 +1560,7 @@ static void ed_handle_input(editor *e)
     if (pin) {
         ed_begin_authoring_edit(e);
         e->linking = 1;
+        e->connect_error[0] = '\0';
         e->link_pin = *pin;
         e->link_mouse = mouse;
         e->pending_snapshot = ed_snapshot(e);
@@ -1562,7 +1591,8 @@ static void ed_handle_input(editor *e)
 static void ed_handle_shortcuts(editor *e)
 {
     ImGuiIO *io = ImGui_GetIO();
-    if (!ImGui_IsWindowFocused(0) || ImGui_IsAnyItemActive()) return;
+    if (!ImGui_IsWindowFocused(0)) return;
+    if (ImGui_GetIO()->WantTextInput) return;
     int modifier = io->KeyCtrl || io->KeySuper;
     if (modifier && ImGui_IsKeyPressed(ImGuiKey_Z)) {
         if (io->KeyShift) ed_redo(e);

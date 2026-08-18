@@ -30,6 +30,46 @@ node_desc NODE_const_bool = {
     .eval = node_eval_const,
 };
 
+static pin_spec const_byte_out[] = {
+    { "value", PIN_U8, "byte" },
+};
+node_desc NODE_const_byte = {
+    .name = "const_byte",
+    .output_count = 1,
+    .outputs = const_byte_out,
+    .eval = node_eval_const,
+};
+
+static pin_spec const_int_out[] = {
+    { "value", PIN_I32, "int" },
+};
+node_desc NODE_const_int = {
+    .name = "const_int",
+    .output_count = 1,
+    .outputs = const_int_out,
+    .eval = node_eval_const,
+};
+
+static pin_spec const_int64_out[] = {
+    { "value", PIN_I64, "int64" },
+};
+node_desc NODE_const_int64 = {
+    .name = "const_int64",
+    .output_count = 1,
+    .outputs = const_int64_out,
+    .eval = node_eval_const,
+};
+
+static pin_spec const_real_out[] = {
+    { "value", PIN_F64, "double" },
+};
+node_desc NODE_const_real = {
+    .name = "const_real",
+    .output_count = 1,
+    .outputs = const_real_out,
+    .eval = node_eval_const,
+};
+
 static pin_spec const_str_out[] = {
     { "value", PIN_STR, "const char *" },
 };
@@ -62,9 +102,8 @@ node_desc NODE_all_types_literal = {
 };
 
 node_desc *const EXTRA_NODES[] = {
-    &NODE_const_f32,
-    &NODE_const_bool,
-    &NODE_const_str,
-    &NODE_all_types_literal,
+    &NODE_const_f32, &NODE_const_bool,        &NODE_const_byte,
+    &NODE_const_int, &NODE_const_int64,       &NODE_const_real,
+    &NODE_const_str, &NODE_all_types_literal,
 };
-const int EXTRA_NODE_COUNT = 4;
+const int EXTRA_NODE_COUNT = 8;

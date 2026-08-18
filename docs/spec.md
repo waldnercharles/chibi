@@ -951,6 +951,11 @@ or outlive the run's data.
 `UI-50` When no run is active, flow visualisation MUST settle to the resting
 state rather than freezing part-way through a transition.
 
+`UI-52` Canvas shortcuts MUST remain available unless a text-entry field holds
+focus, in which case that field owns the editing keys. No other active widget
+may suppress them. A focused field MUST be visually distinct, and clicking the
+canvas or pressing Escape MUST release it.
+
 `UI-51` Dragging any node in a multi-selection MUST move every selected node
 together and preserve their relative positions.
 

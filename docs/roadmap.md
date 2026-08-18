@@ -280,7 +280,7 @@ Small enough to run before the Phase 8 polish work.
 
 Estimate: 1 day.
 
-Covers: `TYPE-10`, `CAT-28`, `UI-22`.
+Covers: `TYPE-10`, `CAT-28`, `UI-22`, `UI-52`.
 
 Deliverables:
 
@@ -292,6 +292,11 @@ Deliverables:
 3. A rejected connection says why at the cursor, naming both pin types.
    `UI-22`. Moved here from Phase 3, because until it exists every type
    mismatch presents as a silent failure.
+4. Canvas shortcuts stop being suppressed by any active widget. `UI-52`.
+   `ed_handle_shortcuts()` returned early on `ImGui_IsAnyItemActive()`, so a
+   focused inline pin field killed copy, paste, cut, duplicate, undo and
+   delete at once. It surfaced as a bug report about copy and paste failing on
+   ForLoop, that being the node whose value fields were being edited.
 
 Acceptance criteria:
 
@@ -304,6 +309,9 @@ Acceptance criteria:
   round-trips through save and load.
 - Manual `UI-22`: dragging a String output onto an Integer input states both
   type names and does not connect.
+- Manual `UI-52`: with a ForLoop's FirstIndex field focused, Ctrl+C and Ctrl+V
+  still copy and paste the selected node, and Escape or a canvas click releases
+  the field.
 
 ## Phase 3: details panel, events with parameters, diagnostics
 

@@ -26,6 +26,19 @@ static int fail(eval_context *ctx, node *n, int pin, int code, const char *messa
     return code;
 }
 
+static void coerce_real(pin_value *value, const pin_spec *target)
+{
+    if (value->type == PIN_F32 && target->type == PIN_F64) {
+        value->type = PIN_F64;
+        value->type_name = target->type_name;
+        value->d = (double)value->f;
+    } else if (value->type == PIN_F64 && target->type == PIN_F32) {
+        value->type = PIN_F32;
+        value->type_name = target->type_name;
+        value->f = (float)value->d;
+    }
+}
+
 static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
 {
     if (n->computed) return 0;
@@ -41,6 +54,7 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
                 n->visiting = 0;
                 return r;
             }
+            coerce_real(&n->inputs[i], &n->input_pins[i]);
         } else {
             n->inputs[i] = n->input_pins[i].default_value;
         }

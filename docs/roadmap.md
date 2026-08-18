@@ -270,6 +270,41 @@ Acceptance criteria:
 - Manual: every existing editor operation still works, and node deletion no
   longer disturbs unrelated edges.
 
+## Phase 2b: Real types, literals, and connection feedback
+
+Goal: close three gaps that converge on one common action. Connecting a
+`const_f32` to a `Delay`'s Duration was refused, because Duration is `PIN_F64`,
+there is no `const_f64` to reach for instead, and nothing said why.
+
+Small enough to run before the Phase 8 polish work.
+
+Estimate: 1 day.
+
+Covers: `TYPE-10`, `CAT-28`, `UI-22`.
+
+Deliverables:
+
+1. `PIN_F32` and `PIN_F64` become one Real category for connection purposes,
+   converting at the boundary, with one shared Real colour. Integer widths stay
+   distinct. `TYPE-10`.
+2. The literal node set becomes Bool, Byte, Integer, Integer64, Real, and
+   String, matching Unreal. `CAT-28`.
+3. A rejected connection says why at the cursor, naming both pin types.
+   `UI-22`. Moved here from Phase 3, because until it exists every type
+   mismatch presents as a silent failure.
+
+Acceptance criteria:
+
+- `TYPE-10`: a `const_f32` output connects to a `Delay` Duration input and the
+  run observes the converted value; a Real pin of either width renders in the
+  same colour.
+- `TYPE-6`: an Integer output still refuses an Integer64 input, so unifying Real
+  did not loosen integer widths.
+- `CAT-28`: every literal in the set spawns, holds an authored value, and
+  round-trips through save and load.
+- Manual `UI-22`: dragging a String output onto an Integer input states both
+  type names and does not connect.
+
 ## Phase 3: details panel, events with parameters, diagnostics
 
 Goal: the editor becomes the only place authoring happens. Custom events get
@@ -281,7 +316,7 @@ Covers: `EVT-1` through `EVT-8`, `RUN-12`, `DBG-9`, `CMPL-1` through `CMPL-6`,
 `CMPL-8`,
 `CMPL-16` through `CMPL-18`, `DBG-1` through `DBG-4`, `DBG-7`, `DBG-8`,
 `DBG-11` through `DBG-13`, `FMT-7`, `UI-2`, `UI-4`, `UI-5`, `UI-9`, `UI-11`,
-`UI-12`, `UI-16`, `UI-17`, `UI-22`, `UI-23`, `UI-29`, `UI-30`, `UI-34`.
+`UI-12`, `UI-16`, `UI-17`, `UI-23`, `UI-29`, `UI-30`, `UI-34`.
 
 Deliverables:
 
@@ -314,8 +349,8 @@ Deliverables:
 13. Watches on pure pins captured during data evaluation, watches and
     breakpoints discarded with their node or pin, and per-node failure rendering
     with pin diagnostic tooltips. `DBG-11` to `DBG-13`.
-14. Connection rejection feedback naming both pin types, and a required-input
-    badge on nodes. `UI-22`, `UI-23`.
+14. A required-input badge on nodes. `UI-23`. Connection rejection feedback
+    landed earlier, in Phase 2b.
 15. Find in blueprint and find references, both navigable. `UI-29`, `UI-30`.
 16. Breakpoint list with per-breakpoint and global toggles. `UI-34`.
 17. Disabled nodes excluded from diagnostics except one warning. `CMPL-18`.
@@ -346,8 +381,6 @@ Acceptance criteria:
   leaves the new node with neither.
 - Manual `UI-17`: undo reverses a pin rename, a parameter reorder, and a
   parameter delete.
-- Manual `UI-22`: dragging a bool output onto a string input states both types
-  and offers no conversion; onto a float input it offers the conversion.
 - Manual `UI-30`: find references on a variable used by three nodes lists all
   three and navigates to each.
 

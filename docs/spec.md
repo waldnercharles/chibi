@@ -123,6 +123,12 @@ to string.
 `TYPE-8` The containers are single value, array, set, and map. A map carries
 two type slots, key and value.
 
+`TYPE-10` `PIN_F32` and `PIN_F64` are one Real category. A Real output MUST
+connect to a Real input regardless of width, converting at the boundary, and
+both MUST render in one Real colour. This follows Unreal, where float and double
+are a single Real pin type. Integer widths remain distinct under `TYPE-6`,
+which also follows Unreal, where Byte, Integer and Integer64 are separate.
+
 `TYPE-9` A container pin MUST NOT connect to a single-value pin of the same
 element type, and vice versa. Container and element are converted by explicit
 nodes only.
@@ -603,6 +609,12 @@ declares otherwise.
 plus string concatenation and comparison. Pure.
 
 `CAT-26` Explicit conversion nodes for every conversion permitted by `TYPE-7`.
+
+`CAT-28` The literal node set MUST match Unreal's: Bool, Byte, Integer,
+Integer64, Real, and String. A literal node has no inputs, one typed output, and
+its value is authored in the editor. This scopes `CAT-21`, which asked for a
+literal per primitive type; the widths Unreal does not expose as literals do not
+get their own node.
 
 `CAT-27` Every catalog entry MUST declare a category path used for grouping in
 the spawn menu, and a search keyword list.

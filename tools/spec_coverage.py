@@ -50,11 +50,13 @@ def defined_ids(spec_text):
     """Requirement IDs, in spec order.
 
     A definition starts its line and is followed by the requirement sentence, so
-    the next characters are a space then a capital. A cross-reference that
-    happens to wrap onto a line start is followed by punctuation or a lowercase
-    word, as in "`UI-7` and `RUN-14`", and is not a definition.
+    the next characters are a space then either a capital or a backtick opening
+    a code span, as in "`TYPE-10` `PIN_F32` and `PIN_F64` are one Real
+    category". A cross-reference that happens to wrap onto a line start is
+    followed by punctuation or a lowercase word, as in "`UI-7` and `RUN-14`",
+    and is not a definition.
     """
-    ids = re.findall(rf"^`({ID})` [A-Z]", spec_text, re.M)
+    ids = re.findall(rf"^`({ID})` [A-Z`]", spec_text, re.M)
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     withdrawn = set(re.findall(rf"^`({ID})` WITHDRAWN", spec_text, re.M))
     return ids, dupes, withdrawn

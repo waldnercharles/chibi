@@ -537,6 +537,63 @@ Acceptance criteria:
 - `REFL-8`: annotating an unsupported declaration fails the build with a file
   and line.
 
+## Phase 8: editor polish and flow visualisation
+
+Goal: the editor feels like a tool rather than a prototype. Blueprint's
+readability comes largely from motion: you can see execution move through a
+graph, and see which path just fired.
+
+Runs immediately after Phase 2, before Phase 3, because both Phase 2 and this
+phase make large edits to `editor/editor.c` and running them in sequence avoids
+reconciling two rewrites of the same layout and render code.
+
+Estimate: 3 to 5 days.
+
+Covers: `DBG-15`, `DBG-16`, `UI-42` through `UI-51`.
+
+Deliverables:
+
+1. Traversal records gain a run timestamp and activation ordinal, bounded with
+   oldest-first discard. `DBG-15`, `DBG-16`.
+2. Docking: enable the ImGui docking config flag, host a dockspace, and split
+   the canvas, output log, and toolbar into independently movable panels whose
+   layout persists. `UI-42`, `UI-43`.
+3. Marker dots travelling along traversed exec edges, source to target, with
+   spacing and speed constant in canvas space so zoom does not change apparent
+   flow rate. `UI-44`.
+4. Edge heat: recently traversed edges thicken and brighten, then decay.
+   `UI-45`.
+5. Node activation highlight with decay. `UI-46`.
+6. Data pin change flash. `UI-47`.
+7. One interpolation helper used by all four, driven by elapsed seconds, with
+   decay expressed as a time constant rather than a per-frame multiplier.
+   `UI-48`, `UI-50`.
+8. Visualisation reads traversal records only, with no evaluator callback.
+   `UI-49`.
+9. Multi-selection drag moves every selected node and preserves relative
+   positions. `UI-51`.
+
+Acceptance criteria:
+
+- `UI-48`: the same run rendered at 30, 60 and 144 frames per second produces
+  the same visual state at the same elapsed time. Test the interpolation helper
+  headlessly by feeding it a fixed sequence of delta times; a per-frame
+  multiplier fails this and a time constant passes.
+- `UI-50`: stopping a run mid-fade settles every animated value to resting
+  within its time constant, and no value is left part-way.
+- `UI-49`: `grep` finds no evaluator callback or execution hook in the render
+  path, and disabling visualisation entirely changes no run's step count.
+- `DBG-16`: a run that traverses more edges than the record budget keeps the
+  most recent ones and discards the oldest, with no growth in memory.
+- `UI-44`: dot spacing and travel speed measured in canvas units are unchanged
+  across a 4x zoom range.
+- `UI-51`: selecting three nodes and dragging one moves all three, and their
+  pairwise offsets are unchanged afterwards.
+- Manual `UI-42`, `UI-43`: panels can be undocked, moved, resized and redocked,
+  and the layout survives a restart.
+- Manual `UI-45`, `UI-46`, `UI-47`: run the flow demo and confirm the decay
+  reads as a fade rather than a step change.
+
 ## Not scheduled
 
 From the `Deferred` section of `docs/spec.md`, in the order they would most
@@ -548,3 +605,5 @@ likely be picked up:
 3. Event dispatchers and delegate binding.
 4. Timeline nodes and curve authoring.
 5. Bytecode compilation, if profiling shows the interpreter is the bottleneck.
+6. A node pulse when a breakpoint pauses on it, which needs the breakpoints
+   landing in Phase 3.

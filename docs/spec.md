@@ -706,6 +706,13 @@ diagnostic's message.
 `DBG-14` Stopping a run MUST discard its recorded watch values. After Stop,
 pin displays MUST return to continuous preview values.
 
+`DBG-15` Each traversal record under `DBG-7` MUST carry the run time at which
+the edge was traversed and the activation ordinal, so a consumer can age a
+record without observing execution as it happens.
+
+`DBG-16` Traversal records MUST be bounded, discarding the oldest once the
+budget is reached, so a long run cannot grow them without limit.
+
 ## FMT: file format
 
 `FMT-1` A blueprint MUST serialize to a single JSON document with
@@ -899,6 +906,41 @@ entries without changing the authored graph or the undo history.
 `UI-41` Every authoring mutation MUST pass through one editor choke point that
 stops and releases a non-idle run before the mutation. This includes graph
 edits, value edits, undo, redo, and load.
+
+`UI-42` Editor panels MUST be independently movable, resizable, and dockable,
+and their layout MUST persist between sessions.
+
+`UI-43` The output log MUST be its own dockable panel rather than a fixed
+region inside the canvas panel.
+
+`UI-44` While a run is non-idle, an exec edge that has been traversed MUST
+animate marker dots travelling along it from source to target, so direction of
+flow is readable without reading pin names.
+
+`UI-45` A recently traversed exec edge MUST render thicker and brighter than a
+resting edge, and MUST decay back to its resting weight and colour over time
+rather than snapping.
+
+`UI-46` The node being activated MUST highlight, and the highlight MUST decay
+once activation moves on.
+
+`UI-47` A data pin whose value changed during the current run MUST flash and
+settle back to its resting appearance.
+
+`UI-48` Every transition in `UI-44` through `UI-47` MUST be interpolated over
+elapsed time, not frame count, so the animation is identical at any frame rate
+and on any display refresh.
+
+`UI-49` Flow visualisation MUST be derived from the traversal records in
+`DBG-7` and `DBG-15`. The renderer MUST NOT observe execution directly or hold
+a callback into the evaluator, so visualisation cannot alter execution timing
+or outlive the run's data.
+
+`UI-50` When no run is active, flow visualisation MUST settle to the resting
+state rather than freezing part-way through a transition.
+
+`UI-51` Dragging any node in a multi-selection MUST move every selected node
+together and preserve their relative positions.
 
 ## REFL: reflection
 

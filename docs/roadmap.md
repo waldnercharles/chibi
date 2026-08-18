@@ -323,15 +323,24 @@ Estimate: 4 to 5 days.
 Covers: `EVT-1` through `EVT-8`, `RUN-12`, `DBG-9`, `CMPL-1` through `CMPL-6`,
 `CMPL-8`,
 `CMPL-16` through `CMPL-18`, `DBG-1` through `DBG-4`, `DBG-7`, `DBG-8`,
-`DBG-11` through `DBG-13`, `FMT-7`, `UI-2`, `UI-4`, `UI-5`, `UI-9`, `UI-11`,
+`DBG-11` through `DBG-13`, `FMT-7`, `UI-2`, `UI-42`, `UI-43`, `UI-4`, `UI-5`,
+`UI-9`, `UI-11`,
 `UI-12`, `UI-16`, `UI-17`, `UI-23`, `UI-29`, `UI-30`, `UI-34`.
 
 Deliverables:
 
 1. Details panel driven by selection, exposing every authorable node property
    and every per-pin property. `UI-4`, `UI-5`.
-2. Panel layout: toolbar row, canvas, details panel, compiler results, output
-   log, with draggable splitters. `UI-2`.
+2. Panel layout, dockable from the start. Set `ImGuiConfigFlags_DockingEnable`,
+   host a dockspace with `ImGui_DockSpaceOverViewport()`, and make the canvas,
+   output log, details panel and compiler results independent windows that can
+   be undocked, torn off, resized and rearranged, with layout persisting through
+   the already-ignored `imgui.ini`. Docking moved here from Phase 8 because this
+   phase creates those panels anyway, and building them behind fixed splitters
+   first would mean laying out the same windows twice. Verified available in this
+   build: `ImGuiConfigFlags_DockingEnable`, `ImGui_DockSpace` and
+   `ImGui_DockSpaceOverViewport` are exposed by cute_framework's bundled
+   dcimgui.h. `UI-2`, `UI-42`, `UI-43`.
 3. Event name editing in the details panel, replacing the JSON-only path.
    `EVT-2`.
 4. Custom event parameter list editing: add, remove, rename, retype, reorder,
@@ -391,6 +400,8 @@ Acceptance criteria:
   parameter delete.
 - Manual `UI-30`: find references on a variable used by three nodes lists all
   three and navigates to each.
+- Manual `UI-42`, `UI-43`: panels can be undocked, moved, resized and redocked,
+  and the layout survives a restart.
 
 ## Phase 4: variables
 
@@ -603,21 +614,23 @@ Goal: the editor feels like a tool rather than a prototype. Blueprint's
 readability comes largely from motion: you can see execution move through a
 graph, and see which path just fired.
 
-Runs immediately after Phase 2, before Phase 3, because both Phase 2 and this
-phase make large edits to `editor/editor.c` and running them in sequence avoids
-reconciling two rewrites of the same layout and render code.
+Runs after Phase 3, not before it. Deliverables 3 and 4 consume the exec
+traversal records that `DBG-7` creates, and `DBG-7` lands in Phase 3. Ordering
+this phase earlier would mean either building traversal recording twice or
+blocking on it. An earlier draft of this file had the order reversed, on the
+weaker argument that both phases edit `editor/editor.c` heavily; so does Phase
+3, and one worker at a time makes that moot.
 
 Estimate: 3 to 5 days.
 
-Covers: `DBG-15`, `DBG-16`, `UI-42` through `UI-51`.
+Covers: `DBG-15`, `DBG-16`, `UI-44` through `UI-51`.
 
 Deliverables:
 
 1. Traversal records gain a run timestamp and activation ordinal, bounded with
    oldest-first discard. `DBG-15`, `DBG-16`.
-2. Docking: enable the ImGui docking config flag, host a dockspace, and split
-   the canvas, output log, and toolbar into independently movable panels whose
-   layout persists. `UI-42`, `UI-43`.
+2. Docking landed in Phase 3, which had to create these panels anyway. This
+   phase inherits them.
 3. Marker dots travelling along traversed exec edges, source to target, with
    spacing and speed constant in canvas space so zoom does not change apparent
    flow rate. `UI-44`.
@@ -657,8 +670,6 @@ Acceptance criteria:
   across a 4x zoom range.
 - `UI-51`: selecting three nodes and dragging one moves all three, and their
   pairwise offsets are unchanged afterwards.
-- Manual `UI-42`, `UI-43`: panels can be undocked, moved, resized and redocked,
-  and the layout survives a restart.
 - Manual `UI-45`, `UI-46`, `UI-47`: run the flow demo and confirm the decay
   reads as a fade rather than a step change.
 

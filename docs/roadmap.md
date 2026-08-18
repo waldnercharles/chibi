@@ -103,7 +103,7 @@ Acceptance criteria:
 - Every ID in the coverage list above is the prefix of at least one check name
   in `test/self_check.c`.
 
-## Phase 1: execution and observability
+## Phase 1: execution and observability (done)
 
 Goal: a graph can be run, paused, stepped, and stopped from the editor, and a
 run produces visible output. Authoring during a run stops it first. No change
@@ -111,8 +111,9 @@ to the node or pin model, so this phase is pure addition.
 
 Estimate: 2 to 3 days.
 
-Covers: `SCOPE-3`, `EXEC-12`, `RUN-1` through `RUN-4`, `RUN-6` through `RUN-14`,
-`CAT-20`, `DBG-5`, `DBG-6`, `DBG-9`, `DBG-10`, `UI-6`, `UI-7`, `UI-8`, `UI-10`,
+Covers: `SCOPE-3`, `EXEC-12`, `RUN-1` through `RUN-4`, `RUN-6`, `RUN-7`,
+`RUN-8`, `RUN-10`, `RUN-11`, `RUN-13`, `RUN-14`,
+`CAT-20`, `DBG-5`, `DBG-6`, `DBG-10`, `UI-6`, `UI-7`, `UI-8`, `UI-10`,
 `UI-18`, `UI-19`, `UI-36`, `UI-40`, `UI-41`, `DBG-14`.
 
 Deliverables:
@@ -272,7 +273,8 @@ real signatures. Diagnostics get infrastructure that later phases extend.
 
 Estimate: 4 to 5 days.
 
-Covers: `EVT-1` through `EVT-8`, `CMPL-1` through `CMPL-6`, `CMPL-8`,
+Covers: `EVT-1` through `EVT-8`, `RUN-12`, `DBG-9`, `CMPL-1` through `CMPL-6`,
+`CMPL-8`,
 `CMPL-16` through `CMPL-18`, `DBG-1` through `DBG-4`, `DBG-7`, `DBG-8`,
 `DBG-11` through `DBG-13`, `FMT-7`, `UI-2`, `UI-4`, `UI-5`, `UI-9`, `UI-11`,
 `UI-12`, `UI-16`, `UI-17`, `UI-22`, `UI-23`, `UI-29`, `UI-30`, `UI-34`.
@@ -295,7 +297,9 @@ Deliverables:
    data edge, a data cycle, and duplicate names. The cycle case already exists
    as an evaluation error and becomes a diagnostic here. `CMPL-1` to `CMPL-6`,
    `CMPL-8`, `CMPL-16`, `CMPL-17`.
-8. Compiler results panel. `UI-9`.
+8. Compiler results panel. `UI-9`. With a compile pass finally existing, a run
+   refuses to start against compile errors, and a structured run error becomes
+   navigable through the same diagnostic path. `RUN-12`, `DBG-9`.
 9. Breakpoints and watches keyed by ID, persisted, with pause-before-activation,
    individual and global enable, canvas rendering, and inline watch values.
    `DBG-1` to `DBG-4`, `FMT-7`, `UI-11`, `UI-12`.
@@ -389,8 +393,9 @@ the blueprint container and two new graph kinds.
 
 Estimate: 5 to 7 days.
 
-Covers: `BP-1` through `BP-8`, `FN-1` through `FN-11`, `NODE-7`, `EXEC-7`,
-`CMPL-9` through `CMPL-11`, `RUN-5`, `RUN-12`, `UI-21`.
+Covers: `BP-1` through `BP-8`, `FN-1` through `FN-11`, `NODE-7`, `RUN-9`,
+`EXEC-7`,
+`CMPL-9` through `CMPL-11`, `RUN-5`, `UI-21`.
 
 Deliverables:
 
@@ -407,8 +412,9 @@ Deliverables:
 6. Descriptors declare whether they are latent, which is what `CMPL-9` tests.
    `NODE-7`.
 7. Compile rules for the new kinds. `CMPL-9` to `CMPL-11`.
-8. Run refuses to start against compile errors. `RUN-12`.
-9. Step over a call. `RUN-5`.
+8. Step over a call. `RUN-5`.
+9. The run exposes its call stack as an ordered list of graph and node IDs,
+   which only becomes meaningful once calls exist. `RUN-9`.
 10. Several open graphs with per-graph canvas state. `UI-21`.
 11. File format extension to a blueprint document with multiple graphs.
 
@@ -422,6 +428,8 @@ Acceptance criteria:
   error, and the process does not crash.
 - `CMPL-9`: placing a Delay in a function graph produces exactly one
   diagnostic, and `RUN-12` refuses to start.
+- `RUN-9`: a run paused three calls deep reports a call stack of three frames,
+  outermost first, and each frame reveals its node.
 - `FN-7`: a macro used at two call sites with different wildcard types expands
   correctly at both, and the expansion is invisible to the run's step count
   ordering relative to an inlined equivalent.

@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SPEC = ROOT / "docs" / "spec.md"
 ROADMAP = ROOT / "docs" / "roadmap.md"
 SELF_CHECK = ROOT / "test" / "self_check.c"
+MANUAL = ROOT / "docs" / "manual-verification.md"
 
 ID = r"[A-Z]+-\d+"
 
@@ -55,7 +56,19 @@ def defined_ids(spec_text):
     """
     ids = re.findall(rf"^`({ID})` [A-Z]", spec_text, re.M)
     dupes = sorted({i for i in ids if ids.count(i) > 1})
-    return ids, dupes
+    withdrawn = set(re.findall(rf"^`({ID})` WITHDRAWN", spec_text, re.M))
+    return ids, dupes, withdrawn
+
+
+def manually_verified(text):
+    """IDs recorded as human-verified in docs/manual-verification.md.
+
+    A requirement that needs a window cannot be covered by self_check, and
+    calling it "manual" in the roadmap leaves no evidence it was ever checked.
+    An entry names the ID, the date, and the commit it was verified against, so
+    a stale claim is visible rather than implied.
+    """
+    return set(re.findall(rf"^\|\s*`({ID})`", text, re.M))
 
 
 def check_citations(check_text):
@@ -94,11 +107,14 @@ def main():
     roadmap_text = ROADMAP.read_text()
     check_text = SELF_CHECK.read_text() if SELF_CHECK.exists() else ""
 
+    manual_text = MANUAL.read_text() if MANUAL.exists() else ""
+
     citations = check_citations(check_text)
-    ids, dupes = defined_ids(spec_text)
+    ids, dupes, withdrawn = defined_ids(spec_text)
     defined = set(ids)
     claimed = cited_ids(roadmap_text)
     tested = cited_ids(check_text) | set(re.findall(rf"\b({ID})\b", check_text))
+    verified = manually_verified(manual_text)
     done = completed_phase_ids(roadmap_text)
 
     failures = []
@@ -110,13 +126,30 @@ def main():
     if unclaimed:
         failures.append(("defined in spec.md, claimed by no roadmap phase", unclaimed))
 
-    ghosts = sorted((claimed | tested) - defined)
+    ghosts = sorted((claimed | tested | verified) - defined)
     if ghosts:
         failures.append(("cited but not defined in spec.md", ghosts))
 
-    untested = sorted(i for i in done if i not in tested)
+    # A withdrawn requirement keeps its number so it is never reused, but it has
+    # no behaviour left to test.
+    covered = tested | verified | withdrawn
+    untested = sorted(i for i in done if i not in covered)
     if untested:
-        failures.append(("claimed by a completed phase, cited by no check", untested))
+        failures.append((
+            "claimed by a completed phase, with no citing check and no manual\n"
+            "  verification record. Either write the check, record the human\n"
+            "  verification in docs/manual-verification.md, or move the requirement to\n"
+            "  the phase that can actually satisfy it",
+            untested,
+        ))
+
+    stale = sorted(verified & tested)
+    if stale:
+        failures.append((
+            "recorded as manually verified but also covered by a check, so the manual\n"
+            "  record is redundant and will rot; drop the manual entry",
+            stale,
+        ))
 
     crowded = [
         f"{rid} leads {n} check names (limit {MAX_CHECKS_PER_ID})"
@@ -135,6 +168,8 @@ def main():
     print(f"claimed by roadmap:  {len(defined & claimed)}")
     print(f"in completed phases: {len(done & defined)}")
     print(f"cited by self_check: {len(defined & tested)}")
+    print(f"manually verified:   {len(defined & verified)}")
+    print(f"withdrawn:           {len(withdrawn)}")
     print(f"check names:         {sum(citations.values())}")
     if citations:
         top = ", ".join(f"{r}x{n}" for r, n in citations.most_common(5))

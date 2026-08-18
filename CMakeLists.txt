@@ -89,13 +89,25 @@ target_include_directories(ne PUBLIC
 )
 target_link_libraries(ne PUBLIC cute)
 
+# --- imnodes (C++) + hand-rolled C ABI shim ---
+add_library(ne_cpp STATIC
+    third_party/imnodes/imnodes.cpp
+    editor/ne_abi.cpp
+)
+target_compile_features(ne_cpp PRIVATE cxx_std_14)
+target_include_directories(ne_cpp PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/imnodes
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(ne_cpp PUBLIC cute)
+
 # --- editor canvas (bridge: graph model <-> ne) ---
 add_library(editor STATIC editor/editor.c editor/eval_view.c)
 target_link_libraries(editor PRIVATE core ne)
 
 # --- app: cute_framework host loop ---
 add_executable(app app/main.c app/demo_graph.c)
-target_link_libraries(app PRIVATE editor core demo cute)
+target_link_libraries(app PRIVATE editor core demo cute ne_cpp)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---

@@ -4,3 +4,4 @@ generated/
 .cache/
 .pi/
 imgui.ini
+NodeEditor.json

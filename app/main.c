@@ -1,6 +1,7 @@
 #include "app/demo_graph.h"
 #include "core/graph.h"
 #include "editor/editor.h"
+#include "editor/ne_abi.h"
 
 #include <cute.h>
 #include <dcimgui.h>
@@ -49,6 +50,7 @@ int main(int argc, char **argv)
     while (cf_app_is_running()) {
         cf_app_update(NULL);
         editor_draw(ed);
+        ne_spike_draw();
         cf_app_draw_onto_screen(true);
 
         if (frames > 0 && ++frame >= frames) break;

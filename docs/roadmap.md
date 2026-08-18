@@ -182,7 +182,7 @@ Acceptance criteria:
 - Manual `RUN-14`, `UI-36`, `UI-41`: undo, load, and authoring edits during a
   run stop it first and then proceed; the UI states that behavior.
 
-## Phase 2: identity, instance pins, and format v3
+## Phase 2: identity, instance pins, and format v3 (done)
 
 Goal: the model can express per-instance configuration, and references survive
 editing. This is the foundation every later phase depends on.
@@ -190,7 +190,7 @@ editing. This is the foundation every later phase depends on.
 Estimate: 3 to 4 days.
 
 Covers: `ID-1` through `ID-6`, `PIN-1` through `PIN-10`, `PIN-14`, `PIN-16`,
-`NODE-1` through `NODE-6`, `NODE-11`, `NODE-12`, `EXEC-8`, `EXEC-14`,
+`NODE-1` through `NODE-6`, `NODE-11`, `NODE-12`, `EXEC-8`,
 `FMT-1` through `FMT-6`, `FMT-8`, `FMT-10` through `FMT-15`, `UI-24`, `UI-32`,
 `UI-35`.
 
@@ -224,8 +224,12 @@ Deliverables:
 10. Descriptors declare pure or impure explicitly rather than leaving it to be
     inferred from pin kinds. `NODE-6`.
 11. Extend the mutation guard to every non-idle run state and to pin name, type,
-    and count changes, which become mutable in this phase. Define re-entrant
-    activation. `EXEC-8`, `EXEC-14`.
+    and count changes, which become mutable in this phase. `EXEC-8`.
+    Re-entrant activation is implemented here, but its requirement `EXEC-14`
+    is verified in Phase 6: half of it concerns run-scoped per-node scratch,
+    which is `EXEC-13` and does not exist yet, and a check covering only the
+    reachable half while claiming the ID would convert a real gap into false
+    confidence.
 12. Node disable, with pass-through execution and typed zero outputs, plus its
     context menu entry and distinct rendering. `NODE-11`, `UI-32`.
 13. Display classes on descriptors and a single color table for node and pin
@@ -447,13 +451,16 @@ Goal: the flow-control and container catalog matches Blueprints.
 
 Estimate: 5 to 7 days.
 
-Covers: `EXEC-13`, `PIN-11`, `TYPE-5`, `TYPE-8`, `TYPE-9`, `DATA-8`,
+Covers: `EXEC-13`, `EXEC-14`, `PIN-11`, `TYPE-5`, `TYPE-8`, `TYPE-9`, `DATA-8`,
 `VAR-9`, `CAT-1`, `CAT-5` through `CAT-19`, `CAT-24`, `CAT-25`, `CAT-27`,
 `CMPL-12`, `CMPL-13`, `CMPL-14`, `UI-13`, `UI-14`, `UI-28`.
 
 Deliverables:
 
-1. Run-scoped per-node scratch storage keyed by node ID. `EXEC-13`.
+1. Run-scoped per-node scratch storage keyed by node ID. `EXEC-13`. With that
+   in place, re-entrant activation becomes testable: a loop body re-entering a
+   node already on the continuation stack completes correctly, its scratch is
+   shared across the nested activations, and its data memo is not. `EXEC-14`.
 2. Wildcard pins with groups, resolution on connect, and unresolve on
    disconnect. `PIN-11`, `CMPL-12`.
 3. Containers: array, set, and map pin types and values, with the operation
@@ -481,6 +488,10 @@ Acceptance criteria:
 
 - `EXEC-13`: a DoOnce fires once across many activations in one run, and fires
   again in a fresh run without a manual reset.
+- `EXEC-14`: a ForLoop whose body re-enters a node already on the continuation
+  stack completes every iteration, that node observes one shared scratch across
+  the nested activations, and each activation re-evaluates its data inputs
+  rather than reusing the outer activation's memo.
 - `CAT-11`: a Gate opened, closed, and toggled in a scripted order passes
   exactly the expected activations.
 - `CAT-12`: a MultiGate with five outputs and loop enabled cycles through all

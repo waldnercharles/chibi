@@ -20,8 +20,6 @@ static pin_spec sequence_inputs[] = {
 static pin_spec sequence_outputs[] = {
     { "Then0", PIN_FLOW, NULL, PIN_EXEC },
     { "Then1", PIN_FLOW, NULL, PIN_EXEC },
-    { "Then2", PIN_FLOW, NULL, PIN_EXEC },
-    { "Then3", PIN_FLOW, NULL, PIN_EXEC },
 };
 
 static pin_spec for_inputs[] = {
@@ -70,8 +68,7 @@ static int flow_branch(node *n, flow_context *ctx)
 
 static int flow_sequence(node *n, flow_context *ctx)
 {
-    (void)n;
-    for (int i = 3; i >= 0; i--) {
+    for (int i = n->output_count - 1; i >= 0; i--) {
         if (flow_context_continue(ctx, i)) return FLOW_ERR_NODE;
     }
     return FLOW_OK;
@@ -124,6 +121,7 @@ node_desc NODE_Event = {
     .outputs = event_outputs,
     .flow_kind = NODE_FLOW_EVENT,
     .flow = flow_event,
+    .display_class = NODE_DISPLAY_EVENT,
 };
 node_desc NODE_Branch = {
     .name = "Branch",
@@ -133,24 +131,17 @@ node_desc NODE_Branch = {
     .outputs = branch_outputs,
     .flow_kind = NODE_FLOW_BRANCH,
     .flow = flow_branch,
+    .display_class = NODE_DISPLAY_FLOW,
 };
 node_desc NODE_Sequence = {
     .name = "Sequence",
     .input_count = 1,
-    .output_count = 4,
+    .output_count = 2,
     .inputs = sequence_inputs,
     .outputs = sequence_outputs,
     .flow_kind = NODE_FLOW_SEQUENCE,
     .flow = flow_sequence,
-};
-node_desc NODE_Sequence4 = {
-    .name = "Sequence4",
-    .input_count = 1,
-    .output_count = 4,
-    .inputs = sequence_inputs,
-    .outputs = sequence_outputs,
-    .flow_kind = NODE_FLOW_SEQUENCE,
-    .flow = flow_sequence,
+    .display_class = NODE_DISPLAY_FLOW,
 };
 node_desc NODE_ForLoop = {
     .name = "ForLoop",
@@ -161,6 +152,7 @@ node_desc NODE_ForLoop = {
     .eval = node_eval_const,
     .flow_kind = NODE_FLOW_FOR_LOOP,
     .flow = flow_for_loop,
+    .display_class = NODE_DISPLAY_FLOW,
 };
 /* Temporary proof node: this validates yielding and host-time resume. */
 node_desc NODE_Delay = {
@@ -171,6 +163,7 @@ node_desc NODE_Delay = {
     .outputs = delay_outputs,
     .flow_kind = NODE_FLOW_DELAY,
     .flow = flow_delay,
+    .display_class = NODE_DISPLAY_FLOW,
 };
 node_desc NODE_PrintString = {
     .name = "Print String",
@@ -180,10 +173,11 @@ node_desc NODE_PrintString = {
     .outputs = print_text_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_print_string,
+    .display_class = NODE_DISPLAY_FUNCTION,
 };
 
 node_desc *const FLOW_NODES[] = {
-    &NODE_Event,   &NODE_Branch, &NODE_Sequence,    &NODE_Sequence4,
+    &NODE_Event,   &NODE_Branch, &NODE_Sequence,
     &NODE_ForLoop, &NODE_Delay,  &NODE_PrintString,
 };
 const int FLOW_NODE_COUNT = sizeof FLOW_NODES / sizeof FLOW_NODES[0];

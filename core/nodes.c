@@ -28,7 +28,7 @@ void node_eval_break(node *n, arena *a)
 }
 
 void node_eval_call(node *n, arena *a)
-{ n->outputs[0] = n->desc->fn(n->inputs, n->desc->input_count, a); }
+{ n->outputs[0] = n->desc->fn(n->inputs, n->input_count, a); }
 
 void node_eval_const(node *n, arena *a)
 {

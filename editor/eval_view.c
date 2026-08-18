@@ -41,8 +41,8 @@ void eval_view_refresh(eval_view *v, graph *g)
     arena_reset(&v->a);
     for (int i = 0; i < g->node_count; i++) {
         node *n = g->nodes[i];
-        for (int p = 0; p < n->desc->output_count; p++) {
-            if (n->desc->outputs[p].kind != PIN_DATA) continue;
+        for (int p = 0; p < n->output_count; p++) {
+            if (n->output_pins[p].kind != PIN_DATA) continue;
             pin_value out;
             if (graph_eval_output(g, n, p, &v->a, &out, &v->eval) != 0 && !v->error) {
                 const eval_status *status = eval_context_status(&v->eval);
@@ -63,8 +63,7 @@ const char *eval_view_error(const eval_view *v)
 
 const char *eval_view_output(const eval_view *v, const node *n, int pin)
 {
-    if (!n || pin < 0 || pin >= n->desc->output_count ||
-        n->desc->outputs[pin].kind != PIN_DATA)
+    if (!n || pin < 0 || pin >= n->output_count || n->output_pins[pin].kind != PIN_DATA)
         return "";
     if (v && v->run) {
         pin_value value;
@@ -76,8 +75,7 @@ const char *eval_view_output(const eval_view *v, const node *n, int pin)
 
 const char *eval_view_input(const eval_view *v, const graph *g, const node *n, int pin)
 {
-    if (!n || pin < 0 || pin >= n->desc->input_count ||
-        n->desc->inputs[pin].kind != PIN_DATA)
+    if (!n || pin < 0 || pin >= n->input_count || n->input_pins[pin].kind != PIN_DATA)
         return NULL;
     if (v && v->run) {
         pin_value value;
@@ -88,6 +86,6 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
     int src_pin;
     if (graph_input_source(g, n, pin, &src, &src_pin)) return NULL;
     pin_value val = n->inputs[pin];
-    val.type = n->desc->inputs[pin].type;
+    val.type = n->input_pins[pin].type;
     return pin_value_to_string(&val);
 }

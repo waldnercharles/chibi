@@ -42,9 +42,29 @@ node_desc NODE_const_str = {
     .eval = node_eval_const,
 };
 
+static pin_spec all_types_outputs[] = {
+    { "bool", PIN_BOOL, "bool" },         { "i8", PIN_I8, "int8_t" },
+    { "u8", PIN_U8, "uint8_t" },          { "i16", PIN_I16, "int16_t" },
+    { "u16", PIN_U16, "uint16_t" },       { "i32", PIN_I32, "int" },
+    { "u32", PIN_U32, "unsigned" },       { "i64", PIN_I64, "int64_t" },
+    { "u64", PIN_U64, "uint64_t" },       { "f32", PIN_F32, "float" },
+    { "f64", PIN_F64, "double" },         { "str", PIN_STR, "const char *" },
+    { "struct", PIN_STRUCT, "Vec3" },     { "enum", PIN_ENUM, "TestEnum" },
+    { "flow", PIN_FLOW, NULL, PIN_EXEC },
+};
+node_desc NODE_all_types_literal = {
+    .name = "all_types_literal",
+    .input_count = 0,
+    .output_count = 15,
+    .outputs = all_types_outputs,
+    .eval = node_eval_const,
+    .pure = 1,
+};
+
 node_desc *const EXTRA_NODES[] = {
     &NODE_const_f32,
     &NODE_const_bool,
     &NODE_const_str,
+    &NODE_all_types_literal,
 };
-const int EXTRA_NODE_COUNT = 3;
+const int EXTRA_NODE_COUNT = 4;

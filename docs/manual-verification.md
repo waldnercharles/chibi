@@ -33,7 +33,22 @@ Rules:
 | `UI-40` | 2026-08-18 | 4172695 | The output log offers Clear, disabled when the log is empty. |
 | `UI-41` | 2026-08-18 | 4172695 | Editing during a live run stops the run and applies the edit. Verified against the crash found on Run, Reset, Undo, which is fixed. |
 
-Notes on this round: `RUN-3` and `RUN-4` were verified manually as well, by
+## Phase 2
+
+| ID | Verified | Commit | What was exercised |
+| --- | --- | --- | --- |
+| `UI-24` | 2026-08-18 | a9658b8 | Right-click a Sequence, Add output pin, wire the new output, Remove last output pin, and the attached edge goes with it. Sequence spawns with 2 outputs, not 4. |
+| `UI-32` | 2026-08-18 | a9658b8 | Right-click a node, Disable, confirm dimmed rendering and that execution passes straight through it, then Enable. |
+| `PIN-16` | 2026-08-18 | a9658b8 | A float wire and a string wire render in different colours, taking the colour of the pin driving them. |
+| `UI-35` | 2026-08-18 | a9658b8 | Node colours come from one display-class table and pin colours from one pin-type table, with no inline colour literals left in the render path. |
+| `FMT-15` | 2026-08-18 | a9658b8 | Copying two connected nodes places the subset document on the host clipboard, verified by pasting outside the editor. |
+
+All five failed their first attempt on 2026-08-18 and were re-verified after
+implementation. `UI-24` and `UI-32` had core APIs, `graph_add_pin` and
+`graph_set_node_disabled`, that no editor code called, which is the same defect
+shape as `graph_set_event_name` and the reason this project was restructured.
+
+Notes on the Phase 1 round: `RUN-3` and `RUN-4` were verified manually as well, by
 stepping an Event to ForLoop to Delay to Print String graph and confirming each
 press activates exactly one node across the Delay suspension. Both also carry
 headless checks, so they are not listed above.

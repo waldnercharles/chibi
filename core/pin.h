@@ -23,6 +23,14 @@ typedef enum
     PIN_ENUM,
 } pin_type;
 
+typedef enum
+{
+    PIN_CONTAINER_SINGLE = 0,
+    PIN_CONTAINER_ARRAY,
+    PIN_CONTAINER_SET,
+    PIN_CONTAINER_MAP,
+} pin_container;
+
 typedef struct
 {
     pin_type type;
@@ -39,11 +47,11 @@ typedef struct
         uint64_t u64;
         float f;
         double d;
-        const char *str; /* PIN_STR */
-        void *ptr;       /* PIN_STRUCT, points at the instance */
-        int32_t e;       /* PIN_ENUM */
+        const char *str;
+        void *ptr;
+        int32_t e;
     };
-    const char *type_name; /* set for PIN_STRUCT / PIN_ENUM */
+    const char *type_name;
 } pin_value;
 
 typedef enum
@@ -54,12 +62,27 @@ typedef enum
     PIN_KIND_EXEC = PIN_EXEC,
 } pin_kind;
 
+enum
+{
+    PIN_FLAG_ADVANCED = 1u << 0,
+    PIN_FLAG_WILDCARD = 1u << 1,
+    PIN_FLAG_REFERENCE = 1u << 2,
+};
+
+/* A descriptor pin is also the shape of an instance pin. Descriptor fields
+ * are templates; graph_add_node() copies them and assigns id/default storage. */
 typedef struct
 {
     const char *name;
     pin_type type;
-    const char *type_name; /* C type spelling; required match for PIN_STRUCT / PIN_ENUM */
-    pin_kind kind; /* DATA is the compatibility default for old descriptors. */
+    const char *type_name;
+    pin_kind kind;
+    uint64_t id;
+    pin_container container;
+    pin_value default_value;
+    uint64_t split_parent;
+    unsigned flags;
+    int group;
 } pin_spec;
 
 #endif

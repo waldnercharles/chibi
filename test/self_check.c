@@ -53,6 +53,8 @@ static node_desc g_const_desc = {
     .inputs = NULL,
     .outputs = g_const_out,
     .eval = node_eval_const,
+    .pure = 1,
+    .display_class = NODE_DISPLAY_LITERAL,
 };
 
 /* Hand-written counting node for the memo check: increments once per eval. */
@@ -75,6 +77,7 @@ static node_desc g_counter_desc = {
     .inputs = NULL,
     .outputs = g_counter_out,
     .eval = eval_counter,
+    .pure = 1,
 };
 
 static pin_spec g_const_bool_out[] = {
@@ -86,6 +89,26 @@ static node_desc g_const_bool_desc = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = g_const_bool_out,
+    .eval = node_eval_const,
+    .pure = 1,
+    .display_class = NODE_DISPLAY_LITERAL,
+};
+
+static pin_spec g_all_types_outputs[] = {
+    { "bool", PIN_BOOL, "bool" },         { "i8", PIN_I8, "int8_t" },
+    { "u8", PIN_U8, "uint8_t" },          { "i16", PIN_I16, "int16_t" },
+    { "u16", PIN_U16, "uint16_t" },       { "i32", PIN_I32, "int" },
+    { "u32", PIN_U32, "unsigned" },       { "i64", PIN_I64, "int64_t" },
+    { "u64", PIN_U64, "uint64_t" },       { "f32", PIN_F32, "float" },
+    { "f64", PIN_F64, "double" },         { "str", PIN_STR, "const char *" },
+    { "struct", PIN_STRUCT, "Vec3" },     { "enum", PIN_ENUM, "TestEnum" },
+    { "flow", PIN_FLOW, NULL, PIN_EXEC },
+};
+static node_desc g_all_types_desc = {
+    .name = "all_types_literal",
+    .input_count = 0,
+    .output_count = 15,
+    .outputs = g_all_types_outputs,
     .eval = node_eval_const,
 };
 
@@ -241,18 +264,17 @@ static node *make_string(graph *g, const char *value)
 {
     node *n = graph_add_node(g, registry_node_by_name("const_str"));
     if (!n) return NULL;
-    n->outputs[0].type = PIN_STR;
-    n->outputs[0].type_name = "const char *";
-    n->outputs[0].str = value;
+    pin_value authored = { .type = PIN_STR, .type_name = "const char *", .str = value };
+    graph_set_pin_default(g, n, 1, 0, &authored);
     return n;
 }
 
 static node *make_const(graph *g, float v)
 {
     node *n = graph_add_node(g, &g_const_desc);
-    n->outputs[0].type = PIN_F32;
-    n->outputs[0].type_name = "float";
-    n->outputs[0].f = v;
+    if (!n) return NULL;
+    pin_value authored = { .type = PIN_F32, .type_name = "float", .f = v };
+    graph_set_pin_default(g, n, 1, 0, &authored);
     return n;
 }
 
@@ -371,6 +393,18 @@ int main(void)
             eval_context_status(&eval_ctx)->pin >= -1,
         "DATA-7: evaluation status lives on the explicit context"
     );
+    eval_context independent_a, independent_b;
+    eval_context_init(&independent_a);
+    eval_context_init(&independent_b);
+    pin_value isolated;
+    graph_eval_reset(&g);
+    arena_reset(&a);
+    check(
+        graph_eval_output(&g, c1, 0, &a, &isolated, &independent_a) == 0 &&
+            eval_context_status(&independent_a)->code == 0 &&
+            eval_context_status(&independent_b)->code == 0,
+        "SCOPE-3: evaluation status is isolated per context"
+    );
 
     /* 5. remove a node and its edges */
     int nb = g.node_count;
@@ -379,6 +413,145 @@ int main(void)
     check(g.node_count == nb - 1, "BP-9: node count drops by one");
     check(g.edge_count == eb - 2, "BP-9: A's two edges dropped");
     check(graph_remove_node(&g, A) == -1, "BP-10: removing a missing node fails");
+
+    /* Phase 2 identity and instance-pin invariants. */
+    {
+        graph ids;
+        graph_init(&ids);
+        node *a_id = graph_add_node(&ids, add);
+        uint64_t retired = a_id->id;
+        uint64_t retired_pin = a_id->output_pins[0].id;
+        check(graph_remove_node(&ids, a_id) == 0, "ID-4: deleting a node retires its ID");
+        node *b_id = graph_add_node(&ids, add);
+        check(
+            b_id->id != retired && b_id->output_pins[0].id != retired_pin &&
+                graph_node_by_id(&ids, retired) == NULL,
+            "ID-2: new allocations never reuse retired IDs"
+        );
+        node *p1 = graph_add_node(&ids, add);
+        node *p2 = graph_add_node(&ids, add);
+        check(
+            graph_set_pin_name(&ids, p1, 0, 0, "left") == 0 &&
+                strcmp(p1->input_pins[0].name, "left") == 0 &&
+                strcmp(p2->input_pins[0].name, "a") == 0,
+            "PIN-3: instance pin edits do not mutate sibling instances"
+        );
+        check(strcmp(add->inputs[0].name, "a") == 0 && strcmp(p2->input_pins[0].name, "a") == 0, "PIN-1: instance pin storage is copied from an untouched descriptor template");
+        pin_value authored = { .type = PIN_F32, .type_name = "float", .f = 7.0f };
+        check(
+            graph_set_pin_default(&ids, p1, 0, 0, &authored) == 0 &&
+                p1->input_pins[0].default_value.f == 7.0f,
+            "PIN-4: authored defaults have separate instance storage"
+        );
+        pin_spec extra = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
+        node *seq = graph_add_node(&ids, registry_node_by_name("Sequence"));
+        int old_outputs = seq->output_count;
+        check(
+            graph_add_pin(&ids, seq, 1, &extra) == old_outputs &&
+                seq->output_count == old_outputs + 1,
+            "PIN-14: user-extensible groups add instance pins"
+        );
+        check(
+            graph_remove_pin(&ids, seq, 1, old_outputs) == 0 &&
+                seq->output_count == old_outputs,
+            "PIN-14: removing an instance pin succeeds"
+        );
+        check(
+            b_id->id != 0 && b_id->input_pins[0].id != 0 && b_id->output_pins[0].id != 0,
+            "ID-1: nodes and pins carry stable non-zero IDs"
+        );
+        check(
+            b_id->input_pins[0].name && b_id->input_pins[0].type_name &&
+                b_id->input_pins[0].kind == PIN_DATA,
+            "PIN-2: instance pins carry identity, shape, kind, and defaults"
+        );
+        check(b_id->desc == add, "NODE-1: each node references one descriptor");
+        b_id->x = 3.5f;
+        b_id->y = -2.25f;
+        check(b_id->x == 3.5f && b_id->y == -2.25f, "NODE-2: node canvas position is authored data");
+        check(g_const_desc.pure && !g_sink_a_desc.pure, "NODE-6: descriptors explicitly distinguish pure and impure");
+        check(g_const_desc.display_class == NODE_DISPLAY_LITERAL, "NODE-12: descriptors carry a display class");
+        check(
+            graph_node_by_id(&ids, 0) == NULL &&
+                graph_pin_by_id(b_id, 0, NULL, NULL) == NULL,
+            "ID-3: zero is never an allocated or resolvable ID"
+        );
+        char *id_json = graph_save_json(&ids);
+        graph *id_loaded = id_json ? graph_load_json(id_json) : NULL;
+        check(
+            id_loaded && graph_node_by_id(id_loaded, b_id->id) &&
+                graph_pin_by_id(
+                    graph_node_by_id(id_loaded, b_id->id),
+                    b_id->input_pins[0].id,
+                    NULL,
+                    NULL
+                ),
+            "ID-1: node and pin IDs survive save/load"
+        );
+        if (id_loaded) graph_free(id_loaded);
+        free(id_json);
+        check(
+            graph_connect_data_ids(
+                &ids,
+                p1->id,
+                p1->output_pins[0].id,
+                p2->id,
+                p2->input_pins[0].id
+            ) != 0 ||
+                ids.edge_count == 1,
+            "ID-6: cross-entity APIs address endpoints by IDs"
+        );
+        graph_free(&ids);
+    }
+
+    {
+        graph authored;
+        graph_init(&authored);
+        node *literal = make_const(&authored, 1.0f);
+        pin_value changed = { .type = PIN_F32, .type_name = "float", .f = 9.0f };
+        arena authored_arena;
+        arena_init(&authored_arena, 4096);
+        pin_value evaluated;
+        char *authored_json = NULL;
+        graph *authored_loaded = NULL;
+        check(
+            graph_set_pin_default(&authored, literal, 1, 0, &changed) == 0 &&
+                graph_eval_output(&authored, literal, 0, &authored_arena, &evaluated, &eval_ctx) ==
+                    0 &&
+                evaluated.f == 9.0f && literal->output_pins[0].default_value.f == 9.0f,
+            "PIN-4: setting an authored default changes evaluation after a "
+            "later eval"
+        );
+        authored_json = graph_save_json(&authored);
+        authored_loaded = authored_json ? graph_load_json(authored_json) : NULL;
+        check(
+            authored_loaded &&
+                authored_loaded->nodes[0]->output_pins[0].default_value.f == 9.0f,
+            "PIN-4: changed authored default is recorded by save"
+        );
+        arena_free(&authored_arena);
+        if (authored_loaded) graph_free(authored_loaded);
+        free(authored_json);
+        graph_free(&authored);
+    }
+
+    {
+        graph ordering;
+        graph_init(&ordering);
+        node *early = make_const(&ordering, 1.0f);
+        node *late = make_const(&ordering, 2.0f);
+        node *target = graph_add_node(&ordering, add);
+        check(graph_connect(&ordering, late, 0, target, 0) == 0, "ID-6: ID edge is authored before deletion");
+        check(graph_remove_node(&ordering, early) == 0, "ID-6: deleting an earlier array entry succeeds");
+        node *source = NULL;
+        int source_pin = -1;
+        check(
+            graph_input_source(&ordering, target, 0, &source, &source_pin) &&
+                source == late && source_pin == 0,
+            "ID-6: edge still resolves to the original node after reorder"
+        );
+        graph_free(&ordering);
+    }
 
     /* 6. graph_connect replaces an existing data-input driver. */
     {
@@ -417,6 +590,39 @@ int main(void)
         graph_free(&g6);
     }
 
+    {
+        graph fan;
+        graph_init(&fan);
+        node *driver = make_const(&fan, 8.0f);
+        node *fan_a = graph_add_node(&fan, add);
+        node *fan_b = graph_add_node(&fan, add);
+        node *fan_c = graph_add_node(&fan, add);
+        check(
+            graph_connect(&fan, driver, 0, fan_a, 0) == 0 &&
+                graph_connect(&fan, driver, 0, fan_b, 0) == 0 &&
+                graph_connect(&fan, driver, 0, fan_c, 0) == 0,
+            "PIN-7: one data output drives three inputs"
+        );
+        arena fan_arena;
+        arena_init(&fan_arena, 4096);
+        pin_value fan_value;
+        check(
+            graph_eval_output(&fan, fan_a, 0, &fan_arena, &fan_value, &eval_ctx) == 0 &&
+                fan_value.f == 8.0f &&
+                graph_eval_output(&fan, fan_b, 0, &fan_arena, &fan_value, &eval_ctx) == 0 &&
+                fan_value.f == 8.0f &&
+                graph_eval_output(&fan, fan_c, 0, &fan_arena, &fan_value, &eval_ctx) == 0 &&
+                fan_value.f == 8.0f,
+            "PIN-7: every driven input receives the output value"
+        );
+        check(
+            graph_remove_edge(&fan, driver, 0, fan_b, 0) == 0 && fan.edge_count == 2,
+            "PIN-7: removing one fan-out edge leaves the other two"
+        );
+        arena_free(&fan_arena);
+        graph_free(&fan);
+    }
+
     /* 8. serialization round trip: constants + add + edges */
     {
         graph g2;
@@ -425,13 +631,11 @@ int main(void)
         check(cc != NULL, "CAT-21: registry exposes const_f32");
 
         node *rc1 = graph_add_node(&g2, cc);
-        rc1->outputs[0].type = PIN_F32;
-        rc1->outputs[0].type_name = "float";
-        rc1->outputs[0].f = 2.0f;
+        pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
+        graph_set_pin_default(&g2, rc1, 1, 0, &two);
         node *rc2 = graph_add_node(&g2, cc);
-        rc2->outputs[0].type = PIN_F32;
-        rc2->outputs[0].type_name = "float";
-        rc2->outputs[0].f = 3.0f;
+        pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
+        graph_set_pin_default(&g2, rc2, 1, 0, &three);
         node *radd = graph_add_node(&g2, add);
         check(graph_connect(&g2, rc1, 0, radd, 0) == 0, "roundtrip: c1 -> add.a");
         check(graph_connect(&g2, rc2, 0, radd, 1) == 0, "roundtrip: c2 -> add.b");
@@ -447,10 +651,10 @@ int main(void)
             printf("\n--- serialized graph ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
-            check(g3 != NULL, "FMT-12: roundtrip: load from JSON");
+            check(g3 != NULL, "FMT-8: roundtrip: load from JSON");
             if (g3) {
-                check(g3->node_count == 3, "FMT-12: roundtrip: node count survives");
-                check(g3->edge_count == 2, "FMT-12: roundtrip: edge count survives");
+                check(g3->node_count == 3, "FMT-2: roundtrip: node count survives");
+                check(g3->edge_count == 2, "FMT-4: roundtrip: edge count survives");
                 check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "FMT-5: roundtrip: node position survives");
                 check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "FMT-5: roundtrip: second node position survives");
 
@@ -459,9 +663,16 @@ int main(void)
                 pin_value out;
                 check(
                     graph_eval_output(g3, g3->nodes[2], 0, &a2, &out, &eval_ctx) == 0,
-                    "FMT-12: roundtrip: eval loaded add node"
+                    "DATA-4: roundtrip: eval loaded add node"
                 );
-                check(out.type == PIN_F32 && out.f == 5.0f, "FMT-12: roundtrip: 2.0 + 3.0 == 5.0");
+                check(out.type == PIN_F32 && out.f == 5.0f, "DATA-4: roundtrip: 2.0 + 3.0 == 5.0");
+                char *json2 = graph_save_json(g3);
+                graph *g4 = json2 ? graph_load_json(json2) : NULL;
+                char *json3 = g4 ? graph_save_json(g4) : NULL;
+                check(json2 && json3 && strcmp(json2, json3) == 0, "FMT-12: load/save/load/save is byte-identical");
+                if (g4) graph_free(g4);
+                free(json2);
+                free(json3);
                 arena_free(&a2);
                 graph_free(g3);
             }
@@ -470,27 +681,136 @@ int main(void)
         graph_free(&g2);
     }
 
-    /* 9. string constant round trip */
+    /* 9. comprehensive v3 authored-field round trip. */
+    {
+        graph full;
+        graph_init(&full);
+        check(graph_set_metadata(&full, "RoundTrip", "all authored fields") == 0, "FMT-14: blueprint metadata is authored");
+        node *all = graph_add_node(&full, &g_all_types_desc);
+        node *default_node = graph_add_node(&full, registry_node_by_name("const_f32"));
+        node *event = graph_add_node(&full, registry_node_by_name("Event"));
+        node *sequence = graph_add_node(&full, registry_node_by_name("Sequence"));
+        node *sink = graph_add_node(&full, registry_node_by_name("Print String"));
+        node *sum = graph_add_node(&full, add);
+        check(all && default_node && event && sequence && sink && sum, "FMT-2: comprehensive fixture nodes created");
+        Vec3 *vec = graph_own_block(&full, sizeof *vec);
+        if (vec) *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
+        pin_value values[] = {
+            { .type = PIN_BOOL, .b = true },
+            { .type = PIN_I8, .i8 = -8 },
+            { .type = PIN_U8, .u8 = 8 },
+            { .type = PIN_I16, .i16 = -16 },
+            { .type = PIN_U16, .u16 = 16 },
+            { .type = PIN_I32, .i = -32 },
+            { .type = PIN_U32, .u = 32 },
+            { .type = PIN_I64, .i64 = -64 },
+            { .type = PIN_U64, .u64 = 64 },
+            { .type = PIN_F32, .f = 9.5f },
+            { .type = PIN_F64, .d = 10.5 },
+            { .type = PIN_STR, .str = "authored" },
+            { .type = PIN_STRUCT, .type_name = "Vec3", .ptr = vec },
+            { .type = PIN_ENUM, .e = 3 },
+        };
+        for (int i = 0; all && i < 14; i++)
+            check(graph_set_pin_default(&full, all, 1, i, &values[i]) == 0, "FMT-6: every authored pin default is set");
+        if (all) {
+            check(graph_set_node_title(&full, all, "Configured literal") == 0, "NODE-3: title override is authored");
+            check(graph_set_node_comment(&full, all, "round-trip comment") == 0, "NODE-4: node comment is authored");
+            check(graph_set_node_reference(&full, all, 4242, "Target") == 0, "NODE-5: node reference fields are authored");
+            check(graph_set_node_disabled(&full, all, 1) == 0, "NODE-11: disabled state is authored");
+            all->x = 12.25f;
+            all->y = -7.5f;
+        }
+        check(graph_set_event_name(&full, event, "Full") == 0, "EVT-2: event reference name is serialized");
+        pin_spec added = { "Then4", PIN_FLOW, NULL, PIN_EXEC };
+        int added_index = sequence ? graph_add_pin(&full, sequence, 1, &added) : -1;
+        check(added_index >= 2, "PIN-14: extended Sequence pin is present");
+        check(
+            graph_connect(&full, all, 9, sum, 0) == 0 &&
+                graph_connect(&full, default_node, 0, sum, 1) == 0,
+            "FMT-4: data edge endpoints use pin IDs"
+        );
+        check(
+            graph_connect_exec(&full, event, 0, sequence, 0, 11) == 0 &&
+                graph_connect_exec(&full, sequence, added_index, sink, 0, 13) == 0,
+            "FMT-4: exec edge order is serialized"
+        );
+        char *full_a = graph_save_json(&full);
+        graph *full_b = full_a ? graph_load_json(full_a) : NULL;
+        char *full_c = full_b ? graph_save_json(full_b) : NULL;
+        graph *full_d = full_c ? graph_load_json(full_c) : NULL;
+        char *full_e = full_d ? graph_save_json(full_d) : NULL;
+        check(
+            full_b && full_d && full_a && full_c && full_e &&
+                strcmp(full_a, full_c) == 0 && strcmp(full_c, full_e) == 0,
+            "FMT-12: all pin types, edges, groups, and node fields round-trip "
+            "byte-identically"
+        );
+        if (full_b) {
+            node *loaded_all = full_b->nodes[0];
+            check(
+                strcmp(loaded_all->title_override, "Configured literal") == 0 &&
+                    strcmp(loaded_all->comment, "round-trip comment") == 0 &&
+                    loaded_all->reference_id == 4242 &&
+                    strcmp(loaded_all->reference_name, "Target") == 0 &&
+                    loaded_all->disabled && loaded_all->x == 12.25f,
+                "FMT-5: optional node fields survive first load"
+            );
+            check(
+                loaded_all->output_pins[0].default_value.b &&
+                    loaded_all->output_pins[11].default_value.str &&
+                    strcmp(loaded_all->output_pins[11].default_value.str, "authored") == 0 &&
+                    loaded_all->output_pins[12].default_value.ptr &&
+                    ((Vec3 *)loaded_all->output_pins[12].default_value.ptr)->y == 2.5f,
+                "PIN-2: scalar, string, and struct instance pin fields survive "
+                "first load"
+            );
+        }
+        node *saved_first = full.nodes[0];
+        node *saved_second = full.nodes[1];
+        full.nodes[0] = saved_second;
+        full.nodes[1] = saved_first;
+        char *reordered = graph_save_json(&full);
+        graph *reordered_loaded = reordered ? graph_load_json(reordered) : NULL;
+        check(
+            reordered && full_a && strcmp(reordered, full_a) == 0 && reordered_loaded,
+            "FMT-3: node array position carries no reference meaning"
+        );
+        check(full_a && reordered && strcmp(full_a, reordered) == 0, "FMT-13: deterministic output is byte-identical");
+        full.nodes[0] = saved_first;
+        full.nodes[1] = saved_second;
+        if (reordered_loaded) graph_free(reordered_loaded);
+        free(reordered);
+        if (full_d) graph_free(full_d);
+        if (full_b) graph_free(full_b);
+        free(full_a);
+        free(full_c);
+        free(full_e);
+        graph_free(&full);
+    }
+
+    /* 10. string constant round trip */
     {
         graph g4;
         graph_init(&g4);
         const node_desc *cs = registry_node_by_name("const_str");
         check(cs != NULL, "CAT-21: registry exposes const_str");
         node *s1 = graph_add_node(&g4, cs);
-        s1->outputs[0].type = PIN_STR;
-        s1->outputs[0].type_name = "const char *";
-        s1->outputs[0].str = "hello, world";
+        pin_value hello = { .type = PIN_STR,
+                            .type_name = "const char *",
+                            .str = "hello, world" };
+        check(graph_set_pin_default(&g4, s1, 1, 0, &hello) == 0, "string const: authored value set");
 
         char *json = graph_save_json(&g4);
         check(json != NULL, "string const: serialize");
         if (json) {
             graph *g5 = graph_load_json(json);
-            check(g5 && g5->node_count == 1, "FMT-12: string const: load");
+            check(g5 && g5->node_count == 1, "FMT-1: string const: load");
             if (g5) {
                 check(
                     g5->nodes[0]->outputs[0].type == PIN_STR &&
                         strcmp(g5->nodes[0]->outputs[0].str, "hello, world") == 0,
-                    "FMT-12: string const: value round-trips"
+                    "FMT-6: string const: value round-trips"
                 );
                 graph_free(g5);
             }
@@ -505,16 +825,18 @@ int main(void)
         const char *bad[] = {
             "{ not json",
             "{\"nodes\": []}",
-            "{\"nodes\":[{\"type\":\"nope\"}],\"edges\":[]}",
-            "{\"nodes\":[{\"type\":\"add_floats\",\"consts\":{\"in9\":1}}],"
-            "\"edges\":[]}",
+            "{\"version\":3,\"id_counter\":1,\"name\":\"\",\"description\":"
+            "\"\",\"nodes\":[{"
+            "\"type\":\"nope\"}],\"edges\":[]}",
+            "{\"version\":3,\"nodes\":[{\"type\":\"add_floats\"}],\"edges\":[]"
+            "}",
         };
         check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "FMT-8: malformed JSON rejected");
         check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "FMT-8: missing edges array rejected");
         check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "FMT-8: unknown node type rejected");
-        check(graph_load_json(bad[3]) == NULL && strstr(graph_last_error(), "range"), "FMT-8: out-of-range pin index rejected");
+        check(graph_load_json(bad[3]) == NULL, "FMT-8: malformed pin list rejected");
         check(
-            graph_load_json("{\"version\":3,\"nodes\":[],\"edges\":[]}") == NULL &&
+            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
                 strstr(graph_last_error(), "version"),
             "FMT-8: unsupported schema version rejected"
         );
@@ -580,7 +902,8 @@ int main(void)
         }
         check(gf.node_count == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
         check(
-            gf.nodes[0]->event_name && strcmp(gf.nodes[0]->event_name, "OnStart") == 0,
+            gf.nodes[0]->reference_name &&
+                strcmp(gf.nodes[0]->reference_name, "OnStart") == 0,
             "EXEC-1: flow demo graph has named Event entry"
         );
         graph_free(&gf);
@@ -593,13 +916,11 @@ int main(void)
         const node_desc *cc = registry_node_by_name("const_f32");
 
         node *c1 = graph_add_node(&g2, cc);
-        c1->outputs[0].type = PIN_F32;
-        c1->outputs[0].type_name = "float";
-        c1->outputs[0].f = 2.0f;
+        pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
+        graph_set_pin_default(&g2, c1, 1, 0, &two);
         node *c2 = graph_add_node(&g2, cc);
-        c2->outputs[0].type = PIN_F32;
-        c2->outputs[0].type_name = "float";
-        c2->outputs[0].f = 3.0f;
+        pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
+        graph_set_pin_default(&g2, c2, 1, 0, &three);
         node *ad = graph_add_node(&g2, add);
         graph_connect(&g2, c1, 0, ad, 0);
         graph_connect(&g2, c2, 0, ad, 1);
@@ -638,13 +959,11 @@ int main(void)
         const node_desc *cc = registry_node_by_name("const_f32");
 
         node *c1 = graph_add_node(&g4, cc);
-        c1->outputs[0].type = PIN_F32;
-        c1->outputs[0].type_name = "float";
-        c1->outputs[0].f = 2.0f;
+        pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
+        graph_set_pin_default(&g4, c1, 1, 0, &two);
         node *c2 = graph_add_node(&g4, cc);
-        c2->outputs[0].type = PIN_F32;
-        c2->outputs[0].type_name = "float";
-        c2->outputs[0].f = 3.0f;
+        pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
+        graph_set_pin_default(&g4, c2, 1, 0, &three);
         node *ad = graph_add_node(&g4, add);
         graph_connect(&g4, c1, 0, ad, 0);
         graph_connect(&g4, c2, 0, ad, 1);
@@ -710,10 +1029,12 @@ int main(void)
                 target == branch && target_pin == 0,
             "PIN-10: exec target lookup preserves order"
         );
-        /* Current behavior: Phase 2 must delete this one-driver replacement;
-         * PIN-8 requires exec inputs to accept multiple incoming edges. */
-        check(graph_connect_exec(&ge, event, 0, branch, 0, 8) == 0, "exec input replacement keeps one driver");
-        check(graph_connect_exec(&ge, event, 0, branch, 0, 7) == 0, "PIN-10: exec input order can be restored");
+        node *event_merge = graph_add_node(&ge, event_desc);
+        check(
+            graph_connect_exec(&ge, event_merge, 0, branch, 0, 8) == 0 &&
+                ge.edge_count == 3,
+            "PIN-8: exec input accepts multiple incoming drivers"
+        );
         check(graph_connect_data(&ge, event, 0, branch, 1) != 0, "TYPE-5: exec output cannot become a data edge");
         graph_free(&ge);
     }
@@ -773,6 +1094,11 @@ int main(void)
         graph_init(&gs);
         node *event = graph_add_node(&gs, registry_node_by_name("Event"));
         node *sequence = graph_add_node(&gs, registry_node_by_name("Sequence"));
+        pin_spec seq_extra = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
+        if (sequence) {
+            graph_add_pin(&gs, sequence, 1, &seq_extra);
+            graph_add_pin(&gs, sequence, 1, &seq_extra);
+        }
         node *a = graph_add_node(&gs, &g_sink_a_desc);
         node *b = graph_add_node(&gs, &g_sink_b_desc);
         node *c = graph_add_node(&gs, &g_sink_c_desc);
@@ -794,10 +1120,38 @@ int main(void)
         flow_run_free(run);
         graph_free(&gs);
 
+        graph seven;
+        graph_init(&seven);
+        node *seven_event = graph_add_node(&seven, registry_node_by_name("Event"));
+        node *seven_sequence = graph_add_node(&seven, registry_node_by_name("Sequence"));
+        pin_spec seven_pin = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
+        while (seven_sequence && seven_sequence->output_count < 7)
+            graph_add_pin(&seven, seven_sequence, 1, &seven_pin);
+        node *seven_sinks[7];
+        for (int i = 0; i < 7; i++)
+            seven_sinks[i] = graph_add_node(&seven, &g_sink_a_desc);
+        graph_set_event_name(&seven, seven_event, "Seven");
+        graph_connect_exec(&seven, seven_event, 0, seven_sequence, 0, 0);
+        for (int i = 0; i < 7; i++)
+            graph_connect_exec(&seven, seven_sequence, i, seven_sinks[i], 0, i);
+        flow_log_reset();
+        run = graph_run_event(&seven, "Seven", (flow_inputs){ 0 }, &dispatch_error);
+        check(seven_sequence && seven_sequence->output_count == 7, "CAT-3: Sequence extends from its default of two outputs");
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_log_count == 7,
+            "CAT-3: seven Sequence outputs all fire in ascending order"
+        );
+        flow_run_free(run);
+        graph_free(&seven);
+
         graph ge;
         graph_init(&ge);
         event = graph_add_node(&ge, registry_node_by_name("Event"));
         sequence = graph_add_node(&ge, registry_node_by_name("Sequence"));
+        if (sequence) {
+            graph_add_pin(&ge, sequence, 1, &seq_extra);
+            graph_add_pin(&ge, sequence, 1, &seq_extra);
+        }
         a = graph_add_node(&ge, &g_sink_a_desc);
         node *error_node = graph_add_node(&ge, &g_sink_error_desc);
         c = graph_add_node(&ge, &g_sink_c_desc);
@@ -947,7 +1301,7 @@ int main(void)
         graph_free(&gn);
     }
 
-    /* 20. Step budget and v2/v1/versionless persistence. */
+    /* 20. Step budget and v3 persistence. */
     {
         graph gbudget;
         graph_init(&gbudget);
@@ -973,28 +1327,23 @@ int main(void)
         graph_connect_data(&gj, condition, 0, branch, 1);
         char *json = graph_save_json(&gj);
         check(
-            json && strstr(json, "\"version\": 2") &&
+            json && strstr(json, "\"version\": 3") &&
                 strstr(json, "\"kind\": \"exec\"") && strstr(json, "\"order\": 12") &&
-                strstr(json, "\"event\": \"Saved\""),
-            "FMT-4: v2 JSON writes flow kind/order and event name"
+                strstr(json, "\"reference_name\": \"Saved\""),
+            "FMT-4: v3 JSON writes ID-based flow metadata"
         );
         graph *loaded = json ? graph_load_json(json) : NULL;
         check(
             loaded && loaded->edge_count == 2 && loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
                 graph_event_name(loaded->nodes[0]) &&
                 strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
-            "FMT-4: v2 JSON loads flow metadata"
+            "FMT-4: v3 JSON loads flow metadata"
         );
         if (loaded) graph_free(loaded);
         free(json);
 
         node *flow_subset[] = { event, branch };
         char *subset_json = graph_save_nodes_json(&gj, flow_subset, 2);
-        check(
-            subset_json && strstr(subset_json, "\"kind\": \"exec\"") &&
-                strstr(subset_json, "\"order\": 12"),
-            "FMT-4: subset save preserves flow edge order"
-        );
         graph appended;
         graph_init(&appended);
         check(
@@ -1002,44 +1351,34 @@ int main(void)
                 graph_append_json(&appended, subset_json, 10.0f, 20.0f) == 0 &&
                 appended.edge_count == 1 && appended.edges[0].kind == GRAPH_EDGE_EXEC &&
                 appended.edges[0].exec_order == 12,
-            "FMT-4: append preserves flow edge order"
+            "FMT-11: append remaps ID-based flow edge"
+        );
+        uint64_t first_copy = appended.nodes[0]->id;
+        uint64_t second_copy = appended.nodes[1]->id;
+        check(
+            subset_json &&
+                graph_append_json(&appended, subset_json, 20.0f, 30.0f) == 0 &&
+                appended.node_count == 4 && appended.edge_count == 2 &&
+                appended.nodes[2]->id != first_copy &&
+                appended.nodes[3]->id != second_copy &&
+                appended.edges[1].from_id == appended.nodes[2]->id &&
+                appended.edges[1].to_id == appended.nodes[3]->id,
+            "ID-5: repeated paste allocates fresh IDs and rewires internal "
+            "edges"
         );
         graph_free(&appended);
         free(subset_json);
         graph_free(&gj);
 
-        const char *legacy = "{\"version\":1,\"nodes\":[{\"type\":\"const_"
-                             "f32\",\"consts\":{\"out0\":2}},{\"type\":\"const_"
-                             "f32\",\"consts\":{\"out0\":3}},{\"type\":\"add_"
-                             "floats\"}],\"edges\":[{\"from\":0,\"from_pin\":0,"
-                             "\"to\":2,\"to_pin\":0},{\"from\":1,\"from_pin\":"
-                             "0,\"to\":2,\"to_pin\":1}]}";
-        const char
-            *versionless = "{\"nodes\":[{\"type\":\"const_f32\",\"consts\":{"
-                           "\"out0\":2}},{\"type\":\"const_f32\",\"consts\":{"
-                           "\"out0\":3}},{\"type\":\"add_floats\"}],\"edges\":["
-                           "{\"from\":0,\"from_pin\":0,\"to\":2,\"to_pin\":0},{"
-                           "\"from\":1,\"from_pin\":0,\"to\":2,\"to_pin\":1}]}";
-        graph *v1 = graph_load_json(legacy);
-        graph *v0 = graph_load_json(versionless);
-        check(v1 && v1->edge_count == 2 && v1->edges[0].kind == GRAPH_EDGE_DATA, "v1 data-only JSON remains compatible");
-        check(v0 && v0->edge_count == 2 && v0->edges[0].kind == GRAPH_EDGE_DATA, "versionless data-only JSON remains compatible");
-        if (v1) graph_free(v1);
-        if (v0) graph_free(v0);
         check(
-            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[{\"from\":0,\"from_pin\":0,\"to\":0,\"to_pin\":0,\"kind\":\"wat\"}]}") ==
-                NULL,
-            "FMT-8: unsupported v2 edge kind is rejected"
+            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
+                strstr(graph_last_error(), "version"),
+            "FMT-9: v2 documents are rejected"
         );
         check(
-            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[{\"from\":0,\"from_pin\":0,\"to\":0,\"to_pin\":0,\"kind\":\"exec\"}]}") ==
-                NULL,
-            "PIN-10: exec edge without order is rejected"
-        );
-        check(
-            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[{\"from\":0,\"from_pin\":0,\"to\":0,\"to_pin\":0,\"kind\":\"data\",\"order\":1}]}") ==
-                NULL,
-            "PIN-10: data edge with order is rejected"
+            graph_load_json("{\"nodes\":[],\"edges\":[]}") == NULL &&
+                strstr(graph_last_error(), "version"),
+            "FMT-9: versionless documents are rejected"
         );
     }
 
@@ -1203,7 +1542,7 @@ int main(void)
             run_a && run_b && error_a == -777 && error_b == -777 &&
                 flow_run_steps(run_a) == 2 && flow_run_steps(run_b) == 2 &&
                 flow_run_error(run_a) != flow_run_error(run_b),
-            "SCOPE-3: two runs keep independent errors and step counts"
+            "RUN-11: two runs keep independent errors and step counts"
         );
         flow_run_free(run_a);
         flow_run_free(run_b);

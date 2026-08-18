@@ -5,15 +5,7 @@
  * Make + Break node_desc per struct plus a call node_desc per "node:fn"
  * function.
  */
-#if __has_include(<clang-c/Index.h>)
 #include <clang-c/Index.h>
-#elif __has_include("/opt/homebrew/opt/llvm/include/clang-c/Index.h")
-#include "/opt/homebrew/opt/llvm/include/clang-c/Index.h"
-#elif __has_include("/usr/local/opt/llvm/include/clang-c/Index.h")
-#include "/usr/local/opt/llvm/include/clang-c/Index.h"
-#else
-#error "libclang headers are required to build reflect"
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

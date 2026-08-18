@@ -10,10 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Serialization diagnostics are thread-local so one load cannot overwrite a
- * concurrent caller's error. Runtime evaluation uses explicit contexts. */
 static _Thread_local char serialize_error[256];
-
 static void set_err(const char *fmt, ...)
 {
     va_list ap;
@@ -21,69 +18,80 @@ static void set_err(const char *fmt, ...)
     vsnprintf(serialize_error, sizeof serialize_error, fmt, ap);
     va_end(ap);
 }
-
 const char *graph_last_error(void) { return serialize_error; }
 
-static int node_index(const graph *g, const node *n)
-{
-    for (int i = 0; i < g->node_count; i++)
-        if (g->nodes[i] == n) return i;
-    return -1;
-}
+#define GRAPH_SCHEMA_VERSION 3
 
-static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e, int from, int to)
-{
-    yyjson_mut_val *eo = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, eo, "from", from);
-    yyjson_mut_obj_add_int(doc, eo, "from_pin", e->from_pin);
-    yyjson_mut_obj_add_int(doc, eo, "to", to);
-    yyjson_mut_obj_add_int(doc, eo, "to_pin", e->to_pin);
-    yyjson_mut_obj_add_str(doc, eo, "kind", e->kind == GRAPH_EDGE_EXEC ? "exec" : "data");
-    if (e->kind == GRAPH_EDGE_EXEC)
-        yyjson_mut_obj_add_int(doc, eo, "order", e->exec_order);
-    yyjson_mut_arr_add_val(arr, eo);
-}
-
-/* Write a constant pin value, interpreted as pin type t. */
-/* Write a constant pin value, interpreted as pin type t. The key and any
- * string value are copied into the document, so callers may pass stack or
- * temporary buffers. */
 static void write_const(
     yyjson_mut_doc *doc,
     yyjson_mut_val *obj,
     const char *key,
     pin_type t,
+    const char *type_name,
     const pin_value *v
 )
 {
-    yyjson_mut_val *k = yyjson_mut_strcpy(doc, key);
-    yyjson_mut_val *val = NULL;
+    yyjson_mut_val *value = NULL;
     switch (t) {
-        case PIN_BOOL: val = yyjson_mut_bool(doc, v->b); break;
-        case PIN_I8: val = yyjson_mut_sint(doc, v->i8); break;
-        case PIN_U8: val = yyjson_mut_uint(doc, v->u8); break;
-        case PIN_I16: val = yyjson_mut_sint(doc, v->i16); break;
-        case PIN_U16: val = yyjson_mut_uint(doc, v->u16); break;
-        case PIN_I32: val = yyjson_mut_sint(doc, v->i); break;
-        case PIN_U32: val = yyjson_mut_uint(doc, v->u); break;
-        case PIN_I64: val = yyjson_mut_sint(doc, v->i64); break;
-        case PIN_U64: val = yyjson_mut_uint(doc, v->u64); break;
-        case PIN_F32: val = yyjson_mut_real(doc, v->f); break;
-        case PIN_F64: val = yyjson_mut_real(doc, v->d); break;
-        case PIN_ENUM: val = yyjson_mut_sint(doc, v->e); break;
-        case PIN_STR: val = yyjson_mut_strcpy(doc, v->str ? v->str : ""); break;
+        case PIN_BOOL: value = yyjson_mut_bool(doc, v->b); break;
+        case PIN_I8: value = yyjson_mut_sint(doc, v->i8); break;
+        case PIN_U8: value = yyjson_mut_uint(doc, v->u8); break;
+        case PIN_I16: value = yyjson_mut_sint(doc, v->i16); break;
+        case PIN_U16: value = yyjson_mut_uint(doc, v->u16); break;
+        case PIN_I32: value = yyjson_mut_sint(doc, v->i); break;
+        case PIN_U32: value = yyjson_mut_uint(doc, v->u); break;
+        case PIN_I64: value = yyjson_mut_sint(doc, v->i64); break;
+        case PIN_U64: value = yyjson_mut_uint(doc, v->u64); break;
+        case PIN_F32: value = yyjson_mut_real(doc, v->f); break;
+        case PIN_F64: value = yyjson_mut_real(doc, v->d); break;
+        case PIN_ENUM: value = yyjson_mut_sint(doc, v->e); break;
+        case PIN_STR:
+            value = yyjson_mut_strcpy(doc, v->str ? v->str : "");
+            break;
         case PIN_STRUCT:
-        case PIN_FLOW:
-        default: return; /* not a serializable constant */
+            if (v->ptr && type_name) {
+                const type_desc *type = NULL;
+                for (int i = 0; i < REGISTRY_TYPE_COUNT; i++)
+                    if (strcmp(REGISTRY_TYPES[i]->name, type_name) == 0) {
+                        type = REGISTRY_TYPES[i];
+                        break;
+                    }
+                if (type) {
+                    value = yyjson_mut_obj(doc);
+                    for (int i = 0; i < type->field_count; i++) {
+                        pin_value field;
+                        pin_read_field(v->ptr, &type->fields[i], &field);
+                        write_const(
+                            doc,
+                            value,
+                            type->fields[i].name,
+                            type->fields[i].type,
+                            type->fields[i].type_name,
+                            &field
+                        );
+                    }
+                }
+            }
+            if (!value) value = yyjson_mut_null(doc);
+            break;
+        case PIN_FLOW: value = yyjson_mut_null(doc); break;
     }
-    if (k && val) yyjson_mut_obj_add(obj, k, val);
+    if (value) yyjson_mut_obj_add(obj, yyjson_mut_strcpy(doc, key), value);
 }
 
-/* Read a JSON constant into out, interpreted as pin type t. Returns 0 on
- * success, -1 on type mismatch or OOM. */
+static const type_desc *find_type(const char *name)
+{
+    if (!name) return NULL;
+    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++)
+        if (strcmp(REGISTRY_TYPES[i]->name, name) == 0)
+            return REGISTRY_TYPES[i];
+    return NULL;
+}
+
 static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
 {
     memset(out, 0, sizeof *out);
+    out->type = t;
     switch (t) {
         case PIN_BOOL:
             if (!yyjson_is_bool(v)) return -1;
@@ -123,11 +131,11 @@ static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
             break;
         case PIN_I64:
             if (!yyjson_is_sint(v)) return -1;
-            out->i64 = (int64_t)yyjson_get_sint(v);
+            out->i64 = yyjson_get_sint(v);
             break;
         case PIN_U64:
             if (!yyjson_is_uint(v)) return -1;
-            out->u64 = (uint64_t)yyjson_get_uint(v);
+            out->u64 = yyjson_get_uint(v);
             break;
         case PIN_F32:
             if (!yyjson_is_num(v)) return -1;
@@ -138,184 +146,292 @@ static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
             out->d = yyjson_get_real(v);
             break;
         case PIN_ENUM:
-            if (!yyjson_is_sint(v) || yyjson_get_sint(v) < INT32_MIN ||
-                yyjson_get_sint(v) > INT32_MAX)
-                return -1;
-            out->e = (int32_t)yyjson_get_sint(v);
+            if (yyjson_is_sint(v)) out->e = (int32_t)yyjson_get_sint(v);
+            else if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT32_MAX)
+                out->e = (int32_t)yyjson_get_uint(v);
+            else return -1;
             break;
-        case PIN_STR: {
+        case PIN_STR:
             if (!yyjson_is_str(v)) return -1;
-            const char *s = yyjson_get_str(v);
-            out->str = graph_own_str(g, s, yyjson_get_len(v));
+            out->str = graph_own_str(g, yyjson_get_str(v), yyjson_get_len(v));
             if (!out->str) return -1;
             break;
-        }
         case PIN_STRUCT:
         case PIN_FLOW:
-        default: return -1; /* no constant representation */
+            if (!yyjson_is_null(v)) return -1;
+            break;
     }
-    out->type = t;
     return 0;
 }
 
-#define GRAPH_SCHEMA_VERSION 2
-
-static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g, const node *n, int id)
+static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *p)
 {
-    yyjson_mut_val *no = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, no, "id", id);
-    yyjson_mut_obj_add_str(doc, no, "type", n->desc->name);
-    if (n->event_name) yyjson_mut_obj_add_str(doc, no, "event", n->event_name);
-    yyjson_mut_obj_add_real(doc, no, "x", (double)n->x);
-    yyjson_mut_obj_add_real(doc, no, "y", (double)n->y);
-
-    yyjson_mut_val *consts = yyjson_mut_obj(doc);
-    char key[16];
-    for (int p = 0; p < n->desc->input_count; p++) {
-        node *src;
-        int sp;
-        if (!graph_input_source(g, n, p, &src, &sp)) {
-            snprintf(key, sizeof key, "in%d", p);
-            write_const(doc, consts, key, n->desc->inputs[p].type, &n->inputs[p]);
-        }
-    }
-    if (n->desc->eval == node_eval_const) {
-        for (int p = 0; p < n->desc->output_count; p++) {
-            snprintf(key, sizeof key, "out%d", p);
-            write_const(doc, consts, key, n->desc->outputs[p].type, &n->outputs[p]);
-        }
-    }
-    yyjson_mut_obj_add_val(doc, no, "consts", consts);
-    yyjson_mut_arr_add_val(arr, no);
+    yyjson_mut_val *o = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_uint(doc, o, "id", p->id);
+    yyjson_mut_obj_add_str(doc, o, "name", p->name ? p->name : "");
+    yyjson_mut_obj_add_int(doc, o, "type", p->type);
+    if (p->type_name) yyjson_mut_obj_add_str(doc, o, "type_name", p->type_name);
+    yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
+    yyjson_mut_obj_add_int(doc, o, "container", p->container);
+    yyjson_mut_obj_add_uint(doc, o, "split_parent", p->split_parent);
+    yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
+    yyjson_mut_obj_add_int(doc, o, "group", p->group);
+    write_const(doc, o, "default", p->type, p->type_name, &p->default_value);
+    yyjson_mut_arr_add_val(arr, o);
 }
 
-char *graph_save_json(const graph *g)
+static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
+{
+    yyjson_mut_val *o = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_uint(doc, o, "from", e->from_id);
+    yyjson_mut_obj_add_uint(doc, o, "from_pin", e->from_pin_id);
+    yyjson_mut_obj_add_uint(doc, o, "to", e->to_id);
+    yyjson_mut_obj_add_uint(doc, o, "to_pin", e->to_pin_id);
+    yyjson_mut_obj_add_str(doc, o, "kind", e->kind == GRAPH_EDGE_EXEC ? "exec" : "data");
+    if (e->kind == GRAPH_EDGE_EXEC)
+        yyjson_mut_obj_add_int(doc, o, "order", e->exec_order);
+    yyjson_mut_arr_add_val(arr, o);
+}
+
+static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const node *n)
+{
+    yyjson_mut_val *o = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_uint(doc, o, "id", n->id);
+    yyjson_mut_obj_add_str(doc, o, "type", n->desc->name);
+    yyjson_mut_obj_add_real(doc, o, "x", n->x);
+    yyjson_mut_obj_add_real(doc, o, "y", n->y);
+    if (n->title_override)
+        yyjson_mut_obj_add_str(doc, o, "title", n->title_override);
+    if (n->comment) yyjson_mut_obj_add_str(doc, o, "comment", n->comment);
+    yyjson_mut_obj_add_uint(doc, o, "reference_id", n->reference_id);
+    if (n->reference_name)
+        yyjson_mut_obj_add_str(doc, o, "reference_name", n->reference_name);
+    yyjson_mut_obj_add_bool(doc, o, "disabled", n->disabled != 0);
+    yyjson_mut_val *ins = yyjson_mut_arr(doc), *outs = yyjson_mut_arr(doc);
+    for (int i = 0; i < n->input_count; i++)
+        write_pin(doc, ins, &n->input_pins[i]);
+    for (int i = 0; i < n->output_count; i++) {
+        pin_spec p = n->output_pins[i];
+        if (n->desc->eval == node_eval_const)
+            p.default_value = n->output_pins[i].default_value;
+        write_pin(doc, outs, &p);
+    }
+    yyjson_mut_obj_add_val(doc, o, "inputs", ins);
+    yyjson_mut_obj_add_val(doc, o, "outputs", outs);
+    yyjson_mut_arr_add_val(arr, o);
+}
+
+static int compare_nodes(const void *a, const void *b)
+{
+    const node *left = *(node *const *)a, *right = *(node *const *)b;
+    return left->id < right->id ? -1 : left->id > right->id;
+}
+
+static int compare_edges(const void *a, const void *b)
+{
+    const edge *left = a, *right = b;
+#define CMP_FIELD(field)                                                       \
+    if (left->field != right->field) return left->field < right->field ? -1 : 1
+    CMP_FIELD(from_id);
+    CMP_FIELD(from_pin_id);
+    CMP_FIELD(to_id);
+    CMP_FIELD(to_pin_id);
+    CMP_FIELD(kind);
+    CMP_FIELD(exec_order);
+#undef CMP_FIELD
+    return 0;
+}
+
+static char *write_graph(const graph *g, node *const *subset, int count)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     if (!doc) return NULL;
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
-
+    yyjson_mut_obj_add_uint(doc, root, "id_counter", g->id_counter);
+    yyjson_mut_obj_add_str(doc, root, "name", g->name ? g->name : "");
+    yyjson_mut_obj_add_str(doc, root, "description", g->description ? g->description : "");
     yyjson_mut_val *nodes = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
-
-    for (int i = 0; i < g->node_count; i++)
-        write_node(doc, nodes, g, g->nodes[i], i);
-
+    int node_total = subset ? count : g->node_count;
+    node **ordered_nodes = node_total
+                             ? malloc((size_t)node_total * sizeof *ordered_nodes)
+                             : NULL;
+    if (node_total && !ordered_nodes) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    if (!subset)
+        memcpy(ordered_nodes, g->nodes, (size_t)node_total * sizeof *ordered_nodes);
+    else
+        for (int i = 0; i < node_total; i++) ordered_nodes[i] = subset[i];
+    qsort(ordered_nodes, (size_t)node_total, sizeof *ordered_nodes, compare_nodes);
+    for (int i = 0; i < node_total; i++)
+        if (ordered_nodes[i]) write_node(doc, nodes, ordered_nodes[i]);
+    free(ordered_nodes);
     yyjson_mut_val *edges = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "edges", edges);
+    edge *ordered_edges = g->edge_count
+                            ? malloc((size_t)g->edge_count * sizeof *ordered_edges)
+                            : NULL;
+    int edge_total = 0;
+    if (g->edge_count && !ordered_edges) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
     for (int i = 0; i < g->edge_count; i++) {
         const edge *e = &g->edges[i];
-        int fi = node_index(g, e->from);
-        int ti = node_index(g, e->to);
-        if (fi < 0 || ti < 0) continue;
-        write_edge(doc, edges, e, fi, ti);
+        if (subset) {
+            int from = 0, to = 0;
+            for (int j = 0; j < count; j++) {
+                from |= subset[j] == e->from;
+                to |= subset[j] == e->to;
+            }
+            if (!from || !to) continue;
+        }
+        ordered_edges[edge_total++] = *e;
     }
-
-    yyjson_write_err werr;
-    char *out = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, NULL, &werr);
-    if (!out) set_err("write failed: %s", werr.msg ? werr.msg : "unknown");
-    yyjson_mut_doc_free(doc);
-    return out;
-}
-
-static int subset_index(node *const *subset, int count, const node *n)
-{
-    for (int i = 0; i < count; i++)
-        if (subset[i] == n) return i;
-    return -1;
-}
-
-char *graph_save_nodes_json(const graph *g, node *const *subset, int count)
-{
-    if (count < 0 || (count > 0 && !subset)) return NULL;
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    if (!doc) return NULL;
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
-
-    yyjson_mut_val *nodes = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
-    for (int i = 0; i < count; i++) write_node(doc, nodes, g, subset[i], i);
-
-    yyjson_mut_val *edges = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, root, "edges", edges);
-    for (int i = 0; i < g->edge_count; i++) {
-        const edge *e = &g->edges[i];
-        int fi = subset_index(subset, count, e->from);
-        int ti = subset_index(subset, count, e->to);
-        if (fi < 0 || ti < 0) continue;
-        write_edge(doc, edges, e, fi, ti);
-    }
-
+    qsort(ordered_edges, (size_t)edge_total, sizeof *ordered_edges, compare_edges);
+    for (int i = 0; i < edge_total; i++)
+        write_edge(doc, edges, &ordered_edges[i]);
+    free(ordered_edges);
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
     return out;
 }
 
-static int parse_pin_key(const char *k, int *is_in, int *pin)
+char *graph_save_json(const graph *g)
+{ return g ? write_graph(g, NULL, 0) : NULL; }
+char *graph_save_nodes_json(const graph *g, node *const *subset, int count)
 {
-    const char *digits;
-    if (strncmp(k, "in", 2) == 0) {
-        *is_in = 1;
-        digits = k + 2;
-    } else if (strncmp(k, "out", 3) == 0) {
-        *is_in = 0;
-        digits = k + 3;
-    } else {
+    return g && count >= 0 && (count == 0 || subset) ? write_graph(g, subset, count)
+                                                     : NULL;
+}
+
+static int json_uint(yyjson_val *v, uint64_t *out, const char *path)
+{
+    if (!v || !yyjson_is_uint(v) || yyjson_get_uint(v) == 0) {
+        set_err("%s must be a non-zero unsigned integer", path);
         return -1;
     }
-    if (!*digits || strspn(digits, "0123456789") != strlen(digits)) return -1;
-    *pin = atoi(digits);
+    *out = yyjson_get_uint(v);
     return 0;
 }
 
-static int load_consts(const node_desc *desc, node *n, yyjson_val *consts, graph *g)
+static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
 {
-    yyjson_obj_iter it;
-    yyjson_obj_iter_init(consts, &it);
-    yyjson_val *kv;
-    while ((kv = yyjson_obj_iter_next(&it))) {
-        const char *k = yyjson_get_str(kv);
-        yyjson_val *val = yyjson_obj_iter_get_val(kv);
-        int is_in, pin;
-        if (!k || parse_pin_key(k, &is_in, &pin)) {
-            set_err("bad constant key \"%s\"", k ? k : "");
-            return -1;
-        }
-        if (pin < 0) {
-            set_err("negative pin index in constants for \"%s\"", desc->name);
-            return -1;
-        }
-        if (is_in) {
-            if (pin >= desc->input_count) {
-                set_err("input pin index %d out of range for \"%s\"", pin, desc->name);
-                return -1;
-            }
-            pin_value pv;
-            if (read_const(desc->inputs[pin].type, val, &pv, g)) {
-                set_err("bad value for \"%s\" input %d", desc->name, pin);
-                return -1;
-            }
-            pv.type_name = desc->inputs[pin].type_name;
-            n->inputs[pin] = pv;
-        } else {
-            if (pin >= desc->output_count) {
-                set_err("output pin index %d out of range for \"%s\"", pin, desc->name);
-                return -1;
-            }
-            pin_value pv;
-            if (read_const(desc->outputs[pin].type, val, &pv, g)) {
-                set_err("bad value for \"%s\" output %d", desc->name, pin);
-                return -1;
-            }
-            pv.type_name = desc->outputs[pin].type_name;
-            n->outputs[pin] = pv;
-        }
+    if (!arr || !yyjson_is_arr(arr)) {
+        set_err(
+            "node %llu has a missing or invalid %s pin list",
+            (unsigned long long)n->id,
+            output ? "output" : "input"
+        );
+        return -1;
     }
-    return 0;
+    yyjson_arr_iter it;
+    yyjson_arr_iter_init(arr, &it);
+    yyjson_val *v;
+    int i = 0;
+    int count = output ? n->output_count : n->input_count;
+    while ((v = yyjson_arr_iter_next(&it))) {
+        if (!yyjson_is_obj(v)) {
+            set_err("node %llu has invalid %s pin list", (unsigned long long)n->id, output ? "output" : "input");
+            return -1;
+        }
+        if (i >= count) {
+            const pin_spec *template_pin = output
+                                             ? &n->desc->outputs[n->desc->output_count - 1]
+                                             : &n->desc->inputs[n->desc->input_count - 1];
+            if (graph_add_pin(g, n, output, template_pin) < 0) {
+                set_err(
+                    "node %llu cannot extend %s pin list",
+                    (unsigned long long)n->id,
+                    output ? "output" : "input"
+                );
+                return -1;
+            }
+            count++;
+        }
+        pin_spec *p = output ? &n->output_pins[i] : &n->input_pins[i];
+        uint64_t id = 0;
+        if (json_uint(yyjson_obj_get(v, "id"), &id, "pin.id")) return -1;
+        p->id = id;
+        yyjson_val *name = yyjson_obj_get(v, "name");
+        yyjson_val *type = yyjson_obj_get(v, "type");
+        if (!yyjson_is_str(name) || !yyjson_is_int(type) ||
+            yyjson_get_sint(type) < PIN_FLOW || yyjson_get_sint(type) > PIN_ENUM) {
+            set_err("node %llu has malformed pin %d", (unsigned long long)n->id, i);
+            return -1;
+        }
+        p->name = graph_own_str(g, yyjson_get_str(name), yyjson_get_len(name));
+        p->type = (pin_type)yyjson_get_sint(type);
+        yyjson_val *tn = yyjson_obj_get(v, "type_name");
+        p->type_name = yyjson_is_str(tn)
+                         ? graph_own_str(g, yyjson_get_str(tn), yyjson_get_len(tn))
+                         : NULL;
+        yyjson_val *kind = yyjson_obj_get(v, "kind");
+        if (!yyjson_is_str(kind)) {
+            set_err("pin %d missing kind", i);
+            return -1;
+        }
+        p->kind = strcmp(yyjson_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
+        yyjson_val *container = yyjson_obj_get(v, "container");
+        if (container && yyjson_is_int(container))
+            p->container = (pin_container)yyjson_get_sint(container);
+        yyjson_val *split = yyjson_obj_get(v, "split_parent");
+        if (split && yyjson_is_uint(split))
+            p->split_parent = yyjson_get_uint(split);
+        yyjson_val *flags = yyjson_obj_get(v, "flags");
+        if (flags && yyjson_is_uint(flags))
+            p->flags = (unsigned)yyjson_get_uint(flags);
+        yyjson_val *group = yyjson_obj_get(v, "group");
+        if (group && yyjson_is_int(group))
+            p->group = (int)yyjson_get_sint(group);
+        yyjson_val *def = yyjson_obj_get(v, "default");
+        if (def) {
+            pin_value pv;
+            if (p->type == PIN_STRUCT && yyjson_is_obj(def)) {
+                const type_desc *type = find_type(p->type_name);
+                void *block = type ? graph_own_block(g, type->size) : NULL;
+                if (!type || !block) {
+                    set_err("bad struct default for pin %d", i);
+                    return -1;
+                }
+                for (int f = 0; f < type->field_count; f++) {
+                    yyjson_val *field_json = yyjson_obj_get(def, type->fields[f].name);
+                    if (!field_json) {
+                        set_err("missing struct field %s", type->fields[f].name);
+                        return -1;
+                    }
+                    pin_value field;
+                    if (read_const(type->fields[f].type, field_json, &field, g)) {
+                        set_err("bad struct field %s", type->fields[f].name);
+                        return -1;
+                    }
+                    field.type_name = type->fields[f].type_name;
+                    pin_write_field(block, &type->fields[f], field);
+                }
+                pv = (pin_value){ .type = PIN_STRUCT,
+                                  .type_name = p->type_name,
+                                  .ptr = block };
+            } else if (read_const(p->type, def, &pv, g)) {
+                set_err("bad default for pin %d", i);
+                return -1;
+            }
+            pv.type_name = p->type_name;
+            p->default_value = pv;
+            if (!output) n->inputs[i] = pv;
+            else n->outputs[i] = pv;
+        }
+        i++;
+    }
+    return i == count ? 0
+                      : (set_err(
+                             "node %llu pin count does not match descriptor",
+                             (unsigned long long)n->id
+                         ),
+                         -1);
 }
 
 graph *graph_load_json(const char *json)
@@ -330,66 +446,60 @@ graph *graph_load_json(const char *json)
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(doc);
-    if (!yyjson_is_obj(root)) {
-        set_err("root is not a JSON object");
+    yyjson_val *version = yyjson_is_obj(root) ? yyjson_obj_get(root, "version") : NULL;
+    if (!yyjson_is_uint(version) || yyjson_get_uint(version) != GRAPH_SCHEMA_VERSION) {
+        set_err("unsupported graph schema version (expected 3)");
         yyjson_doc_free(doc);
         return NULL;
     }
-
-    yyjson_val *version = yyjson_obj_get(root, "version");
-    int schema = 0; /* versionless and v1 are data-only legacy schemas. */
-    if (version) {
-        if (!yyjson_is_uint(version)) {
-            set_err("unsupported graph schema version");
-            yyjson_doc_free(doc);
-            return NULL;
-        }
-        uint64_t value = yyjson_get_uint(version);
-        if (value != 1 && value != GRAPH_SCHEMA_VERSION) {
-            set_err("unsupported graph schema version");
-            yyjson_doc_free(doc);
-            return NULL;
-        }
-        schema = (int)value;
-    }
-    yyjson_val *nodes = yyjson_obj_get(root, "nodes");
-    yyjson_val *edges = yyjson_obj_get(root, "edges");
-    if (!yyjson_is_arr(nodes)) {
-        set_err("missing or invalid \"nodes\" array");
+    yyjson_val *nodes = yyjson_obj_get(root, "nodes"),
+               *edges = yyjson_obj_get(root, "edges");
+    if (!yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
+        set_err("missing or invalid nodes or edges array");
         yyjson_doc_free(doc);
         return NULL;
     }
-    if (!yyjson_is_arr(edges)) {
-        set_err("missing or invalid \"edges\" array");
-        yyjson_doc_free(doc);
-        return NULL;
-    }
-
     graph *g = (graph *)calloc(1, sizeof *g);
     if (!g) {
         set_err("out of memory");
         yyjson_doc_free(doc);
         return NULL;
     }
-
-    yyjson_val *nv;
-    yyjson_arr_iter nit;
-    yyjson_arr_iter_init(nodes, &nit);
-    size_t idx = 0;
-    while ((nv = yyjson_arr_iter_next(&nit))) {
-        if (!yyjson_is_obj(nv)) {
-            set_err("node %zu is not an object", idx);
+    graph_init(g);
+    uint64_t requested_counter = 1;
+    yyjson_val *counter = yyjson_obj_get(root, "id_counter");
+    if (!counter || !yyjson_is_uint(counter) || yyjson_get_uint(counter) == 0) {
+        set_err("missing or invalid id_counter");
+        goto fail;
+    }
+    requested_counter = yyjson_get_uint(counter);
+    g->id_counter = requested_counter;
+    yyjson_val *metadata_name = yyjson_obj_get(root, "name");
+    yyjson_val *metadata_description = yyjson_obj_get(root, "description");
+    if (yyjson_is_str(metadata_name))
+        g->name = graph_own_str(g, yyjson_get_str(metadata_name), yyjson_get_len(metadata_name));
+    if (yyjson_is_str(metadata_description))
+        g->description = graph_own_str(g, yyjson_get_str(metadata_description), yyjson_get_len(metadata_description));
+    if (!g->name || !g->description) {
+        set_err("missing blueprint metadata");
+        goto fail;
+    }
+    yyjson_arr_iter it;
+    yyjson_arr_iter_init(nodes, &it);
+    yyjson_val *v;
+    while ((v = yyjson_arr_iter_next(&it))) {
+        if (!yyjson_is_obj(v)) {
+            set_err("node is not an object");
             goto fail;
         }
-        yyjson_val *typev = yyjson_obj_get(nv, "type");
-        if (!yyjson_is_str(typev)) {
-            set_err("node %zu is missing its \"type\"", idx);
+        yyjson_val *type = yyjson_obj_get(v, "type");
+        if (!yyjson_is_str(type)) {
+            set_err("node is missing type");
             goto fail;
         }
-        const char *tname = yyjson_get_str(typev);
-        const node_desc *desc = registry_node_by_name(tname);
+        const node_desc *desc = registry_node_by_name(yyjson_get_str(type));
         if (!desc) {
-            set_err("unknown node type \"%s\"", tname);
+            set_err("unknown node type \"%s\"", yyjson_get_str(type));
             goto fail;
         }
         node *n = graph_add_node(g, desc);
@@ -397,117 +507,159 @@ graph *graph_load_json(const char *json)
             set_err("out of memory");
             goto fail;
         }
-        yyjson_val *xv = yyjson_obj_get(nv, "x");
-        yyjson_val *yv = yyjson_obj_get(nv, "y");
-        if (xv && !yyjson_is_num(xv)) {
-            set_err("node %zu has invalid x position", idx);
+        uint64_t id = 0;
+        if (json_uint(yyjson_obj_get(v, "id"), &id, "node.id")) goto fail;
+        n->id = id;
+        yyjson_val *x = yyjson_obj_get(v, "x"), *y = yyjson_obj_get(v, "y");
+        if (x && yyjson_is_num(x)) n->x = (float)yyjson_get_real(x);
+        if (y && yyjson_is_num(y)) n->y = (float)yyjson_get_real(y);
+        yyjson_val *title = yyjson_obj_get(v, "title"),
+                   *comment = yyjson_obj_get(v, "comment"),
+                   *refname = yyjson_obj_get(v, "reference_name");
+        if (title && yyjson_is_str(title))
+            n->title_override = graph_own_str(g, yyjson_get_str(title), yyjson_get_len(title));
+        if (comment && yyjson_is_str(comment))
+            n->comment = graph_own_str(g, yyjson_get_str(comment), yyjson_get_len(comment));
+        yyjson_val *refid = yyjson_obj_get(v, "reference_id");
+        if (refid && yyjson_is_uint(refid))
+            n->reference_id = yyjson_get_uint(refid);
+        if (refname && yyjson_is_str(refname))
+            n->reference_name = graph_own_str(g, yyjson_get_str(refname), yyjson_get_len(refname));
+        yyjson_val *disabled = yyjson_obj_get(v, "disabled");
+        n->disabled = disabled && yyjson_is_bool(disabled) &&
+                      yyjson_get_bool(disabled);
+        if (load_pins(g, n, yyjson_obj_get(v, "inputs"), 0) ||
+            load_pins(g, n, yyjson_obj_get(v, "outputs"), 1))
+            goto fail;
+        if (n->id == 0) {
+            set_err("node ID zero is not allowed");
             goto fail;
         }
-        if (yv && !yyjson_is_num(yv)) {
-            set_err("node %zu has invalid y position", idx);
-            goto fail;
-        }
-        if (yyjson_is_num(xv)) n->x = (float)yyjson_get_real(xv);
-        if (yyjson_is_num(yv)) n->y = (float)yyjson_get_real(yv);
-        yyjson_val *consts = yyjson_obj_get(nv, "consts");
-        if (consts && !yyjson_is_obj(consts)) {
-            set_err("node %zu has invalid constants", idx);
-            goto fail;
-        }
-        yyjson_val *eventv = yyjson_obj_get(nv, "event");
-        if (eventv && !yyjson_is_str(eventv)) {
-            set_err("node %zu has an invalid event name", idx);
-            goto fail;
-        }
-        if (eventv) {
-            if (graph_set_event_name(g, n, yyjson_get_str(eventv))) {
-                set_err("node %zu has an event name but is not an Event node", idx);
+        for (int j = 0; j < g->node_count - 1; j++) {
+            node *other = g->nodes[j];
+            if (other->id == n->id) {
+                set_err("duplicate node ID");
                 goto fail;
             }
+            for (int p = 0; p < other->input_count; p++)
+                if (other->input_pins[p].id == n->id) {
+                    set_err("node ID collides with pin ID");
+                    goto fail;
+                }
+            for (int p = 0; p < other->output_count; p++)
+                if (other->output_pins[p].id == n->id) {
+                    set_err("node ID collides with pin ID");
+                    goto fail;
+                }
+            for (int p = 0; p < n->input_count; p++)
+                for (int q = 0; q < other->input_count; q++)
+                    if (other->input_pins[q].id == n->input_pins[p].id) {
+                        set_err("duplicate pin ID");
+                        goto fail;
+                    }
+            for (int p = 0; p < n->output_count; p++)
+                for (int q = 0; q < other->output_count; q++)
+                    if (other->output_pins[q].id == n->output_pins[p].id) {
+                        set_err("duplicate pin ID");
+                        goto fail;
+                    }
         }
-        if (consts && load_consts(desc, n, consts, g)) goto fail;
-        idx++;
+        for (int p = 0; p < n->input_count; p++) {
+            if (n->input_pins[p].id == 0) {
+                set_err("pin ID zero is not allowed");
+                goto fail;
+            }
+            for (int q = p + 1; q < n->input_count; q++)
+                if (n->input_pins[p].id == n->input_pins[q].id) {
+                    set_err("duplicate pin ID");
+                    goto fail;
+                }
+            for (int q = 0; q < n->output_count; q++)
+                if (n->input_pins[p].id == n->output_pins[q].id) {
+                    set_err("duplicate pin ID");
+                    goto fail;
+                }
+        }
+        for (int p = 0; p < n->output_count; p++) {
+            if (n->output_pins[p].id == 0) {
+                set_err("pin ID zero is not allowed");
+                goto fail;
+            }
+            for (int q = p + 1; q < n->output_count; q++)
+                if (n->output_pins[p].id == n->output_pins[q].id) {
+                    set_err("duplicate pin ID");
+                    goto fail;
+                }
+        }
+        if (n->id >= g->id_counter) g->id_counter = n->id + 1;
+        for (int i = 0; i < n->input_count; i++)
+            if (n->input_pins[i].id >= g->id_counter)
+                g->id_counter = n->input_pins[i].id + 1;
+        for (int i = 0; i < n->output_count; i++)
+            if (n->output_pins[i].id >= g->id_counter)
+                g->id_counter = n->output_pins[i].id + 1;
     }
-
-    yyjson_val *ev;
+    g->id_counter = requested_counter;
+    for (int i = 0; i < g->node_count; i++) {
+        node *n = g->nodes[i];
+        if (n->id >= g->id_counter) g->id_counter = n->id + 1;
+        for (int p = 0; p < n->input_count; p++)
+            if (n->input_pins[p].id >= g->id_counter)
+                g->id_counter = n->input_pins[p].id + 1;
+        for (int p = 0; p < n->output_count; p++)
+            if (n->output_pins[p].id >= g->id_counter)
+                g->id_counter = n->output_pins[p].id + 1;
+    }
     yyjson_arr_iter eit;
     yyjson_arr_iter_init(edges, &eit);
-    while ((ev = yyjson_arr_iter_next(&eit))) {
-        if (!yyjson_is_obj(ev)) {
+    while ((v = yyjson_arr_iter_next(&eit))) {
+        if (!yyjson_is_obj(v)) {
             set_err("edge is not an object");
             goto fail;
         }
-        yyjson_val *kindv = yyjson_obj_get(ev, "kind");
-        yyjson_val *orderv = yyjson_obj_get(ev, "order");
-        graph_edge_kind kind = GRAPH_EDGE_DATA;
-        int order = 0;
-        if (schema >= 2) {
-            if (!yyjson_is_str(kindv)) {
-                set_err("v2 edge is missing its kind");
+        uint64_t from_id, from_pin, to_id, to_pin;
+        if (json_uint(yyjson_obj_get(v, "from"), &from_id, "edge.from") ||
+            json_uint(yyjson_obj_get(v, "from_pin"), &from_pin, "edge.from_pin") ||
+            json_uint(yyjson_obj_get(v, "to"), &to_id, "edge.to") ||
+            json_uint(yyjson_obj_get(v, "to_pin"), &to_pin, "edge.to_pin"))
+            goto fail;
+        node *from = graph_node_by_id(g, from_id), *to = graph_node_by_id(g, to_id);
+        int fp = -1, tp = -1, fo = 0, to_out = 0;
+        const pin_spec *fps = graph_pin_by_id(from, from_pin, &fo, &fp),
+                       *tps = graph_pin_by_id(to, to_pin, &to_out, &tp);
+        yyjson_val *kind = yyjson_obj_get(v, "kind");
+        if (!from || !to || !fps || !tps || fo != 1 || to_out != 0 ||
+            !yyjson_is_str(kind)) {
+            set_err("edge references missing node or pin ID");
+            goto fail;
+        }
+        const char *kind_name = yyjson_get_str(kind);
+        int r;
+        if (strcmp(kind_name, "data") == 0) {
+            if (yyjson_obj_get(v, "order")) {
+                set_err("data edge has an exec order");
                 goto fail;
             }
-            const char *kind_name = yyjson_get_str(kindv);
-            if (strcmp(kind_name, "data") == 0) {
-                if (orderv) {
-                    set_err("data edge has an exec order");
-                    goto fail;
-                }
-            } else if (strcmp(kind_name, "exec") == 0) {
-                if (!yyjson_is_int(orderv) || yyjson_get_sint(orderv) < 0 ||
-                    yyjson_get_sint(orderv) > INT_MAX) {
-                    set_err("exec edge has an invalid order");
-                    goto fail;
-                }
-                kind = GRAPH_EDGE_EXEC;
-                order = (int)yyjson_get_sint(orderv);
-            } else {
-                set_err("unsupported edge kind");
+            r = graph_connect_data(g, from, fp, to, tp);
+        } else if (strcmp(kind_name, "exec") == 0) {
+            yyjson_val *order = yyjson_obj_get(v, "order");
+            if (!yyjson_is_int(order) || yyjson_get_sint(order) < 0 ||
+                yyjson_get_sint(order) > INT_MAX) {
+                set_err("exec edge has an invalid order");
                 goto fail;
             }
+            r = graph_connect_exec(g, from, fp, to, tp, (int)yyjson_get_sint(order));
         } else {
-            if (orderv || (kindv && (!yyjson_is_str(kindv) ||
-                                     strcmp(yyjson_get_str(kindv), "data") != 0))) {
-                set_err("legacy data-only edge has flow metadata");
-                goto fail;
-            }
-        }
-        yyjson_val *fv = yyjson_obj_get(ev, "from");
-        yyjson_val *fpv = yyjson_obj_get(ev, "from_pin");
-        yyjson_val *tv = yyjson_obj_get(ev, "to");
-        yyjson_val *tpv = yyjson_obj_get(ev, "to_pin");
-        if (!yyjson_is_int(fv) || !yyjson_is_int(fpv) || !yyjson_is_int(tv) ||
-            !yyjson_is_int(tpv) || yyjson_get_sint(fv) < INT_MIN ||
-            yyjson_get_sint(fv) > INT_MAX || yyjson_get_sint(fpv) < INT_MIN ||
-            yyjson_get_sint(fpv) > INT_MAX || yyjson_get_sint(tv) < INT_MIN ||
-            yyjson_get_sint(tv) > INT_MAX || yyjson_get_sint(tpv) < INT_MIN ||
-            yyjson_get_sint(tpv) > INT_MAX) {
-            set_err("edge has a missing, non-integer, or out-of-range endpoint");
+            set_err("unsupported edge kind");
             goto fail;
         }
-        int from = (int)yyjson_get_sint(fv);
-        int from_pin = (int)yyjson_get_sint(fpv);
-        int to = (int)yyjson_get_sint(tv);
-        int to_pin = (int)yyjson_get_sint(tpv);
-        if (from_pin < 0 || to_pin < 0) {
-            set_err("edge has a negative pin index");
-            goto fail;
-        }
-        if (from < 0 || from >= g->node_count || to < 0 || to >= g->node_count) {
-            set_err("edge references an out-of-range node index");
-            goto fail;
-        }
-        int connected = kind == GRAPH_EDGE_EXEC
-                          ? graph_connect_exec(g, g->nodes[from], from_pin, g->nodes[to], to_pin, order)
-                          : graph_connect_data(g, g->nodes[from], from_pin, g->nodes[to], to_pin);
-        if (connected) {
-            set_err("invalid edge: bad pin, kind, order, or incompatible types");
+        if (r) {
+            set_err("invalid edge endpoints or incompatible types");
             goto fail;
         }
     }
-
     yyjson_doc_free(doc);
     return g;
-
 fail:
     yyjson_doc_free(doc);
     graph_free(g);
@@ -523,74 +675,103 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     }
     graph *tmp = graph_load_json(json);
     if (!tmp) return -1;
-
-    for (int i = 0; i < tmp->node_count; i++) {
-        tmp->nodes[i]->x += dx;
-        tmp->nodes[i]->y += dy;
+    uint64_t *new_ids = calloc((size_t)tmp->node_count, sizeof *new_ids);
+    if (tmp->node_count && !new_ids) {
+        free(new_ids);
+        graph_free(tmp);
+        free(tmp);
+        set_err("out of memory");
+        return -1;
     }
-
-    /* Pre-grow g's arrays so the append is atomic on OOM: counts change only
-     * after every realloc has succeeded. */
-    int nn = g->node_count + tmp->node_count;
-    int ne = g->edge_count + tmp->edge_count;
-    int ns = g->string_count + tmp->string_count;
-
+    for (int i = 0; i < tmp->node_count; i++) {
+        node *n = tmp->nodes[i];
+        new_ids[i] = graph_alloc_id(g);
+        n->id = new_ids[i];
+        n->x += dx;
+        n->y += dy;
+        for (int p = 0; p < n->input_count; p++)
+            n->input_pins[p].id = graph_alloc_id(g);
+        for (int p = 0; p < n->output_count; p++)
+            n->output_pins[p].id = graph_alloc_id(g);
+    }
+    for (int i = 0; i < tmp->edge_count; i++) {
+        edge *e = &tmp->edges[i];
+        e->from_id = e->from->id;
+        e->to_id = e->to->id;
+        e->from_pin_id = e->from->output_pins[e->from_pin].id;
+        e->to_pin_id = e->to->input_pins[e->to_pin].id;
+    }
+    int nn = g->node_count + tmp->node_count, ne = g->edge_count + tmp->edge_count,
+        ns = g->string_count + tmp->string_count,
+        nb = g->block_count + tmp->block_count;
     if (nn > g->node_cap) {
         int cap = g->node_cap ? g->node_cap : 8;
         while (cap < nn) cap *= 2;
-        node **v = (node **)realloc(g->nodes, (size_t)cap * sizeof *v);
-        if (!v) goto oom;
-        g->nodes = v;
+        node **p = realloc(g->nodes, (size_t)cap * sizeof *p);
+        if (!p) goto oom;
+        g->nodes = p;
         g->node_cap = cap;
     }
     if (ne > g->edge_cap) {
         int cap = g->edge_cap ? g->edge_cap : 8;
         while (cap < ne) cap *= 2;
-        edge *v = (edge *)realloc(g->edges, (size_t)cap * sizeof *v);
-        if (!v) goto oom;
-        g->edges = v;
+        edge *p = realloc(g->edges, (size_t)cap * sizeof *p);
+        if (!p) goto oom;
+        g->edges = p;
         g->edge_cap = cap;
     }
     if (ns > g->string_cap) {
         int cap = g->string_cap ? g->string_cap : 8;
         while (cap < ns) cap *= 2;
-        char **v = (char **)realloc(g->strings, (size_t)cap * sizeof *v);
-        if (!v) goto oom;
-        g->strings = v;
+        char **p = realloc(g->strings, (size_t)cap * sizeof *p);
+        if (!p) goto oom;
+        g->strings = p;
         g->string_cap = cap;
     }
-
+    if (nb > g->block_cap) {
+        int cap = g->block_cap ? g->block_cap : 8;
+        while (cap < nb) cap *= 2;
+        void **p = realloc(g->blocks, (size_t)cap * sizeof *p);
+        if (!p) goto oom;
+        g->blocks = p;
+        g->block_cap = cap;
+    }
     memcpy(
-        &g->nodes[g->node_count],
+        g->nodes + g->node_count,
         tmp->nodes,
         (size_t)tmp->node_count * sizeof *tmp->nodes
     );
     memcpy(
-        &g->edges[g->edge_count],
+        g->edges + g->edge_count,
         tmp->edges,
         (size_t)tmp->edge_count * sizeof *tmp->edges
     );
     memcpy(
-        &g->strings[g->string_count],
+        g->strings + g->string_count,
         tmp->strings,
         (size_t)tmp->string_count * sizeof *tmp->strings
+    );
+    memcpy(
+        g->blocks + g->block_count,
+        tmp->blocks,
+        (size_t)tmp->block_count * sizeof *tmp->blocks
     );
     g->node_count = nn;
     g->edge_count = ne;
     g->string_count = ns;
+    g->block_count = nb;
     g->topology_revision++;
-
-    /* Transfer ownership: free tmp's pointer arrays, but keep the node structs
-     * and string literals they point to (now owned by g). */
+    free(new_ids);
     free(tmp->nodes);
     free(tmp->edges);
     free(tmp->strings);
+    free(tmp->blocks);
     free(tmp);
     return 0;
-
 oom:
-    set_err("out of memory");
+    free(new_ids);
     graph_free(tmp);
     free(tmp);
+    set_err("out of memory");
     return -1;
 }

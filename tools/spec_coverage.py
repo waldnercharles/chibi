@@ -86,14 +86,29 @@ def cited_ids(text):
     return found
 
 
+def covers_block(section):
+    """The IDs on a phase's `Covers:` line, which may wrap several lines.
+
+    Only this block counts as a phase claiming a requirement. A phase's prose
+    mentions IDs for other reasons, such as explaining that a requirement moved
+    to a later phase, and counting those as claims makes the explanation itself
+    trip the gate.
+    """
+    match = re.search(r"^Covers:(.*?)(?:\n\s*\n)", section, re.S | re.M)
+    return cited_ids(match.group(1)) if match else set()
+
+
+def phase_sections(roadmap_text):
+    for section in re.split(r"^## ", roadmap_text, flags=re.M)[1:]:
+        yield section.split("\n", 1)[0], section
+
+
 def completed_phase_ids(roadmap_text):
-    """IDs covered by phases whose heading is marked (done)."""
+    """IDs a phase marked (done) claims on its Covers line."""
     covered = set()
-    sections = re.split(r"^## ", roadmap_text, flags=re.M)[1:]
-    for section in sections:
-        heading = section.split("\n", 1)[0]
+    for heading, section in phase_sections(roadmap_text):
         if "(done)" in heading.lower():
-            covered |= cited_ids(section)
+            covered |= covers_block(section)
     return covered
 
 

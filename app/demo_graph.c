@@ -13,12 +13,10 @@ int demo_graph_seed(graph *g)
     node *a = graph_add_node(g, add);
     if (!c1 || !c2 || !a) return -1;
 
-    c1->outputs[0].type = PIN_F32;
-    c1->outputs[0].type_name = "float";
-    c1->outputs[0].f = 2.0f;
-    c2->outputs[0].type = PIN_F32;
-    c2->outputs[0].type_name = "float";
-    c2->outputs[0].f = 3.0f;
+    pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
+    pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
+    if (graph_set_pin_default(g, c1, 1, 0, &two)) return -1;
+    if (graph_set_pin_default(g, c2, 1, 0, &three)) return -1;
 
     c1->x = -260.0f;
     c1->y = -50.0f;
@@ -51,13 +49,15 @@ int demo_graph_seed_flow(graph *g)
     node *branch = flow_demo_node(g, "Branch", 80.0f, -120.0f);
     node *condition = flow_demo_node(g, "const_bool", -140.0f, 100.0f);
     node *loop = flow_demo_node(g, "ForLoop", 300.0f, -120.0f);
-    node *body = flow_demo_node(g, "Sequence4", 540.0f, -220.0f);
-    node *completed = flow_demo_node(g, "Sequence4", 540.0f, 20.0f);
-    node *third = flow_demo_node(g, "Sequence4", 300.0f, 300.0f);
+    node *body = flow_demo_node(g, "Sequence", 540.0f, -220.0f);
+    node *completed = flow_demo_node(g, "Sequence", 540.0f, 20.0f);
+    node *third = flow_demo_node(g, "Sequence", 300.0f, 300.0f);
     node *alternate = flow_demo_node(g, "Branch", -120.0f, 300.0f);
     if (!event || !sequence || !delay || !branch || !condition || !loop ||
         !body || !completed || !third || !alternate)
         return -1;
+    pin_spec sequence_extra = { "Then2", PIN_FLOW, NULL, PIN_EXEC };
+    if (graph_add_pin(g, sequence, 1, &sequence_extra) < 0) return -1;
 
     if (graph_set_event_name(g, event, "OnStart")) return -1;
     condition->outputs[0].b = true;

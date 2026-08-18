@@ -154,26 +154,64 @@ static float ed_max(float a, float b) { return a > b ? a : b; }
 
 static float ed_abs(float a) { return a < 0.0f ? -a : a; }
 
+typedef struct ed_node_colors
+{
+    ImVec4 background;
+    ImVec4 border;
+    ImVec4 title;
+} ed_node_colors;
+
+static const ImVec4 ED_PIN_COLORS[] = {
+    [PIN_FLOW] = { 0.86f, 0.86f, 0.86f, 1.0f },
+    [PIN_BOOL] = { 1.0f, 0.63f, 0.47f, 1.0f },
+    [PIN_I8] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_U8] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_I16] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_U16] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_I32] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_U32] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_I64] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_U64] = { 0.43f, 0.86f, 0.63f, 1.0f },
+    [PIN_F32] = { 0.43f, 0.71f, 1.0f, 1.0f },
+    [PIN_F64] = { 0.43f, 0.71f, 1.0f, 1.0f },
+    [PIN_STR] = { 0.86f, 0.63f, 1.0f, 1.0f },
+    [PIN_STRUCT] = { 1.0f, 0.86f, 0.47f, 1.0f },
+    [PIN_ENUM] = { 0.43f, 0.86f, 0.63f, 1.0f },
+};
+
+static const ed_node_colors ED_NODE_COLORS[] = {
+    [NODE_DISPLAY_PURE] = { { 0.48f, 0.32f, 0.52f, 1.0f },
+                            { 0.70f, 0.50f, 0.78f, 1.0f },
+                            { 0.34f, 0.22f, 0.42f, 1.0f } },
+    [NODE_DISPLAY_EVENT] = { { 0.48f, 0.34f, 0.20f, 1.0f },
+                             { 0.82f, 0.62f, 0.34f, 1.0f },
+                             { 0.55f, 0.36f, 0.18f, 1.0f } },
+    [NODE_DISPLAY_FUNCTION] = { { 0.24f, 0.40f, 0.52f, 1.0f },
+                                { 0.42f, 0.68f, 0.82f, 1.0f },
+                                { 0.18f, 0.32f, 0.46f, 1.0f } },
+    [NODE_DISPLAY_FLOW] = { { 0.30f, 0.38f, 0.24f, 1.0f },
+                            { 0.54f, 0.72f, 0.38f, 1.0f },
+                            { 0.22f, 0.32f, 0.18f, 1.0f } },
+    [NODE_DISPLAY_VARIABLE] = { { 0.46f, 0.30f, 0.24f, 1.0f },
+                                { 0.78f, 0.52f, 0.38f, 1.0f },
+                                { 0.36f, 0.22f, 0.18f, 1.0f } },
+    [NODE_DISPLAY_LITERAL] = { { 0.30f, 0.34f, 0.42f, 1.0f },
+                               { 0.56f, 0.62f, 0.74f, 1.0f },
+                               { 0.22f, 0.28f, 0.38f, 1.0f } },
+};
+
 static ImVec4 ed_pin_color(pin_type t)
 {
-    switch (t) {
-        case PIN_F32:
-        case PIN_F64: return (ImVec4){ 0.43f, 0.71f, 1.0f, 1.0f };
-        case PIN_I8:
-        case PIN_U8:
-        case PIN_I16:
-        case PIN_U16:
-        case PIN_I32:
-        case PIN_U32:
-        case PIN_I64:
-        case PIN_U64:
-        case PIN_ENUM: return (ImVec4){ 0.43f, 0.86f, 0.63f, 1.0f };
-        case PIN_BOOL: return (ImVec4){ 1.0f, 0.63f, 0.47f, 1.0f };
-        case PIN_STR: return (ImVec4){ 0.86f, 0.63f, 1.0f, 1.0f };
-        case PIN_STRUCT: return (ImVec4){ 1.0f, 0.86f, 0.47f, 1.0f };
-        case PIN_FLOW:
-        default: return (ImVec4){ 0.86f, 0.86f, 0.86f, 1.0f };
-    }
+    return t >= PIN_FLOW && t <= PIN_ENUM ? ED_PIN_COLORS[t] : ED_PIN_COLORS[PIN_FLOW];
+}
+
+static ed_node_colors ed_node_colors_for(const node *n)
+{
+    node_display_class display = n && n->desc ? n->desc->display_class
+                                              : NODE_DISPLAY_PURE;
+    if (display < NODE_DISPLAY_PURE || display > NODE_DISPLAY_LITERAL)
+        display = NODE_DISPLAY_PURE;
+    return ED_NODE_COLORS[display];
 }
 
 static ImU32 ed_color(ImVec4 c)
@@ -382,8 +420,8 @@ static int ed_input_connected(const graph *g, const node *n, int pin)
 
 static int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
 {
-    const pin_spec *spec = kind == ED_PIN_INPUT ? &n->desc->inputs[pin]
-                                                : &n->desc->outputs[pin];
+    const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
+                                                : &n->output_pins[pin];
     if (spec->kind != PIN_DATA) return 0;
     return kind == ED_PIN_INPUT ? !ed_input_connected(g, n, pin)
                                 : n->desc->eval == node_eval_const;
@@ -391,8 +429,8 @@ static int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
 
 static float ed_pin_text_width(const editor *e, const graph *g, const node *n, int kind, int pin)
 {
-    const node_desc *d = n->desc;
-    const pin_spec *spec = kind == ED_PIN_INPUT ? &d->inputs[pin] : &d->outputs[pin];
+    const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
+                                                : &n->output_pins[pin];
     ImVec2 label = ImGui_CalcTextSize(spec->name);
     if (ed_pin_editable(g, n, kind, pin))
         return label.x + ED_VALUE_WIDTH / e->zoom + 16.0f;
@@ -410,8 +448,8 @@ static void ed_build_layout(editor *e)
 {
     int pin_total = 0;
     for (int i = 0; i < e->g->node_count; i++) {
-        const node_desc *d = e->g->nodes[i]->desc;
-        pin_total += d->input_count + d->output_count;
+        const node *n = e->g->nodes[i];
+        pin_total += n->input_count + n->output_count;
     }
     if (ed_grow_views(e, e->g->node_count, pin_total)) {
         e->view_count = 0;
@@ -426,18 +464,19 @@ static void ed_build_layout(editor *e)
         const node_desc *d = n->desc;
         float left = 0.0f;
         float right = 0.0f;
-        for (int p = 0; p < d->input_count; p++)
+        for (int p = 0; p < n->input_count; p++)
             left = ed_max(left, ed_pin_text_width(e, e->g, n, ED_PIN_INPUT, p));
-        for (int p = 0; p < d->output_count; p++)
+        for (int p = 0; p < n->output_count; p++)
             right = ed_max(right, ed_pin_text_width(e, e->g, n, ED_PIN_OUTPUT, p));
 
         ImVec2 title = ImGui_CalcTextSize(d->name);
         float width = ed_max(title.x, left + right + 28.0f) + 2.0f * ED_PAD;
-        int rows = d->input_count > d->output_count ? d->input_count : d->output_count;
+        int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         float row_height = line + 6.0f;
         float title_height = line + 2.0f * ED_TITLE_PAD;
         float height = title_height + ED_PAD + rows * row_height + ED_PAD;
         ImVec2 min = ed_world_to_screen(e, n->x, n->y);
+
         ImVec2 max = ed_add(min, ed_scale((ImVec2){ width, height }, e->zoom));
 
         ed_node_view *v = &e->views[i];
@@ -446,13 +485,13 @@ static void ed_build_layout(editor *e)
         v->max = max;
         v->title_height = title_height * e->zoom;
         v->input_first = pin_at;
-        for (int p = 0; p < d->input_count; p++) {
+        for (int p = 0; p < n->input_count; p++) {
             float y = min.y + v->title_height +
                       (ED_PAD + (p + 0.5f) * row_height) * e->zoom;
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_INPUT, p, { min.x, y } };
         }
         v->output_first = pin_at;
-        for (int p = 0; p < d->output_count; p++) {
+        for (int p = 0; p < n->output_count; p++) {
             float y = min.y + v->title_height +
                       (ED_PAD + (p + 0.5f) * row_height) * e->zoom;
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y } };
@@ -574,8 +613,11 @@ static void ed_draw_text(ImDrawList *dl, ImVec2 pos, ImU32 color, const char *te
     ImDrawList_AddTextImFontPtr(dl, ImGui_GetFont(), ImGui_GetFontSize(), pos, color, text);
 }
 
-static pin_value *ed_pin_value(node *n, int kind, int index)
-{ return kind == ED_PIN_INPUT ? &n->inputs[index] : &n->outputs[index]; }
+static const pin_value *ed_pin_authored(const node *n, int kind, int index)
+{
+    return kind == ED_PIN_INPUT ? &n->input_pins[index].default_value
+                                : &n->output_pins[index].default_value;
+}
 
 static int ed_edit_hit(ImVec2 mouse, ImVec2 pos, float width)
 {
@@ -611,7 +653,8 @@ static void ed_finish_value_edit(editor *e, int changed)
 
 static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
 {
-    pin_value *v = ed_pin_value(n, kind, index);
+    pin_value authored = *ed_pin_authored(n, kind, index);
+    pin_value *v = &authored;
     int changed = 0;
     char id[32];
     snprintf(id, sizeof id, "##value_%d_%d", kind, index);
@@ -672,6 +715,8 @@ static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 
     }
     ImGui_PopID();
     ImGui_PopID();
+    if (changed)
+        graph_set_pin_default(e->g, n, kind == ED_PIN_OUTPUT, index, v);
     ed_finish_value_edit(e, changed);
     return changed;
 }
@@ -682,11 +727,10 @@ static void ed_draw_controls(editor *e)
     for (int i = 0; i < e->view_count; i++) {
         ed_node_view *view = &e->views[i];
         node *n = view->n;
-        const node_desc *d = n->desc;
-        for (int p = 0; p < d->input_count; p++) {
+        for (int p = 0; p < n->input_count; p++) {
             if (!ed_pin_editable(e->g, n, ED_PIN_INPUT, p)) continue;
             ed_pin_view *pin = &e->pins[view->input_first + p];
-            ImVec2 label = ImGui_CalcTextSize(d->inputs[p].name);
+            ImVec2 label = ImGui_CalcTextSize(n->input_pins[p].name);
             ImVec2 pos = ed_add(
                 pin->pos,
                 (ImVec2){ (ED_PIN_RADIUS + 9.0f) * e->zoom + label.x,
@@ -696,10 +740,10 @@ static void ed_draw_controls(editor *e)
             ed_draw_value_editor(e, n, ED_PIN_INPUT, p, pos);
             e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
         }
-        for (int p = 0; p < d->output_count; p++) {
+        for (int p = 0; p < n->output_count; p++) {
             if (!ed_pin_editable(e->g, n, ED_PIN_OUTPUT, p)) continue;
             ed_pin_view *pin = &e->pins[view->output_first + p];
-            ImVec2 label = ImGui_CalcTextSize(d->outputs[p].name);
+            ImVec2 label = ImGui_CalcTextSize(n->output_pins[p].name);
             ImVec2 pos = { pin->pos.x - (ED_PIN_RADIUS + 9.0f) * e->zoom -
                                label.x - ED_VALUE_WIDTH,
                            pin->pos.y - ImGui_GetTextLineHeight() * 0.5f - 2.0f };
@@ -744,13 +788,15 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     ImVec2 p0, p1, p2, p3;
     if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) return;
     ed_link_ref ref = { ed->from, ed->from_pin, ed->to, ed->to_pin };
-    ImU32 color = ed_link_equal(&ref, &e->selected_link) && e->has_selected_link
-                    ? IM_COL32(255, 210, 100, 255)
-                : ed->kind == GRAPH_EDGE_EXEC ? IM_COL32(255, 145, 55, 255)
-                                              : IM_COL32(150, 165, 195, 255);
-    float thickness = ed_link_equal(&ref, &e->selected_link) && e->has_selected_link
-                        ? 4.0f
-                        : 3.0f;
+    int selected = ed_link_equal(&ref, &e->selected_link) && e->has_selected_link;
+    const pin_spec *source = ed->from && ed->from_pin >= 0 &&
+                                     ed->from_pin < ed->from->output_count
+                               ? &ed->from->output_pins[ed->from_pin]
+                               : NULL;
+    ImVec4 base = source ? ed_spec_color(source) : ed_pin_color(PIN_FLOW);
+    ImU32 color = ed_color(base);
+    if (selected) color = ed_color((ImVec4){ 1.0f, 0.82f, 0.39f, 1.0f });
+    float thickness = selected ? 4.0f : 3.0f;
     ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, thickness, 0);
 }
 
@@ -759,10 +805,19 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
     node *n = v->n;
     const node_desc *d = n->desc;
     int selected = ed_node_selected(e, n);
-    ImU32 bg = selected ? IM_COL32(65, 76, 106, 255) : IM_COL32(48, 51, 61, 255);
-    ImU32 border = selected ? IM_COL32(150, 190, 255, 255)
-                            : IM_COL32(105, 110, 125, 255);
-    ImU32 title = selected ? IM_COL32(72, 100, 155, 255) : IM_COL32(57, 78, 120, 255);
+    ed_node_colors colors = ed_node_colors_for(n);
+    ImU32 bg = ed_color(colors.background);
+    ImU32 border = ed_color(colors.border);
+    ImU32 title = ed_color(colors.title);
+    if (selected) {
+        border = ed_color((ImVec4){ 0.78f, 0.86f, 1.0f, 1.0f });
+        title = ed_color((ImVec4){ 0.36f, 0.50f, 0.76f, 1.0f });
+    }
+    if (n->disabled) {
+        bg = ed_dim_color(bg, 0.55f);
+        border = ed_dim_color(border, 0.65f);
+        title = ed_dim_color(title, 0.60f);
+    }
     ImDrawList_AddRectFilledEx(dl, v->min, v->max, bg, 5.0f * e->zoom, ImDrawFlags_RoundCornersAll);
     ImDrawList_AddRectFilledEx(
         dl,
@@ -780,10 +835,10 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
         d->name
     );
 
-    int rows = d->input_count > d->output_count ? d->input_count : d->output_count;
+    int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
     for (int row = 0; row < rows; row++) {
-        if (row < d->input_count) {
-            const pin_spec *spec = &d->inputs[row];
+        if (row < n->input_count) {
+            const pin_spec *spec = &n->input_pins[row];
             ed_pin_view *pin = &e->pins[v->input_first + row];
             ImU32 color = ed_color(ed_spec_color(spec));
             ImDrawList_AddCircleFilled(dl, pin->pos, ed_max(2.0f, ED_PIN_RADIUS * e->zoom), color, 0);
@@ -791,7 +846,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
                 dl,
                 pin->pos,
                 ed_max(2.0f, ED_PIN_RADIUS * e->zoom),
-                IM_COL32(20, 22, 28, 255)
+                ed_dim_color(color, 0.28f)
             );
             ed_draw_text(
                 dl,
@@ -814,8 +869,8 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
                 );
             }
         }
-        if (row < d->output_count) {
-            const pin_spec *spec = &d->outputs[row];
+        if (row < n->output_count) {
+            const pin_spec *spec = &n->output_pins[row];
             ed_pin_view *pin = &e->pins[v->output_first + row];
             ImU32 color = ed_color(ed_spec_color(spec));
             ImVec2 label = ImGui_CalcTextSize(spec->name);
@@ -824,7 +879,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
                 dl,
                 pin->pos,
                 ed_max(2.0f, ED_PIN_RADIUS * e->zoom),
-                IM_COL32(20, 22, 28, 255)
+                ed_dim_color(color, 0.28f)
             );
             ed_draw_text(
                 dl,
@@ -865,7 +920,10 @@ static void ed_draw_canvas(editor *e)
         float bend = ed_max(40.0f * e->zoom, ed_abs(p3.x - p0.x) * 0.5f);
         ImVec2 p1 = ed_add(p0, (ImVec2){ output ? bend : -bend, 0.0f });
         ImVec2 p2 = ed_add(p3, (ImVec2){ output ? -bend : bend, 0.0f });
-        ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, IM_COL32(120, 200, 255, 220), 3.0f, 0);
+        const pin_spec *spec = output
+                                 ? &e->link_pin.n->output_pins[e->link_pin.index]
+                                 : &e->link_pin.n->input_pins[e->link_pin.index];
+        ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, ed_color(ed_spec_color(spec)), 3.0f, 0);
     }
 
     ImDrawList_PopClipRect(dl);
@@ -989,6 +1047,7 @@ static void ed_copy_selected(editor *e)
     if (e->selected_count == 0) return;
     char *json = graph_save_nodes_json(e->g, e->selected, e->selected_count);
     if (!json) return;
+    ImGui_SetClipboardText(json);
     free(e->clipboard);
     e->clipboard = json;
 }
@@ -1002,9 +1061,11 @@ static void ed_cut_selected(editor *e)
 
 static void ed_paste(editor *e)
 {
-    if (!e->clipboard) return;
+    const char *clipboard = ImGui_GetClipboardText();
+    if (!clipboard || !clipboard[0]) clipboard = e->clipboard;
+    if (!clipboard) return;
     ed_snapshot_before(e);
-    graph_append_json(e->g, e->clipboard, 24.0f, 24.0f);
+    graph_append_json(e->g, clipboard, 24.0f, 24.0f);
 }
 
 static void ed_duplicate_selected(editor *e)
@@ -1055,8 +1116,8 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     const ed_pin_view *output = a->kind == ED_PIN_OUTPUT ? a : b;
     const ed_pin_view *input = a->kind == ED_PIN_INPUT ? a : b;
     if (output->kind != ED_PIN_OUTPUT || input->kind != ED_PIN_INPUT) return 0;
-    const pin_spec *out_spec = &output->n->desc->outputs[output->index];
-    const pin_spec *in_spec = &input->n->desc->inputs[input->index];
+    const pin_spec *out_spec = &output->n->output_pins[output->index];
+    const pin_spec *in_spec = &input->n->input_pins[input->index];
     if (out_spec->kind != in_spec->kind) return 0;
     if (out_spec->kind == PIN_DATA && !pin_types_compatible(out_spec, in_spec))
         return 0;
@@ -1117,6 +1178,23 @@ static void ed_open_context_menu(editor *e, ImVec2 mouse)
 static void ed_handle_popups(editor *e)
 {
     if (ImGui_BeginPopup("node_menu", 0)) {
+        node *n = e->context_node;
+        if (n && n->desc && strcmp(n->desc->name, "Sequence") == 0) {
+            if (ImGui_MenuItem("Add output pin")) {
+                pin_spec pin = { "Then", PIN_FLOW, NULL, PIN_EXEC };
+                ed_snapshot_before(e);
+                graph_add_pin(e->g, n, 1, &pin);
+            }
+            if (n->output_count > 2 && ImGui_MenuItem("Remove last output pin")) {
+                ed_snapshot_before(e);
+                graph_remove_pin(e->g, n, 1, n->output_count - 1);
+            }
+            ImGui_Separator();
+        }
+        if (n && ImGui_MenuItem(n->disabled ? "Enable" : "Disable")) {
+            ed_snapshot_before(e);
+            graph_set_node_disabled(e->g, n, !n->disabled);
+        }
         if (ImGui_MenuItem("Delete")) {
             ed_select_node(e, e->context_node, 0);
             ed_delete_selected(e);
@@ -1264,15 +1342,21 @@ static void ed_draw_toolbar(editor *e)
     int entries = ed_entry_count(e);
     if (e->entry_index >= entries) e->entry_index = entries ? entries - 1 : 0;
     node *entry = ed_entry_at(e, e->entry_index);
-    const char *entry_name = entry && entry->event_name ? entry->event_name
-                                                        : "(unnamed event)";
+    const char *entry_name = entry && entry->reference_name ? entry->reference_name
+                                                            : "(unnamed event)";
     if (ImGui_BeginCombo("Entry", entry_name, 0)) {
         int at = 0;
         for (int i = 0; i < e->g->node_count; i++) {
             node *n = e->g->nodes[i];
             if (n->desc->flow_kind != NODE_FLOW_EVENT) continue;
             char label[160];
-            snprintf(label, sizeof label, "%s##entry_%d", n->event_name ? n->event_name : "(unnamed event)", at);
+            snprintf(
+                label,
+                sizeof label,
+                "%s##entry_%d",
+                n->reference_name ? n->reference_name : "(unnamed event)",
+                at
+            );
             if (ImGui_SelectableEx(label, at == e->entry_index, 0, (ImVec2){ 0.0f, 0.0f }))
                 e->entry_index = at;
             at++;

@@ -125,9 +125,9 @@ static void graph_resume(flow_run *run)
 static int schedule_output(flow_context *ctx, int output_pin)
 {
     flow_run *run = ctx->run;
-    if (output_pin < 0 || output_pin >= ctx->node->desc->output_count)
+    if (output_pin < 0 || output_pin >= ctx->node->output_count)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "flow output pin out of range");
-    if (ctx->node->desc->outputs[output_pin].kind != PIN_EXEC)
+    if (ctx->node->output_pins[output_pin].kind != PIN_EXEC)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "continuation is not an EXEC output");
 
     node *target = NULL;
@@ -146,7 +146,7 @@ static int schedule_output(flow_context *ctx, int output_pin)
     }
     if (!found) return FLOW_OK;
     if (target_pin < 0 || target_pin >= target->desc->input_count ||
-        target->desc->inputs[target_pin].kind != PIN_EXEC)
+        target->input_pins[target_pin].kind != PIN_EXEC)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "invalid EXEC target");
     return frame_push(run, (flow_frame){ target, FLOW_FRAME_NODE, 0, 0 })
              ? flow_context_fail(ctx, FLOW_ERR_NODE, "flow continuation allocation failed")
@@ -194,7 +194,7 @@ static const type_desc *watch_type(const flow_run *run, const node *n, int outpu
             type = source->desc->type;
     }
     if (!type) {
-        const pin_spec *spec = output ? n->desc->outputs + pin : n->desc->inputs + pin;
+        const pin_spec *spec = output ? n->output_pins + pin : n->input_pins + pin;
         if (spec && spec->type_name)
             for (int i = 0; i < REGISTRY_TYPE_COUNT; i++)
                 if (strcmp(REGISTRY_TYPES[i]->name, spec->type_name) == 0)
@@ -267,11 +267,11 @@ static int watch_store(flow_run *run, const node *n, int output, int pin, const 
 static void watch_capture_node(flow_run *run, node *n)
 {
     if (!run || !n || !n->desc) return;
-    for (int i = 0; i < n->desc->input_count; i++)
-        if (n->desc->inputs[i].kind == PIN_DATA)
+    for (int i = 0; i < n->input_count; i++)
+        if (n->input_pins[i].kind == PIN_DATA)
             (void)watch_store(run, n, 0, i, &n->inputs[i]);
-    for (int i = 0; i < n->desc->output_count; i++)
-        if (n->desc->outputs[i].kind == PIN_DATA)
+    for (int i = 0; i < n->output_count; i++)
+        if (n->output_pins[i].kind == PIN_DATA)
             (void)watch_store(run, n, 1, i, &n->outputs[i]);
 }
 
@@ -322,6 +322,19 @@ static int flow_run_activate(flow_run *run)
     if (!n || !n->desc || !n->desc->flow) {
         flow_fail(run, FLOW_ERR_INVALID_NODE, n, "node has no flow evaluator");
         return FLOW_ERR_INVALID_NODE;
+    }
+
+    if (n->disabled) {
+        for (int i = 0; i < n->output_count; i++) {
+            if (n->output_pins[i].kind != PIN_DATA) continue;
+            n->outputs[i] = (pin_value){ .type = n->output_pins[i].type,
+                                         .type_name = n->output_pins[i].type_name };
+        }
+        watch_capture_node(run, n);
+        for (int i = 0; i < n->output_count; i++)
+            if (n->output_pins[i].kind == PIN_EXEC)
+                return schedule_output_for_node(run, n, i);
+        return FLOW_OK;
     }
 
     flow_context ctx = { run, n, 0, 0.0, -1, 0 };
@@ -430,8 +443,8 @@ flow_run *graph_run_event(graph *g, const char *name, flow_inputs inputs, flow_e
     node *found = NULL;
     for (int i = 0; i < g->node_count; i++) {
         node *n = g->nodes[i];
-        if (n->desc->flow_kind != NODE_FLOW_EVENT || !n->event_name ||
-            strcmp(n->event_name, name) != 0)
+        if (n->desc->flow_kind != NODE_FLOW_EVENT || !n->reference_name ||
+            strcmp(n->reference_name, name) != 0)
             continue;
         if (found) {
             set_error(error, FLOW_ERR_DUPLICATE_EVENT, n, "duplicate event name");
@@ -624,10 +637,9 @@ double flow_context_now(const struct flow_context *ctx)
 
 int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *out)
 {
-    if (!ctx || !ctx->run || !out || input_pin < 0 ||
-        input_pin >= ctx->node->desc->input_count)
+    if (!ctx || !ctx->run || !out || input_pin < 0 || input_pin >= ctx->node->input_count)
         return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "invalid data input");
-    const pin_spec *spec = &ctx->node->desc->inputs[input_pin];
+    const pin_spec *spec = &ctx->node->input_pins[input_pin];
     if (spec->kind != PIN_DATA)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "EXEC input used as data");
 
@@ -689,9 +701,9 @@ int flow_context_continue(struct flow_context *ctx, int output_pin)
 int flow_context_loop(struct flow_context *ctx, int first, int last)
 {
     if (!ctx || !ctx->run) return FLOW_ERR_ARGUMENT;
-    if (ctx->node->desc->output_count < 3 || ctx->node->desc->outputs[0].kind != PIN_EXEC ||
-        ctx->node->desc->outputs[1].kind != PIN_DATA ||
-        ctx->node->desc->outputs[2].kind != PIN_EXEC)
+    if (ctx->node->output_count < 3 || ctx->node->output_pins[0].kind != PIN_EXEC ||
+        ctx->node->output_pins[1].kind != PIN_DATA ||
+        ctx->node->output_pins[2].kind != PIN_EXEC)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "invalid ForLoop descriptor");
 
     if (first > last) return flow_context_continue(ctx, 2);

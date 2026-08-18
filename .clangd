@@ -1,0 +1,13 @@
+# Point clangd at the CMake compilation database.
+#
+# CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON, so build/ already holds
+# the real compile flags, including the libclang include directory that
+# find_path() resolved for reflect/reflect.c. Without this file clangd searches
+# only the source tree, fails to resolve <clang-c/Index.h> and <dcimgui.h>, and
+# reports missing-header errors that the actual build does not have.
+#
+# Those false positives are dangerous rather than merely noisy: the tempting fix
+# is to hardcode an absolute include path into the source, which trades a real
+# portability property for a quiet editor.
+CompileFlags:
+  CompilationDatabase: build

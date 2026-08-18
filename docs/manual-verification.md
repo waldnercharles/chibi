@@ -33,6 +33,12 @@ Rules:
 | `UI-40` | 2026-08-18 | 4172695 | The output log offers Clear, disabled when the log is empty. |
 | `UI-41` | 2026-08-18 | 4172695 | Editing during a live run stops the run and applies the edit. Verified against the crash found on Run, Reset, Undo, which is fixed. |
 
+## Already satisfied when checked
+
+| ID | Verified | Commit | What was exercised |
+| --- | --- | --- | --- |
+| `UI-51` | 2026-08-18 | d1ae2ff | Selecting three nodes and dragging one moves all three with their relative positions intact. No work was needed: `ed_begin_drag()` already captures the whole selection, and `editor.c:2034` only re-selects a node that was not already selected, so clicking one member of a multi-selection does not collapse it. Scheduled as Phase 8 deliverable 9 before being checked. |
+
 ## Phase 2
 
 | ID | Verified | Commit | What was exercised |

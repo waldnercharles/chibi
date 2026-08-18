@@ -651,8 +651,10 @@ Deliverables:
    `UI-48`, `UI-50`.
 8. Visualisation reads traversal records only, with no evaluator callback.
    `UI-49`.
-9. Multi-selection drag moves every selected node and preserves relative
-   positions. `UI-51`.
+9. Multi-selection drag needs no work. `UI-51` was already satisfied and was
+   verified manually on 2026-08-18 against d1ae2ff; see
+   docs/manual-verification.md. It was listed as a deliverable here before
+   anyone checked whether it already worked.
 
 Acceptance criteria:
 
@@ -668,8 +670,6 @@ Acceptance criteria:
   most recent ones and discards the oldest, with no growth in memory.
 - `UI-44`: dot spacing and travel speed measured in canvas units are unchanged
   across a 4x zoom range.
-- `UI-51`: selecting three nodes and dragging one moves all three, and their
-  pairwise offsets are unchanged afterwards.
 - Manual `UI-45`, `UI-46`, `UI-47`: run the flow demo and confirm the decay
   reads as a fade rather than a step change.
 

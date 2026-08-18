@@ -1,7 +1,7 @@
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR := build
 
-.PHONY: all build run format check-format test clean
+.PHONY: all build run format check-format test spec-check clean
 
 all: build
 
@@ -17,8 +17,13 @@ format:
 check-format:
 	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target check-format
 
-test: build
+test: build spec-check
 	$(BUILD_DIR)/self_check
+
+# Every docs/spec.md requirement is claimed by a roadmap phase, and every
+# requirement in a completed phase is cited by a check. See docs/adr/0007.
+spec-check:
+	python3 tools/spec_coverage.py
 
 clean:
 	rm -rf $(BUILD_DIR)

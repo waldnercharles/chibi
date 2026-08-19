@@ -422,6 +422,8 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
         if (!s) return -1;
         p[index].default_value.str = s;
     }
+    /* Keep the runtime slot coherent until the next evaluation. The editor
+     * still writes authored data only through this API. */
     if (!output) n->inputs[index] = p[index].default_value;
     else n->outputs[index] = p[index].default_value;
     graph_changed(g);
@@ -447,12 +449,89 @@ int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, 
     pin_spec *p = output ? n->output_pins : n->input_pins;
     int count = output ? n->output_count : n->input_count;
     if (index < 0 || index >= count) return -1;
+    char *owned_type_name = type_name
+                              ? graph_own_str(g, type_name, strlen(type_name))
+                              : NULL;
+    if (type_name && !owned_type_name) return -1;
     p[index].type = type;
-    p[index].type_name = type_name;
-    p[index].default_value.type = type;
-    p[index].default_value.type_name = type_name;
+    p[index].type_name = owned_type_name;
+    p[index].default_value = (pin_value){ .type = type, .type_name = owned_type_name };
+    if (!output) n->inputs[index] = p[index].default_value;
+    else n->outputs[index] = p[index].default_value;
+
+    /* Retyping invalidates only edges that can no longer carry the new pin. */
+    for (int i = 0; i < g->edge_count;) {
+        edge *e = &g->edges[i];
+        int attached = (output && e->from == n && e->from_pin == index) ||
+                       (!output && e->to == n && e->to_pin == index);
+        if (attached) {
+            const pin_spec *other = output ? node_input_pin(e->to, e->to_pin)
+                                           : node_output_pin(e->from, e->from_pin);
+            if (!other ||
+                !pin_types_compatible(output ? p + index : other, output ? other : p + index)) {
+                g->edges[i] = g->edges[--g->edge_count];
+                continue;
+            }
+        }
+        i++;
+    }
     graph_changed(g);
     return 0;
+}
+
+int graph_set_pin_container(graph *g, node *n, int output, int index, pin_container container)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) return -1;
+    pin_spec *p = output ? n->output_pins : n->input_pins;
+    int count = output ? n->output_count : n->input_count;
+    if (index < 0 || index >= count || container < PIN_CONTAINER_SINGLE ||
+        container > PIN_CONTAINER_MAP)
+        return -1;
+    p[index].container = container;
+    graph_changed(g);
+    return 0;
+}
+
+int graph_move_pin(graph *g, node *n, int output, int index, int target_index)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) return -1;
+    pin_spec *pins = output ? n->output_pins : n->input_pins;
+    pin_value *values = output ? n->outputs : n->inputs;
+    int count = output ? n->output_count : n->input_count;
+    if (index < 0 || index >= count || target_index < 0 || target_index >= count)
+        return -1;
+    if (index == target_index) return index;
+    pin_spec moved_pin = pins[index];
+    pin_value moved_value = values[index];
+    if (index < target_index) {
+        memmove(pins + index, pins + index + 1, (size_t)(target_index - index) * sizeof *pins);
+        memmove(values + index, values + index + 1, (size_t)(target_index - index) * sizeof *values);
+    } else {
+        memmove(pins + target_index + 1, pins + target_index, (size_t)(index - target_index) * sizeof *pins);
+        memmove(
+            values + target_index + 1,
+            values + target_index,
+            (size_t)(index - target_index) * sizeof *values
+        );
+    }
+    pins[target_index] = moved_pin;
+    values[target_index] = moved_value;
+
+    /* IDs stay with the moved pins. Refresh cached indices from those IDs. */
+    for (int i = 0; i < g->edge_count; i++) {
+        edge *e = &g->edges[i];
+        if (output && e->from == n) {
+            int at = -1;
+            (void)graph_pin_by_id(n, e->from_pin_id, NULL, &at);
+            if (at >= 0) e->from_pin = at;
+        } else if (!output && e->to == n) {
+            int at = -1;
+            (void)graph_pin_by_id(n, e->to_pin_id, NULL, &at);
+            if (at >= 0) e->to_pin = at;
+        }
+    }
+    graph_changed(g);
+    return target_index;
 }
 
 int graph_set_node_disabled(graph *g, node *n, int disabled)

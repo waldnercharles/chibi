@@ -99,6 +99,8 @@ uint64_t graph_alloc_id(graph *g);
 int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_value *value);
 int graph_set_pin_name(graph *g, node *n, int output, int index, const char *name);
 int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, const char *type_name);
+int graph_set_pin_container(graph *g, node *n, int output, int index, pin_container container);
+int graph_move_pin(graph *g, node *n, int output, int index, int target_index);
 int graph_set_node_disabled(graph *g, node *n, int disabled);
 int graph_set_node_title(graph *g, node *n, const char *title);
 int graph_set_node_comment(graph *g, node *n, const char *comment);

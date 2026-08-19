@@ -211,6 +211,42 @@ static node_desc g_sink_error_desc = {
     .flow = flow_fail_sink,
 };
 
+static pin_spec g_parameter_sink_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { "Integer", PIN_I32, "int", PIN_DATA },
+    { "Flag", PIN_BOOL, "bool", PIN_DATA },
+    { "Text", PIN_STR, "const char *", PIN_DATA },
+};
+static pin_spec g_parameter_sink_outputs[] = {
+    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+};
+static int g_parameter_integer;
+static int g_parameter_flag;
+static char g_parameter_text[32];
+
+static int flow_parameter_sink(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value integer, flag, text;
+    if (flow_context_eval_data(ctx, 1, &integer) ||
+        flow_context_eval_data(ctx, 2, &flag) || flow_context_eval_data(ctx, 3, &text))
+        return FLOW_ERR_NODE;
+    g_parameter_integer = integer.i;
+    g_parameter_flag = flag.b;
+    snprintf(g_parameter_text, sizeof g_parameter_text, "%s", text.str ? text.str : "");
+    return flow_context_continue(ctx, 0);
+}
+
+static node_desc g_parameter_sink_desc = {
+    .name = "ParameterSink",
+    .input_count = 4,
+    .output_count = 1,
+    .inputs = g_parameter_sink_inputs,
+    .outputs = g_parameter_sink_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_parameter_sink,
+};
+
 static char g_print_messages[8][64];
 static const node *g_print_origins[8];
 static int g_print_count;
@@ -1255,7 +1291,91 @@ int main(void)
         graph_free(&ge);
     }
 
-    /* 18. ForLoop inclusive forward range and empty reverse range. */
+    /* 18. Event parameter pins carry ordered values and preserve identity when moved. */
+    {
+        graph gp;
+        graph_init(&gp);
+        node *event = graph_add_node(&gp, registry_node_by_name("Event"));
+        node *sink = graph_add_node(&gp, &g_parameter_sink_desc);
+        pin_spec integer = { "Count", PIN_I32, "int", PIN_DATA };
+        pin_spec flag = { "Enabled", PIN_BOOL, "bool", PIN_DATA };
+        pin_spec text = { "Label", PIN_STR, "const char *", PIN_DATA };
+        graph_add_pin(&gp, event, 1, &integer);
+        graph_add_pin(&gp, event, 1, &flag);
+        graph_add_pin(&gp, event, 1, &text);
+        pin_value authored_text = { .type = PIN_STR, .str = "authored" };
+        graph_set_pin_default(&gp, event, 1, 3, &authored_text);
+        graph_connect_exec(&gp, event, 0, sink, 0, 0);
+        graph_connect_data(&gp, event, 1, sink, 1);
+        graph_connect_data(&gp, event, 2, sink, 2);
+        graph_connect_data(&gp, event, 3, sink, 3);
+        uint64_t moved_id = event->output_pins[3].id;
+        pin_value first_inputs[] = {
+            { .type = PIN_I32, .i = 7 },
+            { .type = PIN_BOOL, .b = true },
+            { .type = PIN_STR, .str = "first" },
+        };
+        flow_error parameter_error;
+        flow_run *parameter_run = flow_run_start(
+            &gp,
+            event,
+            (flow_inputs){ first_inputs, 3, NULL },
+            NULL,
+            &parameter_error
+        );
+        (void)flow_run_resume(parameter_run);
+        check(
+            parameter_run && flow_run_status(parameter_run) == FLOW_COMPLETED &&
+                g_parameter_integer == 7 && g_parameter_flag &&
+                strcmp(g_parameter_text, "first") == 0,
+            "EVT-4: event parameters deliver typed values in order"
+        );
+        flow_run_free(parameter_run);
+
+        check(
+            graph_move_pin(&gp, event, 1, 3, 1) == 1 &&
+                event->output_pins[1].id == moved_id &&
+                event->output_pins[1].default_value.str &&
+                strcmp(event->output_pins[1].default_value.str, "authored") == 0 &&
+                event->outputs[1].str && strcmp(event->outputs[1].str, "first") == 0,
+            "PIN-2: moving a pin preserves its ID, authored/runtime value, and "
+            "position"
+        );
+        node *source = NULL;
+        int source_pin = -1;
+        int moved_output = -1;
+        const pin_spec *resolved = graph_pin_by_id(event, moved_id, &moved_output, &source_pin);
+        check(
+            resolved && moved_output && source_pin == 1 &&
+                graph_input_source(&gp, sink, 3, &source, &source_pin) == 1 &&
+                source == event && source_pin == 1,
+            "PIN-2: moved pin ID keeps its attached edge resolved"
+        );
+
+        pin_value reordered_inputs[] = {
+            { .type = PIN_STR, .str = "second" },
+            { .type = PIN_I32, .i = 11 },
+            { .type = PIN_BOOL, .b = false },
+        };
+        parameter_run = flow_run_start(
+            &gp,
+            event,
+            (flow_inputs){ reordered_inputs, 3, NULL },
+            NULL,
+            &parameter_error
+        );
+        (void)flow_run_resume(parameter_run);
+        check(
+            parameter_run && flow_run_status(parameter_run) == FLOW_COMPLETED &&
+                g_parameter_integer == 11 && !g_parameter_flag &&
+                strcmp(g_parameter_text, "second") == 0,
+            "EVT-4: reordering parameters reorders delivered values"
+        );
+        flow_run_free(parameter_run);
+        graph_free(&gp);
+    }
+
+    /* 19. ForLoop inclusive forward range and empty reverse range. */
     {
         graph gl;
         graph_init(&gl);
@@ -1317,11 +1437,15 @@ int main(void)
         graph_set_event_name(&gd, event, "Wait");
         graph_connect_exec(&gd, event, 0, delay, 0, 0);
         graph_connect_exec(&gd, delay, 0, done, 0, 0);
+        pin_spec guard_pin = { "Parameter", PIN_I32, "int", PIN_DATA };
+        graph_add_pin(&gd, event, 1, &guard_pin);
+        graph_add_pin(&gd, event, 1, &guard_pin);
         delay->inputs[1].d = 5.0;
         flow_log_reset();
         flow_run *run = graph_run_event(&gd, "Wait", (flow_inputs){ 0 }, &dispatch_error);
         check(run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0, "EXEC-4: Delay suspends flow run");
         check(graph_connect_exec(&gd, event, 0, done, 0, 0) != 0, "EXEC-8: paused flow rejects topology mutation");
+        check(graph_move_pin(&gd, event, 1, 2, 1) != 0, "EXEC-8: live run rejects instance-pin reordering");
         check(
             flow_run_tick_at(run, 4.0) == FLOW_SUSPENDED_RESULT &&
                 flow_run_status(run) == FLOW_SUSPENDED,

@@ -49,9 +49,24 @@ static pin_spec print_text_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },
 };
 
-static int flow_event(node *n, flow_context *ctx)
+static void eval_event(node *n, arena *a)
 {
     (void)n;
+    (void)a;
+}
+
+static int flow_event(node *n, flow_context *ctx)
+{
+    flow_inputs inputs = flow_context_inputs(ctx);
+    int parameter = 0;
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].kind != PIN_DATA) continue;
+        if (parameter < inputs.count &&
+            inputs.values[parameter].type == n->output_pins[i].type)
+            n->outputs[i] = inputs.values[parameter];
+        else n->outputs[i] = n->output_pins[i].default_value;
+        parameter++;
+    }
     return flow_context_continue(ctx, 0);
 }
 
@@ -119,6 +134,7 @@ node_desc NODE_Event = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = event_outputs,
+    .eval = eval_event,
     .flow_kind = NODE_FLOW_EVENT,
     .flow = flow_event,
     .display_class = NODE_DISPLAY_EVENT,

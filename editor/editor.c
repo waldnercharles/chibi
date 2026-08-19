@@ -137,6 +137,12 @@ struct editor
     ed_link_ref context_link;
     char connect_error[ED_LOG_MESSAGE];
     ImVec2 connect_error_pos;
+    node *details_node;
+    int details_history_open;
+    char details_title[256];
+    char details_comment[512];
+    char details_reference_name[256];
+    char details_pin_name[256];
 
     char **undo;
     int undo_count;
@@ -460,7 +466,7 @@ static void ed_build_layout(editor *e)
         for (int p = 0; p < n->output_count; p++)
             right = ed_max(right, ed_pin_text_width(e, e->g, n, ED_PIN_OUTPUT, p));
 
-        ImVec2 title = ImGui_CalcTextSize(d->name);
+        ImVec2 title = ImGui_CalcTextSize(n->title_override ? n->title_override : d->name);
         float width = ed_max(title.x, left + right + 28.0f) + 2.0f * ED_PAD;
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         float row_height = line + 6.0f;
@@ -598,6 +604,7 @@ static void ed_snapshot_before(editor *e);
 static char *ed_snapshot(const editor *e);
 static void ed_commit_snapshot(editor *e);
 static void ed_cancel_snapshot(editor *e);
+static void ed_draw_details(editor *e);
 
 static void ed_draw_text(ImDrawList *dl, ImVec2 pos, ImU32 color, const char *text)
 {
@@ -712,6 +719,303 @@ static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 
     return changed;
 }
 
+static const char *ed_pin_type_core_name(pin_type type)
+{
+    switch (type) {
+        case PIN_BOOL: return "bool";
+        case PIN_I8: return "int8";
+        case PIN_U8: return "byte";
+        case PIN_I16: return "int16";
+        case PIN_U16: return "uint16";
+        case PIN_I32: return "int";
+        case PIN_U32: return "uint";
+        case PIN_I64: return "int64";
+        case PIN_U64: return "uint64";
+        case PIN_F32: return "float";
+        case PIN_F64: return "double";
+        case PIN_STR: return "const char *";
+        case PIN_STRUCT: return "struct";
+        case PIN_ENUM: return "enum";
+        case PIN_FLOW:
+        default: return NULL;
+    }
+}
+
+static int ed_pin_type_combo(const char *label, pin_type *type)
+{
+    int selected = *type;
+    const char *items = "Exec\0Bool\0Int8\0Byte\0Int16\0UInt16\0Integer\0"
+                        "UInt32\0Integer64\0UInt64\0Real (float)\0Real "
+                        "(double)\0String\0Struct\0Enum\0\0";
+    if (!ImGui_Combo(label, &selected, items)) return 0;
+    *type = (pin_type)selected;
+    return 1;
+}
+
+static int ed_pin_container_combo(const char *label, pin_container *container)
+{
+    int selected = *container;
+    const char *items = "Single\0Array\0Set\0Map\0\0";
+    if (!ImGui_Combo(label, &selected, items)) return 0;
+    *container = (pin_container)selected;
+    return 1;
+}
+
+static void ed_details_begin_mutation(editor *e)
+{
+    if (e->details_history_open) return;
+    ed_begin_authoring_edit(e);
+    e->pending_snapshot = ed_snapshot(e);
+    e->details_history_open = 1;
+}
+
+static void ed_details_finish_mutation(editor *e, int changed)
+{
+    if (changed) e->edit_changed = 1;
+    if (e->details_history_open && ImGui_IsItemDeactivated()) {
+        if (e->edit_changed) ed_commit_snapshot(e);
+        else ed_cancel_snapshot(e);
+        e->details_history_open = 0;
+        e->edit_changed = 0;
+    }
+}
+
+static int ed_draw_details_default(editor *e, node *n, int output, int index)
+{
+    pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
+    if (spec->kind != PIN_DATA) {
+        ImGui_TextUnformatted("(exec)");
+        return 0;
+    }
+    pin_value value = spec->default_value;
+    int changed = 0;
+    char id[32];
+    snprintf(id, sizeof id, "Default##%d", index);
+    ImGui_SetNextItemWidth(160.0f);
+    switch (value.type) {
+        case PIN_BOOL: changed = ImGui_Checkbox(id, &value.b); break;
+        case PIN_I8:
+            changed = ImGui_InputScalar(id, ImGuiDataType_S8, &value.i8);
+            break;
+        case PIN_U8:
+            changed = ImGui_InputScalar(id, ImGuiDataType_U8, &value.u8);
+            break;
+        case PIN_I16:
+            changed = ImGui_InputScalar(id, ImGuiDataType_S16, &value.i16);
+            break;
+        case PIN_U16:
+            changed = ImGui_InputScalar(id, ImGuiDataType_U16, &value.u16);
+            break;
+        case PIN_I32: changed = ImGui_InputInt(id, &value.i); break;
+        case PIN_U32:
+            changed = ImGui_InputScalar(id, ImGuiDataType_U32, &value.u);
+            break;
+        case PIN_I64:
+            changed = ImGui_InputScalar(id, ImGuiDataType_S64, &value.i64);
+            break;
+        case PIN_U64:
+            changed = ImGui_InputScalar(id, ImGuiDataType_U64, &value.u64);
+            break;
+        case PIN_F32:
+            changed = ImGui_InputFloatEx(id, &value.f, 0.1f, 0.0f, "%.3f", 0);
+            break;
+        case PIN_F64:
+            changed = ImGui_InputDoubleEx(id, &value.d, 0.1, 0.0, "%.3f", 0);
+            break;
+        case PIN_ENUM: changed = ImGui_InputInt(id, &value.e); break;
+        case PIN_STR: {
+            snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
+            changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
+            value.str = e->edit_text;
+            break;
+        }
+        case PIN_FLOW:
+        case PIN_STRUCT:
+        default: ImGui_TextUnformatted("(not editable)"); break;
+    }
+    if (changed) {
+        ed_details_begin_mutation(e);
+        if (graph_set_pin_default(e->g, n, output, index, &value) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, changed);
+    return changed;
+}
+
+static void ed_draw_details_pin(editor *e, node *n, int output, int index)
+{
+    pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
+    ImGui_PushIDInt((output ? 10000 : 0) + index);
+    ImGui_Separator();
+    ImGui_Text("%s %d", output ? "Output" : "Input", index);
+    if (spec->kind == PIN_EXEC) {
+        ImGui_SameLine();
+        ImGui_TextUnformatted("Exec");
+    }
+    snprintf(e->details_pin_name, sizeof e->details_pin_name, "%s", spec->name ? spec->name : "");
+    if (ImGui_InputText("Name", e->details_pin_name, sizeof e->details_pin_name, 0)) {
+        ed_details_begin_mutation(e);
+        if (graph_set_pin_name(e->g, n, output, index, e->details_pin_name) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+    if (spec->kind == PIN_DATA) {
+        pin_type type = spec->type;
+        if (ed_pin_type_combo("Type", &type)) {
+            ed_details_begin_mutation(e);
+            if (graph_set_pin_type(e->g, n, output, index, type, ed_pin_type_core_name(type)) ==
+                0)
+                e->edit_changed = 1;
+        }
+        ed_details_finish_mutation(e, ImGui_IsItemEdited());
+        pin_container container = spec->container;
+        if (ed_pin_container_combo("Container", &container)) {
+            ed_details_begin_mutation(e);
+            if (graph_set_pin_container(e->g, n, output, index, container) == 0)
+                e->edit_changed = 1;
+        }
+        ed_details_finish_mutation(e, ImGui_IsItemEdited());
+        ImGui_TextUnformatted("Default");
+        ImGui_SameLine();
+        ed_draw_details_default(e, n, output, index);
+    }
+    ImGui_PopID();
+}
+
+static void ed_draw_tree(editor *e)
+{
+    ImGui_SetNextWindowSize((ImVec2){ 220.0f, 420.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui_Begin("Blueprint", NULL, 0)) {
+        ImGui_End();
+        return;
+    }
+    ImGui_TextUnformatted(e->g->name && e->g->name[0] ? e->g->name : "Graph");
+    ImGui_SeparatorText("Nodes");
+    for (int i = 0; i < e->g->node_count; i++) {
+        node *n = e->g->nodes[i];
+        const char *title = n->title_override && n->title_override[0]
+                              ? n->title_override
+                              : (n->desc ? n->desc->name : "Node");
+        char label[256];
+        if (n->desc && n->desc->flow_kind == NODE_FLOW_EVENT)
+            snprintf(label, sizeof label, "%s: %s", title, n->reference_name ? n->reference_name : "(unnamed)");
+        else snprintf(label, sizeof label, "%s##tree_%d", title, i);
+        ImGui_PushIDInt(i);
+        if (ImGui_SelectableEx(label, ed_node_selected(e, n), 0, (ImVec2){ 0.0f, 0.0f }))
+            editor_select_node(e, n);
+        ImGui_PopID();
+    }
+    ImGui_End();
+}
+
+static void ed_draw_details(editor *e)
+{
+    ImGui_SetNextWindowSize((ImVec2){ 340.0f, 600.0f }, ImGuiCond_FirstUseEver);
+    if (!ImGui_Begin("Details", NULL, 0)) {
+        ImGui_End();
+        return;
+    }
+    if (e->selected_count != 1) {
+        ImGui_TextUnformatted(e->selected_count ? "Multiple nodes selected" : "Nothing selected");
+        ImGui_End();
+        return;
+    }
+    node *n = e->selected[0];
+    e->details_node = n;
+    ImGui_Text("%s", n->desc && n->desc->name ? n->desc->name : "Node");
+    snprintf(e->details_title, sizeof e->details_title, "%s", n->title_override ? n->title_override : "");
+    if (ImGui_InputText("Title override", e->details_title, sizeof e->details_title, 0)) {
+        ed_details_begin_mutation(e);
+        if (graph_set_node_title(e->g, n, e->details_title) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+    snprintf(e->details_comment, sizeof e->details_comment, "%s", n->comment ? n->comment : "");
+    if (ImGui_InputTextMultiline("Comment", e->details_comment, sizeof e->details_comment)) {
+        ed_details_begin_mutation(e);
+        if (graph_set_node_comment(e->g, n, e->details_comment) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+    bool disabled = n->disabled != 0;
+    if (ImGui_Checkbox("Disabled", &disabled)) {
+        ed_details_begin_mutation(e);
+        if (graph_set_node_disabled(e->g, n, disabled) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+    ImGui_TextUnformatted("Reference target");
+    uint64_t reference_id = n->reference_id;
+    if (ImGui_InputScalar("Reference ID", ImGuiDataType_U64, &reference_id)) {
+        ed_details_begin_mutation(e);
+        if (graph_set_node_reference(e->g, n, reference_id, n->reference_name) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+    snprintf(
+        e->details_reference_name,
+        sizeof e->details_reference_name,
+        "%s",
+        n->reference_name ? n->reference_name : ""
+    );
+    const char *reference_label = n->desc && n->desc->flow_kind == NODE_FLOW_EVENT
+                                    ? "Event name"
+                                    : "Reference name";
+    if (ImGui_InputText(reference_label, e->details_reference_name, sizeof e->details_reference_name, 0)) {
+        ed_details_begin_mutation(e);
+        if (graph_set_node_reference(e->g, n, n->reference_id, e->details_reference_name) == 0)
+            e->edit_changed = 1;
+    }
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+
+    if (n->desc && n->desc->flow_kind == NODE_FLOW_EVENT) {
+        ImGui_SeparatorText("Event parameters");
+        if (ImGui_Button("Add parameter")) {
+            pin_spec parameter = { "Parameter", PIN_I32, "int", PIN_DATA };
+            ed_snapshot_before(e);
+            (void)graph_add_pin(e->g, n, 1, &parameter);
+        }
+    } else if (n->desc && n->desc->flow_kind == NODE_FLOW_SEQUENCE) {
+        ImGui_SeparatorText("Sequence outputs");
+        if (ImGui_Button("Add output pin")) {
+            pin_spec pin = { "Then", PIN_FLOW, NULL, PIN_EXEC };
+            ed_snapshot_before(e);
+            (void)graph_add_pin(e->g, n, 1, &pin);
+        }
+        ImGui_SameLine();
+        ImGui_BeginDisabled(n->output_count <= 2);
+        if (ImGui_Button("Remove last output pin")) {
+            ed_snapshot_before(e);
+            (void)graph_remove_pin(e->g, n, 1, n->output_count - 1);
+        }
+        ImGui_EndDisabled();
+    }
+    for (int p = 0; p < n->input_count; p++) ed_draw_details_pin(e, n, 0, p);
+    for (int p = 0; p < n->output_count; p++) {
+        ed_draw_details_pin(e, n, 1, p);
+        if (n->desc && n->desc->flow_kind == NODE_FLOW_EVENT && p > 0) {
+            ImGui_SameLine();
+            ImGui_PushIDInt(20000 + p);
+            if (p > 1 && ImGui_Button("Up")) {
+                ed_snapshot_before(e);
+                (void)graph_move_pin(e->g, n, 1, p, p - 1);
+            }
+            ImGui_SameLine();
+            if (p + 1 < n->output_count && ImGui_Button("Down")) {
+                ed_snapshot_before(e);
+                (void)graph_move_pin(e->g, n, 1, p, p + 1);
+            }
+            ImGui_SameLine();
+            if (ImGui_Button("Remove")) {
+                ed_snapshot_before(e);
+                (void)graph_remove_pin(e->g, n, 1, p);
+            }
+            ImGui_PopID();
+        }
+    }
+    ImGui_End();
+}
+
 static void ed_draw_controls(editor *e)
 {
     ImGui_PushClipRect(e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
@@ -819,7 +1123,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
         dl,
         ed_add(v->min, (ImVec2){ ED_PAD * e->zoom, ED_TITLE_PAD * e->zoom }),
         IM_COL32(235, 238, 245, 255),
-        d->name
+        n->title_override ? n->title_override : d->name
     );
 
     int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
@@ -1414,7 +1718,7 @@ static void ed_draw_log(editor *e)
         ImGui_SetTooltip("Output log is already empty");
     ImGui_EndDisabled();
     if (clear) e->log_count = 0;
-    if (!ImGui_BeginChild("output_log", (ImVec2){ 0.0f, 92.0f }, 0, 0)) {
+    if (!ImGui_BeginChild("output_log", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
         ImGui_EndChild();
         return;
     }
@@ -1720,15 +2024,14 @@ int editor_load(editor *e, const char *path)
 void editor_draw(editor *e)
 {
     if (!e || !e->ev) return;
+    ImGuiIO *io = ImGui_GetIO();
+    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    (void)ImGui_DockSpaceOverViewport();
     flow_state preview_state = e->run ? flow_run_status(e->run) : FLOW_IDLE;
     if (editor_preview_allowed(preview_state)) eval_view_refresh(e->ev, e->g);
     eval_view_set_run(e->ev, ed_run_live(e) ? e->run : NULL);
     ImGui_SetNextWindowSize((ImVec2){ 960.0f, 640.0f }, ImGuiCond_FirstUseEver);
-    if (!ImGui_Begin(
-            "Node Canvas",
-            NULL,
-            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
-        )) {
+    if (!ImGui_Begin("Node Canvas", NULL, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         ImGui_End();
         return;
     }
@@ -1737,7 +2040,6 @@ void editor_draw(editor *e)
     /* A Run click may free a terminal flow_run and replace it. Refresh the
      * display source before layout can ask for any pin values. */
     eval_view_set_run(e->ev, ed_run_live(e) ? e->run : NULL);
-    ed_draw_log(e);
     e->canvas_min = ImGui_GetCursorScreenPos();
     e->canvas_size = ImGui_GetContentRegionAvail();
     ed_center_initial_view(e);
@@ -1756,5 +2058,14 @@ void editor_draw(editor *e)
     ImGui_Dummy(e->canvas_size);
     ed_handle_shortcuts(e);
     ed_handle_popups(e);
+    ImGui_End();
+    ed_draw_tree(e);
+    ImGui_SetNextWindowSize((ImVec2){ 420.0f, 180.0f }, ImGuiCond_FirstUseEver);
+    if (ImGui_Begin("Output Log", NULL, 0)) ed_draw_log(e);
+    ImGui_End();
+    ed_draw_details(e);
+    ImGui_SetNextWindowSize((ImVec2){ 420.0f, 180.0f }, ImGuiCond_FirstUseEver);
+    if (ImGui_Begin("Compiler Results", NULL, 0))
+        ImGui_TextUnformatted("No compiler diagnostics yet.");
     ImGui_End();
 }

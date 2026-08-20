@@ -818,9 +818,10 @@ adopts the type of the value connected to it under `PIN-11` and reverts to
 unresolved when its driver edge is dropped. Evaluating it substitutes `{0}`,
 `{1}`, ... and bare `{}` (the next argument in order) in the format string with
 the corresponding argument's rendering; `{{` and `}}` render literal braces. A
+placeholder MAY carry printf-style width, alignment, and precision modifiers
+(`{:.2f}`, `{:08d}`, `{:x}`), which render the value with its own C type; a
+placeholder with no modifier renders through `pin_value_to_string`. A
 placeholder whose index has no matching argument renders as the empty string.
-Every argument renders through `pin_value_to_string`, so a Real argument
-formats identically to its pin display.
 
 ## CMPL: compile and validation
 

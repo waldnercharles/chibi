@@ -125,8 +125,25 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
         return -1;
     const pin_spec *out = &from->output_pins[from_pin];
     const pin_spec *in = &to->input_pins[to_pin];
-    if (out->kind != PIN_DATA || in->kind != PIN_DATA || !pin_compatible(out, in))
-        return -1;
+    if (out->kind != PIN_DATA || in->kind != PIN_DATA) return -1;
+    /* PIN-11: a wildcard data input adopts the peer's type, type name, and
+     * container on connection, so an unresolved generic pin (PIN_FLOW
+     * marker) accepts any data peer and a resolved one re-adopts when a
+     * second driver replaces the first. */
+    if (in->flags & PIN_FLAG_WILDCARD) {
+        char *owned = out->type_name
+                        ? graph_own_str(g, out->type_name, strlen(out->type_name))
+                        : NULL;
+        if (out->type_name && !owned) return -1;
+        pin_spec *p = &to->input_pins[to_pin];
+        p->type = out->type;
+        p->type_name = owned;
+        p->container = out->container;
+        p->default_value = (pin_value){ .type = out->type, .type_name = owned };
+        to->inputs[to_pin] = p->default_value;
+        in = &to->input_pins[to_pin];
+    }
+    if (!pin_compatible(out, in)) return -1;
     for (int i = 0; i < acount(g->edges); i++) {
         edge *old = &g->edges[i];
         if (old->to_id == to->id && old->to_pin_id == in->id) {
@@ -139,6 +156,23 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
     apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0));
     graph_changed(g);
     return 0;
+}
+
+/* PIN-11: dropping the driver edge of a wildcard data input returns it to
+ * the unresolved marker, so the pin reads as Generic again. */
+static void graph_wildcard_untouch(graph *g, uint64_t to_node_id, uint64_t to_pin_id)
+{
+    node *to = graph_node_by_id(g, to_node_id);
+    if (!to) return;
+    int is_out = 0, index = -1;
+    if (!graph_pin_by_id(to, to_pin_id, &is_out, &index) || is_out) return;
+    pin_spec *p = &to->input_pins[index];
+    if (p->kind != PIN_DATA || !(p->flags & PIN_FLAG_WILDCARD)) return;
+    p->type = PIN_FLOW;
+    p->type_name = NULL;
+    p->container = PIN_CONTAINER_SINGLE;
+    p->default_value = (pin_value){ .type = PIN_FLOW };
+    to->inputs[index] = p->default_value;
 }
 
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin)
@@ -231,7 +265,11 @@ int graph_remove_node(graph *g, node *n)
     int w = 0;
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
-        if (e->from_id == n->id || e->to_id == n->id) continue;
+        if (e->from_id == n->id || e->to_id == n->id) {
+            if (e->to_id != n->id)
+                graph_wildcard_untouch(g, e->to_id, e->to_pin_id);
+            continue;
+        }
         g->edges[w++] = *e;
     }
     asetlen(g->edges, w);
@@ -262,7 +300,9 @@ int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin)
         if (e->from_id != from->id || e->to_id != to->id ||
             e->from_pin_id != from_pin_id || e->to_pin_id != to_pin_id)
             continue;
+        uint64_t target_id = e->to_id, target_pin = e->to_pin_id;
         adel(g->edges, i);
+        graph_wildcard_untouch(g, target_id, target_pin);
         graph_changed(g);
         return 0;
     }
@@ -477,6 +517,10 @@ int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, 
             }
             if (!other ||
                 !pin_compatible(output ? p + index : other, output ? other : p + index)) {
+                /* A retyped source can strand a wildcard target; return it
+                 * to Generic (PIN-11). The retyped pin itself is not a
+                 * wildcard victim: the user retyped it on purpose. */
+                if (output) graph_wildcard_untouch(g, e->to_id, e->to_pin_id);
                 adel(g->edges, i);
                 continue;
             }

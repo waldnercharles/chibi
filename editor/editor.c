@@ -1571,6 +1571,22 @@ static void ed_draw_details(editor *e)
             (void)graph_remove_pin(e->bp->graph, n, 1, n->output_count - 1);
         }
         ImGui_EndDisabled();
+    } else if (n->desc && strcmp(n->desc->name, "Format Text") == 0) {
+        ImGui_SeparatorText("Format arguments");
+        if (ImGui_Button("Add argument")) {
+            char name[32];
+            snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
+            pin_spec pin = { name, PIN_STR, "const char *", PIN_DATA };
+            ed_snapshot_before(e);
+            (void)graph_add_pin(e->bp->graph, n, 0, &pin);
+        }
+        ImGui_SameLine();
+        ImGui_BeginDisabled(n->input_count <= 1);
+        if (ImGui_Button("Remove last argument")) {
+            ed_snapshot_before(e);
+            (void)graph_remove_pin(e->bp->graph, n, 0, n->input_count - 1);
+        }
+        ImGui_EndDisabled();
     }
     for (int p = 0; p < n->input_count; p++) ed_draw_details_pin(e, n, 0, p);
     for (int p = 0; p < n->output_count; p++) {
@@ -2209,6 +2225,45 @@ static int ed_name_score(const char *name, const char *filter)
     return score;
 }
 
+/* CAT-27: a descriptor's searchable text is its name plus its declared
+ * keyword list. The best keyword match scores below any name match so a
+ * keyword hit never outranks the node's own name. */
+static int ed_desc_score(const node_desc *desc, const char *filter)
+{
+    int score = ed_name_score(desc->name, filter);
+    if (score >= 0 || !desc->keywords) return score;
+    int best = -1;
+    const char *kw = desc->keywords;
+    while (*kw) {
+        while (*kw == ' ') kw++;
+        if (!*kw) break;
+        const char *end = kw;
+        while (*end && *end != ' ') end++;
+        char word[64];
+        size_t len = (size_t)(end - kw);
+        if (len >= sizeof word) len = sizeof word - 1;
+        memcpy(word, kw, len);
+        word[len] = '\0';
+        int s = ed_name_score(word, filter);
+        if (s > best) best = s;
+        kw = end;
+    }
+    return best;
+}
+
+static const char *ed_desc_category(const node_desc *d)
+{ return d && d->category && d->category[0] ? d->category : "Basic"; }
+
+static int ed_search_match_cmp(const void *a, const void *b)
+{
+    const ed_search_match *ma = (const ed_search_match *)a;
+    const ed_search_match *mb = (const ed_search_match *)b;
+    const char *ca = ed_desc_category(registry_node(ma->registry_index));
+    const char *cb = ed_desc_category(registry_node(mb->registry_index));
+    int c = strcmp(ca, cb);
+    return c ? c : mb->score - ma->score;
+}
+
 static void ed_open_context_menu(editor *e, ImVec2 mouse)
 {
     e->context_node = NULL;
@@ -2299,6 +2354,20 @@ static void ed_handle_popups(editor *e)
             }
             ImGui_Separator();
         }
+        if (n && n->desc && strcmp(n->desc->name, "Format Text") == 0) {
+            if (ImGui_MenuItem("Add argument")) {
+                char name[32];
+                snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
+                pin_spec pin = { name, PIN_STR, "const char *", PIN_DATA };
+                ed_snapshot_before(e);
+                graph_add_pin(e->bp->graph, n, 0, &pin);
+            }
+            if (n->input_count > 1 && ImGui_MenuItem("Remove last argument")) {
+                ed_snapshot_before(e);
+                graph_remove_pin(e->bp->graph, n, 0, n->input_count - 1);
+            }
+            ImGui_Separator();
+        }
         if (n && ImGui_MenuItem(n->disabled ? "Enable" : "Disable")) {
             ed_snapshot_before(e);
             graph_set_node_disabled(e->bp->graph, n, !n->disabled);
@@ -2334,15 +2403,12 @@ static void ed_handle_popups(editor *e)
         for (int i = 0; i < count; i++) {
             const node_desc *desc = registry_node(i);
             if (!ed_spawn_desc_compatible(e, desc)) continue;
-            int score = ed_name_score(desc->name, e->search);
+            int score = ed_desc_score(desc, e->search);
             if (score < 0) continue;
-            int at = match_count++;
-            while (at > 0 && matches[at - 1].score < score) {
-                matches[at] = matches[at - 1];
-                at--;
-            }
-            matches[at] = (ed_search_match){ i, score };
+            matches[match_count++] = (ed_search_match){ i, score };
         }
+        if (match_count > 1)
+            qsort(matches, (size_t)match_count, sizeof *matches, ed_search_match_cmp);
         if (match_count == 0) e->search_selected = -1;
         else {
             if (e->search_selected < 0) e->search_selected = 0;
@@ -2354,8 +2420,14 @@ static void ed_handle_popups(editor *e)
                 e->search_selected = (e->search_selected + match_count - 1) % match_count;
         }
         int activate = ImGui_IsKeyPressed(ImGuiKey_Enter);
+        const char *category = NULL;
         for (int m = 0; m < match_count; m++) {
             const node_desc *desc = registry_node(matches[m].registry_index);
+            const char *next_category = ed_desc_category(desc);
+            if (!category || strcmp(category, next_category) != 0) {
+                ImGui_TextDisabled("%s", next_category);
+                category = next_category;
+            }
             int clicked = ImGui_SelectableEx(
                 desc->name,
                 m == e->search_selected,

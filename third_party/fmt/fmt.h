@@ -102,8 +102,11 @@ void _fmt_sprint(fmt_stream *, const char *fmt, ...);
         _fmt_fn(to)(to, _fs __VA_OPT__(, ) __VA_ARGS__);                                        \
     } while (0)
 
-#define _fmt_fn(x)                                                             \
-    _Generic((x), FILE *: fprintf, char *: sprintf, fmt_stream *: _fmt_sprint)
+#define _fmt_fn(x)                                                               \
+    _Pragma("clang diagnostic push") _Pragma(                                    \
+        "clang diagnostic ignored \"-Wdeprecated-declarations\""                 \
+    ) _Generic((x), FILE *: fprintf, char *: sprintf, fmt_stream *: _fmt_sprint) \
+        _Pragma("clang diagnostic pop")
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #define _signed_char_hhd

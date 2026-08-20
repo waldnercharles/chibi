@@ -6,10 +6,12 @@
  * {N} placeholders, and switches the scratch buffer to a C23 VLA.
  * LOCAL FIXES: the fork's char* destination mapped to printf, which
  * writes to stdout instead of the buffer; restored to sprintf per
- * upstream (see fmt.h). _fmt_sprint crashed on an empty result: no
- * buffer was allocated, then vsnprintf wrote to NULL. char*
- * destinations are unbounded sprintf; prefer fmt_stream (bounded,
- * vsnprintf-based), which is what core uses.
+ * upstream, with the deprecated-reference warning in the _Generic
+ * suppressed inside the macro. _fmt_sprint also crashed on an empty
+ * result (no buffer was allocated, then vsnprintf wrote to NULL); the
+ * growth check now keeps at least one byte. char* destinations are
+ * unbounded sprintf; prefer fmt_stream (bounded, vsnprintf-based),
+ * which is what core uses.
  */
 
 #include "fmt.h"

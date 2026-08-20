@@ -35,6 +35,8 @@ typedef struct
 struct flow_run
 {
     graph *graph;
+    blueprint_instance *instance; /* owning instance, or NULL standalone */
+    int graph_guard_owned; /* 1 when this run holds graph_flow_pause itself */
     flow_state state;
     unsigned long step_budget;
     unsigned long steps;
@@ -376,6 +378,10 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
         return NULL;
     }
     run->graph = g;
+    run->instance = options ? options->instance : NULL;
+    /* Instance-owned activations share the instance's mutation guard; only a
+     * standalone run acquires and releases the graph guard itself. */
+    run->graph_guard_owned = run->instance == NULL;
     run->state = FLOW_RUNNING;
     run->step_budget = options && options->step_budget ? options->step_budget : 10000;
     run->now = options ? options->now : NULL;
@@ -388,6 +394,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->input_user_data = inputs.user_data;
     run->waiting_output = -1;
     eval_context_init(&run->eval);
+    run->eval.instance = run->instance;
     if (inputs.count) {
         run->inputs = (pin_value *)malloc((size_t)inputs.count * sizeof *run->inputs);
         if (!run->inputs) {
@@ -400,8 +407,9 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     arena_init(&run->scratch, 65536);
     graph_eval_reset(g);
     apush(run->frames, (flow_frame){ entry, FLOW_FRAME_NODE, 0, 0 });
-    /* EXEC-8: the graph stays guarded for the entire non-idle run. */
-    graph_pause(run);
+    /* EXEC-8/EXEC-19: a standalone run keeps the graph guarded for its whole
+     * non-idle lifetime; an instance-owned run does not (the instance does). */
+    if (run->graph_guard_owned) graph_pause(run);
     return run;
 }
 
@@ -512,7 +520,7 @@ int flow_run_stop(flow_run *run)
     eval_context_reset(&run->eval);
     watch_clear(run);
     run->error = (flow_error){ 0, NULL, -1, NULL, run->steps };
-    graph_resume(run);
+    if (run->graph_guard_owned) graph_resume(run);
     return FLOW_OK;
 }
 
@@ -533,6 +541,14 @@ int flow_run_reset(flow_run *run)
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     return FLOW_OK;
+}
+
+int flow_run_ready(const flow_run *run, double now)
+{
+    if (!run) return 0;
+    if (run->state == FLOW_RUNNING) return 1;
+    if (run->state == FLOW_SUSPENDED) return now >= run->wake_time;
+    return 0;
 }
 
 flow_state flow_run_status(const flow_run *run)
@@ -692,4 +708,13 @@ flow_inputs flow_context_inputs(const struct flow_context *ctx)
 {
     return ctx && ctx->run ? flow_run_inputs(ctx->run)
                            : (flow_inputs){ NULL, 0, NULL };
+}
+
+blueprint_instance *flow_context_instance(const struct flow_context *ctx)
+{ return ctx && ctx->run ? ctx->run->instance : NULL; }
+
+void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)
+{
+    if (!ctx || !ctx->run || !size) return NULL;
+    return arena_alloc(&ctx->run->scratch, size);
 }

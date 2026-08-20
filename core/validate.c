@@ -26,6 +26,12 @@ static int node_desc_validate(const node_desc *d)
         case NODE_PURE_CALL:
             if (!d->fn || d->output_count != 1) return 0;
             break;
+        case NODE_PURE_GET:
+        case NODE_PURE_SELF:
+            if (d->input_count != 0 || d->output_count != 1 || !d->outputs ||
+                d->outputs[0].kind != PIN_DATA)
+                return 0;
+            break;
         default: return 0;
     }
     return 1;

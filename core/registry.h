@@ -21,8 +21,8 @@ extern const int EXTRA_NODE_COUNT;
 
 extern node_desc *const FLOW_NODES[];
 extern const int FLOW_NODE_COUNT;
-extern node_desc NODE_Event, NODE_Branch, NODE_Sequence, NODE_ForLoop,
-    NODE_Delay, NODE_PrintString;
+extern node_desc NODE_Event, NODE_Branch, NODE_Sequence, NODE_ForLoop, NODE_Delay,
+    NODE_PrintString, NODE_GetVariable, NODE_SetVariable, NODE_Self, NODE_CallEvent;
 
 static inline int registry_node_count(void)
 { return REGISTRY_NODE_COUNT + EXTRA_NODE_COUNT + FLOW_NODE_COUNT; }

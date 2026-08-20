@@ -1,11 +1,12 @@
 #include "eval.h"
 
+#include "instance.h"
 #include "nodes.h"
 #include "pin_conv.h"
 
 void eval_context_init(eval_context *ctx)
 {
-    if (ctx) eval_context_reset(ctx);
+    if (ctx) *ctx = (eval_context){ 0 };
 }
 
 void eval_context_reset(eval_context *ctx)
@@ -70,6 +71,18 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             if (n->output_count > 0 && n->output_pins[0].type == PIN_STRUCT &&
                 !n->outputs[0].ptr)
                 return fail(ctx, n, 0, NODE_EVAL_ALLOCATION, "arena allocation failed");
+            break;
+        case NODE_PURE_GET:
+            if (!ctx->instance)
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, "Get Variable requires an instance");
+            if (blueprint_instance_get_variable(ctx->instance, n->reference_id, &n->outputs[0]) !=
+                0)
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, "Get Variable references a lost variable");
+            break;
+        case NODE_PURE_SELF:
+            if (!ctx->instance)
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, "Self requires an instance");
+            n->outputs[0] = blueprint_instance_owner(ctx->instance);
             break;
     }
     n->computed = 1;

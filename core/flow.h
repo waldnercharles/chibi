@@ -11,6 +11,7 @@ extern "C"
 #endif
 
     typedef struct flow_run flow_run;
+    typedef struct blueprint_instance blueprint_instance;
 
     typedef struct
     {
@@ -30,6 +31,7 @@ extern "C"
         double initial_time;
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
+        blueprint_instance *instance; /* owning instance, or NULL for a standalone run */
     } flow_options;
 
     typedef enum
@@ -104,6 +106,11 @@ extern "C"
     flow_inputs flow_run_inputs(const flow_run *run);
     void flow_run_free(flow_run *run);
 
+    /* Scheduler readiness (EXEC-17): RUNNING, or SUSPENDED with wake_time
+     * already reached at `now`. Completed, failed, idle, and paused runs are
+     * not ready. */
+    int flow_run_ready(const flow_run *run, double now);
+
     /* The run records the latest DATA value for every activated input/output.
      * Phase 1 keys this table by node pointer and pin index. Phase 2 replaces
      * the pointer key with stable node/pin IDs. Scalar and string values are
@@ -132,6 +139,9 @@ extern "C"
     int flow_context_loop(struct flow_context *ctx, int first, int last);
     int flow_context_emit(struct flow_context *ctx, const char *message);
     flow_inputs flow_context_inputs(const struct flow_context *ctx);
+    blueprint_instance *flow_context_instance(const struct flow_context *ctx);
+    /* Allocate from the activation's temporary arena (DATA-6). */
+    void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size);
 
 #ifdef __cplusplus
 }

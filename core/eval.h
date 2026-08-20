@@ -5,7 +5,8 @@
 #include "pin.h"
 
 /* Clear memo/cycle state for a pull-eval activation. Call with arena_reset
- * before a standalone run; flow_run performs this between node activations. */
+ * before a standalone run; the scheduler performs this between node
+ * activations. */
 void graph_eval_reset(graph *g);
 
 typedef struct
@@ -16,9 +17,12 @@ typedef struct
     const char *message;
 } eval_status;
 
+typedef struct blueprint_instance blueprint_instance;
+
 typedef struct eval_context
 {
     eval_status status;
+    blueprint_instance *instance; /* optional: variable/owner reads for Get/Self */
 } eval_context;
 
 void eval_context_init(eval_context *ctx);

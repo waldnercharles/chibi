@@ -48,6 +48,8 @@ typedef enum
     NODE_PURE_MAKE,      /* desc->type: field inputs -> one struct output */
     NODE_PURE_BREAK,     /* desc->type: one struct input -> field outputs */
     NODE_PURE_CALL,      /* desc->fn: inputs -> one output */
+    NODE_PURE_GET,       /* variable read from the blueprint instance */
+    NODE_PURE_SELF,      /* owner handle read from the blueprint instance */
 } node_pure_kind;
 
 typedef struct

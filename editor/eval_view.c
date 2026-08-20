@@ -13,6 +13,7 @@ struct eval_view
     arena a;
     eval_context eval;
     const flow_run *run;
+    const blueprint_instance *instance;
     const char *error;
 };
 
@@ -37,6 +38,7 @@ void eval_view_refresh(eval_view *v, graph *g)
     v->error = NULL;
     v->run = NULL;
     eval_context_reset(&v->eval);
+    v->eval.instance = (blueprint_instance *)v->instance; /* Get/Self preview reads */
     graph_eval_reset(g);
     arena_reset(&v->a);
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -56,6 +58,11 @@ void eval_view_refresh(eval_view *v, graph *g)
 void eval_view_set_run(eval_view *v, const flow_run *run)
 {
     if (v) v->run = run;
+}
+
+void eval_view_set_instance(eval_view *v, const blueprint_instance *bi)
+{
+    if (v) v->instance = bi;
 }
 
 const char *eval_view_error(const eval_view *v)

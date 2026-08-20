@@ -7,9 +7,11 @@
 #include "../app/demo_graph.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
+#include "../core/blueprint.h"
 #include "../core/eval.h"
 #include "../core/flow.h"
 #include "../core/graph.h"
+#include "../core/instance.h"
 #include "../core/pin_conv.h"
 #include "../core/pin_fmt.h"
 #include "../core/registry.h"
@@ -293,6 +295,81 @@ static node_desc g_watch_desc = {
     .type = &T_Vec3,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_watch_struct,
+};
+
+/* Phase 3 capture sinks: a flow node records one data input so a test can
+ * observe values that flowed through Get Variable, Self, and Call Event. */
+static int g_captured_int;
+static char g_captured_str[64];
+static uint64_t g_captured_handle;
+static pin_spec g_capture_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { "Value", PIN_I32, "int", PIN_DATA },
+};
+static pin_spec g_capture_outputs[] = {
+    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+};
+static int flow_capture_i32(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value v;
+    int result = flow_context_eval_data(ctx, 1, &v);
+    if (result) return result;
+    g_captured_int = v.i;
+    return flow_context_continue(ctx, 0);
+}
+static node_desc g_capture_desc = {
+    .name = "CaptureI32",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_capture_inputs,
+    .outputs = g_capture_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_capture_i32,
+};
+static pin_spec g_str_capture_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { "Value", PIN_STR, "const char *", PIN_DATA },
+};
+static int flow_capture_str(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value v;
+    int result = flow_context_eval_data(ctx, 1, &v);
+    if (result) return result;
+    snprintf(g_captured_str, sizeof g_captured_str, "%s", v.str ? v.str : "");
+    return flow_context_continue(ctx, 0);
+}
+static node_desc g_str_capture_desc = {
+    .name = "CaptureStr",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_str_capture_inputs,
+    .outputs = g_capture_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_capture_str,
+};
+static pin_spec g_handle_capture_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { "Value", PIN_HANDLE, "Entity", PIN_DATA },
+};
+static int flow_capture_handle(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value v;
+    int result = flow_context_eval_data(ctx, 1, &v);
+    if (result) return result;
+    g_captured_handle = v.u64;
+    return flow_context_continue(ctx, 0);
+}
+static node_desc g_handle_capture_desc = {
+    .name = "CaptureHandle",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_handle_capture_inputs,
+    .outputs = g_capture_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_capture_handle,
 };
 
 static node *make_string(graph *g, const char *value)
@@ -2015,6 +2092,484 @@ int main(int argc, char **argv)
         free(json);
         flow_run_free(run);
         graph_free(&gs);
+    }
+
+    /* Phase 3: persistent Blueprint instances, variables, and generic events.
+     * Begin() initializes one instance's variables once; later Tick(Real) and
+     * Input(Name, Real, Bool) events read and write the same state (VAR-11,
+     * EVT-9, EVT-10). */
+    {
+        blueprint *bp = blueprint_new("VarDemo");
+        check(bp && bp->graph, "BP-1: a blueprint owns its graph and metadata");
+        blueprint_variable *health = blueprint_add_variable(
+            bp,
+            "Health",
+            PIN_I32,
+            "int",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_I32, .i = 100 },
+            "Stats"
+        );
+        check(health != NULL, "VAR-1: variables carry id, name, type, container, default, category");
+        check(
+            blueprint_find_variable_by_name(bp, "Health") == health,
+            "VAR-3: variable names are unique and findable within a blueprint"
+        );
+        check(
+            blueprint_add_variable(bp, "Health", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) ==
+                NULL,
+            "VAR-3: duplicate variable names are rejected"
+        );
+        blueprint_variable *last_action = blueprint_add_variable(
+            bp,
+            "LastAction",
+            PIN_NAME,
+            "name",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_NAME, .str = "" },
+            ""
+        );
+        check(last_action != NULL, "TYPE-12: a Name variable accepts an authored default");
+
+        /* Begin(): Set Health to 50. */
+        node *begin_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, begin_ev, "Begin");
+        node *set = blueprint_add_set_node(bp, health->id);
+        graph_set_pin_default(bp->graph, set, 0, 1, &(pin_value){ .type = PIN_I32, .i = 50 });
+        graph_connect_exec(bp->graph, begin_ev, 0, set, 0, 0);
+
+        /* Tick(Real DeltaSeconds): read Health into a capture node. */
+        node *tick_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, tick_ev, "Tick");
+        pin_spec delta = { "DeltaSeconds", PIN_F64, "double", PIN_DATA };
+        graph_add_pin(bp->graph, tick_ev, 1, &delta);
+        node *get = blueprint_add_get_node(bp, health->id);
+        node *capture = graph_add_node(bp->graph, &g_capture_desc);
+        graph_connect_exec(bp->graph, tick_ev, 0, capture, 0, 0);
+        graph_connect_data(bp->graph, get, 0, capture, 1);
+
+        /* Input(Name Action, Real Value, Bool Pressed): Set LastAction. */
+        node *input_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, input_ev, "Input");
+        pin_spec action_param = { "Action", PIN_NAME, "name", PIN_DATA };
+        pin_spec val = { "Value", PIN_F64, "double", PIN_DATA };
+        pin_spec pressed = { "Pressed", PIN_BOOL, "bool", PIN_DATA };
+        graph_add_pin(bp->graph, input_ev, 1, &action_param);
+        graph_add_pin(bp->graph, input_ev, 1, &val);
+        graph_add_pin(bp->graph, input_ev, 1, &pressed);
+        node *set_action = blueprint_add_set_node(bp, last_action->id);
+        graph_connect_exec(bp->graph, input_ev, 0, set_action, 0, 0);
+        graph_connect_data(bp->graph, input_ev, 1, set_action, 1);
+
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        check(bi != NULL, "RUN-15: explicit instance creation succeeds");
+        pin_value v;
+        check(
+            blueprint_instance_get_variable(bi, health->id, &v) == 0 && v.i == 100,
+            "VAR-11: instance variables initialize from authored defaults once"
+        );
+        check(bp->graph->flow_pause_count > 0, "RUN-20: creating an instance acquires the mutation guard");
+
+        flow_error perr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Begin", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-9: Begin dispatch completes");
+        check(
+            blueprint_instance_get_variable(bi, health->id, &v) == 0 && v.i == 50,
+            "VAR-4: Set Variable writes instance storage"
+        );
+
+        g_captured_int = -1;
+        pin_value tick_params[] = { { .type = PIN_F64, .d = 0.016 } };
+        act = blueprint_instance_dispatch(bi, "Tick", (flow_inputs){ tick_params, 1, NULL }, &perr);
+        check(
+            act && flow_run_status(act) == FLOW_COMPLETED && g_captured_int == 50,
+            "EVT-10: a later Tick event reads the state Begin wrote"
+        );
+
+        pin_value input_params[] = {
+            { .type = PIN_NAME, .str = "Jump" },
+            { .type = PIN_F64, .d = 1.0 },
+            { .type = PIN_BOOL, .b = true },
+        };
+        act = blueprint_instance_dispatch(bi, "Input", (flow_inputs){ input_params, 3, NULL }, &perr);
+        check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-9: Input dispatch with parameters completes");
+        check(
+            blueprint_instance_get_variable(bi, last_action->id, &v) == 0 &&
+                v.type == PIN_NAME && v.str && strcmp(v.str, "Jump") == 0,
+            "EVT-4: event parameters deliver values into instance state"
+        );
+        check(health->default_value.i == 100, "BP-13: instance execution never mutates authored defaults");
+
+        check(blueprint_rename_variable(bp, health->id, "HP") != 0, "EXEC-19: renaming a variable is rejected while an instance is attached");
+        check(blueprint_add_variable(bp, "New", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) == NULL, "EXEC-19: adding a variable is rejected while an instance is attached");
+        check(
+            graph_add_node(bp->graph, &g_sink_a_desc) == NULL,
+            "EXEC-19: adding a node is rejected while an instance is attached"
+        );
+        check(blueprint_instance_stop_activation(bi, act) == FLOW_OK, "RUN-17: stopping one activation succeeds");
+        check(bp->graph->flow_pause_count > 0, "RUN-20: stopping one activation does NOT release the mutation guard");
+        blueprint_instance_destroy(bi);
+        check(bp->graph->flow_pause_count == 0, "RUN-20: destroying the last instance releases the mutation guard");
+
+        uint64_t health_id = health->id;
+        node *get_ref = get;
+        check(blueprint_rename_variable(bp, health_id, "HP") == 0, "VAR-5: renaming a variable succeeds when mutable");
+        check(
+            health->name && strcmp(health->name, "HP") == 0 &&
+                get_ref->reference_id == health_id && get_ref->reference_name &&
+                strcmp(get_ref->reference_name, "HP") == 0,
+            "VAR-5: rename updates the referencing node's display without "
+            "rewriting its reference"
+        );
+        check(blueprint_retype_variable(bp, health_id, PIN_F64, "double") == 0, "VAR-6: retyping a variable succeeds");
+        check(
+            health->type == PIN_F64 && get_ref->output_pins[0].type == PIN_F64,
+            "VAR-5: retyping updates the referencing node's pin type"
+        );
+        node *src = NULL;
+        int src_pin = -1;
+        check(graph_input_source(bp->graph, capture, 1, &src, &src_pin) == 0, "VAR-6: the now-incompatible edge is invalidated");
+        blueprint_free(bp);
+    }
+
+    /* VAR-7: deleting a referenced variable is permitted; the orphaned Get
+     * reference fails evaluation with an error naming the lost variable. */
+    {
+        blueprint *bp = blueprint_new("Orphan");
+        blueprint_variable *v = blueprint_add_variable(
+            bp,
+            "Gone",
+            PIN_I32,
+            "int",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_I32, .i = 1 },
+            ""
+        );
+        node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *get = blueprint_add_get_node(bp, v->id);
+        node *cap = graph_add_node(bp->graph, &g_capture_desc);
+        graph_connect_exec(bp->graph, ev, 0, cap, 0, 0);
+        graph_connect_data(bp->graph, get, 0, cap, 1);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        blueprint_instance_destroy(bi);
+        check(blueprint_delete_variable(bp, v->id) == 0, "VAR-7: deleting a referenced variable is permitted");
+        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error perr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
+        const flow_error *fe = act ? flow_run_error(act) : NULL;
+        check(
+            act && flow_run_status(act) == FLOW_FAILED && fe && fe->message &&
+                strstr(fe->message, "lost variable") != NULL,
+            "VAR-7: an orphaned Get reference fails with an error naming the "
+            "lost variable"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* EXEC-17 / CAT-18: a Delay suspends while a later event executes, and the
+     * scheduler's FIFO activation order is deterministic across repeated runs. */
+    {
+        blueprint *bp = blueprint_new("Sched");
+        node *wait_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, wait_ev, "Wait");
+        node *delay = graph_add_node(bp->graph, registry_node_by_name("Delay"));
+        node *done_a = graph_add_node(bp->graph, &g_sink_a_desc);
+        graph_connect_exec(bp->graph, wait_ev, 0, delay, 0, 0);
+        graph_connect_exec(bp->graph, delay, 0, done_a, 0, 0);
+        delay->inputs[1].d = 5.0;
+        node *fast_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, fast_ev, "Fast");
+        node *done_b = graph_add_node(bp->graph, &g_sink_b_desc);
+        graph_connect_exec(bp->graph, fast_ev, 0, done_b, 0, 0);
+        for (int run = 0; run < 2; run++) {
+            blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+            flow_log_reset();
+            flow_error perr = { 0 };
+            flow_run *act = blueprint_instance_dispatch(bi, "Wait", (flow_inputs){ 0 }, &perr);
+            check(
+                act && flow_run_status(act) == FLOW_SUSPENDED && g_flow_log_count == 0,
+                "EXEC-17: a Delay suspends its activation"
+            );
+            act = blueprint_instance_dispatch(bi, "Fast", (flow_inputs){ 0 }, &perr);
+            check(
+                act && flow_run_status(act) == FLOW_COMPLETED &&
+                    strcmp(g_flow_log, "B") == 0,
+                "EXEC-17: a later event executes while the Delay is suspended"
+            );
+            check(acount(bi->activations) == 2, "EXEC-17: suspended and completed activations coexist");
+            check(blueprint_instance_tick(bi, 5.0) == FLOW_OK && strcmp(g_flow_log, "BA") == 0, "EXEC-17: the scheduler resumes the Delay at its deadline in FIFO order");
+            check(act && flow_run_status(act) == FLOW_COMPLETED, "CAT-18: the Delay completes after its duration");
+            blueprint_instance_destroy(bi);
+        }
+        blueprint_free(bp);
+    }
+
+    /* EVT-7: dispatching by name fails distinctly for unknown and duplicate
+     * names. */
+    {
+        blueprint *bp = blueprint_new("Evt7");
+        node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, ev, "Go");
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error err = { 0 };
+        check(
+            blueprint_instance_dispatch(bi, "Missing", (flow_inputs){ 0 }, &err) == NULL &&
+                err.code == FLOW_ERR_UNKNOWN_EVENT,
+            "EVT-7: an unknown event name fails distinctly"
+        );
+        blueprint_instance_destroy(bi);
+        node *dup = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, dup, "Go");
+        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        err = (flow_error){ 0 };
+        check(
+            blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &err) == NULL &&
+                err.code == FLOW_ERR_DUPLICATE_EVENT,
+            "EVT-7: a duplicate event name fails distinctly"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* RUN-18: two instances of one definition share no owner, variable,
+     * scratch, activation, error, or step-count state. */
+    {
+        blueprint *bp = blueprint_new("Two");
+        blueprint_set_owner_type(bp, "Entity");
+        blueprint_variable *v = blueprint_add_variable(
+            bp,
+            "State",
+            PIN_I32,
+            "int",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_I32, .i = 100 },
+            ""
+        );
+        node *boom_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, boom_ev, "Boom");
+        node *boom = graph_add_node(bp->graph, &g_sink_error_desc);
+        graph_connect_exec(bp->graph, boom_ev, 0, boom, 0, 0);
+        pin_value o1 = { .type = PIN_HANDLE, .u64 = 111, .type_name = "Entity" };
+        pin_value o2 = { .type = PIN_HANDLE, .u64 = 222, .type_name = "Entity" };
+        blueprint_instance *bi1 = blueprint_instance_create(bp, &o1, NULL, NULL);
+        blueprint_instance *bi2 = blueprint_instance_create(bp, &o2, NULL, NULL);
+        check(
+            blueprint_instance_owner(bi1).u64 == 111 &&
+                blueprint_instance_owner(bi2).u64 == 222 &&
+                blueprint_instance_owner(bi1).type == PIN_HANDLE,
+            "RUN-18: two instances carry independent owner handles"
+        );
+        blueprint_instance_set_variable(bi1, v->id, &(pin_value){ .type = PIN_I32, .i = 7 });
+        pin_value rv;
+        check(
+            blueprint_instance_get_variable(bi1, v->id, &rv) == 0 && rv.i == 7 &&
+                blueprint_instance_get_variable(bi2, v->id, &rv) == 0 && rv.i == 100,
+            "RUN-18: two instances have independent variable storage"
+        );
+        pin_value *s1 = blueprint_instance_scratch(bi1, 42);
+        s1->type = PIN_I32;
+        s1->i = 5;
+        check(blueprint_instance_scratch(bi2, 42)->i == 0, "RUN-18: two instances have independent per-node scratch");
+        flow_error perr = { 0 };
+        flow_run *a1 = blueprint_instance_dispatch(bi1, "Boom", (flow_inputs){ 0 }, &perr);
+        check(a1 && flow_run_status(a1) == FLOW_FAILED && flow_run_steps(a1) == 2, "RUN-18: an error and its step count live on instance one's own activation");
+        check(
+            acount(bi1->activations) == 1 && acount(bi2->activations) == 0,
+            "RUN-18: one instance's failure leaves the other's queue untouched"
+        );
+        flow_run *a2 = blueprint_instance_dispatch(bi2, "Boom", (flow_inputs){ 0 }, &perr);
+        check(
+            a2 && flow_run_status(a2) == FLOW_FAILED &&
+                flow_run_error(a1) != flow_run_error(a2),
+            "RUN-18: independent activation errors"
+        );
+        blueprint_instance_destroy(bi1);
+        blueprint_instance_destroy(bi2);
+        blueprint_free(bp);
+    }
+
+    /* RUN-15 / RUN-17: stopping one activation preserves instance variables
+     * and scratch; destroying the instance cancels every activation and
+     * releases the mutation guard without executing another node. */
+    {
+        blueprint *bp = blueprint_new("Stop");
+        blueprint_variable *v = blueprint_add_variable(
+            bp,
+            "State",
+            PIN_I32,
+            "int",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_I32, .i = 5 },
+            ""
+        );
+        node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *delay = graph_add_node(bp->graph, registry_node_by_name("Delay"));
+        node *done = graph_add_node(bp->graph, &g_sink_a_desc);
+        graph_connect_exec(bp->graph, ev, 0, delay, 0, 0);
+        graph_connect_exec(bp->graph, delay, 0, done, 0, 0);
+        delay->inputs[1].d = 100.0;
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        blueprint_instance_set_variable(bi, v->id, &(pin_value){ .type = PIN_I32, .i = 9 });
+        blueprint_instance_scratch(bi, delay->id)->type = PIN_I32;
+        blueprint_instance_scratch(bi, delay->id)->i = 42;
+        flow_error perr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_SUSPENDED, "RUN-15: dispatch leaves a suspended activation");
+        check(
+            blueprint_instance_stop_activation(bi, act) == FLOW_OK &&
+                flow_run_status(act) == FLOW_IDLE,
+            "RUN-17: stopping one activation succeeds"
+        );
+        pin_value rv;
+        check(
+            blueprint_instance_get_variable(bi, v->id, &rv) == 0 && rv.i == 9,
+            "RUN-17: stopping an activation preserves instance variables"
+        );
+        check(blueprint_instance_scratch(bi, delay->id)->i == 42, "RUN-17: stopping an activation preserves per-node scratch");
+        int guard_before = bp->graph->flow_pause_count;
+        blueprint_instance_destroy(bi);
+        check(bp->graph->flow_pause_count == guard_before - 1, "RUN-20: destroying the instance releases the mutation guard");
+        check(graph_add_node(bp->graph, &g_sink_b_desc) != NULL, "EXEC-19: the definition becomes mutable after its last instance is destroyed");
+
+        blueprint_instance *bi2 = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_log_reset();
+        act = blueprint_instance_dispatch(bi2, "Go", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_SUSPENDED, "RUN-15: a second instance also suspends");
+        blueprint_instance_destroy(bi2);
+        check(g_flow_log_count == 0, "RUN-15: destroying the instance cancels activations without executing another node");
+        blueprint_free(bp);
+    }
+
+    /* EVT-6 / EVT-11: Call Event invokes a custom event as a separate
+     * activation through the scheduler, never through the C call stack. */
+    {
+        blueprint *bp = blueprint_new("Call");
+        node *outer = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, outer, "Outer");
+        node *inner = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, inner, "Inner");
+        pin_spec msg = { "Message", PIN_STR, "const char *", PIN_DATA };
+        graph_add_pin(bp->graph, inner, 1, &msg);
+        node *cap = graph_add_node(bp->graph, &g_str_capture_desc);
+        graph_connect_exec(bp->graph, inner, 0, cap, 0, 0);
+        graph_connect_data(bp->graph, inner, 1, cap, 1);
+        node *call = blueprint_add_call_event_node(bp, inner);
+        check(
+            call != NULL && call->input_count == 2 &&
+                call->reference_id == inner->id,
+            "EVT-6: Call Event mirrors the event's parameters as data inputs"
+        );
+        node *str_lit = graph_add_node(bp->graph, registry_node_by_name("String"));
+        graph_set_pin_default(bp->graph, str_lit, 0, 0, &(pin_value){ .type = PIN_STR, .str = "hello from call" });
+        graph_connect_exec(bp->graph, outer, 0, call, 0, 0);
+        graph_connect_data(bp->graph, str_lit, 0, call, 1);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        g_captured_str[0] = 0;
+        flow_error perr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Outer", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-6: the Outer activation completes");
+        check(strcmp(g_captured_str, "hello from call") == 0 && acount(bi->activations) == 2, "EVT-11: Call Event delivered the parameter through a separate activation");
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* CAT-32: Self is a pure node whose output has the definition's owner
+     * handle type; it is rejected without an owner type and evaluates to the
+     * instance's supplied owner handle. */
+    {
+        blueprint *bp = blueprint_new("Self");
+        check(blueprint_add_self_node(bp) == NULL, "CAT-32: Self is rejected when the definition declares no owner type");
+        blueprint_set_owner_type(bp, "Entity");
+        node *self = blueprint_add_self_node(bp);
+        check(
+            self && self->output_pins[0].type == PIN_HANDLE &&
+                self->output_pins[0].type_name &&
+                strcmp(self->output_pins[0].type_name, "Entity") == 0,
+            "CAT-32: Self carries the declared nominal owner handle type"
+        );
+        pin_spec ha = { "a", PIN_HANDLE, "Entity", PIN_DATA };
+        pin_spec hb = { "b", PIN_HANDLE, "Entity", PIN_DATA };
+        pin_spec hc = { "c", PIN_HANDLE, "Other", PIN_DATA };
+        check(pin_types_compatible(&ha, &hb) && !pin_types_compatible(&ha, &hc), "TYPE-13: handle pins are compatible only when nominal type names match");
+        node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *cap = graph_add_node(bp->graph, &g_handle_capture_desc);
+        graph_connect_exec(bp->graph, ev, 0, cap, 0, 0);
+        graph_connect_data(bp->graph, self, 0, cap, 1);
+        pin_value owner = { .type = PIN_HANDLE, .u64 = 777, .type_name = "Entity" };
+        blueprint_instance *bi = blueprint_instance_create(bp, &owner, NULL, NULL);
+        g_captured_handle = 0;
+        flow_error perr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
+        check(
+            act && flow_run_status(act) == FLOW_COMPLETED && g_captured_handle == 777,
+            "CAT-32: Self evaluates to the instance's supplied owner handle"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* FMT-16 / FMT-17 / FMT-18: the Blueprint document is byte-identical
+     * before and after execution, and Name spelling plus the owner type
+     * round-trip exactly. */
+    {
+        blueprint *bp = blueprint_new("FmtBP");
+        blueprint_set_owner_type(bp, "UnavailableOwner");
+        blueprint_add_variable(
+            bp,
+            "Tag",
+            PIN_NAME,
+            "name",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_NAME, .str = "MyTag" },
+            "Cats"
+        );
+        node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *name_lit = graph_add_node(bp->graph, registry_node_by_name("Name"));
+        graph_set_pin_default(bp->graph, name_lit, 0, 0, &(pin_value){ .type = PIN_NAME, .str = "ExactSpelling" });
+        char *before = blueprint_save_json(bp);
+        check(
+            before && strstr(before, "\"owner_type\": \"UnavailableOwner\""),
+            "FMT-18: the authored owner handle type is written"
+        );
+        blueprint_instance *bi = blueprint_instance_create(
+            bp,
+            &(pin_value){ .type = PIN_HANDLE, .u64 = 5, .type_name = "UnavailableOwner" },
+            NULL,
+            NULL
+        );
+        blueprint_instance_destroy(bi);
+        char *after = blueprint_save_json(bp);
+        check(before && after && strcmp(before, after) == 0 && !strstr(before, "activations"), "FMT-16: saving before and after execution is byte-identical and carries no runtime state");
+        blueprint *loaded = before ? blueprint_load_json(before) : NULL;
+        check(loaded && loaded->owner_type_name && strcmp(loaded->owner_type_name, "UnavailableOwner") == 0, "FMT-17: an unavailable owner type name is preserved, not substituted");
+        blueprint_variable *lv = loaded ? blueprint_find_variable_by_name(loaded, "Tag")
+                                        : NULL;
+        check(
+            lv && lv->default_value.str && strcmp(lv->default_value.str, "MyTag") == 0,
+            "FMT-17: a Name variable's authored spelling round-trips exactly"
+        );
+        int spelling = 0;
+        if (loaded)
+            for (int i = 0; i < acount(loaded->graph->nodes); i++) {
+                node *n = loaded->graph->nodes[i];
+                if (n->desc == registry_node_by_name("Name") &&
+                    n->input_pins[0].default_value.str &&
+                    strcmp(n->input_pins[0].default_value.str, "ExactSpelling") == 0)
+                    spelling = 1;
+            }
+        check(spelling, "FMT-17: a Name literal's authored spelling round-trips exactly");
+        char *re = loaded ? blueprint_save_json(loaded) : NULL;
+        check(re && before && strcmp(re, before) == 0, "FMT-12: the Blueprint document load/save round-trips byte-identically");
+        if (loaded) blueprint_free(loaded);
+        free(before);
+        free(after);
+        free(re);
+        blueprint_free(bp);
     }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

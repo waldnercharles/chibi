@@ -115,7 +115,7 @@ blueprint_variable *blueprint_find_variable_by_id(blueprint *bp, uint64_t id)
     return NULL;
 }
 
-static void update_referencing_nodes(blueprint *bp, uint64_t id, char *display_name)
+static void refresh_reference_display(blueprint *bp, uint64_t id, char *display_name)
 {
     for (int i = 0; i < acount(bp->graph->nodes); i++) {
         node *n = bp->graph->nodes[i];
@@ -134,7 +134,7 @@ int blueprint_rename_variable(blueprint *bp, uint64_t id, const char *new_name)
     if (!copy) return -1;
     v->name = copy;
     /* VAR-5: referencing nodes keep their reference ID; only display updates. */
-    update_referencing_nodes(bp, id, copy);
+    refresh_reference_display(bp, id, copy);
     return 0;
 }
 

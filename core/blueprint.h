@@ -66,5 +66,6 @@ int blueprint_set_variable_default(blueprint *bp, uint64_t id, const pin_value *
 node *blueprint_add_get_node(blueprint *bp, uint64_t variable_id);
 node *blueprint_add_set_node(blueprint *bp, uint64_t variable_id);
 node *blueprint_add_self_node(blueprint *bp); /* NULL when no owner type */
+node *blueprint_add_call_event_node(blueprint *bp, node *event_node);
 
 #endif

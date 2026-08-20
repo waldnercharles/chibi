@@ -2,6 +2,7 @@
 
 #include "arena.h"
 #include "eval.h"
+#include "pin_conv.h"
 #include "registry.h"
 
 #include <stdlib.h>
@@ -23,8 +24,8 @@ typedef struct
 
 typedef struct
 {
-    const node *node;
-    int pin;
+    uint64_t node_id;
+    uint64_t pin_id;
     int output;
     pin_value value;
     void *owned;
@@ -51,8 +52,6 @@ struct flow_run
     flow_error error;
     eval_context eval;
     flow_frame *frames;
-    int frame_count;
-    int frame_cap;
     pin_value *inputs;
     int input_count;
     const void *input_user_data;
@@ -60,8 +59,6 @@ struct flow_run
     void *sink_user;
     arena scratch;
     flow_watch *watches;
-    int watch_count;
-    int watch_cap;
 };
 
 struct flow_context
@@ -82,21 +79,8 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
 static int graph_has_node(const graph *g, const node *n)
 {
     if (!g || !n) return 0;
-    for (int i = 0; i < g->node_count; i++)
+    for (int i = 0; i < acount(g->nodes); i++)
         if (g->nodes[i] == n) return 1;
-    return 0;
-}
-
-static int frame_push(flow_run *run, flow_frame frame)
-{
-    if (run->frame_count == run->frame_cap) {
-        int next = run->frame_cap ? run->frame_cap * 2 : 16;
-        flow_frame *grown = (flow_frame *)realloc(run->frames, (size_t)next * sizeof *grown);
-        if (!grown) return -1;
-        run->frames = grown;
-        run->frame_cap = next;
-    }
-    run->frames[run->frame_count++] = frame;
     return 0;
 }
 
@@ -131,26 +115,30 @@ static int schedule_output(flow_context *ctx, int output_pin)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "continuation is not an EXEC output");
 
     node *target = NULL;
-    int target_pin = 0;
+    int target_pin = -1;
     int found = 0;
-    for (int i = 0; i < run->graph->edge_count; i++) {
+    for (int i = 0; i < acount(run->graph->edges); i++) {
         const edge *e = &run->graph->edges[i];
-        if (e->kind != GRAPH_EDGE_EXEC || e->from != ctx->node || e->from_pin != output_pin)
+        if (e->kind != GRAPH_EDGE_EXEC || e->from_id != ctx->node->id ||
+            e->from_pin_id != ctx->node->output_pins[output_pin].id)
             continue;
         if (found) {
             return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "EXEC output has ambiguous fan-out");
         }
         found = 1;
-        target = e->to;
-        target_pin = e->to_pin;
+        target = graph_node_by_id(run->graph, e->to_id);
+        int is_out = 0;
+        if (!target ||
+            !graph_pin_by_id(target, e->to_pin_id, &is_out, &target_pin) || is_out) {
+            target = NULL;
+            target_pin = -1;
+        }
     }
     if (!found) return FLOW_OK;
-    if (target_pin < 0 || target_pin >= target->desc->input_count ||
-        target->input_pins[target_pin].kind != PIN_EXEC)
+    if (!target || target_pin < 0 || target->input_pins[target_pin].kind != PIN_EXEC)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "invalid EXEC target");
-    return frame_push(run, (flow_frame){ target, FLOW_FRAME_NODE, 0, 0 })
-             ? flow_context_fail(ctx, FLOW_ERR_NODE, "flow continuation allocation failed")
-             : FLOW_OK;
+    apush(run->frames, (flow_frame){ target, FLOW_FRAME_NODE, 0, 0 });
+    return FLOW_OK;
 }
 
 static int schedule_output_for_node(flow_run *run, node *n, int output_pin)
@@ -203,22 +191,15 @@ static const type_desc *watch_type(const flow_run *run, const node *n, int outpu
     return type;
 }
 
-static int watch_reserve(flow_run *run)
+static const flow_watch *watch_find(const flow_run *run, const node *n, int output, int pin)
 {
-    if (run->watch_count < run->watch_cap) return 0;
-    int next = run->watch_cap ? run->watch_cap * 2 : 16;
-    flow_watch *grown = (flow_watch *)realloc(run->watches, (size_t)next * sizeof *grown);
-    if (!grown) return -1;
-    run->watches = grown;
-    run->watch_cap = next;
-    return 0;
-}
-
-static flow_watch *watch_find(flow_run *run, const node *n, int output, int pin)
-{
-    for (int i = 0; i < run->watch_count; i++) {
-        flow_watch *watch = &run->watches[i];
-        if (watch->node == n && watch->output == output && watch->pin == pin)
+    if (!n || pin < 0) return NULL;
+    int count = output ? n->output_count : n->input_count;
+    if (pin >= count) return NULL;
+    uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
+    for (int i = 0; i < acount(run->watches); i++) {
+        const flow_watch *watch = &run->watches[i];
+        if (watch->node_id == n->id && watch->output == output && watch->pin_id == pin_id)
             return watch;
     }
     return NULL;
@@ -227,18 +208,21 @@ static flow_watch *watch_find(flow_run *run, const node *n, int output, int pin)
 static int watch_store(flow_run *run, const node *n, int output, int pin, const pin_value *value)
 {
     if (!run || !n || !value) return -1;
-    flow_watch *watch = watch_find(run, n, output, pin);
+    flow_watch *watch = (flow_watch *)watch_find(run, n, output, pin);
     if (!watch) {
-        if (watch_reserve(run)) return -1;
-        watch = &run->watches[run->watch_count++];
-        *watch = (flow_watch){
-            .node = n,
-            .pin = pin,
-            .output = output,
-            .value = { .type = PIN_FLOW },
-            .owned = NULL,
-            .owned_size = 0,
-        };
+        uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
+        apush(
+            run->watches,
+            (flow_watch){
+                .node_id = n->id,
+                .pin_id = pin_id,
+                .output = output,
+                .value = { .type = PIN_FLOW },
+                .owned = NULL,
+                .owned_size = 0,
+            }
+        );
+        watch = &run->watches[acount(run->watches) - 1];
     }
     free(watch->owned);
     watch->owned = NULL;
@@ -277,17 +261,15 @@ static void watch_capture_node(flow_run *run, node *n)
 
 static void watch_clear(flow_run *run)
 {
-    for (int i = 0; i < run->watch_count; i++) free(run->watches[i].owned);
-    free(run->watches);
-    run->watches = NULL;
-    run->watch_count = 0;
-    run->watch_cap = 0;
+    for (int i = 0; i < acount(run->watches); i++) free(run->watches[i].owned);
+    afree(run->watches);
 }
 
 static int flow_run_activate(flow_run *run)
 {
     if (run->steps >= run->step_budget) {
-        node *n = run->frame_count ? run->frames[run->frame_count - 1].node : NULL;
+        node *n = acount(run->frames) ? run->frames[acount(run->frames) - 1].node
+                                      : NULL;
         flow_fail(run, FLOW_ERR_STEP_BUDGET, n, "flow step budget exceeded");
         return FLOW_ERR_STEP_BUDGET;
     }
@@ -298,7 +280,7 @@ static int flow_run_activate(flow_run *run)
     eval_context_reset(&run->eval);
     arena_reset(&run->scratch);
 
-    flow_frame frame = run->frames[--run->frame_count];
+    flow_frame frame = apop(run->frames);
     run->steps++;
     if (frame.kind == FLOW_FRAME_LOOP) {
         if (frame.current < frame.last) {
@@ -307,10 +289,7 @@ static int flow_run_activate(flow_run *run)
             frame.node->outputs[1].type = PIN_I32;
             frame.node->outputs[1].type_name = "int";
             frame.node->outputs[1].i = frame.current;
-            if (frame_push(run, frame)) {
-                flow_fail(run, FLOW_ERR_NODE, frame.node, "loop continuation allocation failed");
-                return FLOW_ERR_NODE;
-            }
+            apush(run->frames, frame);
             watch_capture_node(run, frame.node);
             return schedule_output_for_node(run, frame.node, 0);
         }
@@ -361,7 +340,7 @@ static int flow_run_execute(flow_run *run)
     int waiting = flow_run_wait(run);
     if (waiting) return waiting;
 
-    while (run->state == FLOW_RUNNING && run->frame_count > 0) {
+    while (run->state == FLOW_RUNNING && acount(run->frames) > 0) {
         if (run->pause_requested) {
             run->pause_requested = 0;
             run->state = FLOW_PAUSED;
@@ -374,7 +353,7 @@ static int flow_run_execute(flow_run *run)
             return FLOW_PAUSED_RESULT;
         }
     }
-    if (run->state == FLOW_RUNNING && run->frame_count == 0)
+    if (run->state == FLOW_RUNNING && acount(run->frames) == 0)
         run->state = FLOW_COMPLETED;
     return run->state == FLOW_FAILED ? run->error.code : FLOW_OK;
 }
@@ -420,14 +399,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     }
     arena_init(&run->scratch, 65536);
     graph_eval_reset(g);
-    if (frame_push(run, (flow_frame){ entry, FLOW_FRAME_NODE, 0, 0 })) {
-        arena_free(&run->scratch);
-        free(run->frames);
-        free(run->inputs);
-        free(run);
-        set_error(error, FLOW_ERR_NODE, entry, "flow frame allocation failed");
-        return NULL;
-    }
+    apush(run->frames, (flow_frame){ entry, FLOW_FRAME_NODE, 0, 0 });
     /* EXEC-8: the graph stays guarded for the entire non-idle run. */
     graph_pause(run);
     return run;
@@ -441,7 +413,7 @@ flow_run *graph_run_event(graph *g, const char *name, flow_inputs inputs, flow_e
         return NULL;
     }
     node *found = NULL;
-    for (int i = 0; i < g->node_count; i++) {
+    for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
         if (n->desc->flow_kind != NODE_FLOW_EVENT || !n->reference_name ||
             strcmp(n->reference_name, name) != 0)
@@ -530,7 +502,7 @@ int flow_run_stop(flow_run *run)
     if (!run) return FLOW_ERR_ARGUMENT;
     if (run->state == FLOW_IDLE) return FLOW_OK;
     run->state = FLOW_IDLE;
-    run->frame_count = 0;
+    aclear(run->frames);
     run->waiting_node = NULL;
     run->waiting_output = -1;
     run->pause_requested = 0;
@@ -550,10 +522,7 @@ int flow_run_reset(flow_run *run)
     flow_run_stop(run);
     graph_eval_reset(run->graph);
     eval_context_reset(&run->eval);
-    free(run->frames);
-    run->frames = NULL;
-    run->frame_count = 0;
-    run->frame_cap = 0;
+    afree(run->frames);
     free(run->inputs);
     run->inputs = NULL;
     run->input_count = 0;
@@ -591,14 +560,10 @@ void flow_run_free(flow_run *run)
 static int flow_run_watch_get(const flow_run *run, const node *n, int output, int pin, pin_value *out)
 {
     if (!run || !n || !out || pin < 0) return -1;
-    for (int i = 0; i < run->watch_count; i++) {
-        const flow_watch *watch = &run->watches[i];
-        if (watch->node == n && watch->output == output && watch->pin == pin) {
-            *out = watch->value;
-            return 0;
-        }
-    }
-    return -1;
+    const flow_watch *w = watch_find(run, n, output, pin);
+    if (!w) return -1;
+    *out = w->value;
+    return 0;
 }
 
 int flow_run_watch_input(const flow_run *run, const node *n, int pin, pin_value *out)
@@ -617,36 +582,20 @@ int flow_run_watch_copy_output(
 )
 {
     if (!run || !n || !out || pin < 0) return -1;
-    for (int i = 0; i < run->watch_count; i++) {
-        const flow_watch *watch = &run->watches[i];
-        if (watch->node != n || !watch->output || watch->pin != pin) continue;
-        *out = watch->value;
-        if (out->type == PIN_STRUCT) {
-            if (!watch->owned || !struct_storage || struct_storage_size < watch->owned_size)
-                return -1;
-            memcpy(struct_storage, watch->owned, watch->owned_size);
-            out->ptr = struct_storage;
-        }
-        return 0;
+    const flow_watch *w = watch_find(run, n, 1, pin);
+    if (!w) return -1;
+    *out = w->value;
+    if (out->type == PIN_STRUCT) {
+        if (!w->owned || !struct_storage || struct_storage_size < w->owned_size)
+            return -1;
+        memcpy(struct_storage, w->owned, w->owned_size);
+        out->ptr = struct_storage;
     }
-    return -1;
+    return 0;
 }
 
 double flow_context_now(const struct flow_context *ctx)
 { return ctx && ctx->run ? ctx->run->current_time : 0.0; }
-
-static void flow_coerce_real(pin_value *value, const pin_spec *target)
-{
-    if (value->type == PIN_F32 && target->type == PIN_F64) {
-        value->type = PIN_F64;
-        value->type_name = target->type_name;
-        value->d = (double)value->f;
-    } else if (value->type == PIN_F64 && target->type == PIN_F32) {
-        value->type = PIN_F32;
-        value->type_name = target->type_name;
-        value->f = (float)value->d;
-    }
-}
 
 int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *out)
 {
@@ -675,12 +624,13 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
                 status && status->message ? status->message : "data evaluation failed"
             );
         }
-        flow_coerce_real(out, spec);
+        pin_coerce(out, spec);
         ctx->node->inputs[input_pin] = *out;
         return FLOW_OK;
     }
     *out = ctx->node->inputs[input_pin];
-    out->type = spec->type;
+    if (out->type != spec->type && !pin_coerce(out, spec))
+        return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "data input has wrong type");
     out->type_name = spec->type_name;
     return FLOW_OK;
 }
@@ -726,8 +676,7 @@ int flow_context_loop(struct flow_context *ctx, int first, int last)
     ctx->node->outputs[1].type = PIN_I32;
     ctx->node->outputs[1].type_name = "int";
     ctx->node->outputs[1].i = first;
-    if (frame_push(ctx->run, (flow_frame){ ctx->node, FLOW_FRAME_LOOP, first, last }))
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "loop continuation allocation failed");
+    apush(ctx->run->frames, (flow_frame){ ctx->node, FLOW_FRAME_LOOP, first, last });
     return flow_context_continue(ctx, 0);
 }
 

@@ -5,6 +5,9 @@
  * Make + Break node_desc per struct plus a call node_desc per "node:fn"
  * function.
  */
+#include "../core/array.h"
+#include "../core/pin.h"
+
 #include <clang-c/Index.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,54 +46,26 @@ typedef struct
 
 typedef struct
 {
-    field_info *v;
-    int n, cap;
-} field_list;
-
-typedef struct
-{
     char *name;
     char *file; /* header basename where the definition lives */
-    field_list fields;
+    field_info *fields;
 } struct_info;
 
 typedef struct
 {
-    struct_info *v;
-    int n, cap;
-} struct_list;
-
-typedef struct
-{
     char *name;
-    char *ret;             /* return type spelling */
-    const char *ret_pin;   /* pin_type enum name for the return */
-    char **pname, **ptype; /* param names / type spellings */
-    const char **ppin;     /* pin_type enum names per param */
-    int nparams, cap;
+    char *ret;           /* return type spelling */
+    const char *ret_pin; /* pin_type enum name for the return */
+    char **pname;        /* param names */
+    char **ptype;        /* param type spellings */
+    const char **ppin;   /* pin_type enum names per param */
 } fn_info;
 
 typedef struct
 {
-    fn_info *v;
-    int n, cap;
-} fn_list;
-
-typedef struct
-{
-    struct_list structs;
-    fn_list fns;
+    struct_info *structs;
+    fn_info *fns;
 } collect_ctx;
-
-static void *xrealloc(void *p, size_t n)
-{
-    void *q = realloc(p, n);
-    if (!q) {
-        fprintf(stderr, "reflect: out of memory\n");
-        exit(1);
-    }
-    return q;
-}
 
 static char *cxstr(CXString s)
 {
@@ -139,47 +114,6 @@ static int ends_with(const char *s, const char *suffix)
     return ls >= lx && strcmp(s + ls - lx, suffix) == 0;
 }
 
-static void field_push(field_list *l, field_info f)
-{
-    if (l->n == l->cap) {
-        l->cap = l->cap ? l->cap * 2 : 8;
-        l->v = xrealloc(l->v, (size_t)l->cap * sizeof *l->v);
-    }
-    l->v[l->n++] = f;
-}
-
-static void struct_push(struct_list *l, struct_info s)
-{
-    if (l->n == l->cap) {
-        l->cap = l->cap ? l->cap * 2 : 8;
-        l->v = xrealloc(l->v, (size_t)l->cap * sizeof *l->v);
-    }
-    l->v[l->n++] = s;
-}
-
-static void fn_push(fn_list *l, fn_info f)
-{
-    if (l->n == l->cap) {
-        l->cap = l->cap ? l->cap * 2 : 8;
-        l->v = xrealloc(l->v, (size_t)l->cap * sizeof *l->v);
-    }
-    l->v[l->n++] = f;
-}
-
-static void fn_add_param(fn_info *f, char *name, char *type, const char *pin)
-{
-    if (f->nparams == f->cap) {
-        f->cap = f->cap ? f->cap * 2 : 4;
-        f->pname = xrealloc(f->pname, (size_t)f->cap * sizeof *f->pname);
-        f->ptype = xrealloc(f->ptype, (size_t)f->cap * sizeof *f->ptype);
-        f->ppin = xrealloc(f->ppin, (size_t)f->cap * sizeof *f->ppin);
-    }
-    f->pname[f->nparams] = name;
-    f->ptype[f->nparams] = type;
-    f->ppin[f->nparams] = pin;
-    f->nparams++;
-}
-
 /* ---------- annotation detection ---------- */
 
 typedef struct
@@ -188,9 +122,8 @@ typedef struct
     int found;
 } ann_ctx;
 
-static enum CXChildVisitResult find_annotate(CXCursor c, CXCursor parent, CXClientData data)
+static enum CXChildVisitResult find_annotate(CXCursor c, CXCursor, CXClientData data)
 {
-    (void)parent;
     ann_ctx *ctx = (ann_ctx *)data;
     if (clang_getCursorKind(c) == CXCursor_AnnotateAttr) {
         CXString s = clang_getCursorSpelling(c);
@@ -250,12 +183,11 @@ static const char *pin_name(CXType t)
 
 /* ---------- collection ---------- */
 
-static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor parent, CXClientData data)
+static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData data)
 {
-    (void)parent;
     if (clang_getCursorKind(c) != CXCursor_FieldDecl)
         return CXChildVisit_Continue;
-    field_list *l = (field_list *)data;
+    field_info **l = (field_info **)data;
     field_info f;
     CXType t = clang_getCursorType(c);
     f.name = cxstr(clang_getCursorSpelling(c));
@@ -281,13 +213,12 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor parent, CXClie
         free(f.spelling);
         return CXChildVisit_Continue;
     }
-    field_push(l, f);
+    apush(*l, f);
     return CXChildVisit_Continue;
 }
 
-static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor parent, CXClientData data)
+static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor, CXClientData data)
 {
-    (void)parent;
     if (clang_getCursorKind(c) != CXCursor_ParmDecl)
         return CXChildVisit_Continue;
     fn_info *f = (fn_info *)data;
@@ -298,7 +229,9 @@ static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor parent, CXClie
         reflect_error(c, "unsupported parameter type");
         return CXChildVisit_Continue;
     }
-    fn_add_param(f, cxstr(clang_getCursorSpelling(c)), cxstr(clang_getTypeSpelling(t)), pin);
+    apush(f->pname, cxstr(clang_getCursorSpelling(c)));
+    apush(f->ptype, cxstr(clang_getTypeSpelling(t)));
+    apush(f->ppin, pin);
     return CXChildVisit_Continue;
 }
 
@@ -313,16 +246,14 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             struct_info s;
             s.name = cxstr(clang_getCursorSpelling(c));
             s.file = cursor_file_basename(c);
-            s.fields.v = NULL;
-            s.fields.n = 0;
-            s.fields.cap = 0;
+            s.fields = NULL;
             clang_visitChildren(c, field_visitor, &s.fields);
             if (g_failed) {
                 free(s.name);
                 free(s.file);
-                free(s.fields.v);
+                afree(s.fields);
             } else {
-                struct_push(&ctx->structs, s);
+                apush(ctx->structs, s);
             }
         }
     } else if (k == CXCursor_FunctionDecl) {
@@ -343,10 +274,8 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             f.pname = NULL;
             f.ptype = NULL;
             f.ppin = NULL;
-            f.nparams = 0;
-            f.cap = 0;
             clang_visitChildren(c, param_visitor, &f);
-            fn_push(&ctx->fns, f);
+            apush(ctx->fns, f);
         }
     }
     return CXChildVisit_Recurse;
@@ -372,8 +301,31 @@ static const char *pin_member(const char *pin)
     return "ptr"; /* PIN_STRUCT / PIN_FLOW */
 }
 
+/* Canonical primitive spelling from PIN_TYPE_LIST; NULL for PIN_STRUCT/
+ * PIN_ENUM so those keep the libclang C type name. */
+static const char *primitive_spelling(const char *pin)
+{
+    if (!strcmp(pin, "PIN_STRUCT") || !strcmp(pin, "PIN_ENUM")) return NULL;
+    static const struct
+    {
+        const char *name;
+        const char *spelling;
+    } table[] = {
+#define X(id, str) { #id, str },
+        PIN_TYPE_LIST(X)
+#undef X
+    };
+    for (size_t i = 0; i < sizeof table / sizeof table[0]; i++)
+        if (strcmp(table[i].name, pin) == 0) return table[i].spelling;
+    return NULL;
+}
+
 static void emit_pin_spec(FILE *out, const char *name, const char *pin, const char *spelling)
-{ fprintf(out, "    { \"%s\", %s, \"%s\" },\n", name, pin, spelling); }
+{
+    const char *canon = primitive_spelling(pin);
+    if (canon) spelling = canon;
+    fprintf(out, "    { \"%s\", %s, \"%s\" },\n", name, pin, spelling);
+}
 
 /* Emit a C expression that reads the value for param idx out of pin_value. */
 static void emit_arg(FILE *out, const char *spelling, const char *pin, int idx)
@@ -396,7 +348,7 @@ static void emit_fn(FILE *out, const fn_info *f)
 
     if (struct_ret) {
         fprintf(out, "    %s __r = %s(", f->ret, f->name);
-        for (int j = 0; j < f->nparams; j++) {
+        for (int j = 0; j < acount(f->pname); j++) {
             if (j) fputs(", ", out);
             emit_arg(out, f->ptype[j], f->ppin[j], j);
         }
@@ -406,7 +358,7 @@ static void emit_fn(FILE *out, const fn_info *f)
         fprintf(out, "    *(%s *)r.ptr = __r;\n", f->ret);
     } else {
         fprintf(out, "    r.%s = %s(", pin_member(f->ret_pin), f->name);
-        for (int j = 0; j < f->nparams; j++) {
+        for (int j = 0; j < acount(f->pname); j++) {
             if (j) fputs(", ", out);
             emit_arg(out, f->ptype[j], f->ppin[j], j);
         }
@@ -419,24 +371,19 @@ static void emit_fn(FILE *out, const fn_info *f)
 static void emit_struct_nodes(FILE *out, const struct_info *s)
 {
     fprintf(out, "static pin_spec %s_make_inputs[] = {\n", s->name);
-    for (int j = 0; j < s->fields.n; j++)
-        emit_pin_spec(
-            out,
-            s->fields.v[j].name,
-            s->fields.v[j].pin,
-            s->fields.v[j].spelling
-        );
+    for (int j = 0; j < acount(s->fields); j++)
+        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, s->fields[j].spelling);
     fputs("};\n", out);
     fprintf(out, "static pin_spec %s_make_outputs[] = {\n", s->name);
     fprintf(out, "    { \"%s\", PIN_STRUCT, \"%s\" },\n", s->name, s->name);
     fputs("};\n", out);
     fprintf(out, "node_desc NODE_Make_%s = {\n", s->name);
     fprintf(out, "    .name = \"Make_%s\",\n", s->name);
-    fprintf(out, "    .input_count = %d,\n", s->fields.n);
+    fprintf(out, "    .input_count = %d,\n", acount(s->fields));
     fprintf(out, "    .output_count = 1,\n");
     fprintf(out, "    .inputs = %s_make_inputs,\n", s->name);
     fprintf(out, "    .outputs = %s_make_outputs,\n", s->name);
-    fprintf(out, "    .eval = node_eval_make,\n");
+    fprintf(out, "    .pure_kind = NODE_PURE_MAKE,\n");
     fprintf(out, "    .type = &T_%s,\n", s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
@@ -445,21 +392,16 @@ static void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    { \"%s\", PIN_STRUCT, \"%s\" },\n", s->name, s->name);
     fputs("};\n", out);
     fprintf(out, "static pin_spec %s_break_outputs[] = {\n", s->name);
-    for (int j = 0; j < s->fields.n; j++)
-        emit_pin_spec(
-            out,
-            s->fields.v[j].name,
-            s->fields.v[j].pin,
-            s->fields.v[j].spelling
-        );
+    for (int j = 0; j < acount(s->fields); j++)
+        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, s->fields[j].spelling);
     fputs("};\n", out);
     fprintf(out, "node_desc NODE_Break_%s = {\n", s->name);
     fprintf(out, "    .name = \"Break_%s\",\n", s->name);
     fprintf(out, "    .input_count = 1,\n");
-    fprintf(out, "    .output_count = %d,\n", s->fields.n);
+    fprintf(out, "    .output_count = %d,\n", acount(s->fields));
     fprintf(out, "    .inputs = %s_break_inputs,\n", s->name);
     fprintf(out, "    .outputs = %s_break_outputs,\n", s->name);
-    fprintf(out, "    .eval = node_eval_break,\n");
+    fprintf(out, "    .pure_kind = NODE_PURE_BREAK,\n");
     fprintf(out, "    .type = &T_%s,\n", s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
@@ -468,11 +410,11 @@ static void emit_struct_nodes(FILE *out, const struct_info *s)
 /* Emit the call node_desc for one function. */
 static void emit_fn_node(FILE *out, const fn_info *f)
 {
-    if (f->nparams == 0)
+    if (acount(f->pname) == 0)
         fprintf(out, "static pin_spec %s_inputs[1];\n", f->name);
     else {
         fprintf(out, "static pin_spec %s_inputs[] = {\n", f->name);
-        for (int j = 0; j < f->nparams; j++)
+        for (int j = 0; j < acount(f->pname); j++)
             emit_pin_spec(out, f->pname[j], f->ppin[j], f->ptype[j]);
         fputs("};\n", out);
     }
@@ -481,11 +423,11 @@ static void emit_fn_node(FILE *out, const fn_info *f)
     fputs("};\n", out);
     fprintf(out, "node_desc NODE_%s = {\n", f->name);
     fprintf(out, "    .name = \"%s\",\n", f->name);
-    fprintf(out, "    .input_count = %d,\n", f->nparams);
+    fprintf(out, "    .input_count = %d,\n", acount(f->pname));
     fprintf(out, "    .output_count = 1,\n");
     fprintf(out, "    .inputs = %s_inputs,\n", f->name);
     fprintf(out, "    .outputs = %s_outputs,\n", f->name);
-    fprintf(out, "    .eval = node_eval_call,\n");
+    fprintf(out, "    .pure_kind = NODE_PURE_CALL,\n");
     fprintf(out, "    .fn = __wrap_%s,\n", f->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
@@ -497,12 +439,12 @@ static void emit(FILE *out, const collect_ctx *ctx)
 {
     fputs("/* generated/registry.c -- generated by reflect, do not edit. */\n\n", out);
     fputs("#include <stddef.h>\n", out);
-    for (int i = 0; i < ctx->structs.n; i++) {
-        const char *f = ctx->structs.v[i].file;
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        const char *f = ctx->structs[i].file;
         if (!f || !ends_with(f, ".h")) continue;
         int dup = 0;
         for (int j = 0; j < i; j++) {
-            const char *g = ctx->structs.v[j].file;
+            const char *g = ctx->structs[j].file;
             if (g && strcmp(g, f) == 0) dup = 1;
         }
         if (!dup) fprintf(out, "#include \"%s\"\n", f);
@@ -510,11 +452,11 @@ static void emit(FILE *out, const collect_ctx *ctx)
     fputs("#include \"core/type.h\"\n", out);
     fputs("#include \"core/nodes.h\"\n\n", out);
 
-    for (int i = 0; i < ctx->structs.n; i++) {
-        const struct_info *s = &ctx->structs.v[i];
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        const struct_info *s = &ctx->structs[i];
         fprintf(out, "static const type_field %s_fields[] = {\n", s->name);
-        for (int j = 0; j < s->fields.n; j++) {
-            const field_info *f = &s->fields.v[j];
+        for (int j = 0; j < acount(s->fields); j++) {
+            const field_info *f = &s->fields[j];
             fprintf(
                 out,
                 "    { \"%s\", %s, offsetof(%s, %s), sizeof(%s), \"%s\" },\n",
@@ -532,45 +474,41 @@ static void emit(FILE *out, const collect_ctx *ctx)
         fprintf(out, "    .name = \"%s\",\n", s->name);
         fprintf(out, "    .size = sizeof(%s),\n", s->name);
         fprintf(out, "    .fields = %s_fields,\n", s->name);
-        fprintf(out, "    .field_count = %d,\n", s->fields.n);
+        fprintf(out, "    .field_count = %d,\n", acount(s->fields));
         fputs("};\n\n", out);
     }
 
     fputs("const type_desc *const REGISTRY_TYPES[] = {\n", out);
-    for (int i = 0; i < ctx->structs.n; i++)
-        fprintf(out, "    &T_%s,\n", ctx->structs.v[i].name);
+    for (int i = 0; i < acount(ctx->structs); i++)
+        fprintf(out, "    &T_%s,\n", ctx->structs[i].name);
     fputs("};\n", out);
-    fprintf(out, "const int REGISTRY_TYPE_COUNT = %d;\n\n", ctx->structs.n);
+    fprintf(out, "const int REGISTRY_TYPE_COUNT = %d;\n\n", acount(ctx->structs));
 
     /* native prototypes, so wrappers can call the annotated functions */
-    for (int i = 0; i < ctx->fns.n; i++) {
-        const fn_info *f = &ctx->fns.v[i];
+    for (int i = 0; i < acount(ctx->fns); i++) {
+        const fn_info *f = &ctx->fns[i];
         fprintf(out, "%s %s(", f->ret, f->name);
-        for (int j = 0; j < f->nparams; j++)
+        for (int j = 0; j < acount(f->pname); j++)
             fprintf(out, "%s%s %s", j ? ", " : "", f->ptype[j], f->pname[j]);
         fputs(");\n", out);
     }
-    if (ctx->fns.n) fputc('\n', out);
+    if (acount(ctx->fns)) fputc('\n', out);
 
-    for (int i = 0; i < ctx->fns.n; i++) emit_fn(out, &ctx->fns.v[i]);
+    for (int i = 0; i < acount(ctx->fns); i++) emit_fn(out, &ctx->fns[i]);
 
-    for (int i = 0; i < ctx->structs.n; i++)
-        emit_struct_nodes(out, &ctx->structs.v[i]);
-    for (int i = 0; i < ctx->fns.n; i++) emit_fn_node(out, &ctx->fns.v[i]);
+    for (int i = 0; i < acount(ctx->structs); i++)
+        emit_struct_nodes(out, &ctx->structs[i]);
+    for (int i = 0; i < acount(ctx->fns); i++) emit_fn_node(out, &ctx->fns[i]);
 
     fputs("node_desc *const REGISTRY_NODES[] = {\n", out);
-    for (int i = 0; i < ctx->structs.n; i++) {
-        fprintf(out, "    &NODE_Make_%s,\n", ctx->structs.v[i].name);
-        fprintf(out, "    &NODE_Break_%s,\n", ctx->structs.v[i].name);
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        fprintf(out, "    &NODE_Make_%s,\n", ctx->structs[i].name);
+        fprintf(out, "    &NODE_Break_%s,\n", ctx->structs[i].name);
     }
-    for (int i = 0; i < ctx->fns.n; i++)
-        fprintf(out, "    &NODE_%s,\n", ctx->fns.v[i].name);
+    for (int i = 0; i < acount(ctx->fns); i++)
+        fprintf(out, "    &NODE_%s,\n", ctx->fns[i].name);
     fputs("};\n", out);
-    fprintf(
-        out,
-        "const int REGISTRY_NODE_COUNT = %d;\n",
-        ctx->structs.n * 2 + ctx->fns.n
-    );
+    fprintf(out, "const int REGISTRY_NODE_COUNT = %d;\n", acount(ctx->structs) * 2 + acount(ctx->fns));
 }
 
 /* ---------- main ---------- */
@@ -610,7 +548,7 @@ int main(int argc, char **argv)
         clang_disposeDiagnostic(d);
     }
 
-    collect_ctx ctx = { { NULL, 0, 0 }, { NULL, 0, 0 } };
+    collect_ctx ctx = { NULL, NULL };
     clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, &ctx);
     if (g_failed) {
         clang_disposeTranslationUnit(tu);
@@ -626,22 +564,17 @@ int main(int argc, char **argv)
     emit(out, &ctx);
     fclose(out);
 
-    printf(
-        "reflect: %d struct(s), %d function(s) -> %s\n",
-        ctx.structs.n,
-        ctx.fns.n,
-        output
-    );
-    for (int i = 0; i < ctx.structs.n; i++)
+    printf("reflect: %d struct(s), %d function(s) -> %s\n", acount(ctx.structs), acount(ctx.fns), output);
+    for (int i = 0; i < acount(ctx.structs); i++)
         printf(
             "reflect:   struct %s (%d fields)\n",
-            ctx.structs.v[i].name,
-            ctx.structs.v[i].fields.n
+            ctx.structs[i].name,
+            acount(ctx.structs[i].fields)
         );
-    for (int i = 0; i < ctx.fns.n; i++) {
-        const fn_info *f = &ctx.fns.v[i];
+    for (int i = 0; i < acount(ctx.fns); i++) {
+        const fn_info *f = &ctx.fns[i];
         printf("reflect:   fn %s(", f->name);
-        for (int j = 0; j < f->nparams; j++)
+        for (int j = 0; j < acount(f->pname); j++)
             printf("%s%s %s", j ? ", " : "", f->ptype[j], f->pname[j]);
         printf(") -> %s\n", f->ret);
     }

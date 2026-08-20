@@ -4,7 +4,7 @@
  * no-op, so the caller (or the serializer) sets output[0] directly. Typed
  * const nodes keep the pin_spec concrete so connections type-check normally.
  */
-#include "nodes.h"
+#include "node.h"
 
 static pin_spec const_f32_out[] = {
     { "value", PIN_F32, "float" },
@@ -15,7 +15,7 @@ node_desc NODE_const_f32 = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = const_f32_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec const_bool_out[] = {
@@ -27,7 +27,7 @@ node_desc NODE_const_bool = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = const_bool_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec const_byte_out[] = {
@@ -37,7 +37,7 @@ node_desc NODE_const_byte = {
     .name = "const_byte",
     .output_count = 1,
     .outputs = const_byte_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec const_int_out[] = {
@@ -47,7 +47,7 @@ node_desc NODE_const_int = {
     .name = "const_int",
     .output_count = 1,
     .outputs = const_int_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec const_int64_out[] = {
@@ -57,7 +57,7 @@ node_desc NODE_const_int64 = {
     .name = "const_int64",
     .output_count = 1,
     .outputs = const_int64_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec const_real_out[] = {
@@ -67,7 +67,7 @@ node_desc NODE_const_real = {
     .name = "const_real",
     .output_count = 1,
     .outputs = const_real_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec const_str_out[] = {
@@ -79,17 +79,24 @@ node_desc NODE_const_str = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = const_str_out,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec all_types_outputs[] = {
-    { "bool", PIN_BOOL, "bool" },         { "i8", PIN_I8, "int8_t" },
-    { "u8", PIN_U8, "uint8_t" },          { "i16", PIN_I16, "int16_t" },
-    { "u16", PIN_U16, "uint16_t" },       { "i32", PIN_I32, "int" },
-    { "u32", PIN_U32, "unsigned" },       { "i64", PIN_I64, "int64_t" },
-    { "u64", PIN_U64, "uint64_t" },       { "f32", PIN_F32, "float" },
-    { "f64", PIN_F64, "double" },         { "str", PIN_STR, "const char *" },
-    { "struct", PIN_STRUCT, "Vec3" },     { "enum", PIN_ENUM, "TestEnum" },
+    { "bool", PIN_BOOL, "bool" },
+    { "i8", PIN_I8, "int8" },
+    { "u8", PIN_U8, "byte" },
+    { "i16", PIN_I16, "int16" },
+    { "u16", PIN_U16, "uint16" },
+    { "i32", PIN_I32, "int" },
+    { "u32", PIN_U32, "uint" },
+    { "i64", PIN_I64, "int64" },
+    { "u64", PIN_U64, "uint64" },
+    { "f32", PIN_F32, "float" },
+    { "f64", PIN_F64, "double" },
+    { "str", PIN_STR, "const char *" },
+    { "struct", PIN_STRUCT, "Vec3" },
+    { "enum", PIN_ENUM, "TestEnum" },
     { "flow", PIN_FLOW, NULL, PIN_EXEC },
 };
 node_desc NODE_all_types_literal = {
@@ -97,8 +104,7 @@ node_desc NODE_all_types_literal = {
     .input_count = 0,
     .output_count = 15,
     .outputs = all_types_outputs,
-    .eval = node_eval_const,
-    .pure = 1,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 node_desc *const EXTRA_NODES[] = {

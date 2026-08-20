@@ -1,5 +1,5 @@
 #include "flow.h"
-#include "nodes.h"
+#include "pin_conv.h"
 
 static pin_spec event_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },
@@ -49,12 +49,6 @@ static pin_spec print_text_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },
 };
 
-static void eval_event(node *n, arena *a)
-{
-    (void)n;
-    (void)a;
-}
-
 static int flow_event(node *n, flow_context *ctx)
 {
     flow_inputs inputs = flow_context_inputs(ctx);
@@ -62,9 +56,17 @@ static int flow_event(node *n, flow_context *ctx)
     for (int i = 0; i < n->output_count; i++) {
         if (n->output_pins[i].kind != PIN_DATA) continue;
         if (parameter < inputs.count &&
-            inputs.values[parameter].type == n->output_pins[i].type)
+            pin_compatible(
+                &n->output_pins[i],
+                &(pin_spec){
+                    .type = inputs.values[parameter].type,
+                    .type_name = inputs.values[parameter].type_name,
+                    .container = n->output_pins[i].container,
+                }
+            )) {
             n->outputs[i] = inputs.values[parameter];
-        else n->outputs[i] = n->output_pins[i].default_value;
+            pin_coerce(&n->outputs[i], &n->output_pins[i]);
+        } else n->outputs[i] = n->output_pins[i].default_value;
         parameter++;
     }
     return flow_context_continue(ctx, 0);
@@ -134,7 +136,6 @@ node_desc NODE_Event = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = event_outputs,
-    .eval = eval_event,
     .flow_kind = NODE_FLOW_EVENT,
     .flow = flow_event,
     .display_class = NODE_DISPLAY_EVENT,
@@ -165,7 +166,7 @@ node_desc NODE_ForLoop = {
     .output_count = 3,
     .inputs = for_inputs,
     .outputs = for_outputs,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
     .flow_kind = NODE_FLOW_FOR_LOOP,
     .flow = flow_for_loop,
     .display_class = NODE_DISPLAY_FLOW,

@@ -1,27 +1,30 @@
 #ifndef CBLUEPRINT_PIN_H
 #define CBLUEPRINT_PIN_H
 
+#include "enum.h"
+
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
-typedef enum
-{
-    PIN_FLOW,
-    PIN_BOOL,
-    PIN_I8,
-    PIN_U8,
-    PIN_I16,
-    PIN_U16,
-    PIN_I32,
-    PIN_U32,
-    PIN_I64,
-    PIN_U64,
-    PIN_F32,
-    PIN_F64,
-    PIN_STR,
-    PIN_STRUCT,
-    PIN_ENUM,
-} pin_type;
+#define PIN_TYPE_LIST(X)                                                       \
+    X(PIN_FLOW, NULL)                                                          \
+    X(PIN_BOOL, "bool")                                                        \
+    X(PIN_I8, "int8")                                                          \
+    X(PIN_U8, "byte")                                                          \
+    X(PIN_I16, "int16")                                                        \
+    X(PIN_U16, "uint16")                                                       \
+    X(PIN_I32, "int")                                                          \
+    X(PIN_U32, "uint")                                                         \
+    X(PIN_I64, "int64")                                                        \
+    X(PIN_U64, "uint64")                                                       \
+    X(PIN_F32, "float")                                                        \
+    X(PIN_F64, "double")                                                       \
+    X(PIN_STR, "const char *")                                                 \
+    X(PIN_STRUCT, "struct")                                                    \
+    X(PIN_ENUM, "enum")
+
+DEFINE_ENUM(pin_type, PIN_TYPE_LIST)
 
 typedef enum
 {
@@ -58,8 +61,6 @@ typedef enum
 {
     PIN_DATA = 0,
     PIN_EXEC = 1,
-    PIN_KIND_DATA = PIN_DATA,
-    PIN_KIND_EXEC = PIN_EXEC,
 } pin_kind;
 
 enum

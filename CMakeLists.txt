@@ -26,13 +26,29 @@ find_library(LIBCLANG_LIBRARY NAMES clang
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES lib)
 if(NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY)
-    message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
+  message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
 endif()
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/generated)
 
+# --- embedded editor icon font ---
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(NERD_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf)
+set(GEN_NERD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_nerd_symbols_font.c)
+add_custom_command(
+    OUTPUT ${GEN_NERD_FONT}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
+            ${NERD_FONT}
+            ${GEN_NERD_FONT}
+            editor_nerd_symbols_font
+    DEPENDS ${NERD_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
+    COMMENT "Embedding Nerd Fonts symbols"
+    VERBATIM
+)
+
 # --- reflect tool ---
-add_executable(reflect reflect/reflect.c)
+add_executable(reflect reflect/reflect.c core/xalloc.c)
 target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE_DIR})
 target_link_libraries(reflect PRIVATE ${LIBCLANG_LIBRARY})
 get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
@@ -56,18 +72,11 @@ add_custom_command(
 )
 
 # --- core static lib (compiles the generated registry into it) ---
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c
+)
 add_library(core STATIC
-    core/core.c
-    core/graph.c
-    core/eval.c
-    core/flow.c
-    core/flow_nodes.c
-    core/arena.c
-    core/nodes.c
-    core/type.c
-    core/const_nodes.c
-    core/serialize.c
-    core/pin_fmt.c
+    ${CORE_SOURCES}
     third_party/yyjson/yyjson.c
     ${GEN_REGISTRY}
 )
@@ -78,6 +87,7 @@ target_include_directories(core PUBLIC
 )
 
 # --- demo nodes (real TUs; interface.h declares what Blueprints sees) ---
+# demo/demo_nodes.c is reflect input, not a compiled TU, so it stays explicit.
 add_library(demo STATIC
     demo/vec3.c
     demo/math.c
@@ -88,17 +98,23 @@ target_include_directories(demo PUBLIC
 )
 
 # --- editor canvas (graph model + native dcimgui widget) ---
-add_library(editor STATIC editor/editor.c editor/eval_view.c editor/preview_gate.c)
+file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
+)
+add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE core cute)
 
 # --- app: cute_framework host loop ---
-add_executable(app app/main.c app/demo_graph.c)
+file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
+)
+add_executable(app ${APP_SOURCES})
 target_link_libraries(app PRIVATE editor core demo cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---
-add_executable(self_check test/self_check.c app/demo_graph.c editor/preview_gate.c)
+add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c)
 target_include_directories(self_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(self_check PRIVATE core demo)
 
@@ -134,3 +150,10 @@ if(CLANG_FORMAT)
   add_dependencies(self_check format)
   add_dependencies(reflect format)
 endif()
+
+file(
+    CREATE_LINK
+        "${CMAKE_BINARY_DIR}/compile_commands.json"
+        "${CMAKE_SOURCE_DIR}/compile_commands.json"
+    SYMBOLIC
+)

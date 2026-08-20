@@ -1,12 +1,14 @@
 #include "arena.h"
 
+#include "xalloc.h"
+
 #include <stddef.h>
 #include <stdlib.h>
 
 void arena_init(arena *a, size_t cap)
 {
-    a->buf = (unsigned char *)malloc(cap ? cap : 256);
-    a->cap = a->buf ? (cap ? cap : 256) : 0;
+    a->buf = (unsigned char *)xmalloc(cap ? cap : 256);
+    a->cap = cap ? cap : 256;
     a->used = 0;
 }
 
@@ -20,9 +22,7 @@ void *arena_alloc(arena *a, size_t size)
     if (need > a->cap) {
         size_t ncap = a->cap ? a->cap : 256;
         while (ncap < need) ncap *= 2;
-        unsigned char *nb = (unsigned char *)realloc(a->buf, ncap);
-        if (!nb) return NULL;
-        a->buf = nb;
+        a->buf = (unsigned char *)xrealloc(a->buf, ncap);
         a->cap = ncap;
     }
     void *p = a->buf + off;

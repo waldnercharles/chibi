@@ -202,7 +202,7 @@ static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
     yyjson_mut_obj_add_uint(doc, o, "from_pin", e->from_pin_id);
     yyjson_mut_obj_add_uint(doc, o, "to", e->to_id);
     yyjson_mut_obj_add_uint(doc, o, "to_pin", e->to_pin_id);
-    yyjson_mut_obj_add_str(doc, o, "kind", e->kind == GRAPH_EDGE_EXEC ? "exec" : "data");
+    yyjson_mut_obj_add_str(doc, o, "kind", graph_edge_kind_name(e->kind));
     if (e->kind == GRAPH_EDGE_EXEC)
         yyjson_mut_obj_add_int(doc, o, "order", e->exec_order);
     yyjson_mut_arr_add_val(arr, o);
@@ -227,7 +227,7 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const node *n)
         write_pin(doc, ins, &n->input_pins[i]);
     for (int i = 0; i < n->output_count; i++) {
         pin_spec p = n->output_pins[i];
-        if (n->desc->eval == node_eval_const)
+        if (n->desc->pure_kind == NODE_PURE_CONST)
             p.default_value = n->output_pins[i].default_value;
         write_pin(doc, outs, &p);
     }
@@ -269,7 +269,7 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     yyjson_mut_obj_add_str(doc, root, "description", g->description ? g->description : "");
     yyjson_mut_val *nodes = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
-    int node_total = subset ? count : g->node_count;
+    int node_total = subset ? count : acount(g->nodes);
     node **ordered_nodes = node_total
                              ? malloc((size_t)node_total * sizeof *ordered_nodes)
                              : NULL;
@@ -287,21 +287,23 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     free(ordered_nodes);
     yyjson_mut_val *edges = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "edges", edges);
-    edge *ordered_edges = g->edge_count
-                            ? malloc((size_t)g->edge_count * sizeof *ordered_edges)
+    edge *ordered_edges = acount(g->edges)
+                            ? malloc((size_t)acount(g->edges) * sizeof *ordered_edges)
                             : NULL;
     int edge_total = 0;
-    if (g->edge_count && !ordered_edges) {
+    if (acount(g->edges) && !ordered_edges) {
         yyjson_mut_doc_free(doc);
         return NULL;
     }
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
         if (subset) {
+            node *from_node = graph_node_by_id(g, e->from_id);
+            node *to_node = graph_node_by_id(g, e->to_id);
             int from = 0, to = 0;
             for (int j = 0; j < count; j++) {
-                from |= subset[j] == e->from;
-                to |= subset[j] == e->to;
+                from |= subset[j] == from_node;
+                to |= subset[j] == to_node;
             }
             if (!from || !to) continue;
         }
@@ -331,6 +333,31 @@ static int json_uint(yyjson_val *v, uint64_t *out, const char *path)
         return -1;
     }
     *out = yyjson_get_uint(v);
+    return 0;
+}
+
+static int read_struct_default(const type_desc *type, yyjson_val *def, pin_value *out, graph *g, int pin)
+{
+    void *block = graph_own_block(g, type->size);
+    if (!block) {
+        set_err("bad struct default for pin %d", pin);
+        return -1;
+    }
+    for (int f = 0; f < type->field_count; f++) {
+        yyjson_val *field_json = yyjson_obj_get(def, type->fields[f].name);
+        if (!field_json) {
+            set_err("missing struct field %s", type->fields[f].name);
+            return -1;
+        }
+        pin_value field;
+        if (read_const(type->fields[f].type, field_json, &field, g)) {
+            set_err("bad struct field %s", type->fields[f].name);
+            return -1;
+        }
+        field.type_name = type->fields[f].type_name;
+        pin_write_field(block, &type->fields[f], field);
+    }
+    *out = (pin_value){ .type = PIN_STRUCT, .ptr = block };
     return 0;
 }
 
@@ -408,28 +435,11 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
             pin_value pv;
             if (p->type == PIN_STRUCT && yyjson_is_obj(def)) {
                 const type_desc *type = find_type(p->type_name);
-                void *block = type ? graph_own_block(g, type->size) : NULL;
-                if (!type || !block) {
+                if (!type) {
                     set_err("bad struct default for pin %d", i);
                     return -1;
                 }
-                for (int f = 0; f < type->field_count; f++) {
-                    yyjson_val *field_json = yyjson_obj_get(def, type->fields[f].name);
-                    if (!field_json) {
-                        set_err("missing struct field %s", type->fields[f].name);
-                        return -1;
-                    }
-                    pin_value field;
-                    if (read_const(type->fields[f].type, field_json, &field, g)) {
-                        set_err("bad struct field %s", type->fields[f].name);
-                        return -1;
-                    }
-                    field.type_name = type->fields[f].type_name;
-                    pin_write_field(block, &type->fields[f], field);
-                }
-                pv = (pin_value){ .type = PIN_STRUCT,
-                                  .type_name = p->type_name,
-                                  .ptr = block };
+                if (read_struct_default(type, def, &pv, g, i)) return -1;
             } else if (read_const(p->type, def, &pv, g)) {
                 set_err("bad default for pin %d on %s (type %d)", i, n->desc->name, p->type);
                 return -1;
@@ -550,7 +560,7 @@ graph *graph_load_json(const char *json)
             set_err("node ID zero is not allowed");
             goto fail;
         }
-        for (int j = 0; j < g->node_count - 1; j++) {
+        for (int j = 0; j < acount(g->nodes) - 1; j++) {
             node *other = g->nodes[j];
             if (other->id == n->id) {
                 set_err("duplicate node ID");
@@ -615,7 +625,7 @@ graph *graph_load_json(const char *json)
                 g->id_counter = n->output_pins[i].id + 1;
     }
     g->id_counter = requested_counter;
-    for (int i = 0; i < g->node_count; i++) {
+    for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
         if (n->id >= g->id_counter) g->id_counter = n->id + 1;
         for (int p = 0; p < n->input_count; p++)
@@ -625,6 +635,7 @@ graph *graph_load_json(const char *json)
             if (n->output_pins[p].id >= g->id_counter)
                 g->id_counter = n->output_pins[p].id + 1;
     }
+    graph_reindex(g);
     yyjson_arr_iter eit;
     yyjson_arr_iter_init(edges, &eit);
     while ((v = yyjson_arr_iter_next(&eit))) {
@@ -682,6 +693,13 @@ fail:
     return NULL;
 }
 
+static uint64_t remap_id(uint64_t old, const uint64_t *old_ids, const uint64_t *new_ids, int count)
+{
+    for (int i = 0; i < count; i++)
+        if (old_ids[i] == old) return new_ids[i];
+    return old;
+}
+
 int graph_append_json(graph *g, const char *json, float dx, float dy)
 {
     if (!g || g->flow_pause_count) {
@@ -690,103 +708,85 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     }
     graph *tmp = graph_load_json(json);
     if (!tmp) return -1;
-    uint64_t *new_ids = calloc((size_t)tmp->node_count, sizeof *new_ids);
-    if (tmp->node_count && !new_ids) {
-        free(new_ids);
-        graph_free(tmp);
-        free(tmp);
-        set_err("out of memory");
-        return -1;
-    }
-    for (int i = 0; i < tmp->node_count; i++) {
+    int node_count = acount(tmp->nodes);
+    int id_count = node_count;
+    for (int i = 0; i < node_count; i++)
+        id_count += tmp->nodes[i]->input_count + tmp->nodes[i]->output_count;
+    uint64_t *old_ids = (uint64_t *)xmalloc(
+        (size_t)(id_count ? id_count : 1) * sizeof *old_ids
+    );
+    uint64_t *new_ids = (uint64_t *)xmalloc(
+        (size_t)(id_count ? id_count : 1) * sizeof *new_ids
+    );
+    int k = 0;
+    for (int i = 0; i < node_count; i++) {
         node *n = tmp->nodes[i];
-        new_ids[i] = graph_alloc_id(g);
-        n->id = new_ids[i];
+        old_ids[k] = n->id;
+        new_ids[k] = graph_alloc_id(g);
+        n->id = new_ids[k];
+        k++;
         n->x += dx;
         n->y += dy;
-        for (int p = 0; p < n->input_count; p++)
-            n->input_pins[p].id = graph_alloc_id(g);
-        for (int p = 0; p < n->output_count; p++)
-            n->output_pins[p].id = graph_alloc_id(g);
+        for (int p = 0; p < n->input_count; p++) {
+            old_ids[k] = n->input_pins[p].id;
+            new_ids[k] = graph_alloc_id(g);
+            n->input_pins[p].id = new_ids[k];
+            k++;
+        }
+        for (int p = 0; p < n->output_count; p++) {
+            old_ids[k] = n->output_pins[p].id;
+            new_ids[k] = graph_alloc_id(g);
+            n->output_pins[p].id = new_ids[k];
+            k++;
+        }
     }
-    for (int i = 0; i < tmp->edge_count; i++) {
+    for (int i = 0; i < acount(tmp->edges); i++) {
         edge *e = &tmp->edges[i];
-        e->from_id = e->from->id;
-        e->to_id = e->to->id;
-        e->from_pin_id = e->from->output_pins[e->from_pin].id;
-        e->to_pin_id = e->to->input_pins[e->to_pin].id;
+        e->from_id = remap_id(e->from_id, old_ids, new_ids, k);
+        e->to_id = remap_id(e->to_id, old_ids, new_ids, k);
+        e->from_pin_id = remap_id(e->from_pin_id, old_ids, new_ids, k);
+        e->to_pin_id = remap_id(e->to_pin_id, old_ids, new_ids, k);
     }
-    int nn = g->node_count + tmp->node_count, ne = g->edge_count + tmp->edge_count,
-        ns = g->string_count + tmp->string_count,
-        nb = g->block_count + tmp->block_count;
-    if (nn > g->node_cap) {
-        int cap = g->node_cap ? g->node_cap : 8;
-        while (cap < nn) cap *= 2;
-        node **p = realloc(g->nodes, (size_t)cap * sizeof *p);
-        if (!p) goto oom;
-        g->nodes = p;
-        g->node_cap = cap;
-    }
-    if (ne > g->edge_cap) {
-        int cap = g->edge_cap ? g->edge_cap : 8;
-        while (cap < ne) cap *= 2;
-        edge *p = realloc(g->edges, (size_t)cap * sizeof *p);
-        if (!p) goto oom;
-        g->edges = p;
-        g->edge_cap = cap;
-    }
-    if (ns > g->string_cap) {
-        int cap = g->string_cap ? g->string_cap : 8;
-        while (cap < ns) cap *= 2;
-        char **p = realloc(g->strings, (size_t)cap * sizeof *p);
-        if (!p) goto oom;
-        g->strings = p;
-        g->string_cap = cap;
-    }
-    if (nb > g->block_cap) {
-        int cap = g->block_cap ? g->block_cap : 8;
-        while (cap < nb) cap *= 2;
-        void **p = realloc(g->blocks, (size_t)cap * sizeof *p);
-        if (!p) goto oom;
-        g->blocks = p;
-        g->block_cap = cap;
-    }
-    memcpy(
-        g->nodes + g->node_count,
-        tmp->nodes,
-        (size_t)tmp->node_count * sizeof *tmp->nodes
-    );
-    memcpy(
-        g->edges + g->edge_count,
-        tmp->edges,
-        (size_t)tmp->edge_count * sizeof *tmp->edges
-    );
-    memcpy(
-        g->strings + g->string_count,
-        tmp->strings,
-        (size_t)tmp->string_count * sizeof *tmp->strings
-    );
-    memcpy(
-        g->blocks + g->block_count,
-        tmp->blocks,
-        (size_t)tmp->block_count * sizeof *tmp->blocks
-    );
-    g->node_count = nn;
-    g->edge_count = ne;
-    g->string_count = ns;
-    g->block_count = nb;
-    g->topology_revision++;
+    free(old_ids);
     free(new_ids);
-    free(tmp->nodes);
-    free(tmp->edges);
-    free(tmp->strings);
-    free(tmp->blocks);
+    int nn = acount(g->nodes) + acount(tmp->nodes),
+        ne = acount(g->edges) + acount(tmp->edges),
+        ns = acount(g->strings) + acount(tmp->strings),
+        nb = acount(g->blocks) + acount(tmp->blocks);
+    asetcap(g->nodes, nn);
+    asetcap(g->edges, ne);
+    asetcap(g->strings, ns);
+    asetcap(g->blocks, nb);
+    memcpy(
+        g->nodes + acount(g->nodes),
+        tmp->nodes,
+        (size_t)acount(tmp->nodes) * sizeof *tmp->nodes
+    );
+    memcpy(
+        g->edges + acount(g->edges),
+        tmp->edges,
+        (size_t)acount(tmp->edges) * sizeof *tmp->edges
+    );
+    memcpy(
+        g->strings + acount(g->strings),
+        tmp->strings,
+        (size_t)acount(tmp->strings) * sizeof *tmp->strings
+    );
+    memcpy(
+        g->blocks + acount(g->blocks),
+        tmp->blocks,
+        (size_t)acount(tmp->blocks) * sizeof *tmp->blocks
+    );
+    asetlen(g->nodes, nn);
+    asetlen(g->edges, ne);
+    asetlen(g->strings, ns);
+    asetlen(g->blocks, nb);
+    graph_reindex(g);
+    g->topology_revision++;
+    afree(tmp->nodes);
+    afree(tmp->edges);
+    afree(tmp->strings);
+    afree(tmp->blocks);
     free(tmp);
     return 0;
-oom:
-    free(new_ids);
-    graph_free(tmp);
-    free(tmp);
-    set_err("out of memory");
-    return -1;
 }

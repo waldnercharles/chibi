@@ -5,11 +5,12 @@
  * and arena-backed struct values.
  */
 #include "../app/demo_graph.h"
+#include "../app/stacktrace.h"
 #include "../core/arena.h"
 #include "../core/eval.h"
 #include "../core/flow.h"
 #include "../core/graph.h"
-#include "../core/nodes.h"
+#include "../core/pin_conv.h"
 #include "../core/pin_fmt.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
@@ -52,20 +53,19 @@ static node_desc g_const_desc = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = g_const_out,
-    .eval = node_eval_const,
-    .pure = 1,
+    .pure_kind = NODE_PURE_CONST,
     .display_class = NODE_DISPLAY_LITERAL,
 };
 
 /* Hand-written counting node for the memo check: increments once per eval. */
 static int g_count;
-static void eval_counter(node *n, arena *a)
+static pin_value eval_counter(const pin_value *inputs, int input_count, arena *a)
 {
+    (void)inputs;
+    (void)input_count;
     (void)a;
     g_count++;
-    n->outputs[0].type = PIN_F32;
-    n->outputs[0].type_name = "float";
-    n->outputs[0].f = (float)g_count;
+    return (pin_value){ .type = PIN_F32, .type_name = "float", .f = (float)g_count };
 }
 static pin_spec g_counter_out[] = {
     { "count", PIN_F32, "float" },
@@ -76,8 +76,8 @@ static node_desc g_counter_desc = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = g_counter_out,
-    .eval = eval_counter,
-    .pure = 1,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = eval_counter,
 };
 
 static pin_spec g_const_bool_out[] = {
@@ -89,8 +89,7 @@ static node_desc g_const_bool_desc = {
     .output_count = 1,
     .inputs = NULL,
     .outputs = g_const_bool_out,
-    .eval = node_eval_const,
-    .pure = 1,
+    .pure_kind = NODE_PURE_CONST,
     .display_class = NODE_DISPLAY_LITERAL,
 };
 
@@ -109,7 +108,7 @@ static node_desc g_all_types_desc = {
     .input_count = 0,
     .output_count = 15,
     .outputs = g_all_types_outputs,
-    .eval = node_eval_const,
+    .pure_kind = NODE_PURE_CONST,
 };
 
 static pin_spec g_flow_sink_inputs[] = {
@@ -314,8 +313,10 @@ static node *make_const(graph *g, float v)
     return n;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    stacktrace_init(argv[0]);
+    registry_validate();
     check(editor_preview_allowed(FLOW_IDLE), "DBG-6: idle preview is allowed");
     check(
         !editor_preview_allowed(FLOW_RUNNING) &&
@@ -357,7 +358,7 @@ int main(void)
     pin_spec i32_pin = { "i", PIN_I32, "int", PIN_DATA };
     pin_spec i64_pin = { "i", PIN_I64, "long", PIN_DATA };
     check(!pin_types_compatible(&i32_pin, &i64_pin), "TYPE-6: integer widths stay distinct");
-    check(g_const_desc.eval == node_eval_const, "NODE-8: hand-authored node descriptor is usable");
+    check(g_const_desc.pure_kind == NODE_PURE_CONST, "NODE-8: hand-authored node descriptor is usable");
     check(
         make && make->type && make->type->name && strcmp(make->type->name, "Vec3") == 0,
         "REFL-1: build-time registry exposes reflected types"
@@ -369,7 +370,7 @@ int main(void)
         "REFL-6: generated layout uses sizeof and offsetof"
     );
     check(
-        make && brk && make->eval == node_eval_make && brk->eval == node_eval_break,
+        make && brk && make->pure_kind == NODE_PURE_MAKE && brk->pure_kind == NODE_PURE_BREAK,
         "REFL-7: annotation expansion keeps Make and Break policy"
     );
 
@@ -443,11 +444,11 @@ int main(void)
     );
 
     /* 5. remove a node and its edges */
-    int nb = g.node_count;
-    int eb = g.edge_count;
+    int nb = acount(g.nodes);
+    int eb = acount(g.edges);
     check(graph_remove_node(&g, A) == 0, "BP-9: remove node A");
-    check(g.node_count == nb - 1, "BP-9: node count drops by one");
-    check(g.edge_count == eb - 2, "BP-9: A's two edges dropped");
+    check(acount(g.nodes) == nb - 1, "BP-9: node count drops by one");
+    check(acount(g.edges) == eb - 2, "BP-9: A's two edges dropped");
     check(graph_remove_node(&g, A) == -1, "BP-10: removing a missing node fails");
 
     /* Phase 2 identity and instance-pin invariants. */
@@ -505,7 +506,10 @@ int main(void)
         b_id->x = 3.5f;
         b_id->y = -2.25f;
         check(b_id->x == 3.5f && b_id->y == -2.25f, "NODE-2: node canvas position is authored data");
-        check(g_const_desc.pure && !g_sink_a_desc.pure, "NODE-6: descriptors explicitly distinguish pure and impure");
+        check(
+            node_desc_is_pure(&g_const_desc) && !node_desc_is_pure(&g_sink_a_desc),
+            "NODE-6: descriptors explicitly distinguish pure and impure"
+        );
         check(g_const_desc.display_class == NODE_DISPLAY_LITERAL, "NODE-12: descriptors carry a display class");
         check(
             graph_node_by_id(&ids, 0) == NULL &&
@@ -534,7 +538,7 @@ int main(void)
                 p2->id,
                 p2->input_pins[0].id
             ) != 0 ||
-                ids.edge_count == 1,
+                acount(ids.edges) == 1,
             "ID-6: cross-entity APIs address endpoints by IDs"
         );
         graph_free(&ids);
@@ -587,10 +591,17 @@ int main(void)
         static pin_spec int_output[] = { { "value", PIN_I32, "int" } };
         static pin_spec int64_input[] = { { "value", PIN_I64, "int64" } };
         static node_desc int_source = {
-            "test_int_source", 0, 1, NULL, int_output, node_eval_const
+            .name = "test_int_source",
+            .output_count = 1,
+            .outputs = int_output,
+            .pure_kind = NODE_PURE_CONST,
         };
-        static node_desc int_target = { "test_int_target", 1,    0,
-                                        int64_input,       NULL, node_eval_const };
+        static node_desc int_target = {
+            .name = "test_int_target",
+            .input_count = 1,
+            .inputs = int64_input,
+            .pure_kind = NODE_PURE_CONST,
+        };
         node *integer = graph_add_node(&real, &int_source);
         node *integer64 = graph_add_node(&real, &int_target);
         check(
@@ -606,6 +617,15 @@ int main(void)
             "TYPE-10: Real boundary converts F32 value to F64 for Delay"
         );
         if (real_run) flow_run_free(real_run);
+
+        pin_spec f32 = { .type = PIN_F32, .type_name = "float" };
+        pin_spec f64 = { .type = PIN_F64, .type_name = "double" };
+        pin_value converted = { .type = PIN_F64, .type_name = "double", .d = 7.25 };
+        check(
+            pin_compatible(&f32, &f64) && pin_coerce(&converted, &f32) &&
+                converted.type == PIN_F32 && converted.f == 7.25f,
+            "TYPE-10: Real boundary also converts F64 to F32"
+        );
         graph_free(&real);
     }
 
@@ -637,8 +657,8 @@ int main(void)
         char *literal_json = graph_save_json(&literals);
         graph *literal_loaded = literal_json ? graph_load_json(literal_json) : NULL;
         int literal_values = 0;
-        if (literal_loaded && literal_loaded->node_count == 6) {
-            for (int i = 0; i < literal_loaded->node_count; i++) {
+        if (literal_loaded && acount(literal_loaded->nodes) == 6) {
+            for (int i = 0; i < acount(literal_loaded->nodes); i++) {
                 node *n = literal_loaded->nodes[i];
                 if (strcmp(n->desc->name, "const_real") == 0 &&
                     n->output_pins[0].default_value.d == 2.5)
@@ -682,7 +702,7 @@ int main(void)
         node *ra = graph_add_node(&g_replace, add);
         check(graph_connect(&g_replace, r1, 0, ra, 0) == 0, "replace: first driver connects");
         check(graph_connect(&g_replace, r2, 0, ra, 0) == 0, "PIN-6: replace: second driver connects");
-        check(g_replace.edge_count == 1 && g_replace.edges[0].from == r2, "PIN-6: replace: input has one driver");
+        check(acount(g_replace.edges) == 1 && g_replace.edges[0].from_id == r2->id, "PIN-6: replace: input has one driver");
         graph_free(&g_replace);
     }
 
@@ -696,10 +716,10 @@ int main(void)
         check(graph_connect(&g6, rc1, 0, radd, 0) == 0, "BP-11: remove_edge: c1 -> add.a");
         check(graph_connect(&g6, rc2, 0, radd, 0) == 0, "PIN-6: remove_edge: c2 -> add.a replaces c1");
         check(graph_connect(&g6, rc2, 0, radd, 1) == 0, "PIN-6: remove_edge: c2 -> add.b");
-        check(g6.edge_count == 2, "BP-11: remove_edge: two edges");
+        check(acount(g6.edges) == 2, "BP-11: remove_edge: two edges");
         check(graph_remove_edge(&g6, rc1, 0, radd, 0) == -1, "BP-10: remove_edge: replaced edge is absent");
         check(graph_remove_edge(&g6, rc2, 0, radd, 0) == 0, "BP-11: remove_edge: c2 -> add.a removed");
-        check(g6.edge_count == 1, "BP-11: remove_edge: one edge remains");
+        check(acount(g6.edges) == 1, "BP-11: remove_edge: one edge remains");
 
         arena a6;
         arena_init(&a6, 4096);
@@ -736,7 +756,7 @@ int main(void)
             "PIN-7: every driven input receives the output value"
         );
         check(
-            graph_remove_edge(&fan, driver, 0, fan_b, 0) == 0 && fan.edge_count == 2,
+            graph_remove_edge(&fan, driver, 0, fan_b, 0) == 0 && acount(fan.edges) == 2,
             "PIN-7: removing one fan-out edge leaves the other two"
         );
         arena_free(&fan_arena);
@@ -773,8 +793,8 @@ int main(void)
             graph *g3 = graph_load_json(json);
             check(g3 != NULL, "FMT-8: roundtrip: load from JSON");
             if (g3) {
-                check(g3->node_count == 3, "FMT-2: roundtrip: node count survives");
-                check(g3->edge_count == 2, "FMT-4: roundtrip: edge count survives");
+                check(acount(g3->nodes) == 3, "FMT-2: roundtrip: node count survives");
+                check(acount(g3->edges) == 2, "FMT-4: roundtrip: edge count survives");
                 check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "FMT-5: roundtrip: node position survives");
                 check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "FMT-5: roundtrip: second node position survives");
 
@@ -925,7 +945,7 @@ int main(void)
         check(json != NULL, "string const: serialize");
         if (json) {
             graph *g5 = graph_load_json(json);
-            check(g5 && g5->node_count == 1, "FMT-1: string const: load");
+            check(g5 && acount(g5->nodes) == 1, "FMT-1: string const: load");
             if (g5) {
                 check(
                     g5->nodes[0]->outputs[0].type == PIN_STR &&
@@ -991,7 +1011,7 @@ int main(void)
 
         const node_desc *adddesc = registry_node_by_name("add_floats");
         node *addn = NULL;
-        for (int i = 0; i < gs.node_count; i++)
+        for (int i = 0; i < acount(gs.nodes); i++)
             if (gs.nodes[i]->desc == adddesc) {
                 addn = gs.nodes[i];
                 break;
@@ -1016,11 +1036,11 @@ int main(void)
         check(demo_graph_seed_flow(&gf) == 0, "flow demo graph builds");
         int data_edges = 0;
         int exec_edges = 0;
-        for (int i = 0; i < gf.edge_count; i++) {
+        for (int i = 0; i < acount(gf.edges); i++) {
             if (gf.edges[i].kind == GRAPH_EDGE_DATA) data_edges++;
             if (gf.edges[i].kind == GRAPH_EDGE_EXEC) exec_edges++;
         }
-        check(gf.node_count == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
+        check(acount(gf.nodes) == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
         check(
             gf.nodes[0]->reference_name &&
                 strcmp(gf.nodes[0]->reference_name, "OnStart") == 0,
@@ -1060,8 +1080,8 @@ int main(void)
             graph *g3 = graph_load_json(json);
             check(g3 != NULL, "FMT-10: subset: load");
             if (g3) {
-                check(g3->node_count == 2, "FMT-10: subset: node count is 2");
-                check(g3->edge_count == 1, "FMT-10: subset: crossing edge dropped");
+                check(acount(g3->nodes) == 2, "FMT-10: subset: node count is 2");
+                check(acount(g3->edges) == 1, "FMT-10: subset: crossing edge dropped");
                 check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "FMT-5: subset: node 0 position");
                 check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "FMT-5: subset: node 1 position");
                 check(g3->nodes[0]->outputs[0].f == 2.0f, "FMT-6: subset: const value survives");
@@ -1098,17 +1118,17 @@ int main(void)
         if (json) {
             graph g5;
             graph_init(&g5);
-            check(g5.node_count == 0, "append: fresh graph starts empty");
+            check(acount(g5.nodes) == 0, "append: fresh graph starts empty");
             check(graph_append_json(&g5, json, 100.0f, 200.0f) == 0, "append: returns 0");
-            check(g5.node_count == 2, "append: node count");
-            check(g5.edge_count == 1, "append: edge count");
+            check(acount(g5.nodes) == 2, "append: node count");
+            check(acount(g5.edges) == 1, "append: edge count");
             check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "FMT-11: append: node 0 offset");
             check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "FMT-11: append: node 1 offset");
             check(g5.nodes[0]->outputs[0].f == 2.0f, "FMT-6: append: const survives");
 
-            int n_before = g5.node_count;
+            int n_before = acount(g5.nodes);
             check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "FMT-8: append: bad json fails");
-            check(g5.node_count == n_before, "FMT-8: append: graph untouched on error");
+            check(acount(g5.nodes) == n_before, "FMT-8: append: graph untouched on error");
 
             graph_free(&g5);
             free(json);
@@ -1133,7 +1153,7 @@ int main(void)
         check(graph_connect_exec(&ge, event, 0, fanout, 0, 0) != 0, "PIN-9: ordinary EXEC output rejects ambiguous fan-out");
         check(graph_connect_data(&ge, truth, 0, branch, 1) == 0, "TYPE-5: data edge connects");
         truth->outputs[0].b = true;
-        check(ge.edge_count == 2 && ge.edges[0].kind != ge.edges[1].kind, "DATA-5: data and exec edges remain distinct");
+        check(acount(ge.edges) == 2 && ge.edges[0].kind != ge.edges[1].kind, "DATA-5: data and exec edges remain distinct");
         node *src = NULL;
         int src_pin = -1;
         int order = -1;
@@ -1152,7 +1172,7 @@ int main(void)
         node *event_merge = graph_add_node(&ge, event_desc);
         check(
             graph_connect_exec(&ge, event_merge, 0, branch, 0, 8) == 0 &&
-                ge.edge_count == 3,
+                acount(ge.edges) == 3,
             "PIN-8: exec input accepts multiple incoming drivers"
         );
         check(graph_connect_data(&ge, event, 0, branch, 1) != 0, "TYPE-5: exec output cannot become a data edge");
@@ -1542,7 +1562,8 @@ int main(void)
         );
         graph *loaded = json ? graph_load_json(json) : NULL;
         check(
-            loaded && loaded->edge_count == 2 && loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
+            loaded && acount(loaded->edges) == 2 &&
+                loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
                 graph_event_name(loaded->nodes[0]) &&
                 strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
             "FMT-4: v3 JSON loads flow metadata"
@@ -1557,7 +1578,7 @@ int main(void)
         check(
             subset_json &&
                 graph_append_json(&appended, subset_json, 10.0f, 20.0f) == 0 &&
-                appended.edge_count == 1 && appended.edges[0].kind == GRAPH_EDGE_EXEC &&
+                acount(appended.edges) == 1 && appended.edges[0].kind == GRAPH_EDGE_EXEC &&
                 appended.edges[0].exec_order == 12,
             "FMT-11: append remaps ID-based flow edge"
         );
@@ -1566,7 +1587,7 @@ int main(void)
         check(
             subset_json &&
                 graph_append_json(&appended, subset_json, 20.0f, 30.0f) == 0 &&
-                appended.node_count == 4 && appended.edge_count == 2 &&
+                acount(appended.nodes) == 4 && acount(appended.edges) == 2 &&
                 appended.nodes[2]->id != first_copy &&
                 appended.nodes[3]->id != second_copy &&
                 appended.edges[1].from_id == appended.nodes[2]->id &&
@@ -1892,8 +1913,8 @@ int main(void)
         char *json = graph_save_json(&gs);
         graph *loaded = json ? graph_load_json(json) : NULL;
         check(
-            json && !strstr(json, "\\\"run\\\"") &&
-                !strstr(json, "\\\"state\\\"") && loaded && loaded->node_count == 2,
+            json && !strstr(json, "\\\"run\\\"") && !strstr(json, "\\\"state\\\"") &&
+                loaded && acount(loaded->nodes) == 2,
             "RUN-13: suspended save contains authored data and no run state"
         );
         if (loaded) graph_free(loaded);

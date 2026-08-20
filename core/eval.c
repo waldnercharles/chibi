@@ -1,6 +1,7 @@
 #include "eval.h"
 
 #include "nodes.h"
+#include "pin_conv.h"
 
 void eval_context_init(eval_context *ctx)
 {
@@ -26,19 +27,6 @@ static int fail(eval_context *ctx, node *n, int pin, int code, const char *messa
     return code;
 }
 
-static void coerce_real(pin_value *value, const pin_spec *target)
-{
-    if (value->type == PIN_F32 && target->type == PIN_F64) {
-        value->type = PIN_F64;
-        value->type_name = target->type_name;
-        value->d = (double)value->f;
-    } else if (value->type == PIN_F64 && target->type == PIN_F32) {
-        value->type = PIN_F32;
-        value->type_name = target->type_name;
-        value->f = (float)value->d;
-    }
-}
-
 static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
 {
     if (n->computed) return 0;
@@ -54,38 +42,36 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
                 n->visiting = 0;
                 return r;
             }
-            coerce_real(&n->inputs[i], &n->input_pins[i]);
+            pin_coerce(&n->inputs[i], &n->input_pins[i]);
         } else {
             n->inputs[i] = n->input_pins[i].default_value;
         }
     }
-    if (!n->desc->eval)
-        return fail(ctx, n, -1, NODE_EVAL_INVALID, "node has no evaluator");
-    if (n->desc->eval == node_eval_make &&
-        (!n->desc->type || n->input_count != n->desc->type->field_count ||
-         n->output_count != 1))
-        return fail(ctx, n, -1, NODE_EVAL_INVALID, "Make node has invalid descriptor");
-    if (n->desc->eval == node_eval_break &&
-        (!n->desc->type || n->input_count != 1 ||
-         n->output_count != n->desc->type->field_count || !n->inputs[0].ptr))
-        return fail(ctx, n, 0, NODE_EVAL_INVALID, "Break node has invalid struct input");
-    if (n->desc->eval == node_eval_call && (!n->desc->fn || n->output_count != 1))
-        return fail(ctx, n, -1, NODE_EVAL_INVALID, "call node has invalid descriptor");
-    n->desc->eval(n, a);
-    if (n->desc->eval == node_eval_make && n->output_count > 0 &&
-        n->outputs[0].type == PIN_STRUCT && !n->outputs[0].ptr)
-        return fail(ctx, n, 0, NODE_EVAL_ALLOCATION, "arena allocation failed");
-    if (n->desc->eval == node_eval_call && n->output_count > 0 &&
-        n->output_pins[0].type == PIN_STRUCT && !n->outputs[0].ptr)
-        return fail(ctx, n, 0, NODE_EVAL_ALLOCATION, "arena allocation failed");
-    if (n->desc->eval == node_eval_break) {
-        for (int i = 0; i < n->output_count; i++)
-            if (n->outputs[i].type != n->output_pins[i].type)
-                return fail(ctx, n, i, NODE_EVAL_INVALID, "Break node produced invalid output");
+    switch (n->desc->pure_kind) {
+        case NODE_PURE_CONST: node_eval_const(n, a); break;
+        case NODE_PURE_MAKE:
+            node_eval_make(n, a);
+            if (n->output_count > 0 && n->outputs[0].type == PIN_STRUCT &&
+                !n->outputs[0].ptr)
+                return fail(ctx, n, 0, NODE_EVAL_ALLOCATION, "arena allocation failed");
+            if (n->output_count > 0 && n->outputs[0].type != PIN_STRUCT)
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, "Make node produced invalid output");
+            break;
+        case NODE_PURE_BREAK:
+            if (!n->inputs[0].ptr)
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, "Break node has invalid struct input");
+            node_eval_break(n, a);
+            for (int i = 0; i < n->output_count; i++)
+                if (n->outputs[i].type != n->output_pins[i].type)
+                    return fail(ctx, n, i, NODE_EVAL_INVALID, "Break node produced invalid output");
+            break;
+        case NODE_PURE_CALL:
+            node_eval_call(n, a);
+            if (n->output_count > 0 && n->output_pins[0].type == PIN_STRUCT &&
+                !n->outputs[0].ptr)
+                return fail(ctx, n, 0, NODE_EVAL_ALLOCATION, "arena allocation failed");
+            break;
     }
-    if (n->desc->eval == node_eval_make && n->output_count > 0 &&
-        n->outputs[0].type != PIN_STRUCT)
-        return fail(ctx, n, 0, NODE_EVAL_INVALID, "Make node produced invalid output");
     n->computed = 1;
     n->visiting = 0;
     return 0;
@@ -98,7 +84,7 @@ int graph_eval_output(graph *g, node *n, int out_pin, arena *a, pin_value *out, 
     if (!g || !n || !a || !out)
         return fail(ctx, n, out_pin, -4, "invalid evaluation arguments");
     int in_graph = 0;
-    for (int i = 0; i < g->node_count; i++) in_graph |= g->nodes[i] == n;
+    for (int i = 0; i < acount(g->nodes); i++) in_graph |= g->nodes[i] == n;
     if (!in_graph)
         return fail(ctx, n, out_pin, NODE_EVAL_INVALID, "node is not in graph");
     if (out_pin < 0 || out_pin >= n->output_count)
@@ -114,7 +100,7 @@ int graph_eval_output(graph *g, node *n, int out_pin, arena *a, pin_value *out, 
 void graph_eval_reset(graph *g)
 {
     if (!g) return;
-    for (int i = 0; i < g->node_count; i++) {
+    for (int i = 0; i < acount(g->nodes); i++) {
         g->nodes[i]->computed = 0;
         g->nodes[i]->visiting = 0;
         g->nodes[i]->eval_error = 0;

@@ -1,9 +1,9 @@
 #include "graph.h"
 
+#include "pin_conv.h"
+
 #include <stdlib.h>
 #include <string.h>
-
-static void *xrealloc(void *p, size_t n) { return realloc(p, n); }
 
 void graph_init(graph *g)
 {
@@ -16,7 +16,7 @@ void graph_init(graph *g)
 static int node_in_graph(const graph *g, const node *n)
 {
     if (!g || !n) return 0;
-    for (int i = 0; i < g->node_count; i++)
+    for (int i = 0; i < acount(g->nodes); i++)
         if (g->nodes[i] == n) return 1;
     return 0;
 }
@@ -39,6 +39,20 @@ uint64_t graph_alloc_id(graph *g)
     return g->id_counter++;
 }
 
+static void graph_index_node(graph *g, node *n)
+{
+    size_t want = (size_t)n->id + 1;
+    while (acount(g->id_table) < want) apush(g->id_table, NULL);
+    g->id_table[n->id] = n;
+}
+
+void graph_reindex(graph *g)
+{
+    if (!g) return;
+    afree(g->id_table);
+    for (int i = 0; i < acount(g->nodes); i++) graph_index_node(g, g->nodes[i]);
+}
+
 static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
 {
     *dst = *src;
@@ -55,16 +69,15 @@ node *graph_add_node(graph *g, const node_desc *desc)
         desc->output_count < 0 || (desc->input_count && !desc->inputs) ||
         (desc->output_count && !desc->outputs))
         return NULL;
-    node *n = (node *)calloc(1, sizeof *n);
-    if (!n) return NULL;
+    node *n = (node *)xcalloc(1, sizeof *n);
     n->desc = desc;
     n->input_count = desc->input_count;
     n->output_count = desc->output_count;
     n->id = graph_alloc_id(g);
+    graph_index_node(g, n);
     if (desc->input_count) {
-        n->input_pins = (pin_spec *)calloc((size_t)desc->input_count, sizeof *n->input_pins);
-        n->inputs = (pin_value *)calloc((size_t)desc->input_count, sizeof *n->inputs);
-        if (!n->input_pins || !n->inputs) goto oom;
+        n->input_pins = (pin_spec *)xcalloc((size_t)desc->input_count, sizeof *n->input_pins);
+        n->inputs = (pin_value *)xcalloc((size_t)desc->input_count, sizeof *n->inputs);
         for (int i = 0; i < desc->input_count; i++) {
             init_pin(&n->input_pins[i], &desc->inputs[i], g);
             n->inputs[i] = n->input_pins[i].default_value;
@@ -72,63 +85,24 @@ node *graph_add_node(graph *g, const node_desc *desc)
     }
     if (desc->output_count) {
         n->output_pins = (pin_spec *)
-            calloc((size_t)desc->output_count, sizeof *n->output_pins);
-        n->outputs = (pin_value *)calloc((size_t)desc->output_count, sizeof *n->outputs);
-        if (!n->output_pins || !n->outputs) goto oom;
+            xcalloc((size_t)desc->output_count, sizeof *n->output_pins);
+        n->outputs = (pin_value *)xcalloc((size_t)desc->output_count, sizeof *n->outputs);
         for (int i = 0; i < desc->output_count; i++) {
             init_pin(&n->output_pins[i], &desc->outputs[i], g);
             n->outputs[i] = n->output_pins[i].default_value;
         }
     }
-    if (g->node_count == g->node_cap) {
-        int next = g->node_cap ? g->node_cap * 2 : 8;
-        node **nodes = (node **)xrealloc(g->nodes, (size_t)next * sizeof *nodes);
-        if (!nodes) goto oom;
-        g->nodes = nodes;
-        g->node_cap = next;
-    }
-    g->nodes[g->node_count++] = n;
+    apush(g->nodes, n);
     graph_changed(g);
     return n;
-
-oom:
-    free(n->input_pins);
-    free(n->output_pins);
-    free(n->inputs);
-    free(n->outputs);
-    free(n);
-    return NULL;
 }
 
 int pin_types_compatible(const pin_spec *a, const pin_spec *b)
-{
-    if (!a || !b || a->container != b->container) return 0;
-    int real = (a->type == PIN_F32 || a->type == PIN_F64) &&
-               (b->type == PIN_F32 || b->type == PIN_F64);
-    if (!real && a->type != b->type) return 0;
-    if (a->type == PIN_STRUCT || a->type == PIN_ENUM)
-        return a->type_name && b->type_name && strcmp(a->type_name, b->type_name) == 0;
-    return 1;
-}
-
-static int grow_edges(graph *g)
-{
-    if (g->edge_count < g->edge_cap) return 0;
-    int next = g->edge_cap ? g->edge_cap * 2 : 8;
-    edge *edges = (edge *)xrealloc(g->edges, (size_t)next * sizeof *edges);
-    if (!edges) return -1;
-    g->edges = edges;
-    g->edge_cap = next;
-    return 0;
-}
+{ return pin_compatible(a, b); }
 
 static edge make_edge(node *from, int from_pin, node *to, int to_pin, graph_edge_kind kind, int order)
 {
     edge e = { 0 };
-    e.from = from;
-    e.from_pin = from_pin;
-    e.to = to;
-    e.to_pin = to_pin;
     e.from_id = from ? from->id : 0;
     e.to_id = to ? to->id : 0;
     e.from_pin_id = from && from_pin >= 0 && from_pin < from->output_count
@@ -151,9 +125,9 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
         return -1;
     const pin_spec *out = &from->output_pins[from_pin];
     const pin_spec *in = &to->input_pins[to_pin];
-    if (out->kind != PIN_DATA || in->kind != PIN_DATA || !pin_types_compatible(out, in))
+    if (out->kind != PIN_DATA || in->kind != PIN_DATA || !pin_compatible(out, in))
         return -1;
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         edge *old = &g->edges[i];
         if (old->to_id == to->id && old->to_pin_id == in->id) {
             if (old->kind != GRAPH_EDGE_DATA) return -1;
@@ -162,8 +136,7 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
             return 0;
         }
     }
-    if (grow_edges(g)) return -1;
-    g->edges[g->edge_count++] = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0);
+    apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0));
     graph_changed(g);
     return 0;
 }
@@ -209,7 +182,7 @@ int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin,
     const pin_spec *out = &from->output_pins[from_pin];
     const pin_spec *in = &to->input_pins[to_pin];
     if (out->kind != PIN_EXEC || in->kind != PIN_EXEC) return -1;
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         edge *old = &g->edges[i];
         if (old->kind == GRAPH_EDGE_EXEC && old->from_id == from->id &&
             old->from_pin_id == out->id &&
@@ -218,7 +191,7 @@ int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin,
     }
     /* Exec inputs intentionally have multiple drivers. An exact duplicate is
      * replaced, while distinct incoming edges merge at the input. */
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         edge *old = &g->edges[i];
         if (old->kind == GRAPH_EDGE_EXEC && old->from_id == from->id &&
             old->from_pin_id == out->id && old->to_id == to->id &&
@@ -228,8 +201,7 @@ int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin,
             return 0;
         }
     }
-    if (grow_edges(g)) return -1;
-    g->edges[g->edge_count++] = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_EXEC, exec_order);
+    apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_EXEC, exec_order));
     graph_changed(g);
     return 0;
 }
@@ -250,26 +222,28 @@ int graph_remove_node(graph *g, node *n)
 {
     if (!graph_mutation_allowed(g)) return -1;
     int idx = -1;
-    for (int i = 0; i < g->node_count; i++)
+    for (int i = 0; i < acount(g->nodes); i++)
         if (g->nodes[i] == n) {
             idx = i;
             break;
         }
     if (idx < 0) return -1;
     int w = 0;
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
         if (e->from_id == n->id || e->to_id == n->id) continue;
         g->edges[w++] = *e;
     }
-    g->edge_count = w;
+    asetlen(g->edges, w);
+    if (n->id < (uint64_t)acount(g->id_table)) g->id_table[n->id] = NULL;
     free(n->input_pins);
     free(n->output_pins);
     free(n->inputs);
     free(n->outputs);
     free(n);
-    for (int i = idx; i < g->node_count - 1; i++) g->nodes[i] = g->nodes[i + 1];
-    g->node_count--;
+    for (int i = idx; i < acount(g->nodes) - 1; i++)
+        g->nodes[i] = g->nodes[i + 1];
+    asetlen(g->nodes, acount(g->nodes) - 1);
     graph_changed(g);
     return 0;
 }
@@ -277,17 +251,44 @@ int graph_remove_node(graph *g, node *n)
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin)
 {
     if (!graph_mutation_allowed(g) || !from || !to) return -1;
-    for (int i = 0; i < g->edge_count; i++) {
+    uint64_t from_pin_id = from_pin >= 0 && from_pin < from->output_count
+                             ? from->output_pins[from_pin].id
+                             : 0;
+    uint64_t to_pin_id = to_pin >= 0 && to_pin < to->input_count
+                           ? to->input_pins[to_pin].id
+                           : 0;
+    for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
         if (e->from_id != from->id || e->to_id != to->id ||
-            e->from_pin != from_pin || e->to_pin != to_pin)
+            e->from_pin_id != from_pin_id || e->to_pin_id != to_pin_id)
             continue;
-        g->edges[i] = g->edges[g->edge_count - 1];
-        g->edge_count--;
+        adel(g->edges, i);
         graph_changed(g);
         return 0;
     }
     return -1;
+}
+
+static node *edge_from_node(const graph *g, const edge *e, int *pin)
+{
+    int is_out = 0;
+    node *n = graph_node_by_id(g, e->from_id);
+    if (!n || !graph_pin_by_id(n, e->from_pin_id, &is_out, pin) || !is_out) {
+        if (pin) *pin = -1;
+        return NULL;
+    }
+    return n;
+}
+
+static node *edge_to_node(const graph *g, const edge *e, int *pin)
+{
+    int is_out = 0;
+    node *n = graph_node_by_id(g, e->to_id);
+    if (!n || !graph_pin_by_id(n, e->to_pin_id, &is_out, pin) || is_out) {
+        if (pin) *pin = -1;
+        return NULL;
+    }
+    return n;
 }
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin)
@@ -295,13 +296,13 @@ int graph_input_source(const graph *g, const node *n, int pin, node **src, int *
     if (!g || !n || !src || !src_pin || pin < 0 || pin >= n->input_count)
         return 0;
     uint64_t id = n->input_pins[pin].id;
-    for (int i = 0; i < g->edge_count; i++)
-        if (g->edges[i].kind == GRAPH_EDGE_DATA && g->edges[i].to_id == n->id &&
-            g->edges[i].to_pin_id == id) {
-            *src = g->edges[i].from;
-            *src_pin = g->edges[i].from_pin;
-            return 1;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind == GRAPH_EDGE_DATA && e->to_id == n->id && e->to_pin_id == id) {
+            *src = edge_from_node(g, e, src_pin);
+            return *src ? 1 : 0;
         }
+    }
     return 0;
 }
 
@@ -311,14 +312,15 @@ int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, 
         pin >= n->input_count || n->input_pins[pin].kind != PIN_EXEC)
         return 0;
     uint64_t id = n->input_pins[pin].id;
-    for (int i = 0; i < g->edge_count; i++)
-        if (g->edges[i].kind == GRAPH_EDGE_EXEC && g->edges[i].to_id == n->id &&
-            g->edges[i].to_pin_id == id) {
-            *src = g->edges[i].from;
-            *src_pin = g->edges[i].from_pin;
-            *order = g->edges[i].exec_order;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind == GRAPH_EDGE_EXEC && e->to_id == n->id && e->to_pin_id == id) {
+            *src = edge_from_node(g, e, src_pin);
+            if (!*src) return 0;
+            *order = e->exec_order;
             return 1;
         }
+    }
     return 0;
 }
 
@@ -327,7 +329,7 @@ int graph_exec_input_count(const graph *g, const node *n, int pin)
     if (!g || !n || pin < 0 || pin >= n->input_count || n->input_pins[pin].kind != PIN_EXEC)
         return 0;
     int count = 0;
-    for (int i = 0; i < g->edge_count; i++)
+    for (int i = 0; i < acount(g->edges); i++)
         if (g->edges[i].kind == GRAPH_EDGE_EXEC && g->edges[i].to_id == n->id &&
             g->edges[i].to_pin_id == n->input_pins[pin].id)
             count++;
@@ -348,14 +350,14 @@ int graph_exec_input_source_at(
         pin >= n->input_count || n->input_pins[pin].kind != PIN_EXEC)
         return 0;
     int at = 0;
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         edge *e = &g->edges[i];
         if (e->kind != GRAPH_EDGE_EXEC || e->to_id != n->id ||
             e->to_pin_id != n->input_pins[pin].id)
             continue;
         if (at++ != ordinal) continue;
-        *src = e->from;
-        *src_pin = e->from_pin;
+        *src = edge_from_node(g, e, src_pin);
+        if (!*src) return 0;
         *order = e->exec_order;
         return 1;
     }
@@ -368,12 +370,11 @@ int graph_exec_output_target(const graph *g, const node *n, int pin, int order, 
         n->output_pins[pin].kind != PIN_EXEC || order < 0)
         return 0;
     uint64_t id = n->output_pins[pin].id;
-    for (int i = 0; i < g->edge_count; i++)
+    for (int i = 0; i < acount(g->edges); i++)
         if (g->edges[i].kind == GRAPH_EDGE_EXEC && g->edges[i].from_id == n->id &&
             g->edges[i].from_pin_id == id && g->edges[i].exec_order == order) {
-            *dst = g->edges[i].to;
-            *dst_pin = g->edges[i].to_pin;
-            return 1;
+            *dst = edge_to_node(g, &g->edges[i], dst_pin);
+            return *dst ? 1 : 0;
         }
     return 0;
 }
@@ -383,10 +384,8 @@ int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node
 
 node *graph_node_by_id(const graph *g, uint64_t id)
 {
-    if (!g || id == 0) return NULL;
-    for (int i = 0; i < g->node_count; i++)
-        if (g->nodes[i]->id == id) return g->nodes[i];
-    return NULL;
+    if (!g || id == 0 || id >= (uint64_t)acount(g->id_table)) return NULL;
+    return g->id_table[id];
 }
 
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index)
@@ -460,16 +459,25 @@ int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, 
     else n->outputs[index] = p[index].default_value;
 
     /* Retyping invalidates only edges that can no longer carry the new pin. */
-    for (int i = 0; i < g->edge_count;) {
+    for (int i = 0; i < acount(g->edges);) {
         edge *e = &g->edges[i];
-        int attached = (output && e->from == n && e->from_pin == index) ||
-                       (!output && e->to == n && e->to_pin == index);
+        int attached = (output && e->from_id == n->id &&
+                        e->from_pin_id == p[index].id) ||
+                       (!output && e->to_id == n->id && e->to_pin_id == p[index].id);
         if (attached) {
-            const pin_spec *other = output ? node_input_pin(e->to, e->to_pin)
-                                           : node_output_pin(e->from, e->from_pin);
+            const pin_spec *other = NULL;
+            if (output) {
+                int tp = -1;
+                node *to = edge_to_node(g, e, &tp);
+                other = to ? node_input_pin(to, tp) : NULL;
+            } else {
+                int fp = -1;
+                node *from = edge_from_node(g, e, &fp);
+                other = from ? node_output_pin(from, fp) : NULL;
+            }
             if (!other ||
-                !pin_types_compatible(output ? p + index : other, output ? other : p + index)) {
-                g->edges[i] = g->edges[--g->edge_count];
+                !pin_compatible(output ? p + index : other, output ? other : p + index)) {
+                adel(g->edges, i);
                 continue;
             }
         }
@@ -517,19 +525,6 @@ int graph_move_pin(graph *g, node *n, int output, int index, int target_index)
     pins[target_index] = moved_pin;
     values[target_index] = moved_value;
 
-    /* IDs stay with the moved pins. Refresh cached indices from those IDs. */
-    for (int i = 0; i < g->edge_count; i++) {
-        edge *e = &g->edges[i];
-        if (output && e->from == n) {
-            int at = -1;
-            (void)graph_pin_by_id(n, e->from_pin_id, NULL, &at);
-            if (at >= 0) e->from_pin = at;
-        } else if (!output && e->to == n) {
-            int at = -1;
-            (void)graph_pin_by_id(n, e->to_pin_id, NULL, &at);
-            if (at >= 0) e->to_pin = at;
-        }
-    }
     graph_changed(g);
     return target_index;
 }
@@ -584,13 +579,8 @@ int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin)
     pin_spec **pins = output ? &n->output_pins : &n->input_pins;
     pin_value **values = output ? &n->outputs : &n->inputs;
     int next = *count + 1;
-    pin_spec *grown_pins = malloc((size_t)next * sizeof *grown_pins);
-    pin_value *grown_values = malloc((size_t)next * sizeof *grown_values);
-    if (!grown_pins || !grown_values) {
-        free(grown_pins);
-        free(grown_values);
-        return -1;
-    }
+    pin_spec *grown_pins = (pin_spec *)xmalloc((size_t)next * sizeof *grown_pins);
+    pin_value *grown_values = (pin_value *)xmalloc((size_t)next * sizeof *grown_values);
     memcpy(grown_pins, *pins, (size_t)*count * sizeof *grown_pins);
     memcpy(grown_values, *values, (size_t)*count * sizeof *grown_values);
     free(*pins);
@@ -613,16 +603,14 @@ int graph_remove_pin(graph *g, node *n, int output, int index)
     if (index < 0 || index >= *count) return -1;
     uint64_t pin_id = (*pins)[index].id;
     int w = 0;
-    for (int i = 0; i < g->edge_count; i++) {
+    for (int i = 0; i < acount(g->edges); i++) {
         edge *e = &g->edges[i];
         if ((output && e->from_id == n->id && e->from_pin_id == pin_id) ||
             (!output && e->to_id == n->id && e->to_pin_id == pin_id))
             continue;
-        if (output && e->from_id == n->id && e->from_pin > index) e->from_pin--;
-        if (!output && e->to_id == n->id && e->to_pin > index) e->to_pin--;
         g->edges[w++] = *e;
     }
-    g->edge_count = w;
+    asetlen(g->edges, w);
     memmove(*pins + index, *pins + index + 1, (size_t)(*count - index - 1) * sizeof **pins);
     memmove(*values + index, *values + index + 1, (size_t)(*count - index - 1) * sizeof **values);
     (*count)--;
@@ -632,8 +620,8 @@ int graph_remove_pin(graph *g, node *n, int output, int index)
         *pins = NULL;
         *values = NULL;
     } else {
-        *pins = realloc(*pins, (size_t)*count * sizeof **pins);
-        *values = realloc(*values, (size_t)*count * sizeof **values);
+        *pins = (pin_spec *)xrealloc(*pins, (size_t)*count * sizeof **pins);
+        *values = (pin_value *)xrealloc(*values, (size_t)*count * sizeof **values);
     }
     graph_changed(g);
     return 0;
@@ -642,38 +630,28 @@ int graph_remove_pin(graph *g, node *n, int output, int index)
 void *graph_own_block(graph *g, size_t size)
 {
     if (!g || size == 0) return NULL;
-    void *block = calloc(1, size);
-    if (!block) return NULL;
-    if (g->block_count == g->block_cap) {
-        int next = g->block_cap ? g->block_cap * 2 : 8;
-        void **grown = realloc(g->blocks, (size_t)next * sizeof *grown);
-        if (!grown) {
-            free(block);
-            return NULL;
-        }
-        g->blocks = grown;
-        g->block_cap = next;
-    }
-    g->blocks[g->block_count++] = block;
+    void *block = xcalloc(1, size);
+    apush(g->blocks, block);
     return block;
 }
 
 void graph_free(graph *g)
 {
     if (!g) return;
-    for (int i = 0; i < g->node_count; i++) {
+    for (int i = 0; i < acount(g->nodes); i++) {
         free(g->nodes[i]->input_pins);
         free(g->nodes[i]->output_pins);
         free(g->nodes[i]->inputs);
         free(g->nodes[i]->outputs);
         free(g->nodes[i]);
     }
-    free(g->nodes);
-    free(g->edges);
-    for (int i = 0; i < g->block_count; i++) free(g->blocks[i]);
-    free(g->blocks);
-    for (int i = 0; i < g->string_count; i++) free(g->strings[i]);
-    free(g->strings);
+    afree(g->nodes);
+    afree(g->id_table);
+    afree(g->edges);
+    for (int i = 0; i < acount(g->blocks); i++) free(g->blocks[i]);
+    afree(g->blocks);
+    for (int i = 0; i < acount(g->strings); i++) free(g->strings[i]);
+    afree(g->strings);
     memset(g, 0, sizeof *g);
 }
 
@@ -708,17 +686,9 @@ int graph_set_metadata(graph *g, const char *name, const char *description)
 char *graph_own_str(graph *g, const char *s, size_t len)
 {
     if (!g || !s) return NULL;
-    if (g->string_count == g->string_cap) {
-        int next = g->string_cap ? g->string_cap * 2 : 8;
-        char **ns = (char **)xrealloc(g->strings, (size_t)next * sizeof *ns);
-        if (!ns) return NULL;
-        g->strings = ns;
-        g->string_cap = next;
-    }
-    char *copy = (char *)malloc(len + 1);
-    if (!copy) return NULL;
+    char *copy = (char *)xmalloc(len + 1);
     memcpy(copy, s, len);
     copy[len] = '\0';
-    g->strings[g->string_count++] = copy;
+    apush(g->strings, copy);
     return copy;
 }

@@ -19,12 +19,6 @@ typedef enum
     NODE_FLOW_FOR_LOOP,
     NODE_FLOW_DELAY,
     NODE_FLOW_CUSTOM,
-    NODE_FLOW_KIND_NONE = NODE_FLOW_NONE,
-    NODE_FLOW_KIND_EVENT = NODE_FLOW_EVENT,
-    NODE_FLOW_KIND_BRANCH = NODE_FLOW_BRANCH,
-    NODE_FLOW_KIND_SEQUENCE = NODE_FLOW_SEQUENCE,
-    NODE_FLOW_KIND_FOR_LOOP = NODE_FLOW_FOR_LOOP,
-    NODE_FLOW_KIND_DELAY = NODE_FLOW_DELAY,
 } node_flow_kind;
 
 typedef enum
@@ -48,6 +42,14 @@ enum
 
 typedef pin_value (*node_fn)(const pin_value *inputs, int input_count, arena *a);
 
+typedef enum
+{
+    NODE_PURE_CONST = 0, /* outputs pre-set (literal, or written by flow) */
+    NODE_PURE_MAKE,      /* desc->type: field inputs -> one struct output */
+    NODE_PURE_BREAK,     /* desc->type: one struct input -> field outputs */
+    NODE_PURE_CALL,      /* desc->fn: inputs -> one output */
+} node_pure_kind;
+
 typedef struct
 {
     const char *name;
@@ -55,13 +57,11 @@ typedef struct
     int output_count;
     pin_spec *inputs;
     pin_spec *outputs;
-    void (*eval)(node *n, arena *a);
+    node_pure_kind pure_kind; /* how to compute DATA outputs; CONST is zero default */
     const type_desc *type;
     node_fn fn;
     node_flow_kind flow_kind;
     node_flow_fn flow;
-    unsigned pure;
-    unsigned latent;
     node_display_class display_class;
 } node_desc;
 
@@ -97,6 +97,17 @@ static inline const pin_spec *node_input_pin(const node *n, int index)
 static inline const pin_spec *node_output_pin(const node *n, int index)
 {
     return n && index >= 0 && index < n->output_count ? &n->output_pins[index] : NULL;
+}
+
+/* NODE-6: a descriptor is pure when it declares no PIN_EXEC pins. */
+static inline int node_desc_is_pure(const node_desc *d)
+{
+    if (!d) return 0;
+    for (int i = 0; i < d->input_count; i++)
+        if (d->inputs[i].kind == PIN_EXEC) return 0;
+    for (int i = 0; i < d->output_count; i++)
+        if (d->outputs[i].kind == PIN_EXEC) return 0;
+    return 1;
 }
 
 #endif

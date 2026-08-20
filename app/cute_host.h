@@ -41,4 +41,7 @@ bool cf_app_is_running(void);
 void cf_app_update(CF_OnUpdateFn *on_update);
 int cf_app_draw_onto_screen(bool clear);
 
+typedef void cf_assert_fn(bool expr, const char *message, const char *file, int line);
+void cf_set_assert_handler(cf_assert_fn *assert_fn);
+
 #endif

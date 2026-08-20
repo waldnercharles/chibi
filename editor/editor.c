@@ -1,6 +1,5 @@
 #include "editor.h"
 
-#include "../core/nodes.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
 #include "eval_view.h"
@@ -11,6 +10,10 @@
 
 CIMGUI_API void ImGui_ClearActiveID(void);
 
+extern const unsigned char editor_nerd_symbols_font[];
+extern const size_t editor_nerd_symbols_font_size;
+
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -28,6 +31,26 @@ CIMGUI_API void ImGui_ClearActiveID(void);
 #define ED_TEXT_WIDTH 120.0f
 #define ED_LOG_MAX 128
 #define ED_LOG_MESSAGE 256
+#define ED_TOAST_WIDTH 320.0f
+#define ED_TOAST_PAD 10.0f
+#define ED_TOAST_ICON 18.0f
+#define ED_TOAST_GAP 8.0f
+#define ED_TOAST_CLOSE 20.0f
+#define ED_TOAST_DURATION 4.0
+#define ED_TOAST_FADE 0.4
+
+enum
+{
+    ED_ICON_WARNING_CODEPOINT = 0xf071,
+    ED_ICON_CLOSE_CODEPOINT = 0xf00d
+};
+
+static const ImWchar ED_ICON_GLYPH_RANGES[] = { ED_ICON_CLOSE_CODEPOINT,
+                                                ED_ICON_CLOSE_CODEPOINT,
+                                                ED_ICON_WARNING_CODEPOINT,
+                                                ED_ICON_WARNING_CODEPOINT,
+                                                0 };
+static const char ED_ICON_WARNING[] = "\xef\x81\xb1";
 
 typedef enum ed_pin_kind
 {
@@ -62,10 +85,10 @@ typedef struct ed_drag_node
 
 typedef struct ed_link_ref
 {
-    node *from;
-    int from_pin;
-    node *to;
-    int to_pin;
+    uint64_t from_id;
+    uint64_t from_pin_id;
+    uint64_t to_id;
+    uint64_t to_pin_id;
 } ed_link_ref;
 
 typedef struct ed_log_entry
@@ -80,6 +103,7 @@ struct editor
 {
     graph *g;
     eval_view *ev;
+    ImFont *icon_font;
     flow_run *run;
     int entry_index;
     double monotonic_time;
@@ -95,18 +119,9 @@ struct editor
     node *reveal_target;
 
     ed_node_view *views;
-    int view_count;
-    int view_cap;
     ed_pin_view *pins;
-    int pin_count;
-    int pin_cap;
-
     node **selected;
-    int selected_count;
-    int selected_cap;
     ed_link_ref *selected_links;
-    int selected_link_count;
-    int selected_link_cap;
 
     int selecting;
     int select_additive;
@@ -119,8 +134,6 @@ struct editor
     node *drag_toggle_node;
     ImVec2 drag_start_mouse;
     ed_drag_node *drag_nodes;
-    int drag_count;
-    int drag_cap;
 
     int linking;
     ed_pin_view link_pin;
@@ -150,6 +163,7 @@ struct editor
     ed_pin_view spawn_link_pin;
     char connect_error[ED_LOG_MESSAGE];
     ImVec2 connect_error_pos;
+    double connect_error_until;
     node *details_node;
     int details_history_open;
     char details_title[256];
@@ -158,11 +172,7 @@ struct editor
     char details_pin_name[256];
 
     char **undo;
-    int undo_count;
-    int undo_cap;
     char **redo;
-    int redo_count;
-    int redo_cap;
 };
 
 static ImVec2 ed_add(ImVec2 a, ImVec2 b)
@@ -252,104 +262,76 @@ static ImU32 ed_dim_color(ImU32 c, float factor)
     return IM_COL32(r, g, b, (c >> 24) & 255u);
 }
 
-static void ed_free_string_stack(char **stack, int *count)
+static void ed_free_string_stack(char ***stack)
 {
-    for (int i = 0; i < *count; i++) free(stack[i]);
-    *count = 0;
+    for (int i = 0; i < acount(*stack); i++) free((*stack)[i]);
+    afree(*stack);
 }
 
-static void ed_push_string(char ***stack, int *count, int *cap, char *value)
+static void ed_push_string(char ***stack, char *value)
 {
     if (!value) return;
-    if (*count == ED_HIST_MAX) {
+    if (acount(*stack) == ED_HIST_MAX) {
         free((*stack)[0]);
         memmove(*stack, *stack + 1, (size_t)(ED_HIST_MAX - 1) * sizeof **stack);
         (*stack)[ED_HIST_MAX - 1] = value;
         return;
     }
-    if (*count == *cap) {
-        int next = *cap ? *cap * 2 : 16;
-        if (next > ED_HIST_MAX) next = ED_HIST_MAX;
-        char **grown = (char **)realloc(*stack, (size_t)next * sizeof *grown);
-        if (!grown) {
-            free(value);
-            return;
-        }
-        *stack = grown;
-        *cap = next;
-    }
-    (*stack)[(*count)++] = value;
+    apush(*stack, value);
 }
 
 static int ed_link_equal(const ed_link_ref *a, const ed_link_ref *b)
 {
-    return a->from == b->from && a->from_pin == b->from_pin && a->to == b->to &&
-           a->to_pin == b->to_pin;
+    return a->from_id == b->from_id && a->from_pin_id == b->from_pin_id &&
+           a->to_id == b->to_id && a->to_pin_id == b->to_pin_id;
 }
 
 static void ed_clear_selection(editor *e)
 {
-    e->selected_count = 0;
-    e->selected_link_count = 0;
+    aclear(e->selected);
+    aclear(e->selected_links);
 }
 
 static int ed_link_selected(const editor *e, const ed_link_ref *link)
 {
-    for (int i = 0; i < e->selected_link_count; i++)
+    for (int i = 0; i < acount(e->selected_links); i++)
         if (ed_link_equal(link, &e->selected_links[i])) return 1;
     return 0;
 }
 
-static int ed_add_selected_link(editor *e, const ed_link_ref *link)
+static void ed_add_selected_link(editor *e, const ed_link_ref *link)
 {
-    if (ed_link_selected(e, link)) return 0;
-    if (e->selected_link_count == e->selected_link_cap) {
-        int next = e->selected_link_cap ? e->selected_link_cap * 2 : 8;
-        ed_link_ref *grown = (ed_link_ref *)
-            realloc(e->selected_links, (size_t)next * sizeof *grown);
-        if (!grown) return -1;
-        e->selected_links = grown;
-        e->selected_link_cap = next;
-    }
-    e->selected_links[e->selected_link_count++] = *link;
-    return 0;
+    if (ed_link_selected(e, link)) return;
+    apush(e->selected_links, *link);
 }
 
 static void ed_remove_selected_link(editor *e, const ed_link_ref *link)
 {
-    for (int i = 0; i < e->selected_link_count; i++) {
+    for (int i = 0; i < acount(e->selected_links); i++) {
         if (!ed_link_equal(link, &e->selected_links[i])) continue;
-        e->selected_links[i] = e->selected_links[--e->selected_link_count];
+        adel(e->selected_links, i);
         return;
     }
 }
 
 static int ed_node_selected(const editor *e, const node *n)
 {
-    for (int i = 0; i < e->selected_count; i++)
+    for (int i = 0; i < acount(e->selected); i++)
         if (e->selected[i] == n) return 1;
     return 0;
 }
 
-static int ed_add_selected(editor *e, node *n)
+static void ed_add_selected(editor *e, node *n)
 {
-    if (ed_node_selected(e, n)) return 0;
-    if (e->selected_count == e->selected_cap) {
-        int next = e->selected_cap ? e->selected_cap * 2 : 8;
-        node **grown = (node **)realloc(e->selected, (size_t)next * sizeof *grown);
-        if (!grown) return -1;
-        e->selected = grown;
-        e->selected_cap = next;
-    }
-    e->selected[e->selected_count++] = n;
-    return 0;
+    if (ed_node_selected(e, n)) return;
+    apush(e->selected, n);
 }
 
 static void ed_remove_selected(editor *e, node *n)
 {
-    for (int i = 0; i < e->selected_count; i++) {
+    for (int i = 0; i < acount(e->selected); i++) {
         if (e->selected[i] != n) continue;
-        e->selected[i] = e->selected[--e->selected_count];
+        adel(e->selected, i);
         return;
     }
 }
@@ -357,8 +339,8 @@ static void ed_remove_selected(editor *e, node *n)
 static void ed_select_node(editor *e, node *n, int append)
 {
     if (!append) {
-        e->selected_count = 0;
-        e->selected_link_count = 0;
+        aclear(e->selected);
+        aclear(e->selected_links);
     }
     if (n) {
         ed_add_selected(e, n);
@@ -401,6 +383,166 @@ static ImVec4 ed_spec_color(const pin_spec *spec)
                                   : ed_pin_color(spec->type);
 }
 
+static ImFont *ed_load_icon_font(void)
+{
+    ImFontAtlas *atlas = ImGui_GetIO()->Fonts;
+    if (!atlas->Fonts.Size) ImFontAtlas_AddFontDefault(atlas, NULL);
+    ImFontConfig config = { 0 };
+    config.FontDataOwnedByAtlas = false;
+    config.GlyphMaxAdvanceX = FLT_MAX;
+    config.RasterizerMultiply = 1.0f;
+    config.RasterizerDensity = 1.0f;
+    config.ExtraSizeScale = 1.0f;
+    return ImFontAtlas_AddFontFromMemoryTTF(
+        ImGui_GetIO()->Fonts,
+        (void *)editor_nerd_symbols_font,
+        (int)editor_nerd_symbols_font_size,
+        16.0f,
+        &config,
+        ED_ICON_GLYPH_RANGES
+    );
+}
+
+static void ed_draw_centered_icon(
+    ImDrawList *dl,
+    ImFont *font,
+    float font_size,
+    ImVec2 min,
+    ImVec2 max,
+    ImU32 color,
+    ImWchar codepoint
+)
+{
+    ImFontBaked *baked = ImFont_GetFontBaked(font, font_size);
+    ImFontGlyph *glyph = ImFontBaked_FindGlyphNoFallback(baked, codepoint);
+    assert(glyph);
+    float scale = font_size / baked->Size;
+    float width = (glyph->X1 - glyph->X0) * scale;
+    float height = (glyph->Y1 - glyph->Y0) * scale;
+    ImVec2 pos = { min.x + (max.x - min.x - width) * 0.5f - glyph->X0 * scale,
+                   min.y + (max.y - min.y - height) * 0.5f - glyph->Y0 * scale };
+    ImFont_RenderChar(font, dl, font_size, pos, color, codepoint);
+}
+
+static int ed_point_in_rect(ImVec2 p, ImVec2 min, ImVec2 max);
+
+static int ed_connect_error_rect(const editor *e, ImVec2 *min, ImVec2 *max, ImVec2 *close_min, ImVec2 *close_max)
+{
+    if (!e->connect_error[0] || e->monotonic_time >= e->connect_error_until + ED_TOAST_FADE)
+        return 0;
+    float width = e->canvas_size.x < ED_TOAST_WIDTH ? e->canvas_size.x : ED_TOAST_WIDTH;
+    float text_width = width - ED_TOAST_PAD * 2.0f - ED_TOAST_ICON -
+                       ED_TOAST_GAP - ED_TOAST_CLOSE;
+    float font_size = ImGui_GetFontSize();
+    if (text_width < font_size) text_width = font_size;
+    float text_height = ImGui_CalcTextSizeEx(e->connect_error, NULL, false, text_width)
+                            .y;
+    float height = ED_TOAST_PAD * 2.0f;
+    height += text_height > ED_TOAST_ICON ? text_height : ED_TOAST_ICON;
+    ImVec2 canvas_max = ed_add(e->canvas_min, e->canvas_size);
+    ImVec2 pos = ed_add(e->connect_error_pos, (ImVec2){ 12.0f, 12.0f });
+    if (pos.x + width > canvas_max.x) pos.x = canvas_max.x - width;
+    if (pos.y + height > canvas_max.y) pos.y = canvas_max.y - height;
+    if (pos.x < e->canvas_min.x) pos.x = e->canvas_min.x;
+    if (pos.y < e->canvas_min.y) pos.y = e->canvas_min.y;
+    *min = pos;
+    *max = ed_add(pos, (ImVec2){ width, height });
+    *close_min = (ImVec2){ max->x - ED_TOAST_PAD - ED_TOAST_CLOSE,
+                           min->y + ED_TOAST_PAD };
+    *close_max = (ImVec2){ max->x - ED_TOAST_PAD, close_min->y + ED_TOAST_CLOSE };
+    return 1;
+}
+
+static int ed_connect_error_alpha(const editor *e)
+{
+    double remaining = e->connect_error_until - e->monotonic_time;
+    if (remaining >= 0.0) return 255;
+    double fade_remaining = ED_TOAST_FADE + remaining;
+    if (fade_remaining <= 0.0) return 0;
+    return (int)(255.0 * fade_remaining / ED_TOAST_FADE);
+}
+
+static void ed_draw_connect_error(const editor *e)
+{
+    ImVec2 min, max, close_min, close_max;
+    if (!ed_connect_error_rect(e, &min, &max, &close_min, &close_max)) return;
+    int alpha = ed_connect_error_alpha(e);
+    if (!alpha) return;
+    ImDrawList *dl = ImGui_GetWindowDrawList();
+    int close_hovered = ed_point_in_rect(ImGui_GetIO()->MousePos, close_min, close_max);
+    if (close_hovered) ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
+    ImDrawList_PushClipRect(dl, e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
+    ImDrawList_AddRectFilledEx(dl, min, max, IM_COL32(24, 27, 34, (int)(alpha * 0.94f)), 6.0f, ImDrawFlags_RoundCornersAll);
+    ImDrawList_AddRectEx(dl, min, max, IM_COL32(210, 74, 74, alpha), 6.0f, ImDrawFlags_RoundCornersAll, 1.0f);
+    if (e->icon_font) {
+        ImDrawList_AddTextImFontPtr(
+            dl,
+            e->icon_font,
+            ED_TOAST_ICON,
+            (ImVec2){ min.x + ED_TOAST_PAD, min.y + ED_TOAST_PAD },
+            IM_COL32(210, 74, 74, alpha),
+            ED_ICON_WARNING
+        );
+    } else {
+        ImVec2 icon_center = { min.x + ED_TOAST_PAD + ED_TOAST_ICON * 0.5f,
+                               min.y + ED_TOAST_PAD + ED_TOAST_ICON * 0.5f };
+        ImDrawList_AddCircleFilled(dl, icon_center, ED_TOAST_ICON * 0.5f, IM_COL32(210, 74, 74, alpha), 0);
+        ImDrawList_AddText(
+            dl,
+            (ImVec2){ icon_center.x - 2.0f, icon_center.y - 9.0f },
+            IM_COL32(255, 242, 242, alpha),
+            "!"
+        );
+    }
+    ImDrawList_AddTextImFontPtrEx(
+        dl,
+        ImGui_GetFont(),
+        ImGui_GetFontSize(),
+        (ImVec2){ min.x + ED_TOAST_PAD + ED_TOAST_ICON + ED_TOAST_GAP, min.y + ED_TOAST_PAD },
+        IM_COL32(255, 224, 224, alpha),
+        e->connect_error,
+        NULL,
+        max.x - min.x - ED_TOAST_PAD * 2.0f - ED_TOAST_ICON - ED_TOAST_GAP - ED_TOAST_CLOSE,
+        NULL
+    );
+    ImDrawList_AddRectFilledEx(
+        dl,
+        close_min,
+        close_max,
+        IM_COL32(180, 50, 55, close_hovered ? (int)(alpha * 0.78f) : (int)(alpha * 0.16f)),
+        4.0f,
+        ImDrawFlags_RoundCornersAll
+    );
+    ImU32 close_color = IM_COL32(255, close_hovered ? 245 : 190, close_hovered ? 245 : 190, alpha);
+    if (e->icon_font) {
+        ed_draw_centered_icon(dl, e->icon_font, ED_TOAST_CLOSE, close_min, close_max, close_color, ED_ICON_CLOSE_CODEPOINT);
+    } else {
+        ImDrawList_AddLineEx(
+            dl,
+            ed_add(close_min, (ImVec2){ 5.0f, 5.0f }),
+            ed_add(close_max, (ImVec2){ -5.0f, -5.0f }),
+            close_color,
+            close_hovered ? 2.5f : 2.0f
+        );
+        ImDrawList_AddLineEx(
+            dl,
+            ed_add(close_min, (ImVec2){ 5.0f, ED_TOAST_CLOSE - 5.0f }),
+            ed_add(close_max, (ImVec2){ -5.0f, -ED_TOAST_CLOSE + 5.0f }),
+            close_color,
+            close_hovered ? 2.5f : 2.0f
+        );
+    }
+    ImDrawList_PopClipRect(dl);
+}
+
+static const char *ed_pin_type_name(const pin_spec *spec)
+{
+    if (spec->type_name && spec->type_name[0]) return spec->type_name;
+    if (spec->kind == PIN_EXEC) return "exec";
+    const char *name = pin_type_name(spec->type);
+    return name ? name : "unknown";
+}
+
 static ImVec2 ed_world_to_screen(const editor *e, float x, float y)
 {
     return ed_add(e->canvas_min, ed_add(e->pan, ed_scale((ImVec2){ x, y }, e->zoom)));
@@ -411,14 +553,14 @@ static ImVec2 ed_screen_to_world(const editor *e, ImVec2 p)
 
 static ed_node_view *ed_view_for(const editor *e, const node *n)
 {
-    for (int i = 0; i < e->view_count; i++)
+    for (int i = 0; i < acount(e->views); i++)
         if (e->views[i].n == n) return &e->views[i];
     return NULL;
 }
 
 static ed_pin_view *ed_pin_for(const editor *e, const node *n, int kind, int index)
 {
-    for (int i = 0; i < e->pin_count; i++) {
+    for (int i = 0; i < acount(e->pins); i++) {
         ed_pin_view *p = &e->pins[i];
         if (p->n == n && p->kind == kind && p->index == index) return p;
     }
@@ -427,34 +569,19 @@ static ed_pin_view *ed_pin_for(const editor *e, const node *n, int kind, int ind
 
 static int ed_edge_index(const editor *e, const ed_link_ref *link)
 {
-    for (int i = 0; i < e->g->edge_count; i++) {
+    for (int i = 0; i < acount(e->g->edges); i++) {
         const edge *ed = &e->g->edges[i];
-        if (ed->from == link->from && ed->from_pin == link->from_pin &&
-            ed->to == link->to && ed->to_pin == link->to_pin)
+        if (ed->from_id == link->from_id && ed->from_pin_id == link->from_pin_id &&
+            ed->to_id == link->to_id && ed->to_pin_id == link->to_pin_id)
             return i;
     }
     return -1;
 }
 
-static int ed_grow_views(editor *e, int nodes, int pins)
+static void ed_grow_views(editor *e, int nodes, int pins)
 {
-    if (nodes > e->view_cap) {
-        int next = e->view_cap ? e->view_cap * 2 : 16;
-        while (next < nodes) next *= 2;
-        ed_node_view *grown = (ed_node_view *)realloc(e->views, (size_t)next * sizeof *grown);
-        if (!grown) return -1;
-        e->views = grown;
-        e->view_cap = next;
-    }
-    if (pins > e->pin_cap) {
-        int next = e->pin_cap ? e->pin_cap * 2 : 32;
-        while (next < pins) next *= 2;
-        ed_pin_view *grown = (ed_pin_view *)realloc(e->pins, (size_t)next * sizeof *grown);
-        if (!grown) return -1;
-        e->pins = grown;
-        e->pin_cap = next;
-    }
-    return 0;
+    asetcap(e->views, nodes);
+    asetcap(e->pins, pins);
 }
 
 static int ed_input_connected(const graph *g, const node *n, int pin)
@@ -470,7 +597,7 @@ static int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
                                                 : &n->output_pins[pin];
     if (spec->kind != PIN_DATA) return 0;
     return kind == ED_PIN_INPUT ? !ed_input_connected(g, n, pin)
-                                : n->desc->eval == node_eval_const;
+                                : n->desc->pure_kind == NODE_PURE_CONST;
 }
 
 static float ed_pin_text_width(const editor *e, const graph *g, const node *n, int kind, int pin)
@@ -493,19 +620,15 @@ static float ed_pin_text_width(const editor *e, const graph *g, const node *n, i
 static void ed_build_layout(editor *e)
 {
     int pin_total = 0;
-    for (int i = 0; i < e->g->node_count; i++) {
+    for (int i = 0; i < acount(e->g->nodes); i++) {
         const node *n = e->g->nodes[i];
         pin_total += n->input_count + n->output_count;
     }
-    if (ed_grow_views(e, e->g->node_count, pin_total)) {
-        e->view_count = 0;
-        e->pin_count = 0;
-        return;
-    }
+    ed_grow_views(e, acount(e->g->nodes), pin_total);
 
     const float line = ImGui_GetTextLineHeight();
     int pin_at = 0;
-    for (int i = 0; i < e->g->node_count; i++) {
+    for (int i = 0; i < acount(e->g->nodes); i++) {
         node *n = e->g->nodes[i];
         const node_desc *d = n->desc;
         float left = 0.0f;
@@ -543,8 +666,8 @@ static void ed_build_layout(editor *e)
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y } };
         }
     }
-    e->view_count = e->g->node_count;
-    e->pin_count = pin_at;
+    asetlen(e->views, acount(e->g->nodes));
+    asetlen(e->pins, pin_at);
 }
 
 static int ed_point_in_rect(ImVec2 p, ImVec2 min, ImVec2 max)
@@ -569,18 +692,18 @@ static void ed_select_marquee(editor *e)
                    e->select_start.y > e->select_end.y ? e->select_start.y
                                                        : e->select_end.y };
     if (!e->select_additive) {
-        e->selected_count = 0;
-        e->selected_link_count = 0;
+        aclear(e->selected);
+        aclear(e->selected_links);
     }
-    for (int i = 0; i < e->view_count; i++)
+    for (int i = 0; i < acount(e->views); i++)
         if (ed_rects_overlap(min, max, e->views[i].min, e->views[i].max))
             ed_add_selected(e, e->views[i].n);
-    for (int i = 0; i < e->g->edge_count; i++)
+    for (int i = 0; i < acount(e->g->edges); i++)
         if (ed_link_in_rect(e, &e->g->edges[i], min, max)) {
-            ed_link_ref link = { e->g->edges[i].from,
-                                 e->g->edges[i].from_pin,
-                                 e->g->edges[i].to,
-                                 e->g->edges[i].to_pin };
+            ed_link_ref link = { e->g->edges[i].from_id,
+                                 e->g->edges[i].from_pin_id,
+                                 e->g->edges[i].to_id,
+                                 e->g->edges[i].to_pin_id };
             ed_add_selected_link(e, &link);
         }
 }
@@ -588,7 +711,7 @@ static void ed_select_marquee(editor *e)
 static ed_pin_view *ed_hit_pin(editor *e, ImVec2 p)
 {
     float radius = ed_max(ED_PIN_RADIUS * e->zoom + 4.0f, 6.0f);
-    for (int i = e->pin_count - 1; i >= 0; i--) {
+    for (int i = acount(e->pins) - 1; i >= 0; i--) {
         ed_pin_view *pin = &e->pins[i];
         if (ed_abs(pin->pos.x - p.x) <= radius && ed_abs(pin->pos.y - p.y) <= radius)
             return pin;
@@ -598,7 +721,7 @@ static ed_pin_view *ed_hit_pin(editor *e, ImVec2 p)
 
 static ed_node_view *ed_hit_node(editor *e, ImVec2 p)
 {
-    for (int i = e->view_count - 1; i >= 0; i--) {
+    for (int i = acount(e->views) - 1; i >= 0; i--) {
         ed_node_view *v = &e->views[i];
         if (ed_point_in_rect(p, v->min, v->max)) return v;
     }
@@ -631,8 +754,16 @@ static ImVec2 ed_bezier(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float t)
 
 static int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec2 *p2, ImVec2 *p3)
 {
-    ed_pin_view *from = ed_pin_for(e, ed->from, ED_PIN_OUTPUT, ed->from_pin);
-    ed_pin_view *to = ed_pin_for(e, ed->to, ED_PIN_INPUT, ed->to_pin);
+    node *from_node = graph_node_by_id(e->g, ed->from_id);
+    node *to_node = graph_node_by_id(e->g, ed->to_id);
+    int from_pin = -1, to_pin = -1, fo = 0, to_out = 0;
+    if (!from_node ||
+        !graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) || !fo)
+        return 0;
+    if (!to_node || !graph_pin_by_id(to_node, ed->to_pin_id, &to_out, &to_pin) || to_out)
+        return 0;
+    ed_pin_view *from = ed_pin_for(e, from_node, ED_PIN_OUTPUT, from_pin);
+    ed_pin_view *to = ed_pin_for(e, to_node, ED_PIN_INPUT, to_pin);
     if (!from || !to) return 0;
     *p0 = from->pos;
     *p3 = to->pos;
@@ -644,7 +775,7 @@ static int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1
 
 static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
 {
-    for (int i = e->g->edge_count - 1; i >= 0; i--) {
+    for (int i = acount(e->g->edges) - 1; i >= 0; i--) {
         const edge *ed = &e->g->edges[i];
         ImVec2 p0, p1, p2, p3;
         if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) continue;
@@ -652,7 +783,7 @@ static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
         for (int s = 1; s <= 24; s++) {
             ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)s / 24.0f);
             if (ed_distance_to_segment(p, prev, next) <= ed_max(7.0f, 5.0f * e->zoom)) {
-                *out = (ed_link_ref){ ed->from, ed->from_pin, ed->to, ed->to_pin };
+                *out = (ed_link_ref){ ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
                 return 1;
             }
             prev = next;
@@ -834,28 +965,6 @@ static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 
     return changed;
 }
 
-static const char *ed_pin_type_core_name(pin_type type)
-{
-    switch (type) {
-        case PIN_BOOL: return "bool";
-        case PIN_I8: return "int8";
-        case PIN_U8: return "byte";
-        case PIN_I16: return "int16";
-        case PIN_U16: return "uint16";
-        case PIN_I32: return "int";
-        case PIN_U32: return "uint";
-        case PIN_I64: return "int64";
-        case PIN_U64: return "uint64";
-        case PIN_F32: return "float";
-        case PIN_F64: return "double";
-        case PIN_STR: return "const char *";
-        case PIN_STRUCT: return "struct";
-        case PIN_ENUM: return "enum";
-        case PIN_FLOW:
-        default: return NULL;
-    }
-}
-
 static int ed_pin_type_combo(const char *label, pin_type *type)
 {
     int selected = *type;
@@ -978,8 +1087,7 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
         pin_type type = spec->type;
         if (ed_pin_type_combo("Type", &type)) {
             ed_details_begin_mutation(e);
-            if (graph_set_pin_type(e->g, n, output, index, type, ed_pin_type_core_name(type)) ==
-                0)
+            if (graph_set_pin_type(e->g, n, output, index, type, pin_type_name(type)) == 0)
                 e->edit_changed = 1;
         }
         ed_details_finish_mutation(e, ImGui_IsItemEdited());
@@ -1006,7 +1114,7 @@ static void ed_draw_tree(editor *e)
     }
     ImGui_TextUnformatted(e->g->name && e->g->name[0] ? e->g->name : "Graph");
     ImGui_SeparatorText("Nodes");
-    for (int i = 0; i < e->g->node_count; i++) {
+    for (int i = 0; i < acount(e->g->nodes); i++) {
         node *n = e->g->nodes[i];
         const char *title = n->title_override && n->title_override[0]
                               ? n->title_override
@@ -1030,8 +1138,8 @@ static void ed_draw_details(editor *e)
         ImGui_End();
         return;
     }
-    if (e->selected_count != 1) {
-        ImGui_TextUnformatted(e->selected_count ? "Multiple nodes selected" : "Nothing selected");
+    if (acount(e->selected) != 1) {
+        ImGui_TextUnformatted(acount(e->selected) ? "Multiple nodes selected" : "Nothing selected");
         ImGui_End();
         return;
     }
@@ -1135,7 +1243,7 @@ static void ed_draw_details(editor *e)
 
 static int ed_node_dragged(const editor *e, const node *n)
 {
-    for (int i = 0; i < e->drag_count; i++)
+    for (int i = 0; i < acount(e->drag_nodes); i++)
         if (e->drag_nodes[i].n == n) return 1;
     return 0;
 }
@@ -1144,6 +1252,8 @@ static int ed_node_on_top(const editor *e, const node *n)
 {
     return ed_node_dragged(e, n) || ed_node_selected(e, n) || e->front_node == n;
 }
+
+static int ed_selection_modifier(const ImGuiIO *io);
 
 static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
 {
@@ -1159,6 +1269,8 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
         );
         ed_begin_value_edit(e, n, ED_PIN_INPUT, p, pos);
         ed_draw_value_editor(e, n, ED_PIN_INPUT, p, pos);
+        if (ImGui_IsItemClicked())
+            ed_select_node(e, n, ed_selection_modifier(ImGui_GetIO()));
         e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
     }
     for (int p = 0; p < n->output_count; p++) {
@@ -1170,6 +1282,8 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
                        pin->pos.y - ed_font_size(e) * 0.5f - 2.0f * e->zoom };
         ed_begin_value_edit(e, n, ED_PIN_OUTPUT, p, pos);
         ed_draw_value_editor(e, n, ED_PIN_OUTPUT, p, pos);
+        if (ImGui_IsItemClicked())
+            ed_select_node(e, n, ed_selection_modifier(ImGui_GetIO()));
         e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
     }
 }
@@ -1177,7 +1291,7 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
 static void ed_draw_controls(editor *e, int on_top)
 {
     ImGui_PushClipRect(e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
-    for (int i = 0; i < e->view_count; i++)
+    for (int i = 0; i < acount(e->views); i++)
         if (ed_node_on_top(e, e->views[i].n) == on_top)
             ed_draw_controls_for_node(e, &e->views[i]);
     ImGui_PopClipRect();
@@ -1215,12 +1329,13 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
 {
     ImVec2 p0, p1, p2, p3;
     if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) return;
-    ed_link_ref ref = { ed->from, ed->from_pin, ed->to, ed->to_pin };
+    ed_link_ref ref = { ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
     int selected = ed_link_selected(e, &ref);
-    const pin_spec *source = ed->from && ed->from_pin >= 0 &&
-                                     ed->from_pin < ed->from->output_count
-                               ? &ed->from->output_pins[ed->from_pin]
-                               : NULL;
+    node *from_node = graph_node_by_id(e->g, ed->from_id);
+    int from_pin = -1, fo = 0;
+    const pin_spec *source = NULL;
+    if (from_node && graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) && fo)
+        source = &from_node->output_pins[from_pin];
     ImVec4 base = source ? ed_spec_color(source) : ed_pin_color(PIN_FLOW);
     ImU32 color = ed_color(base);
     if (selected) color = ed_color((ImVec4){ 1.0f, 0.82f, 0.39f, 1.0f });
@@ -1279,18 +1394,14 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
     );
 
     int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
+    float pin_r = ed_max(2.0f, ED_PIN_RADIUS * e->zoom);
     for (int row = 0; row < rows; row++) {
         if (row < n->input_count) {
             const pin_spec *spec = &n->input_pins[row];
             ed_pin_view *pin = &e->pins[v->input_first + row];
             ImU32 color = ed_color(ed_spec_color(spec));
-            ImDrawList_AddCircleFilled(dl, pin->pos, ed_max(2.0f, ED_PIN_RADIUS * e->zoom), color, 0);
-            ImDrawList_AddCircle(
-                dl,
-                pin->pos,
-                ed_max(2.0f, ED_PIN_RADIUS * e->zoom),
-                ed_dim_color(color, 0.28f)
-            );
+            ImDrawList_AddCircleFilled(dl, pin->pos, pin_r, color, 0);
+            ImDrawList_AddCircle(dl, pin->pos, pin_r, ed_dim_color(color, 0.28f));
             ed_draw_text(
                 e,
                 dl,
@@ -1319,13 +1430,8 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
             ed_pin_view *pin = &e->pins[v->output_first + row];
             ImU32 color = ed_color(ed_spec_color(spec));
             ImVec2 label = ed_text_size(e, spec->name);
-            ImDrawList_AddCircleFilled(dl, pin->pos, ed_max(2.0f, ED_PIN_RADIUS * e->zoom), color, 0);
-            ImDrawList_AddCircle(
-                dl,
-                pin->pos,
-                ed_max(2.0f, ED_PIN_RADIUS * e->zoom),
-                ed_dim_color(color, 0.28f)
-            );
+            ImDrawList_AddCircleFilled(dl, pin->pos, pin_r, color, 0);
+            ImDrawList_AddCircle(dl, pin->pos, pin_r, ed_dim_color(color, 0.28f));
             ed_draw_text(
                 e,
                 dl,
@@ -1356,9 +1462,9 @@ static void ed_draw_canvas(editor *e)
     ImDrawList *dl = ImGui_GetWindowDrawList();
     ImDrawList_PushClipRect(dl, e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
     ed_draw_grid(e, dl);
-    for (int i = 0; i < e->g->edge_count; i++)
+    for (int i = 0; i < acount(e->g->edges); i++)
         ed_draw_link(e, dl, &e->g->edges[i]);
-    for (int i = 0; i < e->view_count; i++)
+    for (int i = 0; i < acount(e->views); i++)
         if (!ed_node_on_top(e, e->views[i].n))
             ed_draw_node(e, dl, &e->views[i]);
 
@@ -1374,15 +1480,6 @@ static void ed_draw_canvas(editor *e)
                                  : &e->link_pin.n->input_pins[e->link_pin.index];
         ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, ed_color(ed_spec_color(spec)), 3.0f, 0);
     }
-    if (e->connect_error[0])
-        ed_draw_text(
-            e,
-            dl,
-            ed_add(e->connect_error_pos, (ImVec2){ 8.0f, 8.0f }),
-            IM_COL32(255, 110, 110, 255),
-            e->connect_error
-        );
-
     ImDrawList_PopClipRect(dl);
 }
 
@@ -1390,7 +1487,7 @@ static void ed_draw_front_nodes(editor *e)
 {
     ImDrawList *dl = ImGui_GetWindowDrawList();
     ImDrawList_PushClipRect(dl, e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
-    for (int i = 0; i < e->view_count; i++)
+    for (int i = 0; i < acount(e->views); i++)
         if (ed_node_on_top(e, e->views[i].n)) ed_draw_node(e, dl, &e->views[i]);
     ImDrawList_PopClipRect(dl);
 }
@@ -1420,9 +1517,9 @@ static char *ed_snapshot(const editor *e) { return graph_save_json(e->g); }
 static void ed_commit_snapshot(editor *e)
 {
     if (!e->pending_snapshot) return;
-    ed_push_string(&e->undo, &e->undo_count, &e->undo_cap, e->pending_snapshot);
+    ed_push_string(&e->undo, e->pending_snapshot);
     e->pending_snapshot = NULL;
-    ed_free_string_stack(e->redo, &e->redo_count);
+    ed_free_string_stack(&e->redo);
 }
 
 static void ed_snapshot_before(editor *e)
@@ -1430,8 +1527,8 @@ static void ed_snapshot_before(editor *e)
     ed_begin_authoring_edit(e);
     char *snapshot = ed_snapshot(e);
     if (!snapshot) return;
-    ed_push_string(&e->undo, &e->undo_count, &e->undo_cap, snapshot);
-    ed_free_string_stack(e->redo, &e->redo_count);
+    ed_push_string(&e->undo, snapshot);
+    ed_free_string_stack(&e->redo);
 }
 
 static void ed_cancel_snapshot(editor *e)
@@ -1465,7 +1562,7 @@ static int ed_adopt_json(editor *e, const char *json)
     e->front_node = NULL;
     e->spawn_link_pending = 0;
     e->edit_text_node = NULL;
-    e->drag_count = 0;
+    aclear(e->drag_nodes);
     e->log_count = 0;
     return 0;
 }
@@ -1473,11 +1570,10 @@ static int ed_adopt_json(editor *e, const char *json)
 static void ed_undo(editor *e)
 {
     ed_begin_authoring_edit(e);
-    if (e->undo_count == 0) return;
-    char *target = e->undo[--e->undo_count];
+    if (acount(e->undo) == 0) return;
+    char *target = apop(e->undo);
     char *current = graph_save_json(e->g);
-    if (current)
-        ed_push_string(&e->redo, &e->redo_count, &e->redo_cap, current);
+    if (current) ed_push_string(&e->redo, current);
     ed_adopt_json(e, target);
     free(target);
 }
@@ -1485,28 +1581,32 @@ static void ed_undo(editor *e)
 static void ed_redo(editor *e)
 {
     ed_begin_authoring_edit(e);
-    if (e->redo_count == 0) return;
-    char *target = e->redo[--e->redo_count];
+    if (acount(e->redo) == 0) return;
+    char *target = apop(e->redo);
     char *current = graph_save_json(e->g);
-    if (current)
-        ed_push_string(&e->undo, &e->undo_count, &e->undo_cap, current);
+    if (current) ed_push_string(&e->undo, current);
     ed_adopt_json(e, target);
     free(target);
 }
 
 static void ed_delete_selected(editor *e)
 {
-    if (e->selected_count == 0 && e->selected_link_count == 0) return;
+    if (acount(e->selected) == 0 && acount(e->selected_links) == 0) return;
     ed_snapshot_before(e);
-    for (int i = e->selected_link_count - 1; i >= 0; i--) {
+    for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
         int index = ed_edge_index(e, &e->selected_links[i]);
         if (index >= 0) {
             edge ed = e->g->edges[index];
-            graph_remove_edge(e->g, ed.from, ed.from_pin, ed.to, ed.to_pin);
+            node *from = graph_node_by_id(e->g, ed.from_id);
+            node *to = graph_node_by_id(e->g, ed.to_id);
+            int from_pin = -1, to_pin = -1, fo = 0, to_out = 0;
+            if (from && to && graph_pin_by_id(from, ed.from_pin_id, &fo, &from_pin) &&
+                fo && graph_pin_by_id(to, ed.to_pin_id, &to_out, &to_pin) && !to_out)
+                graph_remove_edge(e->g, from, from_pin, to, to_pin);
         }
     }
     int front_deleted = 0;
-    for (int i = e->selected_count - 1; i >= 0; i--) {
+    for (int i = acount(e->selected) - 1; i >= 0; i--) {
         if (e->selected[i] == e->front_node) front_deleted = 1;
         graph_remove_node(e->g, e->selected[i]);
     }
@@ -1516,8 +1616,8 @@ static void ed_delete_selected(editor *e)
 
 static void ed_copy_selected(editor *e)
 {
-    if (e->selected_count == 0) return;
-    char *json = graph_save_nodes_json(e->g, e->selected, e->selected_count);
+    if (acount(e->selected) == 0) return;
+    char *json = graph_save_nodes_json(e->g, e->selected, acount(e->selected));
     if (!json) return;
     ImGui_SetClipboardText(json);
     free(e->clipboard);
@@ -1527,7 +1627,7 @@ static void ed_copy_selected(editor *e)
 static void ed_cut_selected(editor *e)
 {
     ed_copy_selected(e);
-    if (e->selected_count == 0) return;
+    if (acount(e->selected) == 0) return;
     ed_delete_selected(e);
 }
 
@@ -1537,24 +1637,24 @@ static void ed_paste(editor *e)
     if (!clipboard || !clipboard[0]) clipboard = e->clipboard;
     if (!clipboard) return;
     ed_snapshot_before(e);
-    int first = e->g->node_count;
+    int first = acount(e->g->nodes);
     if (graph_append_json(e->g, clipboard, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
-        for (int i = first; i < e->g->node_count; i++)
+        for (int i = first; i < acount(e->g->nodes); i++)
             ed_add_selected(e, e->g->nodes[i]);
     }
 }
 
 static void ed_duplicate_selected(editor *e)
 {
-    if (e->selected_count == 0) return;
-    char *json = graph_save_nodes_json(e->g, e->selected, e->selected_count);
+    if (acount(e->selected) == 0) return;
+    char *json = graph_save_nodes_json(e->g, e->selected, acount(e->selected));
     if (!json) return;
     ed_snapshot_before(e);
-    int first = e->g->node_count;
+    int first = acount(e->g->nodes);
     if (graph_append_json(e->g, json, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
-        for (int i = first; i < e->g->node_count; i++)
+        for (int i = first; i < acount(e->g->nodes); i++)
             ed_add_selected(e, e->g->nodes[i]);
     }
     free(json);
@@ -1563,18 +1663,8 @@ static void ed_duplicate_selected(editor *e)
 static void ed_begin_drag(editor *e, ImVec2 mouse)
 {
     ed_begin_authoring_edit(e);
-    e->drag_count = e->selected_count;
-    if (e->drag_count > e->drag_cap) {
-        ed_drag_node *grown = (ed_drag_node *)
-            realloc(e->drag_nodes, (size_t)e->drag_count * sizeof *grown);
-        if (!grown) {
-            e->drag_count = 0;
-            return;
-        }
-        e->drag_nodes = grown;
-        e->drag_cap = e->drag_count;
-    }
-    for (int i = 0; i < e->drag_count; i++)
+    asetlen(e->drag_nodes, acount(e->selected));
+    for (int i = 0; i < acount(e->drag_nodes); i++)
         e->drag_nodes[i] = (ed_drag_node){ e->selected[i],
                                            e->selected[i]->x,
                                            e->selected[i]->y };
@@ -1586,7 +1676,7 @@ static void ed_begin_drag(editor *e, ImVec2 mouse)
 static void ed_update_drag(editor *e, ImVec2 mouse)
 {
     ImVec2 delta = ed_scale(ed_sub(mouse, e->drag_start_mouse), 1.0f / e->zoom);
-    for (int i = 0; i < e->drag_count; i++) {
+    for (int i = 0; i < acount(e->drag_nodes); i++) {
         e->drag_nodes[i].n->x = e->drag_nodes[i].x + delta.x;
         e->drag_nodes[i].n->y = e->drag_nodes[i].y + delta.y;
     }
@@ -1601,14 +1691,16 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     if (output->kind != ED_PIN_OUTPUT || input->kind != ED_PIN_INPUT) return 0;
     const pin_spec *out_spec = &output->n->output_pins[output->index];
     const pin_spec *in_spec = &input->n->input_pins[input->index];
-    const char *out_name = out_spec->type_name ? out_spec->type_name : "unknown";
-    const char *in_name = in_spec->type_name ? in_spec->type_name : "unknown";
+    const char *out_name = ed_pin_type_name(out_spec);
+    const char *in_name = ed_pin_type_name(in_spec);
     if (out_spec->kind != in_spec->kind) {
-        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s to %s", out_name, in_name);
+        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
+        e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
         return 0;
     }
     if (out_spec->kind == PIN_DATA && !pin_types_compatible(out_spec, in_spec)) {
-        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s to %s", out_name, in_name);
+        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
+        e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
         return 0;
     }
     if (out_spec->kind == PIN_EXEC) {
@@ -1819,8 +1911,8 @@ static void ed_handle_popups(editor *e)
     }
     if (ImGui_BeginPopup("link_menu", 0)) {
         if (ImGui_MenuItem("Delete Link") && e->has_context_link) {
-            e->selected_count = 0;
-            e->selected_link_count = 0;
+            aclear(e->selected);
+            aclear(e->selected_links);
             ed_add_selected_link(e, &e->context_link);
             ed_delete_selected(e);
         }
@@ -1929,7 +2021,7 @@ static const char *ed_flow_state_name(flow_state state)
 static node *ed_entry_at(const editor *e, int index)
 {
     int at = 0;
-    for (int i = 0; i < e->g->node_count; i++) {
+    for (int i = 0; i < acount(e->g->nodes); i++) {
         node *n = e->g->nodes[i];
         if (n->desc->flow_kind != NODE_FLOW_EVENT) continue;
         if (at++ == index) return n;
@@ -1940,7 +2032,7 @@ static node *ed_entry_at(const editor *e, int index)
 static int ed_entry_count(const editor *e)
 {
     int count = 0;
-    for (int i = 0; i < e->g->node_count; i++)
+    for (int i = 0; i < acount(e->g->nodes); i++)
         if (e->g->nodes[i]->desc->flow_kind == NODE_FLOW_EVENT) count++;
     return count;
 }
@@ -2018,7 +2110,7 @@ static void ed_draw_toolbar(editor *e)
                                                             : "(unnamed event)";
     if (ImGui_BeginCombo("Entry", entry_name, 0)) {
         int at = 0;
-        for (int i = 0; i < e->g->node_count; i++) {
+        for (int i = 0; i < acount(e->g->nodes); i++) {
             node *n = e->g->nodes[i];
             if (n->desc->flow_kind != NODE_FLOW_EVENT) continue;
             char label[160];
@@ -2042,8 +2134,8 @@ static void ed_draw_toolbar(editor *e)
         ImGui_SetTooltip("Compile is not available in Phase 1");
     ImGui_EndDisabled();
     ImGui_SameLine();
-    ed_toolbar_action(e, "Undo", e->undo_count > 0, "No undo entry is available", ed_undo);
-    ed_toolbar_action(e, "Redo", e->redo_count > 0, "No redo entry is available", ed_redo);
+    ed_toolbar_action(e, "Undo", acount(e->undo) > 0, "No undo entry is available", ed_undo);
+    ed_toolbar_action(e, "Redo", acount(e->redo) > 0, "No redo entry is available", ed_redo);
 
     flow_state state = e->run ? flow_run_status(e->run) : FLOW_IDLE;
     int can_run = (!e->run || state == FLOW_IDLE || state == FLOW_COMPLETED ||
@@ -2125,10 +2217,10 @@ static void ed_center_initial_view(editor *e)
     if (e->view_initialized) return;
     ImVec2 min = { 0.0f, 0.0f };
     ImVec2 max = { 0.0f, 0.0f };
-    if (e->view_count > 0) {
+    if (acount(e->views) > 0) {
         min.x = min.y = 1e30f;
         max.x = max.y = -1e30f;
-        for (int i = 0; i < e->view_count; i++) {
+        for (int i = 0; i < acount(e->views); i++) {
             ImVec2 a = ed_screen_to_world(e, e->views[i].min);
             ImVec2 b = ed_screen_to_world(e, e->views[i].max);
             if (a.x < min.x) min.x = a.x;
@@ -2210,6 +2302,19 @@ static void ed_handle_input(editor *e)
         }
         return;
     }
+    if (e->connect_error[0] && ImGui_IsKeyPressed(ImGuiKey_Escape)) {
+        e->connect_error[0] = '\0';
+        return;
+    }
+    if (e->connect_error[0] && mouse_clicked) {
+        ImVec2 min, max, close_min, close_max;
+        if (ed_connect_error_rect(e, &min, &max, &close_min, &close_max) &&
+            ed_point_in_rect(mouse, min, max)) {
+            if (ed_point_in_rect(mouse, close_min, close_max))
+                e->connect_error[0] = '\0';
+            return;
+        }
+    }
     if (e->dragging) {
         if (!mouse_released) {
             ed_update_drag(e, mouse);
@@ -2218,14 +2323,14 @@ static void ed_handle_input(editor *e)
             if (delta.x != 0.0f || delta.y != 0.0f) ed_commit_snapshot(e);
             else ed_cancel_snapshot(e);
             if (!delta.x && !delta.y && e->drag_toggle_selected) {
-                if (e->selected_count > 1)
+                if (acount(e->selected) > 1)
                     ed_remove_selected(e, e->drag_toggle_node);
                 else ed_clear_selection(e);
             }
             e->dragging = 0;
             e->drag_toggle_selected = 0;
             e->drag_toggle_node = NULL;
-            e->drag_count = 0;
+            aclear(e->drag_nodes);
         }
         return;
     }
@@ -2271,6 +2376,7 @@ static void ed_handle_input(editor *e)
 
     ed_pin_view *pin = ed_hit_pin(e, mouse);
     if (pin) {
+        ed_select_node(e, pin->n, ed_selection_modifier(io));
         ed_begin_authoring_edit(e);
         e->linking = 1;
         e->connect_error[0] = '\0';
@@ -2294,8 +2400,8 @@ static void ed_handle_input(editor *e)
     if (ed_hit_link(e, mouse, &link)) {
         int append = ed_selection_modifier(io);
         if (!append) {
-            e->selected_count = 0;
-            e->selected_link_count = 0;
+            aclear(e->selected);
+            aclear(e->selected_links);
         }
         if (append && ed_link_selected(e, &link))
             ed_remove_selected_link(e, &link);
@@ -2339,10 +2445,12 @@ static void ed_handle_shortcuts(editor *e)
 
 editor *editor_new(graph *g)
 {
+    registry_validate();
     editor *e = (editor *)calloc(1, sizeof *e);
     if (!e) return NULL;
     e->g = g;
     e->ev = eval_view_new();
+    e->icon_font = ed_load_icon_font();
     e->zoom = 1.0f;
     return e;
 }
@@ -2351,6 +2459,8 @@ void editor_tick(editor *e, double monotonic_time)
 {
     if (!e) return;
     e->monotonic_time = monotonic_time;
+    if (e->connect_error[0] && monotonic_time >= e->connect_error_until + ED_TOAST_FADE)
+        e->connect_error[0] = '\0';
     if (!e->run) return;
     flow_state state = flow_run_status(e->run);
     if (state == FLOW_RUNNING || state == FLOW_SUSPENDED)
@@ -2360,18 +2470,16 @@ void editor_tick(editor *e, double monotonic_time)
 void editor_free(editor *e)
 {
     if (!e) return;
-    ed_free_string_stack(e->undo, &e->undo_count);
-    ed_free_string_stack(e->redo, &e->redo_count);
-    free(e->undo);
-    free(e->redo);
+    ed_free_string_stack(&e->undo);
+    ed_free_string_stack(&e->redo);
     free(e->pending_snapshot);
     free(e->clipboard);
     flow_run_free(e->run);
-    free(e->views);
-    free(e->pins);
-    free(e->selected);
-    free(e->selected_links);
-    free(e->drag_nodes);
+    afree(e->views);
+    afree(e->pins);
+    afree(e->selected);
+    afree(e->selected_links);
+    afree(e->drag_nodes);
     eval_view_free(e->ev);
     free(e);
 }
@@ -2472,6 +2580,7 @@ void editor_draw(editor *e)
     ed_draw_controls(e, 0);
     ed_draw_front_nodes(e);
     ed_draw_controls(e, 1);
+    ed_draw_connect_error(e);
     const char *error = eval_view_error(e->ev);
     if (error[0]) {
         ImGui_SetCursorScreenPos(ed_add(e->canvas_min, (ImVec2){ 12.0f, 12.0f }));

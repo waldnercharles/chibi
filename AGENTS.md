@@ -1,0 +1,19 @@
+# c-blueprints agent rules
+
+Spartan C. Less code is a feature: delete dead code and unused abstraction.
+
+- Flatten: guard clauses and early returns; no `else` after `return`/`break`.
+- Small single-purpose functions; minimal public surface and parameter count.
+- Fail fast: `assert` invalid state, no defensive `NULL` checks, abort on OOM via
+  `xmalloc`/`xrealloc`. Root-cause pointer bugs; never mask them.
+- Types: `int` for domain values and indices, `size_t` for sizes and size-taking
+  APIs, unsigned only for bit manipulation; `bool` not `int`.
+- No `(void)` on parameterless functions; omit the unused parameter name instead
+  of `(void)param`.
+- Use the shared vector (`apush`/`acount`/`afree`/`asetlen` from `core/array.h`),
+  not a hand-rolled grow-by-doubling.
+- `"local.h"` for project headers, `<sys.h>` for standard/third-party.
+- Keep ownership and lifetime explicit; `static` for file-private.
+- Prefer direct calls or `switch` over function-pointer tables and indirection.
+- Follow existing naming and clang-format; short names only in tight local scope.
+- Name magic numbers and invariants (`#define`/`enum`/`static const`).

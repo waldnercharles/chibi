@@ -1,7 +1,9 @@
 #include "../core/graph.h"
+#include "../core/registry.h"
 #include "../editor/editor.h"
 #include "cute_host.h"
 #include "demo_graph.h"
+#include "stacktrace.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +11,8 @@
 
 int main(int argc, char **argv)
 {
+    stacktrace_init(argv[0]);
+    cf_set_assert_handler(stacktrace_assert_handler);
     int frames = 0; /* 0 = run until the window closes */
     int seed = 1;
     int flow_demo = 0;
@@ -43,6 +47,7 @@ int main(int argc, char **argv)
 
     graph g;
     graph_init(&g);
+    registry_validate();
     editor *ed = editor_new(&g);
 
     if (seed) {

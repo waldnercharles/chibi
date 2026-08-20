@@ -1,27 +1,21 @@
 #ifndef CBLUEPRINT_GRAPH_H
 #define CBLUEPRINT_GRAPH_H
 
+#include "array.h" // IWYU pragma: keep (graph fields are dyna arrays)
+#include "enum.h"
 #include "node.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum
-{
-    GRAPH_EDGE_DATA = 0,
-    GRAPH_EDGE_EXEC = 1,
-    GRAPH_EDGE_KIND_DATA = GRAPH_EDGE_DATA,
-    GRAPH_EDGE_KIND_EXEC = GRAPH_EDGE_EXEC,
-} graph_edge_kind;
+#define GRAPH_EDGE_LIST(X)                                                     \
+    X(GRAPH_EDGE_DATA, "data")                                                 \
+    X(GRAPH_EDGE_EXEC, "exec")
+
+DEFINE_ENUM(graph_edge_kind, GRAPH_EDGE_LIST)
 
 typedef struct edge
 {
-    /* Pointers are a runtime cache. IDs are the authoritative endpoints and
-     * are what persistence and reference lookup use. */
-    node *from;
-    int from_pin;
-    node *to;
-    int to_pin;
     uint64_t from_id;
     uint64_t from_pin_id;
     uint64_t to_id;
@@ -37,13 +31,10 @@ typedef struct edge
 typedef struct graph
 {
     node **nodes;
-    int node_count, node_cap;
+    node **id_table; /* id -> node*, NULL after removal; O(1) lookup */
     edge *edges;
-    int edge_count, edge_cap;
     char **strings;
-    int string_count, string_cap;
     void **blocks;
-    int block_count, block_cap;
     uint64_t id_counter;
     char *name;
     char *description;
@@ -95,6 +86,7 @@ int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node
 
 node *graph_node_by_id(const graph *g, uint64_t id);
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index);
+void graph_reindex(graph *g); /* rebuild id_table from g->nodes */
 uint64_t graph_alloc_id(graph *g);
 int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_value *value);
 int graph_set_pin_name(graph *g, node *n, int output, int index, const char *name);

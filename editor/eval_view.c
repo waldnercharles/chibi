@@ -39,7 +39,7 @@ void eval_view_refresh(eval_view *v, graph *g)
     eval_context_reset(&v->eval);
     graph_eval_reset(g);
     arena_reset(&v->a);
-    for (int i = 0; i < g->node_count; i++) {
+    for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
         for (int p = 0; p < n->output_count; p++) {
             if (n->output_pins[p].kind != PIN_DATA) continue;

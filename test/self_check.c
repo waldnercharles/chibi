@@ -21,6 +21,7 @@
 #include "../core/serialize.h"
 #include "../demo/vec3.h"
 #include "../editor/preview_gate.h"
+#include "fmt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +45,16 @@ static void check(int ok, const char *msg)
 {
     printf("%s: %s\n", ok ? "PASS" : "FAIL", msg);
     if (!ok) fails++;
+}
+
+/* Vendor test helper: render one fmt format into a stream and compare. The
+ * lowercase "fmt:" check prefix keeps these out of the requirement-ID
+ * scanner, where FMT-x means the serialization family. */
+static void fmt_check_stream(fmt_stream *ss, const char *expected, const char *msg)
+{
+    check(ss->data && strcmp(ss->data, expected) == 0, msg);
+    fmt_close(ss);
+    *ss = (fmt_stream){ 0 };
 }
 
 /* Hand-written constant node: no inputs, one output, eval pre-sets nothing
@@ -3350,6 +3361,35 @@ int main(int argc, char **argv)
                 strcmp(out.str, "a{b}c") == 0,
             "CAT-38: {{ and }} print literal braces"
         );
+        /* Precision and base specifiers render through the value's own C
+         * type: {:.2f} on a Real, {:x} and {:08d} on an Integer. */
+        pin_spec spare2 = { .name = "Arg2",
+                            .type = PIN_FLOW,
+                            .kind = PIN_DATA,
+                            .flags = PIN_FLAG_WILDCARD };
+        graph_add_pin(&gf, fmt, 0, &spare2);
+        node *rlit2 = graph_add_node(&gf, registry_node_by_name("Real"));
+        graph_set_pin_default(
+            &gf,
+            rlit2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.14159 }
+        );
+        graph_connect(&gf, rlit2, 0, fmt, 3);
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "|{2:.2f}|{0:x}|{0:08d}|" }
+        );
+        graph_eval_reset(&gf);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "|3.14|2a|00000042|") == 0,
+            "CAT-38: precision and base specifiers render by the value's type"
+        );
         arena_free(&af);
         graph_free(&gf);
     }
@@ -3456,6 +3496,48 @@ int main(int argc, char **argv)
         }
         arena_free(&ap);
         graph_free(&gp);
+    }
+
+    /* Vendored fmt library (third_party/fmt): unit tests through its public
+     * fmt_printd API into a fmt_stream, plus the two local fixes (an empty
+     * result must still get a buffer; an out-of-range placeholder renders
+     * empty when the error code is ignored, which is what Format Text
+     * relies on for CAT-38). The lowercase "fmt:" names keep these out of
+     * the requirement-ID scanner, where FMT-x means the serialization
+     * family. */
+    {
+        fmt_stream ss = { 0 };
+        fmt_printd(&ss, "One arg: {}", 42);
+        fmt_check_stream(&ss, "One arg: 42", "fmt: one auto-numbered argument");
+        fmt_printd(&ss, "{} {} {}", "a", "b", "c");
+        fmt_check_stream(&ss, "a b c", "fmt: several auto-numbered arguments");
+        fmt_printd(&ss, "{} {} {} {} {} {} {} {} {} {}", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        fmt_check_stream(&ss, "1 2 3 4 5 6 7 8 9 10", "fmt: ten arguments substitute in order");
+        fmt_printd(&ss, "{1} {0}", "first", "second");
+        fmt_check_stream(&ss, "second first", "fmt: positional placeholders reorder");
+        fmt_printd(&ss, "{0} {0} {0}", "repeat");
+        fmt_check_stream(&ss, "repeat repeat repeat", "fmt: one argument is reused by position");
+        fmt_printd(&ss, "{2} {1} {0}", "zero", "one", "two");
+        fmt_check_stream(&ss, "two one zero", "fmt: positional placeholders reverse");
+        fmt_printd(&ss, "{1:d} {0:.2f}", 3.14159, 42);
+        fmt_check_stream(&ss, "42 3.14", "fmt: typed positional specifiers dispatch by C type");
+        fmt_printd(&ss, "{:<10}|{:>10}", "left", "right");
+        fmt_check_stream(&ss, "left      |     right", "fmt: alignment specifiers pad strings");
+        fmt_printd(&ss, "a{{b}}c", 0);
+        fmt_check_stream(&ss, "a{b}c", "fmt: {{ and }} escape literal braces");
+        fmt_printd(&ss, "{0}", "");
+        fmt_check_stream(&ss, "", "fmt: an empty result still gets a buffer (local fix)");
+        /* The Format Text path: runtime specifier array of "s" codes with
+         * stringified values; the out-of-range error code is ignored so a
+         * missing placeholder renders empty (CAT-38). */
+        char scratch[64];
+        const char *specs[2] = { "s", "s" };
+        (void)_fmt_parse(scratch, 2, "{1} and {0}", specs);
+        _fmt_sprint(&ss, scratch, "X", "Y");
+        fmt_check_stream(&ss, "Y and X", "fmt: parses with a runtime specifier array");
+        (void)_fmt_parse(scratch, 1, "{2}", specs);
+        _fmt_sprint(&ss, scratch, "X");
+        fmt_check_stream(&ss, "", "fmt: an out-of-range placeholder renders empty");
     }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

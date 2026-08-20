@@ -8,3 +8,4 @@ generated/
 .pi/
 imgui.ini
 NodeEditor.json
+compile_commands.json

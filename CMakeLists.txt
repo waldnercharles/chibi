@@ -118,6 +118,16 @@ add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c ed
 target_include_directories(self_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(self_check PRIVATE core demo)
 
+# --- integration: headless pico_unit regression suite for the editor<->core
+# interaction path (test/integration.c). Core + demo + pico_unit only; no
+# cute/ImGui, so the suite runs without a window host.
+add_executable(integration test/integration.c app/demo_graph.c)
+target_include_directories(integration PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers
+)
+target_link_libraries(integration PRIVATE core demo)
+
 # --- clang-format (format runs before every build target) ---
 find_program(CLANG_FORMAT clang-format)
 if(CLANG_FORMAT)
@@ -148,6 +158,7 @@ if(CLANG_FORMAT)
   add_dependencies(editor format)
   add_dependencies(app format)
   add_dependencies(self_check format)
+  add_dependencies(integration format)
   add_dependencies(reflect format)
 endif()
 

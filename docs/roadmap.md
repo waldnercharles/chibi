@@ -429,9 +429,12 @@ Deliverables:
    permits it, the editor offers to insert the matching conversion node in the
    same place it states the reason, and wires it on accept. A lossy conversion
    (Real to Integer) is NOT offered. `UI-22`.
-3. Format Text: pure, String format input, user-extensible String argument
-   inputs, one String output. Substitutes `{0}`, `{1}`, ... with each argument's
-   value; a missing argument renders empty. `CAT-38`.
+3. Format Text: pure, String format input, user-extensible wildcard argument
+   inputs (adopt the connected type, revert on disconnect), one String output.
+   Substitutes `{0}`, `{1}`, ... and bare `{}` with each argument's value; `{{`
+   and `}}` render literal braces; a missing argument renders empty. `CAT-38`.
+   This lands `PIN-11`'s single-pin adopt/revert for the first time; full
+   wildcard-group resolution stays in Phase 5.
 4. Category paths and search keywords for the new nodes. `CAT-27`.
 
 Acceptance criteria:
@@ -442,8 +445,11 @@ Acceptance criteria:
 - `CAT-26`: every `TYPE-7` conversion converts correctly headless (integer
   widening, integer to Real, Bool/Integer/Real/Name to String).
 - `CAT-38`: Format Text with `"Hello {0} World"` and a String argument renders
-  `"Hello Bob World"`; `{1}` with one argument renders empty; a Real passed
-  through a To String conversion first renders identically to its pin display.
+  `"Hello Bob World"`; `"n={}"` with an Integer 42 renders `"n=42"`; `{{` renders
+  a literal brace; `{1}` with one argument renders empty; a Real argument
+  renders identically to its pin display.
+- `PIN-11`: connecting an Integer to a wildcard argument pin adopts Integer,
+  and dropping the edge reverts the pin to unresolved (Generic).
 - `UI-22`: dragging a Real output onto an Integer input states both type names
   and does not offer a conversion; dragging an Integer onto a Real offers the
   insertion.

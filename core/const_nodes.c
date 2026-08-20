@@ -5,6 +5,7 @@
  * carrying the authored default and one typed return output. The output is
  * the input, so an unconnected literal evaluates to its authored default.
  */
+#include "conv_nodes.h"
 #include "node.h"
 
 static pin_value literal_identity(const pin_value *inputs, int input_count, arena *a)
@@ -41,7 +42,8 @@ LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name")
 LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *")
 
 node_desc *const EXTRA_NODES[] = {
-    &NODE_Bool, &NODE_Byte, &NODE_Integer, &NODE_Integer64,
-    &NODE_Real, &NODE_Name, &NODE_String,
+    &NODE_Bool,    &NODE_Byte,         &NODE_Integer, &NODE_Integer64,
+    &NODE_Real,    &NODE_Name,         &NODE_String,  &NODE_To_String,
+    &NODE_To_Real, &NODE_To_Integer64,
 };
 const int EXTRA_NODE_COUNT = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0];

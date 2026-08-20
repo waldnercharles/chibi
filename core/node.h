@@ -65,6 +65,10 @@ typedef struct
     node_flow_kind flow_kind;
     node_flow_fn flow;
     node_display_class display_class;
+    /* CAT-27: spawn-menu category path and space-separated search keywords.
+     * Both are static display/search data; NULL means uncategorized. */
+    const char *category;
+    const char *keywords;
 } node_desc;
 
 struct node

@@ -2,19 +2,26 @@
  *
  * Pure node: one format input, a user-extensible argument group (PIN-14)
  * whose pins are Generic wildcards (PIN-11), and one String output.
- * Evaluating it rewrites the format through the vendored fmt library
- * (third_party/fmt, a fork of stclib/STC c11/fmt.h) and renders each
- * argument through the canonical pin display (UI-39) before substitution.
- * The result is built in the arena, so it lives as long as the other
- * scratch-owned values of the step.
  *
- * Placeholders: {} consumes the next argument in order, {N} names a
- * position, {<:>MODS} carries printf width/alignment (strings only), and
- * {{ and }} print literal braces. A placeholder with no matching argument
- * renders as the empty string: the parser reports it as an error, which we
- * ignore, and it simply writes nothing for that placeholder. Mixing {} and
- * {N} in one format is undefined, as with printf positional arguments, and
- * a literal percent sign must be written %%.
+ * Placeholders follow the fmt convention: {} consumes the next argument in
+ * order, {N} names a position, {MODS} and {N:MODS} carry printf modifiers,
+ * and {{ and }} print literal braces. Arguments render through the
+ * canonical pin display (pin_value_to_string, UI-39) when the placeholder
+ * carries no modifier; a modifier opts into a typed render, where the
+ * value is snprintf'd with its own C type so precision and width apply:
+ * {:.2f} on a Real renders 3.14, {:x} on an Integer renders ff. The '<'
+ * and '>' alignment modifiers translate like fmt's: '<' becomes the '-'
+ * flag and '>' right-aligns by default. Dynamic '*' width is not
+ * supported. A literal percent must be written %%, and mixing {} with {N}
+ * in one format is undefined, as with printf positional arguments.
+ *
+ * Implementation: fmt's _fc type dispatch is compile-time, so it cannot
+ * see a pin_value's runtime type. The node walks the authored format,
+ * renders each modified argument with its own type, and hands the fmt
+ * library a reduced format of bare {} placeholders to assemble as %s into
+ * a bounded fmt_stream, then copies the result into the arena. A
+ * placeholder whose argument is missing (or beyond the cap) renders empty
+ * per CAT-38.
  *
  * The trailing argument pin is the spare: it stays Generic (the PIN_FLOW
  * marker) until a connection adopts its type, and reverts when the edge is
@@ -29,6 +36,8 @@
 #include <string.h>
 
 #define FMT_TEXT_MAX_ARGS 12
+#define FMT_CONV_LETTERS "aAeEfFgGdioxXuUncCsSp"
+#define FMT_RENDER_BUF 256
 
 static const char *fmt_text_of(const pin_value *v)
 {
@@ -46,6 +55,72 @@ static char *fmt_arena_strdup(arena *a, const char *s)
     return copy;
 }
 
+static const char *fmt_default_letter(pin_type t)
+{
+    switch (t) {
+        case PIN_BOOL:
+        case PIN_I8:
+        case PIN_I16:
+        case PIN_I32: return "d";
+        case PIN_U8:
+        case PIN_U16:
+        case PIN_U32: return "u";
+        case PIN_I64: return "lld";
+        case PIN_U64: return "llu";
+        case PIN_F32:
+        case PIN_F64: return "g";
+        case PIN_STR:
+        case PIN_NAME: return "s";
+        default: return "";
+    }
+}
+
+/* Render one argument through its placeholder modifier, keeping the value's
+ * own C type so precision and width apply. No modifier uses the canonical
+ * pin display; the result is an arena copy. `mods` runs for `mods_len`
+ * bytes inside the authored format, ending at the closing '}'. */
+static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t mods_len, arena *a)
+{
+    if (mods_len == 0 || memchr(mods, '*', mods_len))
+        return fmt_arena_strdup(a, fmt_text_of(v));
+    if (v->type == PIN_FLOW) return fmt_arena_strdup(a, "");
+
+    char mods_conv[64];
+    size_t m = 0;
+    for (size_t i = 0; i < mods_len && m + 1 < sizeof mods_conv; i++) {
+        char c = mods[i];
+        if (c == '>') continue; /* right-align is the printf default */
+        mods_conv[m++] = c == '<' ? '-' : c;
+    }
+    mods_conv[m] = '\0';
+    int has_letter = m > 0 && strchr(FMT_CONV_LETTERS, mods_conv[m - 1]) != NULL;
+    char conv[80];
+    snprintf(conv, sizeof conv, "%%%s%s", mods_conv, has_letter ? "" : fmt_default_letter(v->type));
+
+    char buf[FMT_RENDER_BUF];
+    switch (v->type) {
+        case PIN_BOOL: snprintf(buf, sizeof buf, conv, v->b ? 1 : 0); break;
+        case PIN_I8: snprintf(buf, sizeof buf, conv, (int)v->i8); break;
+        case PIN_U8: snprintf(buf, sizeof buf, conv, (unsigned)v->u8); break;
+        case PIN_I16: snprintf(buf, sizeof buf, conv, (int)v->i16); break;
+        case PIN_U16: snprintf(buf, sizeof buf, conv, (unsigned)v->u16); break;
+        case PIN_I32: snprintf(buf, sizeof buf, conv, v->i); break;
+        case PIN_U32: snprintf(buf, sizeof buf, conv, v->u); break;
+        case PIN_I64: snprintf(buf, sizeof buf, conv, (long long)v->i64); break;
+        case PIN_U64:
+            snprintf(buf, sizeof buf, conv, (unsigned long long)v->u64);
+            break;
+        case PIN_F32: snprintf(buf, sizeof buf, conv, (double)v->f); break;
+        case PIN_F64: snprintf(buf, sizeof buf, conv, v->d); break;
+        case PIN_STR:
+        case PIN_NAME:
+            snprintf(buf, sizeof buf, conv, v->str ? v->str : "");
+            break;
+        default: return fmt_arena_strdup(a, "");
+    }
+    return fmt_arena_strdup(a, buf);
+}
+
 static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
 {
     pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
@@ -53,23 +128,65 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
     int nargs = input_count - 1;
     if (nargs > FMT_TEXT_MAX_ARGS) nargs = FMT_TEXT_MAX_ARGS;
 
-    /* Every argument renders to a string first (fmt's _fc type dispatch
-     * cannot see pin_value's runtime type), so all placeholders are %s. The
-     * copies live in the arena: pin_value_to_string's ring is only eight
-     * slots and up to twelve arguments would clobber each other. */
+    /* Reduce every placeholder to a bare {} and render each argument
+     * through its modifier, so fmt only assembles %s conversions while the
+     * value keeps its own type for precision formatting. */
     const char *args[FMT_TEXT_MAX_ARGS] = { 0 };
-    for (int i = 0; i < nargs; i++) {
-        args[i] = fmt_arena_strdup(a, fmt_text_of(&inputs[i + 1]));
-        if (!args[i]) return r; /* OOM: bail with an empty result */
+    char *sanitized = arena_alloc(a, strlen(format) + 1);
+    if (!sanitized) return r;
+    char *w = sanitized;
+    int seq = 0, at = 0;
+    for (const char *p = format; *p;) {
+        if (p[0] == '{' && p[1] == '{') {
+            *w++ = '{';
+            *w++ = '{';
+            p += 2;
+            continue;
+        }
+        if (p[0] == '}' && p[1] == '}') {
+            *w++ = '}';
+            *w++ = '}';
+            p += 2;
+            continue;
+        }
+        if (p[0] != '{') {
+            *w++ = *p++;
+            continue;
+        }
+        const char *q = p + 1;
+        int index = -1;
+        if (*q >= '0' && *q <= '9') {
+            index = 0;
+            while (*q >= '0' && *q <= '9') index = index * 10 + (*q - '0'), q++;
+        }
+        if (*q != ':' && *q != '}') {
+            *w++ = *p++;
+            continue;
+        } /* literal '{' */
+        const char *mods = NULL;
+        if (*q == ':') mods = ++q;
+        while (*q && *q != '}') q++;
+        if (*q != '}') {
+            *w++ = *p++;
+            continue;
+        } /* malformed: literal */
+        int arg_index = index >= 0 ? index : seq++;
+        size_t mods_len = mods ? (size_t)(q - mods) : 0;
+        p = q + 1;
+        if (arg_index >= nargs || at >= FMT_TEXT_MAX_ARGS) continue; /* empty */
+        args[at] = fmt_render_arg(&inputs[arg_index + 1], mods, mods_len, a);
+        if (!args[at]) return r; /* OOM */
+        at++;
+        *w++ = '{';
+        *w++ = '}';
     }
-    const char *specs[FMT_TEXT_MAX_ARGS] = { 0 };
-    for (int i = 0; i < nargs; i++) specs[i] = "s";
+    *w = '\0';
 
-    /* The fmt rewrite grows each placeholder by at most a few characters;
-     * the fork sizes its scratch at len + nargs*8 + 1. */
-    char *rewritten = arena_alloc(a, strlen(format) + (size_t)nargs * 8 + 1);
+    const char *specs[FMT_TEXT_MAX_ARGS] = { 0 };
+    for (int i = 0; i < at; i++) specs[i] = "s";
+    char *rewritten = arena_alloc(a, strlen(sanitized) + (size_t)at * 8 + 1);
     if (!rewritten) return r;
-    (void)_fmt_parse(rewritten, nargs, format, specs);
+    (void)_fmt_parse(rewritten, at, sanitized, specs);
 
     fmt_stream ss = { 0 };
     _fmt_sprint(

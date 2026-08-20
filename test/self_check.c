@@ -9,8 +9,10 @@
 #include "../core/arena.h"
 #include "../core/blueprint.h"
 #include "../core/compile.h"
+#include "../core/conv_nodes.h"
 #include "../core/eval.h"
 #include "../core/flow.h"
+#include "../core/fmt_nodes.h"
 #include "../core/graph.h"
 #include "../core/instance.h"
 #include "../core/pin_conv.h"
@@ -3030,6 +3032,254 @@ int main(int argc, char **argv)
         check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: warnings do not block a start (CMPL-3)");
         blueprint_instance_destroy(bi);
         blueprint_free(bp);
+    }
+
+    /* TYPE-7 / CAT-26 / UI-22: explicit conversion nodes. conversion_for()
+     * answers the permitted pairs and refuses the lossy ones. */
+    {
+        check(
+            registry_node_by_name("To String") && registry_node_by_name("To Real") &&
+                registry_node_by_name("To Integer64") &&
+                registry_node_by_name("Format Text"),
+            "CAT-26: conversion and Format Text nodes are registered"
+        );
+        check(conversion_for(PIN_I32, PIN_F64) == &NODE_To_Real, "TYPE-7: Integer to Real has an explicit conversion");
+        check(conversion_for(PIN_U8, PIN_F64) == &NODE_To_Real, "TYPE-7: Byte to Real has an explicit conversion");
+        check(conversion_for(PIN_I32, PIN_I64) == &NODE_To_Integer64, "TYPE-7: Integer widens to Integer64 within one signedness");
+        check(conversion_for(PIN_I32, PIN_STR) == &NODE_To_String, "TYPE-7: Integer to String has an explicit conversion");
+        check(conversion_for(PIN_F64, PIN_STR) == &NODE_To_String, "TYPE-7: Real to String has an explicit conversion");
+        check(conversion_for(PIN_BOOL, PIN_STR) == &NODE_To_String, "TYPE-7: Bool to String has an explicit conversion");
+        check(conversion_for(PIN_NAME, PIN_STR) == &NODE_To_String, "TYPE-7: Name to String has an explicit conversion");
+        check(conversion_for(PIN_STR, PIN_F64) == NULL, "TYPE-7: String to Real is not a permitted conversion");
+        check(conversion_for(PIN_F64, PIN_I32) == NULL, "UI-22: Real to Integer is lossy, so no conversion is offered");
+        check(conversion_for(PIN_I64, PIN_I32) == NULL, "UI-22: Integer64 to Integer narrowing is not offered");
+    }
+
+    /* CAT-26: each conversion converts correctly headless, with the input
+     * retyped to the source type (PIN-3). */
+    {
+        graph gc;
+        graph_init(&gc);
+        const node_desc *real_lit = registry_node_by_name("Real");
+        const node_desc *int_lit = registry_node_by_name("Integer");
+        const node_desc *byte_lit = registry_node_by_name("Byte");
+        const node_desc *bool_lit = registry_node_by_name("Bool");
+        const node_desc *name_lit = registry_node_by_name("Name");
+        arena ac;
+        arena_init(&ac, 4096);
+        pin_value out;
+
+        node *to_real = graph_add_node(&gc, &NODE_To_Real);
+        node *ival = graph_add_node(&gc, int_lit);
+        graph_set_pin_default(
+            &gc,
+            ival,
+            0,
+            0,
+            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 }
+        );
+        graph_connect(&gc, ival, 0, to_real, 0);
+        check(
+            graph_eval_output(&gc, to_real, 0, &ac, &out, &eval_ctx) == 0 &&
+                out.type == PIN_F64 && out.d == 42.0,
+            "CAT-26: To Real converts Integer 42 to Real 42.0"
+        );
+
+        node *to_real_b = graph_add_node(&gc, &NODE_To_Real);
+        graph_set_pin_type(&gc, to_real_b, 0, 0, PIN_U8, "byte");
+        node *bval = graph_add_node(&gc, byte_lit);
+        graph_set_pin_default(
+            &gc,
+            bval,
+            0,
+            0,
+            &(pin_value){ .type = PIN_U8, .type_name = "byte", .u8 = 7 }
+        );
+        graph_connect(&gc, bval, 0, to_real_b, 0);
+        check(
+            graph_eval_output(&gc, to_real_b, 0, &ac, &out, &eval_ctx) == 0 &&
+                out.type == PIN_F64 && out.d == 7.0,
+            "CAT-26: a Byte feeds a retyped To Real input and converts to 7.0"
+        );
+
+        node *to_i64 = graph_add_node(&gc, &NODE_To_Integer64);
+        node *i64in = graph_add_node(&gc, int_lit);
+        graph_set_pin_default(
+            &gc,
+            i64in,
+            0,
+            0,
+            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = -3 }
+        );
+        graph_connect(&gc, i64in, 0, to_i64, 0);
+        check(
+            graph_eval_output(&gc, to_i64, 0, &ac, &out, &eval_ctx) == 0 &&
+                out.type == PIN_I64 && out.i64 == -3,
+            "CAT-26: To Integer64 widens Integer -3 to Integer64"
+        );
+
+        node *to_str = graph_add_node(&gc, &NODE_To_String);
+        graph_set_pin_type(&gc, to_str, 0, 0, PIN_F64, "double");
+        node *rval = graph_add_node(&gc, real_lit);
+        graph_set_pin_default(
+            &gc,
+            rval,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.5 }
+        );
+        graph_connect(&gc, rval, 0, to_str, 0);
+        char expected_str[64];
+        snprintf(
+            expected_str,
+            sizeof expected_str,
+            "%s",
+            pin_value_to_string(
+                &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.5 }
+            )
+        );
+        check(
+            graph_eval_output(&gc, to_str, 0, &ac, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, expected_str) == 0,
+            "CAT-26: To String renders a Real identically to "
+            "pin_value_to_string"
+        );
+
+        node *to_str_bool = graph_add_node(&gc, &NODE_To_String);
+        graph_set_pin_type(&gc, to_str_bool, 0, 0, PIN_BOOL, "bool");
+        node *boolval = graph_add_node(&gc, bool_lit);
+        graph_set_pin_default(
+            &gc,
+            boolval,
+            0,
+            0,
+            &(pin_value){ .type = PIN_BOOL, .type_name = "bool", .b = 1 }
+        );
+        graph_connect(&gc, boolval, 0, to_str_bool, 0);
+        node *to_str_name = graph_add_node(&gc, &NODE_To_String);
+        graph_set_pin_type(&gc, to_str_name, 0, 0, PIN_NAME, "name");
+        node *nameval = graph_add_node(&gc, name_lit);
+        graph_set_pin_default(
+            &gc,
+            nameval,
+            0,
+            0,
+            &(pin_value){ .type = PIN_NAME, .type_name = "name", .str = "Foo" }
+        );
+        graph_connect(&gc, nameval, 0, to_str_name, 0);
+        node *to_str_int = graph_add_node(&gc, &NODE_To_String);
+        graph_set_pin_type(&gc, to_str_int, 0, 0, PIN_I32, "int");
+        node *intval = graph_add_node(&gc, int_lit);
+        graph_set_pin_default(
+            &gc,
+            intval,
+            0,
+            0,
+            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = -7 }
+        );
+        graph_connect(&gc, intval, 0, to_str_int, 0);
+        check(
+            graph_eval_output(&gc, to_str_bool, 0, &ac, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "true") == 0 &&
+                graph_eval_output(&gc, to_str_name, 0, &ac, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "Foo") == 0 &&
+                graph_eval_output(&gc, to_str_int, 0, &ac, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "-7") == 0,
+            "CAT-26: To String renders Bool, Name, and Integer scalars"
+        );
+
+        /* The conversion output must not alias the pin_value_to_string ring. */
+        pin_value saved = out;
+        for (int i = 0; i < 8; i++)
+            (void)pin_value_to_string(&(pin_value){ .type = PIN_F64,
+                                                    .type_name = "double",
+                                                    .d = (double)i });
+        check(strcmp(saved.str, "-7") == 0, "CAT-26: To String copies into the arena, not the format ring");
+
+        arena_free(&ac);
+        graph_free(&gc);
+    }
+
+    /* CAT-38: Format Text substitutes {n} placeholders, renders a missing
+     * argument as empty, and keeps its argument group extensible (PIN-14). */
+    {
+        graph gf;
+        graph_init(&gf);
+        arena af;
+        arena_init(&af, 8192);
+        pin_value out;
+        node *fmt = graph_add_node(&gf, &NODE_Format_Text);
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "Hello {0} World" }
+        );
+        node *s1 = graph_add_node(&gf, registry_node_by_name("String"));
+        graph_set_pin_default(
+            &gf,
+            s1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "Bob" }
+        );
+        pin_spec arg0 = { "Arg0", PIN_STR, "const char *", PIN_DATA };
+        check(graph_add_pin(&gf, fmt, 0, &arg0) == 1, "CAT-38: an argument input joins the extensible group");
+        graph_connect(&gf, s1, 0, fmt, 1);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "Hello Bob World") == 0,
+            "CAT-38: \"Hello {0} World\" with a String argument renders "
+            "\"Hello Bob World\""
+        );
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "{1}" }
+        );
+        graph_eval_reset(&gf);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                out.str[0] == '\0',
+            "CAT-38: {1} with one argument renders as the empty string"
+        );
+        /* A Real fed through a To String conversion first renders like its
+         * pin display (UI-39), so formatted output matches. */
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "v={0}" }
+        );
+        node *to_str = graph_add_node(&gf, &NODE_To_String);
+        graph_set_pin_type(&gf, to_str, 0, 0, PIN_F64, "double");
+        node *rlit = graph_add_node(&gf, registry_node_by_name("Real"));
+        graph_set_pin_default(
+            &gf,
+            rlit,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.5 }
+        );
+        graph_connect(&gf, rlit, 0, to_str, 0);
+        graph_connect(&gf, to_str, 0, fmt, 1);
+        graph_eval_reset(&gf);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "v=3.5") == 0,
+            "CAT-38: a Real through To String formats identically to its pin "
+            "display"
+        );
+        check(
+            graph_remove_pin(&gf, fmt, 0, 1) == 0 && fmt->input_count == 1,
+            "CAT-38: removing an argument pin restores the one-input group"
+        );
+        arena_free(&af);
+        graph_free(&gf);
     }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

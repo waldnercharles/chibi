@@ -68,10 +68,6 @@ typedef struct ed_node_view
     float title_height;
     int input_first;
     int output_first;
-    /* Format Text "+" affordance for the extensible argument group
-     * (PIN-14); a zero rect on every other node. */
-    ImVec2 add_min;
-    ImVec2 add_max;
 } ed_node_view;
 
 typedef struct ed_pin_view
@@ -710,9 +706,7 @@ static void ed_build_layout(editor *e)
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         float row_height = line + 6.0f;
         float title_height = line + 2.0f * ED_TITLE_PAD;
-        int is_format_text = n->desc && strcmp(n->desc->name, "Format Text") == 0;
         float height = title_height + ED_PAD + rows * row_height + ED_PAD;
-        if (is_format_text) height += row_height;
         ImVec2 min = ed_world_to_screen(e, n->x, n->y);
 
         ImVec2 max = ed_add(min, ed_scale((ImVec2){ width, height }, e->zoom));
@@ -722,15 +716,6 @@ static void ed_build_layout(editor *e)
         v->min = min;
         v->max = max;
         v->title_height = title_height * e->zoom;
-        v->add_min = v->add_max = (ImVec2){ 0.0f, 0.0f };
-        if (is_format_text) {
-            float center_y = min.y + v->title_height +
-                             (ED_PAD + (rows + 0.5f) * row_height) * e->zoom;
-            float half = row_height * 0.5f * e->zoom;
-            float left_x = min.x + 2.0f * e->zoom;
-            v->add_min = (ImVec2){ left_x, center_y - half };
-            v->add_max = (ImVec2){ left_x + row_height * e->zoom, center_y + half };
-        }
         v->input_first = pin_at;
         for (int p = 0; p < n->input_count; p++) {
             float y = min.y + v->title_height +
@@ -1184,14 +1169,19 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
     }
     ed_details_finish_mutation(e, ImGui_IsItemEdited());
     if (spec->kind == PIN_DATA) {
-        pin_type type = spec->type;
-        if (ed_pin_type_combo("Type", &type)) {
-            ed_details_begin_mutation(e);
-            if (graph_set_pin_type(e->bp->graph, n, output, index, type, pin_type_name(type)) ==
-                0)
-                e->edit_changed = 1;
+        if ((spec->flags & PIN_FLAG_WILDCARD) && spec->type == PIN_FLOW) {
+            /* The unresolved spare adopts any peer's type on connect. */
+            ImGui_TextUnformatted("Type: Generic");
+        } else {
+            pin_type type = spec->type;
+            if (ed_pin_type_combo("Type", &type)) {
+                ed_details_begin_mutation(e);
+                if (graph_set_pin_type(e->bp->graph, n, output, index, type, pin_type_name(type)) ==
+                    0)
+                    e->edit_changed = 1;
+            }
+            ed_details_finish_mutation(e, ImGui_IsItemEdited());
         }
-        ed_details_finish_mutation(e, ImGui_IsItemEdited());
         pin_container container = spec->container;
         if (ed_pin_container_combo("Container", &container)) {
             ed_details_begin_mutation(e);
@@ -1586,22 +1576,6 @@ static void ed_draw_details(editor *e)
             (void)graph_remove_pin(e->bp->graph, n, 1, n->output_count - 1);
         }
         ImGui_EndDisabled();
-    } else if (n->desc && strcmp(n->desc->name, "Format Text") == 0) {
-        ImGui_SeparatorText("Format arguments");
-        if (ImGui_Button("Add argument")) {
-            char name[32];
-            snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
-            pin_spec pin = { name, PIN_STR, "const char *", PIN_DATA };
-            ed_snapshot_before(e);
-            (void)graph_add_pin(e->bp->graph, n, 0, &pin);
-        }
-        ImGui_SameLine();
-        ImGui_BeginDisabled(n->input_count <= 1);
-        if (ImGui_Button("Remove last argument")) {
-            ed_snapshot_before(e);
-            (void)graph_remove_pin(e->bp->graph, n, 0, n->input_count - 1);
-        }
-        ImGui_EndDisabled();
     }
     for (int p = 0; p < n->input_count; p++) ed_draw_details_pin(e, n, 0, p);
     for (int p = 0; p < n->output_count; p++) {
@@ -1844,24 +1818,6 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
             }
         }
     }
-    if (v->add_min.x != v->add_max.x) {
-        int add_hovered = e->hovered_node == n &&
-                          ed_point_in_rect(ImGui_GetIO()->MousePos, v->add_min, v->add_max);
-        ImDrawList_AddRectFilledEx(
-            dl,
-            v->add_min,
-            v->add_max,
-            IM_COL32(70, 82, 98, add_hovered ? 235 : 165),
-            4.0f,
-            ImDrawFlags_RoundCornersAll
-        );
-        ImVec2 c = { (v->add_min.x + v->add_max.x) * 0.5f,
-                     (v->add_min.y + v->add_max.y) * 0.5f };
-        float l = (v->add_max.y - v->add_min.y) * 0.25f;
-        ImU32 plus = IM_COL32(215, 225, 240, add_hovered ? 255 : 200);
-        ImDrawList_AddLineEx(dl, (ImVec2){ c.x - l, c.y }, (ImVec2){ c.x + l, c.y }, plus, 1.6f);
-        ImDrawList_AddLineEx(dl, (ImVec2){ c.x, c.y - l }, (ImVec2){ c.x, c.y + l }, plus, 1.6f);
-    }
 }
 
 static void ed_draw_canvas(editor *e)
@@ -2087,6 +2043,21 @@ static void ed_update_drag(editor *e, ImVec2 mouse)
     }
 }
 
+/* CAT-38: a Format Text node always carries one trailing Generic argument
+ * pin; connecting the last pin adopts its type and reveals the next spare.
+ * Capped so the group cannot grow without bound. */
+#define ED_FMT_TEXT_MAX_ARGS 12
+
+static void ed_append_generic_arg(editor *e, node *n)
+{
+    if (!n->desc || strcmp(n->desc->name, "Format Text") != 0) return;
+    if (n->input_count - 1 >= ED_FMT_TEXT_MAX_ARGS) return;
+    static char name[32];
+    snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
+    pin_spec pin = { .name = name, .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD };
+    graph_add_pin(e->bp->graph, n, 0, &pin);
+}
+
 static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
     ed_begin_authoring_edit(e);
@@ -2103,7 +2074,12 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
         e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
         return 0;
     }
-    if (out_spec->kind == PIN_DATA && !pin_types_compatible(out_spec, in_spec)) {
+    /* PIN-11: a Generic data input accepts any data peer and adopts its
+     * type in core; it is not a type mismatch and never toasts. */
+    int generic_target = out_spec->kind == PIN_DATA &&
+                         (in_spec->flags & PIN_FLAG_WILDCARD);
+    if (out_spec->kind == PIN_DATA && !generic_target &&
+        !pin_types_compatible(out_spec, in_spec)) {
         snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
         e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
         /* UI-22: where TYPE-7 permits, offer the insertion in the toast. A
@@ -2129,13 +2105,17 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                    order
                ) == 0;
     }
-    return graph_connect_data(
-               e->bp->graph,
-               output->n,
-               output->index,
-               input->n,
-               input->index
-           ) == 0;
+    int ok = graph_connect_data(
+                 e->bp->graph,
+                 output->n,
+                 output->index,
+                 input->n,
+                 input->index
+             ) == 0;
+    /* Taking the trailing spare reveals the next one. */
+    if (ok && generic_target && input->index == input->n->input_count - 1)
+        ed_append_generic_arg(e, input->n);
+    return ok;
 }
 
 /* UI-22: accepted conversion offer from the connect-error toast. Insert the
@@ -2319,6 +2299,15 @@ static void ed_open_context_menu(editor *e, ImVec2 mouse)
     }
 }
 
+/* PIN-11: a Generic (wildcard) data pin accepts any data peer; the type is
+ * adopted in core on connect, so the editor treats it as compatible. */
+static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate)
+{
+    if (source->kind == PIN_EXEC) return 1;
+    if (candidate->flags & PIN_FLAG_WILDCARD) return 1;
+    return pin_types_compatible(source, candidate);
+}
+
 static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
 {
     if (!e->spawn_link_pending) return 1;
@@ -2335,8 +2324,8 @@ static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
         if (source->kind != candidate->kind) continue;
         if (source->kind == PIN_EXEC ||
             (e->spawn_link_pin.kind == ED_PIN_OUTPUT
-                 ? pin_types_compatible(source, candidate)
-                 : pin_types_compatible(candidate, source)))
+                 ? ed_data_connectable(source, candidate)
+                 : ed_data_connectable(candidate, source)))
             return 1;
     }
     return 0;
@@ -2351,8 +2340,7 @@ static int ed_autowire_spawn(editor *e, node *n)
             const pin_spec *a = &e->spawn_link_pin.n
                                      ->output_pins[e->spawn_link_pin.index];
             const pin_spec *b = &n->input_pins[p];
-            if (a->kind == b->kind &&
-                (a->kind == PIN_EXEC || pin_types_compatible(a, b)))
+            if (a->kind == b->kind && ed_data_connectable(a, b))
                 connected = ed_connect(e, &e->spawn_link_pin, &target);
         }
     } else {
@@ -2361,8 +2349,7 @@ static int ed_autowire_spawn(editor *e, node *n)
             const pin_spec *a = &n->output_pins[p];
             const pin_spec *b = &e->spawn_link_pin.n
                                      ->input_pins[e->spawn_link_pin.index];
-            if (a->kind == b->kind &&
-                (a->kind == PIN_EXEC || pin_types_compatible(a, b)))
+            if (a->kind == b->kind && ed_data_connectable(a, b))
                 connected = ed_connect(e, &e->spawn_link_pin, &target);
         }
     }
@@ -2384,20 +2371,6 @@ static void ed_handle_popups(editor *e)
             if (n->output_count > 2 && ImGui_MenuItem("Remove last output pin")) {
                 ed_snapshot_before(e);
                 graph_remove_pin(e->bp->graph, n, 1, n->output_count - 1);
-            }
-            ImGui_Separator();
-        }
-        if (n && n->desc && strcmp(n->desc->name, "Format Text") == 0) {
-            if (ImGui_MenuItem("Add argument")) {
-                char name[32];
-                snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
-                pin_spec pin = { name, PIN_STR, "const char *", PIN_DATA };
-                ed_snapshot_before(e);
-                graph_add_pin(e->bp->graph, n, 0, &pin);
-            }
-            if (n->input_count > 1 && ImGui_MenuItem("Remove last argument")) {
-                ed_snapshot_before(e);
-                graph_remove_pin(e->bp->graph, n, 0, n->input_count - 1);
             }
             ImGui_Separator();
         }
@@ -2917,18 +2890,6 @@ static void ed_handle_input(editor *e)
     }
     ed_node_view *v = ed_hit_node(e, mouse);
     if (v) {
-        /* UI-24: the on-node "+" adds the next argument of an extensible
-         * group where the pin count is being read. */
-        if (v->add_min.x != v->add_max.x &&
-            ed_point_in_rect(mouse, v->add_min, v->add_max)) {
-            ed_select_node(e, v->n, 0);
-            char name[32];
-            snprintf(name, sizeof name, "Arg%d", v->n->input_count - 1);
-            pin_spec pin = { name, PIN_STR, "const char *", PIN_DATA };
-            ed_snapshot_before(e);
-            graph_add_pin(e->bp->graph, v->n, 0, &pin);
-            return;
-        }
         int append = ed_selection_modifier(io);
         int already_selected = ed_node_selected(e, v->n);
         e->front_node = v->n;

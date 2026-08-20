@@ -112,4 +112,31 @@ static inline int node_desc_is_pure(const node_desc *d)
     return 1;
 }
 
+/* NODE-13: behavior classification. A pure node has no exec pins; an
+ * executable entry has no exec input and at least one exec output; every
+ * other executable node has at least one exec input. Executable behavior
+ * runs only from an event activation, never from preview evaluation. */
+typedef enum
+{
+    NODE_BEHAVIOR_PURE = 0,
+    NODE_BEHAVIOR_ENTRY,
+    NODE_BEHAVIOR_EXEC,
+} node_behavior;
+
+static inline node_behavior node_desc_behavior(const node_desc *d)
+{
+    if (!d) return NODE_BEHAVIOR_PURE;
+    int exec_input = 0, exec_output = 0;
+    for (int i = 0; i < d->input_count; i++)
+        if (d->inputs[i].kind == PIN_EXEC) exec_input = 1;
+    for (int i = 0; i < d->output_count; i++)
+        if (d->outputs[i].kind == PIN_EXEC) exec_output = 1;
+    if (exec_input) return NODE_BEHAVIOR_EXEC;
+    if (exec_output) return NODE_BEHAVIOR_ENTRY;
+    return NODE_BEHAVIOR_PURE;
+}
+
+static inline node_behavior node_behavior_for(const node *n)
+{ return node_desc_behavior(n ? n->desc : NULL); }
+
 #endif

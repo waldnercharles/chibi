@@ -8,6 +8,7 @@
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
 #include "../core/blueprint.h"
+#include "../core/compile.h"
 #include "../core/eval.h"
 #include "../core/flow.h"
 #include "../core/graph.h"
@@ -351,7 +352,7 @@ static node_desc g_str_capture_desc = {
 };
 static pin_spec g_handle_capture_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Value", PIN_HANDLE, "Entity", PIN_DATA },
+    { "Value", PIN_HANDLE, "Vec3", PIN_DATA },
 };
 static int flow_capture_handle(node *n, flow_context *ctx)
 {
@@ -2257,12 +2258,11 @@ int main(int argc, char **argv)
         bi = blueprint_instance_create(bp, NULL, NULL, NULL);
         flow_error perr = { 0 };
         flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
-        const flow_error *fe = act ? flow_run_error(act) : NULL;
         check(
-            act && flow_run_status(act) == FLOW_FAILED && fe && fe->message &&
-                strstr(fe->message, "lost variable") != NULL,
-            "VAR-7: an orphaned Get reference fails with an error naming the "
-            "lost variable"
+            act == NULL && perr.code == FLOW_ERR_COMPILE && perr.node == get &&
+                perr.message && strstr(perr.message, "missing variable") != NULL,
+            "VAR-7: an orphaned Get reference is a blocking compile error "
+            "(RUN-12 refuses to start)"
         );
         blueprint_instance_destroy(bi);
         blueprint_free(bp);
@@ -2432,7 +2432,11 @@ int main(int argc, char **argv)
         int guard_before = bp->graph->flow_pause_count;
         blueprint_instance_destroy(bi);
         check(bp->graph->flow_pause_count == guard_before - 1, "RUN-20: destroying the instance releases the mutation guard");
-        check(graph_add_node(bp->graph, &g_sink_b_desc) != NULL, "EXEC-19: the definition becomes mutable after its last instance is destroyed");
+        node *probe = graph_add_node(bp->graph, &g_sink_b_desc);
+        check(probe != NULL, "EXEC-19: the definition becomes mutable after its last instance is destroyed");
+        /* The probe node's exec input is unconnected, which is a blocking
+         * compile error under RUN-12; remove it before starting again. */
+        check(graph_remove_node(bp->graph, probe) == 0, "EXEC-19: removing the probe restores a valid blueprint");
 
         blueprint_instance *bi2 = blueprint_instance_create(bp, NULL, NULL, NULL);
         flow_log_reset();
@@ -2482,12 +2486,14 @@ int main(int argc, char **argv)
     {
         blueprint *bp = blueprint_new("Self");
         check(blueprint_add_self_node(bp) == NULL, "CAT-32: Self is rejected when the definition declares no owner type");
-        blueprint_set_owner_type(bp, "Entity");
+        /* The owner handle type must resolve in the active registry (CMPL-20),
+         * so the test uses a reflected type name. */
+        blueprint_set_owner_type(bp, "Vec3");
         node *self = blueprint_add_self_node(bp);
         check(
             self && self->output_pins[0].type == PIN_HANDLE &&
                 self->output_pins[0].type_name &&
-                strcmp(self->output_pins[0].type_name, "Entity") == 0,
+                strcmp(self->output_pins[0].type_name, "Vec3") == 0,
             "CAT-32: Self carries the declared nominal owner handle type"
         );
         pin_spec ha = { "a", PIN_HANDLE, "Entity", PIN_DATA };
@@ -2499,7 +2505,7 @@ int main(int argc, char **argv)
         node *cap = graph_add_node(bp->graph, &g_handle_capture_desc);
         graph_connect_exec(bp->graph, ev, 0, cap, 0, 0);
         graph_connect_data(bp->graph, self, 0, cap, 1);
-        pin_value owner = { .type = PIN_HANDLE, .u64 = 777, .type_name = "Entity" };
+        pin_value owner = { .type = PIN_HANDLE, .u64 = 777, .type_name = "Vec3" };
         blueprint_instance *bi = blueprint_instance_create(bp, &owner, NULL, NULL);
         g_captured_handle = 0;
         flow_error perr = { 0 };
@@ -2569,6 +2575,460 @@ int main(int argc, char **argv)
         free(before);
         free(after);
         free(re);
+        blueprint_free(bp);
+    }
+
+    /* NODE-13: descriptors classify as pure, executable entry, or executable;
+     * the existing pure helper keeps classifying the same way. */
+    {
+        check(node_desc_behavior(&g_const_desc) == NODE_BEHAVIOR_PURE, "NODE-13: a pure descriptor has no exec pins");
+        check(node_desc_behavior(&NODE_Event) == NODE_BEHAVIOR_ENTRY, "NODE-13: an event is an executable entry (no exec input, one exec output)");
+        check(node_desc_behavior(&NODE_Branch) == NODE_BEHAVIOR_EXEC, "NODE-13: a node with an exec input is executable");
+        check(
+            node_desc_is_pure(&g_const_desc) && !node_desc_is_pure(&NODE_Branch),
+            "NODE-13: the existing pure helper agrees with the classification"
+        );
+    }
+
+    /* CMPL-1: compiling is explicit, ordered, read-only, and clean on an
+     * empty blueprint. */
+    {
+        blueprint *bp = blueprint_new("CMPL1");
+        compile_report rep;
+        compile_report_init(&rep);
+        unsigned long long rev = graph_topology_revision(bp->graph);
+        char *before = blueprint_save_json(bp);
+        int errors = blueprint_compile(bp, &rep);
+        char *after = blueprint_save_json(bp);
+        check(
+            errors == 0 && rep.error_count == 0 && rep.warning_count == 0 &&
+                acount(rep.items) == 0,
+            "CMPL-1: compiling an empty blueprint produces no diagnostics"
+        );
+        check(
+            rev == graph_topology_revision(bp->graph) && before && after &&
+                strcmp(before, after) == 0,
+            "CMPL-1: the compile pass never modifies the authored graph"
+        );
+        check(
+            compile_report_blocked(&rep) == 0 && compile_report_first_error(&rep) == NULL,
+            "CMPL-3: an empty report has no blocking error"
+        );
+        free(before);
+        free(after);
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-4: an executable node whose exec input has no incoming edge; the
+     * event entry itself is exempt. */
+    {
+        blueprint *bp = blueprint_new("CMPL4");
+        node *ev = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *branch = graph_add_node(bp->graph, &NODE_Branch);
+        node *print = graph_add_node(bp->graph, &NODE_PrintString);
+        print->y = 100.0f; /* below the branch: order is tested under CMPL-16 */
+        check(
+            node_behavior_for(ev) == NODE_BEHAVIOR_ENTRY &&
+                node_behavior_for(branch) == NODE_BEHAVIOR_EXEC,
+            "NODE-13: node instances classify like their descriptors"
+        );
+        compile_report rep;
+        compile_report_init(&rep);
+        check(blueprint_compile(bp, &rep) == 2, "CMPL-4: two executable nodes with unconnected exec inputs error");
+        int count = 0, on_branch = 0, on_print = 0;
+        for (int i = 0; i < acount(rep.items); i++) {
+            const compile_diagnostic *d = &rep.items[i];
+            if (d->rule != CMPL_RULE_UNCONNECTED_EXEC || d->severity != CMPL_ERROR)
+                continue;
+            count++;
+            if (d->node_id == branch->id) on_branch = 1;
+            if (d->node_id == print->id) on_print = 1;
+        }
+        check(count == 2 && on_branch && on_print, "CMPL-4: both diagnostics name the unconnected executable nodes");
+        check(
+            rep.items[0].node_id == branch->id &&
+                rep.items[0].pin_id == branch->input_pins[0].id &&
+                rep.items[0].graph_id == CMPL_GRAPH_DEFAULT,
+            "CMPL-2: the diagnostic carries graph, node, and pin ids"
+        );
+        check(
+            strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_EXEC), "CMPL-4") == 0,
+            "CMPL-2: every diagnostic carries a stable rule code"
+        );
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-5: a data edge between incompatible pins. The graph API rejects
+     * incompatible connections, so the test inserts the edge directly. */
+    {
+        blueprint *bp = blueprint_new("CMPL5");
+        node *ev = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *src = graph_add_node(bp->graph, &g_all_types_desc);
+        node *sink = graph_add_node(bp->graph, &g_parameter_sink_desc);
+        graph_connect_exec(bp->graph, ev, 0, sink, 0, 0);
+        graph_connect_data(bp->graph, src, 5, sink, 1); /* i32 -> Integer: ok */
+        edge bad = {
+            .from_id = src->id,
+            .from_pin_id = src->output_pins[5].id,
+            .to_id = sink->id,
+            .to_pin_id = sink->input_pins[2].id,
+            .kind = GRAPH_EDGE_DATA,
+        };
+        apush(bp->graph->edges, bad); /* i32 -> Flag bool: incompatible */
+        compile_report rep;
+        compile_report_init(&rep);
+        blueprint_compile(bp, &rep);
+        /* The graph also carries the all-types node's unregistered enum output
+         * (CMPL-20); count only the incompatible-edge diagnostics here. */
+        int bad_edges = 0;
+        for (int i = 0; i < acount(rep.items); i++)
+            if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE)
+                bad_edges++;
+        check(bad_edges == 1, "CMPL-5: one incompatible data edge errors");
+        const compile_diagnostic *c5 = NULL;
+        for (int i = 0; i < acount(rep.items); i++)
+            if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE)
+                c5 = &rep.items[i];
+        check(
+            c5 && c5->node_id == sink->id && c5->pin_id == sink->input_pins[2].id,
+            "CMPL-5: the diagnostic names the incompatible input pin"
+        );
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-6: a cycle among data edges reports once, at the closing back
+     * edge; an acyclic chain stays clean. */
+    {
+        blueprint *bp = blueprint_new("CMPL6");
+        static pin_spec cycle_in[] = { { "In", PIN_I32, "int", PIN_DATA } };
+        static pin_spec cycle_out[] = { { "Out", PIN_I32, "int", PIN_DATA } };
+        static node_desc cycle_desc = {
+            .name = "CycleIO",
+            .input_count = 1,
+            .output_count = 1,
+            .inputs = cycle_in,
+            .outputs = cycle_out,
+            .pure_kind = NODE_PURE_CONST,
+        };
+        node *a = graph_add_node(bp->graph, &cycle_desc);
+        node *b = graph_add_node(bp->graph, &cycle_desc);
+        node *c = graph_add_node(bp->graph, &cycle_desc);
+        graph_connect_data(bp->graph, a, 0, b, 0);
+        graph_connect_data(bp->graph, b, 0, c, 0);
+        compile_report rep;
+        compile_report_init(&rep);
+        check(blueprint_compile(bp, &rep) == 0, "CMPL-6: an acyclic data chain compiles clean");
+        graph_connect_data(bp->graph, c, 0, a, 0);
+        compile_report_free(&rep);
+        compile_report_init(&rep);
+        check(
+            blueprint_compile(bp, &rep) == 1 && rep.items[0].rule == CMPL_RULE_DATA_CYCLE &&
+                rep.items[0].node_id == c->id,
+            "CMPL-6: closing the chain reports one data-cycle error at the "
+            "back edge"
+        );
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-7: a reference to a retired or missing variable, event, function,
+     * or macro. */
+    {
+        blueprint *bp = blueprint_new("CMPL7");
+        blueprint_variable *v = blueprint_add_variable(bp, "Score", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "");
+        node *get = blueprint_add_get_node(bp, v->id);
+        node *set = blueprint_add_set_node(bp, v->id);
+        node *ev = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *call = blueprint_add_call_event_node(bp, ev);
+        compile_report rep;
+        compile_report_init(&rep);
+        blueprint_compile(bp, &rep);
+        int refs = 0;
+        for (int i = 0; i < acount(rep.items); i++)
+            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) refs++;
+        check(refs == 0, "CMPL-7: valid variable and event references compile clean");
+        check(blueprint_delete_variable(bp, v->id) == 0, "CMPL-7: deleting a referenced variable is permitted (VAR-7)");
+        compile_report_free(&rep);
+        compile_report_init(&rep);
+        blueprint_compile(bp, &rep);
+        refs = 0;
+        for (int i = 0; i < acount(rep.items); i++)
+            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) refs++;
+        check(refs == 2, "CMPL-7: Get and Set both report the retired variable");
+        check(graph_remove_node(bp->graph, ev) == 0, "CMPL-7: removing the referenced event is permitted");
+        compile_report_free(&rep);
+        compile_report_init(&rep);
+        blueprint_compile(bp, &rep);
+        refs = 0;
+        for (int i = 0; i < acount(rep.items); i++)
+            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) refs++;
+        check(refs == 3, "CMPL-7: the Call Event reports the removed event");
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-8: duplicate event names, duplicate parameter names within one
+     * list, and duplicate variable names each report once. */
+    {
+        blueprint *bp = blueprint_new("CMPL8");
+        node *e1 = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, e1, "Begin");
+        node *e2 = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, e2, "Begin");
+        compile_report rep;
+        compile_report_init(&rep);
+        blueprint_compile(bp, &rep);
+        check(
+            rep.error_count == 1 && rep.items[0].rule == CMPL_RULE_DUPLICATE_NAME &&
+                rep.items[0].node_id == e2->id,
+            "CMPL-8: two events sharing a name produce one diagnostic on the "
+            "later event"
+        );
+        node *e3 = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, e3, "Tick");
+        pin_spec amount_a = { "Amount", PIN_I32, "int", PIN_DATA };
+        pin_spec amount_b = { "Amount", PIN_I32, "int", PIN_DATA };
+        graph_add_pin(bp->graph, e3, 1, &amount_a);
+        graph_add_pin(bp->graph, e3, 1, &amount_b);
+        blueprint_variable dup_var_a = {
+            .id = graph_alloc_id(bp->graph),
+            .name = graph_own_str(bp->graph, "Score", 5),
+            .type = PIN_I32,
+            .type_name = "int",
+            .container = PIN_CONTAINER_SINGLE,
+        };
+        blueprint_variable dup_var_b = dup_var_a;
+        dup_var_b.id = graph_alloc_id(bp->graph);
+        apush(bp->variables, dup_var_a);
+        apush(bp->variables, dup_var_b);
+        compile_report_free(&rep);
+        compile_report_init(&rep);
+        blueprint_compile(bp, &rep);
+        check(rep.error_count == 3, "CMPL-8: duplicate event, parameter, and variable names each error");
+        int ev_dup = 0, param_dup = 0, var_dup = 0;
+        for (int i = 0; i < acount(rep.items); i++) {
+            const compile_diagnostic *d = &rep.items[i];
+            if (d->rule != CMPL_RULE_DUPLICATE_NAME) continue;
+            if (d->node_id == e2->id) ev_dup++;
+            else if (d->node_id == e3->id) param_dup++;
+            else if (d->node_id == 0 && strstr(d->message, "Score")) var_dup++;
+        }
+        check(ev_dup == 1 && param_dup == 1 && var_dup == 1, "CMPL-8: each duplicate kind reports exactly once");
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-12: an unresolved wildcard pin that carries an edge. */
+    {
+        blueprint *bp = blueprint_new("CMPL12");
+        static pin_spec wild_in = {
+            .name = "Value",
+            .type = PIN_FLOW,
+            .kind = PIN_DATA,
+            .flags = PIN_FLAG_WILDCARD,
+        };
+        static pin_spec wild_out = {
+            .name = "Out",
+            .type = PIN_I32,
+            .type_name = "int",
+            .kind = PIN_DATA,
+        };
+        static node_desc wild_desc = {
+            .name = "WildcardIn",
+            .input_count = 1,
+            .output_count = 1,
+            .inputs = &wild_in,
+            .outputs = &wild_out,
+            .pure_kind = NODE_PURE_CONST,
+        };
+        node *w = graph_add_node(bp->graph, &wild_desc);
+        node *src = graph_add_node(bp->graph, &g_const_desc);
+        compile_report rep;
+        compile_report_init(&rep);
+        check(blueprint_compile(bp, &rep) == 0, "CMPL-12: an unconnected wildcard pin is not an error");
+        edge we = {
+            .from_id = src->id,
+            .from_pin_id = src->output_pins[0].id,
+            .to_id = w->id,
+            .to_pin_id = w->input_pins[0].id,
+            .kind = GRAPH_EDGE_DATA,
+        };
+        apush(bp->graph->edges, we);
+        compile_report_free(&rep);
+        compile_report_init(&rep);
+        check(
+            blueprint_compile(bp, &rep) == 1 &&
+                rep.items[0].rule == CMPL_RULE_UNRESOLVED_WILDCARD &&
+                rep.items[0].node_id == w->id &&
+                rep.items[0].pin_id == w->input_pins[0].id,
+            "CMPL-12: an unresolved wildcard pin that carries an edge errors"
+        );
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-16: deterministic ordering by graph, then node position (canvas y,
+     * then x, then node id), then rule code. */
+    {
+        blueprint *bp = blueprint_new("CMPL16");
+        node *top = graph_add_node(bp->graph, &NODE_PrintString);
+        node *mid = graph_add_node(bp->graph, &NODE_Branch);
+        node *bot = graph_add_node(bp->graph, &NODE_Branch);
+        top->y = 10.0f;
+        top->x = 500.0f;
+        mid->y = 20.0f;
+        mid->x = 0.0f;
+        bot->y = 30.0f;
+        bot->x = 1.0f;
+        compile_report r1, r2;
+        compile_report_init(&r1);
+        compile_report_init(&r2);
+        blueprint_compile(bp, &r1);
+        blueprint_compile(bp, &r2);
+        int same = acount(r1.items) == acount(r2.items);
+        for (int i = 0; same && i < acount(r1.items); i++)
+            same = memcmp(&r1.items[i], &r2.items[i], sizeof r1.items[i]) == 0;
+        check(same && acount(r1.items) == 3, "CMPL-16: compiling twice yields an identical ordered list");
+        check(
+            r1.items[0].node_id == top->id && r1.items[1].node_id == mid->id &&
+                r1.items[2].node_id == bot->id,
+            "CMPL-16: diagnostics order by canvas y, then x, then node id"
+        );
+        check(
+            r1.items[0].rule == CMPL_RULE_UNCONNECTED_EXEC &&
+                r1.items[1].rule == CMPL_RULE_UNCONNECTED_EXEC,
+            "CMPL-16: equal-rule diagnostics keep position order"
+        );
+        compile_report_free(&r1);
+        compile_report_free(&r2);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-16: diagnostics on one node order by rule code; the set node
+     * carries both an unconnected exec input (CMPL-4) and a missing variable
+     * reference (CMPL-7). */
+    {
+        blueprint *bp = blueprint_new("CMPL16b");
+        node *set = graph_add_node(bp->graph, &NODE_SetVariable);
+        graph_set_node_reference(bp->graph, set, 4242, "Lost");
+        compile_report rep;
+        compile_report_init(&rep);
+        check(blueprint_compile(bp, &rep) == 2, "CMPL-16: one node can carry several errors");
+        check(
+            acount(rep.items) == 2 && rep.items[0].rule == CMPL_RULE_UNCONNECTED_EXEC &&
+                rep.items[1].rule == CMPL_RULE_MISSING_REFERENCE,
+            "CMPL-16: diagnostics on one node order by rule code"
+        );
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-18: a disabled node is excluded from every rule except one
+     * warning reporting that it is disabled. */
+    {
+        blueprint *bp = blueprint_new("CMPL18");
+        node *dbranch = graph_add_node(bp->graph, &NODE_Branch);
+        node *dget = graph_add_node(bp->graph, &NODE_GetVariable);
+        graph_set_node_disabled(bp->graph, dbranch, 1);
+        graph_set_node_disabled(bp->graph, dget, 1);
+        compile_report rep;
+        compile_report_init(&rep);
+        check(blueprint_compile(bp, &rep) == 0 && rep.error_count == 0 && rep.warning_count == 2, "CMPL-18: disabled nodes are excluded from every rule except one warning each");
+        int warn_branch = 0, warn_get = 0, other = 0;
+        for (int i = 0; i < acount(rep.items); i++) {
+            const compile_diagnostic *d = &rep.items[i];
+            if (d->rule != CMPL_RULE_DISABLED || d->severity != CMPL_WARNING) {
+                other++;
+                continue;
+            }
+            if (d->node_id == dbranch->id) warn_branch++;
+            if (d->node_id == dget->id) warn_get++;
+        }
+        check(warn_branch == 1 && warn_get == 1 && other == 0, "CMPL-18: exactly one disabled warning per node and no other rules");
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* CMPL-20: an authored nominal type name not present in the active
+     * registry is a blocking diagnostic that preserves the name. */
+    {
+        blueprint *bp = blueprint_new("CMPL20");
+        static pin_spec nominal_in[] = {
+            { "Vec3In", PIN_STRUCT, "Vec3", PIN_DATA },
+        };
+        static pin_spec nominal_out[] = {
+            { "Handle", PIN_HANDLE, "MissingType", PIN_DATA },
+        };
+        static node_desc nominal_desc = {
+            .name = "Nominal",
+            .input_count = 1,
+            .output_count = 1,
+            .inputs = nominal_in,
+            .outputs = nominal_out,
+            .pure_kind = NODE_PURE_CONST,
+        };
+        graph_add_node(bp->graph, &nominal_desc);
+        compile_report rep;
+        compile_report_init(&rep);
+        check(blueprint_compile(bp, &rep) == 1, "CMPL-20: a registry-known struct pin compiles, an unknown handle name errors");
+        check(
+            rep.items[0].rule == CMPL_RULE_UNKNOWN_NOMINAL_TYPE &&
+                strstr(rep.items[0].message, "MissingType") != NULL,
+            "CMPL-20: the diagnostic preserves the unresolved type name"
+        );
+        compile_report_free(&rep);
+        blueprint_free(bp);
+    }
+
+    /* RUN-12: a run refuses to start against a blueprint with compile errors
+     * and reports the first blocking diagnostic; warnings never block. */
+    {
+        blueprint *bp = blueprint_new("Run12");
+        node *ev = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *branch = graph_add_node(bp->graph, &NODE_Branch);
+        node *print = graph_add_node(bp->graph, &NODE_PrintString);
+        print->y = -50.0f; /* sorts above the branch: the first error */
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error rerr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
+        check(act == NULL && rerr.code == FLOW_ERR_COMPILE && rerr.node == print, "RUN-12: dispatch refuses to start and reports the first blocking diagnostic");
+        check(
+            rerr.message && strstr(rerr.message, "no incoming edge") != NULL,
+            "RUN-12: the refusal carries the blocking diagnostic message"
+        );
+        check(
+            blueprint_instance_enqueue(bi, ev, (flow_inputs){ 0 }, &rerr) == NULL &&
+                rerr.code == FLOW_ERR_COMPILE,
+            "RUN-12: a direct enqueue is refused the same way"
+        );
+        blueprint_instance_destroy(bi);
+        /* Fix the graph; the next instance recompiles at the new revision. */
+        graph_remove_node(bp->graph, print);
+        graph_connect_exec(bp->graph, ev, 0, branch, 0, 0);
+        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
+        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: after the error is fixed the same event starts and completes");
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+    {
+        blueprint *bp = blueprint_new("Run12w");
+        node *ev = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, ev, "Go");
+        node *br = graph_add_node(bp->graph, &NODE_Branch);
+        graph_set_node_disabled(bp->graph, br, 1);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error werr = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &werr);
+        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: warnings do not block a start (CMPL-3)");
+        blueprint_instance_destroy(bi);
         blueprint_free(bp);
     }
 

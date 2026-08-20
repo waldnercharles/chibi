@@ -2,24 +2,33 @@
  *
  * Pure node: one format input, a user-extensible argument group (PIN-14)
  * whose pins are Generic wildcards (PIN-11), and one String output.
- * Evaluating it substitutes placeholders in the format string with the
- * matching argument's rendered text; a placeholder with no matching
- * argument renders as the empty string. The result is built in the arena,
- * so it lives as long as the other scratch-owned values of the step.
+ * Evaluating it rewrites the format through the vendored fmt library
+ * (third_party/fmt, a fork of stclib/STC c11/fmt.h) and renders each
+ * argument through the canonical pin display (UI-39) before substitution.
+ * The result is built in the arena, so it lives as long as the other
+ * scratch-owned values of the step.
  *
- * Placeholders follow the fmt convention: {} consumes the next argument in
- * order, {N} names an argument position, and {{ and }} print literal
- * braces. The trailing argument pin is the spare: it stays Generic (the
- * PIN_FLOW marker) until a connection adopts its type, and reverts when the
- * edge is removed. A non-string argument renders through
- * pin_value_to_string, the canonical pin display (UI-39).
+ * Placeholders: {} consumes the next argument in order, {N} names a
+ * position, {<:>MODS} carries printf width/alignment (strings only), and
+ * {{ and }} print literal braces. A placeholder with no matching argument
+ * renders as the empty string: the parser reports it as an error, which we
+ * ignore, and it simply writes nothing for that placeholder. Mixing {} and
+ * {N} in one format is undefined, as with printf positional arguments, and
+ * a literal percent sign must be written %%.
+ *
+ * The trailing argument pin is the spare: it stays Generic (the PIN_FLOW
+ * marker) until a connection adopts its type, and reverts when the edge is
+ * removed.
  */
 #include "fmt_nodes.h"
 
 #include "arena.h"
+#include "fmt.h"
 #include "pin_fmt.h"
 
 #include <string.h>
+
+#define FMT_TEXT_MAX_ARGS 12
 
 static const char *fmt_text_of(const pin_value *v)
 {
@@ -28,63 +37,62 @@ static const char *fmt_text_of(const pin_value *v)
     return pin_value_to_string(v);
 }
 
-static void fmt_write_text(char **w, const char *text)
+static char *fmt_arena_strdup(arena *a, const char *s)
 {
-    size_t n = strlen(text);
-    memcpy(*w, text, n);
-    *w += n;
+    size_t n = strlen(s);
+    char *copy = arena_alloc(a, n + 1);
+    if (!copy) return NULL;
+    memcpy(copy, s, n + 1);
+    return copy;
 }
 
 static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
 {
     pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
     const char *format = fmt_text_of(&inputs[0]);
-    size_t need = strlen(format) + 1;
-    for (int i = 1; i < input_count; i++)
-        need += strlen(fmt_text_of(&inputs[i]));
-    char *out = arena_alloc(a, need);
-    if (!out) return r;
-    char *w = out;
-    int auto_index = 0;
-    for (const char *p = format; *p;) {
-        if (p[0] == '{' && p[1] == '{') {
-            *w++ = '{';
-            p += 2;
-            continue;
-        }
-        if (p[0] == '}' && p[1] == '}') {
-            *w++ = '}';
-            p += 2;
-            continue;
-        }
-        if (p[0] == '{') {
-            const char *q = p + 1;
-            if (*q == '}') {
-                /* {} consumes the next argument in order. */
-                if (auto_index < input_count - 1)
-                    fmt_write_text(&w, fmt_text_of(&inputs[auto_index + 1]));
-                auto_index++;
-                p = q + 1;
-                continue;
-            }
-            if (*q >= '0' && *q <= '9') {
-                int index = 0;
-                while (*q >= '0' && *q <= '9')
-                    index = index * 10 + (*q - '0'), q++;
-                if (*q == '}') {
-                    const char *arg = index + 1 < input_count
-                                        ? fmt_text_of(&inputs[index + 1])
-                                        : NULL;
-                    if (arg) fmt_write_text(&w, arg);
-                    p = q + 1;
-                    continue;
-                }
-            }
-        }
-        *w++ = *p++;
+    int nargs = input_count - 1;
+    if (nargs > FMT_TEXT_MAX_ARGS) nargs = FMT_TEXT_MAX_ARGS;
+
+    /* Every argument renders to a string first (fmt's _fc type dispatch
+     * cannot see pin_value's runtime type), so all placeholders are %s. The
+     * copies live in the arena: pin_value_to_string's ring is only eight
+     * slots and up to twelve arguments would clobber each other. */
+    const char *args[FMT_TEXT_MAX_ARGS] = { 0 };
+    for (int i = 0; i < nargs; i++) {
+        args[i] = fmt_arena_strdup(a, fmt_text_of(&inputs[i + 1]));
+        if (!args[i]) return r; /* OOM: bail with an empty result */
     }
-    *w = '\0';
-    r.str = out;
+    const char *specs[FMT_TEXT_MAX_ARGS] = { 0 };
+    for (int i = 0; i < nargs; i++) specs[i] = "s";
+
+    /* The fmt rewrite grows each placeholder by at most a few characters;
+     * the fork sizes its scratch at len + nargs*8 + 1. */
+    char *rewritten = arena_alloc(a, strlen(format) + (size_t)nargs * 8 + 1);
+    if (!rewritten) return r;
+    (void)_fmt_parse(rewritten, nargs, format, specs);
+
+    fmt_stream ss = { 0 };
+    _fmt_sprint(
+        &ss,
+        rewritten,
+        args[0],
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+        args[5],
+        args[6],
+        args[7],
+        args[8],
+        args[9],
+        args[10],
+        args[11]
+    );
+    if (ss.data) {
+        char *out = fmt_arena_strdup(a, ss.data);
+        fmt_close(&ss);
+        if (out) r.str = out;
+    }
     return r;
 }
 

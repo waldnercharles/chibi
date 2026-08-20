@@ -3329,6 +3329,19 @@ int main(int argc, char **argv)
             fmt,
             0,
             0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "|{:>8}|" }
+        );
+        graph_eval_reset(&gf);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "|      42|") == 0,
+            "CAT-38: {:>8} applies printf alignment to an argument"
+        );
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "a{{b}}c" }
         );
         graph_eval_reset(&gf);

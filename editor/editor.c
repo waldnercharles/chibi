@@ -1,5 +1,6 @@
 #include "editor.h"
 
+#include "../core/conv_nodes.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
 #include "eval_view.h"
@@ -36,6 +37,7 @@ extern const size_t editor_nerd_symbols_font_size;
 #define ED_TOAST_ICON 18.0f
 #define ED_TOAST_GAP 8.0f
 #define ED_TOAST_CLOSE 20.0f
+#define ED_TOAST_ACTION 22.0f
 #define ED_TOAST_DURATION 4.0
 #define ED_TOAST_FADE 0.4
 
@@ -167,6 +169,11 @@ struct editor
     char connect_error[ED_LOG_MESSAGE];
     ImVec2 connect_error_pos;
     double connect_error_until;
+    /* UI-22: the connect-error toast carries an accepted conversion offer. */
+    int connect_offer;
+    const node_desc *connect_offer_desc;
+    ed_pin_view connect_from;
+    ed_pin_view connect_to;
     blueprint_variable *selected_variable;
     int details_history_open;
     char details_title[256];
@@ -436,7 +443,15 @@ static void ed_draw_centered_icon(
 
 static int ed_point_in_rect(ImVec2 p, ImVec2 min, ImVec2 max);
 
-static int ed_connect_error_rect(const editor *e, ImVec2 *min, ImVec2 *max, ImVec2 *close_min, ImVec2 *close_max)
+static int ed_connect_error_rect(
+    const editor *e,
+    ImVec2 *min,
+    ImVec2 *max,
+    ImVec2 *close_min,
+    ImVec2 *close_max,
+    ImVec2 *action_min,
+    ImVec2 *action_max
+)
 {
     if (!e->connect_error[0] || e->monotonic_time >= e->connect_error_until + ED_TOAST_FADE)
         return 0;
@@ -449,6 +464,7 @@ static int ed_connect_error_rect(const editor *e, ImVec2 *min, ImVec2 *max, ImVe
                             .y;
     float height = ED_TOAST_PAD * 2.0f;
     height += text_height > ED_TOAST_ICON ? text_height : ED_TOAST_ICON;
+    if (e->connect_offer) height += ED_TOAST_GAP + ED_TOAST_ACTION;
     ImVec2 canvas_max = ed_add(e->canvas_min, e->canvas_size);
     ImVec2 pos = ed_add(e->connect_error_pos, (ImVec2){ 12.0f, 12.0f });
     if (pos.x + width > canvas_max.x) pos.x = canvas_max.x - width;
@@ -460,7 +476,21 @@ static int ed_connect_error_rect(const editor *e, ImVec2 *min, ImVec2 *max, ImVe
     *close_min = (ImVec2){ max->x - ED_TOAST_PAD - ED_TOAST_CLOSE,
                            min->y + ED_TOAST_PAD };
     *close_max = (ImVec2){ max->x - ED_TOAST_PAD, close_min->y + ED_TOAST_CLOSE };
+    if (action_min && action_max) {
+        if (e->connect_offer) {
+            float action_y = max->y - ED_TOAST_PAD - ED_TOAST_ACTION;
+            *action_min = (ImVec2){ min->x + ED_TOAST_PAD, action_y };
+            *action_max = (ImVec2){ max->x - ED_TOAST_PAD, action_y + ED_TOAST_ACTION };
+        } else *action_min = *action_max = (ImVec2){ 0.0f, 0.0f };
+    }
     return 1;
+}
+
+static void ed_clear_connect_error(editor *e)
+{
+    e->connect_error[0] = '\0';
+    e->connect_offer = 0;
+    e->connect_offer_desc = NULL;
 }
 
 static int ed_connect_error_alpha(const editor *e)
@@ -474,8 +504,9 @@ static int ed_connect_error_alpha(const editor *e)
 
 static void ed_draw_connect_error(const editor *e)
 {
-    ImVec2 min, max, close_min, close_max;
-    if (!ed_connect_error_rect(e, &min, &max, &close_min, &close_max)) return;
+    ImVec2 min, max, close_min, close_max, action_min, action_max;
+    if (!ed_connect_error_rect(e, &min, &max, &close_min, &close_max, &action_min, &action_max))
+        return;
     int alpha = ed_connect_error_alpha(e);
     if (!alpha) return;
     ImDrawList *dl = ImGui_GetWindowDrawList();
@@ -540,6 +571,28 @@ static void ed_draw_connect_error(const editor *e)
             ed_add(close_max, (ImVec2){ -5.0f, -ED_TOAST_CLOSE + 5.0f }),
             close_color,
             close_hovered ? 2.5f : 2.0f
+        );
+    }
+    if (e->connect_offer && e->connect_offer_desc) {
+        char label[64];
+        snprintf(label, sizeof label, "Insert %s", e->connect_offer_desc->name);
+        int action_hovered = ed_point_in_rect(ImGui_GetIO()->MousePos, action_min, action_max);
+        if (action_hovered) ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
+        ImDrawList_AddRectFilledEx(
+            dl,
+            action_min,
+            action_max,
+            IM_COL32(46, 170, 96, action_hovered ? (int)(alpha * 0.92f) : (int)(alpha * 0.72f)),
+            4.0f,
+            ImDrawFlags_RoundCornersAll
+        );
+        ImVec2 text_size = ImGui_CalcTextSizeEx(label, NULL, false, 0.0f);
+        ImDrawList_AddText(
+            dl,
+            (ImVec2){ action_min.x + (action_max.x - action_min.x - text_size.x) * 0.5f,
+                      action_min.y + (action_max.y - action_min.y - text_size.y) * 0.5f },
+            IM_COL32(235, 255, 242, alpha),
+            label
         );
     }
     ImDrawList_PopClipRect(dl);
@@ -1156,7 +1209,7 @@ static ImVec2 ed_view_center_world(const editor *e)
 
 static void ed_show_error(editor *e, const char *message)
 {
-    e->connect_error[0] = '\0';
+    ed_clear_connect_error(e);
     snprintf(e->connect_error, sizeof e->connect_error, "%s", message ? message : "error");
     e->connect_error_pos = ImGui_GetIO()->MousePos;
     e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
@@ -1988,7 +2041,7 @@ static void ed_update_drag(editor *e, ImVec2 mouse)
 static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
     ed_begin_authoring_edit(e);
-    e->connect_error[0] = '\0';
+    ed_clear_connect_error(e);
     const ed_pin_view *output = a->kind == ED_PIN_OUTPUT ? a : b;
     const ed_pin_view *input = a->kind == ED_PIN_INPUT ? a : b;
     if (output->kind != ED_PIN_OUTPUT || input->kind != ED_PIN_INPUT) return 0;
@@ -2004,6 +2057,15 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     if (out_spec->kind == PIN_DATA && !pin_types_compatible(out_spec, in_spec)) {
         snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
         e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
+        /* UI-22: where TYPE-7 permits, offer the insertion in the toast. A
+         * lossy pair (Real to Integer) has no node and no offer. */
+        const node_desc *conv = conversion_for(out_spec->type, in_spec->type);
+        if (conv) {
+            e->connect_offer = 1;
+            e->connect_offer_desc = conv;
+            e->connect_from = *output;
+            e->connect_to = *input;
+        }
         return 0;
     }
     if (out_spec->kind == PIN_EXEC) {
@@ -2025,6 +2087,35 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                input->n,
                input->index
            ) == 0;
+}
+
+/* UI-22: accepted conversion offer from the connect-error toast. Insert the
+ * node between the two pins, retype its input to the source type (PIN-3),
+ * wire source -> conversion -> target, and select it so the user sees the
+ * inserted node. Undo captures the whole insertion as one edit. */
+static void ed_insert_conversion(editor *e)
+{
+    if (!e->connect_offer || !e->connect_offer_desc) return;
+    const ed_pin_view *src = &e->connect_from;
+    const ed_pin_view *dst = &e->connect_to;
+    const pin_spec *out = &src->n->output_pins[src->index];
+    ed_begin_authoring_edit(e);
+    e->pending_snapshot = ed_snapshot(e);
+    node *conv = graph_add_node(e->bp->graph, e->connect_offer_desc);
+    int ok = conv &&
+             graph_set_pin_type(e->bp->graph, conv, 0, 0, out->type, pin_type_name(out->type)) ==
+                 0 &&
+             graph_connect_data(e->bp->graph, src->n, src->index, conv, 0) == 0 &&
+             graph_connect_data(e->bp->graph, conv, 0, dst->n, dst->index) == 0;
+    if (!ok) {
+        ed_cancel_snapshot(e);
+        return;
+    }
+    conv->x = (src->n->x + dst->n->x) * 0.5f;
+    conv->y = (src->n->y + dst->n->y) * 0.5f - 24.0f;
+    ed_commit_snapshot(e);
+    ed_select_node(e, conv, 0);
+    ed_clear_connect_error(e);
 }
 
 #define ED_SEARCH_MAX 128
@@ -2606,7 +2697,7 @@ static void ed_handle_input(editor *e)
         e->link_mouse = mouse;
         if (ImGui_IsKeyPressed(ImGuiKey_Escape)) {
             ed_cancel_snapshot(e);
-            e->connect_error[0] = '\0';
+            ed_clear_connect_error(e);
             e->linking = 0;
             return;
         }
@@ -2614,7 +2705,7 @@ static void ed_handle_input(editor *e)
             ed_pin_view *target = ed_hit_pin(e, mouse);
             if (target && target->n != e->link_pin.n &&
                 ed_connect(e, &e->link_pin, target)) {
-                e->connect_error[0] = '\0';
+                ed_clear_connect_error(e);
                 ed_commit_snapshot(e);
                 e->linking = 0;
             } else if (!target) {
@@ -2634,15 +2725,18 @@ static void ed_handle_input(editor *e)
         return;
     }
     if (e->connect_error[0] && ImGui_IsKeyPressed(ImGuiKey_Escape)) {
-        e->connect_error[0] = '\0';
+        ed_clear_connect_error(e);
         return;
     }
     if (e->connect_error[0] && mouse_clicked) {
-        ImVec2 min, max, close_min, close_max;
-        if (ed_connect_error_rect(e, &min, &max, &close_min, &close_max) &&
+        ImVec2 min, max, close_min, close_max, action_min, action_max;
+        if (ed_connect_error_rect(e, &min, &max, &close_min, &close_max, &action_min, &action_max) &&
             ed_point_in_rect(mouse, min, max)) {
-            if (ed_point_in_rect(mouse, close_min, close_max))
-                e->connect_error[0] = '\0';
+            /* UI-22: the accept button inserts the offered conversion. */
+            if (e->connect_offer && ed_point_in_rect(mouse, action_min, action_max))
+                ed_insert_conversion(e);
+            else if (ed_point_in_rect(mouse, close_min, close_max))
+                ed_clear_connect_error(e);
             return;
         }
     }
@@ -2710,7 +2804,7 @@ static void ed_handle_input(editor *e)
         ed_select_node(e, pin->n, ed_selection_modifier(io));
         ed_begin_authoring_edit(e);
         e->linking = 1;
-        e->connect_error[0] = '\0';
+        ed_clear_connect_error(e);
         e->link_pin = *pin;
         e->link_mouse = mouse;
         e->pending_snapshot = ed_snapshot(e);
@@ -2806,7 +2900,7 @@ void editor_tick(editor *e, double monotonic_time)
     if (!e) return;
     e->monotonic_time = monotonic_time;
     if (e->connect_error[0] && monotonic_time >= e->connect_error_until + ED_TOAST_FADE)
-        e->connect_error[0] = '\0';
+        ed_clear_connect_error(e);
     if (e->instance) (void)blueprint_instance_tick(e->instance, monotonic_time);
 }
 

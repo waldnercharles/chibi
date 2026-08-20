@@ -23,6 +23,14 @@ enum
 extern double CF_SECONDS;
 typedef void CF_OnUpdateFn(void *user);
 
+typedef int CF_KeyButton;
+enum
+{
+    CF_KEY_SPACE = ' ',
+};
+bool cf_key_just_pressed(CF_KeyButton key);
+bool cf_key_just_released(CF_KeyButton key);
+
 CF_Result cf_make_app(
     const char *window_title,
     CF_DisplayID display_id,

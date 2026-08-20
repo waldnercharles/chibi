@@ -1,4 +1,5 @@
-#include "../core/graph.h"
+#include "../core/blueprint.h"
+#include "../core/instance.h"
 #include "../core/registry.h"
 #include "../editor/editor.h"
 #include "cute_host.h"
@@ -8,6 +9,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void demo_dispatch(blueprint_instance *bi, const char *name, flow_inputs inputs)
+{
+    flow_error error = { 0 };
+    (void)blueprint_instance_dispatch(bi, name, inputs, &error);
+}
 
 int main(int argc, char **argv)
 {
@@ -45,20 +52,61 @@ int main(int argc, char **argv)
 
     cf_app_init_imgui();
 
-    graph g;
-    graph_init(&g);
+    blueprint *bp = blueprint_new("DemoBlueprint");
     registry_validate();
-    editor *ed = editor_new(&g);
+    editor *ed = editor_new(bp);
 
     if (seed) {
-        if (flow_demo) demo_graph_seed_flow(&g);
-        else demo_graph_seed(&g);
+        if (flow_demo) demo_graph_seed_flow(bp->graph);
+        else demo_graph_seed(bp->graph);
     }
+
+    /* EVT-10 demo conventions: the host drives one preview instance and
+     * dispatches Begin() once per instance (re)creation, Tick(Real
+     * DeltaSeconds) once per frame, and Input(Name Action, Real Value, Bool
+     * Pressed) from the space key. None of these names are core lifecycle
+     * entries; dispatch fails silently when the authored graph has no such
+     * event. An authoring edit destroys the instance at the editor choke
+     * point (UI-56), so Begin() fires again when the instance is recreated. */
+    editor_preview_create(ed);
+    unsigned instance_gen = editor_preview_generation(ed);
+    double last_seconds = CF_SECONDS;
 
     int frame = 0;
     while (cf_app_is_running()) {
         cf_app_update(NULL);
-        editor_tick(ed, CF_SECONDS);
+        double seconds = CF_SECONDS;
+        editor_tick(ed, seconds);
+
+        blueprint_instance *bi = editor_preview_instance(ed);
+        if (bi) {
+            if (editor_preview_generation(ed) != instance_gen) {
+                instance_gen = editor_preview_generation(ed);
+                demo_dispatch(bi, "Begin", (flow_inputs){ 0 });
+            }
+            double delta = seconds - last_seconds;
+            if (delta > 0.0 && delta < 1.0) {
+                pin_value tick_params[] = { { .type = PIN_F64, .d = delta } };
+                demo_dispatch(bi, "Tick", (flow_inputs){ tick_params, 1, NULL });
+            }
+            if (cf_key_just_pressed(CF_KEY_SPACE)) {
+                pin_value input_params[] = {
+                    { .type = PIN_NAME, .str = "Jump" },
+                    { .type = PIN_F64, .d = 1.0 },
+                    { .type = PIN_BOOL, .b = true },
+                };
+                demo_dispatch(bi, "Input", (flow_inputs){ input_params, 3, NULL });
+            } else if (cf_key_just_released(CF_KEY_SPACE)) {
+                pin_value input_params[] = {
+                    { .type = PIN_NAME, .str = "Jump" },
+                    { .type = PIN_F64, .d = 0.0 },
+                    { .type = PIN_BOOL, .b = false },
+                };
+                demo_dispatch(bi, "Input", (flow_inputs){ input_params, 3, NULL });
+            }
+        }
+        last_seconds = seconds;
+
         editor_draw(ed);
         cf_app_draw_onto_screen(true);
 
@@ -66,7 +114,6 @@ int main(int argc, char **argv)
     }
 
     editor_free(ed);
-    graph_free(&g);
     cf_destroy_app();
     return 0;
 }

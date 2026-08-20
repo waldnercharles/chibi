@@ -58,6 +58,7 @@ extern "C"
         FLOW_ERR_INVALID_GRAPH = -106,
         FLOW_ERR_NODE = -107,
         FLOW_ERR_STATE = -108,
+        FLOW_ERR_COMPILE = -109, /* RUN-12: refused to start, compile errors */
     };
 
     typedef struct

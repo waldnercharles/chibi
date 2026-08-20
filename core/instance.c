@@ -16,6 +16,26 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
     if (error) *error = (flow_error){ code, n, -1, message, 0 };
 }
 
+/* RUN-12: refuse to start when the blueprint has compile errors, reporting
+ * the first blocking diagnostic (CMPL-16 order). The report is cached per
+ * instance and rebuilt whenever the topology revision moves, so it stays
+ * correct across edits. Messages point into the cached report and remain
+ * valid for the instance's lifetime. */
+static int instance_blocked(blueprint_instance *bi, flow_error *error)
+{
+    unsigned long long rev = graph_topology_revision(bi->bp->graph);
+    if (bi->compile_revision != rev) {
+        compile_report_free(&bi->compile);
+        compile_report_init(&bi->compile);
+        blueprint_compile(bi->bp, &bi->compile);
+        bi->compile_revision = rev;
+    }
+    if (!compile_report_blocked(&bi->compile)) return 0;
+    const compile_diagnostic *d = compile_report_first_error(&bi->compile);
+    set_error(error, FLOW_ERR_COMPILE, graph_node_by_id(bi->bp->graph, d->node_id), d->message);
+    return 1;
+}
+
 static char *instance_own_str(blueprint_instance *bi, const char *s)
 {
     if (!s) return NULL;
@@ -56,6 +76,7 @@ blueprint_instance *blueprint_instance_create(
     bi->bp = bp;
     bi->now = now;
     bi->now_user = now_user;
+    compile_report_init(&bi->compile);
     int n = acount(bp->variables);
     if (n) {
         bi->variables = (pin_value *)xcalloc((size_t)n, sizeof *bi->variables);
@@ -92,6 +113,7 @@ void blueprint_instance_destroy(blueprint_instance *bi)
     afree(bi->scratch);
     for (int i = 0; i < acount(bi->strings); i++) free(bi->strings[i]);
     afree(bi->strings);
+    compile_report_free(&bi->compile);
     graph_flow_resume(bi->bp->graph);
     free(bi);
 }
@@ -102,6 +124,8 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
         set_error(error, FLOW_ERR_ARGUMENT, entry, "invalid activation entry");
         return NULL;
     }
+    /* RUN-12: refuse against compile errors before any activation starts. */
+    if (instance_blocked(bi, error)) return NULL;
     flow_options opts = {
         .now = bi->now,
         .now_user = bi->now_user,
@@ -144,6 +168,10 @@ flow_run *blueprint_instance_dispatch(
         set_error(error, FLOW_ERR_UNKNOWN_EVENT, NULL, "unknown event name");
         return NULL;
     }
+    /* RUN-12: checked after event lookup so unknown and duplicate dispatch
+     * failures keep their distinct codes (EVT-7); a valid event on a broken
+     * blueprint reports the first blocking diagnostic. */
+    if (instance_blocked(bi, error)) return NULL;
     flow_run *act = blueprint_instance_enqueue(bi, found, inputs, error);
     if (!act) return NULL;
     scheduler_pump(bi);

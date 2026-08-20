@@ -2,6 +2,7 @@
 #define CBLUEPRINT_INSTANCE_H
 
 #include "blueprint.h"
+#include "compile.h"
 #include "flow.h"
 
 #include <stdint.h>
@@ -30,6 +31,12 @@ struct blueprint_instance
     flow_sink_fn sink;
     void *sink_user;
     flow_run **activations; /* scheduler queue, FIFO by dispatch sequence */
+
+    /* RUN-12: cached compile report, rebuilt whenever the topology revision
+     * moves. Any error refuses every dispatch/enqueue start. The report's
+     * message strings stay valid for the instance's lifetime. */
+    compile_report compile;
+    unsigned long long compile_revision;
 };
 
 /* Create an instance and acquire the definition's mutation guard (EXEC-19,

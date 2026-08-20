@@ -50,8 +50,8 @@ blueprint_variable *blueprint_add_variable(
     const pin_value *default_value,
     const char *category
 );
-blueprint_variable *blueprint_find_variable_by_name(blueprint *bp, const char *name);
-blueprint_variable *blueprint_find_variable_by_id(blueprint *bp, uint64_t id);
+blueprint_variable *blueprint_find_variable_by_name(const blueprint *bp, const char *name);
+blueprint_variable *blueprint_find_variable_by_id(const blueprint *bp, uint64_t id);
 
 /* VAR-5: rename/retype update every referencing Get/Set node's display and
  * pin type without rewriting references. Retype invalidates edges that are no

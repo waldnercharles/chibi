@@ -99,7 +99,7 @@ blueprint_variable *blueprint_add_variable(
     return &bp->variables[acount(bp->variables) - 1];
 }
 
-blueprint_variable *blueprint_find_variable_by_name(blueprint *bp, const char *name)
+blueprint_variable *blueprint_find_variable_by_name(const blueprint *bp, const char *name)
 {
     if (!bp || !name) return NULL;
     for (int i = 0; i < acount(bp->variables); i++)
@@ -107,7 +107,7 @@ blueprint_variable *blueprint_find_variable_by_name(blueprint *bp, const char *n
     return NULL;
 }
 
-blueprint_variable *blueprint_find_variable_by_id(blueprint *bp, uint64_t id)
+blueprint_variable *blueprint_find_variable_by_id(const blueprint *bp, uint64_t id)
 {
     if (!bp) return NULL;
     for (int i = 0; i < acount(bp->variables); i++)

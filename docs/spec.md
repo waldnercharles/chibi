@@ -61,7 +61,7 @@ reflection APIs, never folded into core.
 
 `SCOPE-1` Core (graph, types, evaluation, execution, serialization, compile)
 MUST NOT include any host, windowing, rendering, or ECS header. The only
-runtime dependencies are libc and the vendored yyjson.
+runtime dependencies are libc and vendored third-party sources (yyjson, fmt).
 
 `SCOPE-2` Core MUST be usable headlessly. Every behavior in this document
 except the `UI` section MUST be reachable and testable without creating a
@@ -1267,7 +1267,7 @@ edges: only `editor` and `app` link the host.
 
 `core/` holds the node descriptor, pin model, type descriptors, graph storage,
 data evaluation, imperative execution, built-in node descriptors, the compile
-pass, and serialization. Depends on libc and vendored yyjson only.
+pass, and serialization. Depends on libc and vendored yyjson and fmt only.
 
 `reflect/` holds the build-time libclang tool. Depends on libclang, and nothing
 at runtime depends on it.
@@ -1284,8 +1284,8 @@ evaluation view. Depends on `core` and the host.
 `test/` holds `self_check.c`, which links `core` and `demo` and never creates a
 window, per `SCOPE-2`.
 
-`third_party/` holds vendored dependencies: yyjson for JSON and debugbreak for
-debugger breakpoints.
+`third_party/` holds vendored dependencies: yyjson for JSON, debugbreak for
+debugger breakpoints, and fmt for Format Text string formatting.
 
 ## Deferred
 

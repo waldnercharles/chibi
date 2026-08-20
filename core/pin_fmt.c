@@ -35,8 +35,23 @@ const char *pin_value_to_string(const pin_value *v)
             break;
         case PIN_F32: snprintf(buf, PIN_FMT_CAP, "%g", (double)v->f); break;
         case PIN_F64: snprintf(buf, PIN_FMT_CAP, "%g", v->d); break;
+        case PIN_NAME:
+            snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
+            break;
         case PIN_STR:
             snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
+            break;
+        case PIN_HANDLE:
+            if (v->type_name)
+                snprintf(
+                    buf,
+                    PIN_FMT_CAP,
+                    "%s(%llu)",
+                    v->type_name,
+                    (unsigned long long)v->u64
+                );
+            else
+                snprintf(buf, PIN_FMT_CAP, "handle(%llu)", (unsigned long long)v->u64);
             break;
         case PIN_STRUCT:
             snprintf(buf, PIN_FMT_CAP, "%s", v->type_name ? v->type_name : "struct");

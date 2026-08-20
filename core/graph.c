@@ -59,7 +59,7 @@ static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
     dst->id = graph_alloc_id(g);
     dst->default_value.type = dst->type;
     dst->default_value.type_name = dst->type_name;
-    if (dst->type == PIN_STR && !dst->default_value.str)
+    if ((dst->type == PIN_STR || dst->type == PIN_NAME) && !dst->default_value.str)
         dst->default_value.str = "";
 }
 
@@ -416,7 +416,7 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
         return -1;
     p[index].default_value = *value;
     p[index].default_value.type_name = p[index].type_name;
-    if (value->type == PIN_STR && value->str) {
+    if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
         char *s = graph_own_str(g, value->str, strlen(value->str));
         if (!s) return -1;
         p[index].default_value.str = s;

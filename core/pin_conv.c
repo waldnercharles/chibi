@@ -8,7 +8,7 @@ int pin_compatible(const pin_spec *a, const pin_spec *b)
     int real = (a->type == PIN_F32 || a->type == PIN_F64) &&
                (b->type == PIN_F32 || b->type == PIN_F64);
     if (!real && a->type != b->type) return 0;
-    if (a->type == PIN_STRUCT || a->type == PIN_ENUM)
+    if (a->type == PIN_STRUCT || a->type == PIN_ENUM || a->type == PIN_HANDLE)
         return a->type_name && b->type_name && strcmp(a->type_name, b->type_name) == 0;
     return 1;
 }

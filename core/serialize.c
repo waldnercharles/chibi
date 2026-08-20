@@ -45,6 +45,7 @@ static void write_const(
         case PIN_F32: value = yyjson_mut_real(doc, v->f); break;
         case PIN_F64: value = yyjson_mut_real(doc, v->d); break;
         case PIN_ENUM: value = yyjson_mut_sint(doc, v->e); break;
+        case PIN_NAME:
         case PIN_STR:
             value = yyjson_mut_strcpy(doc, v->str ? v->str : "");
             break;
@@ -74,7 +75,8 @@ static void write_const(
             }
             if (!value) value = yyjson_mut_null(doc);
             break;
-        case PIN_FLOW: value = yyjson_mut_null(doc); break;
+        case PIN_FLOW:
+        case PIN_HANDLE: value = yyjson_mut_null(doc); break;
     }
     if (value) yyjson_mut_obj_add(obj, yyjson_mut_strcpy(doc, key), value);
 }
@@ -166,6 +168,7 @@ static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
                 out->e = (int32_t)yyjson_get_uint(v);
             else return -1;
             break;
+        case PIN_NAME:
         case PIN_STR:
             if (!yyjson_is_str(v)) return -1;
             out->str = graph_own_str(g, yyjson_get_str(v), yyjson_get_len(v));
@@ -173,6 +176,7 @@ static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
             break;
         case PIN_STRUCT:
         case PIN_FLOW:
+        case PIN_HANDLE:
             if (!yyjson_is_null(v)) return -1;
             break;
     }

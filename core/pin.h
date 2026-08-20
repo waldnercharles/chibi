@@ -20,7 +20,9 @@
     X(PIN_U64, "uint64")                                                       \
     X(PIN_F32, "float")                                                        \
     X(PIN_F64, "double")                                                       \
+    X(PIN_NAME, "name")                                                        \
     X(PIN_STR, "const char *")                                                 \
+    X(PIN_HANDLE, "handle")                                                    \
     X(PIN_STRUCT, "struct")                                                    \
     X(PIN_ENUM, "enum")
 

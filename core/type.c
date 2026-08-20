@@ -17,7 +17,9 @@ void pin_write_field(void *base, const type_field *f, pin_value v)
         case PIN_U64: *(uint64_t *)dst = v.u64; break;
         case PIN_F32: *(float *)dst = v.f; break;
         case PIN_F64: *(double *)dst = v.d; break;
+        case PIN_NAME: *(const char **)dst = v.str; break;
         case PIN_STR: *(const char **)dst = v.str; break;
+        case PIN_HANDLE: *(uint64_t *)dst = v.u64; break;
         case PIN_ENUM:
             memcpy(dst, &v.e, f->size < sizeof v.e ? f->size : sizeof v.e);
             break;
@@ -45,7 +47,9 @@ void pin_read_field(const void *base, const type_field *f, pin_value *out)
         case PIN_U64: out->u64 = *(const uint64_t *)src; break;
         case PIN_F32: out->f = *(const float *)src; break;
         case PIN_F64: out->d = *(const double *)src; break;
+        case PIN_NAME: out->str = *(const char *const *)src; break;
         case PIN_STR: out->str = *(const char *const *)src; break;
+        case PIN_HANDLE: out->u64 = *(const uint64_t *)src; break;
         case PIN_ENUM: {
             out->e = 0;
             memcpy(&out->e, src, f->size < sizeof out->e ? f->size : sizeof out->e);

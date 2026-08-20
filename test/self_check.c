@@ -3290,6 +3290,31 @@ int main(int argc, char **argv)
             "CAT-38: a Real through To String formats identically to its pin "
             "display"
         );
+        /* The reported crash: an argument pin retyped to a scalar (or driven
+         * by one) must render via UI-39 instead of trusting .str. */
+        graph_set_pin_type(&gf, fmt, 0, 1, PIN_I32, "int");
+        node *ival2 = graph_add_node(&gf, registry_node_by_name("Integer"));
+        graph_set_pin_default(
+            &gf,
+            ival2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 }
+        );
+        graph_connect(&gf, ival2, 0, fmt, 1);
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "n={0}" }
+        );
+        graph_eval_reset(&gf);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "n=42") == 0,
+            "CAT-38: a non-string argument renders like its pin display"
+        );
         check(
             graph_remove_pin(&gf, fmt, 0, 1) == 0 && fmt->input_count == 1,
             "CAT-38: removing an argument pin restores the one-input group"

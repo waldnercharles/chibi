@@ -128,10 +128,13 @@ static int to_string_source(pin_type t)
 }
 
 /* TYPE-7: integer to float, integer widening within one signedness, and any
- * scalar to string. Real to Integer is lossy and deliberately absent. */
+ * scalar to string. Real to Integer is lossy and deliberately absent.
+ * TYPE-10 makes F32 and F64 one Real category, so an integer feeds either
+ * width through To Real; the output is F64 and the boundary coerces it. */
 const node_desc *conversion_for(pin_type from, pin_type to)
 {
-    if ((from == PIN_U8 || from == PIN_I32 || from == PIN_I64) && to == PIN_F64)
+    int real_target = to == PIN_F32 || to == PIN_F64;
+    if ((from == PIN_U8 || from == PIN_I32 || from == PIN_I64) && real_target)
         return &NODE_To_Real;
     if (from == PIN_I32 && to == PIN_I64) return &NODE_To_Integer64;
     if (to_string_source(from) && to == PIN_STR) return &NODE_To_String;

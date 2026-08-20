@@ -3043,8 +3043,12 @@ int main(int argc, char **argv)
                 registry_node_by_name("Format Text"),
             "CAT-26: conversion and Format Text nodes are registered"
         );
-        check(conversion_for(PIN_I32, PIN_F64) == &NODE_To_Real, "TYPE-7: Integer to Real has an explicit conversion");
-        check(conversion_for(PIN_U8, PIN_F64) == &NODE_To_Real, "TYPE-7: Byte to Real has an explicit conversion");
+        check(
+            conversion_for(PIN_I32, PIN_F64) == &NODE_To_Real &&
+                conversion_for(PIN_I32, PIN_F32) == &NODE_To_Real &&
+                conversion_for(PIN_U8, PIN_F64) == &NODE_To_Real,
+            "TYPE-7: Integer and Byte to Real have an explicit conversion"
+        );
         check(conversion_for(PIN_I32, PIN_I64) == &NODE_To_Integer64, "TYPE-7: Integer widens to Integer64 within one signedness");
         check(conversion_for(PIN_I32, PIN_STR) == &NODE_To_String, "TYPE-7: Integer to String has an explicit conversion");
         check(conversion_for(PIN_F64, PIN_STR) == &NODE_To_String, "TYPE-7: Real to String has an explicit conversion");
@@ -3083,6 +3087,18 @@ int main(int argc, char **argv)
             graph_eval_output(&gc, to_real, 0, &ac, &out, &eval_ctx) == 0 &&
                 out.type == PIN_F64 && out.d == 42.0,
             "CAT-26: To Real converts Integer 42 to Real 42.0"
+        );
+
+        /* The reported case: an Integer onto a float input (add_floats). To
+         * Real offers, and its F64 output coerces to float at the boundary
+         * (TYPE-10). */
+        node *addf = graph_add_node(&gc, registry_node_by_name("add_floats"));
+        graph_connect(&gc, to_real, 0, addf, 0);
+        check(
+            graph_eval_output(&gc, addf, 0, &ac, &out, &eval_ctx) == 0 &&
+                out.type == PIN_F32 && out.f == 42.0f,
+            "CAT-26: Integer through To Real feeds a float input at the "
+            "boundary"
         );
 
         node *to_real_b = graph_add_node(&gc, &NODE_To_Real);

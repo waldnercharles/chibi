@@ -68,6 +68,10 @@ typedef struct ed_node_view
     float title_height;
     int input_first;
     int output_first;
+    /* Format Text "+" affordance for the extensible argument group
+     * (PIN-14); a zero rect on every other node. */
+    ImVec2 add_min;
+    ImVec2 add_max;
 } ed_node_view;
 
 typedef struct ed_pin_view
@@ -706,7 +710,9 @@ static void ed_build_layout(editor *e)
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         float row_height = line + 6.0f;
         float title_height = line + 2.0f * ED_TITLE_PAD;
+        int is_format_text = n->desc && strcmp(n->desc->name, "Format Text") == 0;
         float height = title_height + ED_PAD + rows * row_height + ED_PAD;
+        if (is_format_text) height += row_height;
         ImVec2 min = ed_world_to_screen(e, n->x, n->y);
 
         ImVec2 max = ed_add(min, ed_scale((ImVec2){ width, height }, e->zoom));
@@ -716,6 +722,15 @@ static void ed_build_layout(editor *e)
         v->min = min;
         v->max = max;
         v->title_height = title_height * e->zoom;
+        v->add_min = v->add_max = (ImVec2){ 0.0f, 0.0f };
+        if (is_format_text) {
+            float center_y = min.y + v->title_height +
+                             (ED_PAD + (rows + 0.5f) * row_height) * e->zoom;
+            float half = row_height * 0.5f * e->zoom;
+            float left_x = min.x + 2.0f * e->zoom;
+            v->add_min = (ImVec2){ left_x, center_y - half };
+            v->add_max = (ImVec2){ left_x + row_height * e->zoom, center_y + half };
+        }
         v->input_first = pin_at;
         for (int p = 0; p < n->input_count; p++) {
             float y = min.y + v->title_height +
@@ -1829,6 +1844,24 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
             }
         }
     }
+    if (v->add_min.x != v->add_max.x) {
+        int add_hovered = e->hovered_node == n &&
+                          ed_point_in_rect(ImGui_GetIO()->MousePos, v->add_min, v->add_max);
+        ImDrawList_AddRectFilledEx(
+            dl,
+            v->add_min,
+            v->add_max,
+            IM_COL32(70, 82, 98, add_hovered ? 235 : 165),
+            4.0f,
+            ImDrawFlags_RoundCornersAll
+        );
+        ImVec2 c = { (v->add_min.x + v->add_max.x) * 0.5f,
+                     (v->add_min.y + v->add_max.y) * 0.5f };
+        float l = (v->add_max.y - v->add_min.y) * 0.25f;
+        ImU32 plus = IM_COL32(215, 225, 240, add_hovered ? 255 : 200);
+        ImDrawList_AddLineEx(dl, (ImVec2){ c.x - l, c.y }, (ImVec2){ c.x + l, c.y }, plus, 1.6f);
+        ImDrawList_AddLineEx(dl, (ImVec2){ c.x, c.y - l }, (ImVec2){ c.x, c.y + l }, plus, 1.6f);
+    }
 }
 
 static void ed_draw_canvas(editor *e)
@@ -2884,6 +2917,18 @@ static void ed_handle_input(editor *e)
     }
     ed_node_view *v = ed_hit_node(e, mouse);
     if (v) {
+        /* UI-24: the on-node "+" adds the next argument of an extensible
+         * group where the pin count is being read. */
+        if (v->add_min.x != v->add_max.x &&
+            ed_point_in_rect(mouse, v->add_min, v->add_max)) {
+            ed_select_node(e, v->n, 0);
+            char name[32];
+            snprintf(name, sizeof name, "Arg%d", v->n->input_count - 1);
+            pin_spec pin = { name, PIN_STR, "const char *", PIN_DATA };
+            ed_snapshot_before(e);
+            graph_add_pin(e->bp->graph, v->n, 0, &pin);
+            return;
+        }
         int append = ed_selection_modifier(io);
         int already_selected = ed_node_selected(e, v->n);
         e->front_node = v->n;

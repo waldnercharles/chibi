@@ -4,6 +4,13 @@ Phased plan from the current state to the parity target in `docs/spec.md`.
 Requirement IDs such as `RUN-4` refer to that document. Decisions are recorded
 in `docs/adr/`.
 
+`docs/ue5-event-graph-parity-audit.md` audits the catalog against UE 5.8.
+Section 0 is reconciled into the spec: the current order after the completed
+foundation is an event-driven vertical slice, Functions, Arrays, then
+Delegates. ADR 0011 replaces run-scoped behavior state with persistent
+Blueprint instances. The pre-audit phases remain at the end of this file only
+as historical implementation notes.
+
 ## Working agreement
 
 These rules exist because features were previously landed half-implemented: the
@@ -270,29 +277,29 @@ Acceptance criteria:
 - Manual: every existing editor operation still works, and node deletion no
   longer disturbs unrelated edges.
 
-## Phase 2b: Real types, literals, and connection feedback
+## Phase 2b: Real compatibility and connection feedback
 
-Goal: close three gaps that converge on one common action. Connecting a
-`const_f32` to a `Delay`'s Duration was refused, because Duration is `PIN_F64`,
-there is no `const_f64` to reach for instead, and nothing said why.
+Goal: close the two current editor gaps that converge on one common action.
+Connecting a `const_f32` to a `Delay`'s Duration was refused because Duration
+is `PIN_F64`, and the editor gave no reason. The inaccurate literal-completeness
+claim in `CAT-28` is withdrawn; corrected literals ship in Phase 3 under
+`CAT-30`.
 
 Small enough to run before the Phase 8 polish work.
 
 Estimate: 1 day.
 
-Covers: `TYPE-10`, `CAT-28`, `UI-22`, `UI-52`.
+Covers: `TYPE-10`, `UI-22`, `UI-52`.
 
 Deliverables:
 
 1. `PIN_F32` and `PIN_F64` become one Real category for connection purposes,
    converting at the boundary, with one shared Real colour. Integer widths stay
    distinct. `TYPE-10`.
-2. The literal node set becomes Bool, Byte, Integer, Integer64, Real, and
-   String, matching Unreal. `CAT-28`.
-3. A rejected connection says why at the cursor, naming both pin types.
+2. A rejected connection says why at the cursor, naming both pin types.
    `UI-22`. Moved here from Phase 3, because until it exists every type
    mismatch presents as a silent failure.
-4. Canvas shortcuts stop being suppressed by any active widget. `UI-52`.
+3. Canvas shortcuts stop being suppressed by any active widget. `UI-52`.
    `ed_handle_shortcuts()` returned early on `ImGui_IsAnyItemActive()`, so a
    focused inline pin field killed copy, paste, cut, duplicate, undo and
    delete at once. It surfaced as a bug report about copy and paste failing on
@@ -305,15 +312,242 @@ Acceptance criteria:
   same colour.
 - `TYPE-6`: an Integer output still refuses an Integer64 input, so unifying Real
   did not loosen integer widths.
-- `CAT-28`: every literal in the set spawns, holds an authored value, and
-  round-trips through save and load.
 - Manual `UI-22`: dragging a String output onto an Integer input states both
   type names and does not connect.
-- Manual `UI-52`: with a ForLoop's FirstIndex field focused, Ctrl+C and Ctrl+V
-  still copy and paste the selected node, and Escape or a canvas click releases
-  the field.
+- Manual `UI-52`: a focused text-entry field has a visible yellow outline and
+  owns Ctrl+C and Ctrl+V. Escape or a canvas click releases it; the same
+  shortcuts then copy and paste the selected node. Activating a non-text widget
+  does not suppress canvas shortcuts.
 
-## Phase 3: details panel, events with parameters, diagnostics
+## Phase 3: event-driven vertical slice
+
+Goal: a consumer creates a persistent Blueprint instance, dispatches authored
+events, and observes stateful behavior through reflected host calls. This is
+one end-to-end slice, not a catalog batch.
+
+Estimate: split before implementation. Runtime-instance scheduling and
+reflection v2 require separate commits, each with headless acceptance checks.
+
+Covers: `SCOPE-4`, `SCOPE-5`, `TYPE-11` through `TYPE-14`, `PIN-17`, `NODE-13`,
+`VAR-1`, `VAR-3` through `VAR-7`, `VAR-10`, `VAR-11`, `BP-1`, `BP-8`, `BP-12`,
+`BP-13`, `EVT-1` through `EVT-7`, `EVT-9` through `EVT-11`, `EXEC-15` through
+`EXEC-19`, `RUN-1` through `RUN-4`, `RUN-10`, `RUN-12`, `RUN-13`, `RUN-15`
+through `RUN-20`, `CAT-2`, `CAT-3`, `CAT-18`, `CAT-20`, `CAT-23`, `CAT-27`,
+`CAT-29`, `CAT-30`, `CAT-32`, `CAT-33`, `CMPL-1` through `CMPL-8`, `CMPL-12`,
+`CMPL-16` through `CMPL-20`, `FMT-2`, `FMT-16` through `FMT-18`, `UI-1`
+through `UI-9`, `UI-17` through `UI-19`, `UI-22` through `UI-24`, `UI-29`,
+`UI-30`, `UI-42`, `UI-43`, `UI-53` through `UI-56`, `REFL-9` through
+`REFL-14`.
+
+Runtime and language deliverables:
+
+1. Introduce the minimal Blueprint definition and `blueprint_instance` needed
+   for one default Event Graph, authored defaults, optional owner type, and
+   independent runtime state. `BP-1`, `BP-8`, `BP-12`, `BP-13`, `VAR-11`,
+   `RUN-15`.
+2. Replace one-run behavior lifetime with an instance scheduler and separate
+   event activations. Instance variables and node scratch persist; stacks,
+   temporaries, memo, errors, watches, and latent state stay activation-local.
+   `EXEC-15` through `EXEC-19`, `RUN-16` through `RUN-20`.
+3. Make Event and Call Event fully authorable with generic typed signatures.
+   Core assigns no lifecycle names. `EVT-1` through `EVT-7`, `EVT-9`,
+   `EVT-11`.
+4. Add `PIN_NAME`, nominal `PIN_HANDLE`, optional typed Self, and corrected
+   Bool, Byte, Integer, Integer64, Real, Name, and String literal nodes.
+   `TYPE-11` through `TYPE-13`, `CAT-30`, `CAT-32`.
+
+Reflection and editor deliverables:
+
+1. Land reflection v2: explicit `NODE_FN` and `NODE_EXEC`, explicit output
+   parameters, generated service types and binding helpers, stable service
+   pins, borrowed activation snapshots, and structured missing-service errors.
+   `PIN-17`, `REFL-9` through `REFL-14`.
+2. Generate the operator signature table and resolve Add, Subtract, Multiply,
+   Divide, equality, ordering, And, Or, and Not through exact signatures and
+   the UE-facing widening ladder. `TYPE-14`, `CAT-33`, `CMPL-19`.
+3. Finish details, tree, compiler, output-log, event-signature, owner-type, and
+   preview-instance surfaces required by `UI-1`. Runtime state remains absent
+   from JSON and undo, and the edit choke point tears down the preview instance
+   before mutation. `FMT-16` through `FMT-18`, `UI-1` through `UI-9`, `UI-17`,
+   `UI-18`, `UI-53` through `UI-56`.
+4. Use demo conventions `Begin()`, `Tick(Real DeltaSeconds)`, and
+   `Input(Name Action, Real Value, Bool Pressed)` without registering mandatory
+   core lifecycle entries. `EVT-10`.
+
+Runtime acceptance:
+
+- Begin initializes one instance's variables once. Later Tick and Input events
+  read and write the same state. `VAR-11`, `EVT-10`.
+- A Delay can suspend while later Tick or Input activations execute. The
+  scheduler's activation order is deterministic across repeated runs.
+  `EXEC-17`, `CAT-18`.
+- Two instances of one definition share no owner, variable, scratch, service,
+  activation, error, step-count, or watch state. `RUN-18`.
+- Stopping one activation preserves instance variables and scratch. Destroying
+  the instance cancels every activation and releases both. `RUN-15`, `RUN-17`.
+- Pure reflected calls never execute as side effects during preview. An
+  executable reflected call never runs without an exec activation. `NODE-13`,
+  `REFL-9`.
+
+Generated and editor acceptance:
+
+- A connected service pin overrides injection. A bound unconnected pin may
+  hide. An unresolved pin reappears and execution reports its pin and service
+  type. `PIN-17`, `REFL-12`, `UI-53`.
+- Each literal has one Value input and one return output and round-trips its
+  authored value. Name spelling and the optional owner type round-trip exactly.
+  `CAT-30`, `FMT-16`, `FMT-17`.
+- A consumer adds a reflected operator signature without changing core. Exact
+  matches beat widening; ambiguous or absent candidates produce one blocking
+  diagnostic. `CAT-33`, `CMPL-19`, `REFL-13`.
+- Saving before and after execution is byte-identical for authored data. An
+  edit destroys the preview instance at the one choke point, releases its last
+  mutation guard, clears runtime state, and then succeeds. `FMT-16`, `EXEC-19`,
+  `RUN-19`, `RUN-20`, `UI-55`, `UI-56`.
+- Manual: the entire Begin/Tick/Input demo is authored in the editor without
+  JSON edits, and the preview distinguishes its instance from the selected
+  activation. `UI-1`, `UI-54`.
+
+## Phase 4: functions and multiple graphs
+
+Goal: behavior can be decomposed without growing one Event Graph indefinitely.
+Macros do not enter this phase.
+
+Estimate: 4 to 6 days after Phase 3 is stable.
+
+Covers: `VAR-13`, `BP-2` through `BP-6`, `FN-1` through `FN-6`, `NODE-7`,
+`EXEC-7`, `RUN-5`, `RUN-9`, `CMPL-7`, `CMPL-9`, `CMPL-10`, `UI-3`, `UI-4`,
+`UI-21`, `UI-30`, `UI-31`.
+
+Deliverables:
+
+1. Add function graphs, signature authoring, Return, and pure and executable
+   call nodes. `BP-2` through `BP-6`, `FN-1` through `FN-5`.
+2. Add per-call local variables, recursion limits, and structured call stacks.
+   `VAR-13`, `FN-4`, `FN-6`, `EXEC-7`, `RUN-9`.
+3. Add graph tabs, call navigation, find references, and Step Over. `RUN-5`,
+   `UI-21`, `UI-30`, `UI-31`.
+
+Acceptance criteria:
+
+- An executable function returns before its caller continues; a pure function
+  participates in pull evaluation and computes once per activation.
+- Two recursive calls keep distinct locals and fail at the configured depth
+  limit without using the C call stack.
+- A Delay in a function graph produces one blocking diagnostic.
+- Step Over pauses at the caller's next node and exposes a correct call stack.
+
+## Phase 5: Arrays and loops
+
+Goal: ship the most-used collection workflows before Set and Map key traits.
+
+Estimate: split by storage, wildcard typing, operations, then loops. Before
+code, fix per-type copy, destruction, and equality callbacks in a narrow ADR;
+Arrays do not require Set or Map hashing.
+
+Covers: `TYPE-5`, `TYPE-8`, `TYPE-9`, `PIN-11`, `VAR-12`, `CAT-5` through
+`CAT-7`, `CAT-34`, `DATA-8`, `CMPL-12` through `CMPL-14`, `UI-13`, `UI-14`.
+
+Deliverables:
+
+1. Add typed Array values with explicit copy, move, default, and destruction
+   rules. `TYPE-8`, `TYPE-9`.
+2. Add wildcard resolution and the complete deterministic operation set in
+   `VAR-12`. `PIN-11`, `CAT-34`, `CMPL-12`.
+3. Add ForEach, ForEach with Break, ForLoop with Break, and WhileLoop under the
+   existing step budget. `CAT-5` through `CAT-7`.
+4. Defer Shuffle, random-item, and typed Sort until their random-service and
+   ordering contracts are accepted.
+
+Acceptance criteria:
+
+- Every deterministic `VAR-12` operation is checked for empty, single-element,
+  multi-element, invalid-index, copy, and destruction behavior.
+- Disconnecting the last edge in a wildcard group returns the entire group to
+  unresolved; a connected unresolved group blocks compile.
+- ForEach over five structs delivers five copied values and indices zero to
+  four. The break variant stops at index two and runs Completed once.
+- The spawn menu filters array operations by the dragged element type.
+
+## Phase 6: delegates and event dispatchers
+
+Goal: typed communication between persistent Blueprint instances.
+
+Estimate: not set until the decision gate closes.
+
+Covers: `EVT-12`.
+
+Decision gate before code:
+
+1. Write an ADR fixing callback identity, weak target lifetime, duplicate and
+   removal comparison, invocation ordering, reentrancy, signature evolution,
+   serialization, and destroyed-target behavior.
+2. Replace the broad `EVT-12` marker with append-only executable requirements
+   and update this phase's acceptance checks.
+
+No delegate implementation starts before that ADR.
+
+## Phase 7: common language completion
+
+Goal: close the remaining high-utility fixed language families as separate,
+shippable slices. The order inside this phase remains open until each slice's
+decision gate is reached.
+
+Covers: `CAT-36`, `TYPE-4`, `TYPE-7`, `PIN-12`, `PIN-13`, `PIN-15`, `BP-7`,
+`FN-7`, `FN-9` through `FN-12`, `CAT-9` through `CAT-16`, `CAT-19`, `CAT-22`,
+`CAT-26`, `CAT-31`, `CAT-35` through `CAT-37`, `CMPL-11`, `CMPL-15`, `NODE-9`, `NODE-10`,
+`REFL-5`, `REFL-8`, `UI-25` through `UI-28`, `UI-31`, `UI-33`, `UI-37`,
+`UI-38`.
+
+Slices:
+
+1. Switch on Int, String, Name, and Enum; Select; enum reflection and explicit
+   conversions.
+2. DoOnce, DoN, FlipFlop, Gate, MultiGate, and Retriggerable Delay using
+   instance scratch.
+3. Struct Make, Break, Set Members, split and recombine, and enum literals.
+4. Sets and Maps after equality, hashing, key eligibility, mutation, and
+   deterministic-save rules are accepted.
+5. Macros, macro libraries, wildcard-per-call resolution, collapse, and expand
+   after expansion, local-state, and debugger-source mapping are accepted.
+
+## Phase 8: debugger and editor completion
+
+Goal: adapt debugging and editor polish to persistent instances and overlapping
+activations without expanding the language surface.
+
+Estimate: split after the Phase 3 preview debugger exposes real usage.
+
+Covers: `DBG-1` through `DBG-16`, `NODE-11`, `NODE-12`, `UI-10` through
+`UI-12`, `UI-15`, `UI-16`, `UI-20`, `UI-32`, `UI-34`, `UI-35`, `UI-37`,
+`UI-38`, `UI-44` through `UI-52`.
+
+Deliverables retain the breakpoint, watch, traversal, heat, marker, minimap,
+shortcut, layout, and animation requirements already defined in the spec.
+Before implementation, fix debugger pause scope and selected-activation behavior
+for overlapping activations.
+
+## Phase 9: advanced parity gates
+
+Goal: keep advanced UE families visible without deciding their semantics early.
+
+No executable requirement IDs are assigned until each gate closes.
+
+- Async actions and timelines need cancellation, owner destruction, service
+  lifetime, completion ordering, persistence, and debugger decisions.
+- Consumer casts and Is Valid need nominal hierarchy and validity contracts.
+- Localized Text needs localization history and serialization contracts.
+- Engine input, networking, animation, AI, UI, asset, and ECS nodes remain
+  Consumer or Generated families rather than core catalog entries.
+
+## Archived pre-audit plan
+
+The following sections preserve estimates, rationale, and acceptance details
+from the earlier catalog-first order. They are not the current implementation
+sequence and MUST NOT be used to start work. Requirements cited here remain
+traceable until their replacement phase gains equivalent detailed checks.
+
+### Former phase 3: details panel, events with parameters, diagnostics
 
 Goal: the editor becomes the only place authoring happens. Custom events get
 real signatures. Diagnostics get infrastructure that later phases extend.
@@ -403,7 +637,7 @@ Acceptance criteria:
 - Manual `UI-42`, `UI-43`: panels can be undocked, moved, resized and redocked,
   and the layout survives a restart.
 
-## Phase 4: variables
+### Former phase 4: variables
 
 Goal: graphs hold state.
 
@@ -442,7 +676,7 @@ Acceptance criteria:
 - Manual `VAR-10`: promoting an unconnected float input creates a float
   variable, wires a Get node, and the variable appears in the tree.
 
-## Phase 5: blueprints, functions, and macros
+### Former phase 5: blueprints, functions, and macros
 
 Goal: graphs become reusable. This is the largest phase because it introduces
 the blueprint container and two new graph kinds.
@@ -497,7 +731,7 @@ Acceptance criteria:
   and one boundary exec edge produces a function with the matching signature,
   and expanding it restores the original graph.
 
-## Phase 6: catalog completion
+### Former phase 6: catalog completion
 
 Goal: the flow-control and container catalog matches Blueprints.
 
@@ -559,7 +793,7 @@ Acceptance criteria:
 - `UI-13`: dragging from a bool output opens a menu containing Branch and not
   containing Make Vec3.
 
-## Phase 7: type system and editor polish
+### Former phase 7: type system and editor polish
 
 Goal: close the remaining authoring and presentation gaps.
 
@@ -608,7 +842,7 @@ Acceptance criteria:
 - `REFL-8`: annotating an unsupported declaration fails the build with a file
   and line.
 
-## Phase 8: editor polish and flow visualisation
+### Former phase 8: editor polish and flow visualisation
 
 Goal: the editor feels like a tool rather than a prototype. Blueprint's
 readability comes largely from motion: you can see execution move through a

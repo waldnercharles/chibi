@@ -1,7 +1,12 @@
 # ADR 0006: Two evaluators, pull-based data and imperative flow
 
-Status: Accepted
+Status: Accepted; runtime ownership amended by ADR 0011
 Date: 2026-08-18
+
+The two-evaluator decision remains active. ADR 0011 moves continuation state to
+an event activation, persistent variables and node scratch to a Blueprint
+instance, and the mutation guard from one paused run to every instance attached
+to a definition.
 
 ## Context
 

@@ -13,6 +13,11 @@ them, so a requirement with no citing test is mechanically visible as
 unimplemented. IDs are append-only. A withdrawn requirement keeps its number
 and is marked withdrawn; numbers are never reused. See `docs/adr/0007`.
 
+`docs/ue5-event-graph-parity-audit.md` records the UE 5.8 capability audit,
+the three-lane parity model, the reordered implementation sections, and the
+decisions intentionally deferred until their section begins. ADR 0011 defines
+the persistent-instance runtime used below.
+
 Requirements use RFC 2119 sense: MUST is binding, SHOULD admits a documented
 exception, MAY is optional.
 
@@ -43,14 +48,16 @@ exception, MAY is optional.
 The parity target is the Blueprint scripting language, not the Unreal engine
 object model. See `docs/adr/0001`.
 
-In scope: named and custom events with parameters, variables including array,
-set, and map containers, user-defined functions, macros, the full flow-control
-catalog, a compile and validation pass, and an interactive debugger.
+In scope: generic persistent Blueprint definitions and instances, named and
+custom events with parameters, variables including array, set, and map
+containers, user-defined functions, macros, delegates and event dispatchers,
+the full flow-control catalog, a compile and validation pass, and an
+interactive debugger.
 
-Out of scope for now: actors, Blueprint class assets, inheritance, interfaces,
-class defaults, Construction Script, and event dispatchers bound to objects.
-An ECS binding is a separate optional module layered on the same node
-descriptor API, never folded into core.
+Out of scope for core: actors, Blueprint class assets, inheritance, interfaces,
+class defaults, Construction Script, and any assumed host object model. An ECS
+binding is a separate optional module layered on the same node descriptor and
+reflection APIs, never folded into core.
 
 `SCOPE-1` Core (graph, types, evaluation, execution, serialization, compile)
 MUST NOT include any host, windowing, rendering, or ECS header. The only
@@ -63,6 +70,17 @@ window.
 `SCOPE-3` Core MUST NOT hold mutable process-global state. Error reporting,
 evaluation status, and run state are per-instance, so two runs, or a run plus a
 headless test, cannot interfere.
+
+`SCOPE-4` Parity claims MUST name Unreal Engine 5.8 as their fixed reference
+release and MUST classify every audited language family as Core, Generated,
+Consumer, Deferred, or Excluded. A fixed catalog count MUST NOT be presented as
+proof of parity because Unreal actions are generated from reflection, loaded
+modules, and plugins.
+
+`SCOPE-5` Core language behavior MUST be engine-independent. Engine actions
+such as actor, component, asset, input, networking, animation, UI, and ECS
+operations satisfy the Consumer lane only through a documented host node pack
+or through the Generated lane's reflection contracts.
 
 ## ID: identity
 
@@ -91,10 +109,8 @@ search data only.
 
 ## TYPE: type system
 
-`TYPE-1` The primitive pin types are `PIN_BOOL`, the sized integers `PIN_I8`,
-`PIN_U8`, `PIN_I16`, `PIN_U16`, `PIN_I32`, `PIN_U32`, `PIN_I64`, `PIN_U64`, the
-floats `PIN_F32` and `PIN_F64`, `PIN_STR`, `PIN_STRUCT`, `PIN_ENUM`, and the
-execution marker `PIN_FLOW`.
+`TYPE-1` WITHDRAWN. The primitive list omitted Name and nominal host handles.
+It is replaced by `TYPE-11`.
 
 `TYPE-2` A struct type MUST be described by a `type_desc` giving its name,
 size, and per-field name, pin type, byte offset, byte size, and C type
@@ -132,6 +148,27 @@ which also follows Unreal, where Byte, Integer and Integer64 are separate.
 `TYPE-9` A container pin MUST NOT connect to a single-value pin of the same
 element type, and vice versa. Container and element are converted by explicit
 nodes only.
+
+`TYPE-11` The pin types are `PIN_BOOL`, the sized integers `PIN_I8`, `PIN_U8`,
+`PIN_I16`, `PIN_U16`, `PIN_I32`, `PIN_U32`, `PIN_I64`, `PIN_U64`, the floats
+`PIN_F32` and `PIN_F64`, `PIN_NAME`, `PIN_STR`, `PIN_HANDLE`, `PIN_STRUCT`,
+`PIN_ENUM`, and the execution marker `PIN_FLOW`.
+
+`TYPE-12` `PIN_NAME` MUST be a first-class immutable identifier type distinct
+from `PIN_STR`. It MUST round-trip its authored spelling. Its equality,
+canonicalization, and ordering policy MUST be fixed before Switch on Name or
+Name ordering ships; localized Text remains a consumer-provided value type.
+
+`TYPE-13` `PIN_HANDLE` MUST carry a host-owned 64-bit opaque value and a nominal
+type name. Core MUST NOT dereference, retain, release, or infer a C pointer from
+the value. Two handle pins are compatible only when their nominal type names
+match.
+
+`TYPE-14` Promotable numeric operations MUST use the UE-facing widening ladder
+Byte to Integer to Integer64 to Real. F32 and F64 remain one Real category,
+with F64 selected only when the winning registered signature requires it.
+Other C integer widths require an exact signature or an explicit registered
+promotion rule; C's usual arithmetic conversions MUST NOT decide graph types.
 
 ## PIN: pin model
 
@@ -198,6 +235,12 @@ mutates a caller's variable.
 consistently to the pin, its edges, and its details panel row, so type is
 readable without hovering.
 
+`PIN-17` A service-backed input MUST be a stable instance pin with an ID and a
+nominal service type. Binding or unbinding a service MUST NOT add, remove, or
+retype the pin. A connected data edge overrides service injection. An
+unconnected pin MAY be hidden while its service is bound and MUST be shown as
+unresolved when no matching service is bound.
+
 ## NODE: node model
 
 `NODE-1` A node MUST reference exactly one node descriptor, which supplies its
@@ -219,9 +262,8 @@ Set, the target of a function or macro call, a custom event's name, and a
 switch's enum type. No feature may add a bespoke per-node field where these
 suffice.
 
-`NODE-6` A node descriptor MUST distinguish pure from impure. A pure node has
-no exec pins and MUST be re-derivable at any time from its inputs. An impure
-node has at least one exec input.
+`NODE-6` WITHDRAWN. It incorrectly required every impure node to have an exec
+input, excluding executable entry nodes. It is replaced by `NODE-13`.
 
 `NODE-7` A node descriptor MUST declare whether it is latent, meaning it can
 suspend execution. Latent nodes are legal in event graphs and macros and are
@@ -248,15 +290,21 @@ pure, flow control, variable access, or literal. The display class drives the
 node's color and title styling, which is how a Blueprint graph is read at a
 glance.
 
+`NODE-13` A descriptor MUST classify behavior as pure or executable. A pure
+node has no exec pins, has no observable side effects, and is re-derivable from
+its inputs. An executable entry has no exec input and at least one exec output.
+Every other executable node has at least one exec input. Executable behavior
+MUST run only from an event activation, never from preview evaluation.
+
 ## VAR: variables
 
 `VAR-1` A variable MUST carry an ID, a name, a pin type, a type name, a
 container, an authored default value, and a category string for grouping in the
 editor.
 
-`VAR-2` A variable's scope MUST be either blueprint-wide or local to one
-function or macro graph. A local variable MUST NOT be visible outside its
-graph.
+`VAR-2` WITHDRAWN. It allowed macro-local variables while `FN-8` prohibited
+them. Function locals are replaced by `VAR-13`; macro-local state remains at
+its decision gate.
 
 `VAR-3` Variable names MUST be unique within their scope. A rename MUST be
 accepted only when it keeps that uniqueness.
@@ -278,18 +326,34 @@ no longer type-compatible, and each invalidated edge MUST be reported by
 orphaned reference MUST become a compile error naming the node and the lost
 variable.
 
-`VAR-8` Variable storage MUST live on the run, not on the blueprint. Starting a
-run MUST initialize each variable to its authored default. Two runs MUST NOT
-share variable storage.
+`VAR-8` WITHDRAWN. Run-scoped variables reset between events and cannot model
+persistent Event Graph behavior. It is replaced by `VAR-11`.
 
-`VAR-9` A container variable MUST support the operations of its container:
-array indexing, length, add, insert, remove, clear, and contains; set add,
-remove, contains, and length; map insert, remove, find, keys, values, and
-length.
+`VAR-9` WITHDRAWN. It bundled three containers, omitted common UE 5.8
+operations, and prevented Arrays from shipping before Set and Map contracts.
+It is replaced for Arrays by `VAR-12`; Set and Map operations remain behind
+their decision gate.
 
 `VAR-10` The editor MUST offer promoting a pin to a variable: it creates a
 variable typed from the pin, wires an appropriate Get or Set node, and names it
 from the pin.
+
+`VAR-11` Blueprint-wide variable storage MUST live on a persistent
+`blueprint_instance`, initialize from authored defaults exactly once when the
+instance is created, survive separate event activations, and remain independent
+between two instances of one definition. Function locals remain per call frame.
+
+`VAR-12` Arrays MUST support Make Array, Get, Set Array Elem, Add, Add Unique,
+Append, Insert, Clear, Contains, Find, Identical, Length, Last Index, Resize,
+Remove Index, Remove Item, Is Empty, Is Not Empty, Is Valid Index, Reverse, and
+Swap. Shuffle, random-item, and typed Sort nodes remain gated on accepted
+random-service and ordering contracts. Actor-class Filter Array is a Consumer
+operation, not a core array primitive.
+
+`VAR-13` A function-local variable MUST be allocated in its function call frame
+and MUST NOT be visible outside that function graph. Recursive and concurrent
+calls MUST receive independent local storage initialized from the authored
+local default.
 
 ## BP: blueprints and graphs
 
@@ -328,6 +392,16 @@ error rather than silently doing nothing.
 `BP-11` Removing an existing edge MUST remove exactly that edge and leave
 unrelated edges intact.
 
+`BP-12` A Blueprint definition MAY declare one nominal owner `PIN_HANDLE` type.
+Each instance of that definition MUST supply either a matching opaque handle or
+no owner. The owner type is authored and serialized; the runtime handle value
+is not.
+
+`BP-13` A Blueprint definition is authored, shared data. A
+`blueprint_instance` is runtime behavior state referring to one definition.
+Creating instances MUST NOT copy or mutate the definition's graphs, pins,
+defaults, or metadata.
+
 ## EVT: events
 
 `EVT-1` An event node is an entry point: it has no exec input, at least one
@@ -355,10 +429,28 @@ parameters as data inputs, and MUST have an exec input and an exec output.
 `EVT-7` Dispatching an event by name MUST fail with a distinct, inspectable
 error for unknown name and for duplicate name.
 
-`EVT-8` A lifecycle event set MUST exist and MUST be host-triggered rather than
-self-firing: Begin, fired once when the host starts a blueprint, and Tick,
-fired per host frame with a delta-time parameter. Core MUST NOT contain a frame
-loop.
+`EVT-8` WITHDRAWN. Begin and Tick are host lifecycle conventions, not
+engine-independent language entries. It is replaced by `EVT-9` and `EVT-10`.
+
+`EVT-9` Core MUST expose only generic named events with authored parameter
+signatures. Dispatching an event on a Blueprint instance MUST create a distinct
+activation carrying copied parameter values. Core MUST assign no lifecycle
+meaning to an event name.
+
+`EVT-10` The demo host MUST dispatch `Begin()` once after creating its preview
+instance, `Tick(Real DeltaSeconds)` once per host frame, and
+`Input(Name Action, Real Value, Bool Pressed)` from host input. These signatures
+are demo conventions and MUST NOT be registered as mandatory core event types.
+
+`EVT-11` A Call Event node MUST target an event in the same Blueprint instance.
+It creates a separate activation through the instance scheduler rather than
+recursing through the C call stack.
+
+`EVT-12` Typed delegates and event dispatchers are a planned core language
+family for communication between persistent Blueprint instances. Their callback
+identity, target lifetime, invocation ordering, reentrancy, and serialization
+MUST be fixed by an ADR before this requirement is expanded into executable
+semantics.
 
 ## FN: functions and macros
 
@@ -386,8 +478,9 @@ that produces a structured error rather than a stack overflow.
 body in the calling graph, with the macro's entry and return exec pins rewired
 to the call site's edges.
 
-`FN-8` A macro MAY contain latent nodes and MAY have several exec inputs and
-outputs. A macro MUST NOT have local variables.
+`FN-8` WITHDRAWN. Macro-local state was specified inconsistently with `VAR-2`
+and is intentionally deferred. Macro exec shape and latent legality remain
+covered by `BP-7` and `NODE-7`.
 
 `FN-9` Macro expansion MUST be recursion-checked at compile time, and a
 recursive macro MUST be a compile error.
@@ -397,6 +490,11 @@ recursive macro MUST be a compile error.
 `FN-11` The editor MUST offer collapsing a selection of nodes into a new
 function or macro, and expanding a call back into its nodes. Collapsing MUST
 derive the signature from the edges crossing the selection boundary.
+
+`FN-12` Before macro implementation begins, an ADR MUST fix expansion products,
+macro-local state, wildcard resolution boundaries, and debugger source mapping.
+Executable macro requirements MUST be appended after that decision rather than
+inferred from the withdrawn `FN-8`.
 
 ## DATA: data evaluation
 
@@ -452,12 +550,9 @@ structured error, not a hang.
 `EXEC-7` A run MUST enforce a call-depth limit for function calls and macro
 recursion checks.
 
-`EXEC-8` While a run is in any non-idle state, structural mutation of its
-blueprint MUST be rejected: adding or removing a node, adding or removing an
-edge, changing a pin's name, type, or count, renaming or retyping a variable,
-renaming an event, and creating or deleting a graph. Editing an authored
-default on a pin that no edge drives MAY be permitted, and MUST NOT affect the
-live run.
+`EXEC-8` WITHDRAWN. A persistent instance retains variables and node scratch
+even when no activation is running, so guarding only non-idle runs is
+insufficient. It is replaced by `EXEC-19`.
 
 `EXEC-9` A run MUST record the blueprint's topology revision at start, and MUST
 fail with a distinct error if it detects the topology changed under it.
@@ -472,14 +567,35 @@ suspended, with its frame and its loop state intact.
 callback, so side-effecting nodes such as Print String deliver output to the
 host rather than to stdout.
 
-`EXEC-13` Run-scoped per-node scratch storage MUST exist, keyed by node ID, so
-stateful nodes such as DoOnce, Gate, MultiGate, and FlipFlop keep state across
-activations within one run and start clean in a new run.
+`EXEC-13` WITHDRAWN. Stateful-node scratch must survive separate events on one
+persistent instance. It is replaced by `EXEC-15`.
 
-`EXEC-14` A node MUST tolerate being activated again while an earlier
-activation of it is still on the continuation stack, which is what a loop body
-feeding back into its own subtree produces. Its run-scoped scratch is shared
-across those activations; its data memo is not, per `EXEC-3`.
+`EXEC-14` WITHDRAWN. Its re-entry rule remains necessary, but its run-scoped
+scratch premise is replaced by instance scratch and activation-local memo in
+`EXEC-15` through `EXEC-18`.
+
+`EXEC-15` Per-node scratch MUST live on the Blueprint instance, keyed by node
+ID, so DoOnce, Gate, MultiGate, FlipFlop, and related nodes share state across
+event activations on that instance and start clean on another instance.
+
+`EXEC-16` Each event activation MUST own its continuation and call stacks,
+temporary arena, data memo, cycle guard, parameter values, structured error,
+step count, watch values, and latent state. None of that activation-local state
+may be read or freed by another activation.
+
+`EXEC-17` One Blueprint instance MAY have several ready or suspended
+activations. Its scheduler MUST activate at most one at a time and MUST choose
+the next ready activation in deterministic order. A suspended activation MUST
+NOT prevent a later event from starting.
+
+`EXEC-18` A node MUST tolerate re-entry while an earlier activation of it
+remains on a continuation stack. Re-entrant executions on one instance share
+instance scratch under `EXEC-15` and never share data memo under `EXEC-16`.
+
+`EXEC-19` Structural or authored-value mutation of a Blueprint definition MUST
+be rejected while any runtime instance remains attached to that definition.
+The host or editor MUST destroy or detach every affected instance before
+adding, removing, renaming, retyping, or reconfiguring authored entities.
 
 ## RUN: run lifecycle
 
@@ -499,16 +615,15 @@ leaving the run paused.
 `RUN-5` A run MUST support stepping over a call node, meaning run until control
 returns to the calling graph.
 
-`RUN-6` A run MUST be stoppable from any non-idle state, ending in idle without
-running further nodes. Stop MUST release run storage, discard variables, clear
-per-node scratch, memo, cycle, error, and watch state, release the mutation
-guard, and return pin displays to preview values.
+`RUN-6` WITHDRAWN. Stopping one event activation must not discard persistent
+instance variables or node scratch. It is replaced by `RUN-15` and `RUN-17`.
 
 `RUN-7` WITHDRAWN. Reset is not a separate lifecycle operation. Stop carries
 its cleanup semantics under RUN-6, matching Unreal's Play/Stop session model.
 
-`RUN-8` Freeing or stopping a run MUST leave the blueprint mutable. A run that
-ends while its mutation guard is held MUST release it.
+`RUN-8` WITHDRAWN. Stopping one activation cannot release a definition guard
+held by its persistent instance or another activation. It is replaced by
+`RUN-20`.
 
 `RUN-9` A run MUST expose its step count, its current node, its call stack as
 an ordered list of graph and node IDs, and its structured error.
@@ -516,8 +631,9 @@ an ordered list of graph and node IDs, and its structured error.
 `RUN-10` Advancing time MUST be host-driven: the host supplies a monotonic time
 and asks the run to continue.
 
-`RUN-11` Two runs of the same blueprint MUST be independently valid: separate
-variable storage, separate scratch, separate error state, separate step counts.
+`RUN-11` WITHDRAWN. Separate activations on one instance intentionally share
+variables and node scratch. Instance and activation isolation are specified by
+`RUN-18`.
 
 `RUN-12` A run MUST refuse to start against a blueprint with compile errors,
 reporting the first blocking diagnostic.
@@ -526,15 +642,44 @@ reporting the first blocking diagnostic.
 write authored data only, and a suspended latent node MUST NOT survive a save
 and load.
 
-`RUN-14` Loading, undoing, or authoring an edit while a run is non-idle MUST
-stop and release that run before replacing or mutating node identities. The
-editor MUST perform this teardown at one authoring-edit choke point, because a
-flow_run holds raw node pointers.
+`RUN-14` WITHDRAWN. A definition can have several activations and persistent
+instance state, so releasing only one `flow_run` is insufficient. It is
+replaced by `RUN-19`.
+
+`RUN-15` A Blueprint instance MUST have explicit create and destroy operations.
+Create initializes owner-independent state and authored variable defaults.
+Destroy cancels every ready, running, paused, or suspended activation and then
+releases instance variables and per-node scratch without executing another
+node.
+
+`RUN-16` Starting, stepping, pausing, resuming, stopping, and inspecting apply
+to one event activation. Advancing an instance scheduler MAY make another ready
+activation current, but MUST NOT merge their lifecycle states, errors, step
+counts, or watch values.
+
+`RUN-17` Stopping an event activation MUST release only that activation's
+continuations, temporaries, memo, error, watch, and latent state. It MUST leave
+the containing instance and its variables and per-node scratch intact.
+
+`RUN-18` Two instances of one definition MUST have independent owner handles,
+variables, node scratch, service bindings, activation queues, errors, and step
+counts. Activations on one instance share only the state explicitly owned by
+that instance.
+
+`RUN-19` Loading, undoing, or changing authored structure MUST destroy or detach
+every affected preview instance before replacing node, pin, graph, or variable
+identities. The editor MUST perform this teardown at one authoring-edit choke
+point. Runtime state MUST NOT enter the undo stack.
+
+`RUN-20` Creating an instance MUST acquire its definition's mutation guard, and
+destroying or explicitly detaching that instance MUST release it. A definition
+becomes mutable only after its last attached instance is gone; stopping or
+completing one activation MUST NOT release the guard.
 
 ## CAT: node catalog
 
-`CAT-1` The catalog MUST expose every node in this section with the listed pin
-shape, and the editor MUST make each one's configuration authorable.
+`CAT-1` WITHDRAWN. It treated withdrawn, Deferred, Generated, and Consumer
+families as one fixed catalog. It is replaced by `CAT-29` and `CAT-36`.
 
 Flow control:
 
@@ -555,8 +700,8 @@ Completed exec outs.
 `CAT-7` ForEachLoop. Exec in, container in as a wildcard, Body exec out,
 element and index data outs, Completed exec out. A break variant MUST exist.
 
-`CAT-8` DoOnce. Exec in, Reset exec in, Completed exec out, bool "start
-closed". State is run-scoped per node.
+`CAT-8` WITHDRAWN. Its pin shape remains valid, but run-scoped state is not.
+The instance-scoped replacement is `CAT-35`.
 
 `CAT-9` DoN. Exec in, Reset exec in, N in, Exit exec out, Counter data out.
 
@@ -580,7 +725,9 @@ derived from the enum type named in the node's reference name.
 `CAT-16` Select. Wildcard option inputs, an index or enum selector, one
 wildcard output. Pure.
 
-`CAT-17` IsValid. Takes a value, gives Is Valid and Is Not Valid exec outs.
+`CAT-17` WITHDRAWN. Core cannot define validity for an unspecified value.
+Object and handle validity remain Consumer or Generated operations until a
+handle-type validity contract is accepted.
 
 Latent:
 
@@ -595,29 +742,75 @@ Utility:
 `CAT-20` Print String. Exec in, string in, exec out. Output goes to the host
 callback channel under `EXEC-12`.
 
-`CAT-21` Typed literal nodes for every primitive type, plus struct and enum
-literals. Pure, value authored in the editor.
+`CAT-21` WITHDRAWN. "Every primitive" incorrectly creates host-handle and
+non-UE-width literals. It is replaced by `CAT-30`; reflected struct and enum
+construction remains under `CAT-22`.
 
 `CAT-22` Make and Break for every reflected struct type. Pure.
 
 `CAT-23` Call nodes for every reflected function. Pure unless the descriptor
 declares otherwise.
 
-`CAT-24` Container operation nodes covering `VAR-9`.
+`CAT-24` WITHDRAWN. It inherits the incomplete bundled container list in the
+withdrawn `VAR-9`. Arrays are replaced by `CAT-34`; Set and Map remain behind
+their decision gate.
 
-`CAT-25` Arithmetic, comparison, and boolean nodes for every numeric primitive,
-plus string concatenation and comparison. Pure.
+`CAT-25` WITHDRAWN. Concrete operators for every C numeric primitive do not
+match UE promotable operators. It is replaced by `CAT-33`.
 
 `CAT-26` Explicit conversion nodes for every conversion permitted by `TYPE-7`.
 
-`CAT-28` The literal node set MUST match Unreal's: Bool, Byte, Integer,
-Integer64, Real, and String. A literal node has no inputs, one typed output, and
-its value is authored in the editor. This scopes `CAT-21`, which asked for a
-literal per primitive type; the widths Unreal does not expose as literals do not
-get their own node.
+`CAT-28` WITHDRAWN. It omitted Name and gave Make Literal nodes the wrong pin
+shape. It is replaced by `CAT-30`.
 
 `CAT-27` Every catalog entry MUST declare a category path used for grouping in
 the spawn menu, and a search keyword list.
+
+`CAT-29` The maintained parity matrix MUST list each audited UE 5.8 language
+family and its Core, Generated, Consumer, Deferred, or Excluded disposition.
+Catalog completeness means every Core entry is authorable and tested and every
+Generated family has a tested reflection contract; it does not mean the fixed
+catalog enumerates engine or plugin actions.
+
+`CAT-30` Core literal nodes are Bool, Byte, Integer, Integer64, Real, Name, and
+String. Each is pure and has one typed `Value` input carrying the authored
+default and one typed return output. Extra C integer widths, nominal handles,
+and localized Text do not receive core literal nodes.
+
+`CAT-31` Switch on Name has an exec input, a Name selection input, one exec
+output per authored Name case, and Default. Its cases use the accepted Name
+equality policy from `TYPE-12`.
+
+`CAT-32` Self is a pure node whose output has the Blueprint definition's
+optional nominal owner-handle type. Creating Self in a definition with no owner
+type MUST be rejected, and evaluating it returns that instance's supplied
+opaque owner handle.
+
+`CAT-33` Add, Subtract, Multiply, Divide, equality, ordering, And, Or, and Not
+MUST use promotable wildcard nodes backed by registered operation signatures.
+Resolution is exact-signature first, then the ladder in `TYPE-14`; no candidate
+or an ambiguous best candidate is a compile error. Consumers MAY add operation
+signatures without modifying core.
+
+`CAT-34` Core array operation nodes MUST cover every operation in `VAR-12`,
+plus ForEach and ForEach with Break under `CAT-7`. Their wildcard groups resolve
+to one element type per node instance.
+
+`CAT-35` DoOnce has Exec and Reset exec inputs, a Completed exec output, and an
+authored Start Closed bool. Its fired state lives in instance scratch under
+`EXEC-15`, so separate events on one instance share it and another instance
+does not.
+
+`CAT-36` Every non-withdrawn Core catalog entry MUST expose its specified pin
+shape, authorable configuration, category, search keywords, runtime behavior,
+and headless acceptance check. Generated and Consumer entries satisfy parity
+through their registered contracts rather than by appearing in this fixed
+list.
+
+`CAT-37` Set Members in Struct is executable with exec input and output, one
+pass-by-reference struct input under `PIN-15`, and one authorable data input per
+exposed member. It MUST update only the exposed members and preserve every
+unexposed member.
 
 ## CMPL: compile and validation
 
@@ -668,6 +861,14 @@ the node or pin it names.
 
 `CMPL-18` A node disabled under `NODE-11` MUST be excluded from every rule in
 this section except one warning reporting that it is disabled.
+
+`CMPL-19` A promotable operator with no matching registered signature or with
+an ambiguous best signature MUST be a blocking diagnostic naming the operation
+and the connected pin types.
+
+`CMPL-20` An authored owner-handle, struct, enum, or other nominal type name
+that is unavailable in the active registry MUST be a blocking diagnostic that
+preserves and names the unresolved type.
 
 ## DBG: debugging
 
@@ -768,13 +969,25 @@ again MUST produce a semantically identical document.
 `FMT-13` Output MUST be stable: key order and number formatting MUST be
 deterministic so files diff cleanly.
 
-`FMT-14` Blueprint metadata is exactly: the schema version, the blueprint name,
-the ID counter, and a free-form description. Editor-only transient state MUST
-NOT be written, per `RUN-13`.
+`FMT-14` WITHDRAWN. The exact metadata list omitted the authored owner-handle
+type added by `BP-12`. It is replaced by `FMT-18`.
 
 `FMT-15` Copy MUST place the subset document from `FMT-10` on the host text
 clipboard, and paste MUST accept a subset document from it, so a selection
 transfers between editor instances as text.
+
+`FMT-16` A Blueprint definition's optional owner-handle type and every authored
+Name value MUST serialize in the Blueprint document. A runtime owner handle,
+service binding, Blueprint instance, activation, continuation, variable value,
+node scratch value, or watch value MUST NOT serialize.
+
+`FMT-17` Loading a Name MUST preserve its authored spelling exactly. Loading an
+owner-handle type that is unavailable in the active registry MUST preserve the
+name and produce a compile diagnostic rather than substituting another type.
+
+`FMT-18` Blueprint metadata is exactly the schema version, Blueprint name, ID
+counter, free-form description, and optional nominal owner-handle type.
+Editor-only and runtime state MUST NOT be written, per `FMT-16`.
 
 ## UI: editor surfaces
 
@@ -817,9 +1030,9 @@ navigate under `CMPL-17`.
 is live, preview values otherwise.
 
 `UI-11` A watched pin MUST show its value inline on the canvas, and watches MUST
-be togglable from the pin's context menu and from the details panel.
+be toggleable from the pin's context menu and from the details panel.
 
-`UI-12` A breakpoint MUST be togglable from the node's context menu and by a
+`UI-12` A breakpoint MUST be toggleable from the node's context menu and by a
 keyboard shortcut, and MUST render on the node.
 
 `UI-13` The spawn menu MUST group by the category path from `CAT-27`, MUST
@@ -900,8 +1113,9 @@ global enable toggles, per `DBG-3`.
 `UI-35` Node and pin coloring MUST follow `NODE-12` and `PIN-16`, and the
 mapping MUST be one table rather than scattered constants.
 
-`UI-36` An authoring action during a live run MUST report that it stops the
-run first, per `UI-7` and `RUN-14`. It MUST NOT be presented as a rejected edit.
+`UI-36` WITHDRAWN. Releasing one live run is insufficient when a persistent
+preview instance owns state and several activations. It is replaced by
+`UI-55`.
 
 `UI-37` Align, distribute, straighten connection, and zoom to fit SHOULD exist.
 
@@ -915,9 +1129,8 @@ never renders two ways.
 `UI-40` The output log MUST offer a Clear action that removes all retained
 entries without changing the authored graph or the undo history.
 
-`UI-41` Every authoring mutation MUST pass through one editor choke point that
-stops and releases a non-idle run before the mutation. This includes graph
-edits, value edits, undo, redo, and load.
+`UI-41` WITHDRAWN. The edit choke point must tear down the affected preview
+instance, not only one non-idle run. It is replaced by `UI-56`.
 
 `UI-42` Editor panels MUST be independently movable, resizable, and dockable,
 and their layout MUST persist between sessions.
@@ -959,6 +1172,24 @@ canvas or pressing Escape MUST release it.
 `UI-51` Dragging any node in a multi-selection MUST move every selected node
 together and preserve their relative positions.
 
+`UI-53` The details panel MUST expose the Blueprint definition's optional owner
+handle type and the complete authored event signatures. Service-backed pins
+MUST remain visible while connected, MAY hide while unconnected and resolved,
+and MUST reappear with an unresolved indication when their service is absent.
+
+`UI-54` The preview runtime MUST identify its Blueprint instance and current
+event activation separately. Stopping one activation MUST leave persistent
+instance variables available for later event dispatch; destroying or replacing
+the preview instance MUST clear them.
+
+`UI-55` An authoring action while a preview instance is attached MUST state that
+it destroys the preview instance first, then perform the edit. It MUST NOT be
+presented as a rejected edit or as stopping only the selected activation.
+
+`UI-56` Every authored mutation, including value edits, graph edits, undo,
+redo, and load, MUST pass through one editor choke point that destroys or
+detaches every affected preview instance before mutation under `RUN-19`.
+
 ## REFL: reflection
 
 `REFL-1` Reflection MUST be a build-time tool over annotated C sources, using
@@ -970,8 +1201,9 @@ headers compile under both GCC and Clang.
 `REFL-3` An annotated struct MUST emit a `type_desc`, a Make descriptor, and a
 Break descriptor.
 
-`REFL-4` An annotated function MUST emit a call descriptor whose inputs are its
-parameters and whose output is its return value.
+`REFL-4` WITHDRAWN. It allows only ordinary inputs and one non-void return and
+cannot express executable calls, explicit output parameters, or injected
+services. It is replaced by `REFL-9` through `REFL-14`.
 
 `REFL-5` An annotated enum MUST emit a labelled enum descriptor under `TYPE-4`.
 
@@ -985,6 +1217,38 @@ the same type descriptors.
 
 `REFL-8` The tool MUST fail the build with a located message on an
 unsupported annotated declaration, rather than silently omitting it.
+
+`REFL-9` A reflected function MUST opt into exactly one explicit graph contract:
+`NODE_FN` for pure evaluation or `NODE_EXEC` for ordered execution. Purity MUST
+NOT be inferred from C constness, pointer spelling, or function-body analysis.
+An unannotated function emits no call node.
+
+`REFL-10` A reflected function MAY return void or one ordinary C value and MAY
+mark supported pointer parameters explicitly as graph outputs. Pointer
+direction MUST NOT be inferred from constness. Generated wrappers MUST expose
+all ordinary inputs, the optional return, and every explicit output as stable
+instance pins.
+
+`REFL-11` An injectable service pointer type MUST be declared once as a service
+type. `reflect.c` MUST generate its service descriptor, stable type identity,
+lookup metadata, and typed host binding helper from that declaration. A
+function using the pointer type MUST NOT repeat a per-parameter context
+annotation.
+
+`REFL-12` A generated call descriptor MUST retain every service-backed input
+pin under `PIN-17`. At execution, a connected value wins; otherwise the wrapper
+looks up the matching bound service. An unresolved required service MUST return
+a structured error naming the pin and nominal service type.
+
+`REFL-13` `reflect.c` MUST generate an operation table mapping each annotated
+operation name to its pure function signatures. Operator resolution MUST be
+deterministic, use `TYPE-14`, and permit a consumer to register additional
+signatures without editing the evaluator.
+
+`REFL-14` An event activation MUST snapshot its borrowed service bindings when
+it is dispatched. Core MUST NOT own, retain, or destroy a bound service. The
+host MUST keep each borrowed service alive until every activation holding that
+snapshot has completed or been stopped.
 
 ## Implementation layout
 
@@ -1010,21 +1274,36 @@ evaluation view. Depends on `core` and the host.
 `test/` holds `self_check.c`, which links `core` and `demo` and never creates a
 window, per `SCOPE-2`.
 
-`third_party/` holds vendored dependencies: yyjson for JSON, ckit for dynamic
-arrays, hash maps, and string interning.
+`third_party/` holds vendored dependencies: yyjson for JSON and debugbreak for
+debugger breakpoints.
 
 ## Deferred
 
-Recorded so they are not rediscovered as gaps:
+Recorded so they are not rediscovered or decided before their implementation
+section.
 
-- Blueprint classes, inheritance, interfaces, and class defaults.
-- ECS binding: entity and component Get, Set, Add, Remove, and Query nodes.
-- Event dispatchers and delegate binding.
-- Timeline nodes and curve authoring.
-- Replication and network authority.
+### Host-specific families
+
+- Blueprint classes, inheritance, interfaces, class defaults, and
+  Construction Script.
+- ECS binding: entity and component Get, Set, Add, Remove, Query, prefab, and
+  entity-creation nodes.
+- Consumer-defined casts, validity, object/class/interface handles, localized
+  Text, replication, and network authority.
+
+### Language decision gates
+
+- Delegate callback identity, target lifetime, invocation ordering,
+  reentrancy, and serialization under `EVT-12`.
+- Set and Map key equality, hashing, mutation, and deterministic save order.
+- Macro local state, macro expansion products, and debugger source mapping for
+  macros and collapsed graphs.
+- Async actions, timelines, cancellation, curve authoring, and persistence.
+
+### Optimization gates
+
 - Bytecode compilation of graphs. `EXEC` describes an interpreter; a compiler
   is an optimisation, not a correctness requirement.
-- Multi-return and out-parameter reflected functions beyond `PIN-15`.
 - Mutable string values. `PIN_STR` is an immutable arena- or blueprint-owned
   string.
 - Dirty tracking for data evaluation, pending a profile that shows full

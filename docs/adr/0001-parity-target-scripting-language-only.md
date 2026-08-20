@@ -1,7 +1,13 @@
 # ADR 0001: Parity target is the scripting language, not the engine
 
-Status: Accepted
+Status: Superseded in part by ADR 0011
 Date: 2026-08-18
+
+ADR 0011 adds engine-independent runtime Blueprint instances without adding a
+host object model. `EVT-12` also brings typed delegates and event dispatchers
+between those instances into the future core language. Actors, Blueprint
+classes, inheritance, components, and object-bound engine semantics remain out
+of scope.
 
 ## Context
 

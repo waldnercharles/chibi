@@ -1,7 +1,11 @@
 # ADR 0008: The editor owns one flow_run, and preview evaluation suspends during a run
 
-Status: Accepted
+Status: Superseded in part by ADR 0011
 Date: 2026-08-18
+
+ADR 0011 retains one editor preview context but replaces one `flow_run` as the
+complete behavior lifetime with a persistent Blueprint instance that may own
+several event activations.
 
 ## Context
 

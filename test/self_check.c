@@ -297,10 +297,10 @@ static node_desc g_watch_desc = {
 
 static node *make_string(graph *g, const char *value)
 {
-    node *n = graph_add_node(g, registry_node_by_name("const_str"));
+    node *n = graph_add_node(g, registry_node_by_name("String"));
     if (!n) return NULL;
     pin_value authored = { .type = PIN_STR, .type_name = "const char *", .str = value };
-    graph_set_pin_default(g, n, 1, 0, &authored);
+    graph_set_pin_default(g, n, 0, 0, &authored);
     return n;
 }
 
@@ -547,18 +547,18 @@ int main(int argc, char **argv)
     {
         graph authored;
         graph_init(&authored);
-        node *literal = make_const(&authored, 1.0f);
-        pin_value changed = { .type = PIN_F32, .type_name = "float", .f = 9.0f };
+        node *literal = graph_add_node(&authored, registry_node_by_name("Real"));
+        pin_value changed = { .type = PIN_F64, .type_name = "double", .d = 9.0 };
         arena authored_arena;
         arena_init(&authored_arena, 4096);
         pin_value evaluated;
         char *authored_json = NULL;
         graph *authored_loaded = NULL;
         check(
-            graph_set_pin_default(&authored, literal, 1, 0, &changed) == 0 &&
+            graph_set_pin_default(&authored, literal, 0, 0, &changed) == 0 &&
                 graph_eval_output(&authored, literal, 0, &authored_arena, &evaluated, &eval_ctx) ==
                     0 &&
-                evaluated.f == 9.0f && literal->output_pins[0].default_value.f == 9.0f,
+                evaluated.d == 9.0 && literal->input_pins[0].default_value.d == 9.0,
             "PIN-4: setting an authored default changes evaluation after a "
             "later eval"
         );
@@ -566,7 +566,7 @@ int main(int argc, char **argv)
         authored_loaded = authored_json ? graph_load_json(authored_json) : NULL;
         check(
             authored_loaded &&
-                authored_loaded->nodes[0]->output_pins[0].default_value.f == 9.0f,
+                authored_loaded->nodes[0]->input_pins[0].default_value.d == 9.0,
             "PIN-4: changed authored default is recorded by save"
         );
         arena_free(&authored_arena);
@@ -580,9 +580,7 @@ int main(int argc, char **argv)
         graph_init(&real);
         node *real_event = graph_add_node(&real, registry_node_by_name("Event"));
         node *real_delay = graph_add_node(&real, registry_node_by_name("Delay"));
-        node *real_const = graph_add_node(&real, registry_node_by_name("const_f32"));
-        pin_value seconds = { .type = PIN_F32, .type_name = "float", .f = 2.5f };
-        graph_set_pin_default(&real, real_const, 1, 0, &seconds);
+        node *real_const = make_const(&real, 2.5f);
         check(
             graph_connect_data(&real, real_const, 0, real_delay, 1) == 0 &&
                 real_delay->input_pins[1].type == PIN_F64,
@@ -632,44 +630,56 @@ int main(int argc, char **argv)
     {
         graph literals;
         graph_init(&literals);
-        const char *names[] = { "const_bool",  "const_byte", "const_int",
-                                "const_int64", "const_real", "const_str" };
-        for (int i = 0; i < 6; i++)
-            check(registry_node_by_name(names[i]) != NULL, "CAT-28: Unreal literal is registered");
-        node *lb = graph_add_node(&literals, registry_node_by_name("const_bool"));
-        node *lbyte = graph_add_node(&literals, registry_node_by_name("const_byte"));
-        node *li = graph_add_node(&literals, registry_node_by_name("const_int"));
-        node *li64 = graph_add_node(&literals, registry_node_by_name("const_int64"));
-        node *lr = graph_add_node(&literals, registry_node_by_name("const_real"));
-        node *ls = graph_add_node(&literals, registry_node_by_name("const_str"));
+        const char *names[] = { "Bool", "Byte", "Integer", "Integer64",
+                                "Real", "Name", "String" };
+        for (int i = 0; i < 7; i++)
+            check(registry_node_by_name(names[i]) != NULL, "CAT-30: core literal is registered");
+        node *lb = graph_add_node(&literals, registry_node_by_name("Bool"));
+        node *lbyte = graph_add_node(&literals, registry_node_by_name("Byte"));
+        node *li = graph_add_node(&literals, registry_node_by_name("Integer"));
+        node *li64 = graph_add_node(&literals, registry_node_by_name("Integer64"));
+        node *lr = graph_add_node(&literals, registry_node_by_name("Real"));
+        node *ln = graph_add_node(&literals, registry_node_by_name("Name"));
+        node *ls = graph_add_node(&literals, registry_node_by_name("String"));
+        check(
+            lb && lb->input_count == 1 && lb->output_count == 1 &&
+                lb->input_pins[0].kind == PIN_DATA && lb->output_pins[0].kind == PIN_DATA,
+            "CAT-30: a literal has one Value input and one return output"
+        );
         pin_value vb = { .type = PIN_BOOL, .b = true },
                   vbyte = { .type = PIN_U8, .u8 = 7 };
         pin_value vi = { .type = PIN_I32, .i = 8 },
                   vi64 = { .type = PIN_I64, .i64 = 9 };
         pin_value vr = { .type = PIN_F64, .d = 2.5 },
-                  vs = { .type = PIN_STR, .str = "literal" };
-        graph_set_pin_default(&literals, lb, 1, 0, &vb);
-        graph_set_pin_default(&literals, lbyte, 1, 0, &vbyte);
-        graph_set_pin_default(&literals, li, 1, 0, &vi);
-        graph_set_pin_default(&literals, li64, 1, 0, &vi64);
-        graph_set_pin_default(&literals, lr, 1, 0, &vr);
-        graph_set_pin_default(&literals, ls, 1, 0, &vs);
+                  vn = { .type = PIN_NAME, .str = "ExactName" };
+        pin_value vs = { .type = PIN_STR, .str = "literal" };
+        graph_set_pin_default(&literals, lb, 0, 0, &vb);
+        graph_set_pin_default(&literals, lbyte, 0, 0, &vbyte);
+        graph_set_pin_default(&literals, li, 0, 0, &vi);
+        graph_set_pin_default(&literals, li64, 0, 0, &vi64);
+        graph_set_pin_default(&literals, lr, 0, 0, &vr);
+        graph_set_pin_default(&literals, ln, 0, 0, &vn);
+        graph_set_pin_default(&literals, ls, 0, 0, &vs);
         char *literal_json = graph_save_json(&literals);
         graph *literal_loaded = literal_json ? graph_load_json(literal_json) : NULL;
         int literal_values = 0;
-        if (literal_loaded && acount(literal_loaded->nodes) == 6) {
+        if (literal_loaded && acount(literal_loaded->nodes) == 7) {
             for (int i = 0; i < acount(literal_loaded->nodes); i++) {
                 node *n = literal_loaded->nodes[i];
-                if (strcmp(n->desc->name, "const_real") == 0 &&
-                    n->output_pins[0].default_value.d == 2.5)
+                if (strcmp(n->desc->name, "Real") == 0 &&
+                    n->input_pins[0].default_value.d == 2.5)
                     literal_values++;
-                if (strcmp(n->desc->name, "const_str") == 0 &&
-                    n->output_pins[0].default_value.str &&
-                    strcmp(n->output_pins[0].default_value.str, "literal") == 0)
+                if (strcmp(n->desc->name, "String") == 0 &&
+                    n->input_pins[0].default_value.str &&
+                    strcmp(n->input_pins[0].default_value.str, "literal") == 0)
+                    literal_values++;
+                if (strcmp(n->desc->name, "Name") == 0 &&
+                    n->input_pins[0].default_value.str &&
+                    strcmp(n->input_pins[0].default_value.str, "ExactName") == 0)
                     literal_values++;
             }
         }
-        check(literal_values == 2, "CAT-28: literals hold authored values through save/load");
+        check(literal_values == 3, "CAT-30: literals hold authored values through save/load");
         if (literal_loaded) graph_free(literal_loaded);
         free(literal_json);
         graph_free(&literals);
@@ -767,15 +777,25 @@ int main(int argc, char **argv)
     {
         graph g2;
         graph_init(&g2);
-        const node_desc *cc = registry_node_by_name("const_f32");
-        check(cc != NULL, "CAT-21: registry exposes const_f32");
+        const node_desc *cc = registry_node_by_name("Real");
+        check(cc != NULL, "CAT-30: registry exposes Real literal");
 
         node *rc1 = graph_add_node(&g2, cc);
-        pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
-        graph_set_pin_default(&g2, rc1, 1, 0, &two);
+        graph_set_pin_default(
+            &g2,
+            rc1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 2.0 }
+        );
         node *rc2 = graph_add_node(&g2, cc);
-        pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
-        graph_set_pin_default(&g2, rc2, 1, 0, &three);
+        graph_set_pin_default(
+            &g2,
+            rc2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.0 }
+        );
         node *radd = graph_add_node(&g2, add);
         check(graph_connect(&g2, rc1, 0, radd, 0) == 0, "roundtrip: c1 -> add.a");
         check(graph_connect(&g2, rc2, 0, radd, 1) == 0, "roundtrip: c2 -> add.b");
@@ -826,13 +846,11 @@ int main(int argc, char **argv)
         graph full;
         graph_init(&full);
         check(graph_set_metadata(&full, "RoundTrip", "all authored fields") == 0, "FMT-14: blueprint metadata is authored");
+        /* In-memory authored defaults across every pin width on a hand-written
+         * all-types fixture. The fixture is not registry-loadable, so the
+         * byte-identical round trip below uses a separate loadable graph. */
         node *all = graph_add_node(&full, &g_all_types_desc);
-        node *default_node = graph_add_node(&full, registry_node_by_name("const_f32"));
-        node *event = graph_add_node(&full, registry_node_by_name("Event"));
-        node *sequence = graph_add_node(&full, registry_node_by_name("Sequence"));
-        node *sink = graph_add_node(&full, registry_node_by_name("Print String"));
-        node *sum = graph_add_node(&full, add);
-        check(all && default_node && event && sequence && sink && sum, "FMT-2: comprehensive fixture nodes created");
+        check(all != NULL, "FMT-2: comprehensive fixture node created");
         Vec3 *vec = graph_own_block(&full, sizeof *vec);
         if (vec) *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
         pin_value values[] = {
@@ -861,13 +879,63 @@ int main(int argc, char **argv)
             all->x = 12.25f;
             all->y = -7.5f;
         }
+        /* The all-widths fixture is not registry-loadable, so drop it before
+         * the byte-identical round trip, which uses loadable nodes only. */
+        check(graph_remove_node(&full, all) == 0, "FMT-2: all-widths fixture removed before round trip");
+
+        /* Loadable fixture: corrected literals, a Make node for the struct
+         * authored default, both edge kinds, an extended group, and node
+         * fields, all registry-loadable for the byte-identical round trip. */
+        node *bool_lit = graph_add_node(&full, registry_node_by_name("Bool"));
+        node *byte_lit = graph_add_node(&full, registry_node_by_name("Byte"));
+        node *int_lit = graph_add_node(&full, registry_node_by_name("Integer"));
+        node *int64_lit = graph_add_node(&full, registry_node_by_name("Integer64"));
+        node *real_lit = graph_add_node(&full, registry_node_by_name("Real"));
+        node *name_lit = graph_add_node(&full, registry_node_by_name("Name"));
+        node *str_lit = graph_add_node(&full, registry_node_by_name("String"));
+        node *make_node = graph_add_node(&full, make);
+        node *event = graph_add_node(&full, registry_node_by_name("Event"));
+        node *sequence = graph_add_node(&full, registry_node_by_name("Sequence"));
+        node *sink = graph_add_node(&full, registry_node_by_name("Print String"));
+        node *sum = graph_add_node(&full, add);
+        check(
+            bool_lit && byte_lit && int_lit && int64_lit && real_lit && name_lit &&
+                str_lit && make_node && event && sequence && sink && sum,
+            "FMT-2: comprehensive fixture nodes created"
+        );
+        node *literal_nodes[] = {
+            bool_lit, byte_lit, int_lit, int64_lit, real_lit, name_lit, str_lit,
+        };
+        pin_value lit_defaults[] = {
+            { .type = PIN_BOOL, .b = true },
+            { .type = PIN_U8, .u8 = 8 },
+            { .type = PIN_I32, .i = -32 },
+            { .type = PIN_I64, .i64 = -64 },
+            { .type = PIN_F64, .d = 10.5 },
+            { .type = PIN_NAME, .str = "AuthoredName" },
+            { .type = PIN_STR, .str = "authored" },
+        };
+        for (int i = 0; i < 7; i++)
+            check(
+                graph_set_pin_default(&full, literal_nodes[i], 0, 0, &lit_defaults[i]) == 0,
+                "FMT-6: every authored pin default is set"
+            );
+        check(graph_set_pin_default(&full, make_node, 1, 0, &values[12]) == 0, "FMT-6: struct authored default is set");
+        if (bool_lit) {
+            check(graph_set_node_title(&full, bool_lit, "Configured literal") == 0, "NODE-3: title override is authored");
+            check(graph_set_node_comment(&full, bool_lit, "round-trip comment") == 0, "NODE-4: node comment is authored");
+            check(graph_set_node_reference(&full, bool_lit, 4242, "Target") == 0, "NODE-5: node reference fields are authored");
+            check(graph_set_node_disabled(&full, bool_lit, 1) == 0, "NODE-11: disabled state is authored");
+            bool_lit->x = 12.25f;
+            bool_lit->y = -7.5f;
+        }
         check(graph_set_event_name(&full, event, "Full") == 0, "EVT-2: event reference name is serialized");
         pin_spec added = { "Then4", PIN_FLOW, NULL, PIN_EXEC };
         int added_index = sequence ? graph_add_pin(&full, sequence, 1, &added) : -1;
         check(added_index >= 2, "PIN-14: extended Sequence pin is present");
         check(
-            graph_connect(&full, all, 9, sum, 0) == 0 &&
-                graph_connect(&full, default_node, 0, sum, 1) == 0,
+            graph_connect(&full, real_lit, 0, sum, 0) == 0 &&
+                graph_connect(&full, str_lit, 0, sink, 1) == 0,
             "FMT-4: data edge endpoints use pin IDs"
         );
         check(
@@ -887,21 +955,25 @@ int main(int argc, char **argv)
             "byte-identically"
         );
         if (full_b) {
-            node *loaded_all = full_b->nodes[0];
+            node *loaded_bool = graph_node_by_id(full_b, bool_lit->id);
+            node *loaded_str = graph_node_by_id(full_b, str_lit->id);
+            node *loaded_make = graph_node_by_id(full_b, make_node->id);
             check(
-                strcmp(loaded_all->title_override, "Configured literal") == 0 &&
-                    strcmp(loaded_all->comment, "round-trip comment") == 0 &&
-                    loaded_all->reference_id == 4242 &&
-                    strcmp(loaded_all->reference_name, "Target") == 0 &&
-                    loaded_all->disabled && loaded_all->x == 12.25f,
+                loaded_bool &&
+                    strcmp(loaded_bool->title_override, "Configured literal") == 0 &&
+                    strcmp(loaded_bool->comment, "round-trip comment") == 0 &&
+                    loaded_bool->reference_id == 4242 &&
+                    strcmp(loaded_bool->reference_name, "Target") == 0 &&
+                    loaded_bool->disabled && loaded_bool->x == 12.25f,
                 "FMT-5: optional node fields survive first load"
             );
             check(
-                loaded_all->output_pins[0].default_value.b &&
-                    loaded_all->output_pins[11].default_value.str &&
-                    strcmp(loaded_all->output_pins[11].default_value.str, "authored") == 0 &&
-                    loaded_all->output_pins[12].default_value.ptr &&
-                    ((Vec3 *)loaded_all->output_pins[12].default_value.ptr)->y == 2.5f,
+                loaded_bool && loaded_str && loaded_make &&
+                    loaded_bool->input_pins[0].default_value.b &&
+                    loaded_str->input_pins[0].default_value.str &&
+                    strcmp(loaded_str->input_pins[0].default_value.str, "authored") == 0 &&
+                    loaded_make->output_pins[0].default_value.ptr &&
+                    ((Vec3 *)loaded_make->output_pins[0].default_value.ptr)->y == 2.5f,
                 "PIN-2: scalar, string, and struct instance pin fields survive "
                 "first load"
             );
@@ -933,13 +1005,13 @@ int main(int argc, char **argv)
     {
         graph g4;
         graph_init(&g4);
-        const node_desc *cs = registry_node_by_name("const_str");
-        check(cs != NULL, "CAT-21: registry exposes const_str");
+        const node_desc *cs = registry_node_by_name("String");
+        check(cs != NULL, "CAT-30: registry exposes String literal");
         node *s1 = graph_add_node(&g4, cs);
         pin_value hello = { .type = PIN_STR,
                             .type_name = "const char *",
                             .str = "hello, world" };
-        check(graph_set_pin_default(&g4, s1, 1, 0, &hello) == 0, "string const: authored value set");
+        check(graph_set_pin_default(&g4, s1, 0, 0, &hello) == 0, "string const: authored value set");
 
         char *json = graph_save_json(&g4);
         check(json != NULL, "string const: serialize");
@@ -948,8 +1020,9 @@ int main(int argc, char **argv)
             check(g5 && acount(g5->nodes) == 1, "FMT-1: string const: load");
             if (g5) {
                 check(
-                    g5->nodes[0]->outputs[0].type == PIN_STR &&
-                        strcmp(g5->nodes[0]->outputs[0].str, "hello, world") == 0,
+                    g5->nodes[0]->input_pins[0].type == PIN_STR &&
+                        strcmp(g5->nodes[0]->input_pins[0].default_value.str, "hello, world") ==
+                            0,
                     "FMT-6: string const: value round-trips"
                 );
                 graph_free(g5);
@@ -1053,14 +1126,24 @@ int main(int argc, char **argv)
     {
         graph g2;
         graph_init(&g2);
-        const node_desc *cc = registry_node_by_name("const_f32");
 
-        node *c1 = graph_add_node(&g2, cc);
-        pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
-        graph_set_pin_default(&g2, c1, 1, 0, &two);
-        node *c2 = graph_add_node(&g2, cc);
-        pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
-        graph_set_pin_default(&g2, c2, 1, 0, &three);
+        const node_desc *real_desc = registry_node_by_name("Real");
+        node *c1 = graph_add_node(&g2, real_desc);
+        graph_set_pin_default(
+            &g2,
+            c1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 2.0 }
+        );
+        node *c2 = graph_add_node(&g2, real_desc);
+        graph_set_pin_default(
+            &g2,
+            c2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.0 }
+        );
         node *ad = graph_add_node(&g2, add);
         graph_connect(&g2, c1, 0, ad, 0);
         graph_connect(&g2, c2, 0, ad, 1);
@@ -1084,7 +1167,7 @@ int main(int argc, char **argv)
                 check(acount(g3->edges) == 1, "FMT-10: subset: crossing edge dropped");
                 check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "FMT-5: subset: node 0 position");
                 check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "FMT-5: subset: node 1 position");
-                check(g3->nodes[0]->outputs[0].f == 2.0f, "FMT-6: subset: const value survives");
+                check(g3->nodes[0]->input_pins[0].default_value.d == 2.0, "FMT-6: subset: literal value survives");
                 graph_free(g3);
             }
             free(json);
@@ -1096,14 +1179,24 @@ int main(int argc, char **argv)
     {
         graph g4;
         graph_init(&g4);
-        const node_desc *cc = registry_node_by_name("const_f32");
 
-        node *c1 = graph_add_node(&g4, cc);
-        pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
-        graph_set_pin_default(&g4, c1, 1, 0, &two);
-        node *c2 = graph_add_node(&g4, cc);
-        pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
-        graph_set_pin_default(&g4, c2, 1, 0, &three);
+        const node_desc *real_desc = registry_node_by_name("Real");
+        node *c1 = graph_add_node(&g4, real_desc);
+        graph_set_pin_default(
+            &g4,
+            c1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 2.0 }
+        );
+        node *c2 = graph_add_node(&g4, real_desc);
+        graph_set_pin_default(
+            &g4,
+            c2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.0 }
+        );
         node *ad = graph_add_node(&g4, add);
         graph_connect(&g4, c1, 0, ad, 0);
         graph_connect(&g4, c2, 0, ad, 1);
@@ -1124,7 +1217,7 @@ int main(int argc, char **argv)
             check(acount(g5.edges) == 1, "append: edge count");
             check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "FMT-11: append: node 0 offset");
             check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "FMT-11: append: node 1 offset");
-            check(g5.nodes[0]->outputs[0].f == 2.0f, "FMT-6: append: const survives");
+            check(g5.nodes[0]->input_pins[0].default_value.d == 2.0, "FMT-6: append: literal survives");
 
             int n_before = acount(g5.nodes);
             check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "FMT-8: append: bad json fails");
@@ -1142,7 +1235,7 @@ int main(int argc, char **argv)
         graph_init(&ge);
         const node_desc *event_desc = registry_node_by_name("Event");
         const node_desc *branch_desc = registry_node_by_name("Branch");
-        const node_desc *bool_desc = registry_node_by_name("const_bool");
+        const node_desc *bool_desc = registry_node_by_name("Bool");
         check(event_desc && branch_desc && bool_desc, "CAT-2: Branch flow built-in is registered");
         node *event = graph_add_node(&ge, event_desc);
         node *branch = graph_add_node(&ge, branch_desc);
@@ -1152,7 +1245,8 @@ int main(int argc, char **argv)
         node *fanout = graph_add_node(&ge, &g_sink_a_desc);
         check(graph_connect_exec(&ge, event, 0, fanout, 0, 0) != 0, "PIN-9: ordinary EXEC output rejects ambiguous fan-out");
         check(graph_connect_data(&ge, truth, 0, branch, 1) == 0, "TYPE-5: data edge connects");
-        truth->outputs[0].b = true;
+        pin_value true_value = { .type = PIN_BOOL, .b = true };
+        graph_set_pin_default(&ge, truth, 0, 0, &true_value);
         check(acount(ge.edges) == 2 && ge.edges[0].kind != ge.edges[1].kind, "DATA-5: data and exec edges remain distinct");
         node *src = NULL;
         int src_pin = -1;
@@ -1185,7 +1279,7 @@ int main(int argc, char **argv)
         graph_init(&gf);
         node *event = graph_add_node(&gf, registry_node_by_name("Event"));
         node *branch = graph_add_node(&gf, registry_node_by_name("Branch"));
-        node *condition = graph_add_node(&gf, registry_node_by_name("const_bool"));
+        node *condition = graph_add_node(&gf, registry_node_by_name("Bool"));
         node *yes = graph_add_node(&gf, &g_sink_a_desc);
         node *no = graph_add_node(&gf, &g_sink_b_desc);
         check(graph_set_event_name(&gf, event, "Choose") == 0, "EVT-2: named event configured");
@@ -1193,7 +1287,7 @@ int main(int argc, char **argv)
         check(graph_connect_data(&gf, condition, 0, branch, 1) == 0, "TYPE-5: Branch condition data");
         check(graph_connect_exec(&gf, branch, 0, yes, 0, 0) == 0, "CAT-2: Branch true edge");
         check(graph_connect_exec(&gf, branch, 1, no, 0, 0) == 0, "CAT-2: Branch false edge");
-        condition->outputs[0].b = true;
+        graph_set_pin_default(&gf, condition, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = true });
         flow_log_reset();
         flow_run *run = graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error);
         check(
@@ -1204,7 +1298,7 @@ int main(int argc, char **argv)
         check(run != NULL, "RUN-1: named event creates a flow run");
         check(flow_run_status(run) == FLOW_COMPLETED, "RUN-2: completed run reports one state");
         flow_run_free(run);
-        condition->outputs[0].b = false;
+        graph_set_pin_default(&gf, condition, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = false });
         flow_log_reset();
         run = graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error);
         check(
@@ -1549,7 +1643,7 @@ int main(int argc, char **argv)
         graph_init(&gj);
         node *event = graph_add_node(&gj, registry_node_by_name("Event"));
         node *branch = graph_add_node(&gj, registry_node_by_name("Branch"));
-        node *condition = graph_add_node(&gj, registry_node_by_name("const_bool"));
+        node *condition = graph_add_node(&gj, registry_node_by_name("Bool"));
         graph_set_event_name(&gj, event, "Saved");
         graph_connect_exec(&gj, event, 0, branch, 0, 12);
         graph_connect_data(&gj, condition, 0, branch, 1);

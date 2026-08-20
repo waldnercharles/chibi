@@ -4,7 +4,7 @@
 
 int demo_graph_seed(graph *g)
 {
-    const node_desc *cc = registry_node_by_name("const_f32");
+    const node_desc *cc = registry_node_by_name("Real");
     const node_desc *add = registry_node_by_name("add_floats");
     if (!cc || !add) return -1;
 
@@ -13,10 +13,10 @@ int demo_graph_seed(graph *g)
     node *a = graph_add_node(g, add);
     if (!c1 || !c2 || !a) return -1;
 
-    pin_value two = { .type = PIN_F32, .type_name = "float", .f = 2.0f };
-    pin_value three = { .type = PIN_F32, .type_name = "float", .f = 3.0f };
-    if (graph_set_pin_default(g, c1, 1, 0, &two)) return -1;
-    if (graph_set_pin_default(g, c2, 1, 0, &three)) return -1;
+    pin_value two = { .type = PIN_F64, .type_name = "double", .d = 2.0 };
+    pin_value three = { .type = PIN_F64, .type_name = "double", .d = 3.0 };
+    if (graph_set_pin_default(g, c1, 0, 0, &two)) return -1;
+    if (graph_set_pin_default(g, c2, 0, 0, &three)) return -1;
 
     c1->x = -260.0f;
     c1->y = -50.0f;
@@ -47,7 +47,7 @@ int demo_graph_seed_flow(graph *g)
     node *sequence = flow_demo_node(g, "Sequence", -360.0f, -120.0f);
     node *delay = flow_demo_node(g, "Delay", -140.0f, -120.0f);
     node *branch = flow_demo_node(g, "Branch", 80.0f, -120.0f);
-    node *condition = flow_demo_node(g, "const_bool", -140.0f, 100.0f);
+    node *condition = flow_demo_node(g, "Bool", -140.0f, 100.0f);
     node *loop = flow_demo_node(g, "ForLoop", 300.0f, -120.0f);
     node *body = flow_demo_node(g, "Sequence", 540.0f, -220.0f);
     node *completed = flow_demo_node(g, "Sequence", 540.0f, 20.0f);
@@ -60,7 +60,8 @@ int demo_graph_seed_flow(graph *g)
     if (graph_add_pin(g, sequence, 1, &sequence_extra) < 0) return -1;
 
     if (graph_set_event_name(g, event, "OnStart")) return -1;
-    condition->outputs[0].b = true;
+    pin_value true_value = { .type = PIN_BOOL, .b = true };
+    if (graph_set_pin_default(g, condition, 0, 0, &true_value)) return -1;
     delay->inputs[1].d = 1.0;
     loop->inputs[1].i = 2;
     loop->inputs[2].i = 4;

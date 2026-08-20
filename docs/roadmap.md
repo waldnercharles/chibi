@@ -408,6 +408,48 @@ Generated and editor acceptance:
   JSON edits, and the preview distinguishes its instance from the selected
   activation. `UI-1`, `UI-54`.
 
+## Phase 3b: explicit conversions and Format Text
+
+Goal: numeric widening and scalar-to-string are expressible, and formatted
+output unblocks the demo's Begin/Tick/Input verification, which cannot print a
+numeric value without a conversion. Pulled forward from Phase 7 slice 1 because
+the Phase 3 demo needs it now.
+
+Estimate: 1 to 2 days.
+
+Covers: `TYPE-7`, `CAT-26`, `CAT-27`, `CAT-38`, `UI-22`.
+
+Deliverables:
+
+1. Conversion nodes for every `TYPE-7` conversion: integer widening within a
+   signedness (Byte to Integer to Integer64, and the unsigned ladder), integer
+   to Real, and any scalar to String. Each is pure with one typed input and one
+   typed output. `CAT-26`, `TYPE-7`.
+2. Connection-time insertion: when a connection is rejected but `TYPE-7`
+   permits it, the editor offers to insert the matching conversion node in the
+   same place it states the reason, and wires it on accept. A lossy conversion
+   (Real to Integer) is NOT offered. `UI-22`.
+3. Format Text: pure, String format input, user-extensible String argument
+   inputs, one String output. Substitutes `{0}`, `{1}`, ... with each argument's
+   value; a missing argument renders empty. `CAT-38`.
+4. Category paths and search keywords for the new nodes. `CAT-27`.
+
+Acceptance criteria:
+
+- `TYPE-7`: connecting an Integer output to a Real input inserts a visible
+  conversion node and the run observes the converted value; a Real output to an
+  Integer input is rejected with no conversion offer.
+- `CAT-26`: every `TYPE-7` conversion converts correctly headless (integer
+  widening, integer to Real, Bool/Integer/Real/Name to String).
+- `CAT-38`: Format Text with `"Hello {0} World"` and a String argument renders
+  `"Hello Bob World"`; `{1}` with one argument renders empty; a Real passed
+  through a To String conversion first renders identically to its pin display.
+- `UI-22`: dragging a Real output onto an Integer input states both type names
+  and does not offer a conversion; dragging an Integer onto a Real offers the
+  insertion.
+- `python3 tools/spec_coverage.py` stays OK; new checks cite `CAT-26`, `CAT-38`,
+  `TYPE-7`, `UI-22`.
+
 ## Phase 4: functions and multiple graphs
 
 Goal: behavior can be decomposed without growing one Event Graph indefinitely.
@@ -499,10 +541,12 @@ Covers: `CAT-36`, `TYPE-4`, `TYPE-7`, `PIN-12`, `PIN-13`, `PIN-15`, `BP-7`,
 `REFL-5`, `REFL-8`, `UI-25` through `UI-28`, `UI-31`, `UI-33`, `UI-37`,
 `UI-38`.
 
+Note: `TYPE-7`, `CAT-26`, and `CAT-38` (explicit conversions and Format Text)
+moved to Phase 3b. They remain in this coverage list only for traceability.
+
 Slices:
 
-1. Switch on Int, String, Name, and Enum; Select; enum reflection and explicit
-   conversions.
+1. Switch on Int, String, Name, and Enum; Select; enum reflection.
 2. DoOnce, DoN, FlipFlop, Gate, MultiGate, and Retriggerable Delay using
    instance scratch.
 3. Struct Make, Break, Set Members, split and recombine, and enum literals.

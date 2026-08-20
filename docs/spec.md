@@ -812,6 +812,13 @@ pass-by-reference struct input under `PIN-15`, and one authorable data input per
 exposed member. It MUST update only the exposed members and preserve every
 unexposed member.
 
+`CAT-38` Format Text is pure with one String format input, a user-extensible
+list of String argument inputs, and one String output. Evaluating it substitutes
+each `{0}`, `{1}`, ... in the format string with the corresponding argument's
+value. A placeholder whose index has no matching argument renders as the empty
+string. Non-string arguments are first converted with a `CAT-26` To String node,
+so their rendering matches `UI-39`.
+
 ## CMPL: compile and validation
 
 `CMPL-1` Compiling MUST be an explicit operation over one blueprint that

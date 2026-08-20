@@ -3216,8 +3216,9 @@ int main(int argc, char **argv)
         graph_free(&gc);
     }
 
-    /* CAT-38: Format Text substitutes {n} placeholders, renders a missing
-     * argument as empty, and keeps its argument group extensible (PIN-14). */
+    /* CAT-38: Format Text substitutes {n} and {} placeholders, renders a
+     * missing argument as empty, and its argument pins are Generic
+     * wildcards (PIN-11) that adopt the connected type. */
     {
         graph gf;
         graph_init(&gf);
@@ -3225,6 +3226,11 @@ int main(int argc, char **argv)
         arena_init(&af, 8192);
         pin_value out;
         node *fmt = graph_add_node(&gf, &NODE_Format_Text);
+        check(
+            fmt->input_count == 2 && (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD) &&
+                fmt->input_pins[1].type == PIN_FLOW,
+            "CAT-38: Format Text starts with Format and one Generic spare"
+        );
         graph_set_pin_default(
             &gf,
             fmt,
@@ -3240,8 +3246,6 @@ int main(int argc, char **argv)
             0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "Bob" }
         );
-        pin_spec arg0 = { "Arg0", PIN_STR, "const char *", PIN_DATA };
-        check(graph_add_pin(&gf, fmt, 0, &arg0) == 1, "CAT-38: an argument input joins the extensible group");
         graph_connect(&gf, s1, 0, fmt, 1);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
@@ -3262,15 +3266,38 @@ int main(int argc, char **argv)
                 out.str[0] == '\0',
             "CAT-38: {1} with one argument renders as the empty string"
         );
-        /* A Real fed through a To String conversion first renders like its
-         * pin display (UI-39), so formatted output matches. */
+        /* The reported crash: an Integer driven straight onto the spare
+         * replaces the String driver, re-adopts the pin (PIN-11), and
+         * renders like its pin display (UI-39). */
         graph_set_pin_default(
             &gf,
             fmt,
             0,
             0,
-            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "v={0}" }
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "n={0}" }
         );
+        node *ival2 = graph_add_node(&gf, registry_node_by_name("Integer"));
+        graph_set_pin_default(
+            &gf,
+            ival2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 }
+        );
+        graph_connect(&gf, ival2, 0, fmt, 1);
+        graph_eval_reset(&gf);
+        check(
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "n=42") == 0,
+            "CAT-38: a non-string argument renders like its pin display"
+        );
+        /* {} consumes arguments in order; a Real through a To String
+         * conversion renders like its pin display. */
+        pin_spec arg1 = { .name = "Arg1",
+                          .type = PIN_FLOW,
+                          .kind = PIN_DATA,
+                          .flags = PIN_FLAG_WILDCARD };
+        graph_add_pin(&gf, fmt, 0, &arg1);
         node *to_str = graph_add_node(&gf, &NODE_To_String);
         graph_set_pin_type(&gf, to_str, 0, 0, PIN_F64, "double");
         node *rlit = graph_add_node(&gf, registry_node_by_name("Real"));
@@ -3282,45 +3309,140 @@ int main(int argc, char **argv)
             &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.5 }
         );
         graph_connect(&gf, rlit, 0, to_str, 0);
-        graph_connect(&gf, to_str, 0, fmt, 1);
-        graph_eval_reset(&gf);
-        check(
-            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
-                strcmp(out.str, "v=3.5") == 0,
-            "CAT-38: a Real through To String formats identically to its pin "
-            "display"
-        );
-        /* The reported crash: an argument pin retyped to a scalar (or driven
-         * by one) must render via UI-39 instead of trusting .str. */
-        graph_set_pin_type(&gf, fmt, 0, 1, PIN_I32, "int");
-        node *ival2 = graph_add_node(&gf, registry_node_by_name("Integer"));
-        graph_set_pin_default(
-            &gf,
-            ival2,
-            0,
-            0,
-            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 }
-        );
-        graph_connect(&gf, ival2, 0, fmt, 1);
+        graph_connect(&gf, to_str, 0, fmt, 2);
         graph_set_pin_default(
             &gf,
             fmt,
             0,
             0,
-            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "n={0}" }
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "{} {}" }
         );
         graph_eval_reset(&gf);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
-                strcmp(out.str, "n=42") == 0,
-            "CAT-38: a non-string argument renders like its pin display"
+                strcmp(out.str, "42 3.5") == 0,
+            "CAT-38: {} consumes arguments in order and a Real through To "
+            "String renders like its pin display"
         );
+        graph_set_pin_default(
+            &gf,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "a{{b}}c" }
+        );
+        graph_eval_reset(&gf);
         check(
-            graph_remove_pin(&gf, fmt, 0, 1) == 0 && fmt->input_count == 1,
-            "CAT-38: removing an argument pin restores the one-input group"
+            graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "a{b}c") == 0,
+            "CAT-38: {{ and }} print literal braces"
         );
         arena_free(&af);
         graph_free(&gf);
+    }
+
+    /* PIN-11: a Generic argument pin adopts the peer's type on connection
+     * and reverts to Generic when its edge goes away. */
+    {
+        graph gp;
+        graph_init(&gp);
+        arena ap;
+        arena_init(&ap, 8192);
+        pin_value out;
+        node *fmt = graph_add_node(&gp, &NODE_Format_Text);
+        graph_set_pin_default(
+            &gp,
+            fmt,
+            0,
+            0,
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "n={0}" }
+        );
+        node *ival = graph_add_node(&gp, registry_node_by_name("Integer"));
+        graph_set_pin_default(
+            &gp,
+            ival,
+            0,
+            0,
+            &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 }
+        );
+        graph_connect(&gp, ival, 0, fmt, 1);
+        check(
+            fmt->input_pins[1].type == PIN_I32 &&
+                (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD),
+            "PIN-11: connecting to the spare adopts the peer's type"
+        );
+        check(
+            graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "n=42") == 0,
+            "PIN-11: an adopted Generic argument evaluates its peer"
+        );
+        /* A second driver re-adopts (PIN-6 replacement on a wildcard). */
+        node *rval = graph_add_node(&gp, registry_node_by_name("Real"));
+        graph_set_pin_default(
+            &gp,
+            rval,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.5 }
+        );
+        graph_connect(&gp, rval, 0, fmt, 1);
+        check(fmt->input_pins[1].type == PIN_F64, "PIN-11: replacing the driver re-adopts the new type");
+        graph_eval_reset(&gp);
+        check(
+            graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "n=3.5") == 0,
+            "PIN-11: the re-adopted argument evaluates the new peer"
+        );
+        graph_remove_edge(&gp, rval, 0, fmt, 1);
+        int reverted = fmt->input_pins[1].type == PIN_FLOW &&
+                       (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD) &&
+                       acount(gp.edges) == 0;
+        /* Removing the driver node reverts the target the same way. */
+        graph_connect(&gp, ival, 0, fmt, 1);
+        graph_remove_node(&gp, ival);
+        check(
+            reverted && fmt->input_pins[1].type == PIN_FLOW &&
+                (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD),
+            "PIN-11: removing the edge or its driver reverts the Generic pin"
+        );
+        /* An unconnected spare renders as an empty argument. */
+        graph_eval_reset(&gp);
+        check(
+            graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
+                strcmp(out.str, "n=") == 0,
+            "PIN-11: an unconnected Generic argument renders empty"
+        );
+        /* Adopted types survive a save/load round trip. The editor appends
+         * the next spare when the last pin is taken, so mirror that and
+         * verify the appended spare round-trips as Generic too. */
+        graph_connect(&gp, rval, 0, fmt, 1);
+        pin_spec spare = { .name = "Arg1",
+                           .type = PIN_FLOW,
+                           .kind = PIN_DATA,
+                           .flags = PIN_FLAG_WILDCARD };
+        graph_add_pin(&gp, fmt, 0, &spare);
+        graph *gp2 = graph_load_json(graph_save_json(&gp));
+        check(
+            gp2 && gp2->nodes[0]->input_pins[1].type == PIN_F64 &&
+                (gp2->nodes[0]->input_pins[1].flags & PIN_FLAG_WILDCARD) &&
+                gp2->nodes[0]->input_pins[2].type == PIN_FLOW &&
+                (gp2->nodes[0]->input_pins[2].flags & PIN_FLAG_WILDCARD),
+            "PIN-11: adopted types and the spare survive save/load"
+        );
+        if (gp2) {
+            arena ap2;
+            arena_init(&ap2, 8192);
+            graph_eval_reset(gp2);
+            check(
+                graph_eval_output(gp2, gp2->nodes[0], 0, &ap2, &out, &eval_ctx) == 0 &&
+                    strcmp(out.str, "n=3.5") == 0,
+                "PIN-11: a loaded Generic argument still evaluates"
+            );
+            arena_free(&ap2);
+            graph_free(gp2);
+        }
+        arena_free(&ap);
+        graph_free(&gp);
     }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

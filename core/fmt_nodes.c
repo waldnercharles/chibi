@@ -7,8 +7,8 @@
  * order, {N} names a position, {MODS} and {N:MODS} carry printf modifiers,
  * and {{ and }} print literal braces. Arguments render through the
  * canonical pin display (pin_value_to_string, UI-39) when the placeholder
- * carries no modifier; a modifier opts into a typed render, where the
- * value is snprintf'd with its own C type so precision and width apply:
+ * carries no modifier; a modifier opts into a typed render, where numeric
+ * values use the matching C conversion family so precision and width apply:
  * {:.2f} on a Real renders 3.14, {:x} on an Integer renders ff. The '<'
  * and '>' alignment modifiers translate like fmt's: '<' becomes the '-'
  * flag and '>' right-aligns by default. Dynamic '*' width is not
@@ -29,8 +29,8 @@
  */
 #include "fmt_nodes.h"
 
+#include "../third_party/fmt/fmt.h"
 #include "arena.h"
-#include "fmt.h"
 #include "pin_fmt.h"
 
 #include <string.h>
@@ -75,10 +75,32 @@ static const char *fmt_default_letter(pin_type t)
     }
 }
 
-/* Render one argument through its placeholder modifier, keeping the value's
- * own C type so precision and width apply. No modifier uses the canonical
- * pin display; the result is an arena copy. `mods` runs for `mods_len`
- * bytes inside the authored format, ending at the closing '}'. */
+static int fmt_is_float_conversion(char conversion)
+{ return strchr("aAeEfFgG", conversion) != NULL; }
+
+static int fmt_numeric_as_double(const pin_value *v, double *out)
+{
+    switch (v->type) {
+        case PIN_BOOL: *out = v->b; return 1;
+        case PIN_I8: *out = v->i8; return 1;
+        case PIN_U8: *out = v->u8; return 1;
+        case PIN_I16: *out = v->i16; return 1;
+        case PIN_U16: *out = v->u16; return 1;
+        case PIN_I32: *out = v->i; return 1;
+        case PIN_U32: *out = v->u; return 1;
+        case PIN_I64: *out = (double)v->i64; return 1;
+        case PIN_U64: *out = (double)v->u64; return 1;
+        case PIN_F32: *out = v->f; return 1;
+        case PIN_F64: *out = v->d; return 1;
+        case PIN_ENUM: *out = v->e; return 1;
+        default: return 0;
+    }
+}
+
+/* Render one argument through its placeholder modifier. Numeric values may
+ * be promoted to double for a floating-point conversion; no modifier uses
+ * the canonical pin display. The result is an arena copy. `mods` runs for
+ * `mods_len` bytes inside the authored format, ending at the closing '}'. */
 static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t mods_len, arena *a)
 {
     if (mods_len == 0 || memchr(mods, '*', mods_len))
@@ -98,6 +120,13 @@ static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t m
     snprintf(conv, sizeof conv, "%%%s%s", mods_conv, has_letter ? "" : fmt_default_letter(v->type));
 
     char buf[FMT_RENDER_BUF];
+    if (has_letter && fmt_is_float_conversion(mods_conv[m - 1])) {
+        double value;
+        if (!fmt_numeric_as_double(v, &value))
+            return fmt_arena_strdup(a, fmt_text_of(v));
+        snprintf(buf, sizeof buf, conv, value);
+        return fmt_arena_strdup(a, buf);
+    }
     switch (v->type) {
         case PIN_BOOL: snprintf(buf, sizeof buf, conv, v->b ? 1 : 0); break;
         case PIN_I8: snprintf(buf, sizeof buf, conv, (int)v->i8); break;

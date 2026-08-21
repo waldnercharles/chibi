@@ -19,10 +19,20 @@ typedef struct
 
 typedef struct blueprint_instance blueprint_instance;
 
+typedef void (*eval_data_edge_fn)(
+    const node *source,
+    int source_pin,
+    const node *target,
+    int target_pin,
+    void *user
+);
+
 typedef struct eval_context
 {
     eval_status status;
     blueprint_instance *instance; /* optional: variable/owner reads for Get/Self */
+    eval_data_edge_fn on_data_edge; /* optional pull-evaluation edge observer */
+    void *on_data_edge_user;
 } eval_context;
 
 void eval_context_init(eval_context *ctx);

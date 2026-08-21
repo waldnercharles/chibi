@@ -21,7 +21,7 @@
 #include "../core/serialize.h"
 #include "../demo/vec3.h"
 #include "../editor/preview_gate.h"
-#include "fmt.h"
+#include "../third_party/fmt/fmt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1388,6 +1388,25 @@ int main(int argc, char **argv)
         );
         check(run != NULL, "RUN-1: named event creates a flow run");
         check(flow_run_status(run) == FLOW_COMPLETED, "RUN-2: completed run reports one state");
+        int traversal_count = 0;
+        const flow_traversal *traversals = flow_run_traversals(run, &traversal_count);
+        check(
+            traversal_count >= 3 && traversals[0].kind == GRAPH_EDGE_EXEC &&
+                traversals[1].kind == GRAPH_EDGE_DATA &&
+                traversals[2].kind == GRAPH_EDGE_EXEC &&
+                traversals[0].activation <= traversals[1].activation &&
+                traversals[1].activation <= traversals[2].activation,
+            "DBG-7: traversed exec path is identifiable in order"
+        );
+        check(
+            traversals[0].timestamp <= traversals[1].timestamp &&
+                traversals[1].timestamp <= traversals[2].timestamp,
+            "DBG-15: traversal records carry ordered runtime timestamps"
+        );
+        flow_run_stop(run);
+        int stopped_count = 0;
+        (void)flow_run_traversals(run, &stopped_count);
+        check(stopped_count == traversal_count, "UI-50: stopped flow records can settle visually");
         flow_run_free(run);
         graph_set_pin_default(&gf, condition, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = false });
         flow_log_reset();
@@ -1442,8 +1461,31 @@ int main(int argc, char **argv)
                 strcmp(g_flow_log, "ABC") == 0,
             "EXEC-5: Sequence order is 0,1,2,3"
         );
+        int traversal_count = 0;
+        (void)flow_run_traversals(run, &traversal_count);
+        check(traversal_count == 4, "DBG-15: Sequence records each traversed exec edge");
         flow_run_free(run);
         graph_free(&gs);
+
+        graph capped;
+        graph_init(&capped);
+        node *cap_event = graph_add_node(&capped, registry_node_by_name("Event"));
+        node *cap_sequence = graph_add_node(&capped, registry_node_by_name("Sequence"));
+        node *cap_sink = graph_add_node(&capped, &g_sink_a_desc);
+        graph_set_event_name(&capped, cap_event, "CappedFlow");
+        graph_connect_exec(&capped, cap_event, 0, cap_sequence, 0, 0);
+        for (int i = 2; i < 300; i++) {
+            pin_spec extra = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
+            graph_add_pin(&capped, cap_sequence, 1, &extra);
+        }
+        for (int i = 0; i < cap_sequence->output_count; i++)
+            graph_connect_exec(&capped, cap_sequence, i, cap_sink, 0, i);
+        run = graph_run_event(&capped, "CappedFlow", (flow_inputs){ 0 }, &dispatch_error);
+        traversal_count = 0;
+        (void)flow_run_traversals(run, &traversal_count);
+        check(traversal_count == 256, "DBG-16: traversal records stay within their bound");
+        flow_run_free(run);
+        graph_free(&capped);
 
         graph seven;
         graph_init(&seven);
@@ -1580,7 +1622,7 @@ int main(int argc, char **argv)
         graph_free(&gp);
     }
 
-    /* 19. ForLoop inclusive forward range and empty reverse range. */
+    /* 19. ForLoop inclusive forward and reverse ranges. */
     {
         graph gl;
         graph_init(&gl);
@@ -1624,9 +1666,10 @@ int main(int argc, char **argv)
         flow_log_reset();
         run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
-            run && flow_run_status(run) == FLOW_COMPLETED &&
-                g_flow_index_count == 0 && strcmp(g_flow_log, "D") == 0,
-            "EXEC-4: ForLoop reverse range skips body and completes"
+            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_index_count == 3 &&
+                g_flow_indices[0] == 4 && g_flow_indices[1] == 3 &&
+                g_flow_indices[2] == 2 && strcmp(g_flow_log, "D") == 0,
+            "EXEC-4: ForLoop runs inclusive 4..2 in reverse then completes"
         );
         flow_run_free(run);
         graph_free(&gl);
@@ -2162,6 +2205,21 @@ int main(int argc, char **argv)
         graph_connect_exec(bp->graph, tick_ev, 0, capture, 0, 0);
         graph_connect_data(bp->graph, get, 0, capture, 1);
 
+        /* A pure conversion chain must record every data edge, not only the
+         * edge entering the flow node that consumes its final output. */
+        node *text_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        node *to_string = graph_add_node(bp->graph, registry_node_by_name("To String"));
+        node *string_capture = graph_add_node(bp->graph, &g_str_capture_desc);
+        check(
+            text_ev && to_string && string_capture &&
+                graph_set_event_name(bp->graph, text_ev, "TickText") == 0 &&
+                graph_set_pin_type(bp->graph, to_string, 0, 0, PIN_I32, "int") == 0 &&
+                graph_connect_exec(bp->graph, text_ev, 0, string_capture, 0, 0) == 0 &&
+                graph_connect_data(bp->graph, get, 0, to_string, 0) == 0 &&
+                graph_connect_data(bp->graph, to_string, 0, string_capture, 1) == 0,
+            "DBG-17: pure data chain is authored"
+        );
+
         /* Input(Name Action, Real Value, Bool Pressed): Set LastAction. */
         node *input_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, input_ev, "Input");
@@ -2198,6 +2256,27 @@ int main(int argc, char **argv)
         check(
             act && flow_run_status(act) == FLOW_COMPLETED && g_captured_int == 50,
             "EVT-10: a later Tick event reads the state Begin wrote"
+        );
+
+        g_captured_str[0] = '\0';
+        act = blueprint_instance_dispatch(bi, "TickText", (flow_inputs){ 0 }, &perr);
+        int traversal_count = 0;
+        const flow_traversal *traversals = flow_run_traversals(act, &traversal_count);
+        int saw_get_to_string = 0;
+        int saw_to_string_capture = 0;
+        for (int i = 0; i < traversal_count; i++) {
+            saw_get_to_string |= traversals[i].kind == GRAPH_EDGE_DATA &&
+                                 traversals[i].from_id == get->id &&
+                                 traversals[i].to_id == to_string->id;
+            saw_to_string_capture |= traversals[i].kind == GRAPH_EDGE_DATA &&
+                                     traversals[i].from_id == to_string->id &&
+                                     traversals[i].to_id == string_capture->id;
+        }
+        check(
+            act && flow_run_status(act) == FLOW_COMPLETED &&
+                strcmp(g_captured_str, "50") == 0 && saw_get_to_string &&
+                saw_to_string_capture,
+            "DBG-17: pure data chains record every traversed data edge"
         );
 
         pin_value input_params[] = {
@@ -3309,6 +3388,14 @@ int main(int argc, char **argv)
                           .kind = PIN_DATA,
                           .flags = PIN_FLAG_WILDCARD };
         graph_add_pin(&gf, fmt, 0, &arg1);
+        char dynamic_arg_name[32] = "Arg2";
+        pin_spec dynamic_arg = { .name = dynamic_arg_name,
+                                 .type = PIN_FLOW,
+                                 .kind = PIN_DATA,
+                                 .flags = PIN_FLAG_WILDCARD };
+        graph_add_pin(&gf, fmt, 0, &dynamic_arg);
+        snprintf(dynamic_arg_name, sizeof dynamic_arg_name, "renamed");
+        check(strcmp(fmt->input_pins[3].name, "Arg2") == 0, "PIN-2: dynamically added pin owns its name");
         node *to_str = graph_add_node(&gf, &NODE_To_String);
         graph_set_pin_type(&gf, to_str, 0, 0, PIN_F64, "double");
         node *rlit = graph_add_node(&gf, registry_node_by_name("Real"));
@@ -3382,13 +3469,13 @@ int main(int argc, char **argv)
             fmt,
             0,
             0,
-            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "|{2:.2f}|{0:x}|{0:08d}|" }
+            &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "|{2:.2f}|{0:x}|{0:08d}|{0:.2f}|" }
         );
         graph_eval_reset(&gf);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
-                strcmp(out.str, "|3.14|2a|00000042|") == 0,
-            "CAT-38: precision and base specifiers render by the value's type"
+                strcmp(out.str, "|3.14|2a|00000042|42.00|") == 0,
+            "CAT-38: precision and base specifiers render numeric values"
         );
         arena_free(&af);
         graph_free(&gf);

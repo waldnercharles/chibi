@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define FLOW_TRAVERSAL_MAX 256
+
 typedef enum
 {
     FLOW_FRAME_NODE,
@@ -61,6 +63,7 @@ struct flow_run
     void *sink_user;
     arena scratch;
     flow_watch *watches;
+    flow_traversal *traversals;
 };
 
 struct flow_context
@@ -106,6 +109,37 @@ static void graph_resume(flow_run *run)
     run->graph_paused = 0;
 }
 
+static void record_traversal(
+    flow_run *run,
+    uint64_t from_id,
+    uint64_t from_pin_id,
+    uint64_t to_id,
+    uint64_t to_pin_id,
+    graph_edge_kind kind
+)
+{
+    if (acount(run->traversals) >= FLOW_TRAVERSAL_MAX) {
+        memmove(
+            run->traversals,
+            run->traversals + 1,
+            (size_t)(FLOW_TRAVERSAL_MAX - 1) * sizeof *run->traversals
+        );
+        asetlen(run->traversals, FLOW_TRAVERSAL_MAX - 1);
+    }
+    apush(
+        run->traversals,
+        (flow_traversal){
+            from_id,
+            from_pin_id,
+            to_id,
+            to_pin_id,
+            kind,
+            run->current_time,
+            run->steps,
+        }
+    );
+}
+
 /* One output pin has at most one EXEC target. The edge's explicit order is
  * retained by the graph and JSON; node output pins provide Sequence order. */
 static int schedule_output(flow_context *ctx, int output_pin)
@@ -118,6 +152,8 @@ static int schedule_output(flow_context *ctx, int output_pin)
 
     node *target = NULL;
     int target_pin = -1;
+    uint64_t to_id = 0;
+    uint64_t to_pin_id = 0;
     int found = 0;
     for (int i = 0; i < acount(run->graph->edges); i++) {
         const edge *e = &run->graph->edges[i];
@@ -128,6 +164,8 @@ static int schedule_output(flow_context *ctx, int output_pin)
             return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "EXEC output has ambiguous fan-out");
         }
         found = 1;
+        to_id = e->to_id;
+        to_pin_id = e->to_pin_id;
         target = graph_node_by_id(run->graph, e->to_id);
         int is_out = 0;
         if (!target ||
@@ -139,6 +177,7 @@ static int schedule_output(flow_context *ctx, int output_pin)
     if (!found) return FLOW_OK;
     if (!target || target_pin < 0 || target->input_pins[target_pin].kind != PIN_EXEC)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "invalid EXEC target");
+    record_traversal(run, ctx->node->id, ctx->node->output_pins[output_pin].id, to_id, to_pin_id, GRAPH_EDGE_EXEC);
     apush(run->frames, (flow_frame){ target, FLOW_FRAME_NODE, 0, 0 });
     return FLOW_OK;
 }
@@ -148,6 +187,21 @@ static int schedule_output_for_node(flow_run *run, node *n, int output_pin)
     flow_context ctx = { run, n, 0, 0.0, -1, 0 };
     return schedule_output(&ctx, output_pin);
 }
+
+static void record_data_traversal(flow_run *run, const node *src, int src_pin, const node *dst, int dst_pin)
+{
+    record_traversal(
+        run,
+        src->id,
+        src->output_pins[src_pin].id,
+        dst->id,
+        dst->input_pins[dst_pin].id,
+        GRAPH_EDGE_DATA
+    );
+}
+
+static void record_evaluated_data_edge(const node *src, int src_pin, const node *dst, int dst_pin, void *user)
+{ record_data_traversal((flow_run *)user, src, src_pin, dst, dst_pin); }
 
 static int flow_run_check_topology(flow_run *run)
 {
@@ -285,8 +339,8 @@ static int flow_run_activate(flow_run *run)
     flow_frame frame = apop(run->frames);
     run->steps++;
     if (frame.kind == FLOW_FRAME_LOOP) {
-        if (frame.current < frame.last) {
-            frame.current++;
+        if (frame.current != frame.last) {
+            frame.current += frame.current < frame.last ? 1 : -1;
             frame.node->computed = 0;
             frame.node->outputs[1].type = PIN_I32;
             frame.node->outputs[1].type_name = "int";
@@ -395,6 +449,8 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->waiting_output = -1;
     eval_context_init(&run->eval);
     run->eval.instance = run->instance;
+    run->eval.on_data_edge = record_evaluated_data_edge;
+    run->eval.on_data_edge_user = run;
     if (inputs.count) {
         run->inputs = (pin_value *)malloc((size_t)inputs.count * sizeof *run->inputs);
         if (!run->inputs) {
@@ -537,6 +593,7 @@ int flow_run_reset(flow_run *run)
     run->input_user_data = NULL;
     arena_free(&run->scratch);
     watch_clear(run);
+    afree(run->traversals);
     run->steps = 0;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
@@ -564,6 +621,12 @@ flow_inputs flow_run_inputs(const flow_run *run)
 {
     return run ? (flow_inputs){ run->inputs, run->input_count, run->input_user_data }
                : (flow_inputs){ NULL, 0, NULL };
+}
+
+const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
+{
+    if (count) *count = run ? acount(run->traversals) : 0;
+    return run ? run->traversals : NULL;
 }
 
 void flow_run_free(flow_run *run)
@@ -624,6 +687,7 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
     node *src = NULL;
     int src_pin = 0;
     if (graph_input_source(ctx->run->graph, ctx->node, input_pin, &src, &src_pin)) {
+        record_data_traversal(ctx->run, src, src_pin, ctx->node, input_pin);
         int result = graph_eval_output(
             ctx->run->graph,
             src,
@@ -687,7 +751,6 @@ int flow_context_loop(struct flow_context *ctx, int first, int last)
         ctx->node->output_pins[2].kind != PIN_EXEC)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "invalid ForLoop descriptor");
 
-    if (first > last) return flow_context_continue(ctx, 2);
     ctx->node->computed = 0;
     ctx->node->outputs[1].type = PIN_I32;
     ctx->node->outputs[1].type_name = "int";

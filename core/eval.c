@@ -38,6 +38,8 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
         node *src;
         int src_pin;
         if (graph_input_source(g, n, i, &src, &src_pin)) {
+            if (ctx->on_data_edge)
+                ctx->on_data_edge(src, src_pin, n, i, ctx->on_data_edge_user);
             int r = graph_eval_output(g, src, src_pin, a, &n->inputs[i], ctx);
             if (r) {
                 n->visiting = 0;

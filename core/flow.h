@@ -25,6 +25,17 @@ extern "C"
 
     typedef struct
     {
+        uint64_t from_id;
+        uint64_t from_pin_id;
+        uint64_t to_id;
+        uint64_t to_pin_id;
+        graph_edge_kind kind;
+        double timestamp;
+        unsigned long activation;
+    } flow_traversal;
+
+    typedef struct
+    {
         unsigned step_budget; /* zero selects the 10,000-step default. */
         flow_clock_fn now; /* host monotonic clock; NULL keeps the last supplied time */
         void *now_user; /* borrowed by the run */
@@ -105,6 +116,10 @@ extern "C"
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
     flow_inputs flow_run_inputs(const flow_run *run);
+    /* Traversal records are ordered oldest to newest and remain available
+     * after Stop until the run is reset or freed. The returned storage is
+     * borrowed from the run. */
+    const flow_traversal *flow_run_traversals(const flow_run *run, int *count);
     void flow_run_free(flow_run *run);
 
     /* Scheduler readiness (EXEC-17): RUNNING, or SUSPENDED with wake_time

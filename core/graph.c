@@ -57,6 +57,7 @@ static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
 {
     *dst = *src;
     dst->id = graph_alloc_id(g);
+    dst->name = src->name ? graph_own_str(g, src->name, strlen(src->name)) : NULL;
     dst->default_value.type = dst->type;
     dst->default_value.type_name = dst->type_name;
     if ((dst->type == PIN_STR || dst->type == PIN_NAME) && !dst->default_value.str)

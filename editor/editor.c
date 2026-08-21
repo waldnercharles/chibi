@@ -41,6 +41,39 @@ extern const size_t editor_nerd_symbols_font_size;
 #define ED_TOAST_DURATION 4.0
 #define ED_TOAST_FADE 0.4
 
+/* Flow pacing. */
+#define ED_FLOW_SPEED 192.0f
+#define ED_FLOW_DOT_SPACING 64.0f
+#define ED_FLOW_CURVE_SAMPLES 32
+
+/* Flow timing. */
+#define ED_FLOW_ATTACK_HOLD 0.3
+#define ED_FLOW_ATTACK_DECAY 0.4
+#define ED_FLOW_SUSTAIN_HOLD 0.4
+#define ED_FLOW_RELEASE 1.5
+
+/* Flow wire sizing. */
+#define ED_FLOW_SELECTED_THICKNESS 4.0f
+#define ED_FLOW_HOVERED_THICKNESS 3.0f
+#define ED_FLOW_ATTACK_THICKNESS 4.0f
+#define ED_FLOW_SUSTAIN_THICKNESS 3.5f
+#define ED_FLOW_DATA_SUSTAIN_THICKNESS 2.5f
+#define ED_FLOW_RELEASE_THICKNESS 2.5f
+#define ED_FLOW_RESTING_EXEC_THICKNESS 2.5f
+#define ED_FLOW_RESTING_DATA_THICKNESS 1.5f
+
+/* Flow bubble sizing. */
+#define ED_FLOW_DOT_RADIUS 4.0f
+#define ED_FLOW_MAX_BUBBLE_RADIUS 5.0f
+#define ED_FLOW_BUBBLE_BASE_WEIGHT 1.0f
+#define ED_FLOW_BUBBLE_HEAT_WEIGHT 0.65f
+#define ED_FLOW_BUBBLE_MIN_LINE_RATIO 0.6f
+#define ED_FLOW_BUBBLE_COLOR_BLEND 0.55f
+
+/* Flow overview scaling. */
+#define ED_FLOW_MAX_OVERVIEW_SCALE 2.0f
+#define ED_FLOW_HEAT_OVERVIEW_GAIN 1.1f
+
 enum
 {
     ED_ICON_WARNING_CODEPOINT = 0xf071,
@@ -147,7 +180,7 @@ struct editor
     char *pending_snapshot;
     int edit_history_open;
     int edit_changed;
-    char edit_text[256];
+    char edit_text[1024];
     node *edit_text_node;
     int edit_text_kind;
     int edit_text_index;
@@ -196,6 +229,8 @@ static ImVec2 ed_scale(ImVec2 a, float s)
 
 static float ed_max(float a, float b) { return a > b ? a : b; }
 
+static float ed_min(float a, float b) { return a < b ? a : b; }
+
 static float ed_abs(float a) { return a < 0.0f ? -a : a; }
 
 /* Unreal-compatible palette. Flow uses one title color here even though Unreal
@@ -242,6 +277,41 @@ static ImVec4 ed_node_title_color(const node *n)
     if (display < NODE_DISPLAY_PURE || display > NODE_DISPLAY_LITERAL)
         display = NODE_DISPLAY_PURE;
     return ED_NODE_TITLES[display];
+}
+
+static const char *ed_node_title(const node *n, char *buf, size_t cap)
+{
+    if (n->title_override) return n->title_override;
+    if (n->reference_name && n->reference_name[0] &&
+        (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable)) {
+        snprintf(buf, cap, "%s %s", n->desc->name, n->reference_name);
+        return buf;
+    }
+    return n->desc->name;
+}
+
+static int ed_event_name_used(const editor *e, const char *name)
+{
+    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
+        const node *n = e->bp->graph->nodes[i];
+        if (n->desc->flow_kind == NODE_FLOW_EVENT && n->reference_name &&
+            strcmp(n->reference_name, name) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void ed_name_spawned_event(editor *e, node *n)
+{
+    if (!n->desc || n->desc->flow_kind != NODE_FLOW_EVENT) return;
+    for (int suffix = 0;; suffix++) {
+        char name[64];
+        if (suffix == 0) snprintf(name, sizeof name, "Event");
+        else snprintf(name, sizeof name, "Event_%d", suffix);
+        if (ed_event_name_used(e, name)) continue;
+        graph_set_node_reference(e->bp->graph, n, 0, name);
+        return;
+    }
 }
 
 static ImU32 ed_color(ImVec4 c)
@@ -693,7 +763,6 @@ static void ed_build_layout(editor *e)
     int pin_at = 0;
     for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
         node *n = e->bp->graph->nodes[i];
-        const node_desc *d = n->desc;
         float left = 0.0f;
         float right = 0.0f;
         for (int p = 0; p < n->input_count; p++)
@@ -701,8 +770,11 @@ static void ed_build_layout(editor *e)
         for (int p = 0; p < n->output_count; p++)
             right = ed_max(right, ed_pin_text_width(e, e->bp->graph, n, ED_PIN_OUTPUT, p));
 
-        ImVec2 title = ImGui_CalcTextSize(n->title_override ? n->title_override : d->name);
-        float width = ed_max(title.x, left + right + 28.0f) + 2.0f * ED_PAD;
+        char node_title[256];
+        ImVec2 title_size = ImGui_CalcTextSize(
+            ed_node_title(n, node_title, sizeof node_title)
+        );
+        float width = ed_max(title_size.x, left + right + 28.0f) + 2.0f * ED_PAD;
         int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
         float row_height = line + 6.0f;
         float title_height = line + 2.0f * ED_TITLE_PAD;
@@ -804,6 +876,14 @@ static float ed_distance_to_segment(ImVec2 p, ImVec2 a, ImVec2 b)
     return sqrtf(d.x * d.x + d.y * d.y);
 }
 
+static ImVec4 ed_lerp4(ImVec4 a, ImVec4 b, float t)
+{
+    return (ImVec4){ a.x + (b.x - a.x) * t,
+                     a.y + (b.y - a.y) * t,
+                     a.z + (b.z - a.z) * t,
+                     a.w + (b.w - a.w) * t };
+}
+
 static ImVec2 ed_bezier(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float t)
 {
     float u = 1.0f - t;
@@ -813,6 +893,76 @@ static ImVec2 ed_bezier(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float t)
     float d = t * t * t;
     return (ImVec2){ a * p0.x + b * p1.x + c * p2.x + d * p3.x,
                      a * p0.y + b * p1.y + c * p2.y + d * p3.y };
+}
+
+static float ed_distance(ImVec2 a, ImVec2 b)
+{
+    ImVec2 d = ed_sub(b, a);
+    return sqrtf(d.x * d.x + d.y * d.y);
+}
+
+static float ed_curve_length(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3)
+{
+    float length = 0.0f;
+    ImVec2 prev = p0;
+    for (int i = 1; i <= ED_FLOW_CURVE_SAMPLES; i++) {
+        ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)i / ED_FLOW_CURVE_SAMPLES);
+        length += ed_distance(prev, next);
+        prev = next;
+    }
+    return length;
+}
+
+static ImVec2 ed_curve_at_distance(ImVec2 p0, ImVec2 p1, ImVec2 p2, ImVec2 p3, float distance, float length)
+{
+    if (distance <= 0.0f) return p0;
+    if (distance >= length) return p3;
+    float travelled = 0.0f;
+    ImVec2 prev = p0;
+    for (int i = 1; i <= ED_FLOW_CURVE_SAMPLES; i++) {
+        ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)i / ED_FLOW_CURVE_SAMPLES);
+        float segment = ed_distance(prev, next);
+        if (segment > 0.0f && travelled + segment >= distance) {
+            float t = (distance - travelled) / segment;
+            return ed_add(prev, ed_scale(ed_sub(next, prev), t));
+        }
+        travelled += segment;
+        prev = next;
+    }
+    return p3;
+}
+
+static float ed_clamp01(float value)
+{
+    if (value < 0.0f) return 0.0f;
+    if (value > 1.0f) return 1.0f;
+    return value;
+}
+
+static float ed_flow_heat(double age, float *thickness, ImVec4 *color, ImVec4 base, int exec)
+{
+    static const ImVec4 attack = { 1.0f, 0.05f, 0.0f, 1.0f };
+    static const ImVec4 sustain = { 1.0f, 0.7f, 0.4f, 1.0f };
+    static const ImVec4 resting = { 0.5f, 0.5f, 0.5f, 1.0f };
+    float delta = (float)age;
+    float attack_ratio = ed_clamp01(1.0f - (delta - ED_FLOW_ATTACK_HOLD) / ED_FLOW_ATTACK_DECAY);
+    float sustain_start = ED_FLOW_ATTACK_HOLD + ED_FLOW_ATTACK_DECAY + ED_FLOW_SUSTAIN_HOLD;
+    float sustain_ratio = ed_clamp01(1.0f - (delta - sustain_start) / ED_FLOW_RELEASE);
+    float attack_alpha = powf(attack_ratio, 1.8f);
+    float sustain_alpha = powf(sustain_ratio, 1.4f);
+    float attack_peak = exec ? ED_FLOW_ATTACK_THICKNESS : ED_FLOW_SUSTAIN_THICKNESS;
+    float sustain_level = exec ? ED_FLOW_SUSTAIN_THICKNESS
+                               : ED_FLOW_DATA_SUSTAIN_THICKNESS;
+    float attack_thickness = sustain_level + (attack_peak - sustain_level) * attack_alpha;
+    *thickness = ED_FLOW_RELEASE_THICKNESS +
+                 (attack_thickness - ED_FLOW_RELEASE_THICKNESS) * sustain_alpha;
+    ImVec4 envelope = ed_lerp4(resting, ed_lerp4(sustain, attack, attack_alpha), sustain_alpha);
+    *color = exec ? (ImVec4){ base.x * envelope.x,
+                              base.y * envelope.y,
+                              base.z * envelope.z,
+                              base.w * envelope.w }
+                  : ed_lerp4(base, ed_lerp4(base, sustain, 0.45f), sustain_alpha);
+    return sustain_alpha;
 }
 
 static int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec2 *p2, ImVec2 *p3)
@@ -1093,8 +1243,8 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
     pin_value value = spec->default_value;
     int changed = 0;
     char id[32];
-    snprintf(id, sizeof id, "Default##%d", index);
-    ImGui_SetNextItemWidth(160.0f);
+    snprintf(id, sizeof id, "Value##%d", index);
+    if (value.type != PIN_STR) ImGui_SetNextItemWidth(160.0f);
     switch (value.type) {
         case PIN_BOOL: changed = ImGui_Checkbox(id, &value.b); break;
         case PIN_I8:
@@ -1128,7 +1278,15 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
         case PIN_ENUM: changed = ImGui_InputInt(id, &value.e); break;
         case PIN_STR: {
             snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
-            changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
+            changed = ImGui_InputTextMultilineEx(
+                id,
+                e->edit_text,
+                sizeof e->edit_text,
+                (ImVec2){ 0.0f, 0.0f },
+                ImGuiInputTextFlags_WordWrap,
+                NULL,
+                NULL
+            );
             value.str = e->edit_text;
             break;
         }
@@ -1189,8 +1347,6 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
                 e->edit_changed = 1;
         }
         ed_details_finish_mutation(e, ImGui_IsItemEdited());
-        ImGui_TextUnformatted("Default");
-        ImGui_SameLine();
         ed_draw_details_default(e, n, output, index);
     }
     ImGui_PopID();
@@ -1225,8 +1381,8 @@ static int ed_draw_variable_default(editor *e, blueprint_variable *v)
     pin_value value = v->default_value;
     int changed = 0;
     char id[32];
-    snprintf(id, sizeof id, "Default##var");
-    ImGui_SetNextItemWidth(160.0f);
+    snprintf(id, sizeof id, "Value##var");
+    if (value.type != PIN_STR) ImGui_SetNextItemWidth(160.0f);
     switch (value.type) {
         case PIN_BOOL: changed = ImGui_Checkbox(id, &value.b); break;
         case PIN_I8:
@@ -1258,7 +1414,20 @@ static int ed_draw_variable_default(editor *e, blueprint_variable *v)
             changed = ImGui_InputDoubleEx(id, &value.d, 0.1, 0.0, "%.3f", 0);
             break;
         case PIN_ENUM: changed = ImGui_InputInt(id, &value.e); break;
-        case PIN_STR:
+        case PIN_STR: {
+            snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
+            changed = ImGui_InputTextMultilineEx(
+                id,
+                e->edit_text,
+                sizeof e->edit_text,
+                (ImVec2){ 0.0f, 0.0f },
+                ImGuiInputTextFlags_WordWrap,
+                NULL,
+                NULL
+            );
+            value.str = e->edit_text;
+            break;
+        }
         case PIN_NAME: {
             snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
             changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
@@ -1299,8 +1468,6 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
             e->edit_changed = 1;
     }
     ed_details_finish_mutation(e, ImGui_IsItemEdited());
-    ImGui_TextUnformatted("Default");
-    ImGui_SameLine();
     ed_draw_variable_default(e, v);
     ImGui_Separator();
     if (ImGui_Button("Add Get node")) {
@@ -1496,7 +1663,8 @@ static void ed_draw_details(editor *e)
         return;
     }
     node *n = e->selected[0];
-    ImGui_Text("%s", n->desc && n->desc->name ? n->desc->name : "Node");
+    char node_title[256];
+    ImGui_Text("%s", ed_node_title(n, node_title, sizeof node_title));
     snprintf(e->details_title, sizeof e->details_title, "%s", n->title_override ? n->title_override : "");
     if (ImGui_InputText("Title override", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
@@ -1687,6 +1855,120 @@ static void ed_draw_grid(editor *e, ImDrawList *dl)
         );
 }
 
+static int ed_flow_edge_matches(const flow_traversal *record, const edge *ed)
+{
+    return record->kind == ed->kind && record->from_id == ed->from_id &&
+           record->from_pin_id == ed->from_pin_id &&
+           record->to_id == ed->to_id && record->to_pin_id == ed->to_pin_id;
+}
+
+static const flow_traversal *ed_latest_flow_record(
+    const flow_traversal *records,
+    int record_count,
+    const edge *ed
+)
+{
+    for (int i = record_count - 1; i >= 0; i--)
+        if (ed_flow_edge_matches(&records[i], ed)) return &records[i];
+    return NULL;
+}
+
+typedef struct ed_flow_style
+{
+    float thickness;
+    float bubble_radius;
+    float opacity;
+    float bubble_opacity;
+    ImVec4 wire_color;
+    ImVec4 bubble_color;
+} ed_flow_style;
+
+static float ed_flow_overview_scale(float zoom)
+{
+    if (zoom <= 0.0f) return ED_FLOW_MAX_OVERVIEW_SCALE;
+    return ed_max(1.0f, ed_min(ED_FLOW_MAX_OVERVIEW_SCALE, 1.0f / zoom));
+}
+
+static ed_flow_style ed_flow_style_for_edge(const editor *e, const edge *ed, ImVec4 base, int selected, int hovered)
+{
+    float resting = selected ? ED_FLOW_SELECTED_THICKNESS
+                             : (hovered ? ED_FLOW_HOVERED_THICKNESS
+                                        : (ed->kind == GRAPH_EDGE_EXEC
+                                               ? ED_FLOW_RESTING_EXEC_THICKNESS
+                                               : ED_FLOW_RESTING_DATA_THICKNESS));
+    ed_flow_style style = {
+        .thickness = resting,
+        .bubble_radius = ED_FLOW_DOT_RADIUS,
+        .opacity = 0.0f,
+        .bubble_opacity = 0.0f,
+        .wire_color = base,
+        .bubble_color = ed_lerp4(base, (ImVec4){ 1.0f, 1.0f, 1.0f, 1.0f }, ED_FLOW_BUBBLE_COLOR_BLEND),
+    };
+    if (!e->activation) return style;
+    int record_count = 0;
+    const flow_traversal *records = flow_run_traversals(e->activation, &record_count);
+    const flow_traversal *latest = ed_latest_flow_record(records, record_count, ed);
+    if (!latest) return style;
+    double age = e->monotonic_time - latest->timestamp;
+    if (age < 0.0) age = 0.0;
+    float hot_thickness;
+    ImVec4 hot_color;
+    style.opacity = ed_flow_heat(age, &hot_thickness, &hot_color, base, ed->kind == GRAPH_EDGE_EXEC);
+    if (style.opacity <= 0.0f) {
+        style.opacity = 0.0f;
+        return style;
+    }
+    float overview = ed_flow_overview_scale(e->zoom);
+    float gain = 1.0f + (overview - 1.0f) * (ED_FLOW_HEAT_OVERVIEW_GAIN - 1.0f) /
+                            (ED_FLOW_MAX_OVERVIEW_SCALE - 1.0f);
+    float heat_delta = ed_max(0.0f, hot_thickness - resting);
+    style.thickness = resting + heat_delta * gain;
+    style.wire_color = ed_lerp4(base, hot_color, style.opacity);
+    style.bubble_color = hot_color;
+    float size_ratio = style.thickness / ED_FLOW_ATTACK_THICKNESS;
+    style.bubble_radius = ED_FLOW_DOT_RADIUS * overview *
+                          (ED_FLOW_BUBBLE_BASE_WEIGHT +
+                           ED_FLOW_BUBBLE_HEAT_WEIGHT * size_ratio);
+    style.bubble_radius = ed_min(
+        ED_FLOW_MAX_BUBBLE_RADIUS,
+        ed_max(style.bubble_radius, style.thickness * ED_FLOW_BUBBLE_MIN_LINE_RATIO)
+    );
+    style.bubble_radius *= style.opacity;
+    style.bubble_opacity = 1.0f;
+    return style;
+}
+
+/* UE draws a time-phased bubble stream for the latest traced edge, rather
+ * than spawning a particle for every execution. Keep that distinction here. */
+static void ed_draw_flow_markers(
+    const editor *e,
+    ImDrawList *dl,
+    ImVec2 p0,
+    ImVec2 p1,
+    ImVec2 p2,
+    ImVec2 p3,
+    ImVec4 color,
+    float radius,
+    float opacity
+)
+{
+    if (opacity <= 0.0f) return;
+    float length = ed_curve_length(p0, p1, p2, p3);
+    float spacing = ED_FLOW_DOT_SPACING * e->zoom;
+    float speed = ED_FLOW_SPEED * e->zoom;
+    if (length <= 0.0f || spacing <= 0.0f) return;
+    float offset = fmodf((float)e->monotonic_time * speed, spacing);
+    if (offset < 0.0f) offset += spacing;
+    int bubble_count = (int)ceilf(length / spacing);
+    color.w *= opacity;
+    for (int i = 0; i < bubble_count; i++) {
+        float distance = (float)i * spacing + offset;
+        if (distance >= length) continue;
+        ImVec2 position = ed_curve_at_distance(p0, p1, p2, p3, distance, length);
+        ImDrawList_AddCircleFilled(dl, position, radius, ed_color(color), 12);
+    }
+}
+
 static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
 {
     ImVec2 p0, p1, p2, p3;
@@ -1699,21 +1981,31 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     if (from_node && graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) && fo)
         source = &from_node->output_pins[from_pin];
     ImVec4 base = source ? ed_spec_color(source) : ed_pin_color(PIN_FLOW);
-    ImU32 color = ed_color(base);
-    if (selected) color = ed_color((ImVec4){ 1.0f, 0.82f, 0.39f, 1.0f });
     int hovered = e->has_hovered_link && ed_link_equal(&ref, &e->hovered_link);
-    if (!selected && hovered)
-        color = ed_color((ImVec4){ 0.85f, 0.92f, 1.0f, 1.0f });
-    float thickness = selected
-                        ? 4.0f
-                        : (hovered ? 3.5f : (ed->kind == GRAPH_EDGE_EXEC ? 2.5f : 1.5f));
-    ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, thickness, 0);
+    ImVec4 edge_color = base;
+    if (selected) edge_color = (ImVec4){ 1.0f, 0.82f, 0.39f, 1.0f };
+    else if (hovered) edge_color = (ImVec4){ 0.85f, 0.92f, 1.0f, 1.0f };
+    ImU32 color = ed_color(edge_color);
+    ed_flow_style style = ed_flow_style_for_edge(e, ed, base, selected, hovered);
+    if (selected || hovered) style.bubble_color = edge_color;
+    else if (style.opacity > 0.0f) color = ed_color(style.wire_color);
+    ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
+    ed_draw_flow_markers(
+        e,
+        dl,
+        p0,
+        p1,
+        p2,
+        p3,
+        style.bubble_color,
+        style.bubble_radius,
+        style.bubble_opacity
+    );
 }
 
 static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
 {
     node *n = v->n;
-    const node_desc *d = n->desc;
     int selected = ed_node_selected(e, n);
     ImU32 bg = ed_color(ED_NODE_BODY);
     ImU32 border = ed_color(ED_NODE_BORDER);
@@ -1747,12 +2039,13 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
         ImDrawFlags_RoundCornersAll,
         selected ? 2.5f * e->zoom : 1.0f
     );
+    char node_title[256];
     ed_draw_text(
         e,
         dl,
         ed_add(v->min, (ImVec2){ ED_PAD * e->zoom, ED_TITLE_PAD * e->zoom }),
         IM_COL32(235, 238, 245, 255),
-        n->title_override ? n->title_override : d->name
+        ed_node_title(n, node_title, sizeof node_title)
     );
 
     int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
@@ -1950,6 +2243,8 @@ static void ed_redo(editor *e)
     free(target);
 }
 
+static void ed_format_text_repair(editor *e, node *n);
+
 static void ed_delete_selected(editor *e)
 {
     if (acount(e->selected) == 0 && acount(e->selected_links) == 0) return;
@@ -1963,7 +2258,8 @@ static void ed_delete_selected(editor *e)
             int from_pin = -1, to_pin = -1, fo = 0, to_out = 0;
             if (from && to && graph_pin_by_id(from, ed.from_pin_id, &fo, &from_pin) &&
                 fo && graph_pin_by_id(to, ed.to_pin_id, &to_out, &to_pin) && !to_out)
-                graph_remove_edge(e->bp->graph, from, from_pin, to, to_pin);
+                if (graph_remove_edge(e->bp->graph, from, from_pin, to, to_pin) == 0)
+                    ed_format_text_repair(e, to);
         }
     }
     int front_deleted = 0;
@@ -2048,14 +2344,44 @@ static void ed_update_drag(editor *e, ImVec2 mouse)
  * Capped so the group cannot grow without bound. */
 #define ED_FMT_TEXT_MAX_ARGS 12
 
+static int ed_format_text_generic(const node *n, int index)
+{
+    if (!n->desc || strcmp(n->desc->name, "Format Text") != 0 || index < 1 ||
+        index >= n->input_count)
+        return 0;
+    const pin_spec *pin = &n->input_pins[index];
+    return pin->kind == PIN_DATA && pin->type == PIN_FLOW &&
+           (pin->flags & PIN_FLAG_WILDCARD);
+}
+
 static void ed_append_generic_arg(editor *e, node *n)
 {
     if (!n->desc || strcmp(n->desc->name, "Format Text") != 0) return;
     if (n->input_count - 1 >= ED_FMT_TEXT_MAX_ARGS) return;
-    static char name[32];
+    char name[32];
     snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
     pin_spec pin = { .name = name, .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD };
     graph_add_pin(e->bp->graph, n, 0, &pin);
+}
+
+static void ed_format_text_repair(editor *e, node *n)
+{
+    if (!n->desc || strcmp(n->desc->name, "Format Text") != 0) return;
+    int generic_count = 0;
+    for (int i = 1; i < n->input_count; i++)
+        generic_count += ed_format_text_generic(n, i);
+    for (int i = n->input_count - 1; i > 0 && generic_count > 1; i--) {
+        if (!ed_format_text_generic(n, i)) continue;
+        if (graph_remove_pin(e->bp->graph, n, 0, i) == 0) generic_count--;
+    }
+}
+
+static void ed_format_text_ensure_spare(editor *e, node *n)
+{
+    if (!n->desc || strcmp(n->desc->name, "Format Text") != 0) return;
+    for (int i = 1; i < n->input_count; i++)
+        if (ed_format_text_generic(n, i)) return;
+    ed_append_generic_arg(e, n);
 }
 
 static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
@@ -2112,9 +2438,7 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                  input->n,
                  input->index
              ) == 0;
-    /* Taking the trailing spare reveals the next one. */
-    if (ok && generic_target && input->index == input->n->input_count - 1)
-        ed_append_generic_arg(e, input->n);
+    if (ok && generic_target) ed_format_text_ensure_spare(e, input->n);
     return ok;
 }
 
@@ -2444,6 +2768,7 @@ static void ed_handle_popups(editor *e)
                 if (!e->spawn_link_pending) ed_snapshot_before(e);
                 node *n = graph_add_node(e->bp->graph, desc);
                 if (n) {
+                    ed_name_spawned_event(e, n);
                     n->x = e->popup_x;
                     n->y = e->popup_y;
                     if (e->spawn_link_pending) {
@@ -2479,7 +2804,7 @@ static int ed_activation_live(const editor *e)
 /* UI-55/56: the single edit choke point. Every authoring mutation destroys
  * the preview instance (and with it every activation and the mutation guard
  * the instance held, EXEC-19) before the edit mutates the definition. The
- * toolbar states the destruction; the host recreates the instance. */
+ * toolbar states the destruction; the next Dispatch recreates the instance. */
 static void ed_begin_authoring_edit(editor *e)
 {
     if (!e || !e->instance) return;
@@ -2524,9 +2849,10 @@ static int ed_entry_count(const editor *e)
 
 static void ed_dispatch_selected(editor *e)
 {
-    if (!e->instance) return;
     node *entry = ed_entry_at(e, e->entry_index);
     if (!entry || !entry->reference_name) return;
+    if (!e->instance) editor_preview_create(e);
+    if (!e->instance) return;
     flow_error error = { 0 };
     flow_run *act = blueprint_instance_dispatch(
         e->instance,
@@ -2623,23 +2949,14 @@ static void ed_draw_toolbar(editor *e)
     ed_toolbar_action(e, "Redo", acount(e->redo) > 0, "No redo entry is available", ed_redo);
 
     int attached = e->instance != NULL;
-    int can_dispatch = attached && entry && entry->reference_name;
-    ed_toolbar_action(
-        e,
-        "Preview",
-        !attached,
-        attached ? "A preview instance is already attached; an edit destroys it"
-                 : "Create the preview instance and release its mutation guard",
-        editor_preview_create
-    );
+    int can_dispatch = entry && entry->reference_name;
     ed_toolbar_action(
         e,
         "Dispatch",
         can_dispatch,
-        !attached ? "Create the preview instance first"
-        : !entry || !entry->reference_name
+        !entry || !entry->reference_name
             ? "Select a named event entry point"
-            : "Dispatch the selected event on the preview instance",
+            : "Dispatch the selected event; attach its runtime automatically",
         ed_dispatch_selected
     );
     flow_state state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
@@ -2654,14 +2971,14 @@ static void ed_draw_toolbar(editor *e)
     ImGui_NewLine();
     if (attached) {
         ImGui_Text(
-            "Preview: attached  Activation: %s  Steps: %lu",
+            "Runtime: attached  Activation: %s  Steps: %lu",
             ed_flow_state_name(state),
             e->activation ? flow_run_steps(e->activation) : 0
         );
     } else if (e->instance_destroyed) {
-        ImGui_TextColored((ImVec4){ 1.0f, 0.6f, 0.3f, 1.0f }, "Preview instance destroyed by the last edit; click Preview to recreate it");
+        ImGui_TextColored((ImVec4){ 1.0f, 0.6f, 0.3f, 1.0f }, "Runtime reset by the last edit; Dispatch will recreate it");
     } else {
-        ImGui_Text("Preview: none  Activation: IDLE  Steps: 0");
+        ImGui_Text("Runtime: none  Activation: IDLE  Steps: 0");
     }
 }
 
@@ -2968,6 +3285,9 @@ void editor_preview_create(editor *e)
 {
     if (!e || e->instance) return;
     e->instance = blueprint_instance_create(e->bp, NULL, NULL, NULL);
+    if (!e->instance) return;
+    e->instance->sink = ed_log_sink;
+    e->instance->sink_user = e;
     e->instance_generation++;
     e->instance_destroyed = 0;
     e->activation = NULL;
@@ -3005,6 +3325,7 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
     ed_snapshot_before(e);
     node *n = graph_add_node(e->bp->graph, desc);
     if (!n) return NULL;
+    ed_name_spawned_event(e, n);
     n->x = x;
     n->y = y;
     return n;

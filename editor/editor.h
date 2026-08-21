@@ -42,7 +42,7 @@ blueprint_instance *editor_preview_instance(const editor *e);
  * dispatch a once-per-instance event such as the demo Begin() convention. */
 unsigned editor_preview_generation(const editor *e);
 
-/* Create the preview instance if missing. No-op when one is attached. */
+/* Create the preview runtime if missing. No-op when one is attached. */
 void editor_preview_create(editor *e);
 
 #endif

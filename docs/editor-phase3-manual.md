@@ -6,9 +6,10 @@ there with the verifying commit after each item has actually been exercised.
 
 ## Preview instance (UI-54, UI-55, UI-56)
 
-1. With the flow demo graph open, click **Preview**. The toolbar reads
-   `Preview: attached`. Click **Dispatch**; the selected event runs, `State`
-   and `Steps` update, and the output log receives `Print String` output.
+1. With the flow demo graph open, click **Dispatch**. Dispatch attaches the
+   runtime automatically. The toolbar reads `Runtime: attached`; the selected
+   event runs, `State` and `Steps` update, and the output log receives `Print
+   String` output.
 2. While an activation is suspended (Delay), dispatch another event. The two
    activations coexist on one instance: instance variables written by the
    first remain visible to the second (UI-54 distinguishes the instance from
@@ -16,13 +17,13 @@ there with the verifying commit after each item has actually been exercised.
 3. Click **Stop** on a running activation: instance variables and scratch
    survive for the next dispatch (RUN-17).
 4. Make any authoring edit while attached: drag a node, add a pin, edit a
-   value, or undo. The toolbar states `Preview instance destroyed by the last
-   edit`, the edit itself succeeds (it is never presented as a rejected edit),
-   and **Preview** recreates a fresh instance with variables re-initialized
+   value, or undo. The toolbar states `Runtime reset by the last edit`, the
+   edit itself succeeds (it is never presented as a rejected edit), and the
+   next **Dispatch** recreates a fresh instance with variables re-initialized
    from the new authored defaults (UI-55, UI-56, VAR-11).
 5. In the app, press Space: an authored `Input` event fires if present; edits
-   that destroy the instance reset the demo, and `Begin()` fires again on the
-   next **Preview**.
+   that destroy the instance reset the demo, and `Begin()` fires again when the
+   host recreates the runtime.
 
 ## Variables (UI-1, UI-3, UI-4, VAR-1, VAR-3, VAR-5)
 

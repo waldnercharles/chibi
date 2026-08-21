@@ -689,7 +689,8 @@ Flow control:
 with no fixed maximum.
 
 `CAT-4` ForLoop. Exec in, first and last index, Body exec out, Index data out,
-Completed exec out, inclusive forward range.
+Completed exec out, and an inclusive range that increments or decrements toward
+last.
 
 `CAT-5` ForLoopWithBreak. ForLoop plus a Break exec in that stops iteration and
 continues to Completed.
@@ -819,7 +820,8 @@ unresolved when its driver edge is dropped. Evaluating it substitutes `{0}`,
 `{1}`, ... and bare `{}` (the next argument in order) in the format string with
 the corresponding argument's rendering; `{{` and `}}` render literal braces. A
 placeholder MAY carry printf-style width, alignment, and precision modifiers
-(`{:.2f}`, `{:08d}`, `{:x}`), which render the value with its own C type; a
+(`{:.2f}`, `{:08d}`, `{:x}`), which render numeric values with the matching
+conversion family, promoting integers for floating-point modifiers; a
 placeholder with no modifier renders through `pin_value_to_string`. A
 placeholder whose index has no matching argument renders as the empty string.
 

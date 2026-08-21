@@ -10,6 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define APP_WINDOW_WIDTH 1920
+#define APP_WINDOW_HEIGHT 1080
+
 static void demo_dispatch(blueprint_instance *bi, const char *name, flow_inputs inputs)
 {
     flow_error error = { 0 };
@@ -39,8 +42,8 @@ int main(int argc, char **argv)
         0,
         0,
         0,
-        960,
-        640,
+        APP_WINDOW_WIDTH,
+        APP_WINDOW_HEIGHT,
         CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
             CF_APP_OPTIONS_NO_AUDIO_BIT,
         argv[0]

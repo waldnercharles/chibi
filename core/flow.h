@@ -125,6 +125,7 @@ extern "C"
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
     flow_inputs flow_run_inputs(const flow_run *run);
+    const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin);
     /* Traversal records are ordered oldest to newest and remain available
      * after Stop until the run is reset or freed. The returned storage is
      * borrowed from the run. */
@@ -134,6 +135,8 @@ extern "C"
     unsigned flow_run_call_depth(const flow_run *run);
     unsigned flow_context_call_depth(const struct flow_context *ctx);
     int flow_context_input_pin(const struct flow_context *ctx);
+    pin_value *flow_context_input_value(struct flow_context *ctx, int pin);
+    pin_value *flow_context_output_value(struct flow_context *ctx, int pin);
     void *flow_context_service(const struct flow_context *ctx, const char *type_name);
     void flow_run_free(flow_run *run);
 
@@ -188,7 +191,9 @@ extern "C"
     int flow_context_emit(struct flow_context *ctx, const char *message);
     flow_inputs flow_context_inputs(const struct flow_context *ctx);
     blueprint_instance *flow_context_instance(const struct flow_context *ctx);
-    /* Allocate from the activation's temporary arena (DATA-6). */
+    /* Retain a completed nested run until this activation is reset/freed. */
+    int flow_context_retain_run(struct flow_context *ctx, flow_run *child);
+    /* Allocate from the run-owned arena (DATA-6). */
     void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size);
 
 #ifdef __cplusplus

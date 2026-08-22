@@ -197,6 +197,20 @@ static int delegate_signature_matches(const blueprint_delegate_binding *binding,
     return 1;
 }
 
+int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act)
+{
+    if (!bi || !act) {
+        return -1;
+    }
+    for (int i = 0; i < acount(bi->activations); i++) {
+        if (bi->activations[i] == act) {
+            adel(bi->activations, i);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 void blueprint_instance_destroy(blueprint_instance *bi)
 {
     if (!bi || !bi->alive) {
@@ -217,8 +231,8 @@ void blueprint_instance_destroy(blueprint_instance *bi)
     afree(bi->delegate_incoming);
     afree(bi->services);
     /* RUN-15: cancel every activation before releasing instance storage. */
-    for (int i = 0; i < acount(bi->activations); i++) {
-        flow_run_free(bi->activations[i]);
+    while (acount(bi->activations)) {
+        flow_run_free(bi->activations[0]);
     }
     afree(bi->activations);
     for (int i = 0; i < acount(bi->bp->variables); i++) {

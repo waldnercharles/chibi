@@ -136,19 +136,15 @@ node *graph_add_node(graph *g, const node_desc *desc)
     graph_index_node(g, n);
     if (desc->input_count) {
         n->input_pins = (pin_spec *)xcalloc((size_t)desc->input_count, sizeof *n->input_pins);
-        n->inputs = (pin_value *)xcalloc((size_t)desc->input_count, sizeof *n->inputs);
         for (int i = 0; i < desc->input_count; i++) {
             init_pin(&n->input_pins[i], &desc->inputs[i], g);
-            n->inputs[i] = n->input_pins[i].default_value;
         }
     }
     if (desc->output_count) {
         n->output_pins = (pin_spec *)
             xcalloc((size_t)desc->output_count, sizeof *n->output_pins);
-        n->outputs = (pin_value *)xcalloc((size_t)desc->output_count, sizeof *n->outputs);
         for (int i = 0; i < desc->output_count; i++) {
             init_pin(&n->output_pins[i], &desc->outputs[i], g);
-            n->outputs[i] = n->output_pins[i].default_value;
         }
     }
     apush(g->nodes, n);
@@ -181,11 +177,6 @@ static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type 
             p->default_value.type = type;
             p->default_value.container = p->container;
             p->default_value.type_name = copy;
-            if (output) {
-                n->outputs[i] = p->default_value;
-            } else {
-                n->inputs[i] = p->default_value;
-            }
         }
     }
 }
@@ -239,7 +230,6 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
         p->default_value = (pin_value){ .type = out->type,
                                         .container = out->container,
                                         .type_name = owned };
-        to->inputs[to_pin] = p->default_value;
         graph_wildcard_resolve_group(g, to, p->group, out->type, out->type_name);
         in = &to->input_pins[to_pin];
     }
@@ -282,7 +272,6 @@ static void graph_wildcard_untouch(graph *g, uint64_t to_node_id, uint64_t to_pi
     p->type_name = NULL;
     p->container = PIN_CONTAINER_SINGLE;
     p->default_value = (pin_value){ .type = PIN_FLOW };
-    to->inputs[index] = p->default_value;
 }
 
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin)
@@ -409,8 +398,6 @@ int graph_remove_node(graph *g, node *n)
     }
     free(n->input_pins);
     free(n->output_pins);
-    free(n->inputs);
-    free(n->outputs);
     free(n);
     for (int i = idx; i < acount(g->nodes) - 1; i++) {
         g->nodes[i] = g->nodes[i + 1];
@@ -646,13 +633,6 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
         }
         p[index].default_value.str = s;
     }
-    /* Keep the runtime slot coherent until the next evaluation. The editor
-     * still writes authored data only through this API. */
-    if (!output) {
-        n->inputs[index] = p[index].default_value;
-    } else {
-        n->outputs[index] = p[index].default_value;
-    }
     graph_changed(g);
     return 0;
 }
@@ -697,11 +677,6 @@ int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, 
     p[index].default_value = (pin_value){ .type = type,
                                           .container = p[index].container,
                                           .type_name = owned_type_name };
-    if (!output) {
-        n->inputs[index] = p[index].default_value;
-    } else {
-        n->outputs[index] = p[index].default_value;
-    }
     if (p[index].flags & PIN_FLAG_WILDCARD) {
         graph_wildcard_resolve_group(g, n, p[index].group, type, type_name);
     }
@@ -763,7 +738,6 @@ int graph_move_pin(graph *g, node *n, int output, int index, int target_index)
         return -1;
     }
     pin_spec *pins = output ? n->output_pins : n->input_pins;
-    pin_value *values = output ? n->outputs : n->inputs;
     int count = output ? n->output_count : n->input_count;
     if (index < 0 || index >= count || target_index < 0 || target_index >= count) {
         return -1;
@@ -772,20 +746,12 @@ int graph_move_pin(graph *g, node *n, int output, int index, int target_index)
         return index;
     }
     pin_spec moved_pin = pins[index];
-    pin_value moved_value = values[index];
     if (index < target_index) {
         memmove(pins + index, pins + index + 1, (size_t)(target_index - index) * sizeof *pins);
-        memmove(values + index, values + index + 1, (size_t)(target_index - index) * sizeof *values);
     } else {
         memmove(pins + target_index + 1, pins + target_index, (size_t)(index - target_index) * sizeof *pins);
-        memmove(
-            values + target_index + 1,
-            values + target_index,
-            (size_t)(index - target_index) * sizeof *values
-        );
     }
     pins[target_index] = moved_pin;
-    values[target_index] = moved_value;
 
     graph_changed(g);
     return target_index;
@@ -948,18 +914,12 @@ int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin)
     }
     int *count = output ? &n->output_count : &n->input_count;
     pin_spec **pins = output ? &n->output_pins : &n->input_pins;
-    pin_value **values = output ? &n->outputs : &n->inputs;
     int next = *count + 1;
     pin_spec *grown_pins = (pin_spec *)xmalloc((size_t)next * sizeof *grown_pins);
-    pin_value *grown_values = (pin_value *)xmalloc((size_t)next * sizeof *grown_values);
     memcpy(grown_pins, *pins, (size_t)*count * sizeof *grown_pins);
-    memcpy(grown_values, *values, (size_t)*count * sizeof *grown_values);
     free(*pins);
-    free(*values);
     *pins = grown_pins;
-    *values = grown_values;
     init_pin(&(*pins)[*count], template_pin, g);
-    (*values)[*count] = (*pins)[*count].default_value;
     (*count)++;
     graph_changed(g);
     return *count - 1;
@@ -1087,7 +1047,6 @@ int graph_remove_pin(graph *g, node *n, int output, int index)
     }
     int *count = output ? &n->output_count : &n->input_count;
     pin_spec **pins = output ? &n->output_pins : &n->input_pins;
-    pin_value **values = output ? &n->outputs : &n->inputs;
     if (index < 0 || index >= *count) {
         return -1;
     }
@@ -1103,16 +1062,12 @@ int graph_remove_pin(graph *g, node *n, int output, int index)
     }
     asetlen(g->edges, w);
     memmove(*pins + index, *pins + index + 1, (size_t)(*count - index - 1) * sizeof **pins);
-    memmove(*values + index, *values + index + 1, (size_t)(*count - index - 1) * sizeof **values);
     (*count)--;
     if (*count == 0) {
         free(*pins);
-        free(*values);
         *pins = NULL;
-        *values = NULL;
     } else {
         *pins = (pin_spec *)xrealloc(*pins, (size_t)*count * sizeof **pins);
-        *values = (pin_value *)xrealloc(*values, (size_t)*count * sizeof **values);
     }
     graph_changed(g);
     return 0;
@@ -1136,8 +1091,6 @@ void graph_free(graph *g)
     for (int i = 0; i < acount(g->nodes); i++) {
         free(g->nodes[i]->input_pins);
         free(g->nodes[i]->output_pins);
-        free(g->nodes[i]->inputs);
-        free(g->nodes[i]->outputs);
         free(g->nodes[i]);
     }
     afree(g->nodes);

@@ -710,11 +710,6 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
             pv.type_name = p->type_name;
             pv.container = p->container;
             p->default_value = pv;
-            if (!output) {
-                n->inputs[i] = pv;
-            } else {
-                n->outputs[i] = pv;
-            }
         }
         i++;
     }

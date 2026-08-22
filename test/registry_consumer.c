@@ -217,6 +217,7 @@ int main(void)
                         0;
         ConsumerPoint *result = evaluated ? (ConsumerPoint *)value.ptr : NULL;
         check(result && result->x == 4.5f && result->y == 7, "loaded consumer Make node evaluates with its type descriptor");
+        eval_context_free(&eval);
         arena_free(&a);
         graph_free(loaded);
         free(loaded);

@@ -77,6 +77,9 @@ blueprint_instance *blueprint_instance_create(
  * executing another node (RUN-15). Releases the mutation guard. */
 void blueprint_instance_destroy(blueprint_instance *bi);
 
+/* Remove one activation from the instance queue before its storage is freed. */
+int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act);
+
 /* Dispatch a named event (EVT-9). Creates a distinct activation carrying
  * copied parameter values and runs the scheduler. NULL with a structured
  * error on unknown or duplicate name (EVT-7). */

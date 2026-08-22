@@ -607,6 +607,7 @@ static void emit_local_arg(FILE *out, const char *spelling, const char *pin, int
 static void emit_exec_fn(FILE *out, const fn_info *f)
 {
     fprintf(out, "static int __flow_%s_%s(node *n, flow_context *ctx) {\n", g_prefix, f->name);
+    fputs("    (void)n;\n", out);
     int input_pin = 1;
     for (int j = 0; j < acount(f->pname); j++) {
         if (f->pout[j]) {
@@ -666,13 +667,13 @@ static void emit_exec_fn(FILE *out, const fn_info *f)
     int output_pin = 1;
     if (!f->ret_void) {
         const char *member = pin_member(f->ret_pin);
-        emit_value_assignment(out, "n->outputs[1]", f->ret_pin, f->ret, member, "__ret");
+        emit_value_assignment(out, "(*flow_context_output_value(ctx, 1))", f->ret_pin, f->ret, member, "__ret");
         output_pin++;
     }
     for (int j = 0; j < acount(f->pname); j++) {
         if (f->pout[j]) {
             char target[64];
-            snprintf(target, sizeof target, "n->outputs[%d]", output_pin++);
+            snprintf(target, sizeof target, "(*flow_context_output_value(ctx, %d))", output_pin++);
             char expr[32];
             snprintf(expr, sizeof expr, "__out%d", j);
             emit_value_assignment(out, target, f->ppin[j], f->pout_type[j], pin_member(f->ppin[j]), expr);

@@ -120,7 +120,9 @@ static int flow_do_n(node *n, flow_context *ctx)
         state->type = PIN_I32;
         state->i = 0;
     }
-    n->outputs[1] = (pin_value){ .type = PIN_I32, .type_name = "int", .i = state->i };
+    *flow_context_output_value(ctx, 1) = (pin_value){ .type = PIN_I32,
+                                                      .type_name = "int",
+                                                      .i = state->i };
     if (state->i >= limit.i) {
         return FLOW_OK;
     }
@@ -137,7 +139,8 @@ static int flow_flip_flop(node *n, flow_context *ctx)
     pin_value *state = blueprint_instance_scratch(bi, n->id);
     state->type = PIN_BOOL;
     state->b = !state->b;
-    n->outputs[2] = (pin_value){ .type = PIN_BOOL, .b = state->b };
+    *flow_context_output_value(ctx, 2) = (pin_value){ .type = PIN_BOOL,
+                                                      .b = state->b };
     return flow_context_continue(ctx, state->b ? 0 : 1);
 }
 

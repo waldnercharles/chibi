@@ -82,22 +82,14 @@ struct node
     int output_count;
     pin_spec *input_pins;
     pin_spec *output_pins;
-    /* Runtime values. Authored defaults live in input_pins/output_pins and are
-     * copied here when the instance is created or an activation begins. */
-    pin_value *inputs;
-    pin_value *outputs;
     char *title_override;
     char *comment;
     uint64_t reference_id;
     char *reference_name;
     float x, y;
-    unsigned computed;
-    unsigned visiting;
     unsigned disabled;
     unsigned breakpoint;
     unsigned breakpoint_enabled;
-    int eval_error;
-    const char *eval_error_message;
 };
 
 static inline const pin_spec *node_input_pin(const node *n, int index)

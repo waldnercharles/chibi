@@ -298,7 +298,7 @@ static Vec3 g_watch_struct;
 static int flow_watch_struct(node *n, flow_context *ctx)
 {
     g_watch_struct = (Vec3){ 4.0f, 5.0f, 6.0f };
-    n->outputs[1] = (pin_value){
+    *flow_context_output_value(ctx, 1) = (pin_value){
         .type = PIN_STRUCT,
         .ptr = &g_watch_struct,
         .type_name = "Vec3",
@@ -348,6 +348,58 @@ static node_desc g_capture_desc = {
     .outputs = g_capture_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_capture_i32,
+};
+static pin_spec g_owned_watch_inputs[] = {
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Name", .type = PIN_NAME, .type_name = "name", .kind = PIN_DATA },
+    { .name = "Values", .type = PIN_I32, .type_name = "int", .kind = PIN_DATA, .container = PIN_CONTAINER_ARRAY },
+};
+static int flow_watch_owned(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value value;
+    int result = flow_context_eval_data(ctx, 1, &value);
+    if (result) {
+        return result;
+    }
+    result = flow_context_eval_data(ctx, 2, &value);
+    if (result) {
+        return result;
+    }
+    return flow_context_continue(ctx, 0);
+}
+static node_desc g_owned_watch_desc = {
+    .name = "WatchOwnedValues",
+    .input_count = 3,
+    .output_count = 1,
+    .inputs = g_owned_watch_inputs,
+    .outputs = g_capture_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_watch_owned,
+};
+static int g_foreach_values[8];
+static int g_foreach_count;
+static int flow_capture_foreach(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value value;
+    int result = flow_context_eval_data(ctx, 1, &value);
+    if (result) {
+        return result;
+    }
+    if (g_foreach_count < (int)(sizeof g_foreach_values / sizeof g_foreach_values[0])) {
+        g_foreach_values[g_foreach_count++] = value.i;
+    }
+    return flow_context_continue(ctx, 0);
+}
+static node_desc g_foreach_capture_desc = {
+    .name = "CaptureForEach",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_capture_inputs,
+    .outputs = g_capture_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flow_capture_foreach,
 };
 static pin_spec g_str_capture_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
@@ -504,7 +556,7 @@ int main(int argc, char **argv)
     check(sum.type == PIN_F32 && sum.f == 5.0f, "DATA-4: 2.0 + 3.0 == 5.0");
 
     /* 2. Make(Vec3) -> Break(Vec3) round trip */
-    graph_eval_reset(&g);
+    eval_context_reset_runtime(&eval_ctx);
     arena_reset(&a);
 
     node *mk = graph_add_node(&g, make);
@@ -519,11 +571,16 @@ int main(int argc, char **argv)
 
     pin_value oy;
     check(graph_eval_output(&g, br, 1, &a, &oy, &eval_ctx) == 0, "DATA-1: eval Break(Vec3).y");
-    check(mk->outputs[0].ptr != NULL, "DATA-6: Make(Vec3) value is arena-owned");
+    pin_value make_output;
+    check(
+        eval_context_output(&eval_ctx, mk, 0, &make_output) == 0 &&
+            make_output.ptr != NULL,
+        "DATA-6: Make(Vec3) value is arena-owned"
+    );
     check(oy.type == PIN_F32 && oy.f == 2.0f, "DATA-9: Make(Vec3) -> Break(Vec3): y == 2.0");
 
     /* 3. memo: one eval across two reads */
-    graph_eval_reset(&g);
+    eval_context_reset_runtime(&eval_ctx);
     arena_reset(&a);
     g_count = 0;
     node *ctr = graph_add_node(&g, &g_counter_desc);
@@ -534,7 +591,7 @@ int main(int argc, char **argv)
     check(v1.f == 1.0f && v2.f == 1.0f, "DATA-2: memo: both reads see the same value");
 
     /* 4. cycle guard */
-    graph_eval_reset(&g);
+    eval_context_reset_runtime(&eval_ctx);
     arena_reset(&a);
     node *A = graph_add_node(&g, add);
     node *B = graph_add_node(&g, add);
@@ -552,7 +609,7 @@ int main(int argc, char **argv)
     eval_context_init(&independent_a);
     eval_context_init(&independent_b);
     pin_value isolated;
-    graph_eval_reset(&g);
+    eval_context_reset_runtime(&eval_ctx);
     arena_reset(&a);
     check(
         graph_eval_output(&g, c1, 0, &a, &isolated, &independent_a) == 0 &&
@@ -731,9 +788,11 @@ int main(int argc, char **argv)
         graph_set_event_name(&real, real_event, "Real");
         graph_connect_exec(&real, real_event, 0, real_delay, 0, 0);
         flow_run *real_run = graph_run_event(&real, "Real", (flow_inputs){ 0 }, &dispatch_error);
+        pin_value real_input;
         check(
-            real_run && real_delay->inputs[1].type == PIN_F64 &&
-                real_delay->inputs[1].d == 2.5,
+            real_run &&
+                flow_run_watch_input(real_run, real_delay, 1, &real_input) == 0 &&
+                real_input.type == PIN_F64 && real_input.d == 2.5,
             "TYPE-10: Real boundary converts F32 value to F64 for Delay"
         );
         if (real_run) {
@@ -1644,10 +1703,8 @@ int main(int argc, char **argv)
             graph_move_pin(&gp, event, 1, 3, 1) == 1 &&
                 event->output_pins[1].id == moved_id &&
                 event->output_pins[1].default_value.str &&
-                strcmp(event->output_pins[1].default_value.str, "authored") == 0 &&
-                event->outputs[1].str && strcmp(event->outputs[1].str, "first") == 0,
-            "PIN-2: moving a pin preserves its ID, authored/runtime value, and "
-            "position"
+                strcmp(event->output_pins[1].default_value.str, "authored") == 0,
+            "PIN-2: moving a pin preserves its ID, authored value, and position"
         );
         node *source = NULL;
         int source_pin = -1;
@@ -1696,8 +1753,8 @@ int main(int argc, char **argv)
         graph_connect_exec(&gl, loop, 0, body, 0, 0);
         graph_connect_data(&gl, loop, 1, body, 1);
         graph_connect_exec(&gl, loop, 2, done, 0, 0);
-        loop->inputs[1].i = 2;
-        loop->inputs[2].i = 4;
+        graph_set_pin_default(&gl, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 2 });
+        graph_set_pin_default(&gl, loop, 0, 2, &(pin_value){ .type = PIN_I32, .i = 4 });
         flow_log_reset();
         flow_run *run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
@@ -1712,8 +1769,8 @@ int main(int argc, char **argv)
             "EXEC-3: each loop activation evaluates fresh data"
         );
         flow_run_free(run);
-        loop->inputs[1].i = 2;
-        loop->inputs[2].i = 2;
+        graph_set_pin_default(&gl, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 2 });
+        graph_set_pin_default(&gl, loop, 0, 2, &(pin_value){ .type = PIN_I32, .i = 2 });
         flow_log_reset();
         run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
@@ -1722,8 +1779,8 @@ int main(int argc, char **argv)
             "CAT-4: ForLoop runs inclusive 2..2"
         );
         flow_run_free(run);
-        loop->inputs[1].i = 4;
-        loop->inputs[2].i = 2;
+        graph_set_pin_default(&gl, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 4 });
+        graph_set_pin_default(&gl, loop, 0, 2, &(pin_value){ .type = PIN_I32, .i = 2 });
         flow_log_reset();
         run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
@@ -1749,7 +1806,7 @@ int main(int argc, char **argv)
         pin_spec guard_pin = { "Parameter", PIN_I32, "int", PIN_DATA };
         graph_add_pin(&gd, event, 1, &guard_pin);
         graph_add_pin(&gd, event, 1, &guard_pin);
-        delay->inputs[1].d = 5.0;
+        graph_set_pin_default(&gd, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 5.0 });
         flow_log_reset();
         flow_run *run = graph_run_event(&gd, "Wait", (flow_inputs){ 0 }, &dispatch_error);
         check(run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0, "EXEC-4: Delay suspends flow run");
@@ -1774,7 +1831,7 @@ int main(int argc, char **argv)
         node *topology_event = graph_add_node(&gt, registry_node_by_name("Event"));
         node *topology_delay = graph_add_node(&gt, registry_node_by_name("Delay"));
         graph_connect_exec(&gt, topology_event, 0, topology_delay, 0, 0);
-        topology_delay->inputs[1].d = 10.0;
+        graph_set_pin_default(&gt, topology_delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 10.0 });
         flow_run *topology_run = flow_run_start(&gt, topology_event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(topology_run);
         graph_flow_resume(&gt);
@@ -1802,7 +1859,7 @@ int main(int argc, char **argv)
         graph_connect_exec(&gn, sequence, 0, delay, 0, 0);
         graph_connect_exec(&gn, delay, 0, first, 0, 0);
         graph_connect_exec(&gn, sequence, 1, second, 0, 0);
-        delay->inputs[1].d = 3.0;
+        graph_set_pin_default(&gn, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 3.0 });
         flow_log_reset();
         run = graph_run_event(&gn, "Nested", (flow_inputs){ 0 }, &dispatch_error);
         check(
@@ -1989,7 +2046,7 @@ int main(int argc, char **argv)
         node *done = graph_add_node(&gs, &g_sink_done_desc);
         graph_connect_exec(&gs, event, 0, delay, 0, 0);
         graph_connect_exec(&gs, delay, 0, done, 0, 0);
-        delay->inputs[1].d = 1.0;
+        graph_set_pin_default(&gs, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 1.0 });
         flow_options clocked = { .initial_time = 0.0 };
         flow_log_reset();
         flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
@@ -2028,7 +2085,7 @@ int main(int argc, char **argv)
         node *done = graph_add_node(&gs, &g_sink_done_desc);
         graph_connect_exec(&gs, event, 0, delay, 0, 0);
         graph_connect_exec(&gs, delay, 0, done, 0, 0);
-        delay->inputs[1].d = 1.0;
+        graph_set_pin_default(&gs, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 1.0 });
         flow_options clocked = { .initial_time = 0.0 };
         flow_log_reset();
         flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
@@ -2083,12 +2140,7 @@ int main(int argc, char **argv)
         char first_output[sizeof g_flow_log];
         snprintf(first_output, sizeof first_output, "%s", g_flow_log);
         check(flow_run_stop(run) == FLOW_OK && flow_run_status(run) == FLOW_IDLE, "RUN-6: stop returns run to idle");
-        check(
-            graph_add_node(&gr, &g_sink_b_desc) != NULL &&
-                event->computed == 0 && event->visiting == 0 &&
-                event->eval_error == 0 && !event->eval_error_message,
-            "RUN-6: stop clears node state and releases graph mutation guard"
-        );
+        check(graph_add_node(&gr, &g_sink_b_desc) != NULL && flow_run_status(run) == FLOW_IDLE, "RUN-6: stop clears activation state and releases graph mutation guard");
         flow_run_free(run);
         flow_log_reset();
         run = flow_run_start(&gr, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
@@ -2107,7 +2159,7 @@ int main(int argc, char **argv)
         node *done = graph_add_node(&gs, &g_sink_done_desc);
         graph_connect_exec(&gs, event, 0, delay, 0, 0);
         graph_connect_exec(&gs, delay, 0, done, 0, 0);
-        delay->inputs[1].d = 10.0;
+        graph_set_pin_default(&gs, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 10.0 });
         flow_log_reset();
         flow_options clocked = { .initial_time = 0.0 };
         flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
@@ -2199,7 +2251,7 @@ int main(int argc, char **argv)
         node *event = graph_add_node(&gs, registry_node_by_name("Event"));
         node *delay = graph_add_node(&gs, registry_node_by_name("Delay"));
         graph_connect_exec(&gs, event, 0, delay, 0, 0);
-        delay->inputs[1].d = 2.0;
+        graph_set_pin_default(&gs, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 2.0 });
         flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(run);
         char *json = graph_save_json(&gs);
@@ -2454,7 +2506,7 @@ int main(int argc, char **argv)
         node *done_a = graph_add_node(bp->graph, &g_sink_a_desc);
         graph_connect_exec(bp->graph, wait_ev, 0, delay, 0, 0);
         graph_connect_exec(bp->graph, delay, 0, done_a, 0, 0);
-        delay->inputs[1].d = 5.0;
+        graph_set_pin_default(bp->graph, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 5.0 });
         node *fast_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, fast_ev, "Fast");
         node *done_b = graph_add_node(bp->graph, &g_sink_b_desc);
@@ -2480,6 +2532,196 @@ int main(int argc, char **argv)
             check(act && flow_run_status(act) == FLOW_COMPLETED, "CAT-18: the Delay completes after its duration");
             blueprint_instance_destroy(bi);
         }
+        blueprint_free(bp);
+    }
+
+    /* EXEC-18 isolation: two activations of the same event retain distinct
+     * parameter values while they are paused before the same capture node. */
+    {
+        blueprint *bp = blueprint_new("ActivationIsolation");
+        node *event = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        node *capture = graph_add_node(bp->graph, &g_capture_desc);
+        pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
+        graph_add_pin(bp->graph, event, 1, &value);
+        graph_connect_exec(bp->graph, event, 0, capture, 0, 0);
+        graph_connect_data(bp->graph, event, 1, capture, 1);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error first_error = { 0 };
+        flow_error second_error = { 0 };
+        flow_run *first = blueprint_instance_enqueue(
+            bi,
+            event,
+            (flow_inputs){ (pin_value[]){ { .type = PIN_I32, .i = 11 } }, 1, NULL },
+            &first_error
+        );
+        flow_run *second = blueprint_instance_enqueue(
+            bi,
+            event,
+            (flow_inputs){ (pin_value[]){ { .type = PIN_I32, .i = 22 } }, 1, NULL },
+            &second_error
+        );
+        check(
+            first && second && first_error.code == 0 && second_error.code == 0 &&
+                flow_run_step(first) == FLOW_PAUSED_RESULT &&
+                flow_run_step(second) == FLOW_PAUSED_RESULT,
+            "EXEC-18: same-node activations can be staged independently"
+        );
+        (void)flow_run_step(first);
+        (void)flow_run_step(second);
+        check(
+            flow_run_resume(first) == FLOW_OK && flow_run_resume(second) == FLOW_OK &&
+                flow_run_status(first) == FLOW_COMPLETED &&
+                flow_run_status(second) == FLOW_COMPLETED,
+            "EXEC-18: staged activations complete independently"
+        );
+        pin_value first_value;
+        pin_value second_value;
+        check(
+            flow_run_watch_input(first, capture, 1, &first_value) == 0 &&
+                flow_run_watch_input(second, capture, 1, &second_value) == 0 &&
+                first_value.i == 11 && second_value.i == 22,
+            "EXEC-18: same-node activation values remain isolated"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* DBG-5: watched names and arrays are copied out of the activation and
+     * remain valid after the source defaults are released. */
+    {
+        blueprint *bp = blueprint_new("OwnedWatches");
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        node *watch = graph_add_node(bp->graph, &g_owned_watch_desc);
+        graph_set_event_name(bp->graph, event, "Owned");
+        graph_connect_exec(bp->graph, event, 0, watch, 0, 0);
+        check(
+            graph_set_pin_default(
+                bp->graph,
+                watch,
+                0,
+                1,
+                &(pin_value){ .type = PIN_NAME, .type_name = "name", .str = "OwnedName" }
+            ) == 0,
+            "DBG-5: Name watch default is authored"
+        );
+        pin_array *array = pin_array_new(PIN_I32, "int", 2);
+        pin_array_push(array, &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 7 });
+        pin_array_push(array, &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 9 });
+        check(
+            graph_set_pin_default(
+                bp->graph,
+                watch,
+                0,
+                2,
+                &(pin_value){
+                    .type = PIN_I32,
+                    .type_name = "int",
+                    .container = PIN_CONTAINER_ARRAY,
+                    .ptr = array,
+                }
+            ) == 0,
+            "DBG-5: array watch default is authored"
+        );
+        pin_array_free(array);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error error = { 0 };
+        flow_run *run = blueprint_instance_dispatch(bi, "Owned", (flow_inputs){ 0 }, &error);
+        pin_value name_value;
+        pin_value array_value;
+        const pin_array *items = NULL;
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                flow_run_watch_input(run, watch, 1, &name_value) == 0 &&
+                flow_run_watch_input(run, watch, 2, &array_value) == 0 &&
+                name_value.type == PIN_NAME && name_value.str &&
+                strcmp(name_value.str, "OwnedName") == 0 &&
+                array_value.container == PIN_CONTAINER_ARRAY &&
+                (items = (const pin_array *)array_value.ptr) && items->count == 2 &&
+                items->items[0].i == 7 && items->items[1].i == 9,
+            "DBG-5: Name and array watches own their captured values"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* EXEC-16: activation inputs own pointer-bearing values until the run is
+     * released, even when the source storage is changed or freed. */
+    {
+        graph g;
+        graph_init(&g);
+        node *event = graph_add_node(&g, &NODE_Event);
+        node *delay = graph_add_node(&g, &NODE_Delay);
+        pin_spec name_pin = { "Name", PIN_NAME, "name", PIN_DATA };
+        pin_spec text_pin = { "Text", PIN_STR, "const char *", PIN_DATA };
+        pin_spec array_pin = {
+            "Values",
+            PIN_I32,
+            "int",
+            PIN_DATA,
+            0,
+            PIN_CONTAINER_ARRAY,
+            { .type = PIN_I32, .type_name = "int", .container = PIN_CONTAINER_ARRAY },
+        };
+        graph_add_pin(&g, event, 1, &name_pin);
+        graph_add_pin(&g, event, 1, &text_pin);
+        graph_add_pin(&g, event, 1, &array_pin);
+        graph_connect_exec(&g, event, 0, delay, 0, 0);
+        graph_set_pin_default(&g, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 1.0 });
+
+        char *name = (char *)malloc(5);
+        char *text = (char *)malloc(5);
+        memcpy(name, "Name", 5);
+        memcpy(text, "Text", 5);
+        pin_array *array = pin_array_new(PIN_I32, "int", 2);
+        pin_array_push(array, &(pin_value){ .type = PIN_I32, .i = 7 });
+        pin_array_push(array, &(pin_value){ .type = PIN_I32, .i = 9 });
+        pin_value inputs[] = {
+            { .type = PIN_NAME, .type_name = "name", .str = name },
+            { .type = PIN_STR, .type_name = "const char *", .str = text },
+            { .type = PIN_I32, .type_name = "int", .container = PIN_CONTAINER_ARRAY, .ptr = array },
+        };
+        flow_error error = { 0 };
+        flow_run *run = flow_run_start(&g, event, (flow_inputs){ inputs, 3, NULL }, NULL, &error);
+        check(
+            run && flow_run_step(run) == FLOW_PAUSED_RESULT &&
+                flow_run_resume(run) == FLOW_SUSPENDED_RESULT,
+            "EXEC-16: pointer-bearing activation inputs survive suspension"
+        );
+        memset(name, 'x', 4);
+        memset(text, 'x', 4);
+        array->items[0].i = 99;
+        free(name);
+        free(text);
+        pin_array_free(array);
+        flow_inputs owned = flow_run_inputs(run);
+        const pin_array *owned_array = owned.count == 3
+                                         ? (const pin_array *)owned.values[2].ptr
+                                         : NULL;
+        check(
+            owned.count == 3 && owned.values[0].str &&
+                strcmp(owned.values[0].str, "Name") == 0 && owned.values[1].str &&
+                strcmp(owned.values[1].str, "Text") == 0 && owned_array &&
+                owned_array->count == 2 && owned_array->items[0].i == 7 &&
+                owned_array->items[1].i == 9,
+            "EXEC-16: activation copies Name, string, and array inputs"
+        );
+        flow_run_free(run);
+        graph_free(&g);
+    }
+
+    /* RUN-17: freeing an instance-owned activation removes it from the
+     * scheduler before the instance is destroyed. */
+    {
+        blueprint *bp = blueprint_new("FreeActivation");
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, event, "Go");
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error error = { 0 };
+        flow_run *run = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &error);
+        check(run && acount(bi->activations) == 1, "RUN-17: instance owns a returned activation");
+        flow_run_free(run);
+        check(acount(bi->activations) == 0, "RUN-17: freeing an activation removes it from its instance");
+        blueprint_instance_destroy(bi);
         blueprint_free(bp);
     }
 
@@ -2587,7 +2829,7 @@ int main(int argc, char **argv)
         node *done = graph_add_node(bp->graph, &g_sink_a_desc);
         graph_connect_exec(bp->graph, ev, 0, delay, 0, 0);
         graph_connect_exec(bp->graph, delay, 0, done, 0, 0);
-        delay->inputs[1].d = 100.0;
+        graph_set_pin_default(bp->graph, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 100.0 });
         blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
         blueprint_instance_set_variable(bi, v->id, &(pin_value){ .type = PIN_I32, .i = 9 });
         blueprint_instance_scratch(bi, delay->id)->type = PIN_I32;
@@ -2644,7 +2886,7 @@ int main(int argc, char **argv)
             "EVT-6: Call Event mirrors the event's parameters as data inputs"
         );
         check(
-            call->input_count == 2 && call->inputs[1].type == PIN_STR,
+            call->input_count == 2 && call->input_pins[1].type == PIN_STR,
             "EVT-5: Call Event pins track the authored event signature"
         );
         node *str_lit = graph_add_node(bp->graph, registry_node_by_name("String"));
@@ -3483,7 +3725,7 @@ int main(int argc, char **argv)
             0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "{1}" }
         );
-        graph_eval_reset(&gf);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 out.str[0] == '\0',
@@ -3508,7 +3750,7 @@ int main(int argc, char **argv)
             &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 }
         );
         graph_connect(&gf, ival2, 0, fmt, 1);
-        graph_eval_reset(&gf);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=42") == 0,
@@ -3548,7 +3790,7 @@ int main(int argc, char **argv)
             0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "{} {}" }
         );
-        graph_eval_reset(&gf);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "42 3.5") == 0,
@@ -3562,7 +3804,7 @@ int main(int argc, char **argv)
             0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "|{:>8}|" }
         );
-        graph_eval_reset(&gf);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "|      42|") == 0,
@@ -3575,7 +3817,7 @@ int main(int argc, char **argv)
             0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "a{{b}}c" }
         );
-        graph_eval_reset(&gf);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "a{b}c") == 0,
@@ -3604,7 +3846,7 @@ int main(int argc, char **argv)
             0,
             &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "|{2:.2f}|{0:x}|{0:08d}|{0:.2f}|" }
         );
-        graph_eval_reset(&gf);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "|3.14|2a|00000042|42.00|") == 0,
@@ -3660,7 +3902,7 @@ int main(int argc, char **argv)
         );
         graph_connect(&gp, rval, 0, fmt, 1);
         check(fmt->input_pins[1].type == PIN_F64, "PIN-11: replacing the driver re-adopts the new type");
-        graph_eval_reset(&gp);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=3.5") == 0,
@@ -3679,7 +3921,7 @@ int main(int argc, char **argv)
             "PIN-11: removing the edge or its driver reverts the Generic pin"
         );
         /* An unconnected spare renders as an empty argument. */
-        graph_eval_reset(&gp);
+        eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=") == 0,
@@ -3705,7 +3947,7 @@ int main(int argc, char **argv)
         if (gp2) {
             arena ap2;
             arena_init(&ap2, 8192);
-            graph_eval_reset(gp2);
+            eval_context_reset_runtime(&eval_ctx);
             check(
                 graph_eval_output(gp2, gp2->nodes[0], 0, &ap2, &out, &eval_ctx) == 0 &&
                     strcmp(out.str, "n=3.5") == 0,
@@ -3817,9 +4059,11 @@ int main(int argc, char **argv)
             (flow_inputs){ 0 },
             &function_error
         );
+        pin_value function_output;
         check(
             function_run && flow_run_status(function_run) == FLOW_COMPLETED &&
-                call->outputs[1].i == 42,
+                flow_run_watch_output(function_run, call, 1, &function_output) == 0 &&
+                function_output.i == 42,
             "FN-3: executable function returns before its caller continues"
         );
         blueprint_instance_destroy(bi);
@@ -3869,6 +4113,7 @@ int main(int argc, char **argv)
             registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
             "UI-31: reroute targets are available for wire navigation"
         );
+        eval_context_free(&function_eval);
         arena_free(&function_arena);
         blueprint_instance_destroy(bi);
         char *function_json = blueprint_save_json(bp);
@@ -3885,6 +4130,53 @@ int main(int argc, char **argv)
         check(call->input_count == 2 && call->output_count == 2, "UI-4: function call details expose its authored signature pins");
         free(function_json);
         blueprint_free(function_loaded);
+        blueprint_free(bp);
+    }
+
+    /* DBG-5: executable function returns remain usable by the caller after
+     * the nested run completes. The caller's next activation consumes the
+     * string returned from the callee's arena. */
+    {
+        blueprint *bp = blueprint_new("FunctionStringLifetime");
+        graph *fn = blueprint_add_function(bp, "Text", 0);
+        node *entry = fn ? graph_node_by_id(fn, fn->entry_id) : NULL;
+        node *ret = fn ? graph_node_by_id(fn, fn->return_id) : NULL;
+        node *format = fn ? graph_add_node(fn, registry_node_by_name("Format Text"))
+                          : NULL;
+        pin_spec text = { "Text", PIN_STR, "const char *", PIN_DATA };
+        check(
+            fn && entry && ret && format && graph_add_pin(fn, ret, 0, &text) >= 0 &&
+                graph_connect_exec(fn, entry, 0, ret, 0, 0) == 0 &&
+                graph_set_pin_default(
+                    fn,
+                    format,
+                    0,
+                    0,
+                    &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "callee" }
+                ) == 0 &&
+                graph_connect_data(fn, format, 0, ret, 1) == 0,
+            "DBG-5: string function graph is authored"
+        );
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        node *call = fn ? blueprint_add_function_call_node(bp, fn) : NULL;
+        node *capture = graph_add_node(bp->graph, &g_str_capture_desc);
+        graph_set_event_name(bp->graph, event, "Text");
+        check(
+            event && call && capture &&
+                graph_connect_exec(bp->graph, event, 0, call, 0, 0) == 0 &&
+                graph_connect_exec(bp->graph, call, 0, capture, 0, 0) == 0 &&
+                graph_connect_data(bp->graph, call, 1, capture, 1) == 0,
+            "DBG-5: string function return is connected to the next activation"
+        );
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error error = { 0 };
+        flow_run *run = blueprint_instance_dispatch(bi, "Text", (flow_inputs){ 0 }, &error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                strcmp(g_captured_str, "callee") == 0,
+            "DBG-5: string function return survives nested-run teardown"
+        );
+        blueprint_instance_destroy(bi);
         blueprint_free(bp);
     }
 
@@ -3915,7 +4207,7 @@ int main(int argc, char **argv)
         );
         node *length = graph_add_node(&g_array, registry_node_by_name("Length"));
         graph_connect_data(&g_array, make, 0, length, 0);
-        graph_eval_reset(&g_array);
+        eval_context_reset_runtime(&array_eval);
         pin_value length_value;
         check(
             graph_eval_output(&g_array, length, 0, &array_arena, &length_value, &array_eval) ==
@@ -3948,8 +4240,93 @@ int main(int argc, char **argv)
         );
         check(strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_DATA), "CMPL-14") == 0, "CMPL-14: unconnected impure data diagnostics have a stable warning rule");
         check(array_value.container == PIN_CONTAINER_ARRAY && array_value.ptr != NULL, "DATA-8: invalid and unresolved container values remain explicit errors, not silent nodes");
+
+        /* DBG-5: struct array copies borrow their elements consistently. The
+         * clone and its destruction must not free host or arena storage. */
+        Vec3 borrowed_values[] = { { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } };
+        pin_array *borrowed_array = pin_array_new(PIN_STRUCT, "Vec3", 2);
+        pin_array_push(
+            borrowed_array,
+            &(pin_value){ .type = PIN_STRUCT, .type_name = "Vec3", .ptr = &borrowed_values[0] }
+        );
+        pin_array_push(
+            borrowed_array,
+            &(pin_value){ .type = PIN_STRUCT, .type_name = "Vec3", .ptr = &borrowed_values[1] }
+        );
+        pin_value borrowed_value = {
+            .type = PIN_STRUCT,
+            .type_name = "Vec3",
+            .container = PIN_CONTAINER_ARRAY,
+            .ptr = borrowed_array,
+        };
+        pin_value borrowed_copy = { 0 };
+        check(pin_value_copy(&borrowed_copy, &borrowed_value) == 0, "TYPE-9: struct array watch copy succeeds without taking element ownership");
+        pin_value_destroy(&borrowed_copy);
+        pin_array_free(borrowed_array);
+        check(borrowed_values[0].x == 1.0f && borrowed_values[1].z == 6.0f, "TYPE-9: struct array clone destruction leaves borrowed elements intact");
+
         arena_free(&array_arena);
         graph_free(&g_array);
+    }
+
+    /* CAT-7: ForEach emits each array element once, including the one-element
+     * case, and emits no body for an empty array. */
+    {
+        const int cases[][4] = { { 0, 0, 0, 0 }, { 1, 7, 0, 0 }, { 3, 4, 5, 6 } };
+        for (int c = 0; c < 3; c++) {
+            graph g_foreach;
+            graph_init(&g_foreach);
+            node *event = graph_add_node(&g_foreach, &NODE_Event);
+            node *each = graph_add_node(&g_foreach, &NODE_ForEach);
+            node *capture = graph_add_node(&g_foreach, &g_foreach_capture_desc);
+            pin_spec array_pin = {
+                "Values",
+                PIN_I32,
+                "int",
+                PIN_DATA,
+                0,
+                PIN_CONTAINER_ARRAY,
+                { .type = PIN_I32, .type_name = "int", .container = PIN_CONTAINER_ARRAY },
+            };
+            graph_add_pin(&g_foreach, event, 1, &array_pin);
+            graph_connect_exec(&g_foreach, event, 0, each, 0, 0);
+            graph_connect_data(&g_foreach, event, 1, each, 1);
+            graph_connect_exec(&g_foreach, each, 0, capture, 0, 0);
+            graph_connect_data(&g_foreach, each, 1, capture, 1);
+            pin_array *array = pin_array_new(PIN_I32, "int", cases[c][0]);
+            for (int i = 0; i < cases[c][0]; i++) {
+                pin_array_push(
+                    array,
+                    &(pin_value){ .type = PIN_I32, .type_name = "int", .i = cases[c][i + 1] }
+                );
+            }
+            graph_set_pin_default(
+                &g_foreach,
+                event,
+                1,
+                1,
+                &(pin_value){
+                    .type = PIN_I32,
+                    .type_name = "int",
+                    .container = PIN_CONTAINER_ARRAY,
+                    .ptr = array,
+                }
+            );
+            pin_array_free(array);
+            g_foreach_count = 0;
+            flow_error error = { 0 };
+            flow_run *run = flow_run_start(&g_foreach, event, (flow_inputs){ 0 }, NULL, &error);
+            check(run && flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED, "CAT-7: ForEach completes for empty, one-element, and multi-element arrays");
+            check(
+                g_foreach_count == cases[c][0] &&
+                    (c == 0 || (g_foreach_values[0] == cases[c][1] &&
+                                (c == 1 || (g_foreach_values[1] == cases[c][2] &&
+                                            g_foreach_values[2] == cases[c][3])))),
+                "CAT-7: ForEach emits the expected elements exactly once"
+            );
+            flow_run_free(run);
+            graph_free(&g_foreach);
+        }
     }
 
     /* Phase 6: weak delegate bindings. */
@@ -4056,7 +4433,7 @@ int main(int argc, char **argv)
             flow_run_watch_input(break_run, break_sink, 1, &watched) == 0,
             "DBG-11: pure/data pin watches remain readable after execution"
         );
-        check(break_sink->eval_error == 0, "DBG-13: successful nodes retain a non-failed render state");
+        check(flow_run_error(break_run)->code == 0, "DBG-13: successful nodes retain a non-failed render state");
         char *break_json = graph_save_json(&g_break);
         graph *break_loaded = break_json ? graph_load_json(break_json) : NULL;
         check(break_json && strstr(break_json, "\"flags\": 16"), "DBG-12: breakpoint and watch identity round-trip without position reuse");
@@ -4258,6 +4635,9 @@ int main(int argc, char **argv)
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
+    eval_context_free(&eval_ctx);
+    eval_context_free(&independent_a);
+    eval_context_free(&independent_b);
     graph_free(&g);
     arena_free(&a);
     return fails ? 1 : 0;

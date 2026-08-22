@@ -144,6 +144,7 @@ static pin_spec macro_call_outputs[] = {
 static int flow_event(node *n, flow_context *ctx)
 {
     flow_inputs inputs = flow_context_inputs(ctx);
+    pin_value *outputs = flow_context_output_value(ctx, 0);
     int parameter = 0;
     for (int i = 0; i < n->output_count; i++) {
         if (n->output_pins[i].kind != PIN_DATA) {
@@ -158,10 +159,10 @@ static int flow_event(node *n, flow_context *ctx)
                     .container = n->output_pins[i].container,
                 }
             )) {
-            n->outputs[i] = inputs.values[parameter];
-            pin_coerce(&n->outputs[i], &n->output_pins[i]);
+            outputs[i] = inputs.values[parameter];
+            pin_coerce(&outputs[i], &n->output_pins[i]);
         } else {
-            n->outputs[i] = n->output_pins[i].default_value;
+            outputs[i] = n->output_pins[i].default_value;
         }
         parameter++;
     }
@@ -309,7 +310,7 @@ static int flow_set_variable(node *n, flow_context *ctx)
     if (blueprint_instance_set_variable(bi, n->reference_id, &value) != 0) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "Set Variable references a lost variable");
     }
-    n->outputs[1] = value;
+    *flow_context_output_value(ctx, 1) = value;
     return flow_context_continue(ctx, 0);
 }
 
@@ -329,7 +330,7 @@ static int flow_function_return(node *n, flow_context *ctx)
         if (result) {
             return result;
         }
-        n->inputs[i] = value;
+        *flow_context_input_value(ctx, i) = value;
     }
     return FLOW_OK;
 }
@@ -413,9 +414,17 @@ static int flow_execute_function(node *n, flow_context *ctx, int macro)
         if (at >= n->output_count) {
             break;
         }
-        n->outputs[at++] = ret->inputs[i];
+        const pin_value *value = flow_run_input_value(callee, ret, i);
+        if (!value) {
+            flow_run_free(callee);
+            return flow_context_fail(ctx, FLOW_ERR_NODE, "function return value is unavailable");
+        }
+        *flow_context_output_value(ctx, at++) = *value;
     }
-    flow_run_free(callee);
+    if (flow_context_retain_run(ctx, callee)) {
+        flow_run_free(callee);
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "function return lifetime unavailable");
+    }
     return flow_context_continue(ctx, 0);
 }
 

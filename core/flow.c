@@ -5,6 +5,7 @@
 #include "instance.h"
 #include "pin_conv.h"
 #include "registry.h"
+#include "runtime.h"
 #include "service.h"
 #include "value_array.h"
 
@@ -70,6 +71,8 @@ struct flow_run
     service_binding *services;
     flow_error error;
     eval_context eval;
+    runtime_store *runtime;
+    flow_run **children;
     flow_frame *frames;
     flow_call_frame *stack_cache;
     pin_value *inputs;
@@ -77,6 +80,7 @@ struct flow_run
     const void *input_user_data;
     flow_sink_fn sink;
     void *sink_user;
+    arena input_arena;
     arena scratch;
     flow_watch *watches;
     flow_traversal *traversals;
@@ -92,6 +96,50 @@ struct flow_context
     int pause_output;
     int failed;
 };
+
+static runtime_node *flow_runtime_node(flow_run *run, const node *n)
+{
+    return runtime_store_node(run->runtime, n);
+}
+
+static int flow_copy_nested_structs(arena *a, pin_value *value)
+{
+    if (value->container >= PIN_CONTAINER_ARRAY) {
+        if (!value->ptr) {
+            return 0;
+        }
+        pin_array *array = (pin_array *)value->ptr;
+        for (int i = 0; i < array->count; i++) {
+            if (flow_copy_nested_structs(a, &array->items[i])) {
+                return -1;
+            }
+        }
+        return 0;
+    }
+    if (value->type != PIN_STRUCT || !value->ptr) {
+        return 0;
+    }
+    const type_desc *type = value->type_name ? registry_type_by_name(value->type_name)
+                                             : NULL;
+    if (!type || !type->size) {
+        return -1;
+    }
+    void *copy = arena_alloc(a, type->size);
+    if (!copy) {
+        return -1;
+    }
+    memcpy(copy, value->ptr, type->size);
+    value->ptr = copy;
+    return 0;
+}
+
+static int flow_copy_input(arena *a, pin_value *dst, const pin_value *src)
+{
+    if (pin_value_copy_to_arena(a, dst, src)) {
+        return -1;
+    }
+    return flow_copy_nested_structs(a, dst);
+}
 
 static void set_error(flow_error *error, int code, const node *n, const char *message)
 {
@@ -318,6 +366,22 @@ static const flow_watch *watch_find(const flow_run *run, const node *n, int outp
     return NULL;
 }
 
+static void watch_release(flow_watch *watch)
+{
+    if (!watch || !watch->owned) {
+        return;
+    }
+    if (watch->value.type == PIN_STRUCT &&
+        watch->value.container == PIN_CONTAINER_SINGLE) {
+        free(watch->owned);
+        watch->value = (pin_value){ 0 };
+    } else {
+        pin_value_destroy(&watch->value);
+    }
+    watch->owned = NULL;
+    watch->owned_size = 0;
+}
+
 static int watch_store(flow_run *run, const node *n, int output, int pin, const pin_value *value)
 {
     if (!run || !n || !value) {
@@ -339,27 +403,30 @@ static int watch_store(flow_run *run, const node *n, int output, int pin, const 
         );
         watch = &run->watches[acount(run->watches) - 1];
     }
-    free(watch->owned);
-    watch->owned = NULL;
-    watch->owned_size = 0;
+    watch_release(watch);
     watch->value = *value;
 
-    if (value->type == PIN_STR && value->str) {
-        size_t size = strlen(value->str) + 1;
-        watch->owned = malloc(size);
-        if (!watch->owned) {
+    if (value->container >= PIN_CONTAINER_ARRAY && value->ptr) {
+        if (pin_value_copy(&watch->value, value)) {
+            watch->value = (pin_value){ .type = PIN_FLOW };
             return -1;
         }
-        memcpy(watch->owned, value->str, size);
-        watch->owned_size = size;
-        watch->value.str = (const char *)watch->owned;
+        watch->owned = watch->value.ptr;
+    } else if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
+        if (pin_value_copy(&watch->value, value)) {
+            watch->value = (pin_value){ .type = PIN_FLOW };
+            return -1;
+        }
+        watch->owned = (void *)watch->value.str;
     } else if (value->type == PIN_STRUCT && value->ptr) {
         const type_desc *type = watch_type(run, n, output, pin);
         if (!type || !type->size) {
+            watch->value = (pin_value){ .type = PIN_FLOW };
             return -1;
         }
         watch->owned = malloc(type->size);
         if (!watch->owned) {
+            watch->value = (pin_value){ .type = PIN_FLOW };
             return -1;
         }
         memcpy(watch->owned, value->ptr, type->size);
@@ -374,14 +441,17 @@ static void watch_capture_node(flow_run *run, node *n)
     if (!run || !n || !n->desc) {
         return;
     }
+    const runtime_node *state = flow_runtime_node(run, n);
+    const pin_value *inputs = runtime_node_inputs_const(state);
+    const pin_value *outputs = runtime_node_outputs_const(state);
     for (int i = 0; i < n->input_count; i++) {
         if (n->input_pins[i].kind == PIN_DATA) {
-            (void)watch_store(run, n, 0, i, &n->inputs[i]);
+            (void)watch_store(run, n, 0, i, &inputs[i]);
         }
     }
     for (int i = 0; i < n->output_count; i++) {
         if (n->output_pins[i].kind == PIN_DATA) {
-            (void)watch_store(run, n, 1, i, &n->outputs[i]);
+            (void)watch_store(run, n, 1, i, &outputs[i]);
         }
     }
 }
@@ -389,7 +459,7 @@ static void watch_capture_node(flow_run *run, node *n)
 static void watch_clear(flow_run *run)
 {
     for (int i = 0; i < acount(run->watches); i++) {
-        free(run->watches[i].owned);
+        watch_release(&run->watches[i]);
     }
     afree(run->watches);
 }
@@ -403,6 +473,14 @@ static void frame_arrays_free(flow_run *run)
     }
 }
 
+static void flow_run_free_children(flow_run *run)
+{
+    for (int i = 0; i < acount(run->children); i++) {
+        flow_run_free(run->children[i]);
+    }
+    afree(run->children);
+}
+
 static int flow_run_activate(flow_run *run)
 {
     if (run->steps >= run->step_budget) {
@@ -412,30 +490,32 @@ static int flow_run_activate(flow_run *run)
         return FLOW_ERR_STEP_BUDGET;
     }
 
-    /* Each synchronous node activation gets a fresh pull-eval memo and
-     * scratch lifetime. This keeps loop Index-dependent data current. */
-    graph_eval_reset(run->graph);
+    /* Each synchronous node activation gets a fresh pull-eval memo. Runtime
+     * values and the arena remain live for the run so flow data outputs and
+     * pointer-bearing values can cross activation boundaries safely. */
+    runtime_store_reset_memo(run->runtime);
     eval_context_reset(&run->eval);
-    arena_reset(&run->scratch);
 
     flow_frame frame = apop(run->frames);
     run->steps++;
     if (frame.kind == FLOW_FRAME_LOOP || frame.kind == FLOW_FRAME_FOREACH) {
         if (frame.kind == FLOW_FRAME_FOREACH) {
             if (frame.break_requested || !frame.array || frame.current > frame.last) {
-                pin_array_free(frame.array);
                 watch_capture_node(run, frame.node);
+                pin_array_free(frame.array);
                 return schedule_output_for_node(run, frame.node, frame.completed_output);
             }
             int index = frame.current;
-            frame.node->computed = 0;
-            frame.node->outputs[frame.index_output] = (pin_value){
+            runtime_node *state = flow_runtime_node(run, frame.node);
+            pin_value *outputs = runtime_node_outputs(state);
+            runtime_node_set_computed(state, 0);
+            outputs[frame.index_output] = (pin_value){
                 .type = PIN_I32,
                 .type_name = "int",
                 .i = index,
             };
-            frame.node->outputs[frame.index_output].container = PIN_CONTAINER_SINGLE;
-            frame.node->outputs[frame.value_output] = frame.array->items[index];
+            outputs[frame.index_output].container = PIN_CONTAINER_SINGLE;
+            outputs[frame.value_output] = frame.array->items[index];
             if (frame.current < frame.last) {
                 frame.current++;
             } else {
@@ -447,10 +527,12 @@ static int flow_run_activate(flow_run *run)
         }
         if (frame.current != frame.last) {
             frame.current += frame.current < frame.last ? 1 : -1;
-            frame.node->computed = 0;
-            frame.node->outputs[frame.index_output].type = PIN_I32;
-            frame.node->outputs[frame.index_output].type_name = "int";
-            frame.node->outputs[frame.index_output].i = frame.current;
+            runtime_node *state = flow_runtime_node(run, frame.node);
+            pin_value *outputs = runtime_node_outputs(state);
+            runtime_node_set_computed(state, 0);
+            outputs[frame.index_output].type = PIN_I32;
+            outputs[frame.index_output].type_name = "int";
+            outputs[frame.index_output].i = frame.current;
             apush(run->frames, frame);
             watch_capture_node(run, frame.node);
             return schedule_output_for_node(run, frame.node, frame.body_output);
@@ -470,8 +552,11 @@ static int flow_run_activate(flow_run *run)
             if (n->output_pins[i].kind != PIN_DATA) {
                 continue;
             }
-            n->outputs[i] = (pin_value){ .type = n->output_pins[i].type,
-                                         .type_name = n->output_pins[i].type_name };
+            runtime_node *state = flow_runtime_node(run, n);
+            runtime_node_outputs(state)[i] = (pin_value){
+                .type = n->output_pins[i].type,
+                .type_name = n->output_pins[i].type_name
+            };
         }
         watch_capture_node(run, n);
         for (int i = 0; i < n->output_count; i++) {
@@ -562,6 +647,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
         return NULL;
     }
     run->graph = g;
+    run->runtime = runtime_store_create(g);
     run->instance = options ? options->instance : NULL;
     /* Instance-owned activations share the instance's mutation guard; only a
      * standalone run acquires and releases the graph guard itself. */
@@ -584,20 +670,37 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->input_user_data = inputs.user_data;
     run->waiting_output = -1;
     eval_context_init(&run->eval);
+    eval_context_attach_runtime(&run->eval, run->runtime);
     run->eval.instance = run->instance;
     run->eval.on_data_edge = record_evaluated_data_edge;
     run->eval.on_data_edge_user = run;
+    arena_init(&run->input_arena, 65536);
+    arena_init(&run->scratch, 65536);
     if (inputs.count) {
-        run->inputs = (pin_value *)malloc((size_t)inputs.count * sizeof *run->inputs);
+        run->inputs = (pin_value *)calloc((size_t)inputs.count, sizeof *run->inputs);
         if (!run->inputs) {
+            arena_free(&run->input_arena);
+            arena_free(&run->scratch);
+            eval_context_detach_runtime(&run->eval);
+            runtime_store_free(run->runtime);
             free(run);
             set_error(error, FLOW_ERR_NODE, entry, "flow input allocation failed");
             return NULL;
         }
-        memcpy(run->inputs, inputs.values, (size_t)inputs.count * sizeof *run->inputs);
+        for (int i = 0; i < inputs.count; i++) {
+            if (flow_copy_input(&run->input_arena, &run->inputs[i], &inputs.values[i])) {
+                free(run->inputs);
+                arena_free(&run->input_arena);
+                arena_free(&run->scratch);
+                eval_context_detach_runtime(&run->eval);
+                runtime_store_free(run->runtime);
+                free(run);
+                set_error(error, FLOW_ERR_NODE, entry, "flow input copy failed");
+                return NULL;
+            }
+        }
     }
-    arena_init(&run->scratch, 65536);
-    graph_eval_reset(g);
+    runtime_store_reset(run->runtime);
     apush(run->frames, (flow_frame){ .node = entry, .kind = FLOW_FRAME_NODE, .input_pin = -1 });
     /* EXEC-8/EXEC-19: a standalone run keeps the graph guarded for its whole
      * non-idle lifetime; an instance-owned run does not (the instance does). */
@@ -760,7 +863,8 @@ int flow_run_stop(flow_run *run)
     run->activation_budget = 0;
     run->breakpoint_node = NULL;
     run->breakpoint_skipped = 0;
-    graph_eval_reset(run->graph);
+    flow_run_free_children(run);
+    runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     watch_clear(run);
     run->error = (flow_error){ 0, NULL, -1, NULL, run->steps };
@@ -776,7 +880,7 @@ int flow_run_reset(flow_run *run)
         return FLOW_ERR_ARGUMENT;
     }
     flow_run_stop(run);
-    graph_eval_reset(run->graph);
+    runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     frame_arrays_free(run);
     afree(run->frames);
@@ -786,7 +890,11 @@ int flow_run_reset(flow_run *run)
     run->inputs = NULL;
     run->input_count = 0;
     run->input_user_data = NULL;
+    arena_free(&run->input_arena);
     arena_free(&run->scratch);
+    eval_context_detach_runtime(&run->eval);
+    runtime_store_free(run->runtime);
+    run->runtime = NULL;
     watch_clear(run);
     afree(run->traversals);
     run->steps = 0;
@@ -828,6 +936,15 @@ flow_inputs flow_run_inputs(const flow_run *run)
 {
     return run ? (flow_inputs){ run->inputs, run->input_count, run->input_user_data }
                : (flow_inputs){ NULL, 0, NULL };
+}
+
+const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin)
+{
+    if (!run || !n || pin < 0 || pin >= n->input_count) {
+        return NULL;
+    }
+    const runtime_node *state = flow_runtime_node((flow_run *)run, n);
+    return &runtime_node_inputs_const(state)[pin];
 }
 
 const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
@@ -884,6 +1001,22 @@ int flow_context_input_pin(const struct flow_context *ctx)
     return ctx ? ctx->input_pin : -1;
 }
 
+pin_value *flow_context_input_value(struct flow_context *ctx, int pin)
+{
+    if (!ctx || !ctx->run || !ctx->node || pin < 0 || pin >= ctx->node->input_count) {
+        return NULL;
+    }
+    return &runtime_node_inputs(flow_runtime_node(ctx->run, ctx->node))[pin];
+}
+
+pin_value *flow_context_output_value(struct flow_context *ctx, int pin)
+{
+    if (!ctx || !ctx->run || !ctx->node || pin < 0 || pin >= ctx->node->output_count) {
+        return NULL;
+    }
+    return &runtime_node_outputs(flow_runtime_node(ctx->run, ctx->node))[pin];
+}
+
 void *flow_context_service(const struct flow_context *ctx, const char *type_name)
 {
     if (!ctx || !ctx->run || !type_name) {
@@ -901,6 +1034,9 @@ void flow_run_free(flow_run *run)
 {
     if (!run) {
         return;
+    }
+    if (run->instance) {
+        blueprint_instance_remove_activation(run->instance, run);
     }
     flow_run_reset(run);
     free(run);
@@ -993,13 +1129,14 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
             );
         }
         pin_coerce(out, spec);
-        ctx->node->inputs[input_pin] = *out;
+        *flow_context_input_value(ctx, input_pin) = *out;
         if (src->output_pins[src_pin].flags & PIN_FLAG_WATCH) {
             (void)watch_store(ctx->run, src, 1, src_pin, out);
         }
         return FLOW_OK;
     }
-    *out = ctx->node->inputs[input_pin];
+    *flow_context_input_value(ctx, input_pin) = spec->default_value;
+    *out = *flow_context_input_value(ctx, input_pin);
     if (out->type != spec->type && !pin_coerce(out, spec)) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "data input has wrong type");
     }
@@ -1064,8 +1201,9 @@ int flow_context_loop_range(
         ctx->node->output_pins[index_output].kind != PIN_DATA) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "invalid loop descriptor");
     }
-    ctx->node->computed = 0;
-    ctx->node->outputs[index_output] = (pin_value){
+    runtime_node *state = flow_runtime_node(ctx->run, ctx->node);
+    runtime_node_set_computed(state, 0);
+    runtime_node_outputs(state)[index_output] = (pin_value){
         .type = PIN_I32,
         .type_name = "int",
         .i = first,
@@ -1134,22 +1272,23 @@ int flow_context_foreach(
         pin_array_free(array);
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "invalid ForEach descriptor");
     }
-    ctx->node->computed = 0;
+    runtime_node *state = flow_runtime_node(ctx->run, ctx->node);
+    runtime_node_set_computed(state, 0);
     if (!array->count) {
         pin_array_free(array);
         return flow_context_continue(ctx, completed_output);
     }
-    ctx->node->outputs[value_output] = array->items[0];
-    ctx->node->outputs[index_output] = (pin_value){ .type = PIN_I32,
-                                                    .type_name = "int",
-                                                    .i = 0 };
+    runtime_node_outputs(state)[value_output] = array->items[0];
+    runtime_node_outputs(state)[index_output] = (pin_value){ .type = PIN_I32,
+                                                             .type_name = "int",
+                                                             .i = 0 };
     apush(
         ctx->run->frames,
         (flow_frame){
             .node = ctx->node,
             .kind = FLOW_FRAME_FOREACH,
             .input_pin = -1,
-            .current = 0,
+            .current = 1,
             .last = array->count - 1,
             .body_output = body_output,
             .value_output = value_output,
@@ -1181,6 +1320,15 @@ flow_inputs flow_context_inputs(const struct flow_context *ctx)
 blueprint_instance *flow_context_instance(const struct flow_context *ctx)
 {
     return ctx && ctx->run ? ctx->run->instance : NULL;
+}
+
+int flow_context_retain_run(struct flow_context *ctx, flow_run *child)
+{
+    if (!ctx || !ctx->run || !child || child == ctx->run) {
+        return -1;
+    }
+    apush(ctx->run->children, child);
+    return 0;
 }
 
 void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)

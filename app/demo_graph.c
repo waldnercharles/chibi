@@ -83,9 +83,14 @@ int demo_graph_seed_flow(graph *g)
     if (graph_set_pin_default(g, condition, 0, 0, &true_value)) {
         return -1;
     }
-    delay->inputs[1].d = 1.0;
-    loop->inputs[1].i = 2;
-    loop->inputs[2].i = 4;
+    pin_value delay_duration = { .type = PIN_F64, .type_name = "double", .d = 1.0 };
+    pin_value loop_first = { .type = PIN_I32, .type_name = "int", .i = 2 };
+    pin_value loop_last = { .type = PIN_I32, .type_name = "int", .i = 4 };
+    if (graph_set_pin_default(g, delay, 0, 1, &delay_duration) ||
+        graph_set_pin_default(g, loop, 0, 1, &loop_first) ||
+        graph_set_pin_default(g, loop, 0, 2, &loop_last)) {
+        return -1;
+    }
 
     if (graph_connect_exec(g, event, 0, sequence, 0, 0)) {
         return -1;

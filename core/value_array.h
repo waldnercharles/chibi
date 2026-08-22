@@ -17,8 +17,8 @@ typedef struct pin_array
     pin_value *items;
 } pin_array;
 
-/* TYPE-8/TYPE-9: arrays own their element storage and use the same copy,
- * destruction, and equality callbacks for authored and runtime values. */
+/* TYPE-8/TYPE-9: arrays own their item storage. Struct elements remain
+ * borrowed until a type-specific copy callback exists. */
 pin_array *pin_array_new(pin_type element_type, const char *type_name, int capacity);
 pin_array *pin_array_clone(const pin_array *src);
 pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src);
@@ -30,8 +30,8 @@ int pin_array_insert(pin_array *array, int index, const pin_value *value);
 int pin_array_remove(pin_array *array, int index);
 int pin_array_equal(const pin_array *a, const pin_array *b);
 
-/* Copy and destruction dispatch. `dst` receives a self-contained heap value;
- * callers release it with pin_value_destroy. */
+/* Copy and destruction dispatch. `dst` owns copied array and string storage;
+ * struct and handle payloads remain borrowed. */
 int pin_value_copy(pin_value *dst, const pin_value *src);
 int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src);
 int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src);

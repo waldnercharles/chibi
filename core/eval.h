@@ -4,9 +4,11 @@
 #include "graph.h"
 #include "pin.h"
 
-/* Clear memo/cycle state for a pull-eval activation. Call with arena_reset
- * before a standalone run; the scheduler performs this between node
- * activations. */
+/* Runtime state belongs to one pull-eval context or flow activation. */
+typedef struct runtime_store runtime_store;
+
+/* Deprecated compatibility symbol. A graph cannot own runtime state now;
+ * reset the owning eval_context with eval_context_reset_runtime(). */
 void graph_eval_reset(graph *g);
 
 typedef struct
@@ -33,11 +35,21 @@ typedef struct eval_context
     blueprint_instance *instance; /* optional: variable/owner reads for Get/Self */
     eval_data_edge_fn on_data_edge; /* optional pull-evaluation edge observer */
     void *on_data_edge_user;
+    runtime_store *runtime; /* borrowed when attached by a flow run */
+    int runtime_owned;
+    unsigned call_depth;
 } eval_context;
 
 void eval_context_init(eval_context *ctx);
+void eval_context_free(eval_context *ctx);
 void eval_context_reset(eval_context *ctx);
+/* Reset one context's memo, diagnostics, and runtime values. */
+void eval_context_reset_runtime(eval_context *ctx);
+void eval_context_attach_runtime(eval_context *ctx, runtime_store *runtime);
+void eval_context_detach_runtime(eval_context *ctx);
 const eval_status *eval_context_status(const eval_context *ctx);
+int eval_context_input(const eval_context *ctx, const node *n, int pin, pin_value *out);
+int eval_context_output(const eval_context *ctx, const node *n, int pin, pin_value *out);
 
 /* Pull-eval one output pin of n; writes the value to *out. Returns 0 on
  * success, -1 on a bad pin index, -2 on a cycle, -3 on allocation failure,

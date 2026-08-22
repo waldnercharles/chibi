@@ -259,9 +259,9 @@ void pin_value_destroy(pin_value *value)
         pin_array_free((pin_array *)value->ptr);
     } else if (value_string(value->type)) {
         free((void *)value->str);
-    } else if (value->type == PIN_STRUCT && value->ptr) {
-        free(value->ptr);
     }
+    /* Struct values are borrowed until a type-specific copy callback exists.
+     * Their storage may belong to an arena, graph, or host object. */
     memset(value, 0, sizeof *value);
 }
 

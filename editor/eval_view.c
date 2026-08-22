@@ -33,6 +33,7 @@ void eval_view_free(eval_view *v)
     if (!v) {
         return;
     }
+    eval_context_free(&v->eval);
     arena_free(&v->a);
     free(v);
 }
@@ -42,8 +43,8 @@ void eval_view_refresh(eval_view *v, graph *g)
     v->error = NULL;
     v->run = NULL;
     eval_context_reset(&v->eval);
+    eval_context_reset_runtime(&v->eval);
     v->eval.instance = (blueprint_instance *)v->instance; /* Get/Self preview reads */
-    graph_eval_reset(g);
     arena_reset(&v->a);
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
@@ -92,7 +93,11 @@ const char *eval_view_output(const eval_view *v, const node *n, int pin)
         }
         return pin_value_to_string(&value);
     }
-    return pin_value_to_string(&n->outputs[pin]);
+    pin_value value;
+    if (!v || eval_context_output(&v->eval, n, pin, &value) != 0) {
+        return "";
+    }
+    return pin_value_to_string(&value);
 }
 
 const char *eval_view_input(const eval_view *v, const graph *g, const node *n, int pin)
@@ -112,7 +117,10 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
     if (graph_input_source(g, n, pin, &src, &src_pin)) {
         return NULL;
     }
-    pin_value val = n->inputs[pin];
+    pin_value val;
+    if (!v || eval_context_input(&v->eval, n, pin, &val) != 0) {
+        return "";
+    }
     val.type = n->input_pins[pin].type;
     return pin_value_to_string(&val);
 }

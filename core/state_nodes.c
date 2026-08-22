@@ -2,6 +2,7 @@
 
 #include "flow.h"
 #include "instance.h"
+#include "registry.h"
 
 static pin_spec do_once_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
@@ -292,3 +293,9 @@ node_desc *const STATE_NODES[] = {
     &NODE_Gate,   &NODE_MultiGate, &NODE_RetriggerableDelay,
 };
 const int STATE_NODE_COUNT = sizeof STATE_NODES / sizeof STATE_NODES[0];
+
+const registry_pack CORE_STATE_PACK = {
+    .name = "core.state",
+    .nodes = STATE_NODES,
+    .node_count = sizeof STATE_NODES / sizeof STATE_NODES[0],
+};

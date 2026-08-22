@@ -19,6 +19,8 @@ check-format:
 
 test: build spec-check
 	$(BUILD_DIR)/self_check
+	$(BUILD_DIR)/integration
+	$(BUILD_DIR)/registry_consumer
 
 # Every docs/spec.md requirement is claimed by a roadmap phase, and every
 # requirement in a completed phase is cited by a check. See docs/adr/0007.

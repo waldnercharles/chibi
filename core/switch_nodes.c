@@ -1,6 +1,7 @@
 #include "switch_nodes.h"
 
 #include "flow.h"
+#include "registry.h"
 
 #include <string.h>
 
@@ -140,3 +141,9 @@ node_desc *const SWITCH_NODES[] = {
     &NODE_SwitchEnum, &NODE_Select,
 };
 const int SWITCH_NODE_COUNT = sizeof SWITCH_NODES / sizeof SWITCH_NODES[0];
+
+const registry_pack CORE_SWITCH_PACK = {
+    .name = "core.switch",
+    .nodes = SWITCH_NODES,
+    .node_count = sizeof SWITCH_NODES / sizeof SWITCH_NODES[0],
+};

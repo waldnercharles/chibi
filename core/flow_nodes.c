@@ -1,6 +1,7 @@
 #include "flow.h"
 #include "instance.h"
 #include "pin_conv.h"
+#include "registry.h"
 
 static pin_spec event_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },
@@ -682,3 +683,9 @@ node_desc *const FLOW_NODES[] = {
     &NODE_CallMacro,
 };
 const int FLOW_NODE_COUNT = sizeof FLOW_NODES / sizeof FLOW_NODES[0];
+
+const registry_pack CORE_FLOW_PACK = {
+    .name = "core.flow",
+    .nodes = FLOW_NODES,
+    .node_count = sizeof FLOW_NODES / sizeof FLOW_NODES[0],
+};

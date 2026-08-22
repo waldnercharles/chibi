@@ -76,13 +76,7 @@ static void write_const(
             break;
         case PIN_STRUCT:
             if (v->ptr && type_name) {
-                const type_desc *type = NULL;
-                for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
-                    if (strcmp(REGISTRY_TYPES[i]->name, type_name) == 0) {
-                        type = REGISTRY_TYPES[i];
-                        break;
-                    }
-                }
+                const type_desc *type = registry_type_by_name(type_name);
                 if (type) {
                     value = yyjson_mut_obj(doc);
                     for (int i = 0; i < type->field_count; i++) {
@@ -113,15 +107,7 @@ static void write_const(
 
 static const type_desc *find_type(const char *name)
 {
-    if (!name) {
-        return NULL;
-    }
-    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
-        if (strcmp(REGISTRY_TYPES[i]->name, name) == 0) {
-            return REGISTRY_TYPES[i];
-        }
-    }
-    return NULL;
+    return registry_type_by_name(name);
 }
 
 static int read_signed(yyjson_val *v, int64_t *out)
@@ -297,6 +283,9 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
     yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
     yyjson_mut_obj_add_int(doc, o, "container", p->container);
     yyjson_mut_obj_add_uint(doc, o, "split_parent", p->split_parent);
+    if (p->split_type_name) {
+        yyjson_mut_obj_add_str(doc, o, "split_type_name", p->split_type_name);
+    }
     yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
     yyjson_mut_obj_add_int(doc, o, "group", p->group);
     write_const(doc, o, "default", p->type, p->type_name, &p->default_value);
@@ -686,6 +675,10 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         if (split && yyjson_is_uint(split)) {
             p->split_parent = yyjson_get_uint(split);
         }
+        yyjson_val *split_type = yyjson_obj_get(v, "split_type_name");
+        p->split_type_name = yyjson_is_str(split_type)
+                               ? graph_own_str(g, yyjson_get_str(split_type), yyjson_get_len(split_type))
+                               : NULL;
         yyjson_val *flags = yyjson_obj_get(v, "flags");
         if (flags && yyjson_is_uint(flags)) {
             p->flags = (unsigned)yyjson_get_uint(flags);

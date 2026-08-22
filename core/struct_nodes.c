@@ -1,6 +1,7 @@
 #include "struct_nodes.h"
 
 #include "flow.h"
+#include "registry.h"
 
 static pin_spec set_members_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
@@ -31,3 +32,9 @@ node_desc NODE_SetMembers = {
 
 node_desc *const STRUCT_NODES[] = { &NODE_SetMembers };
 const int STRUCT_NODE_COUNT = sizeof STRUCT_NODES / sizeof STRUCT_NODES[0];
+
+const registry_pack CORE_STRUCT_PACK = {
+    .name = "core.struct",
+    .nodes = STRUCT_NODES,
+    .node_count = sizeof STRUCT_NODES / sizeof STRUCT_NODES[0],
+};

@@ -8,6 +8,7 @@
 #include "conv_nodes.h"
 #include "fmt_nodes.h"
 #include "node.h"
+#include "registry.h"
 
 static pin_value literal_identity(const pin_value *inputs, int input_count, arena *a)
 {
@@ -48,3 +49,9 @@ node_desc *const EXTRA_NODES[] = {
     &NODE_To_Real, &NODE_To_Integer64, &NODE_Format_Text,
 };
 const int EXTRA_NODE_COUNT = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0];
+
+const registry_pack CORE_EXTRA_PACK = {
+    .name = "core.extra",
+    .nodes = EXTRA_NODES,
+    .node_count = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0],
+};

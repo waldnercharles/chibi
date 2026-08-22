@@ -449,7 +449,7 @@ static void pass_wildcards(compile_report *out, const graph *g)
 }
 
 /* CMPL-20: an authored nominal type name (PIN_STRUCT, PIN_ENUM, PIN_HANDLE)
- * that is unavailable in the active registry (REGISTRY_TYPES). The message
+ * that is unavailable in the active registry. The message
  * preserves the unresolved name. The owner handle type is covered through
  * the Self node's output pin; a declared owner type with no Self node is
  * not exercised and is deferred with the editor's owner-type surface. */
@@ -458,12 +458,7 @@ static int nominal_in_registry(const char *type_name)
     if (!type_name || !type_name[0]) {
         return 1;
     }
-    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
-        if (strcmp(REGISTRY_TYPES[i]->name, type_name) == 0) {
-            return 1;
-        }
-    }
-    return 0;
+    return registry_type_by_name(type_name) != NULL;
 }
 
 static int nominal_pin(const pin_spec *p)

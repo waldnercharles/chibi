@@ -1,6 +1,6 @@
 /* reflect/reflect.c -- build-time libclang reflection tool.
  *
- * Parses an annotated C source file and emits generated/registry.c:
+ * Parses an annotated C source file and emits one registry pack source:
  * one type_desc per "node:type" struct (real sizeof/offsetof), and one
  * Make + Break node_desc per struct plus a call node_desc per "node:fn"
  * function.
@@ -9,11 +9,24 @@
 #include "../core/pin.h"
 
 #include <clang-c/Index.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static int g_failed;
+
+static uint64_t stable_service_id(const char *name)
+{
+    uint64_t id = UINT64_C(14695981039346656037);
+    for (const unsigned char *p = (const unsigned char *)name; *p; p++) {
+        id = (id ^ *p) * UINT64_C(1099511628211);
+    }
+    return id ? id : 1;
+}
+
+static char g_prefix_storage[128];
+static const char *g_prefix = "REFLECTION";
 static void reflect_error(CXCursor c, const char *message)
 {
     CXSourceLocation loc = clang_getCursorLocation(c);
@@ -468,7 +481,7 @@ static void emit_native_arg(FILE *out, const fn_info *f, int index)
 /* Emit the uniform-signature wrapper that adapts a pure native fn to node_fn. */
 static void emit_fn(FILE *out, const fn_info *f)
 {
-    fprintf(out, "static pin_value __wrap_%s(const pin_value *args, int nargs, arena *a) {\n", f->name);
+    fprintf(out, "static pin_value __wrap_%s_%s(const pin_value *args, int nargs, arena *a) {\n", g_prefix, f->name);
     fprintf(out, "    (void)nargs;\n");
     int struct_ret = f->ret_pin && !strcmp(f->ret_pin, "PIN_STRUCT");
     if (!struct_ret) {
@@ -522,41 +535,41 @@ static void emit_fn(FILE *out, const fn_info *f)
 /* Emit Make + Break node_desc for one struct. */
 static void emit_struct_nodes(FILE *out, const struct_info *s)
 {
-    fprintf(out, "static pin_spec %s_make_inputs[] = {\n", s->name);
+    fprintf(out, "static pin_spec %s_%s_make_inputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
         emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, s->fields[j].spelling);
     }
     fputs("};\n", out);
-    fprintf(out, "static pin_spec %s_make_outputs[] = {\n", s->name);
+    fprintf(out, "static pin_spec %s_%s_make_outputs[] = {\n", g_prefix, s->name);
     fprintf(out, "    { \"%s\", PIN_STRUCT, \"%s\" },\n", s->name, s->name);
     fputs("};\n", out);
-    fprintf(out, "node_desc NODE_Make_%s = {\n", s->name);
+    fprintf(out, "node_desc %s_NODE_Make_%s = {\n", g_prefix, s->name);
     fprintf(out, "    .name = \"Make_%s\",\n", s->name);
     fprintf(out, "    .input_count = %d,\n", acount(s->fields));
     fprintf(out, "    .output_count = 1,\n");
-    fprintf(out, "    .inputs = %s_make_inputs,\n", s->name);
-    fprintf(out, "    .outputs = %s_make_outputs,\n", s->name);
+    fprintf(out, "    .inputs = %s_%s_make_inputs,\n", g_prefix, s->name);
+    fprintf(out, "    .outputs = %s_%s_make_outputs,\n", g_prefix, s->name);
     fprintf(out, "    .pure_kind = NODE_PURE_MAKE,\n");
-    fprintf(out, "    .type = &T_%s,\n", s->name);
+    fprintf(out, "    .type = &%s_T_%s,\n", g_prefix, s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
 
-    fprintf(out, "static pin_spec %s_break_inputs[] = {\n", s->name);
+    fprintf(out, "static pin_spec %s_%s_break_inputs[] = {\n", g_prefix, s->name);
     fprintf(out, "    { \"%s\", PIN_STRUCT, \"%s\" },\n", s->name, s->name);
     fputs("};\n", out);
-    fprintf(out, "static pin_spec %s_break_outputs[] = {\n", s->name);
+    fprintf(out, "static pin_spec %s_%s_break_outputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
         emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, s->fields[j].spelling);
     }
     fputs("};\n", out);
-    fprintf(out, "node_desc NODE_Break_%s = {\n", s->name);
+    fprintf(out, "node_desc %s_NODE_Break_%s = {\n", g_prefix, s->name);
     fprintf(out, "    .name = \"Break_%s\",\n", s->name);
     fprintf(out, "    .input_count = 1,\n");
     fprintf(out, "    .output_count = %d,\n", acount(s->fields));
-    fprintf(out, "    .inputs = %s_break_inputs,\n", s->name);
-    fprintf(out, "    .outputs = %s_break_outputs,\n", s->name);
+    fprintf(out, "    .inputs = %s_%s_break_inputs,\n", g_prefix, s->name);
+    fprintf(out, "    .outputs = %s_%s_break_outputs,\n", g_prefix, s->name);
     fprintf(out, "    .pure_kind = NODE_PURE_BREAK,\n");
-    fprintf(out, "    .type = &T_%s,\n", s->name);
+    fprintf(out, "    .type = &%s_T_%s,\n", g_prefix, s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
 }
@@ -593,7 +606,7 @@ static void emit_local_arg(FILE *out, const char *spelling, const char *pin, int
  * stable data pins. */
 static void emit_exec_fn(FILE *out, const fn_info *f)
 {
-    fprintf(out, "static int __flow_%s(node *n, flow_context *ctx) {\n", f->name);
+    fprintf(out, "static int __flow_%s_%s(node *n, flow_context *ctx) {\n", g_prefix, f->name);
     int input_pin = 1;
     for (int j = 0; j < acount(f->pname); j++) {
         if (f->pout[j]) {
@@ -689,7 +702,7 @@ static void emit_exec_node(FILE *out, const fn_info *f)
             input_count++;
         }
     }
-    fprintf(out, "static pin_spec %s_exec_inputs[] = {\n", f->name);
+    fprintf(out, "static pin_spec %s_%s_exec_inputs[] = {\n", g_prefix, f->name);
     fprintf(out, "    { \"Exec\", PIN_FLOW, NULL, PIN_EXEC },\n");
     for (int i = 0; i < acount(f->pname); i++) {
         if (!f->pout[i]) {
@@ -703,7 +716,7 @@ static void emit_exec_node(FILE *out, const fn_info *f)
         }
     }
     fputs("};\n", out);
-    fprintf(out, "static pin_spec %s_exec_outputs[] = {\n", f->name);
+    fprintf(out, "static pin_spec %s_%s_exec_outputs[] = {\n", g_prefix, f->name);
     fputs("    { \"Then\", PIN_FLOW, NULL, PIN_EXEC },\n", out);
     if (!f->ret_void) {
         emit_pin_spec(out, "return", f->ret_pin, f->ret);
@@ -714,10 +727,17 @@ static void emit_exec_node(FILE *out, const fn_info *f)
         }
     }
     fputs("};\n", out);
-    fprintf(out, "node_desc NODE_%s = {\n", f->name);
+    fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
     fprintf(out, "    .name = \"%s\", .input_count = %d, .output_count = %d,\n", f->name, input_count, output_count);
-    fprintf(out, "    .inputs = %s_exec_inputs, .outputs = %s_exec_outputs,\n", f->name, f->name);
-    fprintf(out, "    .flow_kind = NODE_FLOW_CUSTOM, .flow = __flow_%s,\n", f->name);
+    fprintf(
+        out,
+        "    .inputs = %s_%s_exec_inputs, .outputs = %s_%s_exec_outputs,\n",
+        g_prefix,
+        f->name,
+        g_prefix,
+        f->name
+    );
+    fprintf(out, "    .flow_kind = NODE_FLOW_CUSTOM, .flow = __flow_%s_%s,\n", g_prefix, f->name);
     fputs("    .display_class = NODE_DISPLAY_FUNCTION,\n};\n\n", out);
 }
 
@@ -725,32 +745,32 @@ static void emit_exec_node(FILE *out, const fn_info *f)
 static void emit_fn_node(FILE *out, const fn_info *f)
 {
     if (acount(f->pname) == 0) {
-        fprintf(out, "static pin_spec %s_inputs[1];\n", f->name);
+        fprintf(out, "static pin_spec %s_%s_inputs[1];\n", g_prefix, f->name);
     } else {
-        fprintf(out, "static pin_spec %s_inputs[] = {\n", f->name);
+        fprintf(out, "static pin_spec %s_%s_inputs[] = {\n", g_prefix, f->name);
         for (int j = 0; j < acount(f->pname); j++) {
             emit_pin_spec(out, f->pname[j], f->ppin[j], f->ptype[j]);
         }
         fputs("};\n", out);
     }
     int output_count = f->ret_void ? 0 : 1;
-    fprintf(out, "static pin_spec %s_outputs[%d] = {\n", f->name, output_count ? output_count : 1);
+    fprintf(out, "static pin_spec %s_%s_outputs[%d] = {\n", g_prefix, f->name, output_count ? output_count : 1);
     if (!f->ret_void) {
         fprintf(out, "    { \"return\", %s, \"%s\" },\n", f->ret_pin, f->ret);
     }
     fputs("};\n", out);
-    fprintf(out, "node_desc NODE_%s = {\n", f->name);
+    fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
     fprintf(out, "    .name = \"%s\",\n", f->name);
     fprintf(out, "    .input_count = %d,\n", acount(f->pname));
     fprintf(out, "    .output_count = %d,\n", output_count);
-    fprintf(out, "    .inputs = %s_inputs,\n", f->name);
+    fprintf(out, "    .inputs = %s_%s_inputs,\n", g_prefix, f->name);
     if (output_count) {
-        fprintf(out, "    .outputs = %s_outputs,\n", f->name);
+        fprintf(out, "    .outputs = %s_%s_outputs,\n", g_prefix, f->name);
     } else {
         fputs("    .outputs = NULL,\n", out);
     }
     fprintf(out, "    .pure_kind = %s,\n", f->ret_void ? "NODE_PURE_VOID_CALL" : "NODE_PURE_CALL");
-    fprintf(out, "    .fn = __wrap_%s,\n", f->name);
+    fprintf(out, "    .fn = __wrap_%s_%s,\n", g_prefix, f->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
 }
@@ -759,7 +779,7 @@ static void emit_fn_node(FILE *out, const fn_info *f)
 
 static void emit(FILE *out, const collect_ctx *ctx)
 {
-    fputs("/* generated/registry.c -- generated by reflect, do not edit. */\n\n", out);
+    fputs("/* generated reflection pack -- generated by reflect, do not edit. */\n\n", out);
     fputs("#include <stddef.h>\n", out);
     fputs("#include <stdint.h>\n", out);
     for (int i = 0; i < acount(ctx->structs); i++) {
@@ -782,11 +802,12 @@ static void emit(FILE *out, const collect_ctx *ctx)
     fputs("#include \"core/nodes.h\"\n", out);
     fputs("#include \"core/flow.h\"\n", out);
     fputs("#include \"core/service.h\"\n", out);
-    fputs("#include \"core/operator.h\"\n\n", out);
+    fputs("#include \"core/operator.h\"\n", out);
+    fputs("#include \"core/registry.h\"\n\n", out);
 
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
-        fprintf(out, "static const type_field %s_fields[] = {\n", s->name);
+        fprintf(out, "static const type_field %s_%s_fields[] = {\n", g_prefix, s->name);
         for (int j = 0; j < acount(s->fields); j++) {
             const field_info *f = &s->fields[j];
             fprintf(
@@ -802,20 +823,20 @@ static void emit(FILE *out, const collect_ctx *ctx)
         }
         fputs("};\n\n", out);
 
-        fprintf(out, "const type_desc T_%s = {\n", s->name);
+        fprintf(out, "const type_desc %s_T_%s = {\n", g_prefix, s->name);
         fprintf(out, "    .name = \"%s\",\n", s->name);
         fprintf(out, "    .size = sizeof(%s),\n", s->name);
-        fprintf(out, "    .fields = %s_fields,\n", s->name);
+        fprintf(out, "    .fields = %s_%s_fields,\n", g_prefix, s->name);
         fprintf(out, "    .field_count = %d,\n", acount(s->fields));
         fputs("};\n\n", out);
     }
 
-    fputs("const type_desc *const REGISTRY_TYPES[] = {\n", out);
+    fprintf(out, "const type_desc *const %s_REGISTRY_TYPES[] = {\n", g_prefix);
     for (int i = 0; i < acount(ctx->structs); i++) {
-        fprintf(out, "    &T_%s,\n", ctx->structs[i].name);
+        fprintf(out, "    &%s_T_%s,\n", g_prefix, ctx->structs[i].name);
     }
     fputs("};\n", out);
-    fprintf(out, "const int REGISTRY_TYPE_COUNT = %d;\n\n", acount(ctx->structs));
+    fprintf(out, "const int %s_REGISTRY_TYPE_COUNT = %d;\n\n", g_prefix, acount(ctx->structs));
 
     int service_count = 0;
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -837,23 +858,24 @@ static void emit(FILE *out, const collect_ctx *ctx)
                 if (!seen) {
                     fprintf(
                         out,
-                        "static const service_desc SERVICE_%d = { \"%s\", "
-                        "%d };\n",
+                        "static const service_desc %s_SERVICE_%d = { \"%s\", "
+                        "UINT64_C(%llu) };\n",
+                        g_prefix,
                         service_count,
                         ctx->fns[i].pservice_type[j],
-                        service_count + 1
+                        (unsigned long long)stable_service_id(ctx->fns[i].pservice_type[j])
                     );
                     service_count++;
                 }
             }
         }
     }
-    fputs("const service_desc *const REGISTRY_SERVICES[] = {\n", out);
+    fprintf(out, "const service_desc *const %s_REGISTRY_SERVICES[] = {\n", g_prefix);
     for (int i = 0; i < service_count; i++) {
-        fprintf(out, "    &SERVICE_%d,\n", i);
+        fprintf(out, "    &%s_SERVICE_%d,\n", g_prefix, i);
     }
     fputs("};\n", out);
-    fprintf(out, "const int REGISTRY_SERVICE_COUNT = %d;\n\n", service_count);
+    fprintf(out, "const int %s_REGISTRY_SERVICE_COUNT = %d;\n\n", g_prefix, service_count);
 
     int operator_count = 0;
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -861,7 +883,7 @@ static void emit(FILE *out, const collect_ctx *ctx)
             operator_count++;
         }
     }
-    fputs("const operator_signature REGISTRY_OPERATORS[] = {\n", out);
+    fprintf(out, "const operator_signature %s_REGISTRY_OPERATORS[] = {\n", g_prefix);
     for (int i = 0; i < acount(ctx->fns); i++) {
         const fn_info *f = &ctx->fns[i];
         if (!f->operator_name) {
@@ -873,7 +895,7 @@ static void emit(FILE *out, const collect_ctx *ctx)
         fprintf(out, "    { \"%s\", %s, %s, %s, 0 },\n", f->operator_name, left, right, result);
     }
     fputs("};\n", out);
-    fprintf(out, "const int REGISTRY_OPERATOR_COUNT = %d;\n\n", operator_count);
+    fprintf(out, "const int %s_REGISTRY_OPERATOR_COUNT = %d;\n\n", g_prefix, operator_count);
 
     /* native prototypes, so wrappers can call the annotated functions */
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -907,28 +929,72 @@ static void emit(FILE *out, const collect_ctx *ctx)
         }
     }
 
-    fputs("node_desc *const REGISTRY_NODES[] = {\n", out);
+    fprintf(out, "node_desc *const %s_REGISTRY_NODES[] = {\n", g_prefix);
     for (int i = 0; i < acount(ctx->structs); i++) {
-        fprintf(out, "    &NODE_Make_%s,\n", ctx->structs[i].name);
-        fprintf(out, "    &NODE_Break_%s,\n", ctx->structs[i].name);
+        fprintf(out, "    &%s_NODE_Make_%s,\n", g_prefix, ctx->structs[i].name);
+        fprintf(out, "    &%s_NODE_Break_%s,\n", g_prefix, ctx->structs[i].name);
     }
     for (int i = 0; i < acount(ctx->fns); i++) {
-        fprintf(out, "    &NODE_%s,\n", ctx->fns[i].name);
+        fprintf(out, "    &%s_NODE_%s,\n", g_prefix, ctx->fns[i].name);
     }
     fputs("};\n", out);
-    fprintf(out, "const int REGISTRY_NODE_COUNT = %d;\n", acount(ctx->structs) * 2 + acount(ctx->fns));
+    int node_count = acount(ctx->structs) * 2 + acount(ctx->fns);
+    fprintf(out, "const int %s_REGISTRY_NODE_COUNT = %d;\n", g_prefix, node_count);
+    fprintf(out, "const registry_pack %s_REGISTRY_PACK = {\n", g_prefix);
+    fprintf(out, "    .name = \"%s\",\n", g_prefix);
+    fprintf(out, "    .nodes = %s_REGISTRY_NODES,\n", g_prefix);
+    fprintf(out, "    .node_count = %d,\n", node_count);
+    fprintf(out, "    .types = %s_REGISTRY_TYPES,\n", g_prefix);
+    fprintf(out, "    .type_count = %d,\n", acount(ctx->structs));
+    fprintf(out, "    .services = %s_REGISTRY_SERVICES,\n", g_prefix);
+    fprintf(out, "    .service_count = %d,\n", service_count);
+    fprintf(out, "    .operators = %s_REGISTRY_OPERATORS,\n", g_prefix);
+    fprintf(out, "    .operator_count = %d,\n", operator_count);
+    fputs("};\n", out);
 }
 
 /* ---------- main ---------- */
 
+static void set_prefix(const char *source)
+{
+    const char *base = strrchr(source, '/');
+    base = base ? base + 1 : source;
+    int length = 0;
+    while (base[length] && base[length] != '.' &&
+           length < (int)sizeof g_prefix_storage - 1) {
+        length++;
+    }
+    int out = 0;
+    for (int i = 0; i < length; i++) {
+        char c = base[i];
+        if (c >= 'a' && c <= 'z') {
+            c = (char)(c - 'a' + 'A');
+        }
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) {
+            c = '_';
+        }
+        if (out == 0 && c >= '0' && c <= '9') {
+            g_prefix_storage[out++] = '_';
+        }
+        g_prefix_storage[out++] = c;
+    }
+    if (out == 0) {
+        strcpy(g_prefix_storage, "REFLECTION");
+    } else {
+        g_prefix_storage[out] = '\0';
+    }
+    g_prefix = g_prefix_storage;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc != 3) {
-        fprintf(stderr, "usage: reflect <input.c> <output_registry.c>\n");
+    if (argc != 3 && argc != 4) {
+        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix]\n");
         return 2;
     }
     const char *input = argv[1];
     const char *output = argv[2];
+    set_prefix(argc == 4 ? argv[3] : output);
 
     char srcdir[1024];
     char rootdir[1024];

@@ -5,7 +5,7 @@ Date: 2026-08-18
 
 ## Context
 
-A `node_desc` in core/node.h carries `pin_spec *inputs` and `pin_spec *outputs`, and every descriptor in the tree points those fields at a file-static array. core/flow_nodes.c declares `sequence_outputs[]` with exactly four entries, `Then0` through `Then3`, shared by `NODE_Sequence` and `NODE_Sequence4`. `event_outputs[]` holds one `Then` pin, used by `NODE_Event`. generated/registry.c does the same for reflected Make, Break, and call descriptors.
+A `node_desc` in core/node.h carries `pin_spec *inputs` and `pin_spec *outputs`, and every descriptor in the tree points those fields at a file-static array. core/flow_nodes.c declares `sequence_outputs[]` with exactly four entries, `Then0` through `Then3`, shared by `NODE_Sequence` and `NODE_Sequence4`. `event_outputs[]` holds one `Then` pin, used by `NODE_Event`. The generated reflection pack does the same for reflected Make, Break, and call descriptors.
 
 `graph_add_node()` in core/graph.c allocates per-instance `pin_value` arrays for `n->inputs` and `n->outputs` and seeds them from the descriptor's pin types, but it never copies the `pin_spec` arrays. Every reader of pin identity goes through the descriptor: `eval_view_output()` in editor/eval_view.c tests `n->desc->outputs[pin].kind`, `pin_types_compatible()` compares two `pin_spec` pointers, and core/serialize.c validates pin indices against `desc->input_count`. So every instance of a node type shares one pin list, and a per-instance signature is impossible to express.
 

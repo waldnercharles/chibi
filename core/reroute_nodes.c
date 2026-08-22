@@ -1,6 +1,7 @@
 #include "reroute_nodes.h"
 
 #include "flow.h"
+#include "registry.h"
 
 static pin_spec data_reroute_inputs[] = {
     { "In", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
@@ -55,3 +56,9 @@ node_desc NODE_RerouteExec = {
 
 node_desc *const REROUTE_NODES[] = { &NODE_RerouteData, &NODE_RerouteExec };
 const int REROUTE_NODE_COUNT = sizeof REROUTE_NODES / sizeof REROUTE_NODES[0];
+
+const registry_pack CORE_REROUTE_PACK = {
+    .name = "core.reroute",
+    .nodes = REROUTE_NODES,
+    .node_count = sizeof REROUTE_NODES / sizeof REROUTE_NODES[0],
+};

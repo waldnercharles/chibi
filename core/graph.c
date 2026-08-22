@@ -967,15 +967,7 @@ int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin)
 
 static const type_desc *graph_find_type(const char *name)
 {
-    if (!name) {
-        return NULL;
-    }
-    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
-        if (strcmp(REGISTRY_TYPES[i]->name, name) == 0) {
-            return REGISTRY_TYPES[i];
-        }
-    }
-    return NULL;
+    return registry_type_by_name(name);
 }
 
 int graph_split_pin(graph *g, node *n, int output, int index)
@@ -1009,6 +1001,7 @@ int graph_split_pin(graph *g, node *n, int output, int index)
             .kind = PIN_DATA,
             .container = PIN_CONTAINER_SINGLE,
             .split_parent = parent_id,
+            .split_type_name = type->name,
         };
         int at = graph_add_pin(g, n, output, &child);
         if (at < 0) {
@@ -1029,8 +1022,8 @@ int graph_split_pin(graph *g, node *n, int output, int index)
 
 static const type_desc *graph_split_type(const pin_spec *pin)
 {
-    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
-        const type_desc *type = REGISTRY_TYPES[i];
+    for (int i = 0; i < registry_type_count(); i++) {
+        const type_desc *type = registry_type(i);
         for (int field = 0; field < type->field_count; field++) {
             if (strcmp(type->fields[field].name, pin->name ? pin->name : "") == 0 &&
                 type->fields[field].type == pin->type &&
@@ -1056,7 +1049,9 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
         return -1;
     }
     uint64_t parent_id = pins[index].split_parent;
-    const type_desc *type = graph_split_type(&pins[index]);
+    const type_desc *type = pins[index].split_type_name
+                              ? graph_find_type(pins[index].split_type_name)
+                              : graph_split_type(&pins[index]);
     if (!type) {
         return -1;
     }

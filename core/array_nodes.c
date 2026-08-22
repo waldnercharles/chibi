@@ -1,6 +1,7 @@
 #include "array_nodes.h"
 
 #include "arena.h"
+#include "registry.h"
 #include "value_array.h"
 
 #include <string.h>
@@ -601,3 +602,9 @@ node_desc *const ARRAY_NODES[] = {
     &NODE_ArrayReverse,   &NODE_ArraySwap,
 };
 const int ARRAY_NODE_COUNT = sizeof ARRAY_NODES / sizeof ARRAY_NODES[0];
+
+const registry_pack CORE_ARRAY_PACK = {
+    .name = "core.array",
+    .nodes = ARRAY_NODES,
+    .node_count = sizeof ARRAY_NODES / sizeof ARRAY_NODES[0],
+};

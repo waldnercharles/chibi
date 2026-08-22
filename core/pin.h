@@ -89,6 +89,7 @@ typedef struct
     uint64_t split_parent;
     unsigned flags;
     int group;
+    const char *split_type_name;
 } pin_spec;
 
 #endif

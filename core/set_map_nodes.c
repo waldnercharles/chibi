@@ -1,6 +1,7 @@
 #include "set_map_nodes.h"
 
 #include "arena.h"
+#include "registry.h"
 #include "value_array.h"
 
 #define SET_INPUT                                                              \
@@ -155,3 +156,9 @@ node_desc *const SET_MAP_NODES[] = { &NODE_MakeSet,
                                      &NODE_SetContains,
                                      &NODE_SetLength };
 const int SET_MAP_NODE_COUNT = sizeof SET_MAP_NODES / sizeof SET_MAP_NODES[0];
+
+const registry_pack CORE_SET_MAP_PACK = {
+    .name = "core.set_map",
+    .nodes = SET_MAP_NODES,
+    .node_count = sizeof SET_MAP_NODES / sizeof SET_MAP_NODES[0],
+};

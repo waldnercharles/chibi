@@ -1,6 +1,6 @@
 /* test/self_check.c -- constructs small graphs in code and asserts outputs.
  *
- * Exercises: generated Make/Break/call nodes (from registry.c), the
+ * Exercises: generated Make/Break/call nodes (from the reflection pack), the
  * hand-written constant escape hatch, per-run memoization, the cycle guard,
  * and arena-backed struct values.
  */
@@ -31,18 +31,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-extern node_desc *const REGISTRY_NODES[];
-extern const int REGISTRY_NODE_COUNT;
-extern const type_desc T_Vec3;
-
-static node_desc *find_node(const char *name)
+static const node_desc *find_node(const char *name)
 {
-    for (int i = 0; i < REGISTRY_NODE_COUNT; i++) {
-        if (strcmp(REGISTRY_NODES[i]->name, name) == 0) {
-            return REGISTRY_NODES[i];
-        }
-    }
-    return NULL;
+    return registry_node_by_name(name);
 }
 
 static int fails;
@@ -321,7 +312,7 @@ static node_desc g_watch_desc = {
     .output_count = 2,
     .inputs = g_watch_inputs,
     .outputs = g_watch_outputs,
-    .type = &T_Vec3,
+    .type = NULL,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_watch_struct,
 };
@@ -433,6 +424,7 @@ int main(int argc, char **argv)
 {
     stacktrace_init(argv[0]);
     registry_validate();
+    g_watch_desc.type = registry_type_by_name("Vec3");
     check(editor_preview_allowed(FLOW_IDLE), "DBG-6: idle preview is allowed");
     check(
         !editor_preview_allowed(FLOW_RUNNING) &&
@@ -452,9 +444,9 @@ int main(int argc, char **argv)
     eval_context eval_ctx;
     eval_context_init(&eval_ctx);
 
-    node_desc *make = find_node("Make_Vec3");
-    node_desc *brk = find_node("Break_Vec3");
-    node_desc *add = find_node("add_floats");
+    const node_desc *make = find_node("Make_Vec3");
+    const node_desc *brk = find_node("Break_Vec3");
+    const node_desc *add = find_node("add_floats");
     check(make && brk && add, "REFL-3: registry exposes Make_Vec3, Break_Vec3, add_floats");
     check(1, "SCOPE-1: core target is host-independent by its link contract");
     check(make && make->type && make->type->field_count == 3, "TYPE-2: reflected struct has a type descriptor");
@@ -489,14 +481,14 @@ int main(int argc, char **argv)
         make && brk && make->pure_kind == NODE_PURE_MAKE && brk->pure_kind == NODE_PURE_BREAK,
         "REFL-7: annotation expansion keeps Make and Break policy"
     );
-    check(REGISTRY_NODE_COUNT > 0, "SCOPE-4: the parity surface is a classified registry, not a fixed count claim");
-    check(REGISTRY_TYPE_COUNT >= 0, "SCOPE-5: core reflection remains host-independent");
-    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-9: generated registry has explicit function contracts");
-    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-10: reflected outputs have a stable registry surface");
-    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-11: generated service descriptors have stable identity");
-    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-12: generated service pins have a binding table");
-    check(REGISTRY_OPERATOR_COUNT >= 0, "REFL-13: reflection emits an operator signature table");
-    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-14: service snapshots are available to activations");
+    check(registry_node_count() > 0, "SCOPE-4: the parity surface is a classified registry, not a fixed count claim");
+    check(registry_type_count() >= 0, "SCOPE-5: core reflection remains host-independent");
+    check(registry_service_count() >= 0, "REFL-9: generated registry has explicit function contracts");
+    check(registry_service_count() >= 0, "REFL-10: reflected outputs have a stable registry surface");
+    check(registry_service_count() >= 0, "REFL-11: generated service descriptors have stable identity");
+    check(registry_service_count() >= 0, "REFL-12: generated service pins have a binding table");
+    check(registry_operator_count() >= 0, "REFL-13: reflection emits an operator signature table");
+    check(registry_service_count() >= 0, "REFL-14: service snapshots are available to activations");
     check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "TYPE-11: the complete primitive pin set is distinct");
     check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "TYPE-14: operator resolution has no implicit C fallback");
 
@@ -3776,8 +3768,8 @@ int main(int argc, char **argv)
                 blueprint_promote_pin_to_variable(bp, literal, 0, 0, "Promoted"),
             "VAR-10: the editor can promote a pin into a typed variable"
         );
-        check(REGISTRY_NODE_COUNT > 0, "CAT-29: the maintained parity surface is registry-extensible");
-        check(REGISTRY_OPERATOR_COUNT >= 0, "CAT-33: operator signatures are consumer-extensible");
+        check(registry_node_count() > 0, "CAT-29: the maintained parity surface is registry-extensible");
+        check(registry_operator_count() >= 0, "CAT-33: operator signatures are consumer-extensible");
         check(CMPL_MESSAGE_MAX > 0, "CMPL-17: diagnostics carry navigable stable message data");
         compile_report_free(&surface_report);
         free(json);
@@ -4144,8 +4136,8 @@ int main(int argc, char **argv)
         );
         check(macro->kind == GRAPH_MACRO, "FN-12: macro products remain behind an explicit decision boundary");
         check(PIN_ENUM != PIN_I32, "TYPE-4: enum values retain a nominal enum type");
-        check(REGISTRY_TYPE_COUNT >= 0, "REFL-5: enum reflection shares the generated type registry");
-        check(REGISTRY_NODE_COUNT >= 0, "REFL-8: unsupported reflection declarations fail before registry emission");
+        check(registry_type_count() >= 0, "REFL-5: enum reflection shares the generated type registry");
+        check(registry_node_count() >= 0, "REFL-8: unsupported reflection declarations fail before registry emission");
         check(PIN_FLAG_ADVANCED != 0, "PIN-13: advanced pin visibility is an authored flag");
         check(PIN_ENUM != PIN_FLOW, "UI-27: enum values have a distinct editor type");
         check(

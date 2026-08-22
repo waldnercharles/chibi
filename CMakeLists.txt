@@ -29,8 +29,6 @@ if(NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY)
   message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
 endif()
 
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/generated)
-
 # --- embedded editor icon font ---
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(NERD_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf)
@@ -55,23 +53,49 @@ get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
 set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIBRARY_DIR})
 
 # --- generated registry ---
-set(GEN_REGISTRY ${CMAKE_CURRENT_SOURCE_DIR}/generated/registry.c)
+set(GEN_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/demo_registry.c)
 add_custom_command(
     OUTPUT ${GEN_REGISTRY}
     COMMAND $<TARGET_FILE:reflect>
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/demo_nodes.c
             ${GEN_REGISTRY}
+            DEMO
     DEPENDS reflect
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/demo_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/vec3.h
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/transform.h
             ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
-    COMMENT "Generating generated/registry.c"
+    COMMENT "Generating the demo reflection pack"
     VERBATIM
 )
 
-# --- core static lib (compiles the generated registry into it) ---
+set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
+# Pack order is the catalog and lookup order.
+set(BASE_REGISTRY_PACKS
+    DEMO_REGISTRY_PACK
+    CORE_EXTRA_PACK
+    CORE_FLOW_PACK
+    CORE_ARRAY_PACK
+    CORE_STATE_PACK
+    CORE_SWITCH_PACK
+    CORE_REROUTE_PACK
+    CORE_SET_MAP_PACK
+    CORE_STRUCT_PACK
+)
+add_custom_command(
+    OUTPUT ${BASE_REGISTRY}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+            ${BASE_REGISTRY}
+            ${BASE_REGISTRY_PACKS}
+    DEPENDS ${GEN_REGISTRY}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+    COMMENT "Composing the base registry pack list"
+    VERBATIM
+)
+
+# --- core static lib (compiles the generated reflection pack into it) ---
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c
 )
@@ -111,24 +135,48 @@ target_link_libraries(editor PRIVATE core cute)
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
 )
-add_executable(app ${APP_SOURCES})
+add_executable(app ${APP_SOURCES} ${BASE_REGISTRY})
 target_link_libraries(app PRIVATE editor core demo cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---
-add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c)
+add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
 target_include_directories(self_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(self_check PRIVATE core demo)
 
 # --- integration: headless pico_unit regression suite for the editor<->core
 # interaction path (test/integration.c). Core + demo + pico_unit only; no
 # cute/ImGui, so the suite runs without a window host.
-add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c)
+add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c ${BASE_REGISTRY})
 target_include_directories(integration PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers
 )
 target_link_libraries(integration PRIVATE core demo)
+
+# --- consumer registry pack fixture ---------------------------------------
+set(CONSUMER_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/consumer_registry.c)
+# Pack order is the catalog and lookup order.
+set(CONSUMER_REGISTRY_PACKS ${BASE_REGISTRY_PACKS} CONSUMER_REGISTRY_PACK)
+add_custom_command(
+    OUTPUT ${CONSUMER_REGISTRY}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+            ${CONSUMER_REGISTRY}
+            ${CONSUMER_REGISTRY_PACKS}
+    DEPENDS ${GEN_REGISTRY}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/consumer_pack.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+    COMMENT "Composing the consumer registry pack list"
+    VERBATIM
+)
+add_executable(registry_consumer
+    test/registry_consumer.c
+    test/consumer_pack.c
+    ${CONSUMER_REGISTRY}
+)
+target_include_directories(registry_consumer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(registry_consumer PRIVATE core demo)
 
 # --- clang-format (format runs before every build target) ---
 find_program(CLANG_FORMAT clang-format)
@@ -161,6 +209,7 @@ if(CLANG_FORMAT)
   add_dependencies(app format)
   add_dependencies(self_check format)
   add_dependencies(integration format)
+  add_dependencies(registry_consumer format)
   add_dependencies(reflect format)
 endif()
 

@@ -292,11 +292,7 @@ static const type_desc *watch_type(const flow_run *run, const node *n, int outpu
     if (!type) {
         const pin_spec *spec = output ? n->output_pins + pin : n->input_pins + pin;
         if (spec && spec->type_name) {
-            for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
-                if (strcmp(REGISTRY_TYPES[i]->name, spec->type_name) == 0) {
-                    return REGISTRY_TYPES[i];
-                }
-            }
+            return registry_type_by_name(spec->type_name);
         }
     }
     return type;

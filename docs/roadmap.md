@@ -57,8 +57,9 @@ Present and working:
 - `core/flow_nodes.c`: Event, Branch, Sequence and Sequence4, ForLoop, Delay.
 - `core/serialize.c`: graph JSON v2 with data and exec edges, plus subset save
   and append.
-- `reflect/reflect.c`: libclang tool emitting `type_desc`, Make, Break, and
-  call descriptors into `generated/registry.c`.
+- `reflect/reflect.c`: libclang tool emitting prefixed `type_desc`, Make, Break,
+  and call descriptors into a build-directory registry pack; target-specific
+  pack composition provides the global lookup surface.
 - `editor/editor.c`: canvas with placement, dragging, pan, zoom, selection,
   marquee, type-checked linking, deletion, spawn menu with filter, JSON undo
   and redo, clipboard, and typed editors for unconnected scalar inputs.

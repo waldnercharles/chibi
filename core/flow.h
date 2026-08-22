@@ -25,6 +25,13 @@ extern "C"
 
     typedef struct
     {
+        const graph *graph;
+        uint64_t graph_id;
+        uint64_t node_id;
+    } flow_call_frame;
+
+    typedef struct
+    {
         uint64_t from_id;
         uint64_t from_pin_id;
         uint64_t to_id;
@@ -43,6 +50,7 @@ extern "C"
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
         blueprint_instance *instance; /* owning instance, or NULL for a standalone run */
+        unsigned call_depth; /* internal function-call depth, zero at an entry */
     } flow_options;
 
     typedef enum
@@ -106,6 +114,7 @@ extern "C"
      * single-step mode. Step mode survives latent suspension until resume. */
     int flow_run_pause(flow_run *run);
     int flow_run_step(flow_run *run);
+    int flow_run_step_over(flow_run *run);
 
     /* Stop discards pending continuations and leaves the run idle. Reset also
      * clears graph-side evaluation state and releases run-owned storage. */
@@ -120,6 +129,12 @@ extern "C"
      * after Stop until the run is reset or freed. The returned storage is
      * borrowed from the run. */
     const flow_traversal *flow_run_traversals(const flow_run *run, int *count);
+    const node *flow_run_current_node(const flow_run *run);
+    const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count);
+    unsigned flow_run_call_depth(const flow_run *run);
+    unsigned flow_context_call_depth(const struct flow_context *ctx);
+    int flow_context_input_pin(const struct flow_context *ctx);
+    void *flow_context_service(const struct flow_context *ctx, const char *type_name);
     void flow_run_free(flow_run *run);
 
     /* Scheduler readiness (EXEC-17): RUNNING, or SUSPENDED with wake_time
@@ -153,6 +168,23 @@ extern "C"
     int flow_context_pause_until(struct flow_context *ctx, double monotonic_time);
     int flow_context_continue(struct flow_context *ctx, int output_pin);
     int flow_context_loop(struct flow_context *ctx, int first, int last);
+    int flow_context_loop_range(
+        struct flow_context *ctx,
+        int first,
+        int last,
+        int body_output,
+        int completed_output,
+        int index_output
+    );
+    int flow_context_break(struct flow_context *ctx);
+    int flow_context_foreach(
+        struct flow_context *ctx,
+        const pin_value *array,
+        int body_output,
+        int value_output,
+        int index_output,
+        int completed_output
+    );
     int flow_context_emit(struct flow_context *ctx, const char *message);
     flow_inputs flow_context_inputs(const struct flow_context *ctx);
     blueprint_instance *flow_context_instance(const struct flow_context *ctx);

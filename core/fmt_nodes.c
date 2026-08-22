@@ -41,8 +41,12 @@
 
 static const char *fmt_text_of(const pin_value *v)
 {
-    if (v->type == PIN_STR || v->type == PIN_NAME) return v->str ? v->str : "";
-    if (v->type == PIN_FLOW) return ""; /* unconnected Generic argument */
+    if (v->type == PIN_STR || v->type == PIN_NAME) {
+        return v->str ? v->str : "";
+    }
+    if (v->type == PIN_FLOW) {
+        return ""; /* unconnected Generic argument */
+    }
     return pin_value_to_string(v);
 }
 
@@ -50,7 +54,9 @@ static char *fmt_arena_strdup(arena *a, const char *s)
 {
     size_t n = strlen(s);
     char *copy = arena_alloc(a, n + 1);
-    if (!copy) return NULL;
+    if (!copy) {
+        return NULL;
+    }
     memcpy(copy, s, n + 1);
     return copy;
 }
@@ -76,7 +82,9 @@ static const char *fmt_default_letter(pin_type t)
 }
 
 static int fmt_is_float_conversion(char conversion)
-{ return strchr("aAeEfFgG", conversion) != NULL; }
+{
+    return strchr("aAeEfFgG", conversion) != NULL;
+}
 
 static int fmt_numeric_as_double(const pin_value *v, double *out)
 {
@@ -103,15 +111,20 @@ static int fmt_numeric_as_double(const pin_value *v, double *out)
  * `mods_len` bytes inside the authored format, ending at the closing '}'. */
 static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t mods_len, arena *a)
 {
-    if (mods_len == 0 || memchr(mods, '*', mods_len))
+    if (mods_len == 0 || memchr(mods, '*', mods_len)) {
         return fmt_arena_strdup(a, fmt_text_of(v));
-    if (v->type == PIN_FLOW) return fmt_arena_strdup(a, "");
+    }
+    if (v->type == PIN_FLOW) {
+        return fmt_arena_strdup(a, "");
+    }
 
     char mods_conv[64];
     size_t m = 0;
     for (size_t i = 0; i < mods_len && m + 1 < sizeof mods_conv; i++) {
         char c = mods[i];
-        if (c == '>') continue; /* right-align is the printf default */
+        if (c == '>') {
+            continue; /* right-align is the printf default */
+        }
         mods_conv[m++] = c == '<' ? '-' : c;
     }
     mods_conv[m] = '\0';
@@ -122,8 +135,9 @@ static const char *fmt_render_arg(const pin_value *v, const char *mods, size_t m
     char buf[FMT_RENDER_BUF];
     if (has_letter && fmt_is_float_conversion(mods_conv[m - 1])) {
         double value;
-        if (!fmt_numeric_as_double(v, &value))
+        if (!fmt_numeric_as_double(v, &value)) {
             return fmt_arena_strdup(a, fmt_text_of(v));
+        }
         snprintf(buf, sizeof buf, conv, value);
         return fmt_arena_strdup(a, buf);
     }
@@ -155,14 +169,18 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
     pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
     const char *format = fmt_text_of(&inputs[0]);
     int nargs = input_count - 1;
-    if (nargs > FMT_TEXT_MAX_ARGS) nargs = FMT_TEXT_MAX_ARGS;
+    if (nargs > FMT_TEXT_MAX_ARGS) {
+        nargs = FMT_TEXT_MAX_ARGS;
+    }
 
     /* Reduce every placeholder to a bare {} and render each argument
      * through its modifier, so fmt only assembles %s conversions while the
      * value keeps its own type for precision formatting. */
     const char *args[FMT_TEXT_MAX_ARGS] = { 0 };
     char *sanitized = arena_alloc(a, strlen(format) + 1);
-    if (!sanitized) return r;
+    if (!sanitized) {
+        return r;
+    }
     char *w = sanitized;
     int seq = 0, at = 0;
     for (const char *p = format; *p;) {
@@ -186,15 +204,21 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
         int index = -1;
         if (*q >= '0' && *q <= '9') {
             index = 0;
-            while (*q >= '0' && *q <= '9') index = index * 10 + (*q - '0'), q++;
+            while (*q >= '0' && *q <= '9') {
+                index = index * 10 + (*q - '0'), q++;
+            }
         }
         if (*q != ':' && *q != '}') {
             *w++ = *p++;
             continue;
         } /* literal '{' */
         const char *mods = NULL;
-        if (*q == ':') mods = ++q;
-        while (*q && *q != '}') q++;
+        if (*q == ':') {
+            mods = ++q;
+        }
+        while (*q && *q != '}') {
+            q++;
+        }
         if (*q != '}') {
             *w++ = *p++;
             continue;
@@ -202,9 +226,13 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
         int arg_index = index >= 0 ? index : seq++;
         size_t mods_len = mods ? (size_t)(q - mods) : 0;
         p = q + 1;
-        if (arg_index >= nargs || at >= FMT_TEXT_MAX_ARGS) continue; /* empty */
+        if (arg_index >= nargs || at >= FMT_TEXT_MAX_ARGS) {
+            continue; /* empty */
+        }
         args[at] = fmt_render_arg(&inputs[arg_index + 1], mods, mods_len, a);
-        if (!args[at]) return r; /* OOM */
+        if (!args[at]) {
+            return r; /* OOM */
+        }
         at++;
         *w++ = '{';
         *w++ = '}';
@@ -212,9 +240,13 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
     *w = '\0';
 
     const char *specs[FMT_TEXT_MAX_ARGS] = { 0 };
-    for (int i = 0; i < at; i++) specs[i] = "s";
+    for (int i = 0; i < at; i++) {
+        specs[i] = "s";
+    }
     char *rewritten = arena_alloc(a, strlen(sanitized) + (size_t)at * 8 + 1);
-    if (!rewritten) return r;
+    if (!rewritten) {
+        return r;
+    }
     (void)_fmt_parse(rewritten, at, sanitized, specs);
 
     fmt_stream ss = { 0 };
@@ -237,7 +269,9 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
     if (ss.data) {
         char *out = fmt_arena_strdup(a, ss.data);
         fmt_close(&ss);
-        if (out) r.str = out;
+        if (out) {
+            r.str = out;
+        }
     }
     return r;
 }

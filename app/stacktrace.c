@@ -18,8 +18,14 @@
 
 #ifdef _WIN32
 
-void print_stacktrace(int skip) { (void)skip; }
-void stacktrace_init(char *program_name) { (void)program_name; }
+void print_stacktrace(int skip)
+{
+    (void)skip;
+}
+void stacktrace_init(char *program_name)
+{
+    (void)program_name;
+}
 void stacktrace_assert_handler(bool expr, const char *message, const char *file, int line)
 {
     if (!expr) {
@@ -45,14 +51,16 @@ static void resolve_and_print(void **frames, char **symbols, int count, int skip
 #else
     off = snprintf(cmd, sizeof cmd, "addr2line -f -e %.256s", s_program_name);
 #endif
-    for (int i = skip; i < count; i++)
+    for (int i = skip; i < count; i++) {
         off += snprintf(cmd + off, sizeof cmd - (size_t)off, " %p", frames[i]);
+    }
     snprintf(cmd + off, sizeof cmd - (size_t)off, " 2>/dev/null");
 
     FILE *fp = popen(cmd, "r");
     if (!fp) {
-        for (int i = skip; i < count; i++)
+        for (int i = skip; i < count; i++) {
             fprintf(stderr, "  [%2d] %s\n", count - i - 1, symbols ? symbols[i] : "???");
+        }
         return;
     }
     char line[1024];
@@ -61,9 +69,11 @@ static void resolve_and_print(void **frames, char **symbols, int count, int skip
         if (fgets(line, sizeof line, fp)) {
             line[strcspn(line, "\r\n")] = '\0';
             /* atos echoes the raw address when it cannot resolve. */
-            if (line[0] == '0' && line[1] == 'x')
+            if (line[0] == '0' && line[1] == 'x') {
                 fprintf(stderr, "  [%2d] %s\n", nr, symbols ? symbols[i] : "???");
-            else fprintf(stderr, "  [%2d] %s\n", nr, line);
+            } else {
+                fprintf(stderr, "  [%2d] %s\n", nr, line);
+            }
         } else {
             fprintf(stderr, "  [%2d] %s\n", nr, symbols ? symbols[i] : "???");
         }

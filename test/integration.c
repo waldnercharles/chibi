@@ -22,6 +22,7 @@
 #include "../core/instance.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
+#include "../editor/arrange.h"
 #include "../third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -36,37 +37,52 @@
  * trips on), and every pin ID must resolve back to the same pin_spec. */
 static int id_table_consistent(const graph *g)
 {
-    if (!g) return 0;
+    if (!g) {
+        return 0;
+    }
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
-        if (graph_node_by_id(g, n->id) != n) return 0;
+        if (graph_node_by_id(g, n->id) != n) {
+            return 0;
+        }
     }
     for (int id = 1; id < acount(g->id_table); id++) {
         node *n = g->id_table[id];
-        if (!n) continue;
+        if (!n) {
+            continue;
+        }
         int in_nodes = 0;
-        for (int i = 0; i < acount(g->nodes); i++)
+        for (int i = 0; i < acount(g->nodes); i++) {
             if (g->nodes[i] == n) {
                 in_nodes = 1;
                 break;
             }
-        if (!in_nodes) return 0;
+        }
+        if (!in_nodes) {
+            return 0;
+        }
     }
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
         for (int p = 0; p < n->input_count; p++) {
             int is_out = 0, idx = -1;
             if (graph_pin_by_id(n, n->input_pins[p].id, &is_out, &idx) !=
-                &n->input_pins[p])
+                &n->input_pins[p]) {
                 return 0;
-            if (is_out || idx != p) return 0;
+            }
+            if (is_out || idx != p) {
+                return 0;
+            }
         }
         for (int p = 0; p < n->output_count; p++) {
             int is_out = 0, idx = -1;
             if (graph_pin_by_id(n, n->output_pins[p].id, &is_out, &idx) !=
-                &n->output_pins[p])
+                &n->output_pins[p]) {
                 return 0;
-            if (!is_out || idx != p) return 0;
+            }
+            if (!is_out || idx != p) {
+                return 0;
+            }
         }
     }
     return 1;
@@ -75,21 +91,29 @@ static int id_table_consistent(const graph *g)
 /* ID-4: a retired ID must resolve to nothing, never to an unrelated node. */
 static int retired_resolves_null(const graph *g, const uint64_t *retired, int count)
 {
-    for (int i = 0; i < count; i++)
-        if (graph_node_by_id(g, retired[i]) != NULL) return 0;
+    for (int i = 0; i < count; i++) {
+        if (graph_node_by_id(g, retired[i]) != NULL) {
+            return 0;
+        }
+    }
     return 1;
 }
 
 /* RUN-20 / EXEC-19: the definition's mutation guard balances: mutable exactly
  * when no instance is attached. */
 static int guard_balanced(const blueprint *bp)
-{ return bp && bp->graph && bp->graph->flow_pause_count == 0; }
+{
+    return bp && bp->graph && bp->graph->flow_pause_count == 0;
+}
 
 static int incident_edge_count(const graph *g, const node *n)
 {
     int count = 0;
-    for (int i = 0; i < acount(g->edges); i++)
-        if (g->edges[i].from_id == n->id || g->edges[i].to_id == n->id) count++;
+    for (int i = 0; i < acount(g->edges); i++) {
+        if (g->edges[i].from_id == n->id || g->edges[i].to_id == n->id) {
+            count++;
+        }
+    }
     return count;
 }
 
@@ -126,8 +150,9 @@ TEST_CASE(graph_stress_add_remove_reindex)
             node *n = g.nodes[i];
             int incident = incident_edge_count(&g, n);
             int ecount = acount(g.edges);
-            if (retired_count < (int)(sizeof retired / sizeof retired[0]))
+            if (retired_count < (int)(sizeof retired / sizeof retired[0])) {
                 retired[retired_count++] = n->id;
+            }
             REQUIRE(graph_remove_node(&g, n) == 0);
             REQUIRE(acount(g.edges) == ecount - incident); /* BP-9 */
             REQUIRE(graph_remove_node(&g, n) == -1);       /* BP-10 */
@@ -154,7 +179,9 @@ static blueprint *lifecycle_bp(
 )
 {
     blueprint *bp = blueprint_new("Lifecycle");
-    if (!bp) return NULL;
+    if (!bp) {
+        return NULL;
+    }
     blueprint_variable *health = blueprint_add_variable(
         bp,
         "Health",
@@ -375,8 +402,9 @@ TEST_CASE(blueprint_paste_allocates_fresh_ids)
             node *p = bp->graph->nodes[i];
             REQUIRE(p->id != orig_ids[0] && p->id != orig_ids[1]);
             REQUIRE(graph_node_by_id(bp->graph, p->id) == p);
-            for (int q = 0; q < before; q++)
+            for (int q = 0; q < before; q++) {
                 REQUIRE(p->id != bp->graph->nodes[q]->id);
+            }
         }
         REQUIRE(graph_node_by_id(bp->graph, orig_ids[0]) == src[0]);
         REQUIRE(graph_node_by_id(bp->graph, orig_ids[1]) == src[1]);
@@ -462,16 +490,458 @@ TEST_CASE(regression_edit_choke_point_spawn)
     return true;
 }
 
+/* --- auto arrange (UI-37, ADR 0015) --------------------------------------- */
+
+/* The arrange module is ImGui-free on purpose, so the readability claim is
+ * measurable here rather than only visible on screen. */
+static arrange_box arrange_test_box(int rows)
+{
+    const float row = 22.0f;
+    const float title = 26.0f;
+    const float pad = 8.0f;
+    return (arrange_box){ 160.0f, title + pad + (float)rows * row + pad, title, row, pad };
+}
+
+/* Wires leaving one node are ordered by that node's pin stack, so none of them
+ * should cross another wire from the same node. Reported against --flow-demo:
+ * a Sequence fed its Then1 to a Branch and its Then2 to a Sequence, and the
+ * two exec wires were drawn over each other because the Branch also had a
+ * second producer below it, which dragged it under its sibling. */
+static bool arrange_fan_out_follows_pin_order(const arrange_graph *g, const arrange_point *pos)
+{
+    for (int i = 0; i < g->link_count; i++) {
+        for (int j = 0; j < g->link_count; j++) {
+            const arrange_link *a = &g->links[i];
+            const arrange_link *b = &g->links[j];
+            if (a->from != b->from || a->from_pin >= b->from_pin) {
+                continue;
+            }
+            const arrange_box *ab = &g->boxes[a->to];
+            const arrange_box *bb = &g->boxes[b->to];
+            float a_y = pos[a->to].y + ab->title_height + ab->pad +
+                        ((float)a->to_pin + 0.5f) * ab->row_height;
+            float b_y = pos[b->to].y + bb->title_height + bb->pad +
+                        ((float)b->to_pin + 0.5f) * bb->row_height;
+            /* An earlier pin must not arrive below a later pin's target. */
+            if (a_y > b_y) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* The smallest vertical gap between two nodes sharing a column. */
+static float arrange_min_column_gap(const arrange_graph *g, const arrange_point *pos)
+{
+    float smallest = 1.0e9f;
+    for (int i = 0; i < g->box_count; i++) {
+        for (int j = 0; j < g->box_count; j++) {
+            if (i == j || pos[i].x != pos[j].x || pos[i].y > pos[j].y) {
+                continue;
+            }
+            float gap = pos[j].y - (pos[i].y + g->boxes[i].height);
+            if (gap >= 0.0f && gap < smallest) {
+                smallest = gap;
+            }
+        }
+    }
+    return smallest;
+}
+
+TEST_CASE(auto_arrange_untangles_a_graph)
+{
+    enum
+    {
+        NODES = 9
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(2);
+    }
+    /* Three columns of three, wired crosswise on purpose, and connected, so
+     * the ordering stage has real work and columns hold several nodes. */
+    arrange_link links[] = {
+        { 0, 5, 0, 0 }, { 1, 4, 0, 0 }, { 2, 3, 0, 0 }, { 0, 3, 1, 1 },
+        { 1, 5, 1, 1 }, { 3, 8, 0, 0 }, { 4, 7, 0, 0 }, { 5, 6, 0, 0 },
+        { 3, 7, 1, 1 }, { 4, 6, 1, 1 },
+    };
+    arrange_graph g = { boxes, NODES, links, (int)(sizeof links / sizeof *links) };
+    arrange_point seed[NODES];
+    for (int i = 0; i < NODES; i++) {
+        seed[i] = (arrange_point){ 0.0f, (float)i * 30.0f };
+    }
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = seed[i];
+    }
+
+    arrange_score before = arrange_measure(&g, pos);
+    arrange_layout(&g, pos);
+    arrange_score after = arrange_measure(&g, pos);
+
+    /* Hard guarantees: nodes never overlap, and no wire is drawn through a
+     * node it does not connect to. */
+    REQUIRE(after.node_overlaps == 0);
+    REQUIRE(after.wire_node_hits == 0);
+    REQUIRE(before.wire_node_hits > 0); /* the seed layout really was tangled */
+
+    /* Absolute bounds, not merely "no worse than the tangle we started from":
+     * a relative check passes even when the crossing-reduction stages are
+     * disabled outright. Ordering reaches 6 here; 9 is what skipping it
+     * gives. */
+    REQUIRE(after.wire_crossings <= 6);
+    REQUIRE(after.wire_crossings < before.wire_crossings);
+    REQUIRE(arrange_cost(after) < arrange_cost(before));
+
+    /* Columns stay separated rather than merely non-overlapping. */
+    REQUIRE(arrange_min_column_gap(&g, pos) >= 24.0f);
+
+    /* Pin-order fan-out is a weighted preference, not a guarantee: on this
+     * deliberately crosswise graph it loses to removing more crossings
+     * elsewhere, so it is asserted in the targeted test below, not here. */
+
+    /* Wires run left to right, so the graph reads in execution order. */
+    for (int i = 0; i < (int)(sizeof links / sizeof *links); i++) {
+        REQUIRE(pos[links[i].from].x < pos[links[i].to].x);
+    }
+
+    /* Same input, same output: no run-to-run drift. */
+    arrange_point again[NODES];
+    for (int i = 0; i < NODES; i++) {
+        again[i] = seed[i];
+    }
+    arrange_layout(&g, again);
+    for (int i = 0; i < NODES; i++) {
+        REQUIRE(again[i].x == pos[i].x);
+        REQUIRE(again[i].y == pos[i].y);
+    }
+    return true;
+}
+
+/* A wire spanning several columns must not be drawn through the nodes in
+ * between. This is the case the corridor and refinement stages exist for. */
+TEST_CASE(auto_arrange_routes_long_wires_clear_of_nodes)
+{
+    enum
+    {
+        NODES = 8
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(3);
+    }
+    arrange_link links[NODES];
+    int link_count = 0;
+    for (int i = 0; i + 1 < NODES; i++) {
+        links[link_count++] = (arrange_link){ i, i + 1, 0, 0 };
+    }
+    links[link_count++] = (arrange_link){ 0, NODES - 1, 1, 1 };
+
+    arrange_graph g = { boxes, NODES, links, link_count };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, (float)i * 30.0f };
+    }
+    arrange_layout(&g, pos);
+    arrange_score after = arrange_measure(&g, pos);
+    REQUIRE(after.wire_node_hits == 0);
+    REQUIRE(after.wire_crossings == 0);
+    REQUIRE(after.node_overlaps == 0);
+    return true;
+}
+
+/* A quality budget on a fixed mid-size graph. The bounds are what the full
+ * pipeline reaches; they exist to catch a stage silently stopping to pull its
+ * weight, which a "no worse than the tangle we started from" check cannot. */
+TEST_CASE(auto_arrange_meets_a_quality_budget)
+{
+    enum
+    {
+        NODES = 24
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(2 + (i % 3));
+    }
+    /* A fixed forward-fanning graph: deterministic, and dense enough that the
+     * ordering, coordinate, and refinement stages all have work to do. */
+    unsigned state = 7u;
+    arrange_link links[48];
+    int link_count = 0;
+    for (int i = 0; i < NODES; i++) {
+        state = state * 1103515245u + 12345u;
+        int fan = 1 + (int)((state >> 16 & 0x7fff) % 3);
+        for (int k = 0; k < fan && link_count < 48; k++) {
+            state = state * 1103515245u + 12345u;
+            int to = i + 1 + (int)((state >> 16 & 0x7fff) % 5);
+            state = state * 1103515245u + 12345u;
+            int from_pin = (int)((state >> 16 & 0x7fff) % 2);
+            state = state * 1103515245u + 12345u;
+            int to_pin = (int)((state >> 16 & 0x7fff) % 2);
+            if (to >= NODES) {
+                continue;
+            }
+            links[link_count++] = (arrange_link){ i, to, from_pin, to_pin };
+        }
+    }
+    arrange_graph g = { boxes, NODES, links, link_count };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, (float)i * 30.0f };
+    }
+    arrange_score before = arrange_measure(&g, pos);
+    arrange_layout(&g, pos);
+    arrange_score after = arrange_measure(&g, pos);
+
+    REQUIRE(before.wire_node_hits > 100); /* the seed layout is a pile */
+    REQUIRE(after.node_overlaps == 0);
+    REQUIRE(after.wire_node_hits <= 3);
+    REQUIRE(after.wire_crossings <= 20);
+    return true;
+}
+
+/* Connected pins should end up level, so a wire between them is drawn flat.
+ * This is what the coordinate stage buys: the crossing counts alone cannot
+ * tell a readable column layout from a stair-stepped one. */
+TEST_CASE(auto_arrange_levels_connected_pins)
+{
+    enum
+    {
+        NODES = 4
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(4);
+    }
+    /* A chain wired through different pin rows, so level pins require the
+     * boxes themselves to be offset vertically. */
+    arrange_link links[] = { { 0, 1, 0, 3 }, { 1, 2, 2, 0 }, { 2, 3, 3, 1 } };
+    int link_count = (int)(sizeof links / sizeof *links);
+    arrange_graph g = { boxes, NODES, links, link_count };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, (float)i * 30.0f };
+    }
+    arrange_layout(&g, pos);
+    for (int i = 0; i < link_count; i++) {
+        const arrange_box *from = &boxes[links[i].from];
+        const arrange_box *to = &boxes[links[i].to];
+        float from_y = pos[links[i].from].y + from->title_height + from->pad +
+                       ((float)links[i].from_pin + 0.5f) * from->row_height;
+        float to_y = pos[links[i].to].y + to->title_height + to->pad +
+                     ((float)links[i].to_pin + 0.5f) * to->row_height;
+        float off = from_y > to_y ? from_y - to_y : to_y - from_y;
+        REQUIRE(off <= 1.0f);
+    }
+    return true;
+}
+
+/* A node with no inputs belongs beside the node it feeds, not in the leftmost
+ * column it would be allowed. This is the rule that keeps a pure data node
+ * next to its consumer instead of stranded at the far left. */
+TEST_CASE(auto_arrange_places_producers_beside_consumers)
+{
+    enum
+    {
+        NODES = 5
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(2);
+    }
+    /* A chain 0->1->2->3, plus a lone producer 4 feeding the chain's end. */
+    arrange_link links[] = {
+        { 0, 1, 0, 0 },
+        { 1, 2, 0, 0 },
+        { 2, 3, 0, 0 },
+        { 4, 3, 0, 1 },
+    };
+    arrange_graph g = { boxes, NODES, links, (int)(sizeof links / sizeof *links) };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, (float)i * 30.0f };
+    }
+    arrange_layout(&g, pos);
+
+    REQUIRE(pos[0].x < pos[1].x);
+    REQUIRE(pos[1].x < pos[2].x);
+    REQUIRE(pos[2].x < pos[3].x);
+    /* The producer sits in the column just before its consumer, which here is
+     * the same column as node 2, not back at node 0's. */
+    REQUIRE(pos[4].x == pos[2].x);
+    REQUIRE(pos[4].x > pos[0].x);
+    return true;
+}
+
+TEST_CASE(auto_arrange_keeps_fan_out_in_pin_order)
+{
+    enum
+    {
+        EVENT = 0,
+        SEQUENCE,
+        DELAY,
+        SIBLING,
+        BRANCH,
+        BOOL,
+        DOWNSTREAM,
+        NODES
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(3);
+    }
+    /* The Branch takes a second wire from the Bool, which is what pulled it
+     * below its sibling and inverted the Sequence's fan-out. */
+    arrange_link links[] = {
+        { EVENT, SEQUENCE, 0, 0 },   { SEQUENCE, DELAY, 0, 0 },
+        { SEQUENCE, BRANCH, 1, 0 },  { SEQUENCE, SIBLING, 2, 0 },
+        { DELAY, DOWNSTREAM, 0, 0 }, { BOOL, DOWNSTREAM, 0, 1 },
+        { BOOL, BRANCH, 0, 1 },
+    };
+    arrange_graph g = { boxes, NODES, links, (int)(sizeof links / sizeof *links) };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, (float)i * 30.0f };
+    }
+    arrange_layout(&g, pos);
+
+    REQUIRE(arrange_fan_out_follows_pin_order(&g, pos));
+    /* The two siblings share a column and the earlier pin sits above. */
+    REQUIRE(pos[BRANCH].x == pos[SIBLING].x);
+    REQUIRE(pos[BRANCH].y < pos[SIBLING].y);
+    REQUIRE(arrange_measure(&g, pos).node_overlaps == 0);
+    return true;
+}
+
+/* The --flow-demo graph, as a whole: it must come out with no crossings.
+ *
+ * A strict column grid cannot do this. The Sequence's pin stack puts Delay,
+ * Branch, Sequence down the next column, the Bool must sit in an earlier
+ * column than the Branch it feeds, and its wire lands on the Branch's *second*
+ * row - so with every node pinned to its column's x, one crossing is forced.
+ * The fix is that a node's x does not have to equal its rank's x: the trailing
+ * Sequence is a leaf, so it can sit in the gutter between two columns, which
+ * vacates the band the Bool's wire needs. Reported from --flow-demo. */
+/* Node boxes as the editor measures them at its default font: 13px line, so a
+ * 19px pin row and a 25px title bar. The widths are the real measured ones,
+ * because this case turns on the Bool being wide relative to its column - with
+ * every box the same width there is no forced crossing to fix. */
+static arrange_box arrange_editor_box(float width, int rows)
+{
+    const float row = 19.0f;
+    const float title = 25.0f;
+    const float pad = 8.0f;
+    return (arrange_box){ width, title + pad + (float)rows * row + pad, title, row, pad };
+}
+
+TEST_CASE(auto_arrange_reaches_the_optimum_on_the_flow_demo)
+{
+    enum
+    {
+        EVENT = 0,   /* id 1  */
+        SEQUENCE,    /* id 3  */
+        DELAY,       /* id 7  */
+        BRANCH_MAIN, /* id 11 */
+        CONDITION,   /* id 16, the Bool */
+        FORLOOP,     /* id 19 */
+        BODY,        /* id 26 */
+        COMPLETED,   /* id 30 */
+        SIBLING,     /* id 34 */
+        BRANCH_ALT,  /* id 38 */
+        NODES
+    };
+    arrange_box boxes[NODES] = {
+        arrange_editor_box(72.0f, 1),  arrange_editor_box(107.0f, 3),
+        arrange_editor_box(265.0f, 2), arrange_editor_box(142.0f, 2),
+        arrange_editor_box(248.0f, 1), arrange_editor_box(353.0f, 3),
+        arrange_editor_box(107.0f, 2), arrange_editor_box(107.0f, 2),
+        arrange_editor_box(107.0f, 2), arrange_editor_box(142.0f, 2),
+    };
+    arrange_link links[] = {
+        { EVENT, SEQUENCE, 0, 0 },        { SEQUENCE, DELAY, 0, 0 },
+        { SEQUENCE, BRANCH_ALT, 1, 0 },   { SEQUENCE, SIBLING, 2, 0 },
+        { DELAY, BRANCH_MAIN, 0, 0 },     { BRANCH_MAIN, FORLOOP, 0, 0 },
+        { CONDITION, BRANCH_MAIN, 0, 1 }, { CONDITION, BRANCH_ALT, 0, 1 },
+        { FORLOOP, BODY, 0, 0 },          { FORLOOP, COMPLETED, 2, 0 },
+    };
+    arrange_graph g = { boxes, NODES, links, (int)(sizeof links / sizeof *links) };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, (float)i * 40.0f };
+    }
+    arrange_layout(&g, pos);
+    arrange_score after = arrange_measure(&g, pos);
+
+    REQUIRE(after.node_overlaps == 0);
+    REQUIRE(after.wire_node_hits == 0);
+    REQUIRE(after.wire_crossings == 0);
+    REQUIRE(arrange_fan_out_follows_pin_order(&g, pos));
+
+    /* The leaf left its column to buy that, landing in the gutter: clear of
+     * the producer it hangs off, and short of the column it came from. */
+    REQUIRE(pos[SIBLING].x > pos[SEQUENCE].x + boxes[SEQUENCE].width);
+    REQUIRE(pos[SIBLING].x < pos[DELAY].x);
+    return true;
+}
+
+/* A cycle has no left-to-right ranking, so the layout must still terminate,
+ * still separate the nodes, and not run wires through them. */
+TEST_CASE(auto_arrange_handles_cycles_and_islands)
+{
+    enum
+    {
+        NODES = 9
+    };
+    arrange_box boxes[NODES];
+    for (int i = 0; i < NODES; i++) {
+        boxes[i] = arrange_test_box(2);
+    }
+    arrange_link links[NODES];
+    int link_count = 0;
+    for (int i = 0; i < 5; i++) { /* a 5-cycle */
+        links[link_count++] = (arrange_link){ i, (i + 1) % 5, 0, 0 };
+    }
+    links[link_count++] = (arrange_link){ 5, 6, 0, 0 }; /* a separate island */
+    links[link_count++] = (arrange_link){ 7, 7, 0, 0 }; /* a self loop */
+    /* node 8 has no wires at all */
+
+    arrange_graph g = { boxes, NODES, links, link_count };
+    arrange_point pos[NODES];
+    for (int i = 0; i < NODES; i++) {
+        pos[i] = (arrange_point){ 0.0f, 0.0f };
+    }
+    arrange_layout(&g, pos);
+    arrange_score after = arrange_measure(&g, pos);
+    REQUIRE(after.node_overlaps == 0);
+    REQUIRE(after.wire_node_hits == 0);
+    return true;
+}
+
 /* --- main ------------------------------------------------------------------ */
 
 static void graph_integrity_suite(void)
-{ RUN_TEST_CASE(graph_stress_add_remove_reindex); }
+{
+    RUN_TEST_CASE(graph_stress_add_remove_reindex);
+}
 
 static void blueprint_lifecycle_suite(void)
 {
     RUN_TEST_CASE(blueprint_guard_and_variables);
     RUN_TEST_CASE(blueprint_destroy_cancels_suspended);
     RUN_TEST_CASE(blueprint_undo_snapshot_swap);
+}
+
+static void auto_arrange_suite(void)
+{
+    RUN_TEST_CASE(auto_arrange_untangles_a_graph);
+    RUN_TEST_CASE(auto_arrange_routes_long_wires_clear_of_nodes);
+    RUN_TEST_CASE(auto_arrange_meets_a_quality_budget);
+    RUN_TEST_CASE(auto_arrange_levels_connected_pins);
+    RUN_TEST_CASE(auto_arrange_places_producers_beside_consumers);
+    RUN_TEST_CASE(auto_arrange_keeps_fan_out_in_pin_order);
+    RUN_TEST_CASE(auto_arrange_reaches_the_optimum_on_the_flow_demo);
+    RUN_TEST_CASE(auto_arrange_handles_cycles_and_islands);
 }
 
 static void regression_suite(void)
@@ -484,6 +954,7 @@ int main(void)
 {
     RUN_TEST_SUITE(graph_integrity_suite);
     RUN_TEST_SUITE(blueprint_lifecycle_suite);
+    RUN_TEST_SUITE(auto_arrange_suite);
     RUN_TEST_SUITE(regression_suite);
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;

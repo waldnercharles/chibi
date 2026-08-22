@@ -123,7 +123,7 @@ target_link_libraries(self_check PRIVATE core demo)
 # --- integration: headless pico_unit regression suite for the editor<->core
 # interaction path (test/integration.c). Core + demo + pico_unit only; no
 # cute/ImGui, so the suite runs without a window host.
-add_executable(integration test/integration.c app/demo_graph.c)
+add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c)
 target_include_directories(integration PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers

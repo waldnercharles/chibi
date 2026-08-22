@@ -56,6 +56,7 @@ typedef struct
         void *ptr;
         int32_t e;
     };
+    pin_container container;
     const char *type_name;
 } pin_value;
 
@@ -70,6 +71,8 @@ enum
     PIN_FLAG_ADVANCED = 1u << 0,
     PIN_FLAG_WILDCARD = 1u << 1,
     PIN_FLAG_REFERENCE = 1u << 2,
+    PIN_FLAG_SERVICE = 1u << 3,
+    PIN_FLAG_WATCH = 1u << 4,
 };
 
 /* A descriptor pin is also the shape of an instance pin. Descriptor fields

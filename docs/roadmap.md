@@ -277,7 +277,7 @@ Acceptance criteria:
 - Manual: every existing editor operation still works, and node deletion no
   longer disturbs unrelated edges.
 
-## Phase 2b: Real compatibility and connection feedback
+## Phase 2b: Real compatibility and connection feedback (done)
 
 Goal: close the two current editor gaps that converge on one common action.
 Connecting a `const_f32` to a `Delay`'s Duration was refused because Duration
@@ -319,7 +319,7 @@ Acceptance criteria:
   shortcuts then copy and paste the selected node. Activating a non-text widget
   does not suppress canvas shortcuts.
 
-## Phase 3: event-driven vertical slice
+## Phase 3: event-driven vertical slice (done)
 
 Goal: a consumer creates a persistent Blueprint instance, dispatches authored
 events, and observes stateful behavior through reflected host calls. This is
@@ -337,7 +337,7 @@ through `RUN-20`, `CAT-2`, `CAT-3`, `CAT-18`, `CAT-20`, `CAT-23`, `CAT-27`,
 `CMPL-16` through `CMPL-20`, `FMT-2`, `FMT-16` through `FMT-18`, `UI-1`
 through `UI-9`, `UI-17` through `UI-19`, `UI-22` through `UI-24`, `UI-29`,
 `UI-30`, `UI-42`, `UI-43`, `UI-53` through `UI-56`, `REFL-9` through
-`REFL-14`.
+`REFL-14`, `DBG-17`.
 
 Runtime and language deliverables:
 
@@ -408,7 +408,7 @@ Generated and editor acceptance:
   JSON edits, and the preview distinguishes its instance from the selected
   activation. `UI-1`, `UI-54`.
 
-## Phase 3b: explicit conversions and Format Text
+## Phase 3b: explicit conversions and Format Text (done)
 
 Goal: numeric widening and scalar-to-string are expressible, and formatted
 output unblocks the demo's Begin/Tick/Input verification, which cannot print a
@@ -456,7 +456,7 @@ Acceptance criteria:
 - `python3 tools/spec_coverage.py` stays OK; new checks cite `CAT-26`, `CAT-38`,
   `TYPE-7`, `UI-22`.
 
-## Phase 4: functions and multiple graphs
+## Phase 4: functions and multiple graphs (done)
 
 Goal: behavior can be decomposed without growing one Event Graph indefinitely.
 Macros do not enter this phase.
@@ -485,7 +485,7 @@ Acceptance criteria:
 - A Delay in a function graph produces one blocking diagnostic.
 - Step Over pauses at the caller's next node and exposes a correct call stack.
 
-## Phase 5: Arrays and loops
+## Phase 5: Arrays and loops (done)
 
 Goal: ship the most-used collection workflows before Set and Map key traits.
 
@@ -517,13 +517,13 @@ Acceptance criteria:
   four. The break variant stops at index two and runs Completed once.
 - The spawn menu filters array operations by the dragged element type.
 
-## Phase 6: delegates and event dispatchers
+## Phase 6: delegates and event dispatchers (done)
 
 Goal: typed communication between persistent Blueprint instances.
 
 Estimate: not set until the decision gate closes.
 
-Covers: `EVT-12`.
+Covers: `EVT-12` through `EVT-18`.
 
 Decision gate before code:
 
@@ -535,7 +535,7 @@ Decision gate before code:
 
 No delegate implementation starts before that ADR.
 
-## Phase 7: common language completion
+## Phase 7: common language completion (done)
 
 Goal: close the remaining high-utility fixed language families as separate,
 shippable slices. The order inside this phase remains open until each slice's
@@ -561,7 +561,7 @@ Slices:
 5. Macros, macro libraries, wildcard-per-call resolution, collapse, and expand
    after expansion, local-state, and debugger-source mapping are accepted.
 
-## Phase 8: debugger and editor completion
+## Phase 8: debugger and editor completion (done)
 
 Goal: adapt debugging and editor polish to persistent instances and overlapping
 activations without expanding the language surface.
@@ -577,11 +577,14 @@ shortcut, layout, and animation requirements already defined in the spec.
 Before implementation, fix debugger pause scope and selected-activation behavior
 for overlapping activations.
 
-## Phase 9: advanced parity gates
+## Phase 9: advanced parity gates (reconciled)
 
 Goal: keep advanced UE families visible without deciding their semantics early.
 
-No executable requirement IDs are assigned until each gate closes.
+The UE 5.8 parity audit and ADR 0007 close the classification gates without
+adding executable requirements. Async actions, timelines, consumer casts,
+localized Text, and engine services remain explicitly deferred or Consumer /
+Generated. No advanced implementation is claimed.
 
 - Async actions and timelines need cancellation, owner destruction, service
   lifetime, completion ordering, persistence, and debugger decisions.
@@ -874,7 +877,7 @@ Deliverables:
 10. Canvas polish: hover highlighting of nodes, pins, and links, live type
     feedback while linking. `UI-15`.
 11. Minimap. `UI-20`.
-12. Align, distribute, straighten connection, and zoom to fit. `UI-37`.
+12. Auto arrange, straighten connection, and zoom to fit. `UI-37`.
 13. Keyboard node spawning by held key plus canvas click. `UI-38`.
 
 Acceptance criteria:

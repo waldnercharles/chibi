@@ -1,3 +1,6 @@
 #include "interface.h"
 
-float add_floats(float a, float b) { return a + b; }
+float add_floats(float a, float b)
+{
+    return a + b;
+}

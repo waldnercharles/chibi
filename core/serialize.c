@@ -2,8 +2,9 @@
 
 #include "../third_party/yyjson/yyjson.h"
 #include "blueprint.h"
-#include "nodes.h"
 #include "registry.h"
+#include "value_array.h"
+#include "xalloc.h"
 
 #include <limits.h>
 #include <stdarg.h>
@@ -19,7 +20,10 @@ static void set_err(const char *fmt, ...)
     vsnprintf(serialize_error, sizeof serialize_error, fmt, ap);
     va_end(ap);
 }
-const char *graph_last_error(void) { return serialize_error; }
+const char *graph_last_error(void)
+{
+    return serialize_error;
+}
 
 #define GRAPH_SCHEMA_VERSION 3
 
@@ -32,6 +36,26 @@ static void write_const(
     const pin_value *v
 )
 {
+    if (v && v->container == PIN_CONTAINER_ARRAY) {
+        yyjson_mut_val *array = yyjson_mut_arr(doc);
+        const pin_array *items = (const pin_array *)v->ptr;
+        if (items) {
+            for (int i = 0; i < items->count; i++) {
+                yyjson_mut_val *holder = yyjson_mut_obj(doc);
+                write_const(
+                    doc,
+                    holder,
+                    "value",
+                    items->items[i].type,
+                    items->items[i].type_name,
+                    &items->items[i]
+                );
+                yyjson_mut_arr_add_val(array, yyjson_mut_obj_get(holder, "value"));
+            }
+        }
+        yyjson_mut_obj_add_val(doc, obj, key, array);
+        return;
+    }
     yyjson_mut_val *value = NULL;
     switch (t) {
         case PIN_BOOL: value = yyjson_mut_bool(doc, v->b); break;
@@ -53,11 +77,12 @@ static void write_const(
         case PIN_STRUCT:
             if (v->ptr && type_name) {
                 const type_desc *type = NULL;
-                for (int i = 0; i < REGISTRY_TYPE_COUNT; i++)
+                for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
                     if (strcmp(REGISTRY_TYPES[i]->name, type_name) == 0) {
                         type = REGISTRY_TYPES[i];
                         break;
                     }
+                }
                 if (type) {
                     value = yyjson_mut_obj(doc);
                     for (int i = 0; i < type->field_count; i++) {
@@ -74,20 +99,28 @@ static void write_const(
                     }
                 }
             }
-            if (!value) value = yyjson_mut_null(doc);
+            if (!value) {
+                value = yyjson_mut_null(doc);
+            }
             break;
         case PIN_FLOW:
         case PIN_HANDLE: value = yyjson_mut_null(doc); break;
     }
-    if (value) yyjson_mut_obj_add(obj, yyjson_mut_strcpy(doc, key), value);
+    if (value) {
+        yyjson_mut_obj_add(obj, yyjson_mut_strcpy(doc, key), value);
+    }
 }
 
 static const type_desc *find_type(const char *name)
 {
-    if (!name) return NULL;
-    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++)
-        if (strcmp(REGISTRY_TYPES[i]->name, name) == 0)
+    if (!name) {
+        return NULL;
+    }
+    for (int i = 0; i < REGISTRY_TYPE_COUNT; i++) {
+        if (strcmp(REGISTRY_TYPES[i]->name, name) == 0) {
             return REGISTRY_TYPES[i];
+        }
+    }
     return NULL;
 }
 
@@ -104,81 +137,149 @@ static int read_signed(yyjson_val *v, int64_t *out)
     return -1;
 }
 
+static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g);
+
+static int read_array_const(
+    pin_type element_type,
+    const char *type_name,
+    yyjson_val *json,
+    pin_value *out,
+    graph *g
+)
+{
+    if (!yyjson_is_arr(json)) {
+        return -1;
+    }
+    int count = (int)yyjson_arr_size(json);
+    pin_array *array = pin_array_new(element_type, type_name, count);
+    yyjson_arr_iter it;
+    yyjson_arr_iter_init(json, &it);
+    yyjson_val *item;
+    int i = 0;
+    while ((item = yyjson_arr_iter_next(&it))) {
+        if (read_const(element_type, item, &array->items[i], g)) {
+            free(array->items);
+            free(array);
+            return -1;
+        }
+        array->items[i].container = PIN_CONTAINER_SINGLE;
+        i++;
+    }
+    array->count = count;
+    pin_array *owned = pin_array_clone_to_graph(g, array);
+    free(array->items);
+    free(array);
+    if (!owned) {
+        return -1;
+    }
+    *out = (pin_value){ .type = element_type,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = type_name,
+                        .ptr = owned };
+    return 0;
+}
+
 static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
 {
     memset(out, 0, sizeof *out);
     out->type = t;
     switch (t) {
         case PIN_BOOL:
-            if (!yyjson_is_bool(v)) return -1;
+            if (!yyjson_is_bool(v)) {
+                return -1;
+            }
             out->b = yyjson_get_bool(v);
             break;
         case PIN_I8: {
             int64_t value;
-            if (read_signed(v, &value) || value < INT8_MIN || value > INT8_MAX)
+            if (read_signed(v, &value) || value < INT8_MIN || value > INT8_MAX) {
                 return -1;
+            }
             out->i8 = (int8_t)value;
             break;
         }
         case PIN_U8:
-            if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT8_MAX) return -1;
+            if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT8_MAX) {
+                return -1;
+            }
             out->u8 = (uint8_t)yyjson_get_uint(v);
             break;
         case PIN_I16: {
             int64_t value;
-            if (read_signed(v, &value) || value < INT16_MIN || value > INT16_MAX)
+            if (read_signed(v, &value) || value < INT16_MIN || value > INT16_MAX) {
                 return -1;
+            }
             out->i16 = (int16_t)value;
             break;
         }
         case PIN_U16:
-            if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT16_MAX)
+            if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT16_MAX) {
                 return -1;
+            }
             out->u16 = (uint16_t)yyjson_get_uint(v);
             break;
         case PIN_I32: {
             int64_t value;
-            if (read_signed(v, &value) || value < INT32_MIN || value > INT32_MAX)
+            if (read_signed(v, &value) || value < INT32_MIN || value > INT32_MAX) {
                 return -1;
+            }
             out->i = (int32_t)value;
             break;
         }
         case PIN_U32:
-            if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT32_MAX)
+            if (!yyjson_is_uint(v) || yyjson_get_uint(v) > UINT32_MAX) {
                 return -1;
+            }
             out->u = (uint32_t)yyjson_get_uint(v);
             break;
         case PIN_I64:
-            if (read_signed(v, &out->i64)) return -1;
+            if (read_signed(v, &out->i64)) {
+                return -1;
+            }
             break;
         case PIN_U64:
-            if (!yyjson_is_uint(v)) return -1;
+            if (!yyjson_is_uint(v)) {
+                return -1;
+            }
             out->u64 = yyjson_get_uint(v);
             break;
         case PIN_F32:
-            if (!yyjson_is_num(v)) return -1;
+            if (!yyjson_is_num(v)) {
+                return -1;
+            }
             out->f = (float)yyjson_get_real(v);
             break;
         case PIN_F64:
-            if (!yyjson_is_num(v)) return -1;
+            if (!yyjson_is_num(v)) {
+                return -1;
+            }
             out->d = yyjson_get_real(v);
             break;
         case PIN_ENUM:
-            if (yyjson_is_sint(v)) out->e = (int32_t)yyjson_get_sint(v);
-            else if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT32_MAX)
+            if (yyjson_is_sint(v)) {
+                out->e = (int32_t)yyjson_get_sint(v);
+            } else if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT32_MAX) {
                 out->e = (int32_t)yyjson_get_uint(v);
-            else return -1;
+            } else {
+                return -1;
+            }
             break;
         case PIN_NAME:
         case PIN_STR:
-            if (!yyjson_is_str(v)) return -1;
+            if (!yyjson_is_str(v)) {
+                return -1;
+            }
             out->str = graph_own_str(g, yyjson_get_str(v), yyjson_get_len(v));
-            if (!out->str) return -1;
+            if (!out->str) {
+                return -1;
+            }
             break;
         case PIN_STRUCT:
         case PIN_FLOW:
         case PIN_HANDLE:
-            if (!yyjson_is_null(v)) return -1;
+            if (!yyjson_is_null(v)) {
+                return -1;
+            }
             break;
     }
     return 0;
@@ -190,7 +291,9 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
     yyjson_mut_obj_add_uint(doc, o, "id", p->id);
     yyjson_mut_obj_add_str(doc, o, "name", p->name ? p->name : "");
     yyjson_mut_obj_add_int(doc, o, "type", p->type);
-    if (p->type_name) yyjson_mut_obj_add_str(doc, o, "type_name", p->type_name);
+    if (p->type_name) {
+        yyjson_mut_obj_add_str(doc, o, "type_name", p->type_name);
+    }
     yyjson_mut_obj_add_str(doc, o, "kind", p->kind == PIN_EXEC ? "exec" : "data");
     yyjson_mut_obj_add_int(doc, o, "container", p->container);
     yyjson_mut_obj_add_uint(doc, o, "split_parent", p->split_parent);
@@ -208,8 +311,9 @@ static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
     yyjson_mut_obj_add_uint(doc, o, "to", e->to_id);
     yyjson_mut_obj_add_uint(doc, o, "to_pin", e->to_pin_id);
     yyjson_mut_obj_add_str(doc, o, "kind", graph_edge_kind_name(e->kind));
-    if (e->kind == GRAPH_EDGE_EXEC)
+    if (e->kind == GRAPH_EDGE_EXEC) {
         yyjson_mut_obj_add_int(doc, o, "order", e->exec_order);
+    }
     yyjson_mut_arr_add_val(arr, o);
 }
 
@@ -220,20 +324,28 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const node *n)
     yyjson_mut_obj_add_str(doc, o, "type", n->desc->name);
     yyjson_mut_obj_add_real(doc, o, "x", n->x);
     yyjson_mut_obj_add_real(doc, o, "y", n->y);
-    if (n->title_override)
+    if (n->title_override) {
         yyjson_mut_obj_add_str(doc, o, "title", n->title_override);
-    if (n->comment) yyjson_mut_obj_add_str(doc, o, "comment", n->comment);
+    }
+    if (n->comment) {
+        yyjson_mut_obj_add_str(doc, o, "comment", n->comment);
+    }
     yyjson_mut_obj_add_uint(doc, o, "reference_id", n->reference_id);
-    if (n->reference_name)
+    if (n->reference_name) {
         yyjson_mut_obj_add_str(doc, o, "reference_name", n->reference_name);
+    }
     yyjson_mut_obj_add_bool(doc, o, "disabled", n->disabled != 0);
+    yyjson_mut_obj_add_bool(doc, o, "breakpoint", n->breakpoint != 0);
+    yyjson_mut_obj_add_bool(doc, o, "breakpoint_enabled", n->breakpoint_enabled != 0);
     yyjson_mut_val *ins = yyjson_mut_arr(doc), *outs = yyjson_mut_arr(doc);
-    for (int i = 0; i < n->input_count; i++)
+    for (int i = 0; i < n->input_count; i++) {
         write_pin(doc, ins, &n->input_pins[i]);
+    }
     for (int i = 0; i < n->output_count; i++) {
         pin_spec p = n->output_pins[i];
-        if (n->desc->pure_kind == NODE_PURE_CONST)
+        if (n->desc->pure_kind == NODE_PURE_CONST) {
             p.default_value = n->output_pins[i].default_value;
+        }
         write_pin(doc, outs, &p);
     }
     yyjson_mut_obj_add_val(doc, o, "inputs", ins);
@@ -268,14 +380,22 @@ static void write_nodes(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
     node **ordered_nodes = node_total
                              ? malloc((size_t)node_total * sizeof *ordered_nodes)
                              : NULL;
-    if (node_total && !ordered_nodes) return;
-    if (!subset)
+    if (node_total && !ordered_nodes) {
+        return;
+    }
+    if (!subset) {
         memcpy(ordered_nodes, g->nodes, (size_t)node_total * sizeof *ordered_nodes);
-    else
-        for (int i = 0; i < node_total; i++) ordered_nodes[i] = subset[i];
+    } else {
+        for (int i = 0; i < node_total; i++) {
+            ordered_nodes[i] = subset[i];
+        }
+    }
     qsort(ordered_nodes, (size_t)node_total, sizeof *ordered_nodes, compare_nodes);
-    for (int i = 0; i < node_total; i++)
-        if (ordered_nodes[i]) write_node(doc, arr, ordered_nodes[i]);
+    for (int i = 0; i < node_total; i++) {
+        if (ordered_nodes[i]) {
+            write_node(doc, arr, ordered_nodes[i]);
+        }
+    }
     free(ordered_nodes);
 }
 
@@ -285,7 +405,9 @@ static void write_edges(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
                             ? malloc((size_t)acount(g->edges) * sizeof *ordered_edges)
                             : NULL;
     int edge_total = 0;
-    if (acount(g->edges) && !ordered_edges) return;
+    if (acount(g->edges) && !ordered_edges) {
+        return;
+    }
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
         if (subset) {
@@ -296,26 +418,51 @@ static void write_edges(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
                 from |= subset[j] == from_node;
                 to |= subset[j] == to_node;
             }
-            if (!from || !to) continue;
+            if (!from || !to) {
+                continue;
+            }
         }
         ordered_edges[edge_total++] = *e;
     }
     qsort(ordered_edges, (size_t)edge_total, sizeof *ordered_edges, compare_edges);
-    for (int i = 0; i < edge_total; i++)
+    for (int i = 0; i < edge_total; i++) {
         write_edge(doc, arr, &ordered_edges[i]);
+    }
     free(ordered_edges);
+}
+
+static void write_comment_boxes(yyjson_mut_doc *doc, yyjson_mut_val *obj, const graph *g)
+{
+    yyjson_mut_val *boxes = yyjson_mut_arr(doc);
+    yyjson_mut_obj_add_val(doc, obj, "comment_boxes", boxes);
+    for (int i = 0; i < acount(g->comment_boxes); i++) {
+        const graph_comment_box *box = &g->comment_boxes[i];
+        yyjson_mut_val *value = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_uint(doc, value, "id", box->id);
+        yyjson_mut_obj_add_real(doc, value, "x", box->x);
+        yyjson_mut_obj_add_real(doc, value, "y", box->y);
+        yyjson_mut_obj_add_real(doc, value, "width", box->width);
+        yyjson_mut_obj_add_real(doc, value, "height", box->height);
+        yyjson_mut_obj_add_str(doc, value, "title", box->title ? box->title : "");
+        yyjson_mut_obj_add_uint(doc, value, "color", box->color);
+        yyjson_mut_arr_add_val(boxes, value);
+    }
 }
 
 static char *write_graph(const graph *g, node *const *subset, int count)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    if (!doc) return NULL;
+    if (!doc) {
+        return NULL;
+    }
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
     yyjson_mut_obj_add_uint(doc, root, "id_counter", g->id_counter);
     yyjson_mut_obj_add_str(doc, root, "name", g->name ? g->name : "");
     yyjson_mut_obj_add_str(doc, root, "description", g->description ? g->description : "");
+    yyjson_mut_obj_add_bool(doc, root, "breakpoints_enabled", g->breakpoints_enabled != 0);
+    write_comment_boxes(doc, root, g);
     yyjson_mut_val *nodes = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
     write_nodes(doc, nodes, g, subset, count);
@@ -328,7 +475,9 @@ static char *write_graph(const graph *g, node *const *subset, int count)
 }
 
 char *graph_save_json(const graph *g)
-{ return g ? write_graph(g, NULL, 0) : NULL; }
+{
+    return g ? write_graph(g, NULL, 0) : NULL;
+}
 char *graph_save_nodes_json(const graph *g, node *const *subset, int count)
 {
     return g && count >= 0 && (count == 0 || subset) ? write_graph(g, subset, count)
@@ -341,44 +490,76 @@ static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const bluep
     yyjson_mut_obj_add_uint(doc, o, "id", v->id);
     yyjson_mut_obj_add_str(doc, o, "name", v->name ? v->name : "");
     yyjson_mut_obj_add_int(doc, o, "type", v->type);
-    if (v->type_name) yyjson_mut_obj_add_str(doc, o, "type_name", v->type_name);
+    if (v->type_name) {
+        yyjson_mut_obj_add_str(doc, o, "type_name", v->type_name);
+    }
     yyjson_mut_obj_add_int(doc, o, "container", v->container);
-    if (v->category) yyjson_mut_obj_add_str(doc, o, "category", v->category);
+    if (v->category) {
+        yyjson_mut_obj_add_str(doc, o, "category", v->category);
+    }
     write_const(doc, o, "default", v->type, v->type_name, &v->default_value);
     yyjson_mut_arr_add_val(arr, o);
 }
 
+static void write_blueprint_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, const graph *g)
+{
+    yyjson_mut_val *obj = yyjson_mut_obj(doc);
+    if (g->graph_id) {
+        yyjson_mut_obj_add_uint(doc, obj, "id", g->graph_id);
+    }
+    yyjson_mut_obj_add_str(doc, obj, "kind", graph_kind_name(g->kind));
+    yyjson_mut_obj_add_str(doc, obj, "name", g->name ? g->name : "");
+    yyjson_mut_obj_add_bool(doc, obj, "breakpoints_enabled", g->breakpoints_enabled != 0);
+    write_comment_boxes(doc, obj, g);
+    if (g->entry_id) {
+        yyjson_mut_obj_add_uint(doc, obj, "entry_id", g->entry_id);
+    }
+    if (g->return_id) {
+        yyjson_mut_obj_add_uint(doc, obj, "return_id", g->return_id);
+    }
+    if (g->call_depth_limit) {
+        yyjson_mut_obj_add_int(doc, obj, "call_depth_limit", g->call_depth_limit);
+    }
+    yyjson_mut_val *nodes = yyjson_mut_arr(doc);
+    yyjson_mut_obj_add_val(doc, obj, "nodes", nodes);
+    write_nodes(doc, nodes, g, NULL, 0);
+    yyjson_mut_val *edges = yyjson_mut_arr(doc);
+    yyjson_mut_obj_add_val(doc, obj, "edges", edges);
+    write_edges(doc, edges, g, NULL, 0);
+    yyjson_mut_arr_add_val(graphs, obj);
+}
+
 /* FMT-1/FMT-2/FMT-16/FMT-18: the version-3 Blueprint document carries the
  * schema version, Blueprint name, ID counter, description, optional owner
- * handle type, variable list, and graph list. Runtime state never appears. */
+ * handle type, variable list, and every graph. Runtime state never appears. */
 char *blueprint_save_json(const blueprint *bp)
 {
-    if (!bp || !bp->graph) return NULL;
+    if (!bp || !bp->graph) {
+        return NULL;
+    }
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    if (!doc) return NULL;
+    if (!doc) {
+        return NULL;
+    }
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
     yyjson_mut_obj_add_str(doc, root, "name", bp->name ? bp->name : "");
     yyjson_mut_obj_add_uint(doc, root, "id_counter", bp->graph->id_counter);
     yyjson_mut_obj_add_str(doc, root, "description", bp->description ? bp->description : "");
-    if (bp->owner_type_name)
+    if (bp->owner_type_name) {
         yyjson_mut_obj_add_str(doc, root, "owner_type", bp->owner_type_name);
+    }
     yyjson_mut_val *vars = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "variables", vars);
-    for (int i = 0; i < acount(bp->variables); i++)
+    for (int i = 0; i < acount(bp->variables); i++) {
         write_variable(doc, vars, &bp->variables[i]);
+    }
     yyjson_mut_val *graphs = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "graphs", graphs);
-    yyjson_mut_val *gobj = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_str(doc, gobj, "kind", "event");
-    yyjson_mut_val *nodes = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, gobj, "nodes", nodes);
-    write_nodes(doc, nodes, bp->graph, NULL, 0);
-    yyjson_mut_val *edges = yyjson_mut_arr(doc);
-    yyjson_mut_obj_add_val(doc, gobj, "edges", edges);
-    write_edges(doc, edges, bp->graph, NULL, 0);
-    yyjson_mut_arr_add_val(graphs, gobj);
+    for (int i = 0; i < acount(bp->graphs); i++) {
+        write_blueprint_graph(doc, graphs, bp->graphs[i]);
+    }
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
     return out;
@@ -434,15 +615,34 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
     yyjson_val *v;
     int i = 0;
     int count = output ? n->output_count : n->input_count;
+    int serialized_count = (int)yyjson_arr_size(arr);
+    if (serialized_count < count &&
+        (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return)) {
+        while (count > serialized_count) {
+            if (graph_remove_pin(g, n, output, count - 1)) {
+                set_err(
+                    "node %llu cannot shrink %s pin list",
+                    (unsigned long long)n->id,
+                    output ? "output" : "input"
+                );
+                return -1;
+            }
+            count--;
+        }
+    }
     while ((v = yyjson_arr_iter_next(&it))) {
         if (!yyjson_is_obj(v)) {
             set_err("node %llu has invalid %s pin list", (unsigned long long)n->id, output ? "output" : "input");
             return -1;
         }
         if (i >= count) {
-            const pin_spec *template_pin = output
-                                             ? &n->desc->outputs[n->desc->output_count - 1]
-                                             : &n->desc->inputs[n->desc->input_count - 1];
+            pin_spec extension = { .name = "Pin", .type = PIN_FLOW, .kind = PIN_DATA };
+            const pin_spec *template_pin = &extension;
+            if (output && n->desc->output_count) {
+                template_pin = &n->desc->outputs[n->desc->output_count - 1];
+            } else if (!output && n->desc->input_count) {
+                template_pin = &n->desc->inputs[n->desc->input_count - 1];
+            }
             if (graph_add_pin(g, n, output, template_pin) < 0) {
                 set_err(
                     "node %llu cannot extend %s pin list",
@@ -455,7 +655,9 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         }
         pin_spec *p = output ? &n->output_pins[i] : &n->input_pins[i];
         uint64_t id = 0;
-        if (json_uint(yyjson_obj_get(v, "id"), &id, "pin.id")) return -1;
+        if (json_uint(yyjson_obj_get(v, "id"), &id, "pin.id")) {
+            return -1;
+        }
         p->id = id;
         yyjson_val *name = yyjson_obj_get(v, "name");
         yyjson_val *type = yyjson_obj_get(v, "type");
@@ -477,35 +679,49 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         }
         p->kind = strcmp(yyjson_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
         yyjson_val *container = yyjson_obj_get(v, "container");
-        if (container && yyjson_is_int(container))
+        if (container && yyjson_is_int(container)) {
             p->container = (pin_container)yyjson_get_sint(container);
+        }
         yyjson_val *split = yyjson_obj_get(v, "split_parent");
-        if (split && yyjson_is_uint(split))
+        if (split && yyjson_is_uint(split)) {
             p->split_parent = yyjson_get_uint(split);
+        }
         yyjson_val *flags = yyjson_obj_get(v, "flags");
-        if (flags && yyjson_is_uint(flags))
+        if (flags && yyjson_is_uint(flags)) {
             p->flags = (unsigned)yyjson_get_uint(flags);
+        }
         yyjson_val *group = yyjson_obj_get(v, "group");
-        if (group && yyjson_is_int(group))
+        if (group && yyjson_is_int(group)) {
             p->group = (int)yyjson_get_sint(group);
+        }
         yyjson_val *def = yyjson_obj_get(v, "default");
         if (def) {
             pin_value pv;
-            if (p->type == PIN_STRUCT && yyjson_is_obj(def)) {
+            if (p->container >= PIN_CONTAINER_ARRAY) {
+                if (read_array_const(p->type, p->type_name, def, &pv, g)) {
+                    return -1;
+                }
+            } else if (p->type == PIN_STRUCT && yyjson_is_obj(def)) {
                 const type_desc *type = find_type(p->type_name);
                 if (!type) {
                     set_err("bad struct default for pin %d", i);
                     return -1;
                 }
-                if (read_struct_default(type, def, &pv, g, i)) return -1;
+                if (read_struct_default(type, def, &pv, g, i)) {
+                    return -1;
+                }
             } else if (read_const(p->type, def, &pv, g)) {
                 set_err("bad default for pin %d on %s (type %d)", i, n->desc->name, p->type);
                 return -1;
             }
             pv.type_name = p->type_name;
+            pv.container = p->container;
             p->default_value = pv;
-            if (!output) n->inputs[i] = pv;
-            else n->outputs[i] = pv;
+            if (!output) {
+                n->inputs[i] = pv;
+            } else {
+                n->outputs[i] = pv;
+            }
         }
         i++;
     }
@@ -515,6 +731,44 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
                              (unsigned long long)n->id
                          ),
                          -1);
+}
+
+static int load_comment_boxes(graph *g, yyjson_val *json)
+{
+    if (!json) {
+        return 0;
+    }
+    if (!yyjson_is_arr(json)) {
+        set_err("comment_boxes must be an array");
+        return -1;
+    }
+    yyjson_arr_iter it;
+    yyjson_arr_iter_init(json, &it);
+    yyjson_val *value;
+    while ((value = yyjson_arr_iter_next(&it))) {
+        uint64_t id = 0;
+        yyjson_val *title = yyjson_obj_get(value, "title");
+        if (!yyjson_is_obj(value) ||
+            json_uint(yyjson_obj_get(value, "id"), &id, "comment_box.id") ||
+            !yyjson_is_str(title)) {
+            set_err("malformed comment box");
+            return -1;
+        }
+        graph_comment_box box = {
+            .id = id,
+            .x = (float)yyjson_get_real(yyjson_obj_get(value, "x")),
+            .y = (float)yyjson_get_real(yyjson_obj_get(value, "y")),
+            .width = (float)yyjson_get_real(yyjson_obj_get(value, "width")),
+            .height = (float)yyjson_get_real(yyjson_obj_get(value, "height")),
+            .title = graph_own_str(g, yyjson_get_str(title), yyjson_get_len(title)),
+            .color = (uint32_t)yyjson_get_uint(yyjson_obj_get(value, "color")),
+        };
+        apush(g->comment_boxes, box);
+        if (id >= g->id_counter) {
+            g->id_counter = id + 1;
+        }
+    }
+    return 0;
 }
 
 static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
@@ -543,29 +797,47 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
             return -1;
         }
         uint64_t id = 0;
-        if (json_uint(yyjson_obj_get(v, "id"), &id, "node.id")) return -1;
+        if (json_uint(yyjson_obj_get(v, "id"), &id, "node.id")) {
+            return -1;
+        }
         n->id = id;
         yyjson_val *x = yyjson_obj_get(v, "x"), *y = yyjson_obj_get(v, "y");
-        if (x && yyjson_is_num(x)) n->x = (float)yyjson_get_real(x);
-        if (y && yyjson_is_num(y)) n->y = (float)yyjson_get_real(y);
+        if (x && yyjson_is_num(x)) {
+            n->x = (float)yyjson_get_real(x);
+        }
+        if (y && yyjson_is_num(y)) {
+            n->y = (float)yyjson_get_real(y);
+        }
         yyjson_val *title = yyjson_obj_get(v, "title"),
                    *comment = yyjson_obj_get(v, "comment"),
                    *refname = yyjson_obj_get(v, "reference_name");
-        if (title && yyjson_is_str(title))
+        if (title && yyjson_is_str(title)) {
             n->title_override = graph_own_str(g, yyjson_get_str(title), yyjson_get_len(title));
-        if (comment && yyjson_is_str(comment))
+        }
+        if (comment && yyjson_is_str(comment)) {
             n->comment = graph_own_str(g, yyjson_get_str(comment), yyjson_get_len(comment));
+        }
         yyjson_val *refid = yyjson_obj_get(v, "reference_id");
-        if (refid && yyjson_is_uint(refid))
+        if (refid && yyjson_is_uint(refid)) {
             n->reference_id = yyjson_get_uint(refid);
-        if (refname && yyjson_is_str(refname))
+        }
+        if (refname && yyjson_is_str(refname)) {
             n->reference_name = graph_own_str(g, yyjson_get_str(refname), yyjson_get_len(refname));
+        }
         yyjson_val *disabled = yyjson_obj_get(v, "disabled");
         n->disabled = disabled && yyjson_is_bool(disabled) &&
                       yyjson_get_bool(disabled);
+        yyjson_val *breakpoint = yyjson_obj_get(v, "breakpoint");
+        yyjson_val *breakpoint_enabled = yyjson_obj_get(v, "breakpoint_enabled");
+        n->breakpoint = breakpoint && yyjson_is_bool(breakpoint) &&
+                        yyjson_get_bool(breakpoint);
+        n->breakpoint_enabled = breakpoint_enabled &&
+                                yyjson_is_bool(breakpoint_enabled) &&
+                                yyjson_get_bool(breakpoint_enabled);
         if (load_pins(g, n, yyjson_obj_get(v, "inputs"), 0) ||
-            load_pins(g, n, yyjson_obj_get(v, "outputs"), 1))
+            load_pins(g, n, yyjson_obj_get(v, "outputs"), 1)) {
             return -1;
+        }
         if (n->id == 0) {
             set_err("node ID zero is not allowed");
             return -1;
@@ -576,63 +848,78 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
                 set_err("duplicate node ID");
                 return -1;
             }
-            for (int p = 0; p < other->input_count; p++)
+            for (int p = 0; p < other->input_count; p++) {
                 if (other->input_pins[p].id == n->id) {
                     set_err("node ID collides with pin ID");
                     return -1;
                 }
-            for (int p = 0; p < other->output_count; p++)
+            }
+            for (int p = 0; p < other->output_count; p++) {
                 if (other->output_pins[p].id == n->id) {
                     set_err("node ID collides with pin ID");
                     return -1;
                 }
-            for (int p = 0; p < n->input_count; p++)
-                for (int q = 0; q < other->input_count; q++)
+            }
+            for (int p = 0; p < n->input_count; p++) {
+                for (int q = 0; q < other->input_count; q++) {
                     if (other->input_pins[q].id == n->input_pins[p].id) {
                         set_err("duplicate pin ID");
                         return -1;
                     }
-            for (int p = 0; p < n->output_count; p++)
-                for (int q = 0; q < other->output_count; q++)
+                }
+            }
+            for (int p = 0; p < n->output_count; p++) {
+                for (int q = 0; q < other->output_count; q++) {
                     if (other->output_pins[q].id == n->output_pins[p].id) {
                         set_err("duplicate pin ID");
                         return -1;
                     }
+                }
+            }
         }
         for (int p = 0; p < n->input_count; p++) {
             if (n->input_pins[p].id == 0) {
                 set_err("pin ID zero is not allowed");
                 return -1;
             }
-            for (int q = p + 1; q < n->input_count; q++)
+            for (int q = p + 1; q < n->input_count; q++) {
                 if (n->input_pins[p].id == n->input_pins[q].id) {
                     set_err("duplicate pin ID");
                     return -1;
                 }
-            for (int q = 0; q < n->output_count; q++)
+            }
+            for (int q = 0; q < n->output_count; q++) {
                 if (n->input_pins[p].id == n->output_pins[q].id) {
                     set_err("duplicate pin ID");
                     return -1;
                 }
+            }
         }
         for (int p = 0; p < n->output_count; p++) {
             if (n->output_pins[p].id == 0) {
                 set_err("pin ID zero is not allowed");
                 return -1;
             }
-            for (int q = p + 1; q < n->output_count; q++)
+            for (int q = p + 1; q < n->output_count; q++) {
                 if (n->output_pins[p].id == n->output_pins[q].id) {
                     set_err("duplicate pin ID");
                     return -1;
                 }
+            }
         }
-        if (n->id >= g->id_counter) g->id_counter = n->id + 1;
-        for (int i = 0; i < n->input_count; i++)
-            if (n->input_pins[i].id >= g->id_counter)
+        if (n->id >= g->id_counter) {
+            g->id_counter = n->id + 1;
+        }
+        for (int i = 0; i < n->input_count; i++) {
+            if (n->input_pins[i].id >= g->id_counter) {
                 g->id_counter = n->input_pins[i].id + 1;
-        for (int i = 0; i < n->output_count; i++)
-            if (n->output_pins[i].id >= g->id_counter)
+            }
+        }
+        for (int i = 0; i < n->output_count; i++) {
+            if (n->output_pins[i].id >= g->id_counter) {
                 g->id_counter = n->output_pins[i].id + 1;
+            }
+        }
     }
     /* graph_add_node inflates the counter while allocating scratch ids;
      * restore the serialized floor, then ID-2 keeps the counter at or above
@@ -640,13 +927,19 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
     g->id_counter = requested_counter;
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
-        if (n->id >= g->id_counter) g->id_counter = n->id + 1;
-        for (int p = 0; p < n->input_count; p++)
-            if (n->input_pins[p].id >= g->id_counter)
+        if (n->id >= g->id_counter) {
+            g->id_counter = n->id + 1;
+        }
+        for (int p = 0; p < n->input_count; p++) {
+            if (n->input_pins[p].id >= g->id_counter) {
                 g->id_counter = n->input_pins[p].id + 1;
-        for (int p = 0; p < n->output_count; p++)
-            if (n->output_pins[p].id >= g->id_counter)
+            }
+        }
+        for (int p = 0; p < n->output_count; p++) {
+            if (n->output_pins[p].id >= g->id_counter) {
                 g->id_counter = n->output_pins[p].id + 1;
+            }
+        }
     }
     graph_reindex(g);
     return 0;
@@ -666,8 +959,9 @@ static int load_edges(graph *g, yyjson_val *edges)
         if (json_uint(yyjson_obj_get(v, "from"), &from_id, "edge.from") ||
             json_uint(yyjson_obj_get(v, "from_pin"), &from_pin, "edge.from_pin") ||
             json_uint(yyjson_obj_get(v, "to"), &to_id, "edge.to") ||
-            json_uint(yyjson_obj_get(v, "to_pin"), &to_pin, "edge.to_pin"))
+            json_uint(yyjson_obj_get(v, "to_pin"), &to_pin, "edge.to_pin")) {
             return -1;
+        }
         node *from = graph_node_by_id(g, from_id), *to = graph_node_by_id(g, to_id);
         int fp = -1, tp = -1, fo = 0, to_out = 0;
         const pin_spec *fps = graph_pin_by_id(from, from_pin, &fo, &fp),
@@ -748,16 +1042,26 @@ graph *graph_load_json(const char *json)
     g->id_counter = requested_counter;
     yyjson_val *metadata_name = yyjson_obj_get(root, "name");
     yyjson_val *metadata_description = yyjson_obj_get(root, "description");
-    if (yyjson_is_str(metadata_name))
+    if (yyjson_is_str(metadata_name)) {
         g->name = graph_own_str(g, yyjson_get_str(metadata_name), yyjson_get_len(metadata_name));
-    if (yyjson_is_str(metadata_description))
+    }
+    if (yyjson_is_str(metadata_description)) {
         g->description = graph_own_str(g, yyjson_get_str(metadata_description), yyjson_get_len(metadata_description));
+    }
     if (!g->name || !g->description) {
         set_err("missing blueprint metadata");
         goto fail;
     }
-    if (load_nodes(g, nodes, requested_counter) || load_edges(g, edges))
+    yyjson_val *breakpoints = yyjson_obj_get(root, "breakpoints_enabled");
+    if (breakpoints && yyjson_is_bool(breakpoints)) {
+        g->breakpoints_enabled = yyjson_get_bool(breakpoints);
+    }
+    if (load_comment_boxes(g, yyjson_obj_get(root, "comment_boxes"))) {
         goto fail;
+    }
+    if (load_nodes(g, nodes, requested_counter) || load_edges(g, edges)) {
+        goto fail;
+    }
     yyjson_doc_free(doc);
     return g;
 fail:
@@ -774,7 +1078,9 @@ static int load_variable(blueprint *bp, yyjson_val *v)
         return -1;
     }
     uint64_t id = 0;
-    if (json_uint(yyjson_obj_get(v, "id"), &id, "variable.id")) return -1;
+    if (json_uint(yyjson_obj_get(v, "id"), &id, "variable.id")) {
+        return -1;
+    }
     yyjson_val *name = yyjson_obj_get(v, "name");
     yyjson_val *type = yyjson_obj_get(v, "type");
     if (!yyjson_is_str(name) || !yyjson_is_int(type)) {
@@ -797,13 +1103,19 @@ static int load_variable(blueprint *bp, yyjson_val *v)
     yyjson_val *def = yyjson_obj_get(v, "default");
     pin_value pv = { 0 };
     if (def) {
-        if (pt == PIN_STRUCT && yyjson_is_obj(def)) {
+        if (pc >= PIN_CONTAINER_ARRAY) {
+            if (read_array_const(pt, type_name, def, &pv, bp->graph)) {
+                return -1;
+            }
+        } else if (pt == PIN_STRUCT && yyjson_is_obj(def)) {
             const type_desc *t = find_type(type_name);
             if (!t) {
                 set_err("bad struct default for variable %llu", (unsigned long long)id);
                 return -1;
             }
-            if (read_struct_default(t, def, &pv, bp->graph, -1)) return -1;
+            if (read_struct_default(t, def, &pv, bp->graph, -1)) {
+                return -1;
+            }
         } else if (read_const(pt, def, &pv, bp->graph)) {
             set_err("bad default for variable %llu", (unsigned long long)id);
             return -1;
@@ -823,6 +1135,79 @@ static int load_variable(blueprint *bp, yyjson_val *v)
         return -1;
     }
     var->id = id;
+    return 0;
+}
+
+static int load_blueprint_graph(blueprint *bp, yyjson_val *obj, uint64_t requested_counter, int is_default)
+{
+    if (!yyjson_is_obj(obj)) {
+        set_err("graph is not an object");
+        return -1;
+    }
+    yyjson_val *kind_json = yyjson_obj_get(obj, "kind");
+    yyjson_val *name_json = yyjson_obj_get(obj, "name");
+    yyjson_val *nodes = yyjson_obj_get(obj, "nodes");
+    yyjson_val *edges = yyjson_obj_get(obj, "edges");
+    graph_kind kind;
+    if (!yyjson_is_str(kind_json) ||
+        graph_kind_from_name(yyjson_get_str(kind_json), &kind) ||
+        !yyjson_is_str(name_json) || !yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
+        set_err("graph is missing kind, name, nodes, or edges");
+        return -1;
+    }
+    if (is_default && kind != GRAPH_EVENT) {
+        set_err("the first Blueprint graph must be an event graph");
+        return -1;
+    }
+    uint64_t graph_id = 0;
+    if (!is_default && json_uint(yyjson_obj_get(obj, "id"), &graph_id, "graph.id")) {
+        return -1;
+    }
+    graph *g = is_default ? bp->graph : NULL;
+    if (!g) {
+        g = (graph *)xcalloc(1, sizeof *g);
+        graph_init(g);
+        g->owner = bp;
+        g->shared_id_counter = &bp->graph->id_counter;
+        g->graph_id = graph_id;
+        g->kind = kind;
+        g->name = graph_own_str(g, yyjson_get_str(name_json), yyjson_get_len(name_json));
+        g->description = graph_own_str(g, "", 0);
+        apush(bp->graphs, g);
+    } else {
+        g->kind = kind;
+        g->graph_id = graph_id;
+        g->name = graph_own_str(g, yyjson_get_str(name_json), yyjson_get_len(name_json));
+    }
+    if (!g->name) {
+        set_err("graph name allocation failed");
+        return -1;
+    }
+    yyjson_val *breakpoints = yyjson_obj_get(obj, "breakpoints_enabled");
+    if (breakpoints && yyjson_is_bool(breakpoints)) {
+        g->breakpoints_enabled = yyjson_get_bool(breakpoints);
+    }
+    yyjson_val *entry_json = yyjson_obj_get(obj, "entry_id");
+    yyjson_val *return_json = yyjson_obj_get(obj, "return_id");
+    yyjson_val *depth_json = yyjson_obj_get(obj, "call_depth_limit");
+    if (entry_json && yyjson_is_uint(entry_json)) {
+        g->entry_id = yyjson_get_uint(entry_json);
+    }
+    if (return_json && yyjson_is_uint(return_json)) {
+        g->return_id = yyjson_get_uint(return_json);
+    }
+    if (depth_json && yyjson_is_int(depth_json)) {
+        g->call_depth_limit = (int)yyjson_get_sint(depth_json);
+    }
+    if (load_comment_boxes(g, yyjson_obj_get(obj, "comment_boxes"))) {
+        return -1;
+    }
+    if (load_nodes(g, nodes, requested_counter) || load_edges(g, edges)) {
+        return -1;
+    }
+    if (g->id_counter > bp->graph->id_counter) {
+        bp->graph->id_counter = g->id_counter;
+    }
     return 0;
 }
 
@@ -849,13 +1234,6 @@ blueprint *blueprint_load_json(const char *json)
     yyjson_val *graphs = yyjson_obj_get(root, "graphs");
     if (!yyjson_is_arr(graphs) || yyjson_arr_size(graphs) < 1) {
         set_err("blueprint requires at least one graph");
-        goto fail;
-    }
-    yyjson_val *gobj = yyjson_arr_get(graphs, 0);
-    yyjson_val *nodes = yyjson_obj_get(gobj, "nodes"),
-               *edges = yyjson_obj_get(gobj, "edges");
-    if (!yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
-        set_err("blueprint graph is missing nodes or edges");
         goto fail;
     }
     yyjson_val *metadata_name = yyjson_obj_get(root, "name");
@@ -892,23 +1270,43 @@ blueprint *blueprint_load_json(const char *json)
         yyjson_arr_iter vit;
         yyjson_arr_iter_init(vars, &vit);
         yyjson_val *vv;
-        while ((vv = yyjson_arr_iter_next(&vit)))
-            if (load_variable(bp, vv)) goto fail;
+        while ((vv = yyjson_arr_iter_next(&vit))) {
+            if (load_variable(bp, vv)) {
+                goto fail;
+            }
+        }
     }
-    if (load_nodes(bp->graph, nodes, requested_counter) || load_edges(bp->graph, edges))
+    yyjson_arr_iter git;
+    yyjson_arr_iter_init(graphs, &git);
+    yyjson_val *graph_json;
+    int graph_index = 0;
+    while ((graph_json = yyjson_arr_iter_next(&git))) {
+        if (load_blueprint_graph(bp, graph_json, requested_counter, graph_index == 0)) {
+            goto fail;
+        }
+        graph_index++;
+    }
+    if (graph_index == 0) {
+        set_err("blueprint requires a default event graph");
         goto fail;
+    }
     yyjson_doc_free(doc);
     return bp;
 fail:
     yyjson_doc_free(doc);
-    if (bp) blueprint_free(bp);
+    if (bp) {
+        blueprint_free(bp);
+    }
     return NULL;
 }
 
 static uint64_t remap_id(uint64_t old, const uint64_t *old_ids, const uint64_t *new_ids, int count)
 {
-    for (int i = 0; i < count; i++)
-        if (old_ids[i] == old) return new_ids[i];
+    for (int i = 0; i < count; i++) {
+        if (old_ids[i] == old) {
+            return new_ids[i];
+        }
+    }
     return old;
 }
 
@@ -919,11 +1317,14 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
         return -1;
     }
     graph *tmp = graph_load_json(json);
-    if (!tmp) return -1;
+    if (!tmp) {
+        return -1;
+    }
     int node_count = acount(tmp->nodes);
     int id_count = node_count;
-    for (int i = 0; i < node_count; i++)
+    for (int i = 0; i < node_count; i++) {
         id_count += tmp->nodes[i]->input_count + tmp->nodes[i]->output_count;
+    }
     uint64_t *old_ids = (uint64_t *)xmalloc(
         (size_t)(id_count ? id_count : 1) * sizeof *old_ids
     );

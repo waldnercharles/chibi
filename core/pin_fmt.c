@@ -1,5 +1,7 @@
 #include "pin_fmt.h"
 
+#include "value_array.h"
+
 #include <stdio.h>
 
 #define PIN_FMT_RING 8
@@ -14,6 +16,12 @@ const char *pin_value_to_string(const pin_value *v)
 
     if (!v) {
         snprintf(buf, PIN_FMT_CAP, "<null>");
+        return buf;
+    }
+
+    if (v->container >= PIN_CONTAINER_ARRAY) {
+        const pin_array *array = (const pin_array *)v->ptr;
+        snprintf(buf, PIN_FMT_CAP, "Array[%d]", array ? array->count : 0);
         return buf;
     }
 
@@ -42,7 +50,7 @@ const char *pin_value_to_string(const pin_value *v)
             snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
             break;
         case PIN_HANDLE:
-            if (v->type_name)
+            if (v->type_name) {
                 snprintf(
                     buf,
                     PIN_FMT_CAP,
@@ -50,16 +58,19 @@ const char *pin_value_to_string(const pin_value *v)
                     v->type_name,
                     (unsigned long long)v->u64
                 );
-            else
+            } else {
                 snprintf(buf, PIN_FMT_CAP, "handle(%llu)", (unsigned long long)v->u64);
+            }
             break;
         case PIN_STRUCT:
             snprintf(buf, PIN_FMT_CAP, "%s", v->type_name ? v->type_name : "struct");
             break;
         case PIN_ENUM:
-            if (v->type_name)
+            if (v->type_name) {
                 snprintf(buf, PIN_FMT_CAP, "%s(%d)", v->type_name, (int)v->e);
-            else snprintf(buf, PIN_FMT_CAP, "%d", (int)v->e);
+            } else {
+                snprintf(buf, PIN_FMT_CAP, "%d", (int)v->e);
+            }
             break;
         case PIN_FLOW:
         default: snprintf(buf, PIN_FMT_CAP, "flow"); break;

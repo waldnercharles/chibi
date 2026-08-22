@@ -24,7 +24,9 @@ static pin_value conv_to_string(const pin_value *inputs, int input_count, arena 
     const char *text = pin_value_to_string(&inputs[0]);
     size_t len = strlen(text);
     char *copy = arena_alloc(a, len + 1);
-    if (!copy) return r;
+    if (!copy) {
+        return r;
+    }
     memcpy(copy, text, len + 1);
     r.str = copy;
     return r;
@@ -49,7 +51,9 @@ static pin_value conv_to_i64(const pin_value *inputs, int input_count, arena *a)
     (void)input_count;
     (void)a;
     pin_value r = { .type = PIN_I64, .type_name = "int64", .i64 = 0 };
-    if (inputs[0].type == PIN_I32) r.i64 = (int64_t)inputs[0].i;
+    if (inputs[0].type == PIN_I32) {
+        r.i64 = (int64_t)inputs[0].i;
+    }
     return r;
 }
 
@@ -134,9 +138,14 @@ static int to_string_source(pin_type t)
 const node_desc *conversion_for(pin_type from, pin_type to)
 {
     int real_target = to == PIN_F32 || to == PIN_F64;
-    if ((from == PIN_U8 || from == PIN_I32 || from == PIN_I64) && real_target)
+    if ((from == PIN_U8 || from == PIN_I32 || from == PIN_I64) && real_target) {
         return &NODE_To_Real;
-    if (from == PIN_I32 && to == PIN_I64) return &NODE_To_Integer64;
-    if (to_string_source(from) && to == PIN_STR) return &NODE_To_String;
+    }
+    if (from == PIN_I32 && to == PIN_I64) {
+        return &NODE_To_Integer64;
+    }
+    if (to_string_source(from) && to == PIN_STR) {
+        return &NODE_To_String;
+    }
     return NULL;
 }

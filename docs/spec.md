@@ -452,6 +452,27 @@ identity, target lifetime, invocation ordering, reentrancy, and serialization
 MUST be fixed by an ADR before this requirement is expanded into executable
 semantics.
 
+`EVT-13` A delegate binding MUST have a stable instance-owned binding ID. Adding
+the same target instance and event ID twice MUST return the existing binding.
+
+`EVT-14` A delegate target MUST be weak. Destroying the target instance MUST
+remove its bindings before its runtime storage is released, and dispatch MUST
+never call a destroyed target.
+
+`EVT-15` Delegate invocation MUST snapshot binding IDs in registration order.
+Changes made by a callback take effect on the next dispatch, not the current
+snapshot.
+
+`EVT-16` Removing a delegate MUST address the binding ID and remove exactly one
+binding, leaving other registrations intact.
+
+`EVT-17` A binding whose event signature no longer matches MUST remain visible as
+broken authored runtime state and produce one structured diagnostic rather than
+silently coercing its parameters.
+
+`EVT-18` Delegate bindings, callback queues, and invocation snapshots MUST NOT
+be serialized or entered into the undo history.
+
 ## FN: functions and macros
 
 `FN-1` A function's signature MUST be authored through the editor by editing
@@ -939,6 +960,11 @@ record without observing execution as it happens.
 `DBG-16` Traversal records MUST be bounded, discarding the oldest once the
 budget is reached, so a long run cannot grow them without limit.
 
+`DBG-17` When an executable node evaluates a pure data chain, traversal records
+MUST include every data edge evaluated in that chain, in evaluation order, so a
+flow visualisation can show the requested data path rather than only the final
+value entering the executable node.
+
 ## FMT: file format
 
 `FMT-1` A blueprint MUST serialize to a single JSON document with
@@ -1130,7 +1156,10 @@ mapping MUST be one table rather than scattered constants.
 preview instance owns state and several activations. It is replaced by
 `UI-55`.
 
-`UI-37` Align, distribute, straighten connection, and zoom to fit SHOULD exist.
+`UI-37` Auto arrange, straighten connection, and zoom to fit SHOULD exist.
+Auto arrange MUST reduce wire crossings and wire-node collisions rather than
+only spacing nodes out, MUST leave no two node boxes overlapping, and MUST be
+deterministic and bounded for a graph of any size. See `docs/adr/0015`.
 
 `UI-38` Holding a bound key while clicking the canvas SHOULD spawn that node
 type directly, bypassing the spawn menu for the most-used nodes.

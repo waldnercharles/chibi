@@ -14,6 +14,26 @@
 
 DEFINE_ENUM(graph_edge_kind, GRAPH_EDGE_LIST)
 
+typedef enum
+{
+    GRAPH_EVENT = 0,
+    GRAPH_FUNCTION,
+    GRAPH_MACRO,
+} graph_kind;
+
+typedef struct blueprint blueprint;
+
+typedef struct graph_comment_box
+{
+    uint64_t id;
+    float x;
+    float y;
+    float width;
+    float height;
+    char *title;
+    uint32_t color;
+} graph_comment_box;
+
 typedef struct edge
 {
     uint64_t from_id;
@@ -31,19 +51,30 @@ typedef struct edge
 typedef struct graph
 {
     node **nodes;
+    uint64_t graph_id;
+    graph_kind kind;
+    blueprint *owner; /* borrowed; NULL for a standalone graph */
+    uint64_t entry_id;
+    uint64_t return_id;
+    int call_depth_limit;
     node **id_table; /* id -> node*, NULL after removal; O(1) lookup */
     edge *edges;
+    graph_comment_box *comment_boxes;
     char **strings;
     void **blocks;
     uint64_t id_counter;
+    uint64_t *shared_id_counter; /* Blueprint graphs share one ID namespace. */
     char *name;
     char *description;
     unsigned long long topology_revision;
     unsigned flow_pause_count;
+    unsigned breakpoints_enabled;
 } graph;
 
 void graph_init(graph *g);
 void graph_free(graph *g);
+const char *graph_kind_name(graph_kind kind);
+int graph_kind_from_name(const char *name, graph_kind *kind);
 node *graph_add_node(graph *g, const node_desc *desc);
 
 int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin);
@@ -94,10 +125,18 @@ int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, 
 int graph_set_pin_container(graph *g, node *n, int output, int index, pin_container container);
 int graph_move_pin(graph *g, node *n, int output, int index, int target_index);
 int graph_set_node_disabled(graph *g, node *n, int disabled);
+int graph_set_breakpoint(graph *g, node *n, int enabled);
+int graph_set_all_breakpoints(graph *g, int enabled);
+int graph_set_pin_watch(graph *g, node *n, int output, int index, int enabled);
+graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, float y, float width, float height);
+int graph_remove_comment_box(graph *g, uint64_t id);
+int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, uint32_t color);
 int graph_set_node_title(graph *g, node *n, const char *title);
 int graph_set_node_comment(graph *g, node *n, const char *comment);
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name);
 int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin);
+int graph_split_pin(graph *g, node *n, int output, int index);
+int graph_recombine_pin(graph *g, node *n, int output, int index);
 int graph_remove_pin(graph *g, node *n, int output, int index);
 
 int pin_types_compatible(const pin_spec *a, const pin_spec *b);

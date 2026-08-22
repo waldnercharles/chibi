@@ -50,6 +50,8 @@ typedef enum
     NODE_PURE_CALL,      /* desc->fn: inputs -> one output */
     NODE_PURE_GET,       /* variable read from the blueprint instance */
     NODE_PURE_SELF,      /* owner handle read from the blueprint instance */
+    NODE_PURE_FUNCTION,  /* pure function graph call */
+    NODE_PURE_VOID_CALL, /* reflected pure call with no data result */
 } node_pure_kind;
 
 typedef struct
@@ -64,6 +66,7 @@ typedef struct
     node_fn fn;
     node_flow_kind flow_kind;
     node_flow_fn flow;
+    int latent;
     node_display_class display_class;
     /* CAT-27: spawn-menu category path and space-separated search keywords.
      * Both are static display/search data; NULL means uncategorized. */
@@ -91,6 +94,8 @@ struct node
     unsigned computed;
     unsigned visiting;
     unsigned disabled;
+    unsigned breakpoint;
+    unsigned breakpoint_enabled;
     int eval_error;
     const char *eval_error_message;
 };
@@ -108,11 +113,19 @@ static inline const pin_spec *node_output_pin(const node *n, int index)
 /* NODE-6: a descriptor is pure when it declares no PIN_EXEC pins. */
 static inline int node_desc_is_pure(const node_desc *d)
 {
-    if (!d) return 0;
-    for (int i = 0; i < d->input_count; i++)
-        if (d->inputs[i].kind == PIN_EXEC) return 0;
-    for (int i = 0; i < d->output_count; i++)
-        if (d->outputs[i].kind == PIN_EXEC) return 0;
+    if (!d) {
+        return 0;
+    }
+    for (int i = 0; i < d->input_count; i++) {
+        if (d->inputs[i].kind == PIN_EXEC) {
+            return 0;
+        }
+    }
+    for (int i = 0; i < d->output_count; i++) {
+        if (d->outputs[i].kind == PIN_EXEC) {
+            return 0;
+        }
+    }
     return 1;
 }
 
@@ -129,18 +142,32 @@ typedef enum
 
 static inline node_behavior node_desc_behavior(const node_desc *d)
 {
-    if (!d) return NODE_BEHAVIOR_PURE;
+    if (!d) {
+        return NODE_BEHAVIOR_PURE;
+    }
     int exec_input = 0, exec_output = 0;
-    for (int i = 0; i < d->input_count; i++)
-        if (d->inputs[i].kind == PIN_EXEC) exec_input = 1;
-    for (int i = 0; i < d->output_count; i++)
-        if (d->outputs[i].kind == PIN_EXEC) exec_output = 1;
-    if (exec_input) return NODE_BEHAVIOR_EXEC;
-    if (exec_output) return NODE_BEHAVIOR_ENTRY;
+    for (int i = 0; i < d->input_count; i++) {
+        if (d->inputs[i].kind == PIN_EXEC) {
+            exec_input = 1;
+        }
+    }
+    for (int i = 0; i < d->output_count; i++) {
+        if (d->outputs[i].kind == PIN_EXEC) {
+            exec_output = 1;
+        }
+    }
+    if (exec_input) {
+        return NODE_BEHAVIOR_EXEC;
+    }
+    if (exec_output) {
+        return NODE_BEHAVIOR_ENTRY;
+    }
     return NODE_BEHAVIOR_PURE;
 }
 
 static inline node_behavior node_behavior_for(const node *n)
-{ return node_desc_behavior(n ? n->desc : NULL); }
+{
+    return node_desc_behavior(n ? n->desc : NULL);
+}
 
 #endif

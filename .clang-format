@@ -32,13 +32,12 @@ AlignOperands: AlignAfterOperator
 AlignTrailingComments: true
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
-AllowShortBlocksOnASingleLine: Always
+#AllowShortBlocksOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: AllIfsAndElse
 AllowShortLoopsOnASingleLine: true
 AlwaysBreakAfterDefinitionReturnType: None
-AlwaysBreakAfterReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
@@ -51,11 +50,10 @@ CommentPragmas: "\/*(.*)*\/"
 ContinuationIndentWidth: 4
 Cpp11BracedListStyle: false
 ExperimentalAutoDetectBinPacking: false
-ForEachMacros:
-StatementMacros:
 IncludeBlocks: Regroup
 IndentCaseLabels: true
 IndentWidth: 4
+InsertBraces: true
 Language: C
 PenaltyBreakAssignment: 1000
 PenaltyBreakBeforeFirstCallParameter: 156

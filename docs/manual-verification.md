@@ -13,11 +13,8 @@ Rules:
 
 1. Add an entry only after a human has actually exercised the requirement.
 2. Record the commit that was running at the time, not the current HEAD.
-3. A requirement that later gains a headless check loses its entry here. The
-   coverage tool reports an ID that has both, because the manual record then
-   rots unnoticed.
-4. Re-verify and add a new row when the code behind a requirement changes
-   substantially. Keep the old row; this is a log, not a status table.
+3. A requirement that later gains a headless check loses its entry. The coverage tool reports an ID that has both, because the manual record then rots unnoticed.
+4. Re-verify and add a new row when the code behind the requirement changes substantially. Keep the old row; this is a log, not a status table.
 
 ## Phase 1
 
@@ -58,3 +55,17 @@ Notes on the Phase 1 round: `RUN-3` and `RUN-4` were verified manually as well, 
 stepping an Event to ForLoop to Delay to Print String graph and confirming each
 press activates exactly one node across the Delay suspension. Both also carry
 headless checks, so they are not listed above.
+
+## Phase 3 verification procedure
+
+`docs/editor-phase3-manual.md` is the current click-through procedure for the
+persistent preview, event signatures, compiler panel, debugger panels, and
+layout commands. The runtime portion is covered headlessly by the Phase 3
+checks in `test/self_check.c`; window-only rows belong here only after a human
+runs that procedure against a named commit.
+
+## UX quality pass
+
+`docs/ux-smoothness-checklist.md` records the automated spawn, layout, generic-pin,
+and render-path checks. The remaining window check covers drag, pan, zoom,
+connection, marquee selection, and frame-rate smoothness.

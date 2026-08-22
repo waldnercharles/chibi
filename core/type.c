@@ -24,7 +24,9 @@ void pin_write_field(void *base, const type_field *f, pin_value v)
             memcpy(dst, &v.e, f->size < sizeof v.e ? f->size : sizeof v.e);
             break;
         case PIN_STRUCT:
-            if (v.ptr) memcpy(dst, v.ptr, f->size);
+            if (v.ptr) {
+                memcpy(dst, v.ptr, f->size);
+            }
             break;
         case PIN_FLOW: break;
     }

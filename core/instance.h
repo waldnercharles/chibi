@@ -4,6 +4,7 @@
 #include "blueprint.h"
 #include "compile.h"
 #include "flow.h"
+#include "service.h"
 
 #include <stdint.h>
 
@@ -18,6 +19,22 @@ typedef struct instance_scratch_slot
     pin_value value;
 } instance_scratch_slot;
 
+typedef struct blueprint_delegate_binding
+{
+    uint64_t id;
+    blueprint_instance *target;
+    uint64_t event_id;
+    uint64_t *pin_ids;
+    pin_type *types;
+    const char **type_names;
+} blueprint_delegate_binding;
+
+typedef struct blueprint_delegate_ref
+{
+    blueprint_instance *source;
+    uint64_t binding_id;
+} blueprint_delegate_ref;
+
 struct blueprint_instance
 {
     blueprint *bp;        /* borrowed; must outlive the instance */
@@ -31,6 +48,11 @@ struct blueprint_instance
     flow_sink_fn sink;
     void *sink_user;
     flow_run **activations; /* scheduler queue, FIFO by dispatch sequence */
+    blueprint_delegate_binding *delegates; /* outgoing weak bindings */
+    blueprint_delegate_ref *delegate_incoming;
+    service_binding *services;
+    uint64_t next_delegate_id;
+    int alive;
 
     /* RUN-12: cached compile report, rebuilt whenever the topology revision
      * moves. Any error refuses every dispatch/enqueue start. The report's
@@ -93,5 +115,28 @@ flow_run *blueprint_instance_enqueue(
     flow_inputs inputs,
     flow_error *error
 );
+
+/* EVT-13..18: weak, ID-addressed, deterministic delegate bindings. Runtime
+ * bindings belong to instances and never enter Blueprint JSON. */
+uint64_t blueprint_instance_bind_event(
+    blueprint_instance *source,
+    blueprint_instance *target,
+    uint64_t event_id
+);
+int blueprint_instance_unbind_event(blueprint_instance *source, uint64_t binding_id);
+flow_run *blueprint_instance_dispatch_delegate(
+    blueprint_instance *source,
+    uint64_t binding_id,
+    flow_inputs inputs,
+    flow_error *error
+);
+int blueprint_instance_broadcast_event(
+    blueprint_instance *source,
+    uint64_t event_id,
+    flow_inputs inputs,
+    flow_error *error
+);
+int blueprint_instance_bind_service(blueprint_instance *bi, const char *type_name, void *value);
+void *blueprint_instance_service(const blueprint_instance *bi, const char *type_name);
 
 #endif

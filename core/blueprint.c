@@ -5,15 +5,19 @@
 #include "blueprint.h"
 
 #include "registry.h"
+#include "value_array.h"
 #include "xalloc.h"
 
 #include <string.h>
 
 static int var_name_unique(const blueprint *bp, const char *name, uint64_t except_id)
 {
-    for (int i = 0; i < acount(bp->variables); i++)
-        if (bp->variables[i].id != except_id && strcmp(bp->variables[i].name, name) == 0)
+    for (int i = 0; i < acount(bp->variables); i++) {
+        if (bp->variables[i].id != except_id &&
+            strcmp(bp->variables[i].name, name) == 0) {
             return 0;
+        }
+    }
     return 1;
 }
 
@@ -22,6 +26,10 @@ blueprint *blueprint_new(const char *name)
     blueprint *bp = (blueprint *)xcalloc(1, sizeof *bp);
     bp->graph = (graph *)xcalloc(1, sizeof *bp->graph);
     graph_init(bp->graph);
+    bp->graph->owner = bp;
+    bp->graph->graph_id = 0;
+    bp->graph->shared_id_counter = &bp->graph->id_counter;
+    apush(bp->graphs, bp->graph);
     bp->name = graph_own_str(bp->graph, name ? name : "", name ? strlen(name) : 0);
     bp->description = graph_own_str(bp->graph, "", 0);
     return bp;
@@ -29,32 +37,127 @@ blueprint *blueprint_new(const char *name)
 
 void blueprint_free(blueprint *bp)
 {
-    if (!bp) return;
+    if (!bp) {
+        return;
+    }
     afree(bp->variables);
-    graph_free(bp->graph);
-    free(bp->graph);
+    for (int i = 0; i < acount(bp->graphs); i++) {
+        graph_free(bp->graphs[i]);
+        free(bp->graphs[i]);
+    }
+    afree(bp->graphs);
     free(bp);
 }
 
+graph *blueprint_add_graph(blueprint *bp, graph_kind kind, const char *name)
+{
+    if (!bp || !blueprint_mutable(bp) || !name || !name[0]) {
+        return NULL;
+    }
+    if (blueprint_find_graph_by_name(bp, name)) {
+        return NULL;
+    }
+    graph *g = (graph *)xcalloc(1, sizeof *g);
+    graph_init(g);
+    g->owner = bp;
+    g->kind = kind;
+    g->graph_id = graph_alloc_id(bp->graph);
+    g->shared_id_counter = &bp->graph->id_counter;
+    g->id_counter = bp->graph->id_counter;
+    g->name = graph_own_str(g, name, strlen(name));
+    g->description = graph_own_str(g, "", 0);
+    apush(bp->graphs, g);
+    return g;
+}
+
+graph *blueprint_find_graph(const blueprint *bp, uint64_t graph_id)
+{
+    if (!bp) {
+        return NULL;
+    }
+    if (graph_id == 0) {
+        return bp->graph;
+    }
+    for (int i = 0; i < acount(bp->graphs); i++) {
+        if (bp->graphs[i]->graph_id == graph_id) {
+            return bp->graphs[i];
+        }
+    }
+    return NULL;
+}
+
+graph *blueprint_find_graph_by_name(const blueprint *bp, const char *name)
+{
+    if (!bp || !name) {
+        return NULL;
+    }
+    for (int i = 0; i < acount(bp->graphs); i++) {
+        if (bp->graphs[i]->name && strcmp(bp->graphs[i]->name, name) == 0) {
+            return bp->graphs[i];
+        }
+    }
+    return NULL;
+}
+
+int blueprint_delete_graph(blueprint *bp, uint64_t graph_id)
+{
+    if (!bp || !blueprint_mutable(bp) || graph_id == 0) {
+        return -1;
+    }
+    for (int i = 1; i < acount(bp->graphs); i++) {
+        if (bp->graphs[i]->graph_id == graph_id) {
+            graph *g = bp->graphs[i];
+            adel(bp->graphs, i);
+            graph_free(g);
+            free(g);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int blueprint_mutable(const blueprint *bp)
-{ return bp && bp->graph && bp->graph->flow_pause_count == 0; }
+{
+    return bp && bp->graph && bp->graph->flow_pause_count == 0;
+}
+
+int blueprint_set_name(blueprint *bp, const char *name)
+{
+    if (!bp || !blueprint_mutable(bp) || !name) {
+        return -1;
+    }
+    char *copy = graph_own_str(bp->graph, name, strlen(name));
+    if (!copy) {
+        return -1;
+    }
+    bp->name = copy;
+    return 0;
+}
 
 void blueprint_set_description(blueprint *bp, const char *description)
 {
-    if (!bp) return;
+    if (!bp) {
+        return;
+    }
     char *copy = graph_own_str(
         bp->graph,
         description ? description : "",
         description ? strlen(description) : 0
     );
-    if (copy) bp->description = copy;
+    if (copy) {
+        bp->description = copy;
+    }
 }
 
 int blueprint_set_owner_type(blueprint *bp, const char *type_name)
 {
-    if (!bp || !blueprint_mutable(bp) || !type_name || !type_name[0]) return -1;
+    if (!bp || !blueprint_mutable(bp) || !type_name || !type_name[0]) {
+        return -1;
+    }
     char *copy = graph_own_str(bp->graph, type_name, strlen(type_name));
-    if (!copy) return -1;
+    if (!copy) {
+        return -1;
+    }
     bp->owner_type_name = copy;
     return 0;
 }
@@ -69,8 +172,12 @@ blueprint_variable *blueprint_add_variable(
     const char *category
 )
 {
-    if (!bp || !blueprint_mutable(bp) || !name || !name[0]) return NULL;
-    if (!var_name_unique(bp, name, 0)) return NULL;
+    if (!bp || !blueprint_mutable(bp) || !name || !name[0]) {
+        return NULL;
+    }
+    if (!var_name_unique(bp, name, 0)) {
+        return NULL;
+    }
     blueprint_variable v = { 0 };
     v.id = graph_alloc_id(bp->graph);
     v.name = graph_own_str(bp->graph, name, strlen(name));
@@ -84,16 +191,31 @@ blueprint_variable *blueprint_add_variable(
     if (default_value) {
         v.default_value = *default_value;
         v.default_value.type = type;
+        v.default_value.container = container;
         v.default_value.type_name = v.type_name;
-        if ((type == PIN_STR || type == PIN_NAME) && v.default_value.str)
+        if (container >= PIN_CONTAINER_ARRAY && default_value->ptr) {
+            v.default_value.ptr = pin_array_clone_to_graph(
+                bp->graph,
+                (const pin_array *)default_value->ptr
+            );
+            if (!v.default_value.ptr) {
+                return NULL;
+            }
+        }
+        if ((type == PIN_STR || type == PIN_NAME) && v.default_value.str) {
             v.default_value.str = graph_own_str(
                 bp->graph,
                 v.default_value.str,
                 strlen(v.default_value.str)
             );
+        }
     } else {
-        v.default_value = (pin_value){ .type = type, .type_name = v.type_name };
-        if (type == PIN_STR || type == PIN_NAME) v.default_value.str = "";
+        v.default_value = (pin_value){ .type = type,
+                                       .container = container,
+                                       .type_name = v.type_name };
+        if (type == PIN_STR || type == PIN_NAME) {
+            v.default_value.str = "";
+        }
     }
     apush(bp->variables, v);
     return &bp->variables[acount(bp->variables) - 1];
@@ -101,37 +223,58 @@ blueprint_variable *blueprint_add_variable(
 
 blueprint_variable *blueprint_find_variable_by_name(const blueprint *bp, const char *name)
 {
-    if (!bp || !name) return NULL;
-    for (int i = 0; i < acount(bp->variables); i++)
-        if (strcmp(bp->variables[i].name, name) == 0) return &bp->variables[i];
+    if (!bp || !name) {
+        return NULL;
+    }
+    for (int i = 0; i < acount(bp->variables); i++) {
+        if (strcmp(bp->variables[i].name, name) == 0) {
+            return &bp->variables[i];
+        }
+    }
     return NULL;
 }
 
 blueprint_variable *blueprint_find_variable_by_id(const blueprint *bp, uint64_t id)
 {
-    if (!bp) return NULL;
-    for (int i = 0; i < acount(bp->variables); i++)
-        if (bp->variables[i].id == id) return &bp->variables[i];
+    if (!bp) {
+        return NULL;
+    }
+    for (int i = 0; i < acount(bp->variables); i++) {
+        if (bp->variables[i].id == id) {
+            return &bp->variables[i];
+        }
+    }
     return NULL;
 }
 
 static void refresh_reference_display(blueprint *bp, uint64_t id, char *display_name)
 {
-    for (int i = 0; i < acount(bp->graph->nodes); i++) {
-        node *n = bp->graph->nodes[i];
-        if (n->reference_id != id) continue;
-        if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable)
-            n->reference_name = display_name; /* both graph-owned */
+    for (int g = 0; g < acount(bp->graphs); g++) {
+        for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
+            node *n = bp->graphs[g]->nodes[i];
+            if (n->reference_id != id) {
+                continue;
+            }
+            if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
+                n->reference_name = display_name; /* both graph-owned */
+            }
+        }
     }
 }
 
 int blueprint_rename_variable(blueprint *bp, uint64_t id, const char *new_name)
 {
-    if (!bp || !blueprint_mutable(bp) || !new_name || !new_name[0]) return -1;
+    if (!bp || !blueprint_mutable(bp) || !new_name || !new_name[0]) {
+        return -1;
+    }
     blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
-    if (!v || !var_name_unique(bp, new_name, id)) return -1;
+    if (!v || !var_name_unique(bp, new_name, id)) {
+        return -1;
+    }
     char *copy = graph_own_str(bp->graph, new_name, strlen(new_name));
-    if (!copy) return -1;
+    if (!copy) {
+        return -1;
+    }
     v->name = copy;
     /* VAR-5: referencing nodes keep their reference ID; only display updates. */
     refresh_reference_display(bp, id, copy);
@@ -140,60 +283,176 @@ int blueprint_rename_variable(blueprint *bp, uint64_t id, const char *new_name)
 
 int blueprint_retype_variable(blueprint *bp, uint64_t id, pin_type type, const char *type_name)
 {
-    if (!bp || !blueprint_mutable(bp)) return -1;
+    if (!bp || !blueprint_mutable(bp)) {
+        return -1;
+    }
     blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
-    if (!v) return -1;
+    if (!v) {
+        return -1;
+    }
     char *copy = type_name ? graph_own_str(bp->graph, type_name, strlen(type_name))
                            : NULL;
-    if (type_name && !copy) return -1;
+    if (type_name && !copy) {
+        return -1;
+    }
     v->type = type;
     v->type_name = copy;
-    v->default_value = (pin_value){ .type = type, .type_name = copy };
-    for (int i = 0; i < acount(bp->graph->nodes); i++) {
-        node *n = bp->graph->nodes[i];
-        if (n->reference_id != id) continue;
-        if (n->desc == &NODE_GetVariable)
-            graph_set_pin_type(bp->graph, n, 1, 0, type, copy);
-        else if (n->desc == &NODE_SetVariable) {
-            graph_set_pin_type(bp->graph, n, 0, 1, type, copy);
-            graph_set_pin_type(bp->graph, n, 1, 1, type, copy);
+    v->default_value = (pin_value){ .type = type,
+                                    .container = v->container,
+                                    .type_name = copy };
+    for (int g = 0; g < acount(bp->graphs); g++) {
+        for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
+            graph *target = bp->graphs[g];
+            node *n = target->nodes[i];
+            if (n->reference_id != id) {
+                continue;
+            }
+            if (n->desc == &NODE_GetVariable) {
+                graph_set_pin_type(target, n, 1, 0, type, copy);
+            } else if (n->desc == &NODE_SetVariable) {
+                graph_set_pin_type(target, n, 0, 1, type, copy);
+                graph_set_pin_type(target, n, 1, 1, type, copy);
+            }
         }
     }
     return 0;
 }
 
+int blueprint_set_variable_container(blueprint *bp, uint64_t id, pin_container container)
+{
+    if (!bp || !blueprint_mutable(bp) || container < PIN_CONTAINER_SINGLE ||
+        container > PIN_CONTAINER_MAP) {
+        return -1;
+    }
+    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    if (!v) {
+        return -1;
+    }
+    v->container = container;
+    v->default_value.container = container;
+    for (int g = 0; g < acount(bp->graphs); g++) {
+        for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
+            node *n = bp->graphs[g]->nodes[i];
+            if (n->reference_id != id) {
+                continue;
+            }
+            graph *target = bp->graphs[g];
+            if (n->desc == &NODE_GetVariable) {
+                graph_set_pin_container(target, n, 1, 0, container);
+            } else if (n->desc == &NODE_SetVariable) {
+                graph_set_pin_container(target, n, 0, 1, container);
+                graph_set_pin_container(target, n, 1, 1, container);
+            }
+        }
+    }
+    return 0;
+}
+
+int blueprint_set_variable_category(blueprint *bp, uint64_t id, const char *category)
+{
+    if (!bp || !blueprint_mutable(bp) || !category) {
+        return -1;
+    }
+    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    if (!v) {
+        return -1;
+    }
+    v->category = graph_own_str(bp->graph, category, strlen(category));
+    return v->category ? 0 : -1;
+}
+
+blueprint_variable *blueprint_promote_pin_to_variable(
+    blueprint *bp,
+    node *n,
+    int output,
+    int index,
+    const char *name
+)
+{
+    if (!bp || !n || !blueprint_mutable(bp) || !name || !name[0]) {
+        return NULL;
+    }
+    pin_spec *pins = output ? n->output_pins : n->input_pins;
+    int count = output ? n->output_count : n->input_count;
+    if (index < 0 || index >= count || pins[index].kind != PIN_DATA) {
+        return NULL;
+    }
+    blueprint_variable *v = blueprint_add_variable(
+        bp,
+        name,
+        pins[index].type,
+        pins[index].type_name,
+        pins[index].container,
+        &pins[index].default_value,
+        "Promoted"
+    );
+    if (!v) {
+        return NULL;
+    }
+    node *access = output ? blueprint_add_get_node(bp, v->id)
+                          : blueprint_add_set_node(bp, v->id);
+    if (!access) {
+        return v;
+    }
+    if (output) {
+        graph_connect_data(bp->graph, access, 0, n, index);
+    } else {
+        graph_connect_data(bp->graph, n, index, access, 1);
+    }
+    return v;
+}
+
 int blueprint_delete_variable(blueprint *bp, uint64_t id)
 {
-    if (!bp || !blueprint_mutable(bp)) return -1;
-    for (int i = 0; i < acount(bp->variables); i++)
+    if (!bp || !blueprint_mutable(bp)) {
+        return -1;
+    }
+    for (int i = 0; i < acount(bp->variables); i++) {
         if (bp->variables[i].id == id) {
             /* VAR-7: referencing nodes keep their reference ID and become
              * orphaned; evaluation reports the lost variable. */
             adel(bp->variables, i);
             return 0;
         }
+    }
     return -1;
 }
 
 int blueprint_set_variable_default(blueprint *bp, uint64_t id, const pin_value *value)
 {
-    if (!bp || !blueprint_mutable(bp) || !value) return -1;
+    if (!bp || !blueprint_mutable(bp) || !value) {
+        return -1;
+    }
     blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
-    if (!v || value->type != v->type) return -1;
+    if (!v || value->type != v->type) {
+        return -1;
+    }
     v->default_value = *value;
+    v->default_value.container = v->container;
     v->default_value.type_name = v->type_name;
-    if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str)
+    if (v->container >= PIN_CONTAINER_ARRAY && value->ptr) {
+        v->default_value
+            .ptr = pin_array_clone_to_graph(bp->graph, (const pin_array *)value->ptr);
+    }
+    if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
         v->default_value.str = graph_own_str(bp->graph, value->str, strlen(value->str));
+    }
     return 0;
 }
 
 node *blueprint_add_get_node(blueprint *bp, uint64_t variable_id)
 {
-    if (!bp || !blueprint_mutable(bp)) return NULL;
+    if (!bp || !blueprint_mutable(bp)) {
+        return NULL;
+    }
     blueprint_variable *v = blueprint_find_variable_by_id(bp, variable_id);
-    if (!v) return NULL;
+    if (!v) {
+        return NULL;
+    }
     node *n = graph_add_node(bp->graph, &NODE_GetVariable);
-    if (!n) return NULL;
+    if (!n) {
+        return NULL;
+    }
     graph_set_node_reference(bp->graph, n, v->id, v->name);
     graph_set_pin_type(bp->graph, n, 1, 0, v->type, v->type_name);
     return n;
@@ -201,11 +460,17 @@ node *blueprint_add_get_node(blueprint *bp, uint64_t variable_id)
 
 node *blueprint_add_set_node(blueprint *bp, uint64_t variable_id)
 {
-    if (!bp || !blueprint_mutable(bp)) return NULL;
+    if (!bp || !blueprint_mutable(bp)) {
+        return NULL;
+    }
     blueprint_variable *v = blueprint_find_variable_by_id(bp, variable_id);
-    if (!v) return NULL;
+    if (!v) {
+        return NULL;
+    }
     node *n = graph_add_node(bp->graph, &NODE_SetVariable);
-    if (!n) return NULL;
+    if (!n) {
+        return NULL;
+    }
     graph_set_node_reference(bp->graph, n, v->id, v->name);
     graph_set_pin_type(bp->graph, n, 0, 1, v->type, v->type_name);
     graph_set_pin_type(bp->graph, n, 1, 1, v->type, v->type_name);
@@ -214,28 +479,139 @@ node *blueprint_add_set_node(blueprint *bp, uint64_t variable_id)
 
 node *blueprint_add_self_node(blueprint *bp)
 {
-    if (!bp || !blueprint_mutable(bp) || !bp->owner_type_name) return NULL;
+    if (!bp || !blueprint_mutable(bp) || !bp->owner_type_name) {
+        return NULL;
+    }
     node *n = graph_add_node(bp->graph, &NODE_Self);
-    if (!n) return NULL;
+    if (!n) {
+        return NULL;
+    }
     graph_set_pin_type(bp->graph, n, 1, 0, PIN_HANDLE, bp->owner_type_name);
     return n;
+}
+
+node *blueprint_add_function_call_node(blueprint *bp, graph *function_graph)
+{
+    if (!bp || !blueprint_mutable(bp) || !function_graph ||
+        function_graph->kind != GRAPH_FUNCTION) {
+        return NULL;
+    }
+    node *entry = graph_node_by_id(function_graph, function_graph->entry_id);
+    node *ret = graph_node_by_id(function_graph, function_graph->return_id);
+    if (!entry || !ret) {
+        return NULL;
+    }
+    int pure = 1;
+    for (int i = 0; i < entry->output_count; i++) {
+        pure &= entry->output_pins[i].kind != PIN_EXEC;
+    }
+    for (int i = 0; i < ret->input_count; i++) {
+        pure &= ret->input_pins[i].kind != PIN_EXEC;
+    }
+    node *call = graph_add_node(bp->graph, pure ? &NODE_CallPureFunction : &NODE_CallFunction);
+    if (!call) {
+        return NULL;
+    }
+    graph_set_node_reference(
+        bp->graph,
+        call,
+        function_graph->graph_id,
+        function_graph->name
+    );
+    for (int i = 0; i < entry->output_count; i++) {
+        pin_spec p = entry->output_pins[i];
+        if (p.kind != PIN_DATA) {
+            continue;
+        }
+        p.id = 0;
+        if (graph_add_pin(bp->graph, call, 0, &p) < 0) {
+            return NULL;
+        }
+    }
+    for (int i = 0; i < ret->input_count; i++) {
+        pin_spec p = ret->input_pins[i];
+        if (p.kind != PIN_DATA) {
+            continue;
+        }
+        p.id = 0;
+        if (graph_add_pin(bp->graph, call, 1, &p) < 0) {
+            return NULL;
+        }
+    }
+    return call;
+}
+
+node *blueprint_add_macro_call_node(blueprint *bp, graph *macro_graph)
+{
+    if (!bp || !blueprint_mutable(bp) || !macro_graph ||
+        macro_graph->kind != GRAPH_MACRO) {
+        return NULL;
+    }
+    node *call = graph_add_node(bp->graph, &NODE_CallMacro);
+    if (!call) {
+        return NULL;
+    }
+    graph_set_node_reference(bp->graph, call, macro_graph->graph_id, macro_graph->name);
+    return call;
 }
 
 node *blueprint_add_call_event_node(blueprint *bp, node *event_node)
 {
     if (!bp || !blueprint_mutable(bp) || !event_node ||
-        event_node->desc->flow_kind != NODE_FLOW_EVENT)
+        event_node->desc->flow_kind != NODE_FLOW_EVENT) {
         return NULL;
+    }
     node *n = graph_add_node(bp->graph, &NODE_CallEvent);
-    if (!n) return NULL;
+    if (!n) {
+        return NULL;
+    }
     graph_set_node_reference(bp->graph, n, event_node->id, event_node->reference_name);
     for (int i = 0; i < event_node->output_count; i++) {
         const pin_spec *p = &event_node->output_pins[i];
-        if (p->kind != PIN_DATA) continue;
+        if (p->kind != PIN_DATA) {
+            continue;
+        }
         pin_spec param = *p;
         param.id = 0;
         param.default_value = (pin_value){ 0 };
-        if (graph_add_pin(bp->graph, n, 0, &param) < 0) return NULL;
+        if (graph_add_pin(bp->graph, n, 0, &param) < 0) {
+            return NULL;
+        }
     }
     return n;
+}
+
+graph *blueprint_add_function(blueprint *bp, const char *name, int pure)
+{
+    graph *g = blueprint_add_graph(bp, GRAPH_FUNCTION, name);
+    if (!g) {
+        return NULL;
+    }
+    node *entry = graph_add_node(g, &NODE_FunctionEntry);
+    node *ret = graph_add_node(g, &NODE_Return);
+    g->entry_id = entry ? entry->id : 0;
+    g->return_id = ret ? ret->id : 0;
+    g->call_depth_limit = 64;
+    if (pure && entry && ret) {
+        if (entry->output_count && entry->output_pins[0].kind == PIN_EXEC) {
+            graph_remove_pin(g, entry, 1, 0);
+        }
+        if (ret->input_count && ret->input_pins[0].kind == PIN_EXEC) {
+            graph_remove_pin(g, ret, 0, 0);
+        }
+    }
+    return g;
+}
+
+graph *blueprint_add_macro(blueprint *bp, const char *name)
+{
+    graph *g = blueprint_add_graph(bp, GRAPH_MACRO, name);
+    if (!g) {
+        return NULL;
+    }
+    node *entry = graph_add_node(g, &NODE_FunctionEntry);
+    node *ret = graph_add_node(g, &NODE_Return);
+    g->entry_id = entry ? entry->id : 0;
+    g->return_id = ret ? ret->id : 0;
+    return g;
 }

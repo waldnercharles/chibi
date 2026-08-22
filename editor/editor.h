@@ -45,4 +45,8 @@ unsigned editor_preview_generation(const editor *e);
 /* Create the preview runtime if missing. No-op when one is attached. */
 void editor_preview_create(editor *e);
 
+/* Dispatch an authored event through the preview instance and make the
+ * resulting activation the selected debugger activation. */
+flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_error *error);
+
 #endif

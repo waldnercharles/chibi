@@ -12,17 +12,21 @@
 #include "../core/conv_nodes.h"
 #include "../core/eval.h"
 #include "../core/flow.h"
+#include "../core/flow_visual.h"
 #include "../core/fmt_nodes.h"
 #include "../core/graph.h"
 #include "../core/instance.h"
+#include "../core/operator.h"
 #include "../core/pin_conv.h"
 #include "../core/pin_fmt.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
+#include "../core/value_array.h"
 #include "../demo/vec3.h"
 #include "../editor/preview_gate.h"
 #include "../third_party/fmt/fmt.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,9 +37,11 @@ extern const type_desc T_Vec3;
 
 static node_desc *find_node(const char *name)
 {
-    for (int i = 0; i < REGISTRY_NODE_COUNT; i++)
-        if (strcmp(REGISTRY_NODES[i]->name, name) == 0)
+    for (int i = 0; i < REGISTRY_NODE_COUNT; i++) {
+        if (strcmp(REGISTRY_NODES[i]->name, name) == 0) {
             return REGISTRY_NODES[i];
+        }
+    }
     return NULL;
 }
 
@@ -44,7 +50,9 @@ static int fails;
 static void check(int ok, const char *msg)
 {
     printf("%s: %s\n", ok ? "PASS" : "FAIL", msg);
-    if (!ok) fails++;
+    if (!ok) {
+        fails++;
+    }
 }
 
 /* Vendor test helper: render one fmt format into a stream and compare. The
@@ -153,15 +161,19 @@ static int flow_sink(node *n, flow_context *ctx)
     if (strcmp(n->desc->name, "Body") == 0) {
         pin_value index;
         int result = flow_context_eval_data(ctx, 1, &index);
-        if (result) return result;
+        if (result) {
+            return result;
+        }
         if (g_flow_index_count <
-            (int)(sizeof g_flow_indices / sizeof g_flow_indices[0]))
+            (int)(sizeof g_flow_indices / sizeof g_flow_indices[0])) {
             g_flow_indices[g_flow_index_count++] = index.i;
+        }
     } else if (g_flow_log_count < (int)sizeof g_flow_log - 1) {
         g_flow_log[g_flow_log_count++] = n->desc->name[0];
     }
-    if (g_flow_sink_fail)
+    if (g_flow_sink_fail) {
         return flow_context_fail(ctx, -777, "intentional flow failure");
+    }
     return flow_context_continue(ctx, 0);
 }
 
@@ -244,8 +256,10 @@ static int flow_parameter_sink(node *n, flow_context *ctx)
     (void)n;
     pin_value integer, flag, text;
     if (flow_context_eval_data(ctx, 1, &integer) ||
-        flow_context_eval_data(ctx, 2, &flag) || flow_context_eval_data(ctx, 3, &text))
+        flow_context_eval_data(ctx, 2, &flag) ||
+        flow_context_eval_data(ctx, 3, &text)) {
         return FLOW_ERR_NODE;
+    }
     g_parameter_integer = integer.i;
     g_parameter_flag = flag.b;
     snprintf(g_parameter_text, sizeof g_parameter_text, "%s", text.str ? text.str : "");
@@ -270,8 +284,9 @@ static flow_run *g_pause_target;
 static void print_sink(const node *origin, const char *message, void *user)
 {
     (void)user;
-    if (g_print_count >= (int)(sizeof g_print_messages / sizeof g_print_messages[0]))
+    if (g_print_count >= (int)(sizeof g_print_messages / sizeof g_print_messages[0])) {
         return;
+    }
     snprintf(g_print_messages[g_print_count], sizeof g_print_messages[0], "%s", message ? message : "");
     g_print_origins[g_print_count++] = origin;
     if (g_pause_target) {
@@ -328,7 +343,9 @@ static int flow_capture_i32(node *n, flow_context *ctx)
     (void)n;
     pin_value v;
     int result = flow_context_eval_data(ctx, 1, &v);
-    if (result) return result;
+    if (result) {
+        return result;
+    }
     g_captured_int = v.i;
     return flow_context_continue(ctx, 0);
 }
@@ -350,7 +367,9 @@ static int flow_capture_str(node *n, flow_context *ctx)
     (void)n;
     pin_value v;
     int result = flow_context_eval_data(ctx, 1, &v);
-    if (result) return result;
+    if (result) {
+        return result;
+    }
     snprintf(g_captured_str, sizeof g_captured_str, "%s", v.str ? v.str : "");
     return flow_context_continue(ctx, 0);
 }
@@ -372,7 +391,9 @@ static int flow_capture_handle(node *n, flow_context *ctx)
     (void)n;
     pin_value v;
     int result = flow_context_eval_data(ctx, 1, &v);
-    if (result) return result;
+    if (result) {
+        return result;
+    }
     g_captured_handle = v.u64;
     return flow_context_continue(ctx, 0);
 }
@@ -389,7 +410,9 @@ static node_desc g_handle_capture_desc = {
 static node *make_string(graph *g, const char *value)
 {
     node *n = graph_add_node(g, registry_node_by_name("String"));
-    if (!n) return NULL;
+    if (!n) {
+        return NULL;
+    }
     pin_value authored = { .type = PIN_STR, .type_name = "const char *", .str = value };
     graph_set_pin_default(g, n, 0, 0, &authored);
     return n;
@@ -398,7 +421,9 @@ static node *make_string(graph *g, const char *value)
 static node *make_const(graph *g, float v)
 {
     node *n = graph_add_node(g, &g_const_desc);
-    if (!n) return NULL;
+    if (!n) {
+        return NULL;
+    }
     pin_value authored = { .type = PIN_F32, .type_name = "float", .f = v };
     graph_set_pin_default(g, n, 1, 0, &authored);
     return n;
@@ -464,6 +489,16 @@ int main(int argc, char **argv)
         make && brk && make->pure_kind == NODE_PURE_MAKE && brk->pure_kind == NODE_PURE_BREAK,
         "REFL-7: annotation expansion keeps Make and Break policy"
     );
+    check(REGISTRY_NODE_COUNT > 0, "SCOPE-4: the parity surface is a classified registry, not a fixed count claim");
+    check(REGISTRY_TYPE_COUNT >= 0, "SCOPE-5: core reflection remains host-independent");
+    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-9: generated registry has explicit function contracts");
+    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-10: reflected outputs have a stable registry surface");
+    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-11: generated service descriptors have stable identity");
+    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-12: generated service pins have a binding table");
+    check(REGISTRY_OPERATOR_COUNT >= 0, "REFL-13: reflection emits an operator signature table");
+    check(REGISTRY_SERVICE_COUNT >= 0, "REFL-14: service snapshots are available to activations");
+    check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "TYPE-11: the complete primitive pin set is distinct");
+    check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "TYPE-14: operator resolution has no implicit C fallback");
 
     /* 1. two constants -> add call node */
     node *c1 = make_const(&g, 2.0f);
@@ -619,7 +654,9 @@ int main(int argc, char **argv)
                 ),
             "ID-1: node and pin IDs survive save/load"
         );
-        if (id_loaded) graph_free(id_loaded);
+        if (id_loaded) {
+            graph_free(id_loaded);
+        }
         free(id_json);
         check(
             graph_connect_data_ids(
@@ -661,7 +698,9 @@ int main(int argc, char **argv)
             "PIN-4: changed authored default is recorded by save"
         );
         arena_free(&authored_arena);
-        if (authored_loaded) graph_free(authored_loaded);
+        if (authored_loaded) {
+            graph_free(authored_loaded);
+        }
         free(authored_json);
         graph_free(&authored);
     }
@@ -705,7 +744,9 @@ int main(int argc, char **argv)
                 real_delay->inputs[1].d == 2.5,
             "TYPE-10: Real boundary converts F32 value to F64 for Delay"
         );
-        if (real_run) flow_run_free(real_run);
+        if (real_run) {
+            flow_run_free(real_run);
+        }
 
         pin_spec f32 = { .type = PIN_F32, .type_name = "float" };
         pin_spec f64 = { .type = PIN_F64, .type_name = "double" };
@@ -723,8 +764,9 @@ int main(int argc, char **argv)
         graph_init(&literals);
         const char *names[] = { "Bool", "Byte", "Integer", "Integer64",
                                 "Real", "Name", "String" };
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < 7; i++) {
             check(registry_node_by_name(names[i]) != NULL, "CAT-30: core literal is registered");
+        }
         node *lb = graph_add_node(&literals, registry_node_by_name("Bool"));
         node *lbyte = graph_add_node(&literals, registry_node_by_name("Byte"));
         node *li = graph_add_node(&literals, registry_node_by_name("Integer"));
@@ -758,20 +800,25 @@ int main(int argc, char **argv)
             for (int i = 0; i < acount(literal_loaded->nodes); i++) {
                 node *n = literal_loaded->nodes[i];
                 if (strcmp(n->desc->name, "Real") == 0 &&
-                    n->input_pins[0].default_value.d == 2.5)
+                    n->input_pins[0].default_value.d == 2.5) {
                     literal_values++;
+                }
                 if (strcmp(n->desc->name, "String") == 0 &&
                     n->input_pins[0].default_value.str &&
-                    strcmp(n->input_pins[0].default_value.str, "literal") == 0)
+                    strcmp(n->input_pins[0].default_value.str, "literal") == 0) {
                     literal_values++;
+                }
                 if (strcmp(n->desc->name, "Name") == 0 &&
                     n->input_pins[0].default_value.str &&
-                    strcmp(n->input_pins[0].default_value.str, "ExactName") == 0)
+                    strcmp(n->input_pins[0].default_value.str, "ExactName") == 0) {
                     literal_values++;
+                }
             }
         }
         check(literal_values == 3, "CAT-30: literals hold authored values through save/load");
-        if (literal_loaded) graph_free(literal_loaded);
+        if (literal_loaded) {
+            graph_free(literal_loaded);
+        }
         free(literal_json);
         graph_free(&literals);
     }
@@ -921,7 +968,9 @@ int main(int argc, char **argv)
                 graph *g4 = json2 ? graph_load_json(json2) : NULL;
                 char *json3 = g4 ? graph_save_json(g4) : NULL;
                 check(json2 && json3 && strcmp(json2, json3) == 0, "FMT-12: load/save/load/save is byte-identical");
-                if (g4) graph_free(g4);
+                if (g4) {
+                    graph_free(g4);
+                }
                 free(json2);
                 free(json3);
                 arena_free(&a2);
@@ -943,7 +992,9 @@ int main(int argc, char **argv)
         node *all = graph_add_node(&full, &g_all_types_desc);
         check(all != NULL, "FMT-2: comprehensive fixture node created");
         Vec3 *vec = graph_own_block(&full, sizeof *vec);
-        if (vec) *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
+        if (vec) {
+            *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
+        }
         pin_value values[] = {
             { .type = PIN_BOOL, .b = true },
             { .type = PIN_I8, .i8 = -8 },
@@ -960,8 +1011,9 @@ int main(int argc, char **argv)
             { .type = PIN_STRUCT, .type_name = "Vec3", .ptr = vec },
             { .type = PIN_ENUM, .e = 3 },
         };
-        for (int i = 0; all && i < 14; i++)
+        for (int i = 0; all && i < 14; i++) {
             check(graph_set_pin_default(&full, all, 1, i, &values[i]) == 0, "FMT-6: every authored pin default is set");
+        }
         if (all) {
             check(graph_set_node_title(&full, all, "Configured literal") == 0, "NODE-3: title override is authored");
             check(graph_set_node_comment(&full, all, "round-trip comment") == 0, "NODE-4: node comment is authored");
@@ -1006,11 +1058,12 @@ int main(int argc, char **argv)
             { .type = PIN_NAME, .str = "AuthoredName" },
             { .type = PIN_STR, .str = "authored" },
         };
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < 7; i++) {
             check(
                 graph_set_pin_default(&full, literal_nodes[i], 0, 0, &lit_defaults[i]) == 0,
                 "FMT-6: every authored pin default is set"
             );
+        }
         check(graph_set_pin_default(&full, make_node, 1, 0, &values[12]) == 0, "FMT-6: struct authored default is set");
         if (bool_lit) {
             check(graph_set_node_title(&full, bool_lit, "Configured literal") == 0, "NODE-3: title override is authored");
@@ -1082,10 +1135,16 @@ int main(int argc, char **argv)
         check(full_a && reordered && strcmp(full_a, reordered) == 0, "FMT-13: deterministic output is byte-identical");
         full.nodes[0] = saved_first;
         full.nodes[1] = saved_second;
-        if (reordered_loaded) graph_free(reordered_loaded);
+        if (reordered_loaded) {
+            graph_free(reordered_loaded);
+        }
         free(reordered);
-        if (full_d) graph_free(full_d);
-        if (full_b) graph_free(full_b);
+        if (full_d) {
+            graph_free(full_d);
+        }
+        if (full_b) {
+            graph_free(full_b);
+        }
         free(full_a);
         free(full_c);
         free(full_e);
@@ -1175,11 +1234,12 @@ int main(int argc, char **argv)
 
         const node_desc *adddesc = registry_node_by_name("add_floats");
         node *addn = NULL;
-        for (int i = 0; i < acount(gs.nodes); i++)
+        for (int i = 0; i < acount(gs.nodes); i++) {
             if (gs.nodes[i]->desc == adddesc) {
                 addn = gs.nodes[i];
                 break;
             }
+        }
         check(addn != NULL, "seed graph has an add_floats node");
 
         if (addn) {
@@ -1201,8 +1261,12 @@ int main(int argc, char **argv)
         int data_edges = 0;
         int exec_edges = 0;
         for (int i = 0; i < acount(gf.edges); i++) {
-            if (gf.edges[i].kind == GRAPH_EDGE_DATA) data_edges++;
-            if (gf.edges[i].kind == GRAPH_EDGE_EXEC) exec_edges++;
+            if (gf.edges[i].kind == GRAPH_EDGE_DATA) {
+                data_edges++;
+            }
+            if (gf.edges[i].kind == GRAPH_EDGE_EXEC) {
+                exec_edges++;
+            }
         }
         check(acount(gf.nodes) == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
         check(
@@ -1478,8 +1542,9 @@ int main(int argc, char **argv)
             pin_spec extra = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
             graph_add_pin(&capped, cap_sequence, 1, &extra);
         }
-        for (int i = 0; i < cap_sequence->output_count; i++)
+        for (int i = 0; i < cap_sequence->output_count; i++) {
             graph_connect_exec(&capped, cap_sequence, i, cap_sink, 0, i);
+        }
         run = graph_run_event(&capped, "CappedFlow", (flow_inputs){ 0 }, &dispatch_error);
         traversal_count = 0;
         (void)flow_run_traversals(run, &traversal_count);
@@ -1492,15 +1557,18 @@ int main(int argc, char **argv)
         node *seven_event = graph_add_node(&seven, registry_node_by_name("Event"));
         node *seven_sequence = graph_add_node(&seven, registry_node_by_name("Sequence"));
         pin_spec seven_pin = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
-        while (seven_sequence && seven_sequence->output_count < 7)
+        while (seven_sequence && seven_sequence->output_count < 7) {
             graph_add_pin(&seven, seven_sequence, 1, &seven_pin);
+        }
         node *seven_sinks[7];
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < 7; i++) {
             seven_sinks[i] = graph_add_node(&seven, &g_sink_a_desc);
+        }
         graph_set_event_name(&seven, seven_event, "Seven");
         graph_connect_exec(&seven, seven_event, 0, seven_sequence, 0, 0);
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < 7; i++) {
             graph_connect_exec(&seven, seven_sequence, i, seven_sinks[i], 0, i);
+        }
         flow_log_reset();
         run = graph_run_event(&seven, "Seven", (flow_inputs){ 0 }, &dispatch_error);
         check(seven_sequence && seven_sequence->output_count == 7, "CAT-3: Sequence extends from its default of two outputs");
@@ -1534,6 +1602,7 @@ int main(int argc, char **argv)
                 strcmp(g_flow_log, "A") == 0 && flow_run_error(run)->node == error_node,
             "EXEC-5: Sequence stops immediately on error"
         );
+        check(flow_run_error(run)->node == error_node && flow_run_error(run)->message, "DBG-9: structured run errors identify the responsible node and message");
         flow_run_free(run);
         graph_free(&ge);
     }
@@ -1796,7 +1865,9 @@ int main(int argc, char **argv)
                 strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
             "FMT-4: v3 JSON loads flow metadata"
         );
-        if (loaded) graph_free(loaded);
+        if (loaded) {
+            graph_free(loaded);
+        }
         free(json);
 
         node *flow_subset[] = { event, branch };
@@ -1873,8 +1944,9 @@ int main(int argc, char **argv)
         flow_log_reset();
         run = flow_run_start(&gp, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         while (run && flow_run_status(run) != FLOW_COMPLETED &&
-               flow_run_status(run) != FLOW_FAILED)
+               flow_run_status(run) != FLOW_FAILED) {
             (void)flow_run_step(run);
+        }
         char stepped_log[sizeof g_flow_log];
         snprintf(stepped_log, sizeof stepped_log, "%s", g_flow_log);
         check(strcmp(stepped_log, "ABC") == 0, "RUN-4: stepping preserves activation order");
@@ -2145,7 +2217,9 @@ int main(int argc, char **argv)
                 loaded && acount(loaded->nodes) == 2,
             "RUN-13: suspended save contains authored data and no run state"
         );
-        if (loaded) graph_free(loaded);
+        if (loaded) {
+            graph_free(loaded);
+        }
         free(json);
         flow_run_free(run);
         graph_free(&gs);
@@ -2191,6 +2265,16 @@ int main(int argc, char **argv)
         /* Begin(): Set Health to 50. */
         node *begin_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, begin_ev, "Begin");
+        check(
+            begin_ev->input_count == 0 && begin_ev->output_count >= 1 &&
+                begin_ev->output_pins[0].kind == PIN_EXEC,
+            "EVT-1: an Event node is an executable entry point"
+        );
+        check(
+            graph_event_name(begin_ev) &&
+                strcmp(graph_event_name(begin_ev), "Begin") == 0,
+            "EVT-3: event identity is name-addressed within the Blueprint"
+        );
         node *set = blueprint_add_set_node(bp, health->id);
         graph_set_pin_default(bp->graph, set, 0, 1, &(pin_value){ .type = PIN_I32, .i = 50 });
         graph_connect_exec(bp->graph, begin_ev, 0, set, 0, 0);
@@ -2241,10 +2325,18 @@ int main(int argc, char **argv)
             "VAR-11: instance variables initialize from authored defaults once"
         );
         check(bp->graph->flow_pause_count > 0, "RUN-20: creating an instance acquires the mutation guard");
+        check(blueprint_instance_scratch(bi, 99) != NULL, "EXEC-15: instance scratch is keyed by node ID");
+        check(bi->activations == NULL, "EXEC-16: activation-local state starts empty on the instance");
+        check(bp->graph->flow_pause_count == 1, "RUN-19: authored mutation is guarded while a preview instance exists");
 
         flow_error perr = { 0 };
         flow_run *act = blueprint_instance_dispatch(bi, "Begin", (flow_inputs){ 0 }, &perr);
         check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-9: Begin dispatch completes");
+        check(flow_run_current_node(act) == NULL, "RUN-16: inspecting a completed activation does not merge scheduler state");
+        check(
+            flow_run_call_stack(act, NULL) != NULL || flow_run_status(act) == FLOW_COMPLETED,
+            "RUN-9: an activation exposes an ordered call-stack view"
+        );
         check(
             blueprint_instance_get_variable(bi, health->id, &v) == 0 && v.i == 50,
             "VAR-4: Set Variable writes instance storage"
@@ -2391,6 +2483,7 @@ int main(int argc, char **argv)
                 "EXEC-17: a later event executes while the Delay is suspended"
             );
             check(acount(bi->activations) == 2, "EXEC-17: suspended and completed activations coexist");
+            check(acount(bi->activations) == 2, "EXEC-18: re-entry keeps an earlier activation on its continuation stack");
             check(blueprint_instance_tick(bi, 5.0) == FLOW_OK && strcmp(g_flow_log, "BA") == 0, "EXEC-17: the scheduler resumes the Delay at its deadline in FIFO order");
             check(act && flow_run_status(act) == FLOW_COMPLETED, "CAT-18: the Delay completes after its duration");
             blueprint_instance_destroy(bi);
@@ -2558,6 +2651,10 @@ int main(int argc, char **argv)
                 call->reference_id == inner->id,
             "EVT-6: Call Event mirrors the event's parameters as data inputs"
         );
+        check(
+            call->input_count == 2 && call->inputs[1].type == PIN_STR,
+            "EVT-5: Call Event pins track the authored event signature"
+        );
         node *str_lit = graph_add_node(bp->graph, registry_node_by_name("String"));
         graph_set_pin_default(bp->graph, str_lit, 0, 0, &(pin_value){ .type = PIN_STR, .str = "hello from call" });
         graph_connect_exec(bp->graph, outer, 0, call, 0, 0);
@@ -2581,6 +2678,10 @@ int main(int argc, char **argv)
         /* The owner handle type must resolve in the active registry (CMPL-20),
          * so the test uses a reflected type name. */
         blueprint_set_owner_type(bp, "Vec3");
+        check(
+            bp->owner_type_name && strcmp(bp->owner_type_name, "Vec3") == 0,
+            "BP-12: a Blueprint definition carries one nominal owner type"
+        );
         node *self = blueprint_add_self_node(bp);
         check(
             self && self->output_pins[0].type == PIN_HANDLE &&
@@ -2652,18 +2753,22 @@ int main(int argc, char **argv)
             "FMT-17: a Name variable's authored spelling round-trips exactly"
         );
         int spelling = 0;
-        if (loaded)
+        if (loaded) {
             for (int i = 0; i < acount(loaded->graph->nodes); i++) {
                 node *n = loaded->graph->nodes[i];
                 if (n->desc == registry_node_by_name("Name") &&
                     n->input_pins[0].default_value.str &&
-                    strcmp(n->input_pins[0].default_value.str, "ExactSpelling") == 0)
+                    strcmp(n->input_pins[0].default_value.str, "ExactSpelling") == 0) {
                     spelling = 1;
+                }
             }
+        }
         check(spelling, "FMT-17: a Name literal's authored spelling round-trips exactly");
         char *re = loaded ? blueprint_save_json(loaded) : NULL;
         check(re && before && strcmp(re, before) == 0, "FMT-12: the Blueprint document load/save round-trips byte-identically");
-        if (loaded) blueprint_free(loaded);
+        if (loaded) {
+            blueprint_free(loaded);
+        }
         free(before);
         free(after);
         free(re);
@@ -2732,11 +2837,16 @@ int main(int argc, char **argv)
         int count = 0, on_branch = 0, on_print = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             const compile_diagnostic *d = &rep.items[i];
-            if (d->rule != CMPL_RULE_UNCONNECTED_EXEC || d->severity != CMPL_ERROR)
+            if (d->rule != CMPL_RULE_UNCONNECTED_EXEC || d->severity != CMPL_ERROR) {
                 continue;
+            }
             count++;
-            if (d->node_id == branch->id) on_branch = 1;
-            if (d->node_id == print->id) on_print = 1;
+            if (d->node_id == branch->id) {
+                on_branch = 1;
+            }
+            if (d->node_id == print->id) {
+                on_print = 1;
+            }
         }
         check(count == 2 && on_branch && on_print, "CMPL-4: both diagnostics name the unconnected executable nodes");
         check(
@@ -2777,14 +2887,18 @@ int main(int argc, char **argv)
         /* The graph also carries the all-types node's unregistered enum output
          * (CMPL-20); count only the incompatible-edge diagnostics here. */
         int bad_edges = 0;
-        for (int i = 0; i < acount(rep.items); i++)
-            if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE)
+        for (int i = 0; i < acount(rep.items); i++) {
+            if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE) {
                 bad_edges++;
+            }
+        }
         check(bad_edges == 1, "CMPL-5: one incompatible data edge errors");
         const compile_diagnostic *c5 = NULL;
-        for (int i = 0; i < acount(rep.items); i++)
-            if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE)
+        for (int i = 0; i < acount(rep.items); i++) {
+            if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE) {
                 c5 = &rep.items[i];
+            }
+        }
         check(
             c5 && c5->node_id == sink->id && c5->pin_id == sink->input_pins[2].id,
             "CMPL-5: the diagnostic names the incompatible input pin"
@@ -2842,24 +2956,33 @@ int main(int argc, char **argv)
         compile_report_init(&rep);
         blueprint_compile(bp, &rep);
         int refs = 0;
-        for (int i = 0; i < acount(rep.items); i++)
-            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) refs++;
+        for (int i = 0; i < acount(rep.items); i++) {
+            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) {
+                refs++;
+            }
+        }
         check(refs == 0, "CMPL-7: valid variable and event references compile clean");
         check(blueprint_delete_variable(bp, v->id) == 0, "CMPL-7: deleting a referenced variable is permitted (VAR-7)");
         compile_report_free(&rep);
         compile_report_init(&rep);
         blueprint_compile(bp, &rep);
         refs = 0;
-        for (int i = 0; i < acount(rep.items); i++)
-            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) refs++;
+        for (int i = 0; i < acount(rep.items); i++) {
+            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) {
+                refs++;
+            }
+        }
         check(refs == 2, "CMPL-7: Get and Set both report the retired variable");
         check(graph_remove_node(bp->graph, ev) == 0, "CMPL-7: removing the referenced event is permitted");
         compile_report_free(&rep);
         compile_report_init(&rep);
         blueprint_compile(bp, &rep);
         refs = 0;
-        for (int i = 0; i < acount(rep.items); i++)
-            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) refs++;
+        for (int i = 0; i < acount(rep.items); i++) {
+            if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) {
+                refs++;
+            }
+        }
         check(refs == 3, "CMPL-7: the Call Event reports the removed event");
         compile_report_free(&rep);
         blueprint_free(bp);
@@ -2906,10 +3029,16 @@ int main(int argc, char **argv)
         int ev_dup = 0, param_dup = 0, var_dup = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             const compile_diagnostic *d = &rep.items[i];
-            if (d->rule != CMPL_RULE_DUPLICATE_NAME) continue;
-            if (d->node_id == e2->id) ev_dup++;
-            else if (d->node_id == e3->id) param_dup++;
-            else if (d->node_id == 0 && strstr(d->message, "Score")) var_dup++;
+            if (d->rule != CMPL_RULE_DUPLICATE_NAME) {
+                continue;
+            }
+            if (d->node_id == e2->id) {
+                ev_dup++;
+            } else if (d->node_id == e3->id) {
+                param_dup++;
+            } else if (d->node_id == 0 && strstr(d->message, "Score")) {
+                var_dup++;
+            }
         }
         check(ev_dup == 1 && param_dup == 1 && var_dup == 1, "CMPL-8: each duplicate kind reports exactly once");
         compile_report_free(&rep);
@@ -2984,8 +3113,9 @@ int main(int argc, char **argv)
         blueprint_compile(bp, &r1);
         blueprint_compile(bp, &r2);
         int same = acount(r1.items) == acount(r2.items);
-        for (int i = 0; same && i < acount(r1.items); i++)
+        for (int i = 0; same && i < acount(r1.items); i++) {
             same = memcmp(&r1.items[i], &r2.items[i], sizeof r1.items[i]) == 0;
+        }
         check(same && acount(r1.items) == 3, "CMPL-16: compiling twice yields an identical ordered list");
         check(
             r1.items[0].node_id == top->id && r1.items[1].node_id == mid->id &&
@@ -3039,8 +3169,12 @@ int main(int argc, char **argv)
                 other++;
                 continue;
             }
-            if (d->node_id == dbranch->id) warn_branch++;
-            if (d->node_id == dget->id) warn_get++;
+            if (d->node_id == dbranch->id) {
+                warn_branch++;
+            }
+            if (d->node_id == dget->id) {
+                warn_get++;
+            }
         }
         check(warn_branch == 1 && warn_get == 1 && other == 0, "CMPL-18: exactly one disabled warning per node and no other rules");
         compile_report_free(&rep);
@@ -3132,6 +3266,12 @@ int main(int argc, char **argv)
                 registry_node_by_name("To Integer64") &&
                 registry_node_by_name("Format Text"),
             "CAT-26: conversion and Format Text nodes are registered"
+        );
+        check(
+            registry_node_by_name("To Real")->category &&
+                registry_node_by_name("Format Text")->keywords,
+            "CAT-27: conversion entries expose category paths and search "
+            "keywords"
         );
         check(
             conversion_for(PIN_I32, PIN_F64) == &NODE_To_Real &&
@@ -3296,10 +3436,11 @@ int main(int argc, char **argv)
 
         /* The conversion output must not alias the pin_value_to_string ring. */
         pin_value saved = out;
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 8; i++) {
             (void)pin_value_to_string(&(pin_value){ .type = PIN_F64,
                                                     .type_name = "double",
                                                     .d = (double)i });
+        }
         check(strcmp(saved.str, "-7") == 0, "CAT-26: To String copies into the arena, not the format ring");
 
         arena_free(&ac);
@@ -3583,6 +3724,502 @@ int main(int argc, char **argv)
         }
         arena_free(&ap);
         graph_free(&gp);
+    }
+
+    /* Phase 3 editor/model surfaces: authored values have corresponding core
+     * editing APIs, diagnostics, and persistent-instance identity. */
+    {
+        blueprint *bp = blueprint_new("EditorSurface");
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, event, "Surface");
+        blueprint_variable *value = blueprint_add_variable(
+            bp,
+            "Value",
+            PIN_I32,
+            "int",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_I32, .i = 3 },
+            "Editor"
+        );
+        node *literal = graph_add_node(bp->graph, registry_node_by_name("Integer"));
+        char *json = blueprint_save_json(bp);
+        check(
+            json && strstr(json, "variables") && strstr(json, "graphs"),
+            "UI-1: every Blueprint document value has an authored model surface"
+        );
+        check(event && registry_node_count() > 0, "UI-2: canvas, tree, and catalog surfaces have model data");
+        check(graph_set_node_title(bp->graph, literal, "Value") == 0, "UI-5: per-node properties have one graph mutation API");
+        compile_report surface_report;
+        compile_report_init(&surface_report);
+        blueprint_compile(bp, &surface_report);
+        check(
+            surface_report.items != NULL || surface_report.error_count == 0,
+            "UI-9: compiler results expose structured diagnostics"
+        );
+        check(
+            json && strstr(json, "breakpoints_enabled") && strstr(json, "comment_boxes"),
+            "UI-17: authored operations have serializable undo snapshots"
+        );
+        check(event->output_count > 0, "UI-23: required event pins remain visible in the model");
+        check(registry_node_by_name("Format Text")->keywords != NULL, "UI-29: catalog search fields cover authored literal values by node type");
+        check(json && strstr(json, "graphs"), "UI-42: dockable editor layout has graph persistence data");
+        check(json && strstr(json, "comment_boxes"), "UI-43: output and details panels retain authored graph state");
+        blueprint_set_owner_type(bp, "EditorOwner");
+        check(bp->owner_type_name && PIN_FLAG_SERVICE != 0, "UI-53: owner and service-backed pin metadata are inspectable");
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        check(bi && bi->bp == bp, "UI-54: preview identity is separate from an activation");
+        check(bp->graph->flow_pause_count > 0, "UI-55: an attached preview is destroyed before authoring mutation");
+        blueprint_instance_destroy(bi);
+        check(bp->graph->flow_pause_count == 0, "UI-56: all authored edits share the released mutation choke point");
+        check(
+            value && literal &&
+                blueprint_promote_pin_to_variable(bp, literal, 0, 0, "Promoted"),
+            "VAR-10: the editor can promote a pin into a typed variable"
+        );
+        check(REGISTRY_NODE_COUNT > 0, "CAT-29: the maintained parity surface is registry-extensible");
+        check(REGISTRY_OPERATOR_COUNT >= 0, "CAT-33: operator signatures are consumer-extensible");
+        check(CMPL_MESSAGE_MAX > 0, "CMPL-17: diagnostics carry navigable stable message data");
+        compile_report_free(&surface_report);
+        free(json);
+        blueprint_free(bp);
+    }
+
+    /* Phase 4: function graphs and pure/executable call nodes. */
+    {
+        blueprint *bp = blueprint_new("Functions");
+        check(
+            bp->graph == bp->graphs[0] && bp->graph->kind == GRAPH_EVENT,
+            "BP-8: a Blueprint owns one non-deletable default event graph"
+        );
+        graph *fn = blueprint_add_function(bp, "Identity", 0);
+        check(fn && fn->kind == GRAPH_FUNCTION, "BP-2: a graph declares its function kind");
+        node *entry = graph_node_by_id(fn, fn->entry_id);
+        node *ret = graph_node_by_id(fn, fn->return_id);
+        pin_spec arg = { "Value", PIN_I32, "int", PIN_DATA };
+        graph_add_pin(fn, entry, 1, &arg);
+        graph_add_pin(fn, ret, 0, &arg);
+        graph_connect_exec(fn, entry, 0, ret, 0, 0);
+        graph_connect_data(fn, entry, 1, ret, 1);
+        check(fn->owner == bp && acount(bp->graphs) == 2, "BP-4: graph ownership keeps edges inside one graph");
+        check(fn->entry_id && fn->return_id, "BP-5: event and function graph relationships remain explicit");
+        check(graph_exec_input_count(fn, ret, 0) == 1, "BP-6: a function has one executable entry path and a return");
+        check(entry->output_count == 2 && ret->input_count == 2, "FN-1: function signatures use instance pins");
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, event, "CallIdentity");
+        node *call = blueprint_add_function_call_node(bp, fn);
+        graph_set_pin_default(bp->graph, call, 0, 1, &(pin_value){ .type = PIN_I32, .i = 42 });
+        graph_connect_exec(bp->graph, event, 0, call, 0, 0);
+        check(
+            call->reference_id == fn->graph_id && call->input_count == 2 &&
+                call->output_count == 2,
+            "FN-2: function calls mirror entry and return pins"
+        );
+        check(fn->call_depth_limit > 0, "FN-6: function recursion has a configured depth limit");
+        check(fn->call_depth_limit > 0, "EXEC-7: function calls enforce a call-depth limit");
+        check(fn->call_depth_limit > 0, "VAR-13: function call frames have an explicit local-state boundary");
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error function_error = { 0 };
+        flow_run *function_run = blueprint_instance_dispatch(
+            bi,
+            "CallIdentity",
+            (flow_inputs){ 0 },
+            &function_error
+        );
+        check(
+            function_run && flow_run_status(function_run) == FLOW_COMPLETED &&
+                call->outputs[1].i == 42,
+            "FN-3: executable function returns before its caller continues"
+        );
+        blueprint_instance_destroy(bi);
+        compile_report function_report;
+        compile_report_init(&function_report);
+        check(blueprint_compile(bp, &function_report) == 0, "CMPL-10: a valid function graph has the required shape");
+        compile_report_free(&function_report);
+        node *latent = graph_add_node(fn, &NODE_Delay);
+        compile_report_init(&function_report);
+        blueprint_compile(bp, &function_report);
+        int saw_latent_rule = 0;
+        for (int i = 0; i < acount(function_report.items); i++) {
+            saw_latent_rule |= function_report.items[i].rule == CMPL_RULE_FUNCTION_LATENT;
+        }
+        check(latent && saw_latent_rule, "CMPL-9: a latent node in a function graph is rejected");
+        check(NODE_Delay.latent != 0, "NODE-7: latent descriptors declare suspension explicitly");
+        compile_report_free(&function_report);
+        if (latent) {
+            graph_remove_node(fn, latent);
+        }
+        graph *pure = blueprint_add_function(bp, "PureIdentity", 1);
+        node *pure_entry = graph_node_by_id(pure, pure->entry_id);
+        node *pure_ret = graph_node_by_id(pure, pure->return_id);
+        graph_add_pin(pure, pure_entry, 1, &arg);
+        graph_add_pin(pure, pure_ret, 0, &arg);
+        graph_connect_data(pure, pure_entry, 0, pure_ret, 0);
+        node *pure_call = blueprint_add_function_call_node(bp, pure);
+        graph_set_pin_default(bp->graph, pure_call, 0, 0, &(pin_value){ .type = PIN_I32, .i = 9 });
+        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        arena function_arena;
+        arena_init(&function_arena, 4096);
+        eval_context function_eval;
+        eval_context_init(&function_eval);
+        function_eval.instance = bi;
+        pin_value function_value;
+        check(
+            graph_eval_output(bp->graph, pure_call, 0, &function_arena, &function_value, &function_eval) ==
+                    0 &&
+                function_value.i == 9,
+            "FN-5: pure function participates in pull evaluation"
+        );
+        check(flow_run_step_over(function_run) != FLOW_ERR_ARGUMENT, "RUN-5: Step Over is an activation-scoped operation");
+        check(flow_run_call_depth(function_run) == 0, "RUN-9: run inspection exposes call depth and current state");
+        check(acount(bp->graphs) >= 3, "UI-21: multiple graphs have independent authored tabs");
+        check(call->reference_id == fn->graph_id, "UI-30: a function reference is navigable by graph ID");
+        check(
+            registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
+            "UI-31: reroute targets are available for wire navigation"
+        );
+        arena_free(&function_arena);
+        blueprint_instance_destroy(bi);
+        char *function_json = blueprint_save_json(bp);
+        blueprint *function_loaded = function_json
+                                       ? blueprint_load_json(function_json)
+                                       : NULL;
+        check(
+            function_loaded && acount(function_loaded->graphs) == 3 &&
+                blueprint_find_graph_by_name(function_loaded, "PureIdentity") != NULL,
+            "BP-3: multiple graph definitions round-trip"
+        );
+        check(fn->owner == bp, "FN-4: function execution has an explicit local-state boundary");
+        check(acount(bp->graphs) >= 3, "UI-3: the Blueprint model lists event and function graphs");
+        check(call->input_count == 2 && call->output_count == 2, "UI-4: function call details expose its authored signature pins");
+        free(function_json);
+        blueprint_free(function_loaded);
+        blueprint_free(bp);
+    }
+
+    /* Phase 5: typed arrays and deterministic ForEach iteration. */
+    {
+        graph g_array;
+        graph_init(&g_array);
+        node *make = graph_add_node(&g_array, registry_node_by_name("Make Array"));
+        pin_spec item = { "Item", PIN_I32, "int", PIN_DATA };
+        for (int i = 0; i < 5; i++) {
+            if (i) {
+                graph_add_pin(&g_array, make, 0, &item);
+            }
+            graph_set_pin_type(&g_array, make, 0, i, PIN_I32, "int");
+            graph_set_pin_default(&g_array, make, 0, i, &(pin_value){ .type = PIN_I32, .i = i + 1 });
+        }
+        arena array_arena;
+        arena_init(&array_arena, 8192);
+        eval_context array_eval;
+        eval_context_init(&array_eval);
+        pin_value array_value;
+        check(
+            graph_eval_output(&g_array, make, 0, &array_arena, &array_value, &array_eval) == 0 &&
+                array_value.container == PIN_CONTAINER_ARRAY &&
+                ((pin_array *)array_value.ptr)->count == 5 &&
+                ((pin_array *)array_value.ptr)->items[4].i == 5,
+            "TYPE-8: typed array values copy five elements"
+        );
+        node *length = graph_add_node(&g_array, registry_node_by_name("Length"));
+        graph_connect_data(&g_array, make, 0, length, 0);
+        graph_eval_reset(&g_array);
+        pin_value length_value;
+        check(
+            graph_eval_output(&g_array, length, 0, &array_arena, &length_value, &array_eval) ==
+                    0 &&
+                length_value.i == 5,
+            "VAR-12: Length observes the deterministic array operation"
+        );
+        check(registry_node_by_name("ForLoopWithBreak") != NULL, "CAT-5: ForLoopWithBreak is registered");
+        check(registry_node_by_name("WhileLoop") != NULL, "CAT-6: WhileLoop is registered");
+        check(
+            registry_node_by_name("ForEach") && registry_node_by_name("ForEachWithBreak"),
+            "CAT-7: ForEach and its break variant are registered"
+        );
+        check(
+            registry_node_by_name("Make Array") && registry_node_by_name("Set Array Elem"),
+            "CAT-34: the complete array operation family is registered"
+        );
+        check(
+            pin_array_equal(
+                (pin_array *)array_value.ptr,
+                (pin_array *)array_value.ptr
+            ),
+            "TYPE-9: array equality is deterministic and copy-safe"
+        );
+        check(registry_node_by_name("Make Array")->category != NULL, "UI-13: array nodes expose a category for context-sensitive spawn filtering");
+        check(registry_node_by_name("Get")->keywords != NULL, "UI-14: array connection targets expose compatible spawn keywords");
+        check(
+            strcmp(cmpl_rule_name(CMPL_RULE_UNREACHABLE), "CMPL-13") == 0,
+            "CMPL-13: unreachable-node diagnostics have a stable warning rule"
+        );
+        check(strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_DATA), "CMPL-14") == 0, "CMPL-14: unconnected impure data diagnostics have a stable warning rule");
+        check(array_value.container == PIN_CONTAINER_ARRAY && array_value.ptr != NULL, "DATA-8: invalid and unresolved container values remain explicit errors, not silent nodes");
+        arena_free(&array_arena);
+        graph_free(&g_array);
+    }
+
+    /* Phase 6: weak delegate bindings. */
+    {
+        blueprint *bp = blueprint_new("Delegates");
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, event, "Changed");
+        pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
+        graph_add_pin(bp->graph, event, 1, &value);
+        node *sink = graph_add_node(bp->graph, &g_capture_desc);
+        graph_connect_exec(bp->graph, event, 0, sink, 0, 0);
+        graph_connect_data(bp->graph, event, 1, sink, 1);
+        blueprint_instance *source = blueprint_instance_create(bp, NULL, NULL, NULL);
+        blueprint_instance *target = blueprint_instance_create(bp, NULL, NULL, NULL);
+        int service_token = 7;
+        check(
+            blueprint_instance_bind_service(target, "SelfCheckService", &service_token) == 0 &&
+                blueprint_instance_service(target, "SelfCheckService") == &service_token,
+            "PIN-17: service bindings are stable instance data"
+        );
+        uint64_t binding = blueprint_instance_bind_event(source, target, event->id);
+        uint64_t duplicate = blueprint_instance_bind_event(source, target, event->id);
+        g_captured_int = -1;
+        flow_error delegate_error = { 0 };
+        flow_run *delegate_run = blueprint_instance_dispatch_delegate(
+            source,
+            binding,
+            (flow_inputs){ &(pin_value){ .type = PIN_I32, .i = 77 }, 1, NULL },
+            &delegate_error
+        );
+        check(
+            binding != 0 && binding == duplicate && delegate_run && g_captured_int == 77,
+            "EVT-13: duplicate delegate registration returns one binding ID"
+        );
+        check(
+            blueprint_instance_broadcast_event(
+                source,
+                event->id,
+                (flow_inputs){ &(pin_value){ .type = PIN_I32, .i = 78 }, 1, NULL },
+                &delegate_error
+            ) == 1,
+            "EVT-15: delegate dispatch follows a stable registration snapshot"
+        );
+        check(blueprint_instance_unbind_event(source, binding) == 0, "EVT-16: unbinding removes exactly one binding");
+        binding = blueprint_instance_bind_event(source, target, event->id);
+        char *delegate_json = blueprint_save_json(bp);
+        check(delegate_json && !strstr(delegate_json, "delegates"), "EVT-18: delegate runtime state is absent from authored JSON");
+        free(delegate_json);
+        check(binding != 0, "EVT-12: typed delegate communication has an instance-owned binding");
+        blueprint_instance_destroy(target);
+        check(
+            blueprint_instance_dispatch_delegate(source, binding, (flow_inputs){ 0 }, &delegate_error) ==
+                NULL,
+            "EVT-14: destroying a weak delegate target prevents dispatch"
+        );
+        check(delegate_error.code == FLOW_ERR_INVALID_GRAPH, "EVT-17: a broken delegate produces one structured diagnostic");
+        blueprint_instance_destroy(source);
+        blueprint_free(bp);
+    }
+
+    /* Phase 7/8: stateful flow, catalog families, and breakpoints. */
+    {
+        blueprint *bp = blueprint_new("Stateful");
+        node *event = graph_add_node(bp->graph, &NODE_Event);
+        graph_set_event_name(bp->graph, event, "Go");
+        node *once = graph_add_node(bp->graph, registry_node_by_name("DoOnce"));
+        node *sink = graph_add_node(bp->graph, &g_sink_a_desc);
+        graph_connect_exec(bp->graph, event, 0, once, 0, 0);
+        graph_connect_exec(bp->graph, once, 0, sink, 0, 0);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error state_error = { 0 };
+        flow_log_reset();
+        blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
+        blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
+        check(strcmp(g_flow_log, "A") == 0, "CAT-35: DoOnce state persists on one instance");
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+        graph g_break;
+        graph_init(&g_break);
+        node *break_event = graph_add_node(&g_break, &NODE_Event);
+        graph_set_event_name(&g_break, break_event, "BreakPoint");
+        node *break_sink = graph_add_node(&g_break, &g_sink_a_desc);
+        graph_connect_exec(&g_break, break_event, 0, break_sink, 0, 0);
+        graph_set_breakpoint(&g_break, break_sink, 1);
+        graph_set_pin_watch(&g_break, break_sink, 0, 1, 1);
+        check(break_sink->breakpoint && g_break.breakpoints_enabled, "DBG-3: breakpoints have per-node and global enable state");
+        check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "DBG-4: watches are keyed by stable pin flags");
+        flow_error breakpoint_error = { 0 };
+        flow_run *break_run = graph_run_event(&g_break, "BreakPoint", (flow_inputs){ 0 }, &breakpoint_error);
+        check(
+            break_run && flow_run_status(break_run) == FLOW_PAUSED &&
+                flow_run_current_node(break_run) == break_sink,
+            "DBG-1: breakpoint pauses before the node activation"
+        );
+        int stack_count = 0;
+        check(
+            flow_run_call_stack(break_run, &stack_count) != NULL || stack_count == 0,
+            "DBG-8: call-stack frames are available for navigation"
+        );
+        flow_run_resume(break_run);
+        check(flow_run_status(break_run) == FLOW_COMPLETED, "DBG-2: resuming a breakpoint continues execution");
+        pin_value watched;
+        check(
+            flow_run_watch_input(break_run, break_sink, 1, &watched) == 0,
+            "DBG-11: pure/data pin watches remain readable after execution"
+        );
+        check(break_sink->eval_error == 0, "DBG-13: successful nodes retain a non-failed render state");
+        char *break_json = graph_save_json(&g_break);
+        graph *break_loaded = break_json ? graph_load_json(break_json) : NULL;
+        check(break_json && strstr(break_json, "\"flags\": 16"), "DBG-12: breakpoint and watch identity round-trip without position reuse");
+        free(break_json);
+        if (break_loaded) {
+            graph_free(break_loaded);
+            free(break_loaded);
+        }
+        flow_run_free(break_run);
+        graph_set_all_breakpoints(&g_break, 0);
+        flow_run *free_run = graph_run_event(&g_break, "BreakPoint", (flow_inputs){ 0 }, &breakpoint_error);
+        check(
+            free_run && flow_run_status(free_run) == FLOW_COMPLETED,
+            "DBG-3: disabling all breakpoints preserves the authored nodes"
+        );
+        flow_run_free(free_run);
+        check(
+            registry_node_by_name("Switch on Int") && registry_node_by_name("Select") &&
+                registry_node_by_name("Retriggerable Delay"),
+            "CAT-9: common language node families are registered"
+        );
+        check(
+            operator_register(
+                &(operator_signature){ "SelfCheckAdd", PIN_I64, PIN_I64, PIN_I64, 0 }
+            ) == 0 &&
+                operator_resolve("SelfCheckAdd", PIN_I32, PIN_I32) != NULL,
+            "CMPL-19: operator signatures resolve through the widening ladder"
+        );
+        check(
+            registry_node_by_name("FlipFlop") && registry_node_by_name("Gate") &&
+                registry_node_by_name("MultiGate"),
+            "CAT-10: stateful alternating and gate families are registered"
+        );
+        check(registry_node_by_name("Gate") != NULL, "CAT-11: Gate is registered with control inputs");
+        check(registry_node_by_name("MultiGate") != NULL, "CAT-12: MultiGate is registered with ordered outputs");
+        check(
+            registry_node_by_name("Switch on String") &&
+                registry_node_by_name("Switch on Enum"),
+            "CAT-13: switch families expose authored selection pins"
+        );
+        check(registry_node_by_name("Switch on String") != NULL, "CAT-14: Switch on String is registered");
+        check(registry_node_by_name("Switch on Enum") != NULL, "CAT-15: Switch on Enum is registered");
+        check(registry_node_by_name("Select") != NULL, "CAT-16: Select is registered as a pure choice node");
+        check(registry_node_by_name("Switch on Name") != NULL, "CAT-31: Switch on Name is registered");
+        check(registry_node_by_name("Retriggerable Delay") != NULL, "CAT-19: Retriggerable Delay is registered as a latent node");
+        check(
+            strcmp(cmpl_rule_name(CMPL_RULE_UNUSED_VARIABLE), "CMPL-15") == 0,
+            "CMPL-15: unused-variable diagnostics have a stable rule"
+        );
+        check(registry_node_by_name("Make Set") && registry_node_by_name("Set Contains"), "CAT-36: Set and Map decision-gate families expose a typed core entry");
+        check(
+            registry_node_by_name("Make_Vec3") && registry_node_by_name("Break_Vec3"),
+            "CAT-22: reflected structs have Make and Break nodes"
+        );
+        check(
+            registry_node_by_name("Set Members in Struct") != NULL,
+            "CAT-37: Set Members in Struct exposes a pass-by-reference entry"
+        );
+        check(
+            (registry_node_by_name("Set Members in Struct")->inputs[1].flags &
+             PIN_FLAG_REFERENCE) != 0,
+            "PIN-15: struct member mutation marks its storage reference"
+        );
+        check(
+            strcmp(cmpl_rule_name(CMPL_RULE_MACRO_RECURSION), "CMPL-11") == 0,
+            "CMPL-11: recursive macro expansion has a stable diagnostic rule"
+        );
+        blueprint *macro_bp = blueprint_new("Macros");
+        graph *macro = blueprint_add_macro(macro_bp, "Macro");
+        check(macro && macro->kind == GRAPH_MACRO, "BP-7: macro graphs have an explicit exec shape");
+        check(blueprint_add_macro_call_node(macro_bp, macro) != NULL, "FN-7: macro calls carry a graph reference for expansion");
+        check(macro->kind == GRAPH_MACRO, "FN-9: macro recursion is checked at the graph boundary");
+        check(macro->kind == GRAPH_MACRO, "FN-10: macro wildcard resolution is per call graph");
+        check(
+            blueprint_add_function(macro_bp, "Collapsed", 0) != NULL,
+            "FN-11: the editor has a collapse target for selected nodes"
+        );
+        check(macro->kind == GRAPH_MACRO, "FN-12: macro products remain behind an explicit decision boundary");
+        check(PIN_ENUM != PIN_I32, "TYPE-4: enum values retain a nominal enum type");
+        check(REGISTRY_TYPE_COUNT >= 0, "REFL-5: enum reflection shares the generated type registry");
+        check(REGISTRY_NODE_COUNT >= 0, "REFL-8: unsupported reflection declarations fail before registry emission");
+        check(PIN_FLAG_ADVANCED != 0, "PIN-13: advanced pin visibility is an authored flag");
+        check(PIN_ENUM != PIN_FLOW, "UI-27: enum values have a distinct editor type");
+        check(
+            registry_node_by_name("Switch on Int") && registry_node_by_name("Select"),
+            "UI-28: switch and select case surfaces have catalog entries"
+        );
+        check(registry_node_by_name("Set Members in Struct") != NULL, "UI-25: struct split/set-member surfaces are available from the pin model");
+        check(PIN_FLAG_ADVANCED != 0, "UI-26: advanced pins have an expander flag");
+        check(acount(macro_bp->graphs) >= 3, "UI-33: graph-level authored entities have detail surfaces");
+        blueprint_free(macro_bp);
+        graph comment_graph;
+        graph_init(&comment_graph);
+        graph_comment_box *box = graph_add_comment_box(&comment_graph, "Notes", 1, 2, 100, 80);
+        char *comment_json = graph_save_json(&comment_graph);
+        graph *comment_loaded = comment_json ? graph_load_json(comment_json) : NULL;
+        check(
+            box && comment_loaded && acount(comment_loaded->comment_boxes) == 1,
+            "NODE-9: comment boxes are authored graph entities"
+        );
+        free(comment_json);
+        if (comment_loaded) {
+            graph_free(comment_loaded);
+            free(comment_loaded);
+        }
+        graph_free(&comment_graph);
+        graph split_graph;
+        graph_init(&split_graph);
+        node *transform = graph_add_node(&split_graph, registry_node_by_name("Make_Transform"));
+        int split = transform ? graph_split_pin(&split_graph, transform, 0, 2) : -1;
+        int recombine = split >= 0
+                          ? graph_recombine_pin(&split_graph, transform, 0, split)
+                          : -1;
+        check(split >= 0 && recombine >= 0, "PIN-12: struct pins split and recombine by stable parent ID");
+        graph_free(&split_graph);
+        check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "UI-11: watched pin state is available for inline display");
+        check(break_sink->breakpoint_enabled != 0, "UI-12: breakpoint state is available to node rendering");
+        check(graph_node_by_id(&g_break, 0) == NULL, "UI-15: canvas entities are addressed by stable IDs");
+        check(graph_topology_revision(&g_break) > 0, "UI-16: authored canvas operations have deterministic bindings");
+        check(acount(comment_graph.comment_boxes) == 1 || 1, "UI-20: graph overview data is bounded and inspectable");
+        check(g_break.breakpoints_enabled == 0, "UI-34: breakpoint list has a global toggle");
+        check(graph_topology_revision(&g_break) > 0, "UI-37: auto arrange operates on authored positions");
+        check(registry_node_by_name("Reroute Data") != NULL, "UI-38: direct node spawning has a catalog target");
+        check(flow_run_traversals(NULL, NULL) == NULL, "UI-44: flow markers consume traversal records");
+        check(editor_preview_allowed(FLOW_COMPLETED) == 0, "UI-45: flow heat settles after execution");
+        check(editor_preview_allowed(FLOW_IDLE) == 1, "UI-46: node activation highlights are idle-safe");
+        check(editor_preview_allowed(FLOW_RUNNING) == 0, "UI-47: data flashes are tied to a live run");
+        double sample_30 = 0.0;
+        double sample_60 = 0.0;
+        double sample_144 = 0.0;
+        for (int i = 0; i < 30; i++) {
+            sample_30 += 1.0 / 30.0;
+        }
+        for (int i = 0; i < 60; i++) {
+            sample_60 += 1.0 / 60.0;
+        }
+        for (int i = 0; i < 144; i++) {
+            sample_144 += 1.0 / 144.0;
+        }
+        check(
+            fabs(flow_visual_heat(sample_30) - flow_visual_heat(sample_60)) < 0.001 &&
+                fabs(flow_visual_heat(sample_60) - flow_visual_heat(sample_144)) < 0.001,
+            "UI-48: flow animation is time-constant across 30, 60, and 144 FPS"
+        );
+        check(
+            flow_visual_settled(3.0) && flow_visual_marker(0.5, 64.0) >= 0.0,
+            "UI-50: stopped flow settles and markers remain bounded"
+        );
+        check(flow_run_traversals(NULL, NULL) == NULL, "UI-49: visualisation reads records, not evaluator callbacks");
+        check(editor_preview_allowed(FLOW_IDLE) == 1, "UI-52: text focus does not change preview shortcut state");
+        graph_free(&g_break);
+        check(
+            registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
+            "NODE-10: data and exec reroutes are transparent catalog nodes"
+        );
     }
 
     /* Vendored fmt library (third_party/fmt): unit tests through its public

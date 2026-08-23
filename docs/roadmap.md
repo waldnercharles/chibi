@@ -611,6 +611,60 @@ Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-8`, `BEH-1` through
 `BEH-12`, `PAR-1` through `PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1`
 through `ENG-7`, `HOT-1` through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
 
+### Prerequisite: the operator catalog is missing
+
+Found while preparing slice 0, and blocking for the scene at the end of this
+phase. `CAT-33` requires Add, Subtract, Multiply, Divide, equality, ordering,
+And, Or, and Not as promotable nodes backed by registered signatures. Phase 3 is
+marked done and claims `CAT-33`. None of those nodes exist.
+
+The evidence: `grep -rn NODE_OPERATOR demo/` returns nothing and
+`build/generated/base_registry.c` contains no operator signatures, so
+`registry_operator_count()` is zero and `core/operator.c` has nothing to
+resolve. The operator machinery itself is real and is genuinely covered by the
+`CMPL-19` check, which registers its own `SelfCheckAdd` signature and resolves
+it through the widening ladder. What is missing is the catalog.
+
+The `CAT-33` claim rests on one check:
+
+    check(registry_operator_count() >= 0, "CAT-33: ...")
+
+`registry_operator_count()` sums `int` pack counts and can never return a
+negative value, so that assertion cannot fail. It satisfies the coverage gate
+while proving nothing. This is the failure mode `docs/adr/0007` exists to
+prevent, and `tools/spec_coverage.py` cannot detect it: check 4 catches one ID
+bulk-prefixed onto many checks, but nothing catches one vacuous check.
+
+Two consequences. The phase's scene cannot be authored without comparison and
+arithmetic, so the operator catalog must land before the slice-9 acceptance run.
+And the `CAT-33` claim in Phase 3 is not currently true; correcting that claim,
+and replacing the vacuous check with one asserting the required operations
+resolve, is prerequisite work rather than new Phase 10 scope.
+
+Two further facts about the operator surface, found while scoping that work.
+
+`operator_signature` carries a name, left, right and result pin types, and a
+priority, and no function pointer (`core/operator.h:6-13`). Resolution therefore
+selects types but cannot compute a result. Satisfying `CAT-33` needs promotable
+wildcard node descriptors as well as registered signatures, so the prerequisite
+is larger than registering a signature table. The widening ladder itself is
+correct and matches `TYPE-14`: `rank()` orders Byte, Integer, Integer64, Real,
+with F32 and F64 sharing a rank (`core/operator.c:10-21`).
+
+`core/operator.c:8` declares `static operator_signature *g_signatures;`, which
+`operator_register()` mutates at runtime. `SCOPE-3` forbids core holding mutable
+process-global state, on the stated grounds that a run plus a headless test must
+not interfere. `test/self_check.c` registers a `SelfCheckAdd` signature into that
+table during the `CMPL-19` check, and it persists for the rest of the process,
+which is precisely that interference. This is milder than the `CAT-33` gap and is
+partly a question of interpretation, since a consumer-extension registry is
+closer in kind to the node catalog than to run state. It is recorded because
+Phase 1's acceptance criterion is the literal command `grep -n '^static.*g_'
+core/*.c`, that command still returns this line, and nothing runs it
+automatically: it is prose in this file, not a check in `self_check.c`. The other
+hits it returns are false positives matching `g_` inside identifiers such as
+`diag_less` and `to_string_inputs`.
+
 ### Slice 0: measure before building
 
 The one number this phase rests on is the cost of dispatching an event to a

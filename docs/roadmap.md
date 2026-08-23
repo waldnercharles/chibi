@@ -594,6 +594,132 @@ Generated. No advanced implementation is claimed.
 - Engine input, networking, animation, AI, UI, asset, and ECS nodes remain
   Consumer or Generated families rather than core catalog entries.
 
+## Phase 10: game runtime vertical slice
+
+Goal: a playable scene, authored in the editor, driven entirely by the event
+graph, that either meets a stated frame budget or falsifies the architecture
+while it is still cheap to change.
+
+Requirements for this phase live in `docs/game-spec.md`, which is the consumer
+module `SCOPE-1` and `SCOPE-5` always required the ECS binding to be. The
+decisions are fixed by `docs/adr/0017` (behavior attachment), `0018` (component
+storage), `0019` (parallel activation), and `0020` (live authoring).
+
+Estimate: not set until slice 0 reports a number.
+
+Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-8`, `BEH-1` through
+`BEH-11`, `PAR-1` through `PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1`
+through `ENG-7`, `HOT-1` through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
+
+### Slice 0: measure before building
+
+The one number this phase rests on is the cost of dispatching an event to a
+pooled per-entity instance. Every other estimate here is downstream of it, and
+it is currently a guess.
+
+A headless harness dispatches `Tick` to N instances of a representative graph
+and reports per-activation cost. `flow_run_start()` currently calls
+`arena_init` twice at 65536 bytes and `runtime_store_create()` per activation,
+and `runtime_store_find()` is a linear scan per node access, so the first
+measurement establishes the unoptimized baseline and the pooled and dense-store
+variants are measured against it.
+
+No game code starts until this reports. If per-activation cost cannot be
+brought near a microsecond, `BEH-11`'s escape to batch systems widens and the
+phase is replanned rather than pushed.
+
+### Slice 1: entity store
+
+`ECS-1` through `ECS-18`. Headless, no window, no dependency on the reflection
+work. Delivers slots, generations, flat columns, occupancy bitsets,
+lowest-index-first allocation, the command buffer with sort-key application,
+and the world hash.
+
+### Slice 2: component reflection
+
+`ECS-4`, `ECS-6`, and `ECS-7` in their generated form. Extends
+`reflect/reflect.c` with a component annotation emitting the component
+descriptor, the layout hash, typed accessors for C systems, and `Get`, `Set`,
+`Has`, `Add`, and `Remove` nodes for graphs. Removes any need for a
+hand-maintained component table.
+
+### Slice 3: prototypes
+
+`PROTO-1` through `PROTO-8`. Generic load and save over component descriptors,
+includes with override, and spawning that attaches graph assets.
+
+### Slice 4: behavior attachment
+
+`BEH-1` through `BEH-11`. Instance pooling, per-entity owner handles, dispatch
+to attached instances, teardown on entity destroy, and the promote-variable-to-
+component editor operation.
+
+### Slice 5: live authoring
+
+`APPLY-1` through `APPLY-11`, `EXEC-20`, `RUN-21`, `UI-57`. Splits definitions
+into working copy and applied snapshot, makes Compile the apply point, and
+scopes teardown per definition. Re-cites the existing `EXEC-19`, `RUN-19`, and
+`UI-56` checks against their replacements.
+
+### Slice 6: host surfaces
+
+`ENG-1` through `ENG-7`. Offscreen scene target in a dockable panel, viewport
+focus and input routing, the frame loop, and per-stage timing. The render
+target reaches Dear ImGui through `cf_texture_binding_handle`, not
+`cf_texture_handle`; the SDLGPU3 backend expects a sampler binding pointer and
+the two functions differ by one word.
+
+### Slice 7: declared effects and parallelism
+
+`PAR-1` through `PAR-11`. Access declarations on descriptors, effect masks in
+the compile pass, entity-scoped write defaults, and the host-supplied
+`parallel_for`. Lands after slice 0 reports, since it may prove unnecessary for
+the slice's target.
+
+### Slice 8: module hot reload
+
+`HOT-1` through `HOT-7`. Descriptor rebinding by name, layout-hash comparison,
+field-by-name component migration, and static linking for release.
+
+### The scene
+
+One arena, rendered in the viewport panel beside the graph editor. A
+graph-driven player responding to input. Two enemy prototypes assembled from
+shared graph assets, at least one behavior using a latent node for a
+windup-then-act sequence. Damage in both directions. Enemy death and spawning
+as deferred structural changes. The player has a Health component and takes
+damage; it attaches no death graph, so immortality is an absence rather than a
+special case.
+
+Acceptance criteria:
+
+- `ECS-18` and `PAR-10`: a seeded scene advanced 600 frames produces an
+  identical per-frame world hash across two runs, and across one thread and
+  many once slice 7 lands.
+- `ECS-13`: recording the same command set in a different order produces an
+  identical world after application.
+- `BEH-9` and `BEH-10`: attaching four graphs where one declares `Tick` costs
+  one activation per pump, and steady-state spawning and destroying performs no
+  per-instance allocation.
+- `BEH-2` and `RUN-18`: two graphs attached to one entity cannot observe each
+  other's variables, and two entities of one prototype share no state.
+- `APPLY-2` and `APPLY-5`: editing a graph while the world runs requires no
+  teardown and completes at typing latency; applying it destroys only that
+  definition's instances and leaves components and other behaviors intact.
+- `EXEC-20`: mutating an applied snapshot with instances attached is rejected,
+  which is the surviving half of the withdrawn `EXEC-19`.
+- `HOT-3`: reloading the game module while an activation is suspended in a
+  `Delay` resumes correctly against rebound descriptors.
+- `HOT-5`: adding a field to a component and reloading preserves every other
+  field's value by name.
+- Budget: 2000 live entities with roughly 500 running per-frame behavior, under
+  2 ms of behavior time per frame as reported by `ENG-7`.
+- Manual `ENG-1`, `ENG-3`: the scene and graph panels dock, undock, and
+  restore; input reaches the player when the viewport holds focus and the
+  canvas otherwise, with focus visible and Escape releasing it.
+- Manual `UI-1`: the entire scene is authored in the editor with no JSON or
+  prototype hand-editing.
+
 ## Archived pre-audit plan
 
 The following sections preserve estimates, rationale, and acceptance details
@@ -966,11 +1092,9 @@ Acceptance criteria:
 From the `Deferred` section of `docs/spec.md`, in the order they would most
 likely be picked up:
 
-1. ECS binding as a separate module: entity and component Get, Set, Add,
-   Remove, and Query nodes over the same descriptor API.
-2. Blueprint classes, inheritance, interfaces, and class defaults.
-3. Event dispatchers and delegate binding.
-4. Timeline nodes and curve authoring.
-5. Bytecode compilation, if profiling shows the interpreter is the bottleneck.
-6. A node pulse when a breakpoint pauses on it, which needs the breakpoints
+1. Blueprint classes, inheritance, interfaces, and class defaults.
+2. Event dispatchers and delegate binding.
+3. Timeline nodes and curve authoring.
+4. Bytecode compilation, if profiling shows the interpreter is the bottleneck.
+5. A node pulse when a breakpoint pauses on it, which needs the breakpoints
    landing in Phase 3.

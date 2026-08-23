@@ -2429,11 +2429,11 @@ int main(int argc, char **argv)
         );
         check(health->default_value.i == 100, "BP-13: instance execution never mutates authored defaults");
 
-        check(blueprint_rename_variable(bp, health->id, "HP") != 0, "EXEC-19: renaming a variable is rejected while an instance is attached");
-        check(blueprint_add_variable(bp, "New", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) == NULL, "EXEC-19: adding a variable is rejected while an instance is attached");
+        check(blueprint_rename_variable(bp, health->id, "HP") != 0, "EXEC-20: renaming a variable is rejected while an instance is attached");
+        check(blueprint_add_variable(bp, "New", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) == NULL, "EXEC-20: adding a variable is rejected while an instance is attached");
         check(
             graph_add_node(bp->graph, &g_sink_a_desc) == NULL,
-            "EXEC-19: adding a node is rejected while an instance is attached"
+            "EXEC-20: adding a node is rejected while an instance is attached"
         );
         check(blueprint_instance_stop_activation(bi, act) == FLOW_OK, "RUN-17: stopping one activation succeeds");
         check(bp->graph->flow_pause_count > 0, "RUN-20: stopping one activation does NOT release the mutation guard");
@@ -2852,10 +2852,10 @@ int main(int argc, char **argv)
         blueprint_instance_destroy(bi);
         check(bp->graph->flow_pause_count == guard_before - 1, "RUN-20: destroying the instance releases the mutation guard");
         node *probe = graph_add_node(bp->graph, &g_sink_b_desc);
-        check(probe != NULL, "EXEC-19: the definition becomes mutable after its last instance is destroyed");
+        check(probe != NULL, "EXEC-20: the definition becomes mutable after its last instance is destroyed");
         /* The probe node's exec input is unconnected, which is a blocking
          * compile error under RUN-12; remove it before starting again. */
-        check(graph_remove_node(bp->graph, probe) == 0, "EXEC-19: removing the probe restores a valid blueprint");
+        check(graph_remove_node(bp->graph, probe) == 0, "EXEC-20: removing the probe restores a valid blueprint");
 
         blueprint_instance *bi2 = blueprint_instance_create(bp, NULL, NULL, NULL);
         flow_log_reset();

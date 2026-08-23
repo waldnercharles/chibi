@@ -54,6 +54,11 @@ containers, user-defined functions, macros, delegates and event dispatchers,
 the full flow-control catalog, a compile and validation pass, and an
 interactive debugger.
 
+`docs/game-spec.md` specifies the game runtime built on this language: an
+entity store, a prototype format, behavior attachment, parallel execution, live
+authoring, host surfaces, and module hot reload. It is a consumer of this
+document and nothing in it may be required by `core/`.
+
 Out of scope for core: actors, Blueprint class assets, inheritance, interfaces,
 class defaults, Construction Script, and any assumed host object model. An ECS
 binding is a separate optional module layered on the same node descriptor and
@@ -613,10 +618,17 @@ NOT prevent a later event from starting.
 remains on a continuation stack. Re-entrant executions on one instance share
 instance scratch under `EXEC-15` and never share data memo under `EXEC-16`.
 
-`EXEC-19` Structural or authored-value mutation of a Blueprint definition MUST
-be rejected while any runtime instance remains attached to that definition.
-The host or editor MUST destroy or detach every affected instance before
-adding, removing, renaming, retyping, or reconfiguring authored entities.
+`EXEC-19` WITHDRAWN. Its immutability rule is right, but its teardown rule
+required destroying instances before every authored edit, which does not scale
+past one preview instance and is unnecessary when authoring targets a
+definition that has none. It is replaced by `EXEC-20`.
+
+`EXEC-20` A Blueprint definition MUST be immutable while any runtime instance
+is attached to it. Authoring MUST target a definition with no attached
+instances. Replacing the definition a world is running MUST destroy that
+definition's instances, replace the definition, and recreate them as one
+operation. See `docs/adr/0020` and the `APPLY` section of
+`docs/game-spec.md`.
 
 ## RUN: run lifecycle
 
@@ -687,10 +699,15 @@ variables, node scratch, service bindings, activation queues, errors, and step
 counts. Activations on one instance share only the state explicitly owned by
 that instance.
 
-`RUN-19` Loading, undoing, or changing authored structure MUST destroy or detach
-every affected preview instance before replacing node, pin, graph, or variable
-identities. The editor MUST perform this teardown at one authoring-edit choke
-point. Runtime state MUST NOT enter the undo stack.
+`RUN-19` WITHDRAWN. It required teardown at every authoring edit rather than at
+the point a running definition is replaced, and it scoped teardown to preview
+instances rather than to the changed definition. It is replaced by `RUN-21`.
+
+`RUN-21` Loading, undo, redo, and authored structural change MUST target a
+definition with no attached instances. Replacing a running definition MUST be
+scoped to that definition: instances of every other definition, and all host
+state those instances refer to, MUST be unaffected. Runtime state MUST NOT
+enter the undo stack.
 
 `RUN-20` Creating an instance MUST acquire its definition's mutation guard, and
 destroying or explicitly detaching that instance MUST release it. A definition
@@ -1228,9 +1245,15 @@ the preview instance MUST clear them.
 it destroys the preview instance first, then perform the edit. It MUST NOT be
 presented as a rejected edit or as stopping only the selected activation.
 
-`UI-56` Every authored mutation, including value edits, graph edits, undo,
-redo, and load, MUST pass through one editor choke point that destroys or
-detaches every affected preview instance before mutation under `RUN-19`.
+`UI-56` WITHDRAWN. It routed every authored mutation through instance teardown,
+which makes editing cost scale with the number of live instances. It is
+replaced by `UI-57`.
+
+`UI-57` The editor MUST route every replacement of a running definition through
+one choke point, and MUST state that applying destroys and recreates that
+definition's instances. An authored edit that does not replace a running
+definition MUST NOT require teardown and MUST NOT be rejected. The editor MUST
+show when a definition has unapplied edits.
 
 ## REFL: reflection
 
@@ -1328,10 +1351,12 @@ section.
 
 - Blueprint classes, inheritance, interfaces, class defaults, and
   Construction Script.
-- ECS binding: entity and component Get, Set, Add, Remove, Query, prefab, and
-  entity-creation nodes.
 - Consumer-defined casts, validity, object/class/interface handles, localized
   Text, replication, and network authority.
+
+The ECS binding is no longer deferred. It is specified in `docs/game-spec.md`
+as a consumer module, which is what the scope statement above always required
+of it.
 
 ### Language decision gates
 

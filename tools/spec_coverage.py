@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Check that every docs/spec.md requirement is claimed and tested.
+"""Check that every spec requirement is claimed and tested.
+
+The spec spans two documents. docs/spec.md is the engine-agnostic language;
+docs/game-spec.md is the game runtime consuming it. Both use the ID rules from
+docs/adr/0007 and both are gated identically, so a requirement cannot escape
+the gate by living in the consumer document.
 
 Implements the mechanism from docs/adr/0007. Four checks:
 
   1. Every spec requirement ID is claimed by a docs/roadmap.md phase.
-  2. Every ID cited by roadmap.md or test/self_check.c is defined in spec.md,
-     so a typo in an ID cannot hide a requirement.
+  2. Every ID cited by roadmap.md or test/self_check.c is defined by a spec
+     document, so a typo in an ID cannot hide a requirement.
   3. Every ID claimed by a *completed* roadmap phase has a citing check name in
      test/self_check.c. A phase is completed when its heading is marked
      "(done)".
@@ -25,7 +30,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC = ROOT / "docs" / "spec.md"
+SPECS = (ROOT / "docs" / "spec.md", ROOT / "docs" / "game-spec.md")
 ROADMAP = ROOT / "docs" / "roadmap.md"
 SELF_CHECK = ROOT / "test" / "self_check.c"
 MANUAL = ROOT / "docs" / "manual-verification.md"
@@ -115,12 +120,12 @@ def completed_phase_ids(roadmap_text):
 
 
 def main():
-    for path in (SPEC, ROADMAP):
+    for path in (*SPECS, ROADMAP):
         if not path.exists():
             print(f"missing {path.relative_to(ROOT)}", file=sys.stderr)
             return 2
 
-    spec_text = SPEC.read_text()
+    spec_text = "\n".join(path.read_text() for path in SPECS)
     roadmap_text = ROADMAP.read_text()
     check_text = SELF_CHECK.read_text() if SELF_CHECK.exists() else ""
 
@@ -141,11 +146,11 @@ def main():
 
     unclaimed = [i for i in ids if i not in claimed]
     if unclaimed:
-        failures.append(("defined in spec.md, claimed by no roadmap phase", unclaimed))
+        failures.append(("defined by a spec document, claimed by no roadmap phase", unclaimed))
 
     ghosts = sorted((claimed | tested | verified) - defined)
     if ghosts:
-        failures.append(("cited but not defined in spec.md", ghosts))
+        failures.append(("cited but not defined by any spec document", ghosts))
 
     # A withdrawn requirement keeps its number so it is never reused, but it has
     # no behaviour left to test.

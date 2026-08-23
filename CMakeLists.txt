@@ -53,6 +53,7 @@ get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
 set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIBRARY_DIR})
 
 # --- generated registry ---
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 set(GEN_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/demo_registry.c)
 add_custom_command(
     OUTPUT ${GEN_REGISTRY}
@@ -112,6 +113,47 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
 
+# --- headless ECS consumer module -------------------------------------------
+file(GLOB_RECURSE ECS_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/ecs/*.c
+)
+add_library(ecs STATIC ${ECS_SOURCES})
+target_include_directories(ecs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(ecs PUBLIC core)
+
+# --- generated game component pack ------------------------------------------
+set(GAME_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/game_registry.c)
+add_custom_command(
+    OUTPUT ${GAME_REGISTRY}
+    COMMAND $<TARGET_FILE:reflect>
+            ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
+            ${GAME_REGISTRY}
+            GAME
+    DEPENDS reflect
+            ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/game/components.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
+    COMMENT "Generating the game reflection pack"
+    VERBATIM
+)
+add_library(game STATIC game/prototype.c game/behavior.c game/live.c ${GAME_REGISTRY})
+target_include_directories(game PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/game
+)
+target_link_libraries(game PUBLIC ecs core)
+
+# --- host frame loop and optional viewport surface --------------------------
+file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.c
+)
+add_library(engine STATIC ${ENGINE_SOURCES})
+target_include_directories(engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(engine PUBLIC game ecs core cute)
+target_compile_definitions(engine PRIVATE ENGINE_CUTE_AVAILABLE=1 ENGINE_IMGUI_AVAILABLE=1)
+target_compile_options(engine PRIVATE -Wno-macro-redefined)
+
 # --- demo nodes (real TUs; interface.h declares what Blueprints sees) ---
 # demo/demo_nodes.c is reflect input, not a compiled TU, so it stays explicit.
 add_library(demo STATIC
@@ -136,13 +178,18 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
 )
 add_executable(app ${APP_SOURCES} ${BASE_REGISTRY})
-target_link_libraries(app PRIVATE editor core demo cute)
+target_link_libraries(app PRIVATE editor engine demo cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---
 add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
 target_include_directories(self_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(self_check PRIVATE core demo)
+target_link_libraries(self_check PRIVATE engine game ecs demo)
+
+# --- activation benchmark: headless per-instance event dispatch -------------
+add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
+target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(bench_activation PRIVATE core demo)
 
 # --- integration: headless pico_unit regression suite for the editor<->core
 # interaction path (test/integration.c). Core + demo + pico_unit only; no
@@ -194,6 +241,12 @@ if(CLANG_FORMAT)
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ecs/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/ecs/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/game/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.h
   )
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} --style=file -i ${FORMAT_SOURCES}
@@ -204,10 +257,14 @@ if(CLANG_FORMAT)
     COMMENT "Checking C source formatting"
     VERBATIM)
   add_dependencies(core format)
+  add_dependencies(ecs format)
+  add_dependencies(game format)
+  add_dependencies(engine format)
   add_dependencies(demo format)
   add_dependencies(editor format)
   add_dependencies(app format)
   add_dependencies(self_check format)
+  add_dependencies(bench_activation format)
   add_dependencies(integration format)
   add_dependencies(registry_consumer format)
   add_dependencies(reflect format)

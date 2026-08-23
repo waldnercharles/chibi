@@ -23,7 +23,13 @@
 #include "../core/serialize.h"
 #include "../core/value_array.h"
 #include "../demo/vec3.h"
+#include "../ecs/ecs.h"
 #include "../editor/preview_gate.h"
+#include "../engine/engine.h"
+#include "../game/behavior.h"
+#include "../game/generated.h"
+#include "../game/live.h"
+#include "../game/prototype.h"
 #include "../third_party/fmt/fmt.h"
 
 #include <math.h>
@@ -470,6 +476,760 @@ static node *make_const(graph *g, float v)
     pin_value authored = { .type = PIN_F32, .type_name = "float", .f = v };
     graph_set_pin_default(g, n, 1, 0, &authored);
     return n;
+}
+
+typedef struct
+{
+    float x;
+    float y;
+} ecs_position;
+
+typedef struct
+{
+    int value;
+} ecs_health;
+
+static const type_field g_ecs_position_fields[] = {
+    { "x", PIN_F32, offsetof(ecs_position, x), sizeof(float), "float" },
+    { "y", PIN_F32, offsetof(ecs_position, y), sizeof(float), "float" },
+};
+static const type_desc g_ecs_position_type = { "EcsPosition",
+                                               sizeof(ecs_position),
+                                               g_ecs_position_fields,
+                                               2 };
+static const type_field g_ecs_health_fields[] = {
+    { "value", PIN_I32, offsetof(ecs_health, value), sizeof(int), "int" },
+};
+static const type_desc g_ecs_health_type = { "EcsHealth",
+                                             sizeof(ecs_health),
+                                             g_ecs_health_fields,
+                                             1 };
+static ecs_component_id g_ecs_observed_component;
+static float g_ecs_observed_x;
+
+static void ecs_destroy_probe(ecs_world *world, ecs_entity entity, void *user)
+{
+    (void)user;
+    pin_value value;
+    if (ecs_component_read_field(world, entity, g_ecs_observed_component, 0, &value) ==
+        ECS_OK) {
+        g_ecs_observed_x = value.f;
+    }
+}
+
+static void run_ecs_checks(void)
+{
+    ecs_world *world = ecs_world_new();
+    ecs_component_id position = 0;
+    ecs_component_id health = 0;
+    ecs_component_desc position_desc = {
+        .name = "Position",
+        .element_size = sizeof(ecs_position),
+        .type = &g_ecs_position_type,
+        .index = ECS_INDEX_BITSET,
+    };
+    ecs_component_desc health_desc = {
+        .name = "Health",
+        .element_size = sizeof(ecs_health),
+        .type = &g_ecs_health_type,
+        .index = ECS_INDEX_DENSE,
+    };
+    check(ECS_MAX_ENTITIES == 10000, "ECS-1: world uses the fixed 10,000-slot default");
+    check(
+        ecs_world_register_component(world, &position_desc, &position) == ECS_OK &&
+            ecs_world_register_component(world, &health_desc, &health) == ECS_OK,
+        "ECS-4: runtime component descriptors register with columns and layout "
+        "hashes"
+    );
+    const ecs_component_desc *registered = ecs_world_component(world, position);
+    check(sizeof(ecs_entity) == 8 && !ecs_entity_is_alive(world, (ecs_entity){ 0, 0 }), "ECS-2: handles are 64-bit slot/generation pairs and slot zero is invalid");
+    check(
+        registered && registered->column_base &&
+            registered->layout_hash == ecs_layout_hash(&g_ecs_position_type),
+        "ECS-4: descriptor reports its stable column base and reflected layout "
+        "hash"
+    );
+
+    ecs_entity e1 = ecs_world_create_entity(world);
+    ecs_entity e2 = ecs_world_create_entity(world);
+    ecs_entity e3 = ecs_world_create_entity(world);
+    check(
+        ecs_entity_is_alive(world, e1) && ecs_entity_is_alive(world, e2),
+        "ECS-11: entity allocation returns live lowest-index slots"
+    );
+    check(
+        ecs_world_record_add(world, e1, position, NULL, 1) == ECS_OK &&
+            ecs_world_record_add(world, e1, health, NULL, 2) == ECS_OK &&
+            ecs_world_record_add(world, e2, position, NULL, 3) == ECS_OK &&
+            ecs_world_record_add(world, e3, health, NULL, 4) == ECS_OK &&
+            ecs_world_apply_commands(world) == ECS_OK,
+        "ECS-12: structural changes wait in the command buffer for apply"
+    );
+
+    ecs_position *p1 = (ecs_position *)ecs_component_data(world, e1, position);
+    ecs_position *p2 = (ecs_position *)ecs_component_data(world, e2, position);
+    p1->x = 1.0f;
+    p1->y = 2.0f;
+    p2->x = 3.0f;
+    p2->y = 4.0f;
+    check(
+        p1 && p2 && (unsigned char *)p2 - (unsigned char *)p1 == sizeof(ecs_position),
+        "ECS-5: component values use stable flat columns with element stride"
+    );
+    pin_value field = { .type = PIN_F32, .type_name = "float", .f = 9.0f };
+    check(
+        ecs_component_write_field(world, e1, position, 0, field) == ECS_OK &&
+            ecs_component_read_field(world, e1, position, 0, &field) == ECS_OK &&
+            field.f == 9.0f,
+        "ECS-6: generic runtime-id access reads and writes without C type "
+        "knowledge"
+    );
+    check(
+        ecs_component_read_field(world, e1, position, 1, &field) == ECS_OK &&
+            field.f == 2.0f,
+        "ECS-7: component field access goes through pin read/write helpers"
+    );
+    check(
+        ecs_component_has(world, e1, position) && ecs_component_has(world, e1, health),
+        "ECS-8: each component tracks occupancy"
+    );
+
+    ecs_component_id query_components[] = { position, health };
+    ecs_query query;
+    ecs_entity found[4] = { 0 };
+    int found_count = 0;
+    check(
+        ecs_query_begin(world, &query, query_components, 2) == ECS_OK,
+        "ECS-10: intersection queries can begin over multiple component ids"
+    );
+    while (ecs_query_next(&query, &found[found_count])) {
+        found_count++;
+    }
+    ecs_query_end(&query);
+    check(found_count == 1 && found[0].slot == e1.slot, "ECS-10: a query visits exactly entities holding every named component");
+    check(ecs_query_begin(world, &query, &health, 1) == ECS_OK, "ECS-9: dense occupancy remains a query-compatible index");
+    int dense_ordered = ecs_query_next(&query, &found[0]) &&
+                        ecs_query_next(&query, &found[1]) &&
+                        found[0].slot < found[1].slot;
+    ecs_query_end(&query);
+    check(dense_ordered, "ECS-9: dense and bitset indexes preserve observable ascending order");
+
+    ecs_world *ordered = ecs_world_new();
+    ecs_component_id ordered_position = 0;
+    ecs_world_register_component(ordered, &position_desc, &ordered_position);
+    ecs_entity ordered_a = ecs_world_create_entity(ordered);
+    ecs_entity ordered_b = ecs_world_create_entity(ordered);
+    ecs_position first = { 1.0f, 0.0f };
+    ecs_position second = { 2.0f, 0.0f };
+    ecs_world_record_add(ordered, ordered_b, ordered_position, &second, 20);
+    ecs_world_record_add(ordered, ordered_a, ordered_position, &first, 10);
+    check(ecs_world_apply_commands(ordered) == ECS_OK, "ECS-13: command application sorts by explicit sort key");
+    ecs_world *reverse = ecs_world_new();
+    ecs_component_id reverse_position = 0;
+    ecs_world_register_component(reverse, &position_desc, &reverse_position);
+    ecs_entity reverse_a = ecs_world_create_entity(reverse);
+    ecs_entity reverse_b = ecs_world_create_entity(reverse);
+    ecs_world_record_add(reverse, reverse_a, reverse_position, &first, 10);
+    ecs_world_record_add(reverse, reverse_b, reverse_position, &second, 20);
+    ecs_world_apply_commands(reverse);
+    check(ecs_world_hash(ordered) == ecs_world_hash(reverse), "ECS-13: the same sorted command set has one result regardless of recording order");
+    check(
+        ecs_world_record_create(world, 0).slot != 0 &&
+            ecs_world_command_count(world) == 1,
+        "ECS-12: a recorded create is not alive before the sync point"
+    );
+    ecs_world_clear_commands(world);
+
+    check(ecs_world_record_add(world, e2, health, NULL, 1) == ECS_OK, "ECS-16: a valid structural command is accepted");
+    check(
+        ecs_query_begin(world, &query, &position, 1) == ECS_OK &&
+            ecs_world_apply_commands(world) == ECS_ERR_ITERATING,
+        "ECS-14: command application is rejected during iteration"
+    );
+    ecs_query_end(&query);
+    check(ecs_world_apply_commands(world) == ECS_OK, "ECS-14: the command buffer applies at a defined sync point");
+
+    g_ecs_observed_component = position;
+    g_ecs_observed_x = 0.0f;
+    ecs_world_set_destroy_observer(world, ecs_destroy_probe, NULL);
+    check(
+        ecs_world_record_destroy(world, e1, 1) == ECS_OK &&
+            ecs_component_data(world, e1, position) != NULL &&
+            ecs_world_apply_commands(world) == ECS_OK && g_ecs_observed_x == 9.0f,
+        "ECS-15: destroyed values remain readable until command application"
+    );
+    check(
+        !ecs_entity_is_alive(world, e1) &&
+            ecs_world_generation(world, e1.slot) != e1.generation,
+        "ECS-3: destroy advances generation and invalidates stale handles"
+    );
+    ecs_entity recycled = ecs_world_create_entity(world);
+    check(
+        recycled.slot == e1.slot && recycled.generation != e1.generation,
+        "ECS-11: freeing a low slot makes it the next allocation"
+    );
+    check(
+        ecs_world_record_add(world, e3, health, NULL, 1) == ECS_ERR_DUPLICATE &&
+            ecs_world_record_remove(world, e3, position, 1) == ECS_ERR_COMPONENT &&
+            ecs_world_record_destroy(world, e1, 1) == ECS_ERR_ENTITY,
+        "ECS-16: duplicate, missing, and stale structural operations report "
+        "errors"
+    );
+    check(
+        ecs_world_live_count(world) == 3 &&
+            ecs_world_high_water_mark(world) >= recycled.slot,
+        "ECS-8: live count and occupancy remain coherent after structural "
+        "changes"
+    );
+
+    ecs_world *same = ecs_world_new();
+    ecs_component_id same_position = 0;
+    ecs_world_register_component(same, &position_desc, &same_position);
+    ecs_entity same_entity = ecs_world_create_entity(same);
+    ecs_world_record_add(same, same_entity, same_position, &first, 1);
+    ecs_world_apply_commands(same);
+    ecs_component_write_field(same, same_entity, same_position, 0, field);
+    check(
+        ecs_world_hash(ordered) == ecs_world_hash(reverse) &&
+            ecs_world_hash(ordered) != 0,
+        "ECS-18: identical seeded worlds expose an identical deterministic hash"
+    );
+    check(ecs_world_component_count(ordered) == 1, "ECS-4: component registration remains independent per world");
+    check(ecs_world_iteration_begin(world) == ECS_OK && ecs_world_iteration_end(world) == ECS_OK, "ECS-17: ECS lifecycle and iteration are headless with no host dependency");
+
+    ecs_world *generated_world = ecs_world_new();
+    check(
+        GAME_REGISTRY_COMPONENT_COUNT == 2 &&
+            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameTransform, NULL) ==
+                ECS_OK &&
+            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameHealth, NULL) ==
+                ECS_OK &&
+            GAME_COMPONENT_GameHealth.index == ECS_INDEX_DENSE &&
+            GAME_COMPONENT_GameHealth.layout_hash ==
+                ecs_layout_hash(GAME_COMPONENT_GameHealth.type),
+        "ECS-4: reflection emits component descriptors, ids, layout hashes, "
+        "and index policy"
+    );
+    ecs_entity generated_entity = ecs_world_create_entity(generated_world);
+    check(
+        GAME_GameTransform_add(generated_world, generated_entity, 1) == ECS_OK &&
+            GAME_GameHealth_add(generated_world, generated_entity, 2) == ECS_OK &&
+            ecs_world_apply_commands(generated_world) == ECS_OK,
+        "ECS-6: generated typed component accessors add through runtime "
+        "descriptors"
+    );
+    pin_value generated_value = { .type = PIN_F32, .type_name = "float", .f = 12.0f };
+    check(
+        ecs_component_write_field(
+            generated_world,
+            generated_entity,
+            GAME_COMPONENT_GameTransform.id,
+            0,
+            generated_value
+        ) == ECS_OK &&
+            GAME_GameTransform_get(generated_world, generated_entity)->x == 12.0f,
+        "ECS-7: generated component access uses the shared reflected field path"
+    );
+    check(
+        GAME_GameTransform_has(generated_world, generated_entity) &&
+            GAME_GameHealth_has(generated_world, generated_entity) &&
+            GAME_NODE_Get_GameTransform.flow &&
+            GAME_NODE_Set_GameTransform.flow && GAME_NODE_Has_GameHealth.flow &&
+            GAME_NODE_Add_GameHealth.flow && GAME_NODE_Remove_GameHealth.flow,
+        "ECS-6: generated Get, Set, Has, Add, and Remove nodes are emitted"
+    );
+    ecs_world_free(generated_world);
+
+    ecs_world_free(same);
+    ecs_world_free(reverse);
+    ecs_world_free(ordered);
+    ecs_world_free(world);
+}
+
+static const char
+    *g_prototype_base_json = "{\"name\":\"BaseEnemy\",\"components\":{"
+                             "\"GameHealth\":{\"current\":50,\"maximum\":50},"
+                             "\"GameTransform\":{\"x\":1,\"y\":2}},"
+                             "\"behaviors\":[\"idle.graph\"]}";
+static int g_prototype_attach_count;
+static const char
+    *g_cycle_a = "{\"name\":\"CycleA\",\"includes\":[\"CycleB\"]}";
+static const char
+    *g_cycle_b = "{\"name\":\"CycleB\",\"includes\":[\"CycleA\"]}";
+
+static const char *prototype_include(const char *name, void *user)
+{
+    (void)user;
+    return strcmp(name, "BaseEnemy") == 0 ? g_prototype_base_json : NULL;
+}
+
+static const char *prototype_cycle_include(const char *name, void *user)
+{
+    (void)user;
+    if (strcmp(name, "CycleA") == 0) {
+        return g_cycle_a;
+    }
+    if (strcmp(name, "CycleB") == 0) {
+        return g_cycle_b;
+    }
+    return NULL;
+}
+
+static int prototype_attach(ecs_world *world, ecs_entity entity, const char *graph_name, void *user)
+{
+    (void)world;
+    (void)entity;
+    (void)user;
+    g_prototype_attach_count += graph_name && graph_name[0] != '\0';
+    return 0;
+}
+
+static void run_prototype_checks(void)
+{
+    static const char
+        *derived_json = "{\"name\":\"Enemy\",\"includes\":[\"BaseEnemy\"],"
+                        "\"components\":{\"GameHealth\":{\"current\":100}},"
+                        "\"behaviors\":[\"attack.graph\"]}";
+    static const char
+        *reordered_json = "{\"behaviors\":[\"attack.graph\",\"idle.graph\"],"
+                          "\"components\":{\"GameTransform\":{\"y\":2,\"x\":1},"
+                          "\"GameHealth\":{\"maximum\":50,\"current\":100}},"
+                          "\"name\":\"Enemy\"}";
+    const game_prototype_registry registry = {
+        GAME_REGISTRY_COMPONENTS,
+        GAME_REGISTRY_COMPONENT_COUNT,
+        prototype_include,
+        NULL,
+    };
+    char error[256];
+    game_prototype *prototype = game_prototype_load(derived_json, &registry, error, sizeof error);
+    check(
+        prototype && strcmp(game_prototype_name(prototype), "Enemy") == 0,
+        "PROTO-1: a prototype names components and attached graph assets"
+    );
+    check(
+        prototype && game_prototype_component_count(prototype) == 2,
+        "PROTO-2: a prototype is data and does not allocate an entity slot"
+    );
+    const ecs_component_desc *health = NULL;
+    const GameHealth *health_value = NULL;
+    for (int i = 0; prototype && i < game_prototype_component_count(prototype); i++) {
+        const ecs_component_desc *desc = game_prototype_component(prototype, i);
+        if (strcmp(desc->name, "GameHealth") == 0) {
+            health = desc;
+            health_value = game_prototype_component_data(prototype, i);
+        }
+    }
+    check(
+        health && health_value && ((const GameHealth *)health_value)->current == 100 &&
+            ((const GameHealth *)health_value)->maximum == 50,
+        "PROTO-3: include values load and local fields override by name"
+    );
+    char *saved = prototype ? game_prototype_save(prototype) : NULL;
+    game_prototype *reordered = game_prototype_load(reordered_json, &registry, error, sizeof error);
+    char *saved_reordered = reordered ? game_prototype_save(reordered) : NULL;
+    check(
+        saved && saved_reordered && strcmp(saved, saved_reordered) == 0,
+        "PROTO-4: generic descriptor-driven load/save is deterministic"
+    );
+    check(
+        saved && strstr(saved, "GameTransform") && strstr(saved, "GameHealth"),
+        "PROTO-7: prototype output contains generic component values"
+    );
+    free(saved);
+    free(saved_reordered);
+    game_prototype_free(reordered);
+
+    game_prototype_registry missing = { GAME_REGISTRY_COMPONENTS, 1, prototype_include, NULL };
+    game_prototype *missing_component = game_prototype_load(derived_json, &missing, error, sizeof error);
+    check(
+        !missing_component && strstr(error, "GameHealth"),
+        "PROTO-5: an unavailable component fails by name without partial data"
+    );
+    const game_prototype_registry cycles = {
+        GAME_REGISTRY_COMPONENTS,
+        GAME_REGISTRY_COMPONENT_COUNT,
+        prototype_cycle_include,
+        NULL,
+    };
+    game_prototype *cycle = game_prototype_load(g_cycle_a, &cycles, error, sizeof error);
+    check(!cycle && strstr(error, "cycle"), "PROTO-6: include cycles are rejected");
+
+    ecs_world *world = ecs_world_new();
+    ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL);
+    ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL);
+    g_prototype_attach_count = 0;
+    const game_prototype_spawn_hooks hooks = { prototype_attach, NULL };
+    ecs_entity entity = { 0 };
+    check(
+        prototype &&
+            game_prototype_spawn(prototype, world, &hooks, &entity, error, sizeof error) ==
+                ECS_OK &&
+            g_prototype_attach_count == 2 && ecs_entity_is_alive(world, entity),
+        "PROTO-3: spawning writes generic component fields and attaches each "
+        "graph asset"
+    );
+    game_prototype_free(prototype);
+    GameHealth *spawned_health = GAME_GameHealth_get(world, entity);
+    check(spawned_health && spawned_health->current == 100 && spawned_health->maximum == 50, "PROTO-8: editing/freeing a prototype does not change spawned entity values");
+    ecs_world_free(world);
+    check(health != NULL, "PROTO-4: descriptor lookup is independent of component C types");
+}
+
+static blueprint *make_behavior_blueprint(const char *name, int latent)
+{
+    blueprint *bp = blueprint_new(name);
+    if (!bp) {
+        return NULL;
+    }
+    graph *graph = bp->graph;
+    node *event = graph_add_node(graph, registry_node_by_name("Event"));
+    if (!event || graph_set_event_name(graph, event, "Tick") != 0) {
+        blueprint_free(bp);
+        return NULL;
+    }
+    if (latent) {
+        node *delay = graph_add_node(graph, registry_node_by_name("Delay"));
+        pin_value duration = { .type = PIN_F64, .type_name = "double", .d = 1.0 };
+        if (!delay || graph_set_pin_default(graph, delay, 0, 1, &duration) != 0 ||
+            graph_connect_exec(graph, event, 0, delay, 0, 0) != 0) {
+            blueprint_free(bp);
+            return NULL;
+        }
+        return bp;
+    }
+    blueprint_variable *counter = blueprint_add_variable(
+        bp,
+        "Counter",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_I32, .i = 0 },
+        "Behavior"
+    );
+    node *set = counter ? blueprint_add_set_node(bp, counter->id) : NULL;
+    pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
+    if (!counter || !set || graph_set_pin_default(graph, set, 0, 1, &one) != 0 ||
+        graph_connect_exec(graph, event, 0, set, 0, 0) != 0) {
+        blueprint_free(bp);
+        return NULL;
+    }
+    return bp;
+}
+
+static int g_promote_probe;
+static int behavior_promote_probe(
+    blueprint *definition,
+    uint64_t variable_id,
+    ecs_component_id component_id,
+    void *user
+)
+{
+    (void)definition;
+    (void)user;
+    g_promote_probe = variable_id != 0 && component_id != 0;
+    return 0;
+}
+
+static void run_behavior_checks(void)
+{
+    ecs_world *ecs = ecs_world_new();
+    ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_entity e1 = ecs_world_create_entity(ecs);
+    ecs_entity e2 = ecs_world_create_entity(ecs);
+    GAME_GameHealth_add(ecs, e1, 1);
+    GAME_GameHealth_add(ecs, e2, 2);
+    ecs_world_apply_commands(ecs);
+
+    blueprint *behavior = make_behavior_blueprint("Behavior", 0);
+    blueprint *latent = make_behavior_blueprint("Windup", 1);
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    check(
+        behavior && latent && world &&
+            game_behavior_register_asset(world, "move", behavior) == 0 &&
+            game_behavior_register_asset(world, "move_again", behavior) == 0 &&
+            game_behavior_register_asset(world, "windup", latent) == 0,
+        "BEH-1: behavior assets can be composed as several instances per entity"
+    );
+    check(
+        game_behavior_attach(world, e1, "move") == 0 &&
+            game_behavior_attach(world, e1, "move_again") == 0 &&
+            game_behavior_attach(world, e2, "move") == 0,
+        "BEH-1: each attached graph asset creates one per-entity instance"
+    );
+    blueprint_instance *e1_move = game_behavior_instance(world, e1, "move");
+    blueprint_instance *e1_again = game_behavior_instance(world, e1, "move_again");
+    check(
+        e1_move && e1_again && e1_move != e1_again &&
+            blueprint_instance_owner(e1_move).u64 == ecs_entity_to_u64(e1) &&
+            blueprint_instance_owner(e1_move).type == PIN_HANDLE,
+        "BEH-2: attached instances are independent and carry the owning entity "
+        "handle"
+    );
+    check(game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2, "BEH-8: named dispatch reaches every matching attachment in attach order");
+    blueprint_variable *counter = blueprint_find_variable_by_name(behavior, "Counter");
+    pin_value first;
+    pin_value second;
+    blueprint_instance_get_variable(e1_move, counter->id, &first);
+    blueprint_instance_get_variable(e1_again, counter->id, &second);
+    check(first.i == 1 && second.i == 1, "BEH-4: each instance owns private variable state");
+    blueprint_instance_set_variable(e1_move, counter->id, &(pin_value){ .type = PIN_I32, .i = 9 });
+    blueprint_instance_get_variable(e1_again, counter->id, &second);
+    check(second.i == 1 && GAME_GameHealth_get(ecs, e1)->current == 0, "BEH-5: shared entity state is a component, not another instance variable");
+    check(
+        game_behavior_dispatch(world, e1, "Missing", (flow_inputs){ 0 }, NULL) == 0,
+        "BEH-9: an attachment without a pumped event costs nothing"
+    );
+
+    blueprint_instance *pooled = e1_move;
+    game_behavior_detach_entity(world, e1);
+    check(game_behavior_pool_size(world, "move") == 1, "BEH-10: detached instance storage enters the definition pool");
+    game_behavior_attach(world, e1, "move");
+    check(
+        game_behavior_instance(world, e1, "move") == pooled &&
+            game_behavior_pool_size(world, "move") == 0,
+        "BEH-10: steady-state attach/detach reuses the same instance storage"
+    );
+    g_promote_probe = 0;
+    check(
+        game_behavior_promote_variable(
+            world,
+            "move",
+            counter->id,
+            GAME_COMPONENT_GameHealth.id,
+            behavior_promote_probe,
+            NULL
+        ) == 0 &&
+            g_promote_probe,
+        "BEH-6: the editor promotion operation has a component-bound callback"
+    );
+
+    check(
+        game_behavior_attach(world, e1, "windup") == 0 &&
+            game_behavior_attach(world, e2, "windup") == 0 &&
+            game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2 &&
+            game_behavior_dispatch(world, e2, "Tick", (flow_inputs){ 0 }, NULL) == 2,
+        "BEH-11: latent behavior runs as a continuation on each owning entity"
+    );
+    blueprint_instance *e1_windup = game_behavior_instance(world, e1, "windup");
+    blueprint_instance *e2_windup = game_behavior_instance(world, e2, "windup");
+    check(
+        e1_windup != e2_windup && acount(e1_windup->activations) == 1 &&
+            acount(e2_windup->activations) == 1,
+        "BEH-2: two entities of one graph share no activation state"
+    );
+    game_behavior_pump(world, 2.0);
+    check(
+        acount(e1_windup->activations) == 0 && acount(e2_windup->activations) == 0,
+        "BEH-12: finished activations are reaped at the frame pump"
+    );
+    for (int frame = 0; frame < 600; frame++) {
+        game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL);
+        game_behavior_pump(world, (double)frame + 3.0);
+    }
+    check(acount(game_behavior_instance(world, e1, "move")->activations) == 0, "BEH-12: per-frame dispatch leaves every completed activation queue empty");
+    check(
+        game_behavior_destroy_entity(world, e2) == ECS_OK &&
+            game_behavior_instance(world, e2, "move") == NULL,
+        "BEH-7: entity destruction tears down every attached behavior first"
+    );
+    game_behavior_world_free(world);
+    blueprint_free(behavior);
+    blueprint_free(latent);
+    ecs_world_free(ecs);
+}
+
+static blueprint *make_live_blueprint(void)
+{
+    blueprint *bp = blueprint_new("LiveWorking");
+    if (!bp || blueprint_set_owner_type(bp, "ecs.entity") != 0) {
+        blueprint_free(bp);
+        return NULL;
+    }
+    blueprint_variable *counter = blueprint_add_variable(
+        bp,
+        "Counter",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_I32, .i = 0 },
+        "Live"
+    );
+    node *begin = graph_add_node(bp->graph, registry_node_by_name("Event"));
+    node *tick = graph_add_node(bp->graph, registry_node_by_name("Event"));
+    node *input = graph_add_node(bp->graph, registry_node_by_name("Event"));
+    node *set = counter ? blueprint_add_set_node(bp, counter->id) : NULL;
+    pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
+    if (!counter || !begin || !tick || !input || !set ||
+        graph_set_event_name(bp->graph, begin, "Begin") != 0 ||
+        graph_set_event_name(bp->graph, tick, "Tick") != 0 ||
+        graph_set_event_name(bp->graph, input, "Input") != 0 ||
+        graph_set_pin_default(bp->graph, set, 0, 1, &one) != 0 ||
+        graph_connect_exec(bp->graph, begin, 0, set, 0, 0) != 0 ||
+        graph_connect_exec(bp->graph, tick, 0, set, 0, 1) != 0) {
+        blueprint_free(bp);
+        return NULL;
+    }
+    return bp;
+}
+
+static void run_live_checks(void)
+{
+    ecs_world *ecs = ecs_world_new();
+    ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_entity e1 = ecs_world_create_entity(ecs);
+    ecs_entity e2 = ecs_world_create_entity(ecs);
+    GAME_GameHealth_add(ecs, e1, 1);
+    GAME_GameHealth_add(ecs, e2, 2);
+    ecs_world_apply_commands(ecs);
+    GAME_GameHealth_get(ecs, e1)->current = 7;
+
+    game_live_world *world = game_live_world_new(ecs);
+    game_live_definition *definition = game_live_definition_new("live", make_live_blueprint());
+    game_live_definition *other_definition = game_live_definition_new(
+        "other",
+        make_behavior_blueprint("Other", 0)
+    );
+    check(
+        world && definition && other_definition &&
+            game_live_add_definition(world, definition) == 0 &&
+            game_live_add_definition(world, other_definition) == 0,
+        "APPLY-1: a live definition owns a mutable working copy and an applied "
+        "snapshot"
+    );
+    game_behavior_world *behaviors = game_live_behaviors(world);
+    check(
+        game_behavior_attach(behaviors, e1, "live") == 0 &&
+            game_behavior_attach(behaviors, e1, "other") == 0,
+        "APPLY-2: runtime instances attach only to the applied snapshot"
+    );
+    blueprint_instance *live_before = game_behavior_instance(behaviors, e1, "live");
+    const blueprint *applied_before = game_live_applied(definition);
+    blueprint_instance *other_before = game_behavior_instance(behaviors, e1, "other");
+    uint64_t node_id = game_live_working(definition)->graph->nodes[0]->id;
+    check(
+        blueprint_mutable(game_live_working(definition)) &&
+            blueprint_set_name(game_live_working(definition), "LiveEdited") == 0 &&
+            blueprint_set_name((blueprint *)game_live_applied(definition), "Rejected") != 0,
+        "EXEC-20: working definitions are mutable while attached applied "
+        "snapshots are immutable"
+    );
+    check(
+        game_live_mark_dirty(definition) == 0 &&
+            game_live_definition_dirty(definition) &&
+            strcmp(game_live_applied(definition)->name, "LiveWorking") == 0,
+        "APPLY-7: Compile/apply is explicit and unapplied edits are visible"
+    );
+    blueprint *working = game_live_working(definition);
+    blueprint_set_description(working, "edited working copy");
+    game_live_mark_dirty(definition);
+    char message[256];
+    check(
+        game_live_apply(world, definition, message, sizeof message) == 0 &&
+            !game_live_definition_dirty(definition) &&
+            strstr(message, "destroyed and recreated"),
+        "UI-57: one replacement choke point states that only this definition "
+        "is recreated"
+    );
+    blueprint_instance *live_after = game_behavior_instance(behaviors, e1, "live");
+    blueprint_instance *other_after = game_behavior_instance(behaviors, e1, "other");
+    check(
+        live_after && live_after->bp == game_live_applied(definition) &&
+            live_after->bp != applied_before,
+        "APPLY-4: applying replaces the changed definition's instances as one "
+        "operation"
+    );
+    check(other_after == other_before && GAME_GameHealth_get(ecs, e1)->current == 7, "APPLY-5: applying is scoped and leaves other behaviors and components intact");
+    check(game_live_applied(definition)->graph->nodes[0]->id == node_id, "APPLY-6: snapshot replacement preserves node identity");
+    blueprint_variable *counter = blueprint_find_variable_by_name(game_live_applied(definition), "Counter");
+    pin_value begin_value = { 0 };
+    check(
+        counter &&
+            blueprint_instance_get_variable(live_after, counter->id, &begin_value) == 0 &&
+            begin_value.i == 1,
+        "APPLY-11: recreated instances run their Begin event"
+    );
+    check(begin_value.i == 1, "APPLY-10: apply keeps observable behavior defined when transient state is recreated");
+    check(
+        game_behavior_instance(behaviors, e2, "other") == NULL &&
+            game_behavior_attachment_count(behaviors) == 2,
+        "RUN-21: replacing one definition does not create instances for "
+        "unrelated entities"
+    );
+    check(
+        game_live_apply(world, definition, message, sizeof message) == 0 &&
+            strstr(message, "no unapplied edits"),
+        "APPLY-3: a clean applied snapshot is stable until another explicit "
+        "apply"
+    );
+    check(
+        game_live_mark_dirty(definition) == 0 &&
+            blueprint_mutable(game_live_working(definition)),
+        "APPLY-8: authoring remains available on the working copy after apply"
+    );
+    check(
+        game_live_definition_dirty(definition) &&
+            game_live_applied(definition)->graph->nodes[0]->id == node_id,
+        "APPLY-9: runtime state stays out of working-copy history and applied "
+        "identity"
+    );
+    game_live_world_free(world);
+    ecs_world_free(ecs);
+}
+
+static int g_engine_system_frames;
+static void engine_test_system(ecs_world *world, double now, void *user)
+{
+    (void)world;
+    (void)now;
+    (void)user;
+    g_engine_system_frames++;
+}
+
+static void run_engine_checks(void)
+{
+    ecs_world *ecs = ecs_world_new();
+    game_live_world *live = game_live_world_new(ecs);
+    game_live_definition *definition = game_live_definition_new("engine", make_live_blueprint());
+    ecs_entity player = ecs_world_create_entity(ecs);
+    check(
+        live && definition && game_live_add_definition(live, definition) == 0 &&
+            game_behavior_attach(game_live_behaviors(live), player, "engine") == 0,
+        "ENG-5: the world and behavior attachment run headlessly without a "
+        "window"
+    );
+    engine *runtime = engine_new(ecs, live);
+    g_engine_system_frames = 0;
+    check(
+        runtime && engine_add_system(runtime, engine_test_system, NULL) == 0 &&
+            engine_set_player(runtime, player) == 0 &&
+            engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT) == 0,
+        "ENG-3: the host has one explicit focus consumer"
+    );
+    flow_error error = { 0 };
+    check(
+        engine_dispatch_player_input(runtime, "Jump", 1.0, 1, &error) == 1 &&
+            error.code == 0,
+        "ENG-4: player input reaches the graph through typed event dispatch"
+    );
+    check(
+        engine_frame(runtime, 1.0) == FLOW_OK && engine_frame(runtime, 2.0) == FLOW_OK &&
+            engine_route_escape(runtime) == 0 &&
+            engine_get_focus(runtime) == ENGINE_FOCUS_NONE,
+        "ENG-6: each frame advances monotonic behavior then applies commands "
+        "once"
+    );
+    const engine_frame_timing *timing = engine_last_timing(runtime);
+    check(
+        timing && timing->frame == 2 && timing->command_apply_count == 2 &&
+            g_engine_system_frames == 2 && timing->behavior_ms >= 0.0 &&
+            timing->systems_ms >= 0.0 && timing->rendering_ms >= 0.0,
+        "ENG-7: behavior, systems, and rendering timing are separately "
+        "reportable"
+    );
+    engine_free(runtime);
+    game_live_world_free(live);
+    ecs_world_free(ecs);
 }
 
 int main(int argc, char **argv)
@@ -2371,7 +3131,7 @@ int main(int argc, char **argv)
         check(bp->graph->flow_pause_count > 0, "RUN-20: creating an instance acquires the mutation guard");
         check(blueprint_instance_scratch(bi, 99) != NULL, "EXEC-15: instance scratch is keyed by node ID");
         check(bi->activations == NULL, "EXEC-16: activation-local state starts empty on the instance");
-        check(bp->graph->flow_pause_count == 1, "RUN-19: authored mutation is guarded while a preview instance exists");
+        check(bp->graph->flow_pause_count == 1, "RUN-21: applied definition is guarded while a preview instance exists");
 
         flow_error perr = { 0 };
         flow_run *act = blueprint_instance_dispatch(bi, "Begin", (flow_inputs){ 0 }, &perr);
@@ -4004,7 +4764,7 @@ int main(int argc, char **argv)
         check(bi && bi->bp == bp, "UI-54: preview identity is separate from an activation");
         check(bp->graph->flow_pause_count > 0, "UI-55: an attached preview is destroyed before authoring mutation");
         blueprint_instance_destroy(bi);
-        check(bp->graph->flow_pause_count == 0, "UI-56: all authored edits share the released mutation choke point");
+        check(bp->graph->flow_pause_count == 0, "UI-57: the replacement choke point releases the applied definition");
         check(
             value && literal &&
                 blueprint_promote_pin_to_variable(bp, literal, 0, 0, "Promoted"),
@@ -4632,6 +5392,12 @@ int main(int argc, char **argv)
         _fmt_sprint(&ss, scratch, "X");
         fmt_check_stream(&ss, "", "fmt: an out-of-range placeholder renders empty");
     }
+
+    run_ecs_checks();
+    run_prototype_checks();
+    run_behavior_checks();
+    run_live_checks();
+    run_engine_checks();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

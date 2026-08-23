@@ -52,6 +52,59 @@ static char *instance_own_str(blueprint_instance *bi, const char *s)
     return copy;
 }
 
+static void instance_clear_values(blueprint_instance *bi)
+{
+    for (int i = 0; i < bi->variable_count; i++) {
+        if (bi->variables[i].container >= PIN_CONTAINER_ARRAY) {
+            pin_array_free((pin_array *)bi->variables[i].ptr);
+        }
+    }
+    for (int i = 0; i < acount(bi->strings); i++) {
+        free(bi->strings[i]);
+    }
+    aclear(bi->strings);
+}
+
+static void instance_init_values(blueprint_instance *bi)
+{
+    int count = acount(bi->bp->variables);
+    instance_clear_values(bi);
+    if (count != bi->variable_count) {
+        free(bi->variables);
+        bi->variables = count ? (pin_value *)xcalloc((size_t)count, sizeof *bi->variables)
+                              : NULL;
+        bi->variable_count = count;
+    } else if (count) {
+        memset(bi->variables, 0, (size_t)count * sizeof *bi->variables);
+    }
+    for (int i = 0; i < count; i++) {
+        bi->variables[i] = bi->bp->variables[i].default_value;
+        if (bi->variables[i].container >= PIN_CONTAINER_ARRAY &&
+            bi->variables[i].ptr) {
+            bi->variables[i].ptr = pin_array_clone(
+                (const pin_array *)bi->variables[i].ptr
+            );
+        } else if (
+            (bi->variables[i].type == PIN_STR || bi->variables[i].type == PIN_NAME) &&
+            bi->variables[i].str
+        ) {
+            bi->variables[i].str = instance_own_str(bi, bi->variables[i].str);
+        }
+    }
+}
+
+static void instance_set_owner(blueprint_instance *bi, const pin_value *owner)
+{
+    bi->owner = (pin_value){ .type = PIN_FLOW };
+    if (bi->bp->owner_type_name) {
+        bi->owner = (pin_value){
+            .type = PIN_HANDLE,
+            .u64 = owner ? owner->u64 : 0,
+            .type_name = bi->bp->owner_type_name,
+        };
+    }
+}
+
 /* Run the scheduler until no activation can make progress: at most one
  * activation runs at a time, and the next ready activation is the oldest
  * non-terminal one (FIFO by dispatch sequence, EXEC-17). */
@@ -91,33 +144,8 @@ blueprint_instance *blueprint_instance_create(
     bi->now = now;
     bi->now_user = now_user;
     compile_report_init(&bi->compile);
-    int n = acount(bp->variables);
-    if (n) {
-        bi->variables = (pin_value *)xcalloc((size_t)n, sizeof *bi->variables);
-        for (int i = 0; i < n; i++) {
-            /* VAR-11: initialize runtime storage from authored defaults once. */
-            bi->variables[i] = bp->variables[i].default_value;
-            if (bi->variables[i].container >= PIN_CONTAINER_ARRAY &&
-                bi->variables[i].ptr) {
-                bi->variables[i].ptr = pin_array_clone(
-                    (const pin_array *)bi->variables[i].ptr
-                );
-            } else if (
-                (bi->variables[i].type == PIN_STR || bi->variables[i].type == PIN_NAME) &&
-                bi->variables[i].str
-            ) {
-                bi->variables[i].str = instance_own_str(bi, bi->variables[i].str);
-            }
-        }
-    }
-    bi->owner = (pin_value){ .type = PIN_FLOW };
-    if (bp->owner_type_name) {
-        bi->owner = (pin_value){
-            .type = PIN_HANDLE,
-            .u64 = owner ? owner->u64 : 0,
-            .type_name = bp->owner_type_name,
-        };
-    }
+    instance_init_values(bi);
+    instance_set_owner(bi, owner);
     /* EXEC-19 / RUN-20: the instance holds the definition's mutation guard
      * for its whole lifetime. */
     graph_flow_pause(bp->graph);
@@ -211,13 +239,43 @@ int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act)
     return -1;
 }
 
-void blueprint_instance_destroy(blueprint_instance *bi)
+int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled)
 {
-    if (!bi || !bi->alive) {
-        return;
+    if (!bi || !bi->alive || acount(bi->activations)) {
+        return -1;
     }
-    bi->alive = 0;
-    /* EVT-14: detach weak incoming and outgoing bindings before freeing the
+    if (enabled) {
+        bi->pool_enabled = 1;
+        return 0;
+    }
+    for (int i = 0; i < acount(bi->activation_pool); i++) {
+        flow_run_free(bi->activation_pool[i]);
+    }
+    afree(bi->activation_pool);
+    bi->pool_enabled = 0;
+    return 0;
+}
+
+int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act)
+{
+    if (!bi || !act || blueprint_instance_remove_activation(bi, act) != 0) {
+        return -1;
+    }
+    if (!bi->pool_enabled) {
+        flow_run_free(act);
+        return 0;
+    }
+    if (flow_run_recycle(act) != FLOW_OK) {
+        flow_run_free(act);
+        return -1;
+    }
+    apush(bi->activation_pool, act);
+    return 0;
+}
+
+static void instance_detach_bindings(blueprint_instance *bi)
+{
+    /* EVT-14: detach weak incoming and outgoing bindings before releasing the
      * target instance. No callback can observe this instance afterward. */
     while (acount(bi->delegate_incoming)) {
         blueprint_delegate_ref ref = bi->delegate_incoming[acount(bi->delegate_incoming) - 1];
@@ -229,25 +287,73 @@ void blueprint_instance_destroy(blueprint_instance *bi)
     }
     afree(bi->delegates);
     afree(bi->delegate_incoming);
-    afree(bi->services);
-    /* RUN-15: cancel every activation before releasing instance storage. */
+}
+
+int blueprint_instance_pool_release(blueprint_instance *bi)
+{
+    if (!bi) {
+        return -1;
+    }
+    if (!bi->alive) {
+        return 0;
+    }
+    bi->alive = 0;
+    instance_detach_bindings(bi);
     while (acount(bi->activations)) {
         flow_run_free(bi->activations[0]);
     }
-    afree(bi->activations);
-    for (int i = 0; i < acount(bi->bp->variables); i++) {
-        if (bi->variables[i].container >= PIN_CONTAINER_ARRAY) {
-            pin_array_free((pin_array *)bi->variables[i].ptr);
-        }
+    aclear(bi->activations);
+    aclear(bi->services);
+    instance_clear_values(bi);
+    aclear(bi->scratch);
+    compile_report_free(&bi->compile);
+    compile_report_init(&bi->compile);
+    bi->compile_revision = 0;
+    bi->owner = (pin_value){ .type = PIN_FLOW };
+    graph_flow_resume(bi->bp->graph);
+    return 0;
+}
+
+blueprint_instance *blueprint_instance_pool_reuse(
+    blueprint_instance *bi,
+    blueprint *bp,
+    const pin_value *owner,
+    flow_clock_fn now,
+    void *now_user
+)
+{
+    if (!bi || !bp || bi->alive || bi->bp != bp) {
+        return NULL;
     }
-    free(bi->variables); /* xcalloc'd plain array, not a dyna buffer */
+    bi->alive = 1;
+    bi->now = now;
+    bi->now_user = now_user;
+    bi->next_delegate_id = 1;
+    instance_init_values(bi);
+    instance_set_owner(bi, owner);
+    graph_flow_pause(bp->graph);
+    return bi;
+}
+
+void blueprint_instance_destroy(blueprint_instance *bi)
+{
+    if (!bi) {
+        return;
+    }
+    blueprint_instance_pool_release(bi);
+    for (int i = 0; i < acount(bi->activation_pool); i++) {
+        flow_run_free(bi->activation_pool[i]);
+    }
+    afree(bi->activation_pool);
+    free(bi->variables);
+    afree(bi->activations);
+    afree(bi->services);
     afree(bi->scratch);
     for (int i = 0; i < acount(bi->strings); i++) {
         free(bi->strings[i]);
     }
     afree(bi->strings);
     compile_report_free(&bi->compile);
-    graph_flow_resume(bi->bp->graph);
     free(bi);
 }
 
@@ -414,7 +520,12 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
         .sink_user = bi->sink_user,
         .instance = bi,
     };
-    flow_run *act = flow_run_start(bi->bp->graph, entry, inputs, &opts, error);
+    flow_run *act = NULL;
+    if (bi->pool_enabled && acount(bi->activation_pool)) {
+        act = flow_run_start_reuse(apop(bi->activation_pool), bi->bp->graph, entry, inputs, &opts, error);
+    } else {
+        act = flow_run_start(bi->bp->graph, entry, inputs, &opts, error);
+    }
     if (!act) {
         return NULL;
     }

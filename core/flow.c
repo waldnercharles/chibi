@@ -77,6 +77,7 @@ struct flow_run
     flow_call_frame *stack_cache;
     pin_value *inputs;
     int input_count;
+    int input_capacity;
     const void *input_user_data;
     flow_sink_fn sink;
     void *sink_user;
@@ -708,6 +709,109 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
         graph_pause(run);
     }
     return run;
+}
+
+flow_run *flow_run_start_reuse(
+    flow_run *run,
+    graph *g,
+    node *entry,
+    flow_inputs inputs,
+    const flow_options *options,
+    flow_error *error
+)
+{
+    set_error(error, FLOW_OK, NULL, NULL);
+    if (!run || run->state != FLOW_IDLE || run->graph != g ||
+        !graph_has_node(g, entry) || !entry->desc || !entry->desc->flow) {
+        set_error(error, FLOW_ERR_INVALID_NODE, entry, "invalid reusable flow entry");
+        return NULL;
+    }
+    if (inputs.count < 0 || (inputs.count > 0 && !inputs.values)) {
+        set_error(error, FLOW_ERR_ARGUMENT, entry, "invalid flow inputs");
+        return NULL;
+    }
+    run->instance = options ? options->instance : NULL;
+    run->graph_guard_owned = run->instance == NULL;
+    run->state = FLOW_RUNNING;
+    run->step_budget = options && options->step_budget ? options->step_budget : 10000;
+    run->now = options ? options->now : NULL;
+    run->now_user = options ? options->now_user : NULL;
+    run->current_time = options ? options->initial_time : 0.0;
+    run->wake_time = 0.0;
+    run->waiting_node = NULL;
+    run->waiting_output = -1;
+    run->graph_paused = 0;
+    run->pause_requested = 0;
+    run->step_mode = 0;
+    run->activation_budget = 0;
+    run->call_depth = options ? options->call_depth : 0;
+    run->breakpoint_node = NULL;
+    run->breakpoint_skipped = 0;
+    run->sink = options ? options->sink : NULL;
+    run->sink_user = options ? options->sink_user : NULL;
+    run->steps = 0;
+    run->topology_revision = graph_topology_revision(g);
+    run->input_count = inputs.count;
+    run->input_user_data = inputs.user_data;
+    run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
+    aclear(run->frames);
+    aclear(run->stack_cache);
+    aclear(run->services);
+    if (!run->runtime) {
+        run->runtime = runtime_store_create(g);
+        eval_context_attach_runtime(&run->eval, run->runtime);
+    }
+    runtime_store_reset(run->runtime);
+    eval_context_reset(&run->eval);
+    run->eval.instance = run->instance;
+    run->eval.on_data_edge = record_evaluated_data_edge;
+    run->eval.on_data_edge_user = run;
+    arena_reset(&run->input_arena);
+    arena_reset(&run->scratch);
+    if (inputs.count > run->input_capacity) {
+        run->inputs = (pin_value *)
+            xrealloc(run->inputs, (size_t)inputs.count * sizeof *run->inputs);
+        run->input_capacity = inputs.count;
+    }
+    if (inputs.count) {
+        memset(run->inputs, 0, (size_t)inputs.count * sizeof *run->inputs);
+        for (int i = 0; i < inputs.count; i++) {
+            if (flow_copy_input(&run->input_arena, &run->inputs[i], &inputs.values[i])) {
+                set_error(error, FLOW_ERR_NODE, entry, "flow input copy failed");
+                flow_run_stop(run);
+                return NULL;
+            }
+        }
+    }
+    apush(run->frames, (flow_frame){ .node = entry, .kind = FLOW_FRAME_NODE, .input_pin = -1 });
+    if (run->graph_guard_owned) {
+        graph_pause(run);
+    }
+    if (run->instance) {
+        for (int i = 0; i < acount(run->instance->services); i++) {
+            apush(run->services, run->instance->services[i]);
+        }
+    }
+    return run;
+}
+
+int flow_run_recycle(flow_run *run)
+{
+    if (!run) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (run->state != FLOW_IDLE && run->state != FLOW_COMPLETED &&
+        run->state != FLOW_FAILED) {
+        return FLOW_ERR_STATE;
+    }
+    flow_run_stop(run);
+    aclear(run->traversals);
+    arena_reset(&run->input_arena);
+    arena_reset(&run->scratch);
+    run->input_count = 0;
+    run->input_user_data = NULL;
+    run->steps = 0;
+    return FLOW_OK;
 }
 
 flow_run *graph_run_event(graph *g, const char *name, flow_inputs inputs, flow_error *error)

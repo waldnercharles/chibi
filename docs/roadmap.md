@@ -725,10 +725,11 @@ scopes teardown per definition. Re-cites the existing `EXEC-19`, `RUN-19`, and
 ### Slice 6: host surfaces
 
 `ENG-1` through `ENG-7`. Offscreen scene target in a dockable panel, viewport
-focus and input routing, the frame loop, and per-stage timing. The render
-target reaches Dear ImGui through `cf_texture_binding_handle`, not
-`cf_texture_handle`; the SDLGPU3 backend expects a sampler binding pointer and
-the two functions differ by one word.
+focus and input routing, the frame loop, and per-stage timing. The render target
+exposes `cf_texture_binding_handle` for sampler-binding backends. The pinned
+SDLGPU3 backend now consumes `cf_texture_handle` after its 2025 API change, so
+the host probes the binding handle and passes the backend-compatible texture
+handle to Dear ImGui.
 
 ### Slice 7: declared effects and parallelism
 

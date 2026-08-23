@@ -55,6 +55,7 @@ typedef struct
     char *spelling;   /* C type spelling, e.g. "float", "Vec3" */
     const char *pin;  /* pin_type enum name, e.g. "PIN_F32" */
     long long offset; /* bytes */
+    long long size;   /* bytes */
 } field_info;
 
 typedef struct
@@ -62,6 +63,9 @@ typedef struct
     char *name;
     char *file; /* header basename where the definition lives */
     field_info *fields;
+    long long size;
+    int component;
+    int dense;
 } struct_info;
 
 typedef struct
@@ -259,6 +263,13 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
         return CXChildVisit_Continue;
     }
     f.offset = clang_Cursor_getOffsetOfField(c) / 8; /* bits -> bytes */
+    f.size = clang_Type_getSizeOf(clang_getCanonicalType(t));
+    if (f.size < 0) {
+        reflect_error(c, "field size is unavailable");
+        free(f.name);
+        free(f.spelling);
+        return CXChildVisit_Continue;
+    }
     if (clang_Cursor_isBitField(c)) {
         reflect_error(c, "bit-fields are unsupported");
         free(f.name);
@@ -314,10 +325,16 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
 
     if (k == CXCursor_StructDecl && clang_isCursorDefinition(c) &&
         clang_getCursorKind(parent) != CXCursor_TypedefDecl) {
-        if (has_annotate(c, "node:type")) {
-            struct_info s;
+        int is_type = has_annotate(c, "node:type");
+        int is_component = has_annotate(c, "node:component") ||
+                           has_annotate(c, "node:component:index:dense");
+        if (is_type || is_component) {
+            struct_info s = { 0 };
             s.name = cxstr(clang_getCursorSpelling(c));
             s.file = cursor_file_basename(c);
+            s.size = clang_Type_getSizeOf(clang_getCursorType(c));
+            s.component = is_component;
+            s.dense = has_annotate(c, "node:component:index:dense");
             s.fields = NULL;
             clang_visitChildren(c, field_visitor, &s.fields);
             if (g_failed) {
@@ -776,6 +793,316 @@ static void emit_fn_node(FILE *out, const fn_info *f)
     fputs("};\n\n", out);
 }
 
+/* ---------- component emission ---------- */
+
+static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)
+{
+    const unsigned char *bytes = (const unsigned char *)data;
+    for (size_t i = 0; i < size; i++) {
+        hash ^= bytes[i];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static uint64_t hash_string(uint64_t hash, const char *text)
+{
+    return hash_bytes(hash, text ? text : "", strlen(text ? text : "") + 1);
+}
+
+static int pin_value_number(const char *pin)
+{
+    static const char *names[] = {
+        "PIN_FLOW",   "PIN_BOOL", "PIN_I8",   "PIN_U8",  "PIN_I16",
+        "PIN_U16",    "PIN_I32",  "PIN_U32",  "PIN_I64", "PIN_U64",
+        "PIN_F32",    "PIN_F64",  "PIN_NAME", "PIN_STR", "PIN_HANDLE",
+        "PIN_STRUCT", "PIN_ENUM",
+    };
+    for (int i = 0; i < (int)(sizeof names / sizeof names[0]); i++) {
+        if (strcmp(names[i], pin) == 0) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+static uint64_t component_layout_hash(const struct_info *s)
+{
+    uint64_t hash = UINT64_C(1469598103934665603);
+    hash = hash_string(hash, s->name);
+    size_t size = (size_t)s->size;
+    int field_count = acount(s->fields);
+    hash = hash_bytes(hash, &size, sizeof size);
+    hash = hash_bytes(hash, &field_count, sizeof field_count);
+    for (int i = 0; i < field_count; i++) {
+        const field_info *field = &s->fields[i];
+        size_t offset = (size_t)field->offset;
+        size_t field_size = (size_t)field->size;
+        int pin = pin_value_number(field->pin);
+        hash = hash_string(hash, field->name);
+        hash = hash_bytes(hash, &offset, sizeof offset);
+        hash = hash_bytes(hash, &field_size, sizeof field_size);
+        hash = hash_bytes(hash, &pin, sizeof pin);
+        hash = hash_string(hash, field->spelling);
+    }
+    return hash;
+}
+
+static void emit_component_nodes(FILE *out, const struct_info *s)
+{
+    const char *name = s->name;
+    fprintf(out, "static int __flow_%s_get_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
+    fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
+    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Get requires ecs.world\");\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fprintf(out, "    const %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
+    fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
+    fprintf(out, "    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
+    fprintf(out, "    __out->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
+    fputs("    if (!__out->ptr) return FLOW_ERR_NODE;\n", out);
+    fprintf(out, "    memcpy(__out->ptr, __value, sizeof(%s));\n", name);
+    fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+
+    fprintf(out, "static int __flow_%s_set_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
+    fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
+    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n    pin_value __input;\n", out);
+    fputs("    if (!__world || !__instance || flow_context_eval_data(ctx, 1, &__input) != FLOW_OK || !__input.ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set requires a value\");\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fprintf(out, "    %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
+    fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
+    fprintf(out, "    memcpy(__value, __input.ptr, sizeof(%s));\n", name);
+    fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+
+    fprintf(out, "static int __flow_%s_has_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
+    fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
+    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Has requires ecs.world\");\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fprintf(
+        out,
+        "    pin_value *__out = flow_context_output_value(ctx, 1);\n    "
+        "*__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = "
+        "%s_%s_has(__world, __entity) };\n",
+        g_prefix,
+        name
+    );
+    fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+
+    fprintf(out, "static int __flow_%s_add_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
+    fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
+    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add requires ecs.world\");\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fprintf(
+        out,
+        "    if (%s_%s_add(__world, __entity, 0) != ECS_OK) return "
+        "flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add failed\");\n",
+        g_prefix,
+        name
+    );
+    fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+
+    fprintf(out, "static int __flow_%s_remove_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
+    fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
+    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove requires ecs.world\");\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fprintf(
+        out,
+        "    if (%s_%s_remove(__world, __entity, 0) != ECS_OK) return "
+        "flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove failed\");\n",
+        g_prefix,
+        name
+    );
+    fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+}
+
+static void emit_component_nodes_desc(FILE *out, const struct_info *s)
+{
+    const char *name = s->name;
+    fprintf(out, "static pin_spec %s_%s_get_inputs[] = { { \"Exec\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_get_outputs[] = { { \"Then\", PIN_FLOW, NULL, "
+        "PIN_EXEC }, { \"Value\", PIN_STRUCT, \"%s\" } };\n",
+        g_prefix,
+        name,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_Get_%s = { .name = \"Get_%s\", .input_count = 1, "
+        ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_get_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "__flow_%s_get_%s };\n\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "static pin_spec %s_%s_set_inputs[] = { { \"Exec\", PIN_FLOW, NULL, "
+        "PIN_EXEC }, { \"Value\", PIN_STRUCT, \"%s\" } };\n",
+        g_prefix,
+        name,
+        name
+    );
+    fprintf(out, "static pin_spec %s_%s_set_outputs[] = { { \"Then\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
+        ".output_count = 1, .inputs = %s_%s_set_inputs, .outputs = "
+        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "__flow_%s_set_%s };\n\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "static pin_spec %s_%s_has_outputs[] = { { \"Then\", PIN_FLOW, NULL, "
+        "PIN_EXEC }, { \"Value\", PIN_BOOL, \"bool\" } };\n",
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_Has_%s = { .name = \"Has_%s\", .input_count = 1, "
+        ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_has_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "__flow_%s_has_%s };\n\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
+        ".output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "__flow_%s_add_%s };\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
+        "1, .output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "__flow_%s_remove_%s };\n\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+}
+
+static void emit_component_accessors(FILE *out, const struct_info *s)
+{
+    const char *name = s->name;
+    uint64_t id = stable_service_id(name);
+    fprintf(
+        out,
+        "const ecs_component_desc %s_COMPONENT_%s = { .id = UINT64_C(%llu), "
+        ".name = \"%s\", .element_size = sizeof(%s), .type = &%s_T_%s, "
+        ".layout_hash = UINT64_C(%llu), .index = %s };\n",
+        g_prefix,
+        name,
+        (unsigned long long)id,
+        name,
+        name,
+        g_prefix,
+        name,
+        (unsigned long long)component_layout_hash(s),
+        s->dense ? "ECS_INDEX_DENSE" : "ECS_INDEX_BITSET"
+    );
+    fprintf(
+        out,
+        "%s *%s_%s_get(ecs_world *world, ecs_entity entity) { return "
+        "(%s *)ecs_component_data(world, entity, %s_COMPONENT_%s.id); }\n",
+        name,
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "const %s *%s_%s_get_const(const ecs_world *world, ecs_entity entity) "
+        "{ return (const %s *)ecs_component_data_const(world, entity, "
+        "%s_COMPONENT_%s.id); }\n",
+        name,
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "int %s_%s_has(const ecs_world *world, ecs_entity entity) { return "
+        "ecs_component_has(world, entity, %s_COMPONENT_%s.id); }\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "int %s_%s_add(ecs_world *world, ecs_entity entity, uint64_t sort_key) "
+        "{ return ecs_world_record_add(world, entity, %s_COMPONENT_%s.id, "
+        "NULL, "
+        "sort_key); }\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "int %s_%s_remove(ecs_world *world, ecs_entity entity, uint64_t "
+        "sort_key) "
+        "{ return ecs_world_record_remove(world, entity, %s_COMPONENT_%s.id, "
+        "sort_key); }\n\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+}
+
 /* ---------- emission ---------- */
 
 static void emit(FILE *out, const collect_ctx *ctx)
@@ -804,7 +1131,19 @@ static void emit(FILE *out, const collect_ctx *ctx)
     fputs("#include \"core/flow.h\"\n", out);
     fputs("#include \"core/service.h\"\n", out);
     fputs("#include \"core/operator.h\"\n", out);
-    fputs("#include \"core/registry.h\"\n\n", out);
+    fputs("#include \"core/registry.h\"\n", out);
+    if (acount(ctx->structs)) {
+        int has_component = 0;
+        for (int i = 0; i < acount(ctx->structs); i++) {
+            has_component |= ctx->structs[i].component;
+        }
+        if (has_component) {
+            fputs("#include \"ecs/ecs.h\"\n", out);
+            fputs("#include \"core/instance.h\"\n", out);
+            fputs("#include <string.h>\n", out);
+        }
+    }
+    fputs("\n", out);
 
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
@@ -838,6 +1177,31 @@ static void emit(FILE *out, const collect_ctx *ctx)
     }
     fputs("};\n", out);
     fprintf(out, "const int %s_REGISTRY_TYPE_COUNT = %d;\n\n", g_prefix, acount(ctx->structs));
+
+    int component_count = 0;
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        if (ctx->structs[i].component) {
+            emit_component_accessors(out, &ctx->structs[i]);
+            component_count++;
+        }
+    }
+    if (component_count) {
+        fprintf(out, "const ecs_component_desc *const %s_REGISTRY_COMPONENTS[] = {\n", g_prefix);
+        for (int i = 0; i < acount(ctx->structs); i++) {
+            if (ctx->structs[i].component) {
+                fprintf(
+                    out,
+                    "    &%s_COMPONENT_%s,\n",
+                    g_prefix,
+                    ctx->structs[i].name
+                );
+            }
+        }
+        fputs("};\n", out);
+    } else {
+        fprintf(out, "const void *const %s_REGISTRY_COMPONENTS[1] = { NULL };\n", g_prefix);
+    }
+    fprintf(out, "const int %s_REGISTRY_COMPONENT_COUNT = %d;\n\n", g_prefix, component_count);
 
     int service_count = 0;
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -929,6 +1293,12 @@ static void emit(FILE *out, const collect_ctx *ctx)
             emit_fn_node(out, &ctx->fns[i]);
         }
     }
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        if (ctx->structs[i].component) {
+            emit_component_nodes(out, &ctx->structs[i]);
+            emit_component_nodes_desc(out, &ctx->structs[i]);
+        }
+    }
 
     fprintf(out, "node_desc *const %s_REGISTRY_NODES[] = {\n", g_prefix);
     for (int i = 0; i < acount(ctx->structs); i++) {
@@ -938,8 +1308,32 @@ static void emit(FILE *out, const collect_ctx *ctx)
     for (int i = 0; i < acount(ctx->fns); i++) {
         fprintf(out, "    &%s_NODE_%s,\n", g_prefix, ctx->fns[i].name);
     }
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        if (!ctx->structs[i].component) {
+            continue;
+        }
+        fprintf(
+            out,
+            "    &%s_NODE_Get_%s, &%s_NODE_Set_%s, &%s_NODE_Has_%s,\n",
+            g_prefix,
+            ctx->structs[i].name,
+            g_prefix,
+            ctx->structs[i].name,
+            g_prefix,
+            ctx->structs[i].name
+        );
+        fprintf(
+            out,
+            "    &%s_NODE_Add_%s, &%s_NODE_Remove_%s,\n",
+            g_prefix,
+            ctx->structs[i].name,
+            g_prefix,
+            ctx->structs[i].name
+        );
+    }
     fputs("};\n", out);
-    int node_count = acount(ctx->structs) * 2 + acount(ctx->fns);
+    int component_node_count = component_count * 5;
+    int node_count = acount(ctx->structs) * 2 + acount(ctx->fns) + component_node_count;
     fprintf(out, "const int %s_REGISTRY_NODE_COUNT = %d;\n", g_prefix, node_count);
     fprintf(out, "const registry_pack %s_REGISTRY_PACK = {\n", g_prefix);
     fprintf(out, "    .name = \"%s\",\n", g_prefix);

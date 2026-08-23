@@ -99,6 +99,15 @@ extern "C"
         const flow_options *options,
         flow_error *error
     );
+    flow_run *flow_run_start_reuse(
+        flow_run *run,
+        graph *g,
+        node *entry,
+        flow_inputs inputs,
+        const flow_options *options,
+        flow_error *error
+    );
+    int flow_run_recycle(flow_run *run);
 
     /* Public named dispatch. NULL means unknown or duplicate event; `error`
      * receives the structured dispatch error and may be NULL. */

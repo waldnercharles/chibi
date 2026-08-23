@@ -2,6 +2,7 @@
 #include "../core/instance.h"
 #include "../core/registry.h"
 #include "../editor/editor.h"
+#include "../engine/engine.h"
 #include "cute_host.h"
 #include "demo_graph.h"
 #include "stacktrace.h"
@@ -64,6 +65,7 @@ int main(int argc, char **argv)
     }
 
     cf_app_init_imgui();
+    engine_viewport *viewport = engine_viewport_new(640, 360);
 
     blueprint *bp = blueprint_new("DemoBlueprint");
     registry_validate();
@@ -128,6 +130,7 @@ int main(int argc, char **argv)
         }
         last_seconds = seconds;
 
+        engine_viewport_draw(viewport);
         editor_draw(ed);
         cf_app_draw_onto_screen(true);
 
@@ -136,6 +139,7 @@ int main(int argc, char **argv)
         }
     }
 
+    engine_viewport_free(viewport);
     editor_free(ed);
     cf_destroy_app();
     return 0;

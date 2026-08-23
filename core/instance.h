@@ -39,6 +39,7 @@ struct blueprint_instance
 {
     blueprint *bp;        /* borrowed; must outlive the instance */
     pin_value *variables; /* runtime storage, parallel to bp->variables */
+    int variable_count;
     instance_scratch_slot *scratch;
     pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
     char **strings;  /* instance-owned string variable values */
@@ -47,7 +48,9 @@ struct blueprint_instance
     double current_time;
     flow_sink_fn sink;
     void *sink_user;
-    flow_run **activations; /* scheduler queue, FIFO by dispatch sequence */
+    flow_run **activations;     /* scheduler queue, FIFO by dispatch sequence */
+    flow_run **activation_pool; /* idle reusable activations */
+    int pool_enabled;
     blueprint_delegate_binding *delegates; /* outgoing weak bindings */
     blueprint_delegate_ref *delegate_incoming;
     service_binding *services;
@@ -77,8 +80,24 @@ blueprint_instance *blueprint_instance_create(
  * executing another node (RUN-15). Releases the mutation guard. */
 void blueprint_instance_destroy(blueprint_instance *bi);
 
+/* Release/reuse instance storage for a per-definition pool. The Blueprint must
+ * remain the same definition between release and reuse. */
+int blueprint_instance_pool_release(blueprint_instance *bi);
+blueprint_instance *blueprint_instance_pool_reuse(
+    blueprint_instance *bi,
+    blueprint *bp,
+    const pin_value *owner,
+    flow_clock_fn now,
+    void *now_user
+);
+
 /* Remove one activation from the instance queue before its storage is freed. */
 int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act);
+
+/* Enable pooled activation storage. The setting may change only while the
+ * instance has no active activations. */
+int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled);
+int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act);
 
 /* Dispatch a named event (EVT-9). Creates a distinct activation carrying
  * copied parameter values and runs the scheduler. NULL with a structured

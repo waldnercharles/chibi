@@ -137,7 +137,7 @@ add_custom_command(
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/prototype.c game/behavior.c game/live.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
@@ -190,6 +190,10 @@ target_link_libraries(self_check PRIVATE engine game ecs demo)
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
 target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_activation PRIVATE core demo)
+
+add_executable(scene_benchmark test/scene_benchmark.c ${BASE_REGISTRY})
+target_include_directories(scene_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(scene_benchmark PRIVATE game demo)
 
 # --- integration: headless pico_unit regression suite for the editor<->core
 # interaction path (test/integration.c). Core + demo + pico_unit only; no
@@ -265,6 +269,7 @@ if(CLANG_FORMAT)
   add_dependencies(app format)
   add_dependencies(self_check format)
   add_dependencies(bench_activation format)
+  add_dependencies(scene_benchmark format)
   add_dependencies(integration format)
   add_dependencies(registry_consumer format)
   add_dependencies(reflect format)

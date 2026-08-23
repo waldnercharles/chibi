@@ -81,6 +81,8 @@ struct flow_run
     const void *input_user_data;
     flow_sink_fn sink;
     void *sink_user;
+    flow_parallel_for_fn parallel_for;
+    void *parallel_user;
     arena input_arena;
     arena scratch;
     flow_watch *watches;
@@ -660,6 +662,8 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->current_time = options ? options->initial_time : 0.0;
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
+    run->parallel_for = options ? options->parallel_for : NULL;
+    run->parallel_user = options ? options->parallel_user : NULL;
     run->call_depth = options ? options->call_depth : 0;
     if (run->instance) {
         for (int i = 0; i < acount(run->instance->services); i++) {
@@ -749,6 +753,8 @@ flow_run *flow_run_start_reuse(
     run->breakpoint_skipped = 0;
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
+    run->parallel_for = options ? options->parallel_for : NULL;
+    run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;

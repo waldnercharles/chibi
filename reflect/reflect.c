@@ -82,7 +82,10 @@ typedef struct
     int *pservice;        /* service-backed parameters */
     char **pservice_type; /* nominal service type */
     char **pout_type;     /* pointee spelling for explicit outputs */
-    char *operator_name;  /* optional NODE_OPERATOR name */
+    char **reads;         /* NODE_READS type names */
+    char **writes;        /* NODE_WRITES type names */
+    unsigned effect_flags;
+    char *operator_name; /* optional NODE_OPERATOR name */
 } fn_info;
 
 typedef struct
@@ -369,6 +372,26 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 return CXChildVisit_Recurse;
             }
             f.operator_name = annotation_value(c, "node:operator:");
+            char *read_type = annotation_value(c, "node:reads:");
+            char *write_type = annotation_value(c, "node:writes:");
+            if (read_type) {
+                apush(f.reads, read_type);
+            }
+            if (write_type) {
+                apush(f.writes, write_type);
+            }
+            if (has_annotate(c, "node:entity-scoped")) {
+                f.effect_flags |= 1u << 4;
+            }
+            if (has_annotate(c, "node:structural")) {
+                f.effect_flags |= 1u << 0;
+            }
+            if (has_annotate(c, "node:world-read")) {
+                f.effect_flags |= 1u << 1;
+            }
+            if (has_annotate(c, "node:host-sink")) {
+                f.effect_flags |= 1u << 2;
+            }
             clang_visitChildren(c, param_visitor, &f);
             apush(ctx->fns, f);
         }
@@ -709,6 +732,55 @@ static void emit_local_arg(FILE *out, const char *spelling, const char *pin, int
     }
 }
 
+static int fn_has_access(const fn_info *f)
+{
+    return acount(f->reads) || acount(f->writes) || f->effect_flags;
+}
+
+static void emit_fn_access(FILE *out, const fn_info *f)
+{
+    if (!fn_has_access(f)) {
+        return;
+    }
+    if (acount(f->reads)) {
+        fprintf(out, "static const uint64_t %s_%s_reads[] = {", g_prefix, f->name);
+        for (int i = 0; i < acount(f->reads); i++) {
+            fprintf(
+                out,
+                "%sUINT64_C(%llu)",
+                i ? ", " : "",
+                (unsigned long long)stable_service_id(f->reads[i])
+            );
+        }
+        fputs("};\n", out);
+    }
+    if (acount(f->writes)) {
+        fprintf(out, "static const uint64_t %s_%s_writes[] = {", g_prefix, f->name);
+        for (int i = 0; i < acount(f->writes); i++) {
+            fprintf(
+                out,
+                "%sUINT64_C(%llu)",
+                i ? ", " : "",
+                (unsigned long long)stable_service_id(f->writes[i])
+            );
+        }
+        fputs("};\n", out);
+    }
+    fprintf(out, "static const node_access %s_%s_access = { .reads = ", g_prefix, f->name);
+    if (acount(f->reads)) {
+        fprintf(out, "%s_%s_reads", g_prefix, f->name);
+    } else {
+        fputs("NULL", out);
+    }
+    fprintf(out, ", .read_count = %d, .writes = ", acount(f->reads));
+    if (acount(f->writes)) {
+        fprintf(out, "%s_%s_writes", g_prefix, f->name);
+    } else {
+        fputs("NULL", out);
+    }
+    fprintf(out, ", .write_count = %d, .flags = %u };\n", acount(f->writes), f->effect_flags);
+}
+
 static void emit_exec_node(FILE *out, const fn_info *f)
 {
     int input_count = 1;
@@ -745,6 +817,7 @@ static void emit_exec_node(FILE *out, const fn_info *f)
         }
     }
     fputs("};\n", out);
+    emit_fn_access(out, f);
     fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
     fprintf(out, "    .name = \"%s\", .input_count = %d, .output_count = %d,\n", f->name, input_count, output_count);
     fprintf(
@@ -756,6 +829,9 @@ static void emit_exec_node(FILE *out, const fn_info *f)
         f->name
     );
     fprintf(out, "    .flow_kind = NODE_FLOW_CUSTOM, .flow = __flow_%s_%s,\n", g_prefix, f->name);
+    if (fn_has_access(f)) {
+        fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
+    }
     fputs("    .display_class = NODE_DISPLAY_FUNCTION,\n};\n\n", out);
 }
 
@@ -777,6 +853,7 @@ static void emit_fn_node(FILE *out, const fn_info *f)
         fprintf(out, "    { \"return\", %s, \"%s\" },\n", f->ret_pin, f->ret);
     }
     fputs("};\n", out);
+    emit_fn_access(out, f);
     fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
     fprintf(out, "    .name = \"%s\",\n", f->name);
     fprintf(out, "    .input_count = %d,\n", acount(f->pname));
@@ -790,6 +867,9 @@ static void emit_fn_node(FILE *out, const fn_info *f)
     fprintf(out, "    .pure_kind = %s,\n", f->ret_void ? "NODE_PURE_VOID_CALL" : "NODE_PURE_CALL");
     fprintf(out, "    .fn = __wrap_%s_%s,\n", g_prefix, f->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
+    if (fn_has_access(f)) {
+        fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
+    }
     fputs("};\n\n", out);
 }
 
@@ -921,6 +1001,46 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 static void emit_component_nodes_desc(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
+    fprintf(
+        out,
+        "static const node_access %s_%s_get_access = { .reads = "
+        "&%s_COMPONENT_%s.id, .read_count = 1, .flags = "
+        "NODE_EFFECT_ENTITY_SCOPED };\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "static const node_access %s_%s_set_access = { .writes = "
+        "&%s_COMPONENT_%s.id, .write_count = 1, .flags = "
+        "NODE_EFFECT_ENTITY_SCOPED };\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "static const node_access %s_%s_has_access = { .reads = "
+        "&%s_COMPONENT_%s.id, .read_count = 1, .flags = "
+        "NODE_EFFECT_ENTITY_SCOPED };\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "static const node_access %s_%s_structural_access = { .writes = "
+        "&%s_COMPONENT_%s.id, .write_count = 1, .flags = "
+        "NODE_EFFECT_STRUCTURAL };\n\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
     fprintf(out, "static pin_spec %s_%s_get_inputs[] = { { \"Exec\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
     fprintf(
         out,
@@ -935,9 +1055,11 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Get_%s = { .name = \"Get_%s\", .input_count = 1, "
         ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
         "%s_%s_get_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_get_%s };\n\n",
+        "__flow_%s_get_%s, .access = &%s_%s_get_access };\n\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,
@@ -960,9 +1082,11 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
         ".output_count = 1, .inputs = %s_%s_set_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_set_%s };\n\n",
+        "__flow_%s_set_%s, .access = &%s_%s_set_access };\n\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,
@@ -983,9 +1107,11 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Has_%s = { .name = \"Has_%s\", .input_count = 1, "
         ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
         "%s_%s_has_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_has_%s };\n\n",
+        "__flow_%s_has_%s, .access = &%s_%s_has_access };\n\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,
@@ -999,9 +1125,11 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
         ".output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_add_%s };\n",
+        "__flow_%s_add_%s, .access = &%s_%s_structural_access };\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,
@@ -1015,9 +1143,11 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
         "1, .output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_remove_%s };\n\n",
+        "__flow_%s_remove_%s, .access = &%s_%s_structural_access };\n\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,

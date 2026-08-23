@@ -26,6 +26,11 @@ struct game_behavior_world
     ecs_world *ecs;
     behavior_asset *assets;
     behavior_attachment *attachments;
+    flow_parallel_for_fn parallel_for;
+    void *parallel_user;
+    int breakpoints_enabled;
+    int *pump_results;
+    int pump_result_capacity;
     uint64_t next_sequence;
 };
 
@@ -132,6 +137,7 @@ void game_behavior_world_free(game_behavior_world *world)
     }
     afree(world->assets);
     afree(world->attachments);
+    free(world->pump_results);
     free(world);
 }
 
@@ -252,6 +258,7 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
     if (!instance) {
         return -1;
     }
+    blueprint_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
     apush(
         world->attachments,
         (behavior_attachment){
@@ -343,24 +350,76 @@ int game_behavior_dispatch(
     return dispatched;
 }
 
+typedef struct
+{
+    game_behavior_world *world;
+    double monotonic_time;
+} behavior_pump_context;
+
+static void pump_attachment(int index, void *user)
+{
+    behavior_pump_context *context = (behavior_pump_context *)user;
+    behavior_attachment *attachment = &context->world->attachments[index];
+    context->world->pump_results[index] = FLOW_OK;
+    if (!ecs_entity_is_alive(context->world->ecs, attachment->entity)) {
+        return;
+    }
+    int result = blueprint_instance_tick(attachment->instance, context->monotonic_time);
+    if (result < 0) {
+        context->world->pump_results[index] = result;
+    }
+}
+
 int game_behavior_pump(game_behavior_world *world, double monotonic_time)
 {
     if (!world) {
         return FLOW_ERR_ARGUMENT;
     }
+    int count = acount(world->attachments);
+    if (count > world->pump_result_capacity) {
+        world->pump_results = (int *)
+            xrealloc(world->pump_results, (size_t)count * sizeof *world->pump_results);
+        world->pump_result_capacity = count;
+    }
+    behavior_pump_context context = { world, monotonic_time };
+    if (world->parallel_for && !world->breakpoints_enabled) {
+        world->parallel_for(count, pump_attachment, &context);
+    } else {
+        for (int i = 0; i < count; i++) {
+            pump_attachment(i, &context);
+        }
+    }
     int result = FLOW_OK;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_attachment *attachment = &world->attachments[i];
-        if (!ecs_entity_is_alive(world->ecs, attachment->entity)) {
-            continue;
+    for (int i = 0; i < count; i++) {
+        if (world->pump_results[i] < 0) {
+            result = world->pump_results[i];
         }
-        int tick = blueprint_instance_tick(attachment->instance, monotonic_time);
-        if (tick < 0) {
-            result = tick;
-        }
-        reap_instance(attachment->instance);
+        reap_instance(world->attachments[i].instance);
     }
     return result;
+}
+
+void game_behavior_set_parallel_for(
+    game_behavior_world *world,
+    flow_parallel_for_fn parallel_for,
+    void *parallel_user
+)
+{
+    if (!world) {
+        return;
+    }
+    world->parallel_for = parallel_for;
+    world->parallel_user = parallel_user;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        blueprint_instance_set_parallel_for(world->attachments[i].instance, parallel_for, parallel_user);
+    }
+}
+
+void game_behavior_set_breakpoints_enabled(game_behavior_world *world, int enabled)
+{
+    if (world) {
+        world->breakpoints_enabled = enabled != 0;
+    }
 }
 
 int game_behavior_attachment_count(const game_behavior_world *world)

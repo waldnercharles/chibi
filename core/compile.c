@@ -55,11 +55,69 @@ static void emit(
     }
 }
 
+static void effect_add(uint64_t **values, uint64_t id)
+{
+    for (int i = 0; i < acount(*values); i++) {
+        if ((*values)[i] == id) {
+            return;
+        }
+    }
+    apush(*values, id);
+}
+
+static void build_effects(compile_report *out, const blueprint *bp)
+{
+    compile_effects *effects = &out->effects;
+    effects->parallel_eligible = 1;
+    effects->topology_revision = graph_topology_revision(bp->graph);
+    for (int g = 0; g < acount(bp->graphs); g++) {
+        const graph *graph = bp->graphs[g];
+        for (int i = 0; i < acount(graph->nodes); i++) {
+            const node *n = graph->nodes[i];
+            const node_access *access = n->desc ? n->desc->access : NULL;
+            if (!access) {
+                effects->all_writes = 1;
+                effects->parallel_eligible = 0;
+                if (!effects->blocking_node_id) {
+                    effects->blocking_node_id = n->id;
+                    effects->blocking_reason = "undeclared access writes every "
+                                               "component";
+                }
+                continue;
+            }
+            for (int r = 0; r < access->read_count; r++) {
+                effect_add(&effects->reads, access->reads[r]);
+            }
+            for (int w = 0; w < access->write_count; w++) {
+                effect_add(&effects->writes, access->writes[w]);
+            }
+            effects->flags |= access->flags;
+            if ((access->flags & NODE_EFFECT_STRUCTURAL) ||
+                (access->flags & NODE_EFFECT_WORLD_READ) ||
+                (access->flags & NODE_EFFECT_HOST_SINK) ||
+                (access->write_count && !(access->flags & NODE_EFFECT_ENTITY_SCOPED))) {
+                effects->parallel_eligible = 0;
+                if (!effects->blocking_node_id) {
+                    effects->blocking_node_id = n->id;
+                    effects->blocking_reason = access->flags & NODE_EFFECT_STRUCTURAL
+                                                 ? "structural effect"
+                                             : access->flags & NODE_EFFECT_WORLD_READ
+                                                 ? "world read effect"
+                                             : access->flags & NODE_EFFECT_HOST_SINK
+                                                 ? "host sink effect"
+                                                 : "non-entity-scoped write";
+                }
+            }
+        }
+    }
+}
+
 void compile_report_init(compile_report *out)
 {
     out->items = NULL;
     out->error_count = 0;
     out->warning_count = 0;
+    out->effects = (compile_effects){ 0 };
 }
 
 void compile_report_free(compile_report *out)
@@ -68,8 +126,11 @@ void compile_report_free(compile_report *out)
         return;
     }
     afree(out->items);
+    afree(out->effects.reads);
+    afree(out->effects.writes);
     out->error_count = 0;
     out->warning_count = 0;
+    out->effects = (compile_effects){ 0 };
 }
 
 int compile_report_blocked(const compile_report *out)
@@ -88,6 +149,40 @@ const compile_diagnostic *compile_report_first_error(const compile_report *out)
         }
     }
     return NULL;
+}
+
+const compile_effects *compile_report_effects(const compile_report *out)
+{
+    return out ? &out->effects : NULL;
+}
+
+static int effect_intersects(const uint64_t *left, const uint64_t *right)
+{
+    for (int i = 0; i < acount(left); i++) {
+        for (int j = 0; j < acount(right); j++) {
+            if (left[i] == right[j]) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+int compile_effects_conflict(const compile_effects *left, const compile_effects *right, int same_instance)
+{
+    if (!left || !right) {
+        return 1;
+    }
+    if (same_instance || left->all_writes || right->all_writes) {
+        return 1;
+    }
+    if ((left->flags | right->flags) &
+        (NODE_EFFECT_STRUCTURAL | NODE_EFFECT_WORLD_READ | NODE_EFFECT_HOST_SINK)) {
+        return 1;
+    }
+    return effect_intersects(left->writes, right->writes) ||
+           effect_intersects(left->writes, right->reads) ||
+           effect_intersects(right->writes, left->reads);
 }
 
 const char *cmpl_rule_name(int rule)
@@ -690,6 +785,7 @@ int blueprint_compile(const blueprint *bp, compile_report *out)
     compile_report_free(out);
     compile_report_init(out);
     const graph *g = bp->graph;
+    build_effects(out, bp);
     arena tmp;
     arena_init(&tmp, 8192);
     for (int i = 0; i < acount(bp->graphs); i++) {

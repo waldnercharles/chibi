@@ -28,6 +28,12 @@ int game_behavior_dispatch(
     flow_error *error
 );
 int game_behavior_pump(game_behavior_world *world, double monotonic_time);
+void game_behavior_set_parallel_for(
+    game_behavior_world *world,
+    flow_parallel_for_fn parallel_for,
+    void *parallel_user
+);
+void game_behavior_set_breakpoints_enabled(game_behavior_world *world, int enabled);
 int game_behavior_attachment_count(const game_behavior_world *world);
 int game_behavior_pool_size(const game_behavior_world *world, const char *asset_name);
 blueprint_instance *game_behavior_instance(

@@ -1,6 +1,7 @@
 #include "ecs.h"
 
 #include "../core/array.h"
+#include "../core/pin_conv.h"
 #include "../core/xalloc.h"
 
 #include <assert.h>
@@ -360,6 +361,85 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
 int ecs_world_component_count(const ecs_world *world)
 {
     return world ? acount(world->components) : 0;
+}
+
+static const type_field *migration_field(const type_desc *type, const char *name)
+{
+    if (!type) {
+        return NULL;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        if (strcmp(type->fields[i].name, name) == 0) {
+            return &type->fields[i];
+        }
+    }
+    return NULL;
+}
+
+int ecs_world_migrate_component(
+    ecs_world *world,
+    const ecs_component_desc *replacement,
+    ecs_migration_report *report
+)
+{
+    if (report) {
+        *report = (ecs_migration_report){ 0 };
+    }
+    ecs_component *component = world && replacement
+                                 ? find_component(world, replacement->id)
+                                 : NULL;
+    if (!component || !replacement->type || !replacement->name ||
+        strcmp(component->desc.name, replacement->name) != 0 ||
+        replacement->element_size != replacement->type->size) {
+        return ECS_ERR_ARGUMENT;
+    }
+    if (component->desc.layout_hash == replacement->layout_hash) {
+        void *column = component->desc.column_base;
+        component->desc = *replacement;
+        component->desc.column_base = column;
+        return ECS_OK;
+    }
+    unsigned char *column = (unsigned char *)
+        xcalloc(ECS_ENTITY_SLOT_COUNT, replacement->element_size);
+    for (uint32_t slot = 1; slot <= ECS_MAX_ENTITIES; slot++) {
+        if (!world->occupied[slot] || !ecs_component_has(
+                                          world,
+                                          (ecs_entity){ slot, world->generations[slot] },
+                                          replacement->id
+                                      )) {
+            continue;
+        }
+        void *old_value = component_address(component, slot);
+        void *new_value = column + (size_t)slot * replacement->element_size;
+        for (int i = 0; i < replacement->type->field_count; i++) {
+            const type_field *new_field = &replacement->type->fields[i];
+            const type_field
+                *old_field = migration_field(component->desc.type, new_field->name);
+            if (!old_field ||
+                !pin_compatible(
+                    &(pin_spec){ .type = old_field->type, .type_name = old_field->type_name },
+                    &(pin_spec){ .type = new_field->type, .type_name = new_field->type_name }
+                )) {
+                if (report) {
+                    report->zeroed_fields++;
+                }
+                continue;
+            }
+            pin_value value;
+            pin_read_field(old_value, old_field, &value);
+            pin_write_field(new_value, new_field, value);
+            if (report) {
+                report->preserved_fields++;
+            }
+        }
+    }
+    free(component->desc.column_base);
+    component->desc = *replacement;
+    component->desc.column_base = column;
+    if (report) {
+        report->changed = 1;
+    }
+    return ECS_OK;
 }
 
 const ecs_component_desc *ecs_world_component(const ecs_world *world, ecs_component_id id)

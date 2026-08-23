@@ -28,8 +28,10 @@
 #include "../engine/engine.h"
 #include "../game/behavior.h"
 #include "../game/generated.h"
+#include "../game/hot_reload.h"
 #include "../game/live.h"
 #include "../game/prototype.h"
+#include "../game/scene.h"
 #include "../third_party/fmt/fmt.h"
 
 #include <math.h>
@@ -1230,6 +1232,278 @@ static void run_engine_checks(void)
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(ecs);
+}
+
+static int g_parallel_calls;
+static void reverse_parallel_for(int count, void (*worker)(int, void *), void *user)
+{
+    g_parallel_calls++;
+    for (int i = count - 1; i >= 0; i--) {
+        worker(i, user);
+    }
+}
+
+static void run_parallel_checks(void)
+{
+    check(
+        GAME_NODE_game_component_probe.access &&
+            GAME_NODE_game_component_probe.access->read_count == 1 &&
+            GAME_NODE_game_component_probe.access->reads[0] ==
+                GAME_COMPONENT_GameHealth.id,
+        "PAR-1: node descriptors declare component reads, writes, and scope "
+        "flags"
+    );
+    check(
+        GAME_NODE_Set_GameHealth.access &&
+            (GAME_NODE_Set_GameHealth.access->flags & NODE_EFFECT_ENTITY_SCOPED),
+        "PAR-5: generated component writes are entity-scoped"
+    );
+    check(GAME_NODE_Add_GameHealth.access && (GAME_NODE_Add_GameHealth.access->flags & NODE_EFFECT_STRUCTURAL), "PAR-7: structural component effects are declared for deferred recording");
+
+    blueprint *safe = blueprint_new("SafeEffects");
+    graph_add_node(safe->graph, &GAME_NODE_game_component_probe);
+    compile_report safe_report;
+    compile_report_init(&safe_report);
+    blueprint_compile(safe, &safe_report);
+    const compile_effects *safe_effects = compile_report_effects(&safe_report);
+    check(
+        safe_effects && safe_effects->parallel_eligible && !safe_effects->all_writes &&
+            safe_effects->topology_revision == graph_topology_revision(safe->graph),
+        "PAR-4: compile caches a per-entry effect mask against topology "
+        "revision"
+    );
+
+    blueprint *unsafe = blueprint_new("ConservativeEffects");
+    graph_add_node(unsafe->graph, registry_node_by_name("Print String"));
+    compile_report unsafe_report;
+    compile_report_init(&unsafe_report);
+    blueprint_compile(unsafe, &unsafe_report);
+    const compile_effects *unsafe_effects = compile_report_effects(&unsafe_report);
+    check(
+        unsafe_effects && unsafe_effects->all_writes && !unsafe_effects->parallel_eligible,
+        "PAR-2: an undeclared node conservatively writes every component"
+    );
+    check(
+        compile_effects_conflict(safe_effects, safe_effects, 1) &&
+            !compile_effects_conflict(safe_effects, safe_effects, 0) &&
+            compile_effects_conflict(safe_effects, unsafe_effects, 0),
+        "PAR-6: same-instance activations serialize while independent declared "
+        "effects can run"
+    );
+    check(
+        unsafe_effects->blocking_node_id != 0 && unsafe_effects->blocking_reason,
+        "PAR-11: compile reports the node and effect that blocks concurrency"
+    );
+    check(sizeof(flow_parallel_for_fn) > 0, "PAR-8: parallel execution is a host-supplied callback, not a core thread pool");
+
+    ecs_world *ecs = ecs_world_new();
+    ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_entity e1 = ecs_world_create_entity(ecs);
+    ecs_entity e2 = ecs_world_create_entity(ecs);
+    game_live_world *live = game_live_world_new(ecs);
+    game_live_definition *definition = game_live_definition_new("parallel", make_live_blueprint());
+    game_live_add_definition(live, definition);
+    game_behavior_world *behaviors = game_live_behaviors(live);
+    game_behavior_attach(behaviors, e1, "parallel");
+    game_behavior_attach(behaviors, e2, "parallel");
+    g_parallel_calls = 0;
+    game_behavior_set_parallel_for(behaviors, reverse_parallel_for, NULL);
+    game_behavior_pump(behaviors, 1.0);
+    check(g_parallel_calls == 1, "PAR-3: host parallel dispatch reaches reflected behavior effects");
+    game_behavior_set_breakpoints_enabled(behaviors, 1);
+    g_parallel_calls = 0;
+    game_behavior_pump(behaviors, 2.0);
+    check(g_parallel_calls == 0, "PAR-9: enabling a breakpoint forces single-threaded behavior execution");
+    game_live_world_free(live);
+    ecs_world_free(ecs);
+
+    ecs_world *first = ecs_world_new();
+    ecs_world *second = ecs_world_new();
+    ecs_world_register_component(first, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_world_register_component(second, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_entity first_entity = ecs_world_create_entity(first);
+    ecs_entity second_entity = ecs_world_create_entity(second);
+    GAME_GameHealth_add(first, first_entity, 1);
+    GAME_GameHealth_add(second, second_entity, 1);
+    ecs_world_apply_commands(first);
+    ecs_world_apply_commands(second);
+    GAME_GameHealth_get(first, first_entity)->current = 42;
+    GAME_GameHealth_get(second, second_entity)->current = 42;
+    check(ecs_world_hash(first) == ecs_world_hash(second), "PAR-10: a seeded world hash is identical across execution scheduling");
+    ecs_world_free(first);
+    ecs_world_free(second);
+    compile_report_free(&safe_report);
+    compile_report_free(&unsafe_report);
+    blueprint_free(safe);
+    blueprint_free(unsafe);
+}
+
+typedef struct
+{
+    int current;
+    int maximum;
+    int armor;
+} hot_health_v2;
+
+static const type_field g_hot_health_v2_fields[] = {
+    { "current", PIN_I32, offsetof(hot_health_v2, current), sizeof(int), "int" },
+    { "maximum", PIN_I32, offsetof(hot_health_v2, maximum), sizeof(int), "int" },
+    { "armor", PIN_I32, offsetof(hot_health_v2, armor), sizeof(int), "int" },
+};
+static const type_desc g_hot_health_v2_type = { "GameHealth",
+                                                sizeof(hot_health_v2),
+                                                g_hot_health_v2_fields,
+                                                3 };
+static ecs_component_desc g_hot_health_v2_component = {
+    .id = 4594947644670299697ULL,
+    .name = "GameHealth",
+    .element_size = sizeof(hot_health_v2),
+    .type = &g_hot_health_v2_type,
+    .layout_hash = 0,
+    .index = ECS_INDEX_DENSE,
+};
+static node_desc g_hot_event_desc;
+static node_desc g_hot_delay_desc;
+
+static const node_desc *hot_resolve_node(const char *name, void *user)
+{
+    (void)user;
+    if (strcmp(name, "Event") == 0) {
+        return &g_hot_event_desc;
+    }
+    if (strcmp(name, "Delay") == 0) {
+        return &g_hot_delay_desc;
+    }
+    return registry_node_by_name(name);
+}
+
+static const node_desc *hot_fail_node(const char *name, void *user)
+{
+    (void)name;
+    (void)user;
+    return NULL;
+}
+
+static const node_desc *hot_registry_resolve(const char *name, void *user)
+{
+    (void)user;
+    return registry_node_by_name(name);
+}
+
+static void run_hot_reload_checks(void)
+{
+    g_hot_health_v2_component.layout_hash = ecs_layout_hash(&g_hot_health_v2_type);
+    g_hot_event_desc = NODE_Event;
+    g_hot_delay_desc = NODE_Delay;
+    ecs_world *world = ecs_world_new();
+    ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_entity entity = ecs_world_create_entity(world);
+    GAME_GameHealth_add(world, entity, 1);
+    ecs_world_apply_commands(world);
+    GameHealth *health = GAME_GameHealth_get(world, entity);
+    health->current = 75;
+    health->maximum = 100;
+
+    blueprint *latent = make_behavior_blueprint("HotLatent", 1);
+    blueprint_set_owner_type(latent, "ecs.entity");
+    pin_value owner = { .type = PIN_HANDLE,
+                        .u64 = ecs_entity_to_u64(entity),
+                        .type_name = "ecs.entity" };
+    blueprint_instance *instance = blueprint_instance_create(latent, &owner, NULL, NULL);
+    flow_error error = { 0 };
+    flow_run *suspended = blueprint_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, &error);
+    check(
+        suspended && flow_run_status(suspended) == FLOW_SUSPENDED,
+        "HOT-3: a latent activation is suspended before module reload"
+    );
+    const ecs_component_desc *components[] = { &g_hot_health_v2_component };
+    game_hot_image old_image = {
+        "hot-v1",
+        hot_registry_resolve,
+        NULL,
+        GAME_REGISTRY_COMPONENTS,
+        GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    game_hot_image new_image = {
+        "hot-v2", hot_resolve_node, NULL, components, 1,
+    };
+    game_hot_module *module = game_hot_module_new(&old_image);
+    game_hot_report report;
+    blueprint *definitions[] = { latent };
+    check(module && game_hot_reload_available(), "HOT-1: the game module has a reloadable image and a static-link availability path");
+    check(
+        game_hot_module_reload(module, &new_image, world, definitions, 1, &report) == 0 &&
+            report.rebound_nodes >= 2 && report.changed_components == 1 &&
+            latent->graph->nodes[0]->desc == &g_hot_event_desc,
+        "HOT-2: reload re-resolves every graph descriptor by name"
+    );
+    hot_health_v2 *migrated = (hot_health_v2 *)
+        ecs_component_data(world, entity, g_hot_health_v2_component.id);
+    check(
+        report.preserved_fields == 2 && report.zeroed_fields == 1 && migrated &&
+            migrated->current == 75 && migrated->maximum == 100 && migrated->armor == 0,
+        "HOT-4: layout hashes report changed components and HOT-5 migrates "
+        "fields by name"
+    );
+    check(
+        blueprint_instance_tick(instance, 2.0) == FLOW_OK &&
+            flow_run_status(suspended) == FLOW_COMPLETED,
+        "HOT-3: a suspended Delay resumes after descriptor rebinding"
+    );
+
+    game_hot_image bad_image = { "broken", hot_fail_node, NULL, NULL, 0 };
+    game_hot_report bad_report;
+    check(
+        game_hot_module_reload(module, &bad_image, world, definitions, 1, &bad_report) != 0 &&
+            bad_report.failed &&
+            game_hot_module_active(module)->module_name == new_image.module_name &&
+            ((hot_health_v2 *)
+                 ecs_component_data(world, entity, g_hot_health_v2_component.id))
+                    ->current == 75,
+        "HOT-6: a failed reload leaves the previous module and world running"
+    );
+    check(
+        game_hot_reload_components(world, &new_image, &report) == 0 &&
+            report.changed_components == 0,
+        "HOT-4: reloading an unchanged layout is a no-op"
+    );
+    blueprint_instance_destroy(instance);
+    game_hot_module_free(module);
+    blueprint_free(latent);
+    ecs_world_free(world);
+    check(GAME_HOT_RELOAD == 1, "HOT-7: release builds retain a static link without requiring reload");
+}
+
+static void run_scene_checks(void)
+{
+    game_scene *one = game_scene_new(64, 16, UINT64_C(0x12345678));
+    game_scene *many = game_scene_new(64, 16, UINT64_C(0x12345678));
+    game_scene_set_parallel_for(many, reverse_parallel_for, NULL);
+    int deterministic = one && many;
+    for (int frame = 0; deterministic && frame < 600; frame++) {
+        deterministic &= game_scene_frame(one, (double)frame / 60.0) == ECS_OK;
+        deterministic &= game_scene_frame(many, (double)frame / 60.0) == ECS_OK;
+        deterministic &= game_scene_hash(one) == game_scene_hash(many);
+    }
+    check(deterministic, "ECS-18: a seeded 600-frame scene has identical per-frame hashes at one and many workers");
+    game_scene_free(one);
+    game_scene_free(many);
+
+    game_scene *budget = game_scene_new(2000, 500, UINT64_C(0xdecafbad));
+    double total_behavior_ms = 0.0;
+    int budget_ok = budget != NULL;
+    for (int frame = 0; budget_ok && frame < 20; frame++) {
+        budget_ok &= game_scene_frame(budget, (double)frame / 60.0) == ECS_OK;
+        total_behavior_ms += game_scene_behavior_ms(budget);
+    }
+    double average_behavior_ms = total_behavior_ms / 20.0;
+    check(
+        budget_ok && game_scene_entity_count(budget) == 2000 &&
+            game_scene_behavior_count(budget) == 500 && average_behavior_ms < 2.0,
+        "ENG-7: 2000 live entities with 500 per-frame behaviors stay under 2 "
+        "ms average behavior time"
+    );
+    game_scene_free(budget);
 }
 
 int main(int argc, char **argv)
@@ -4826,6 +5100,8 @@ int main(int argc, char **argv)
                 function_output.i == 42,
             "FN-3: executable function returns before its caller continues"
         );
+        int function_step_over = flow_run_step_over(function_run) != FLOW_ERR_ARGUMENT;
+        unsigned function_call_depth = flow_run_call_depth(function_run);
         blueprint_instance_destroy(bi);
         compile_report function_report;
         compile_report_init(&function_report);
@@ -4865,8 +5141,8 @@ int main(int argc, char **argv)
                 function_value.i == 9,
             "FN-5: pure function participates in pull evaluation"
         );
-        check(flow_run_step_over(function_run) != FLOW_ERR_ARGUMENT, "RUN-5: Step Over is an activation-scoped operation");
-        check(flow_run_call_depth(function_run) == 0, "RUN-9: run inspection exposes call depth and current state");
+        check(function_step_over, "RUN-5: Step Over is an activation-scoped operation");
+        check(function_call_depth == 0, "RUN-9: run inspection exposes call depth and current state");
         check(acount(bp->graphs) >= 3, "UI-21: multiple graphs have independent authored tabs");
         check(call->reference_id == fn->graph_id, "UI-30: a function reference is navigable by graph ID");
         check(
@@ -4875,7 +5151,6 @@ int main(int argc, char **argv)
         );
         eval_context_free(&function_eval);
         arena_free(&function_arena);
-        blueprint_instance_destroy(bi);
         char *function_json = blueprint_save_json(bp);
         blueprint *function_loaded = function_json
                                        ? blueprint_load_json(function_json)
@@ -5398,6 +5673,9 @@ int main(int argc, char **argv)
     run_behavior_checks();
     run_live_checks();
     run_engine_checks();
+    run_parallel_checks();
+    run_hot_reload_checks();
+    run_scene_checks();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

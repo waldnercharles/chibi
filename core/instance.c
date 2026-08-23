@@ -519,6 +519,8 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
         .sink = bi->sink,
         .sink_user = bi->sink_user,
         .instance = bi,
+        .parallel_for = bi->parallel_for,
+        .parallel_user = bi->parallel_user,
     };
     flow_run *act = NULL;
     if (bi->pool_enabled && acount(bi->activation_pool)) {
@@ -632,6 +634,19 @@ int blueprint_instance_set_variable(blueprint_instance *bi, uint64_t id, const p
 pin_value blueprint_instance_owner(const blueprint_instance *bi)
 {
     return bi ? bi->owner : (pin_value){ .type = PIN_FLOW };
+}
+
+void blueprint_instance_set_parallel_for(
+    blueprint_instance *bi,
+    flow_parallel_for_fn parallel_for,
+    void *parallel_user
+)
+{
+    if (!bi) {
+        return;
+    }
+    bi->parallel_for = parallel_for;
+    bi->parallel_user = parallel_user;
 }
 
 pin_value *blueprint_instance_scratch(blueprint_instance *bi, uint64_t node_id)

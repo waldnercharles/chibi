@@ -33,6 +33,24 @@ typedef enum
 
 typedef int (*node_flow_fn)(node *n, flow_context *ctx);
 
+typedef struct
+{
+    const uint64_t *reads;
+    int read_count;
+    const uint64_t *writes;
+    int write_count;
+    unsigned flags;
+} node_access;
+
+enum
+{
+    NODE_EFFECT_STRUCTURAL = 1u << 0,
+    NODE_EFFECT_WORLD_READ = 1u << 1,
+    NODE_EFFECT_HOST_SINK = 1u << 2,
+    NODE_EFFECT_PURE = 1u << 3,
+    NODE_EFFECT_ENTITY_SCOPED = 1u << 4,
+};
+
 enum
 {
     NODE_EVAL_OK = 0,
@@ -72,6 +90,7 @@ typedef struct
      * Both are static display/search data; NULL means uncategorized. */
     const char *category;
     const char *keywords;
+    const node_access *access;
 } node_desc;
 
 struct node

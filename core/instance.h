@@ -45,6 +45,8 @@ struct blueprint_instance
     char **strings;  /* instance-owned string variable values */
     flow_clock_fn now;
     void *now_user;
+    flow_parallel_for_fn parallel_for;
+    void *parallel_user;
     double current_time;
     flow_sink_fn sink;
     void *sink_user;
@@ -122,6 +124,11 @@ int blueprint_instance_stop_activation(blueprint_instance *bi, flow_run *act);
 int blueprint_instance_get_variable(blueprint_instance *bi, uint64_t id, pin_value *out);
 int blueprint_instance_set_variable(blueprint_instance *bi, uint64_t id, const pin_value *value);
 pin_value blueprint_instance_owner(const blueprint_instance *bi);
+void blueprint_instance_set_parallel_for(
+    blueprint_instance *bi,
+    flow_parallel_for_fn parallel_for,
+    void *parallel_user
+);
 
 /* Per-node scratch keyed by node ID (EXEC-15). Returns a zero-initialized
  * slot, created on first access; the pointer stays valid until the instance

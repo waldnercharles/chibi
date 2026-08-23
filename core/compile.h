@@ -55,11 +55,24 @@ typedef struct compile_diagnostic
     char message[CMPL_MESSAGE_MAX];
 } compile_diagnostic;
 
+typedef struct compile_effects
+{
+    uint64_t *reads;
+    uint64_t *writes;
+    unsigned flags;
+    int all_writes;
+    int parallel_eligible;
+    uint64_t blocking_node_id;
+    const char *blocking_reason;
+    unsigned long long topology_revision;
+} compile_effects;
+
 typedef struct compile_report
 {
     compile_diagnostic *items; /* dyna buffer; NULL while empty */
     int error_count;
     int warning_count;
+    compile_effects effects;
 } compile_report;
 
 /* A report must be initialized before use and released when done. Reusing a
@@ -79,5 +92,7 @@ int blueprint_compile(const blueprint *bp, compile_report *out);
 
 /* Stable rule code spelling, e.g. "CMPL-4". */
 const char *cmpl_rule_name(int rule);
+const compile_effects *compile_report_effects(const compile_report *out);
+int compile_effects_conflict(const compile_effects *left, const compile_effects *right, int same_instance);
 
 #endif

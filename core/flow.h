@@ -22,6 +22,7 @@ extern "C"
 
     typedef double (*flow_clock_fn)(void *user);
     typedef void (*flow_sink_fn)(const node *origin, const char *message, void *user);
+    typedef void (*flow_parallel_for_fn)(int count, void (*worker)(int index, void *user), void *user);
 
     typedef struct
     {
@@ -50,6 +51,8 @@ extern "C"
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
         blueprint_instance *instance; /* owning instance, or NULL for a standalone run */
+        flow_parallel_for_fn parallel_for; /* host-supplied, never owned */
+        void *parallel_user;
         unsigned call_depth; /* internal function-call depth, zero at an entry */
     } flow_options;
 

@@ -58,6 +58,13 @@ typedef enum
 
 typedef void (*ecs_destroy_observer)(ecs_world *world, ecs_entity entity, void *user);
 
+typedef struct
+{
+    int changed;
+    int preserved_fields;
+    int zeroed_fields;
+} ecs_migration_report;
+
 struct ecs_query
 {
     ecs_world *world;
@@ -72,6 +79,11 @@ ecs_world *ecs_world_new(void);
 void ecs_world_free(ecs_world *world);
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id);
 int ecs_world_component_count(const ecs_world *world);
+int ecs_world_migrate_component(
+    ecs_world *world,
+    const ecs_component_desc *replacement,
+    ecs_migration_report *report
+);
 const ecs_component_desc *ecs_world_component(const ecs_world *world, ecs_component_id id);
 
 /* Handles are reserved when a create command is recorded and become alive only

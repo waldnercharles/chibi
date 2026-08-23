@@ -31,5 +31,6 @@ extern node_desc GAME_NODE_Set_GameHealth;
 extern node_desc GAME_NODE_Has_GameHealth;
 extern node_desc GAME_NODE_Add_GameHealth;
 extern node_desc GAME_NODE_Remove_GameHealth;
+extern node_desc GAME_NODE_game_component_probe;
 
 #endif

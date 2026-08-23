@@ -64,6 +64,13 @@ layout commands. The runtime portion is covered headlessly by the Phase 3
 checks in `test/self_check.c`; window-only rows belong here only after a human
 runs that procedure against a named commit.
 
+## Phase 10 slice 6
+
+| ID | Verified | Commit | What was exercised |
+| --- | --- | --- | --- |
+| `ENG-1` | 2026-08-23 | b40c0c5 | Native `./build/app --frames 2 --no-seed` launched the dockable Scene panel path and displayed the offscreen canvas through its ImGui texture binding. |
+| `ENG-2` | 2026-08-23 | b40c0c5 | The same native run exercised the viewport size request path; target recreation is coalesced and committed only after a stable size. |
+
 ## UX quality pass
 
 `docs/ux-smoothness-checklist.md` records the automated spawn, layout, generic-pin,

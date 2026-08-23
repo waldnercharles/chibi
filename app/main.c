@@ -1,10 +1,13 @@
 #include "../core/blueprint.h"
 #include "../core/instance.h"
 #include "../core/registry.h"
+#include "../core/serialize.h"
 #include "../editor/editor.h"
 #include "../engine/engine.h"
+#include "../game/generated.h"
 #include "cute_host.h"
 #include "demo_graph.h"
+#include "scene_authoring.h"
 #include "stacktrace.h"
 
 #include <stdio.h>
@@ -81,6 +84,53 @@ int main(int argc, char **argv)
         }
     }
 
+    if (!bp->owner_type_name) {
+        blueprint_set_owner_type(bp, "ecs.entity");
+    }
+    char *working_json = blueprint_save_json(bp);
+    blueprint *working = working_json ? blueprint_load_json(working_json) : NULL;
+    free(working_json);
+    ecs_world *world = ecs_world_new();
+    if (!working || !world ||
+        ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) != ECS_OK ||
+        ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) != ECS_OK) {
+        blueprint_free(working);
+        editor_free(ed);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        cf_destroy_app();
+        return 1;
+    }
+    game_live_world *live = game_live_world_new(world);
+    game_live_definition *definition = game_live_definition_new("SceneBehavior", working);
+    if (!live || !definition || game_live_add_definition(live, definition) != 0) {
+        game_live_world_free(live);
+        if (definition) {
+            game_live_definition_free(definition);
+        } else {
+            blueprint_free(working);
+        }
+        editor_free(ed);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        cf_destroy_app();
+        return 1;
+    }
+    engine *runtime = engine_new(world, live);
+    app_scene_authoring *
+        scene = app_scene_authoring_new(world, live, definition, editor_blueprint(ed), runtime);
+    if (!runtime || !scene) {
+        app_scene_authoring_free(scene);
+        engine_free(runtime);
+        editor_free(ed);
+        game_live_world_free(live);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        cf_destroy_app();
+        return 1;
+    }
+    engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
+
     /* EVT-10 demo conventions: the host drives one preview instance and
      * dispatches Begin() once per instance (re)creation for the event demo.
      * The flow demo starts its authored OnStart entry so its traversal records
@@ -91,7 +141,9 @@ int main(int argc, char **argv)
      * such event. An authoring edit destroys the instance at the editor choke
      * point (UI-56), so the selected demo event fires again when the instance
      * is recreated. */
-    editor_preview_create(ed);
+    if (seed) {
+        editor_preview_create(ed);
+    }
     unsigned instance_gen = 0;
     double last_seconds = CF_SECONDS;
 
@@ -100,6 +152,7 @@ int main(int argc, char **argv)
         cf_app_update(NULL);
         double seconds = CF_SECONDS;
         editor_tick(ed, seconds);
+        app_scene_authoring_set_editor_working(scene, editor_blueprint(ed));
 
         blueprint_instance *bi = editor_preview_instance(ed);
         if (bi) {
@@ -128,9 +181,16 @@ int main(int argc, char **argv)
                 demo_dispatch(ed, "Input", (flow_inputs){ input_params, 3, NULL });
             }
         }
+        if (cf_key_just_pressed(CF_KEY_SPACE)) {
+            (void)app_scene_authoring_input(scene, "Jump", 1.0, 1);
+        } else if (cf_key_just_released(CF_KEY_SPACE)) {
+            (void)app_scene_authoring_input(scene, "Jump", 0.0, 0);
+        }
+        (void)app_scene_authoring_frame(scene, seconds);
         last_seconds = seconds;
 
         engine_viewport_draw(viewport);
+        app_scene_authoring_draw(scene);
         editor_draw(ed);
         cf_app_draw_onto_screen(true);
 
@@ -139,8 +199,12 @@ int main(int argc, char **argv)
         }
     }
 
-    engine_viewport_free(viewport);
+    app_scene_authoring_free(scene);
     editor_free(ed);
+    engine_free(runtime);
+    game_live_world_free(live);
+    ecs_world_free(world);
+    engine_viewport_free(viewport);
     cf_destroy_app();
     return 0;
 }

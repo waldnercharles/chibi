@@ -64,7 +64,7 @@ static behavior_attachment *find_attachment(
     return NULL;
 }
 
-static blueprint_instance *acquire_instance(behavior_asset *asset, ecs_entity entity)
+static blueprint_instance *acquire_instance(behavior_asset *asset, ecs_world *world, ecs_entity entity)
 {
     pin_value owner = {
         .type = PIN_HANDLE,
@@ -77,7 +77,9 @@ static blueprint_instance *acquire_instance(behavior_asset *asset, ecs_entity en
     } else {
         instance = blueprint_instance_create(asset->definition, &owner, NULL, NULL);
     }
-    if (instance && blueprint_instance_set_activation_pool(instance, 1) != 0) {
+    if (instance &&
+        (blueprint_instance_set_activation_pool(instance, 1) != 0 ||
+         blueprint_instance_bind_service(instance, "ecs.world", world) != 0)) {
         blueprint_instance_destroy(instance);
         return NULL;
     }
@@ -254,7 +256,7 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
     } else if (strcmp(asset->definition->owner_type_name, "ecs.entity") != 0) {
         return -1;
     }
-    blueprint_instance *instance = acquire_instance(asset, entity);
+    blueprint_instance *instance = acquire_instance(asset, world->ecs, entity);
     if (!instance) {
         return -1;
     }

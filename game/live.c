@@ -81,6 +81,23 @@ blueprint *game_live_working(game_live_definition *definition)
     return definition ? definition->working : NULL;
 }
 
+int game_live_sync_working(game_live_definition *definition, const blueprint *source)
+{
+    if (!definition || !source) {
+        return -1;
+    }
+    char *json = blueprint_save_json(source);
+    blueprint *copy = json ? blueprint_load_json(json) : NULL;
+    free(json);
+    if (!copy) {
+        return -1;
+    }
+    blueprint_free(definition->working);
+    definition->working = copy;
+    definition->dirty = 1;
+    return 0;
+}
+
 const blueprint *game_live_applied(const game_live_definition *definition)
 {
     return definition ? definition->applied : NULL;

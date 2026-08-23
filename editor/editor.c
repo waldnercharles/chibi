@@ -4084,6 +4084,11 @@ void editor_tick(editor *e, double monotonic_time)
     }
 }
 
+const blueprint *editor_blueprint(const editor *e)
+{
+    return e ? e->bp : NULL;
+}
+
 void editor_free(editor *e)
 {
     if (!e) {

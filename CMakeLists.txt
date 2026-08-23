@@ -174,10 +174,24 @@ target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE core cute)
 
 # --- app: cute_framework host loop ---
+set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
+add_custom_command(
+    OUTPUT ${APP_REGISTRY}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+            ${APP_REGISTRY}
+            ${BASE_REGISTRY_PACKS}
+            GAME_REGISTRY_PACK
+    DEPENDS ${BASE_REGISTRY}
+            ${GAME_REGISTRY}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+    COMMENT "Composing the app registry pack list"
+    VERBATIM
+)
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
 )
-add_executable(app ${APP_SOURCES} ${BASE_REGISTRY})
+add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine demo cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 

@@ -10,6 +10,9 @@ typedef struct editor editor;
 editor *editor_new(blueprint *bp);
 void editor_free(editor *e);
 
+/* Returns the editor-owned working document without transferring ownership. */
+const blueprint *editor_blueprint(const editor *e);
+
 /* Renders the canvas and handles input. Call once per frame between
  * cf_app_update() and cf_app_draw_onto_screen(). */
 void editor_draw(editor *e);

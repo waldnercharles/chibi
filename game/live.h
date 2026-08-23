@@ -11,6 +11,7 @@ typedef struct game_live_definition game_live_definition;
 game_live_definition *game_live_definition_new(const char *asset_name, blueprint *working);
 void game_live_definition_free(game_live_definition *definition);
 blueprint *game_live_working(game_live_definition *definition);
+int game_live_sync_working(game_live_definition *definition, const blueprint *source);
 const blueprint *game_live_applied(const game_live_definition *definition);
 const char *game_live_definition_name(const game_live_definition *definition);
 int game_live_definition_dirty(const game_live_definition *definition);

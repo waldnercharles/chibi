@@ -1106,6 +1106,10 @@ static void run_live_checks(void)
         "APPLY-2: runtime instances attach only to the applied snapshot"
     );
     blueprint_instance *live_before = game_behavior_instance(behaviors, e1, "live");
+    check(
+        blueprint_instance_service(live_before, "ecs.world") == ecs,
+        "BEH-4: attached instances receive the owning ECS world service"
+    );
     const blueprint *applied_before = game_live_applied(definition);
     blueprint_instance *other_before = game_behavior_instance(behaviors, e1, "other");
     uint64_t node_id = game_live_working(definition)->graph->nodes[0]->id;

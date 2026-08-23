@@ -130,6 +130,10 @@ int main(int argc, char **argv)
         return 1;
     }
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
+    engine_viewport_set_render_callback(viewport, app_scene_authoring_render, scene);
+    if (seed) {
+        app_scene_authoring_seed_default(scene);
+    }
 
     /* EVT-10 demo conventions: the host drives one preview instance and
      * dispatches Begin() once per instance (re)creation for the event demo.
@@ -189,9 +193,9 @@ int main(int argc, char **argv)
         (void)app_scene_authoring_frame(scene, seconds);
         last_seconds = seconds;
 
+        editor_draw(ed);
         engine_viewport_draw(viewport);
         app_scene_authoring_draw(scene);
-        editor_draw(ed);
         cf_app_draw_onto_screen(true);
 
         if (frames > 0 && ++frame >= frames) {

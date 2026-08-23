@@ -56,5 +56,11 @@ int engine_viewport_commit_resize(engine_viewport *viewport);
 int engine_viewport_draw(engine_viewport *viewport);
 uint64_t engine_viewport_binding(const engine_viewport *viewport);
 uint32_t engine_viewport_recreate_count(const engine_viewport *viewport);
+typedef void (*engine_viewport_render_fn)(void *user);
+void engine_viewport_set_render_callback(
+    engine_viewport *viewport,
+    engine_viewport_render_fn fn,
+    void *user
+);
 
 #endif

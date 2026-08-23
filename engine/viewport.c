@@ -60,6 +60,8 @@ struct engine_viewport
     int resize_pending;
     int stable_resize_frames;
     uint32_t recreate_count;
+    engine_viewport_render_fn render;
+    void *render_user;
 };
 
 engine_viewport *engine_viewport_new(int width, int height)
@@ -137,6 +139,9 @@ int engine_viewport_draw(engine_viewport *viewport)
         return -1;
     }
     cf_render_to(viewport->canvas, true);
+    if (viewport->render) {
+        viewport->render(viewport->render_user);
+    }
     if (!ImGui_Begin("Scene", NULL, 0)) {
         ImGui_End();
         return 0;
@@ -172,4 +177,17 @@ uint64_t engine_viewport_binding(const engine_viewport *viewport)
 uint32_t engine_viewport_recreate_count(const engine_viewport *viewport)
 {
     return viewport ? viewport->recreate_count : 0;
+}
+
+void engine_viewport_set_render_callback(
+    engine_viewport *viewport,
+    engine_viewport_render_fn fn,
+    void *user
+)
+{
+    if (!viewport) {
+        return;
+    }
+    viewport->render = fn;
+    viewport->render_user = user;
 }

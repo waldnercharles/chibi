@@ -3,6 +3,7 @@
 #include "../core/array.h"
 #include "../core/xalloc.h"
 #include "../game/generated.h"
+#include "scene_draw.h"
 #include "scene_imgui.h"
 
 #include <stdbool.h>
@@ -127,6 +128,14 @@ void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const bl
     }
 }
 
+int app_scene_authoring_seed_default(app_scene_authoring *scene)
+{
+    if (!scene || add_actor(scene, 1) != 0 || add_actor(scene, 0) != 0) {
+        return -1;
+    }
+    return 0;
+}
+
 void app_scene_authoring_free(app_scene_authoring *scene)
 {
     if (!scene) {
@@ -230,6 +239,48 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
     }
     draw_actor_details(scene);
     ImGui_End();
+}
+
+void app_scene_authoring_render(void *user)
+{
+    app_scene_authoring *scene = (app_scene_authoring *)user;
+    if (!scene) {
+        return;
+    }
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene_actor *actor = &scene->actors[i];
+        const GameTransform
+            *transform = GAME_GameTransform_get_const(scene->world, actor->entity);
+        const GameHealth *health = GAME_GameHealth_get_const(scene->world, actor->entity);
+        if (!transform || !health) {
+            continue;
+        }
+        float x = transform->x;
+        float y = -transform->y;
+        cf_draw_push_color(
+            actor->player ? app_cf_make_color_rgb(72, 190, 110)
+                          : app_cf_make_color_rgb(210, 74, 74)
+        );
+        cf_draw_quad_fill(app_cf_make_aabb_pos_w_h(app_cf_make_v2(x, y), 32.0f, 32.0f), 0.0f);
+        cf_draw_pop_color();
+        float maximum = health->maximum > 0 ? (float)health->maximum : 1.0f;
+        float ratio = (float)health->current / maximum;
+        if (ratio < 0.0f) {
+            ratio = 0.0f;
+        }
+        if (ratio > 1.0f) {
+            ratio = 1.0f;
+        }
+        cf_draw_push_color(app_cf_make_color_rgb(40, 40, 40));
+        cf_draw_quad_fill(app_cf_make_aabb_pos_w_h(app_cf_make_v2(x, y + 24.0f), 36.0f, 5.0f), 0.0f);
+        cf_draw_pop_color();
+        cf_draw_push_color(app_cf_make_color_rgb(80, 210, 90));
+        cf_draw_quad_fill(
+            app_cf_make_aabb_pos_w_h(app_cf_make_v2(x - 18.0f + 18.0f * ratio, y + 24.0f), 36.0f * ratio, 3.0f),
+            0.0f
+        );
+        cf_draw_pop_color();
+    }
 }
 
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)

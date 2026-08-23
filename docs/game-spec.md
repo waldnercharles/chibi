@@ -176,6 +176,15 @@ instances performs no per-instance allocation in steady state.
 Uniform per-frame computation over many entities MAY instead be a C system or
 one batch graph, and that choice MUST NOT change observable component values.
 
+`BEH-12` An instance MUST NOT accumulate finished activations. Core retains a
+completed or failed activation so its watches, error, and traversal records stay
+inspectable under `RUN-17` and `DBG-5`, and reclaims it only when its owner
+releases it; `flow_run_ready` reports a completed activation as not ready, so
+the scheduler alone never reclaims one. The frame pump MUST therefore release
+every finished activation it is not still inspecting, so dispatching an event to
+an entity every frame reclaims that activation's storage within the frame and
+total activation storage stays flat over time.
+
 ## PAR: declared effects and parallel execution
 
 See `docs/adr/0019`.

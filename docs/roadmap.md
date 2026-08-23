@@ -608,7 +608,7 @@ storage), `0019` (parallel activation), and `0020` (live authoring).
 Estimate: not set until slice 0 reports a number.
 
 Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-8`, `BEH-1` through
-`BEH-11`, `PAR-1` through `PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1`
+`BEH-12`, `PAR-1` through `PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1`
 through `ENG-7`, `HOT-1` through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
 
 ### Slice 0: measure before building
@@ -650,9 +650,16 @@ includes with override, and spawning that attaches graph assets.
 
 ### Slice 4: behavior attachment
 
-`BEH-1` through `BEH-11`. Instance pooling, per-entity owner handles, dispatch
-to attached instances, teardown on entity destroy, and the promote-variable-to-
-component editor operation.
+`BEH-1` through `BEH-12`. Instance pooling, per-entity owner handles, dispatch
+to attached instances, activation reaping, teardown on entity destroy, and the
+promote-variable-to-component editor operation.
+
+`BEH-12` was added after slice 0 measurement work found that nothing reclaims a
+completed activation. `flow_run_ready()` reports a completed run as not ready,
+so `scheduler_pump()` leaves it in `bi->activations`, and the only caller of
+`blueprint_instance_remove_activation()` is `flow_run_free()` itself. Each
+retained activation holds two 64 KB arenas, so an unreaped per-frame pump grows
+without bound.
 
 ### Slice 5: live authoring
 
@@ -701,6 +708,9 @@ Acceptance criteria:
 - `BEH-9` and `BEH-10`: attaching four graphs where one declares `Tick` costs
   one activation per pump, and steady-state spawning and destroying performs no
   per-instance allocation.
+- `BEH-12`: dispatching an event to every instance for 600 frames leaves each
+  instance's activation queue empty at frame end and total activation storage
+  flat from the first frame to the last.
 - `BEH-2` and `RUN-18`: two graphs attached to one entity cannot observe each
   other's variables, and two entities of one prototype share no state.
 - `APPLY-2` and `APPLY-5`: editing a graph while the world runs requires no

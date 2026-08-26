@@ -1,0 +1,1 @@
+2026-08-23T20:48:00Z	log-correction	supersede the previous review-fix evidence path typo	The implementation path is `app/scene_authoring.c`; the earlier row included an accidental space	.audit/prototype-first-variant-b.tsv	corrected

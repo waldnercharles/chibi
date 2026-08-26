@@ -36,14 +36,7 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
 int engine_set_focus(engine *engine, engine_focus focus);
 engine_focus engine_get_focus(const engine *engine);
 int engine_route_escape(engine *engine);
-int engine_set_player(engine *engine, ecs_entity entity);
-int engine_dispatch_player_input(
-    engine *engine,
-    const char *action,
-    double value,
-    int pressed,
-    flow_error *error
-);
+int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error);
 int engine_frame(engine *engine, double monotonic_time);
 const engine_frame_timing *engine_last_timing(const engine *engine);
 
@@ -54,6 +47,10 @@ void engine_viewport_free(engine_viewport *viewport);
 int engine_viewport_request_resize(engine_viewport *viewport, int width, int height);
 int engine_viewport_commit_resize(engine_viewport *viewport);
 int engine_viewport_draw(engine_viewport *viewport);
+/* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
+ * way to hand focus back so Escape can release the viewport. */
+int engine_viewport_focused(const engine_viewport *viewport);
+void engine_viewport_release_focus(void);
 uint64_t engine_viewport_binding(const engine_viewport *viewport);
 uint32_t engine_viewport_recreate_count(const engine_viewport *viewport);
 typedef void (*engine_viewport_render_fn)(void *user);

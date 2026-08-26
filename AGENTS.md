@@ -17,3 +17,4 @@ Spartan C. Less code is a feature: delete dead code and unused abstraction.
 - Prefer direct calls or `switch` over function-pointer tables and indirection.
 - Follow existing naming and clang-format; short names only in tight local scope.
 - Name magic numbers and invariants (`#define`/`enum`/`static const`).
+- UI/UX changes: run `build/app --headless --screenshot`, inspect `/tmp/c-blueprints-screenshot.png`, and report the captured dimensions. Use `--frames N` when a longer settle period is needed.

@@ -363,6 +363,13 @@ int ecs_world_component_count(const ecs_world *world)
     return world ? acount(world->components) : 0;
 }
 
+const ecs_component_desc *ecs_world_component_at(const ecs_world *world, int index)
+{
+    return world && index >= 0 && index < acount(world->components)
+             ? &world->components[index].desc
+             : NULL;
+}
+
 static const type_field *migration_field(const type_desc *type, const char *name)
 {
     if (!type) {

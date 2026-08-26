@@ -66,6 +66,7 @@ struct flow_run
     int step_mode;
     unsigned long activation_budget;
     unsigned call_depth;
+    int breakpoints_enabled;
     node *breakpoint_node;
     int breakpoint_skipped;
     service_binding *services;
@@ -81,6 +82,7 @@ struct flow_run
     const void *input_user_data;
     flow_sink_fn sink;
     void *sink_user;
+    const char *event_name;
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
     arena input_arena;
@@ -528,20 +530,22 @@ static int flow_run_activate(flow_run *run)
             watch_capture_node(run, frame.node);
             return schedule_output_for_node(run, frame.node, frame.body_output);
         }
-        if (frame.current != frame.last) {
-            frame.current += frame.current < frame.last ? 1 : -1;
-            runtime_node *state = flow_runtime_node(run, frame.node);
-            pin_value *outputs = runtime_node_outputs(state);
-            runtime_node_set_computed(state, 0);
-            outputs[frame.index_output].type = PIN_I32;
-            outputs[frame.index_output].type_name = "int";
-            outputs[frame.index_output].i = frame.current;
-            apush(run->frames, frame);
+        int step = frame.current < frame.last ? 1 : -1;
+        int next = frame.current + step;
+        if ((step > 0 && next >= frame.last) || (step < 0 && next <= frame.last)) {
             watch_capture_node(run, frame.node);
-            return schedule_output_for_node(run, frame.node, frame.body_output);
+            return schedule_output_for_node(run, frame.node, frame.completed_output);
         }
+        frame.current = next;
+        runtime_node *state = flow_runtime_node(run, frame.node);
+        pin_value *outputs = runtime_node_outputs(state);
+        runtime_node_set_computed(state, 0);
+        outputs[frame.index_output].type = PIN_I32;
+        outputs[frame.index_output].type_name = "int";
+        outputs[frame.index_output].i = frame.current;
+        apush(run->frames, frame);
         watch_capture_node(run, frame.node);
-        return schedule_output_for_node(run, frame.node, frame.completed_output);
+        return schedule_output_for_node(run, frame.node, frame.body_output);
     }
 
     node *n = frame.node;
@@ -605,7 +609,7 @@ static int flow_run_execute(flow_run *run)
 
     while (run->state == FLOW_RUNNING && acount(run->frames) > 0) {
         node *next = run->frames[acount(run->frames) - 1].node;
-        if (next && next->breakpoint && run->graph->breakpoints_enabled &&
+        if (next && next->breakpoint && run->breakpoints_enabled &&
             !run->breakpoint_skipped) {
             run->breakpoint_node = next;
             run->state = FLOW_PAUSED;
@@ -662,9 +666,13 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->current_time = options ? options->initial_time : 0.0;
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
+    run->event_name = options ? options->event_name : NULL;
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->call_depth = options ? options->call_depth : 0;
+    run->breakpoints_enabled = options && options->breakpoints_override
+                                 ? options->breakpoints_enabled
+                                 : g->breakpoints_enabled != 0;
     if (run->instance) {
         for (int i = 0; i < acount(run->instance->services); i++) {
             apush(run->services, run->instance->services[i]);
@@ -749,10 +757,14 @@ flow_run *flow_run_start_reuse(
     run->step_mode = 0;
     run->activation_budget = 0;
     run->call_depth = options ? options->call_depth : 0;
+    run->breakpoints_enabled = options && options->breakpoints_override
+                                 ? options->breakpoints_enabled
+                                 : g->breakpoints_enabled != 0;
     run->breakpoint_node = NULL;
     run->breakpoint_skipped = 0;
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
+    run->event_name = options ? options->event_name : NULL;
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
@@ -1073,6 +1085,11 @@ const node *flow_run_current_node(const flow_run *run)
     return run->frames[acount(run->frames) - 1].node;
 }
 
+const char *flow_run_event_name(const flow_run *run)
+{
+    return run ? run->event_name : NULL;
+}
+
 const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
 {
     if (count) {
@@ -1238,6 +1255,16 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
                 status && status->message ? status->message : "data evaluation failed"
             );
         }
+        const node_desc *conversion = graph_input_conversion(ctx->run->graph, ctx->node, input_pin);
+        if (conversion) {
+            if (!conversion->fn) {
+                return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion has no function");
+            }
+            *out = conversion->fn(out, 1, &ctx->run->scratch);
+            if (out->type != spec->type || (out->type == PIN_STRUCT && !out->ptr)) {
+                return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion failed");
+            }
+        }
         pin_coerce(out, spec);
         *flow_context_input_value(ctx, input_pin) = *out;
         if (src->output_pins[src_pin].flags & PIN_FLAG_WATCH) {
@@ -1318,6 +1345,9 @@ int flow_context_loop_range(
         .type_name = "int",
         .i = first,
     };
+    if (first == last) {
+        return flow_context_continue(ctx, completed_output);
+    }
     apush(
         ctx->run->frames,
         (flow_frame){

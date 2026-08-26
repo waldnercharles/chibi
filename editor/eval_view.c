@@ -38,6 +38,25 @@ void eval_view_free(eval_view *v)
     free(v);
 }
 
+static int eval_view_node_safe(const graph *g, const node *n, int depth)
+{
+    if (depth > acount(g->nodes) || n->desc->flow_kind != NODE_FLOW_NONE) {
+        return 0;
+    }
+    for (int i = 0; i < n->input_count; i++) {
+        if (n->input_pins[i].kind != PIN_DATA) {
+            continue;
+        }
+        node *source;
+        int source_pin;
+        if (graph_input_source(g, n, i, &source, &source_pin) &&
+            !eval_view_node_safe(g, source, depth + 1)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void eval_view_refresh(eval_view *v, graph *g)
 {
     v->error = NULL;
@@ -48,6 +67,9 @@ void eval_view_refresh(eval_view *v, graph *g)
     arena_reset(&v->a);
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
+        if (!eval_view_node_safe(g, n, 0)) {
+            continue;
+        }
         for (int p = 0; p < n->output_count; p++) {
             if (n->output_pins[p].kind != PIN_DATA) {
                 continue;

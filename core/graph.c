@@ -1,5 +1,6 @@
 #include "graph.h"
 
+#include "conv_nodes.h"
 #include "pin_conv.h"
 #include "registry.h"
 #include "value_array.h"
@@ -181,7 +182,15 @@ static void graph_wildcard_resolve_group(graph *g, node *n, int group, pin_type 
     }
 }
 
-static edge make_edge(node *from, int from_pin, node *to, int to_pin, graph_edge_kind kind, int order)
+static edge make_edge(
+    node *from,
+    int from_pin,
+    node *to,
+    int to_pin,
+    graph_edge_kind kind,
+    int order,
+    const node_desc *conversion
+)
 {
     edge e = { 0 };
     e.from_id = from ? from->id : 0;
@@ -193,11 +202,24 @@ static edge make_edge(node *from, int from_pin, node *to, int to_pin, graph_edge
                     ? to->input_pins[to_pin].id
                     : 0;
     e.kind = kind;
+    e.conversion = conversion;
     e.exec_order = order;
     return e;
 }
 
-int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
+static int conversion_matches(const pin_spec *out, const pin_spec *in, const node_desc *conversion)
+{
+    if (!conversion || conversion->input_count != 1 || conversion->output_count != 1) {
+        return 0;
+    }
+    if (out->type != PIN_STRUCT || in->type != PIN_STRUCT) {
+        return conversion == conversion_for(out->type, in->type);
+    }
+    return pin_compatible(out, &conversion->inputs[0]) &&
+           pin_compatible(&conversion->outputs[0], in);
+}
+
+int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, int to_pin, const node_desc *conversion)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, from) ||
         !node_in_graph(g, to)) {
@@ -209,14 +231,14 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
     }
     const pin_spec *out = &from->output_pins[from_pin];
     const pin_spec *in = &to->input_pins[to_pin];
-    if (out->kind != PIN_DATA || in->kind != PIN_DATA) {
+    if (out->kind != PIN_DATA || in->kind != PIN_DATA ||
+        (conversion && !conversion_matches(out, in, conversion))) {
         return -1;
     }
-    /* PIN-11: a wildcard data input adopts the peer's type, type name, and
-     * container on connection, so an unresolved generic pin (PIN_FLOW
-     * marker) accepts any data peer and a resolved one re-adopts when a
-     * second driver replaces the first. */
     if (in->flags & PIN_FLAG_WILDCARD) {
+        if (conversion) {
+            return -1;
+        }
         char *owned = out->type_name
                         ? graph_own_str(g, out->type_name, strlen(out->type_name))
                         : NULL;
@@ -233,7 +255,7 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
         graph_wildcard_resolve_group(g, to, p->group, out->type, out->type_name);
         in = &to->input_pins[to_pin];
     }
-    if (!pin_compatible(out, in)) {
+    if (!conversion && !pin_compatible(out, in)) {
         return -1;
     }
     for (int i = 0; i < acount(g->edges); i++) {
@@ -242,14 +264,19 @@ int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
             if (old->kind != GRAPH_EDGE_DATA) {
                 return -1;
             }
-            *old = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0);
+            *old = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0, conversion);
             graph_changed(g);
             return 0;
         }
     }
-    apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0));
+    apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0, conversion));
     graph_changed(g);
     return 0;
+}
+
+int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin)
+{
+    return graph_connect_data_conversion(g, from, from_pin, to, to_pin, NULL);
 }
 
 /* PIN-11: dropping the driver edge of a wildcard data input returns it to
@@ -338,12 +365,12 @@ int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin,
         if (old->kind == GRAPH_EDGE_EXEC && old->from_id == from->id &&
             old->from_pin_id == out->id && old->to_id == to->id &&
             old->to_pin_id == in->id) {
-            *old = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_EXEC, exec_order);
+            *old = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_EXEC, exec_order, NULL);
             graph_changed(g);
             return 0;
         }
     }
-    apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_EXEC, exec_order));
+    apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_EXEC, exec_order, NULL));
     graph_changed(g);
     return 0;
 }
@@ -473,6 +500,21 @@ int graph_input_source(const graph *g, const node *n, int pin, node **src, int *
         }
     }
     return 0;
+}
+
+const node_desc *graph_input_conversion(const graph *g, const node *n, int pin)
+{
+    if (!g || !n || pin < 0 || pin >= n->input_count) {
+        return NULL;
+    }
+    uint64_t id = n->input_pins[pin].id;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind == GRAPH_EDGE_DATA && e->to_id == n->id && e->to_pin_id == id) {
+            return e->conversion;
+        }
+    }
+    return NULL;
 }
 
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order)

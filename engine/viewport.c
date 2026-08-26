@@ -1,4 +1,5 @@
 #include "../core/xalloc.h"
+#include "../editor/ui_shell.h"
 #include "engine.h"
 
 #if ENGINE_CUTE_AVAILABLE
@@ -24,6 +25,14 @@ CF_Texture cf_canvas_get_target(CF_Canvas canvas);
 uint64_t cf_texture_binding_handle(CF_Texture texture);
 uint64_t cf_texture_handle(CF_Texture texture);
 void cf_render_to(CF_Canvas canvas, bool clear);
+typedef struct
+{
+    float values[6];
+} CF_M3x2;
+CF_M3x2 cf_ortho_2d(float x, float y, float scale_x, float scale_y);
+void cf_draw_projection(CF_M3x2 projection);
+void cf_draw_push(void);
+void cf_draw_pop(void);
 #endif
 #if ENGINE_IMGUI_AVAILABLE
 #include <imgui/dcimgui.h>
@@ -43,8 +52,16 @@ typedef struct ImVec2_t
 } ImVec2;
 bool ImGui_Begin(const char *name, bool *open, int flags);
 void ImGui_End(void);
+enum
+{
+    ImGuiFocusedFlags_ChildWindows = 1 << 0,
+};
+bool ImGui_IsWindowFocused(int flags);
+void ImGui_SetNextWindowFocus(void);
+void ImGui_SetWindowFocusStr(const char *name);
 ImVec2 ImGui_GetContentRegionAvail(void);
 void ImGui_Image(ImTextureRef texture, ImVec2 size);
+void ImGui_TextUnformatted(const char *text);
 #endif
 
 #include <stdlib.h>
@@ -59,6 +76,7 @@ struct engine_viewport
     int requested_height;
     int resize_pending;
     int stable_resize_frames;
+    int focused;
     uint32_t recreate_count;
     engine_viewport_render_fn render;
     void *render_user;
@@ -133,19 +151,49 @@ int engine_viewport_commit_resize(engine_viewport *viewport)
     return 0;
 }
 
+int engine_viewport_focused(const engine_viewport *viewport)
+{
+    return viewport ? viewport->focused : 0;
+}
+
+void engine_viewport_release_focus(void)
+{
+    ImGui_SetWindowFocusStr(NULL);
+}
+
 int engine_viewport_draw(engine_viewport *viewport)
 {
     if (!viewport || !viewport->canvas.id) {
         return -1;
     }
-    cf_render_to(viewport->canvas, true);
+    /* cf_render_to flushes the queued draw commands into the canvas, so the
+     * scene must be queued before it, under a projection sized to this target
+     * rather than the app window's. cf_draw_push/pop keep both off the
+     * editor's own draw state. */
+    cf_draw_push();
+    cf_draw_projection(
+        cf_ortho_2d(0.0f, 0.0f, (float)viewport->width, (float)viewport->height)
+    );
     if (viewport->render) {
         viewport->render(viewport->render_user);
     }
+    cf_render_to(viewport->canvas, true);
+    cf_draw_pop();
+    if (editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE)) {
+        ImGui_SetNextWindowFocus();
+    }
     if (!ImGui_Begin("Scene", NULL, 0)) {
+        viewport->focused = 0;
         ImGui_End();
         return 0;
     }
+    /* ENG-3: the panel's own focus decides who consumes host input, read here
+     * and acted on by the host next frame. */
+    viewport->focused = ImGui_IsWindowFocused(ImGuiFocusedFlags_ChildWindows) ? 1 : 0;
+    ImGui_TextUnformatted(
+        viewport->focused ? "Input: scene. Escape releases."
+                          : "Input: graph. Click here to control the scene."
+    );
     ImVec2 size = ImGui_GetContentRegionAvail();
     int width = (int)size.x;
     int height = (int)size.y;

@@ -19,6 +19,9 @@ check-format:
 
 test: build spec-check
 	$(BUILD_DIR)/self_check
+	$(BUILD_DIR)/editor_runtime_check
+	$(BUILD_DIR)/prototype_authoring_check
+	$(BUILD_DIR)/input_behavior_check
 	$(BUILD_DIR)/integration
 	$(BUILD_DIR)/registry_consumer
 

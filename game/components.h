@@ -3,12 +3,9 @@
 
 #include "../core/annotate.h"
 
-typedef NODE_COMPONENT_TYPE(GameTransform)
-{
-    float x;
-    float y;
-}
-GameTransform;
+#include <cute_math.h> /* Game owns the external math representation. */
+
+typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameTransform;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameHealth)
 {

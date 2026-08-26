@@ -5,8 +5,6 @@
 
 #include <stddef.h>
 
-typedef struct game_prototype game_prototype;
-
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
 typedef struct
@@ -30,14 +28,51 @@ typedef struct
     void *attach_user;
 } game_prototype_spawn_hooks;
 
+typedef struct
+{
+    const ecs_component_desc *desc;
+    void *data;
+} game_prototype_component;
+
+typedef struct game_prototype
+{
+    char *name;
+    const game_prototype_registry *registry;
+    game_prototype_component *components;
+    char **graphs;
+    char **strings;
+} game_prototype;
+
 game_prototype *game_prototype_load(
     const char *json,
     const game_prototype_registry *registry,
     char *error,
     size_t error_size
 );
+game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);
+int game_prototype_set_name(game_prototype *prototype, const char *name);
+game_prototype *game_prototype_capture_entity(
+    const char *name,
+    const ecs_world *world,
+    ecs_entity entity,
+    const game_prototype_registry *registry
+);
 void game_prototype_free(game_prototype *prototype);
 char *game_prototype_save(const game_prototype *prototype);
+char *game_prototype_components_json(const game_prototype *prototype);
+char *game_prototype_capture_overrides_json(
+    const game_prototype *base,
+    const ecs_world *world,
+    ecs_entity entity
+);
+int game_prototype_apply_components_json(
+    ecs_world *world,
+    ecs_entity entity,
+    const char *components_json,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+);
 int game_prototype_spawn(
     const game_prototype *prototype,
     ecs_world *world,
@@ -47,11 +82,21 @@ int game_prototype_spawn(
     size_t error_size
 );
 
-const char *game_prototype_name(const game_prototype *prototype);
-int game_prototype_component_count(const game_prototype *prototype);
-const ecs_component_desc *game_prototype_component(const game_prototype *prototype, int index);
-const void *game_prototype_component_data(const game_prototype *prototype, int index);
-int game_prototype_graph_count(const game_prototype *prototype);
-const char *game_prototype_graph(const game_prototype *prototype, int index);
+int game_prototype_read_field(
+    const game_prototype *prototype,
+    const char *component_name,
+    const char *field_name,
+    pin_value *out
+);
+int game_prototype_write_field(
+    game_prototype *prototype,
+    const char *component_name,
+    const char *field_name,
+    pin_value value
+);
+int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc);
+int game_prototype_add_graph(game_prototype *prototype, const char *asset_name);
+int game_prototype_remove_graph(game_prototype *prototype, const char *asset_name);
+int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name);
 
 #endif

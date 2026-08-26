@@ -11,3 +11,5 @@
 # portability property for a quiet editor.
 CompileFlags:
   CompilationDatabase: build
+  Add:
+    - -Ibuild/_deps/cute_framework-src/include

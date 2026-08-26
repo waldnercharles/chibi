@@ -3,8 +3,11 @@
 #include "../core/array.h"
 #include "../core/xalloc.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define GAME_BEHAVIOR_LOG_MAX 256
 
 typedef struct
 {
@@ -15,10 +18,18 @@ typedef struct
 
 typedef struct
 {
+    game_behavior_world *world;
+    ecs_entity entity;
+    const char *asset_name;
+} behavior_sink_context;
+
+typedef struct
+{
     ecs_entity entity;
     behavior_asset *asset;
     blueprint_instance *instance;
     uint64_t sequence;
+    int debug_hold;
 } behavior_attachment;
 
 struct game_behavior_world
@@ -26,8 +37,11 @@ struct game_behavior_world
     ecs_world *ecs;
     behavior_asset *assets;
     behavior_attachment *attachments;
+    game_behavior_log_info *logs;
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
+    flow_sink_fn sink;
+    void *sink_user;
     int breakpoints_enabled;
     int *pump_results;
     int pump_result_capacity;
@@ -42,6 +56,25 @@ static behavior_asset *find_asset(game_behavior_world *world, const char *name)
         }
     }
     return NULL;
+}
+
+static void behavior_sink(const node *origin, const char *message, void *user)
+{
+    behavior_sink_context *context = (behavior_sink_context *)user;
+    game_behavior_world *world = context->world;
+    if (acount(world->logs) == GAME_BEHAVIOR_LOG_MAX) {
+        adel(world->logs, 0);
+    }
+    game_behavior_log_info entry = {
+        .entity = context->entity,
+        .asset_name = context->asset_name,
+        .origin = origin,
+    };
+    snprintf(entry.message, sizeof entry.message, "%s", message ? message : "");
+    apush(world->logs, entry);
+    if (world->sink) {
+        world->sink(origin, message, world->sink_user);
+    }
 }
 
 static behavior_attachment *find_attachment(
@@ -64,7 +97,7 @@ static behavior_attachment *find_attachment(
     return NULL;
 }
 
-static blueprint_instance *acquire_instance(behavior_asset *asset, ecs_world *world, ecs_entity entity)
+static blueprint_instance *acquire_instance(behavior_asset *asset, game_behavior_world *world, ecs_entity entity)
 {
     pin_value owner = {
         .type = PIN_HANDLE,
@@ -79,15 +112,24 @@ static blueprint_instance *acquire_instance(behavior_asset *asset, ecs_world *wo
     }
     if (instance &&
         (blueprint_instance_set_activation_pool(instance, 1) != 0 ||
-         blueprint_instance_bind_service(instance, "ecs.world", world) != 0)) {
+         blueprint_instance_bind_service(instance, "ecs.world", world->ecs) != 0)) {
         blueprint_instance_destroy(instance);
         return NULL;
     }
+    behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
+    context->world = world;
+    context->entity = entity;
+    context->asset_name = asset->name;
+    instance->sink = behavior_sink;
+    instance->sink_user = context;
     return instance;
 }
 
 static void release_instance(behavior_asset *asset, blueprint_instance *instance)
 {
+    free(instance->sink_user);
+    instance->sink = NULL;
+    instance->sink_user = NULL;
     if (blueprint_instance_pool_release(instance) == 0) {
         apush(asset->pool, instance);
         return;
@@ -139,6 +181,7 @@ void game_behavior_world_free(game_behavior_world *world)
     }
     afree(world->assets);
     afree(world->attachments);
+    afree(world->logs);
     free(world->pump_results);
     free(world);
 }
@@ -160,6 +203,21 @@ int game_behavior_register_asset(game_behavior_world *world, const char *asset_n
 }
 
 static int detach_asset_entity(game_behavior_world *world, behavior_asset *asset, ecs_entity entity);
+
+static int begin_instance(behavior_attachment *attachment)
+{
+    flow_error error = { 0 };
+    flow_run *begin = blueprint_instance_dispatch(
+        attachment->instance,
+        "Begin",
+        (flow_inputs){ 0 },
+        &error
+    );
+    if (!begin) {
+        return error.code == FLOW_ERR_UNKNOWN_EVENT ? 0 : -1;
+    }
+    return 0;
+}
 
 static void destroy_asset_pool(behavior_asset *asset)
 {
@@ -207,30 +265,6 @@ int game_behavior_replace_asset(
             afree(entities);
             return -1;
         }
-        flow_error begin_error = { 0 };
-        flow_run *begin = blueprint_instance_dispatch(
-            game_behavior_instance(world, entities[i], asset_name),
-            "Begin",
-            (flow_inputs){ 0 },
-            &begin_error
-        );
-        if (!begin && begin_error.code != FLOW_ERR_UNKNOWN_EVENT) {
-            detach_asset_entity(world, asset, entities[i]);
-            destroy_asset_pool(asset);
-            asset->definition = old;
-            for (int j = 0; j < acount(entities); j++) {
-                game_behavior_attach(world, entities[j], asset_name);
-            }
-            afree(entities);
-            return -1;
-        }
-        if (begin && (flow_run_status(begin) == FLOW_COMPLETED ||
-                      flow_run_status(begin) == FLOW_FAILED)) {
-            blueprint_instance_release_activation(
-                game_behavior_instance(world, entities[i], asset_name),
-                begin
-            );
-        }
     }
     afree(entities);
     if (old_definition) {
@@ -256,7 +290,7 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
     } else if (strcmp(asset->definition->owner_type_name, "ecs.entity") != 0) {
         return -1;
     }
-    blueprint_instance *instance = acquire_instance(asset, world->ecs, entity);
+    blueprint_instance *instance = acquire_instance(asset, world, entity);
     if (!instance) {
         return -1;
     }
@@ -270,6 +304,12 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
             .sequence = world->next_sequence++,
         }
     );
+    behavior_attachment *attachment = &alast(world->attachments);
+    if (begin_instance(attachment) != 0) {
+        release_instance(asset, instance);
+        adel(world->attachments, acount(world->attachments) - 1);
+        return -1;
+    }
     return 0;
 }
 
@@ -288,6 +328,54 @@ static int detach_asset_entity(game_behavior_world *world, behavior_asset *asset
         detached++;
     }
     return detached;
+}
+
+int game_behavior_detach_asset(game_behavior_world *world, ecs_entity entity, const char *asset_name)
+{
+    behavior_asset *asset = world && asset_name ? find_asset(world, asset_name) : NULL;
+    return asset ? detach_asset_entity(world, asset, entity) : -1;
+}
+
+int game_behavior_set_breakpoints_enabled_for_asset(
+    game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name,
+    int enabled
+)
+{
+    blueprint_instance *instance = game_behavior_instance(world, entity, asset_name);
+    if (!instance) {
+        return -1;
+    }
+    blueprint_instance_set_breakpoints_enabled(instance, enabled);
+    return 0;
+}
+
+int game_behavior_breakpoints_enabled_for_asset(
+    const game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name
+)
+{
+    blueprint_instance *instance = game_behavior_instance((game_behavior_world *)world, entity, asset_name);
+    return instance ? blueprint_instance_breakpoints_enabled(instance) : 0;
+}
+
+int game_behavior_set_debug_hold(
+    game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name,
+    int enabled
+)
+{
+    behavior_asset *asset = world && asset_name ? find_asset(world, asset_name) : NULL;
+    behavior_attachment *attachment = asset ? find_attachment(world, entity, asset_name)
+                                            : NULL;
+    if (!attachment) {
+        return -1;
+    }
+    attachment->debug_hold = enabled != 0;
+    return 0;
 }
 
 int game_behavior_detach_entity(game_behavior_world *world, ecs_entity entity)
@@ -311,6 +399,31 @@ int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity)
     return ecs_world_destroy_entity(world->ecs, entity);
 }
 
+static int dispatch_attachment(
+    behavior_attachment *attachment,
+    const char *event_name,
+    flow_inputs inputs,
+    flow_error *error
+)
+{
+    flow_error local = { 0 };
+    flow_run *run = blueprint_instance_dispatch(attachment->instance, event_name, inputs, &local);
+    if (!run) {
+        if (local.code == FLOW_ERR_UNKNOWN_EVENT) {
+            return 0;
+        }
+        if (error) {
+            *error = local;
+        }
+        return local.code;
+    }
+    if (!attachment->debug_hold && (flow_run_status(run) == FLOW_COMPLETED ||
+                                    flow_run_status(run) == FLOW_FAILED)) {
+        blueprint_instance_release_activation(attachment->instance, run);
+    }
+    return 1;
+}
+
 int game_behavior_dispatch(
     game_behavior_world *world,
     ecs_entity entity,
@@ -332,22 +445,39 @@ int game_behavior_dispatch(
             attachment->entity.generation != entity.generation) {
             continue;
         }
-        flow_error local = { 0 };
-        flow_run *run = blueprint_instance_dispatch(attachment->instance, event_name, inputs, &local);
-        if (!run) {
-            if (local.code == FLOW_ERR_UNKNOWN_EVENT) {
-                continue;
-            }
-            if (error) {
-                *error = local;
-            }
-            return local.code;
+        int result = dispatch_attachment(attachment, event_name, inputs, error);
+        if (result < 0) {
+            return result;
         }
-        dispatched++;
-        if (flow_run_status(run) == FLOW_COMPLETED ||
-            flow_run_status(run) == FLOW_FAILED) {
-            blueprint_instance_release_activation(attachment->instance, run);
+        dispatched += result;
+    }
+    return dispatched;
+}
+
+int game_behavior_dispatch_all(
+    game_behavior_world *world,
+    const char *event_name,
+    flow_inputs inputs,
+    flow_error *error
+)
+{
+    if (!world || !event_name) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (error) {
+        *error = (flow_error){ 0 };
+    }
+    int dispatched = 0;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        if (!ecs_entity_is_alive(world->ecs, attachment->entity)) {
+            continue;
         }
+        int result = dispatch_attachment(attachment, event_name, inputs, error);
+        if (result < 0) {
+            return result;
+        }
+        dispatched += result;
     }
     return dispatched;
 }
@@ -357,6 +487,26 @@ typedef struct
     game_behavior_world *world;
     double monotonic_time;
 } behavior_pump_context;
+
+static int instance_breakpoints_active(const blueprint_instance *instance)
+{
+    if (!instance || !instance->bp || !instance->bp->graph) {
+        return 0;
+    }
+    if (instance->breakpoints_override) {
+        return instance->breakpoints_enabled;
+    }
+    const graph *graph = instance->bp->graph;
+    if (!graph->breakpoints_enabled) {
+        return 0;
+    }
+    for (int i = 0; i < acount(graph->nodes); i++) {
+        if (graph->nodes[i]->breakpoint) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 static void pump_attachment(int index, void *user)
 {
@@ -378,13 +528,17 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         return FLOW_ERR_ARGUMENT;
     }
     int count = acount(world->attachments);
+    int breakpoints_enabled = world->breakpoints_enabled;
+    for (int i = 0; i < count && !breakpoints_enabled; i++) {
+        breakpoints_enabled = instance_breakpoints_active(world->attachments[i].instance);
+    }
     if (count > world->pump_result_capacity) {
         world->pump_results = (int *)
             xrealloc(world->pump_results, (size_t)count * sizeof *world->pump_results);
         world->pump_result_capacity = count;
     }
     behavior_pump_context context = { world, monotonic_time };
-    if (world->parallel_for && !world->breakpoints_enabled) {
+    if (world->parallel_for && !breakpoints_enabled) {
         world->parallel_for(count, pump_attachment, &context);
     } else {
         for (int i = 0; i < count; i++) {
@@ -396,7 +550,9 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         if (world->pump_results[i] < 0) {
             result = world->pump_results[i];
         }
-        reap_instance(world->attachments[i].instance);
+        if (!world->attachments[i].debug_hold) {
+            reap_instance(world->attachments[i].instance);
+        }
     }
     return result;
 }
@@ -424,9 +580,112 @@ void game_behavior_set_breakpoints_enabled(game_behavior_world *world, int enabl
     }
 }
 
+void game_behavior_set_sink(game_behavior_world *world, flow_sink_fn sink, void *user)
+{
+    if (!world) {
+        return;
+    }
+    world->sink = sink;
+    world->sink_user = user;
+}
+
+int game_behavior_log_count(const game_behavior_world *world)
+{
+    return world ? acount(world->logs) : 0;
+}
+
+int game_behavior_log_info_at(const game_behavior_world *world, int index, game_behavior_log_info *out)
+{
+    if (!world || !out || index < 0 || index >= acount(world->logs)) {
+        return -1;
+    }
+    *out = world->logs[index];
+    return 0;
+}
+
+void game_behavior_clear_logs(game_behavior_world *world)
+{
+    if (world) {
+        aclear(world->logs);
+    }
+}
+
 int game_behavior_attachment_count(const game_behavior_world *world)
 {
     return world ? acount(world->attachments) : 0;
+}
+
+int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity)
+{
+    if (!world) {
+        return 0;
+    }
+    int count = 0;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        const behavior_attachment *attachment = &world->attachments[i];
+        if (attachment->entity.slot == entity.slot &&
+            attachment->entity.generation == entity.generation) {
+            count++;
+        }
+    }
+    return count;
+}
+
+int game_behavior_attachment_info_at(
+    game_behavior_world *world,
+    ecs_entity entity,
+    int index,
+    game_behavior_attachment_info *out
+)
+{
+    if (!world || !out || index < 0) {
+        return -1;
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        if (attachment->entity.slot != entity.slot ||
+            attachment->entity.generation != entity.generation) {
+            continue;
+        }
+        if (index-- != 0) {
+            continue;
+        }
+        *out = (game_behavior_attachment_info){
+            .entity = attachment->entity,
+            .asset_name = attachment->asset->name,
+            .definition = attachment->asset->definition,
+            .instance = attachment->instance,
+            .sequence = attachment->sequence,
+            .debug_hold = attachment->debug_hold,
+        };
+        return 0;
+    }
+    return -1;
+}
+
+int game_behavior_asset_registered(const game_behavior_world *world, const char *asset_name)
+{
+    return world && asset_name &&
+           find_asset((game_behavior_world *)world, asset_name) != NULL;
+}
+
+int game_behavior_asset_count(const game_behavior_world *world)
+{
+    return world ? acount(world->assets) : 0;
+}
+
+const char *game_behavior_asset_name_at(const game_behavior_world *world, int index)
+{
+    return world && index >= 0 && index < acount(world->assets)
+             ? world->assets[index].name
+             : NULL;
+}
+
+const blueprint *game_behavior_asset_definition_at(const game_behavior_world *world, int index)
+{
+    return world && index >= 0 && index < acount(world->assets)
+             ? world->assets[index].definition
+             : NULL;
 }
 
 int game_behavior_pool_size(const game_behavior_world *world, const char *asset_name)

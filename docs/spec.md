@@ -727,8 +727,8 @@ Flow control:
 with no fixed maximum.
 
 `CAT-4` ForLoop. Exec in, first and last index, Body exec out, Index data out,
-Completed exec out, and an inclusive range that increments or decrements toward
-last.
+Completed exec out, and a half-open range that increments or decrements toward
+but excludes last. Equal bounds skip Body.
 
 `CAT-5` ForLoopWithBreak. ForLoop plus a Break exec in that stops iteration and
 continues to Completed.
@@ -873,8 +873,9 @@ the node ID, the pin ID where applicable, a stable rule code, and a message.
 
 `CMPL-3` Errors MUST block a run under `RUN-12`. Warnings MUST NOT.
 
-`CMPL-4` Error: a required exec input with no incoming edge on a node that can
-only run from an entry path.
+`CMPL-4` Warning: a required exec input with no incoming edge on a node that can
+only run from an entry path. The node is unreachable, but the graph remains
+valid to apply.
 
 `CMPL-5` Error: a data edge between incompatible pins, which can arise from a
 retype after the edge was made.
@@ -981,6 +982,14 @@ budget is reached, so a long run cannot grow them without limit.
 MUST include every data edge evaluated in that chain, in evaluation order, so a
 flow visualisation can show the requested data path rather than only the final
 value entering the executable node.
+
+`DBG-18` An entity-owned runtime instance MUST support an inspection hold for
+completed activations and an instance-local breakpoint enable override, so a
+host debugger can inspect one entity without changing another entity's run.
+
+`DBG-19` Runtime sink messages emitted by an entity-owned behavior MUST be
+retained with the entity and behavior asset identity so the host can inspect
+messages without confusing them with the editor preview log.
 
 ## FMT: file format
 

@@ -79,6 +79,7 @@ ecs_world *ecs_world_new(void);
 void ecs_world_free(ecs_world *world);
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id);
 int ecs_world_component_count(const ecs_world *world);
+const ecs_component_desc *ecs_world_component_at(const ecs_world *world, int index);
 int ecs_world_migrate_component(
     ecs_world *world,
     const ecs_component_desc *replacement,

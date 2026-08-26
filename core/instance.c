@@ -105,6 +105,52 @@ static void instance_set_owner(blueprint_instance *bi, const pin_value *owner)
     }
 }
 
+static void instance_trace_clear(blueprint_instance *bi)
+{
+    for (int i = 0; i < acount(bi->trace); i++) {
+        free(bi->trace[i].event_name);
+    }
+    aclear(bi->trace);
+}
+
+static void instance_trace_push(blueprint_instance *bi, const flow_run *run, const flow_traversal *traversal)
+{
+    if (acount(bi->trace) == BLUEPRINT_INSTANCE_TRACE_MAX) {
+        free(bi->trace[0].event_name);
+        memmove(
+            bi->trace,
+            bi->trace + 1,
+            (size_t)(BLUEPRINT_INSTANCE_TRACE_MAX - 1) * sizeof *bi->trace
+        );
+        asetlen(bi->trace, BLUEPRINT_INSTANCE_TRACE_MAX - 1);
+    }
+    const node *current = flow_run_current_node(run);
+    const flow_error *error = flow_run_error(run);
+    blueprint_instance_trace_entry entry = {
+        .traversal = traversal ? *traversal : (flow_traversal){
+            .timestamp = bi->current_time,
+        },
+        .event_name = xstrdup(flow_run_event_name(run) ? flow_run_event_name(run) : ""),
+        .current_node_id = current ? current->id : 0,
+        .state = flow_run_status(run),
+        .error_code = error ? error->code : FLOW_OK,
+    };
+    apush(bi->trace, entry);
+}
+
+static void instance_trace_run(blueprint_instance *bi, const flow_run *run)
+{
+    int count = 0;
+    const flow_traversal *traversals = flow_run_traversals(run, &count);
+    if (!count) {
+        instance_trace_push(bi, run, NULL);
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        instance_trace_push(bi, run, &traversals[i]);
+    }
+}
+
 /* Run the scheduler until no activation can make progress: at most one
  * activation runs at a time, and the next ready activation is the oldest
  * non-terminal one (FIFO by dispatch sequence, EXEC-17). */
@@ -261,6 +307,7 @@ int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act)
     if (!bi || !act || blueprint_instance_remove_activation(bi, act) != 0) {
         return -1;
     }
+    instance_trace_run(bi, act);
     if (!bi->pool_enabled) {
         flow_run_free(act);
         return 0;
@@ -271,6 +318,14 @@ int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act)
     }
     apush(bi->activation_pool, act);
     return 0;
+}
+
+const blueprint_instance_trace_entry *blueprint_instance_trace(const blueprint_instance *bi, int *count)
+{
+    if (count) {
+        *count = bi ? acount(bi->trace) : 0;
+    }
+    return bi ? bi->trace : NULL;
 }
 
 static void instance_detach_bindings(blueprint_instance *bi)
@@ -304,11 +359,14 @@ int blueprint_instance_pool_release(blueprint_instance *bi)
     }
     aclear(bi->activations);
     aclear(bi->services);
+    instance_trace_clear(bi);
     instance_clear_values(bi);
     aclear(bi->scratch);
     compile_report_free(&bi->compile);
     compile_report_init(&bi->compile);
     bi->compile_revision = 0;
+    bi->breakpoints_override = 0;
+    bi->breakpoints_enabled = 0;
     bi->owner = (pin_value){ .type = PIN_FLOW };
     graph_flow_resume(bi->bp->graph);
     return 0;
@@ -328,6 +386,8 @@ blueprint_instance *blueprint_instance_pool_reuse(
     bi->alive = 1;
     bi->now = now;
     bi->now_user = now_user;
+    bi->breakpoints_override = 0;
+    bi->breakpoints_enabled = 0;
     bi->next_delegate_id = 1;
     instance_init_values(bi);
     instance_set_owner(bi, owner);
@@ -345,6 +405,8 @@ void blueprint_instance_destroy(blueprint_instance *bi)
         flow_run_free(bi->activation_pool[i]);
     }
     afree(bi->activation_pool);
+    instance_trace_clear(bi);
+    afree(bi->trace);
     free(bi->variables);
     afree(bi->activations);
     afree(bi->services);
@@ -518,9 +580,12 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
         .initial_time = bi->current_time,
         .sink = bi->sink,
         .sink_user = bi->sink_user,
+        .event_name = entry->reference_name,
         .instance = bi,
         .parallel_for = bi->parallel_for,
         .parallel_user = bi->parallel_user,
+        .breakpoints_override = bi->breakpoints_override,
+        .breakpoints_enabled = bi->breakpoints_enabled,
     };
     flow_run *act = NULL;
     if (bi->pool_enabled && acount(bi->activation_pool)) {
@@ -647,6 +712,24 @@ void blueprint_instance_set_parallel_for(
     }
     bi->parallel_for = parallel_for;
     bi->parallel_user = parallel_user;
+}
+
+void blueprint_instance_set_breakpoints_enabled(blueprint_instance *bi, int enabled)
+{
+    if (!bi) {
+        return;
+    }
+    bi->breakpoints_override = 1;
+    bi->breakpoints_enabled = enabled != 0;
+}
+
+int blueprint_instance_breakpoints_enabled(const blueprint_instance *bi)
+{
+    if (!bi || !bi->bp || !bi->bp->graph) {
+        return 0;
+    }
+    return bi->breakpoints_override ? bi->breakpoints_enabled
+                                    : bi->bp->graph->breakpoints_enabled != 0;
 }
 
 pin_value *blueprint_instance_scratch(blueprint_instance *bi, uint64_t node_id)

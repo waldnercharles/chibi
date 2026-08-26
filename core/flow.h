@@ -50,10 +50,13 @@ extern "C"
         double initial_time;
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
+        const char *event_name; /* borrowed dispatch name for runtime inspection */
         blueprint_instance *instance; /* owning instance, or NULL for a standalone run */
         flow_parallel_for_fn parallel_for; /* host-supplied, never owned */
         void *parallel_user;
         unsigned call_depth; /* internal function-call depth, zero at an entry */
+        int breakpoints_override; /* use instance or host setting instead of graph state */
+        int breakpoints_enabled;
     } flow_options;
 
     typedef enum
@@ -143,6 +146,7 @@ extern "C"
      * borrowed from the run. */
     const flow_traversal *flow_run_traversals(const flow_run *run, int *count);
     const node *flow_run_current_node(const flow_run *run);
+    const char *flow_run_event_name(const flow_run *run);
     const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count);
     unsigned flow_run_call_depth(const flow_run *run);
     unsigned flow_context_call_depth(const struct flow_context *ctx);

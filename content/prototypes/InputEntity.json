@@ -1,0 +1,8 @@
+{
+  "name": "InputEntity",
+  "components": {
+    "GameTransform": { "x": 320, "y": 180 },
+    "GameHealth": { "current": 100, "maximum": 100 }
+  },
+  "behaviors": [ "InputBehavior" ]
+}

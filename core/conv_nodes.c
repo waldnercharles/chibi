@@ -1,17 +1,12 @@
-/* core/conv_nodes.c -- CAT-26 explicit conversion nodes, registered as
- * EXTRA_NODES.
- *
- * TYPE-7 permits integer widening within one signedness, integer to float,
- * float to double, and any scalar to string, always through a visible
- * conversion node rather than silent coercion. Each conversion node's input
- * is retypeable (PIN-3): one node type serves every source type in its set,
- * and the editor retypes the input when it inserts the node (UI-22). The
- * output type is fixed by the node.
+/* core/conv_nodes.c -- CAT-26 explicit conversion descriptors, registered
+ * as EXTRA_NODES. Scalar conversions remain available to the graph editor;
+ * struct conversions are carried by data edges and evaluated at the edge.
  */
 #include "conv_nodes.h"
 
 #include "arena.h"
 #include "pin_fmt.h"
+#include "registry.h"
 
 #include <string.h>
 
@@ -146,6 +141,31 @@ const node_desc *conversion_for(pin_type from, pin_type to)
     }
     if (to_string_source(from) && to == PIN_STR) {
         return &NODE_To_String;
+    }
+    return NULL;
+}
+
+const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to)
+{
+    if (!from || !to || from->kind != PIN_DATA || to->kind != PIN_DATA ||
+        from->container != PIN_CONTAINER_SINGLE ||
+        to->container != PIN_CONTAINER_SINGLE) {
+        return NULL;
+    }
+    if (from->type != PIN_STRUCT || to->type != PIN_STRUCT) {
+        return conversion_for(from->type, to->type);
+    }
+    if (!from->type_name || !to->type_name) {
+        return NULL;
+    }
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *node = registry_node(i);
+        if (node->input_count == 1 && node->output_count == 1 &&
+            node->conversion_from && node->conversion_to &&
+            strcmp(node->conversion_from, from->type_name) == 0 &&
+            strcmp(node->conversion_to, to->type_name) == 0) {
+            return node;
+        }
     }
     return NULL;
 }

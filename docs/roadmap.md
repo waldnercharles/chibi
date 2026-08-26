@@ -573,10 +573,12 @@ Covers: `DBG-1` through `DBG-16`, `NODE-11`, `NODE-12`, `UI-10` through
 `UI-12`, `UI-15`, `UI-16`, `UI-20`, `UI-32`, `UI-34`, `UI-35`, `UI-37`,
 `UI-38`, `UI-44` through `UI-52`.
 
-Deliverables retain the breakpoint, watch, traversal, heat, marker, minimap,
-shortcut, layout, and animation requirements already defined in the spec.
-Before implementation, fix debugger pause scope and selected-activation behavior
-for overlapping activations.
+Deliverables retain the breakpoint, watch, traversal, heat, marker, shortcut,
+layout, and animation requirements already defined in the spec. UI-20 remains a
+future Minimap requirement; the Minimap panel is not currently shipped. The
+flow overview data is still used for graph visualization. Before implementation,
+fix debugger pause scope and selected-activation behavior for overlapping
+activations.
 
 ## Phase 9: advanced parity gates (reconciled)
 
@@ -607,9 +609,11 @@ storage), `0019` (parallel activation), and `0020` (live authoring).
 
 Estimate: not set until slice 0 reports a number.
 
-Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-8`, `BEH-1` through
-`BEH-12`, `PAR-1` through `PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1`
-through `ENG-7`, `HOT-1` through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
+Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-12`, `SCENE-1`
+through `SCENE-6`, `BEH-1` through `BEH-14`, `DBG-18` through `DBG-19`,
+`PAR-1` through
+`PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1` through `ENG-7`, `HOT-1`
+through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
 
 ### Prerequisite: the operator catalog is missing
 
@@ -699,12 +703,14 @@ hand-maintained component table.
 
 ### Slice 3: prototypes
 
-`PROTO-1` through `PROTO-8`. Generic load and save over component descriptors,
-includes with override, and spawning that attaches graph assets.
+`PROTO-1` through `PROTO-12`. Generic load and save over component descriptors,
+includes with override, spawning that attaches graph assets, mutable field
+editing, and sparse instance override application.
 
 ### Slice 4: behavior attachment
 
-`BEH-1` through `BEH-12`. Instance pooling, per-entity owner handles, dispatch
+`BEH-1` through `BEH-14`. Instance pooling, per-entity owner handles, dispatch,
+attachment inspection, and consistent `Begin` lifecycle
 to attached instances, activation reaping, teardown on entity destroy, and the
 promote-variable-to-component editor operation.
 
@@ -1068,7 +1074,7 @@ Deliverables:
    `REFL-8`.
 10. Canvas polish: hover highlighting of nodes, pins, and links, live type
     feedback while linking. `UI-15`.
-11. Minimap. `UI-20`.
+11. Minimap. `UI-20` (future; not currently shipped).
 12. Auto arrange, straighten connection, and zoom to fit. `UI-37`.
 13. Keyboard node spawning by held key plus canvas click. `UI-38`.
 

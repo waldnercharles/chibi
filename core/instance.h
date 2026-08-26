@@ -19,6 +19,17 @@ typedef struct instance_scratch_slot
     pin_value value;
 } instance_scratch_slot;
 
+#define BLUEPRINT_INSTANCE_TRACE_MAX 512
+
+typedef struct
+{
+    flow_traversal traversal;
+    char *event_name;
+    uint64_t current_node_id;
+    flow_state state;
+    int error_code;
+} blueprint_instance_trace_entry;
+
 typedef struct blueprint_delegate_binding
 {
     uint64_t id;
@@ -52,7 +63,10 @@ struct blueprint_instance
     void *sink_user;
     flow_run **activations;     /* scheduler queue, FIFO by dispatch sequence */
     flow_run **activation_pool; /* idle reusable activations */
+    blueprint_instance_trace_entry *trace; /* oldest-to-newest completed records */
     int pool_enabled;
+    int breakpoints_override;
+    int breakpoints_enabled;
     blueprint_delegate_binding *delegates; /* outgoing weak bindings */
     blueprint_delegate_ref *delegate_incoming;
     service_binding *services;
@@ -101,6 +115,13 @@ int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act);
 int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled);
 int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act);
 
+/* Borrow the bounded, oldest-to-newest execution trace. Entries remain valid
+ * until the instance is released, reused, or destroyed. */
+const blueprint_instance_trace_entry *blueprint_instance_trace(
+    const blueprint_instance *bi,
+    int *count
+);
+
 /* Dispatch a named event (EVT-9). Creates a distinct activation carrying
  * copied parameter values and runs the scheduler. NULL with a structured
  * error on unknown or duplicate name (EVT-7). */
@@ -129,6 +150,8 @@ void blueprint_instance_set_parallel_for(
     flow_parallel_for_fn parallel_for,
     void *parallel_user
 );
+void blueprint_instance_set_breakpoints_enabled(blueprint_instance *bi, int enabled);
+int blueprint_instance_breakpoints_enabled(const blueprint_instance *bi);
 
 /* Per-node scratch keyed by node ID (EXEC-15). Returns a zero-initialized
  * slot, created on first access; the pointer stays valid until the instance

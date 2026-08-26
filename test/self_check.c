@@ -32,6 +32,7 @@
 #include "../game/live.h"
 #include "../game/prototype.h"
 #include "../game/scene.h"
+#include "../game/scene_document.h"
 #include "../third_party/fmt/fmt.h"
 
 #include <math.h>
@@ -805,26 +806,20 @@ static void run_prototype_checks(void)
     };
     char error[256];
     game_prototype *prototype = game_prototype_load(derived_json, &registry, error, sizeof error);
-    check(
-        prototype && strcmp(game_prototype_name(prototype), "Enemy") == 0,
-        "PROTO-1: a prototype names components and attached graph assets"
-    );
-    check(
-        prototype && game_prototype_component_count(prototype) == 2,
-        "PROTO-2: a prototype is data and does not allocate an entity slot"
-    );
+    check(prototype && strcmp(prototype->name, "Enemy") == 0, "PROTO-1: a prototype names components and attached graph assets");
+    check(prototype && acount(prototype->components) == 2, "PROTO-2: a prototype is data and does not allocate an entity slot");
     const ecs_component_desc *health = NULL;
     const GameHealth *health_value = NULL;
-    for (int i = 0; prototype && i < game_prototype_component_count(prototype); i++) {
-        const ecs_component_desc *desc = game_prototype_component(prototype, i);
+    for (int i = 0; prototype && i < acount(prototype->components); i++) {
+        const ecs_component_desc *desc = prototype->components[i].desc;
         if (strcmp(desc->name, "GameHealth") == 0) {
             health = desc;
-            health_value = game_prototype_component_data(prototype, i);
+            health_value = prototype->components[i].data;
         }
     }
     check(
-        health && health_value && ((const GameHealth *)health_value)->current == 100 &&
-            ((const GameHealth *)health_value)->maximum == 50,
+        health && health_value && health_value->current == 100 &&
+            health_value->maximum == 50,
         "PROTO-3: include values load and local fields override by name"
     );
     char *saved = prototype ? game_prototype_save(prototype) : NULL;
@@ -862,6 +857,14 @@ static void run_prototype_checks(void)
     ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL);
     g_prototype_attach_count = 0;
     const game_prototype_spawn_hooks hooks = { prototype_attach, NULL };
+    ecs_entity no_hook_entity = { 0 };
+    check(
+        prototype &&
+            game_prototype_spawn(prototype, world, NULL, &no_hook_entity, error, sizeof error) ==
+                ECS_ERR_ARGUMENT &&
+            ecs_world_live_count(world) == 0 && strstr(error, "attach hook"),
+        "PROTO-3: behavior-bearing prototypes cannot silently skip attachment"
+    );
     ecs_entity entity = { 0 };
     check(
         prototype &&
@@ -871,6 +874,70 @@ static void run_prototype_checks(void)
         "PROTO-3: spawning writes generic component fields and attaches each "
         "graph asset"
     );
+    pin_value health_field = { 0 };
+    check(
+        prototype &&
+            game_prototype_read_field(prototype, "GameHealth", "current", &health_field) == 0 &&
+            health_field.i == 100 &&
+            game_prototype_write_field(
+                prototype,
+                "GameHealth",
+                "current",
+                (pin_value){
+                    .type = PIN_I32,
+                    .i = 101,
+                }
+            ) == 0 &&
+            game_prototype_read_field(prototype, "GameHealth", "current", &health_field) == 0 &&
+            health_field.i == 101,
+        "PROTO-9: prototype component fields can be inspected and edited"
+    );
+    game_prototype_write_field(
+        prototype,
+        "GameHealth",
+        "current",
+        (pin_value){ .type = PIN_I32, .i = 100 }
+    );
+    check(
+        prototype && game_prototype_add_graph(prototype, "debug.graph") == 0 &&
+            game_prototype_has_graph(prototype, "debug.graph") &&
+            game_prototype_remove_graph(prototype, "debug.graph") == 0 &&
+            !game_prototype_has_graph(prototype, "debug.graph"),
+        "PROTO-10: prototype behavior attachments are editable"
+    );
+    game_prototype *base = game_prototype_clone(prototype, error, sizeof error);
+    GAME_GameHealth_get(world, entity)->current = 7;
+    char *overrides = game_prototype_capture_overrides_json(base, world, entity);
+    check(
+        base && overrides && strstr(overrides, "\"current\": 7") &&
+            !strstr(overrides, "\"maximum\""),
+        "PROTO-11: instance capture stores sparse field overrides"
+    );
+    ecs_entity override_entity = { 0 };
+    check(
+        base &&
+            game_prototype_spawn(base, world, &hooks, &override_entity, error, sizeof error) ==
+                ECS_OK &&
+            game_prototype_apply_components_json(
+                world,
+                override_entity,
+                "{\"GameHealth\":{\"current\":7}}",
+                &registry,
+                error,
+                sizeof error
+            ) == 0 &&
+            GAME_GameHealth_get(world, override_entity)->current == 7 &&
+            GAME_GameHealth_get(world, override_entity)->maximum == 50,
+        "PROTO-12: sparse field overrides apply without zeroing sibling fields"
+    );
+    GAME_GameHealth_get(world, entity)->current = 100;
+    free(overrides);
+    game_prototype_free(base);
+    game_prototype *captured = game_prototype_capture_entity("CapturedEnemy", world, entity, &registry);
+    char *captured_components = game_prototype_components_json(captured);
+    check(captured && captured_components && strstr(captured_components, "GameHealth"), "PROTO-4: a live entity can be captured through the generic prototype registry");
+    free(captured_components);
+    game_prototype_free(captured);
     game_prototype_free(prototype);
     GameHealth *spawned_health = GAME_GameHealth_get(world, entity);
     check(spawned_health && spawned_health->current == 100 && spawned_health->maximum == 50, "PROTO-8: editing/freeing a prototype does not change spawned entity values");
@@ -889,6 +956,14 @@ static blueprint *make_behavior_blueprint(const char *name, int latent)
     if (!event || graph_set_event_name(graph, event, "Tick") != 0) {
         blueprint_free(bp);
         return NULL;
+    }
+    node *begin = NULL;
+    if (!latent) {
+        begin = graph_add_node(graph, registry_node_by_name("Event"));
+        if (!begin || graph_set_event_name(graph, begin, "Begin") != 0) {
+            blueprint_free(bp);
+            return NULL;
+        }
     }
     if (latent) {
         node *delay = graph_add_node(graph, registry_node_by_name("Delay"));
@@ -912,7 +987,8 @@ static blueprint *make_behavior_blueprint(const char *name, int latent)
     node *set = counter ? blueprint_add_set_node(bp, counter->id) : NULL;
     pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
     if (!counter || !set || graph_set_pin_default(graph, set, 0, 1, &one) != 0 ||
-        graph_connect_exec(graph, event, 0, set, 0, 0) != 0) {
+        graph_connect_exec(graph, event, 0, set, 0, 0) != 0 ||
+        graph_connect_exec(graph, begin, 0, set, 0, 0) != 0) {
         blueprint_free(bp);
         return NULL;
     }
@@ -933,6 +1009,90 @@ static int behavior_promote_probe(
     return 0;
 }
 
+static void run_scene_document_checks(void)
+{
+    const char *behaviors[] = { "SceneBehavior", "Damage" };
+    game_scene_document *document = game_scene_document_new("CombatScene");
+    check(
+        document &&
+            game_scene_document_add_entity(document, "Player", "PlayerPrototype", behaviors, 2) ==
+                0,
+        "SCENE-1: a scene entity stores its prototype and behavior assets"
+    );
+    check(
+        game_scene_document_set_entity_components(document, 0, "{\"GameHealth\":{\"current\":7,\"maximum\":9}}") ==
+                0 &&
+            strstr(document->entities[0].components_json, "GameHealth"),
+        "SCENE-2: a scene entity stores generic component overrides"
+    );
+    const char *additions[] = { "Patrol" };
+    const char *removals[] = { "Damage" };
+    check(
+        game_scene_document_set_entity_behavior_overrides(document, 0, additions, 1, removals, 1) ==
+                0 &&
+            document->entities[0].has_behavior_overrides &&
+            acount(document->entities[0].behavior_additions) == 1 &&
+            strcmp(document->entities[0].behavior_additions[0], "Patrol") == 0 &&
+            acount(document->entities[0].behavior_removals) == 1 &&
+            strcmp(document->entities[0].behavior_removals[0], "Damage") == 0,
+        "SCENE-6: scene entities store behavior additions and removals"
+    );
+    char *saved = game_scene_document_save(document);
+    char error[256];
+    game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
+    check(
+        loaded && acount(loaded->entities) == 1 &&
+            strcmp(loaded->entities[0].name, "Player") == 0 &&
+            strcmp(loaded->entities[0].prototype, "PlayerPrototype") == 0 &&
+            strstr(loaded->entities[0].components_json, "GameHealth") &&
+            acount(loaded->entities[0].behaviors) == 2 &&
+            strcmp(loaded->entities[0].behaviors[1], "Damage") == 0 &&
+            loaded->entities[0].has_behavior_overrides &&
+            strcmp(loaded->entities[0].behavior_additions[0], "Patrol") == 0 &&
+            strcmp(loaded->entities[0].behavior_removals[0], "Damage") == 0,
+        "SCENE-2: scene documents round-trip behavior attachment names and "
+        "overrides"
+    );
+    char *resaved = game_scene_document_save(loaded);
+    check(saved && resaved && strcmp(saved, resaved) == 0, "SCENE-3: scene document save output is deterministic");
+    game_scene_document *duplicate = game_scene_document_new("Duplicate");
+    check(
+        duplicate && game_scene_document_add_entity(duplicate, "A", "P", NULL, 0) == 0 &&
+            game_scene_document_add_entity(duplicate, "A", "P", NULL, 0) != 0,
+        "SCENE-4: duplicate scene entity names are rejected"
+    );
+    game_scene_document *invalid = game_scene_document_load(
+        "{\"version\":2,\"name\":\"Bad\",\"entities\":[]}",
+        error,
+        sizeof error
+    );
+    check(!invalid && strstr(error, "version 1"), "SCENE-5: unsupported scene versions are rejected");
+    free(saved);
+    free(resaved);
+    game_scene_document_free(invalid);
+    game_scene_document_free(duplicate);
+    game_scene_document_free(loaded);
+    game_scene_document_free(document);
+}
+
+static blueprint *make_log_behavior(void)
+{
+    blueprint *bp = blueprint_new("LogBehavior");
+    node *event = bp ? graph_add_node(bp->graph, registry_node_by_name("Event")) : NULL;
+    node *print = bp ? graph_add_node(bp->graph, registry_node_by_name("Print String"))
+                     : NULL;
+    node *text = bp ? make_string(bp->graph, "entity log") : NULL;
+    if (!bp || !event || !print || !text ||
+        blueprint_set_owner_type(bp, "ecs.entity") != 0 ||
+        graph_set_event_name(bp->graph, event, "Log") != 0 ||
+        graph_connect_exec(bp->graph, event, 0, print, 0, 0) != 0 ||
+        graph_connect_data(bp->graph, text, 0, print, 1) != 0) {
+        blueprint_free(bp);
+        return NULL;
+    }
+    return bp;
+}
+
 static void run_behavior_checks(void)
 {
     ecs_world *ecs = ecs_world_new();
@@ -945,12 +1105,14 @@ static void run_behavior_checks(void)
 
     blueprint *behavior = make_behavior_blueprint("Behavior", 0);
     blueprint *latent = make_behavior_blueprint("Windup", 1);
+    blueprint *logging = make_log_behavior();
     game_behavior_world *world = game_behavior_world_new(ecs);
     check(
-        behavior && latent && world &&
+        behavior && latent && logging && world &&
             game_behavior_register_asset(world, "move", behavior) == 0 &&
             game_behavior_register_asset(world, "move_again", behavior) == 0 &&
-            game_behavior_register_asset(world, "windup", latent) == 0,
+            game_behavior_register_asset(world, "windup", latent) == 0 &&
+            game_behavior_register_asset(world, "logging", logging) == 0,
         "BEH-1: behavior assets can be composed as several instances per entity"
     );
     check(
@@ -959,8 +1121,46 @@ static void run_behavior_checks(void)
             game_behavior_attach(world, e2, "move") == 0,
         "BEH-1: each attached graph asset creates one per-entity instance"
     );
+    check(
+        game_behavior_attach(world, e2, "move_again") == 0 &&
+            game_behavior_set_debug_hold(world, e2, "move_again", 1) == 0 &&
+            game_behavior_pump(world, 0.0) == FLOW_OK,
+        "DBG-18: an inspection hold can retain a completed Begin activation"
+    );
+    blueprint_instance *e2_begin_hold = game_behavior_instance(world, e2, "move_again");
+    check(
+        e2_begin_hold && acount(e2_begin_hold->activations) == 1 &&
+            flow_run_status(e2_begin_hold->activations[0]) == FLOW_COMPLETED,
+        "DBG-18: retained Begin activation is available for inspection"
+    );
+    game_behavior_set_debug_hold(world, e2, "move_again", 0);
+    game_behavior_pump(world, 0.0);
+    game_behavior_detach_asset(world, e2, "move_again");
     blueprint_instance *e1_move = game_behavior_instance(world, e1, "move");
     blueprint_instance *e1_again = game_behavior_instance(world, e1, "move_again");
+    game_behavior_attachment_info e1_first;
+    game_behavior_attachment_info e1_second;
+    check(
+        game_behavior_attachment_count_for_entity(world, e1) == 2 &&
+            game_behavior_attachment_count_for_entity(world, e2) == 1 &&
+            game_behavior_attachment_info_at(world, e1, 0, &e1_first) == 0 &&
+            game_behavior_attachment_info_at(world, e1, 1, &e1_second) == 0 &&
+            strcmp(e1_first.asset_name, "move") == 0 &&
+            strcmp(e1_second.asset_name, "move_again") == 0 &&
+            e1_first.definition == behavior && e1_second.definition == behavior &&
+            e1_first.instance == e1_move && e1_second.instance == e1_again &&
+            e1_first.sequence < e1_second.sequence &&
+            game_behavior_attachment_info_at(world, e1, 2, &e1_first) != 0,
+        "BEH-13: entity attachment inspection lists assets and instances in "
+        "attach order"
+    );
+    check(
+        game_behavior_detach_asset(world, e2, "move") == 1 &&
+            game_behavior_attachment_count_for_entity(world, e2) == 0 &&
+            game_behavior_attach(world, e2, "move") == 0,
+        "BEH-13: one named behavior asset can be detached without removing "
+        "others"
+    );
     check(
         e1_move && e1_again && e1_move != e1_again &&
             blueprint_instance_owner(e1_move).u64 == ecs_entity_to_u64(e1) &&
@@ -968,8 +1168,15 @@ static void run_behavior_checks(void)
         "BEH-2: attached instances are independent and carry the owning entity "
         "handle"
     );
-    check(game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2, "BEH-8: named dispatch reaches every matching attachment in attach order");
     blueprint_variable *counter = blueprint_find_variable_by_name(behavior, "Counter");
+    pin_value begin_value;
+    check(
+        counter &&
+            blueprint_instance_get_variable(e1_move, counter->id, &begin_value) == 0 &&
+            begin_value.i == 1,
+        "BEH-14: attaching an asset runs its Begin event once"
+    );
+    check(game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2, "BEH-8: named dispatch reaches every matching attachment in attach order");
     pin_value first;
     pin_value second;
     blueprint_instance_get_variable(e1_move, counter->id, &first);
@@ -985,6 +1192,11 @@ static void run_behavior_checks(void)
 
     blueprint_instance *pooled = e1_move;
     game_behavior_detach_entity(world, e1);
+    check(
+        game_behavior_attachment_count_for_entity(world, e1) == 0 &&
+            game_behavior_attachment_info_at(world, e1, 0, &e1_first) != 0,
+        "BEH-13: detaching an entity removes its inspectable attachments"
+    );
     check(game_behavior_pool_size(world, "move") == 1, "BEH-10: detached instance storage enters the definition pool");
     game_behavior_attach(world, e1, "move");
     check(
@@ -1005,6 +1217,20 @@ static void run_behavior_checks(void)
             g_promote_probe,
         "BEH-6: the editor promotion operation has a component-bound callback"
     );
+    check(
+        game_behavior_attach(world, e1, "logging") == 0 &&
+            game_behavior_dispatch(world, e1, "Log", (flow_inputs){ 0 }, NULL) == 1 &&
+            game_behavior_log_count(world) == 1,
+        "DBG-19: entity behavior messages are retained in the runtime log"
+    );
+    game_behavior_log_info log;
+    check(
+        game_behavior_log_info_at(world, 0, &log) == 0 &&
+            log.entity.slot == e1.slot && strcmp(log.asset_name, "logging") == 0 &&
+            strcmp(log.message, "entity log") == 0,
+        "DBG-19: runtime log entries identify their entity and behavior asset"
+    );
+    game_behavior_clear_logs(world);
 
     check(
         game_behavior_attach(world, e1, "windup") == 0 &&
@@ -1020,11 +1246,24 @@ static void run_behavior_checks(void)
             acount(e2_windup->activations) == 1,
         "BEH-2: two entities of one graph share no activation state"
     );
+    check(
+        game_behavior_set_debug_hold(world, e1, "windup", 1) == 0 &&
+            game_behavior_set_breakpoints_enabled_for_asset(world, e1, "windup", 0) == 0 &&
+            game_behavior_breakpoints_enabled_for_asset(world, e1, "windup") == 0,
+        "DBG-18: breakpoint and activation retention can be scoped to one "
+        "entity asset"
+    );
     game_behavior_pump(world, 2.0);
     check(
-        acount(e1_windup->activations) == 0 && acount(e2_windup->activations) == 0,
-        "BEH-12: finished activations are reaped at the frame pump"
+        acount(e1_windup->activations) == 1 &&
+            flow_run_status(e1_windup->activations[0]) == FLOW_COMPLETED &&
+            acount(e2_windup->activations) == 0,
+        "DBG-18: a selected entity retains its completed activation for "
+        "inspection"
     );
+    game_behavior_set_debug_hold(world, e1, "windup", 0);
+    game_behavior_pump(world, 2.0);
+    check(acount(e1_windup->activations) == 0 && acount(e2_windup->activations) == 0, "BEH-12: finished activations are reaped after inspection hold is released");
     for (int frame = 0; frame < 600; frame++) {
         game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL);
         game_behavior_pump(world, (double)frame + 3.0);
@@ -1038,6 +1277,7 @@ static void run_behavior_checks(void)
     game_behavior_world_free(world);
     blueprint_free(behavior);
     blueprint_free(latent);
+    blueprint_free(logging);
     ecs_world_free(ecs);
 }
 
@@ -1099,7 +1339,7 @@ static void run_live_checks(void)
         "APPLY-1: a live definition owns a mutable working copy and an applied "
         "snapshot"
     );
-    game_behavior_world *behaviors = game_live_behaviors(world);
+    game_behavior_world *behaviors = world->behaviors;
     check(
         game_behavior_attach(behaviors, e1, "live") == 0 &&
             game_behavior_attach(behaviors, e1, "other") == 0,
@@ -1110,44 +1350,42 @@ static void run_live_checks(void)
         blueprint_instance_service(live_before, "ecs.world") == ecs,
         "BEH-4: attached instances receive the owning ECS world service"
     );
-    const blueprint *applied_before = game_live_applied(definition);
+    const blueprint *applied_before = definition->applied;
     blueprint_instance *other_before = game_behavior_instance(behaviors, e1, "other");
-    uint64_t node_id = game_live_working(definition)->graph->nodes[0]->id;
+    uint64_t node_id = definition->working->graph->nodes[0]->id;
     check(
-        blueprint_mutable(game_live_working(definition)) &&
-            blueprint_set_name(game_live_working(definition), "LiveEdited") == 0 &&
-            blueprint_set_name((blueprint *)game_live_applied(definition), "Rejected") != 0,
+        blueprint_mutable(definition->working) &&
+            blueprint_set_name(definition->working, "LiveEdited") == 0 &&
+            blueprint_set_name((blueprint *)definition->applied, "Rejected") != 0,
         "EXEC-20: working definitions are mutable while attached applied "
         "snapshots are immutable"
     );
     check(
-        game_live_mark_dirty(definition) == 0 &&
-            game_live_definition_dirty(definition) &&
-            strcmp(game_live_applied(definition)->name, "LiveWorking") == 0,
+        game_live_mark_dirty(definition) == 0 && definition->dirty &&
+            strcmp(definition->applied->name, "LiveWorking") == 0,
         "APPLY-7: Compile/apply is explicit and unapplied edits are visible"
     );
-    blueprint *working = game_live_working(definition);
+    blueprint *working = definition->working;
     blueprint_set_description(working, "edited working copy");
     game_live_mark_dirty(definition);
     char message[256];
     check(
         game_live_apply(world, definition, message, sizeof message) == 0 &&
-            !game_live_definition_dirty(definition) &&
-            strstr(message, "destroyed and recreated"),
+            !definition->dirty && strstr(message, "destroyed and recreated"),
         "UI-57: one replacement choke point states that only this definition "
         "is recreated"
     );
     blueprint_instance *live_after = game_behavior_instance(behaviors, e1, "live");
     blueprint_instance *other_after = game_behavior_instance(behaviors, e1, "other");
     check(
-        live_after && live_after->bp == game_live_applied(definition) &&
+        live_after && live_after->bp == definition->applied &&
             live_after->bp != applied_before,
         "APPLY-4: applying replaces the changed definition's instances as one "
         "operation"
     );
     check(other_after == other_before && GAME_GameHealth_get(ecs, e1)->current == 7, "APPLY-5: applying is scoped and leaves other behaviors and components intact");
-    check(game_live_applied(definition)->graph->nodes[0]->id == node_id, "APPLY-6: snapshot replacement preserves node identity");
-    blueprint_variable *counter = blueprint_find_variable_by_name(game_live_applied(definition), "Counter");
+    check(definition->applied->graph->nodes[0]->id == node_id, "APPLY-6: snapshot replacement preserves node identity");
+    blueprint_variable *counter = blueprint_find_variable_by_name(definition->applied, "Counter");
     pin_value begin_value = { 0 };
     check(
         counter &&
@@ -1168,14 +1406,21 @@ static void run_live_checks(void)
         "APPLY-3: a clean applied snapshot is stable until another explicit "
         "apply"
     );
+    blueprint_variable *invalid_counter = blueprint_find_variable_by_name(working, "Counter");
     check(
-        game_live_mark_dirty(definition) == 0 &&
-            blueprint_mutable(game_live_working(definition)),
+        invalid_counter &&
+            blueprint_delete_variable(working, invalid_counter->id) == 0 &&
+            game_live_mark_dirty(definition) == 0 &&
+            game_live_apply(world, definition, message, sizeof message) != 0 &&
+            definition->diagnostics.error_count > 0,
+        "APPLY-8: blocked apply retains structured graph diagnostics"
+    );
+    check(
+        game_live_mark_dirty(definition) == 0 && blueprint_mutable(definition->working),
         "APPLY-8: authoring remains available on the working copy after apply"
     );
     check(
-        game_live_definition_dirty(definition) &&
-            game_live_applied(definition)->graph->nodes[0]->id == node_id,
+        definition->dirty && definition->applied->graph->nodes[0]->id == node_id,
         "APPLY-9: runtime state stays out of working-copy history and applied "
         "identity"
     );
@@ -1197,10 +1442,10 @@ static void run_engine_checks(void)
     ecs_world *ecs = ecs_world_new();
     game_live_world *live = game_live_world_new(ecs);
     game_live_definition *definition = game_live_definition_new("engine", make_live_blueprint());
-    ecs_entity player = ecs_world_create_entity(ecs);
+    ecs_entity entity = ecs_world_create_entity(ecs);
     check(
         live && definition && game_live_add_definition(live, definition) == 0 &&
-            game_behavior_attach(game_live_behaviors(live), player, "engine") == 0,
+            game_behavior_attach(live->behaviors, entity, "engine") == 0,
         "ENG-5: the world and behavior attachment run headlessly without a "
         "window"
     );
@@ -1208,16 +1453,11 @@ static void run_engine_checks(void)
     g_engine_system_frames = 0;
     check(
         runtime && engine_add_system(runtime, engine_test_system, NULL) == 0 &&
-            engine_set_player(runtime, player) == 0 &&
             engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT) == 0,
-        "ENG-3: the host has one explicit focus consumer"
+        "ENG-3: the host exposes one explicit viewport focus"
     );
     flow_error error = { 0 };
-    check(
-        engine_dispatch_player_input(runtime, "Jump", 1.0, 1, &error) == 1 &&
-            error.code == 0,
-        "ENG-4: player input reaches the graph through typed event dispatch"
-    );
+    check(engine_dispatch_input(runtime, "Jump", 1.0, 1, &error) == 1 && error.code == 0, "ENG-4: generic input reaches attached behaviors through typed event dispatch");
     check(
         engine_frame(runtime, 1.0) == FLOW_OK && engine_frame(runtime, 2.0) == FLOW_OK &&
             engine_route_escape(runtime) == 0 &&
@@ -1298,7 +1538,8 @@ static void run_parallel_checks(void)
         unsafe_effects->blocking_node_id != 0 && unsafe_effects->blocking_reason,
         "PAR-11: compile reports the node and effect that blocks concurrency"
     );
-    check(sizeof(flow_parallel_for_fn) > 0, "PAR-8: parallel execution is a host-supplied callback, not a core thread pool");
+    flow_parallel_for_fn host_parallel = reverse_parallel_for;
+    check(host_parallel != NULL, "PAR-8: parallel execution is a host-supplied callback, not a core thread pool");
 
     ecs_world *ecs = ecs_world_new();
     ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
@@ -1307,11 +1548,11 @@ static void run_parallel_checks(void)
     game_live_world *live = game_live_world_new(ecs);
     game_live_definition *definition = game_live_definition_new("parallel", make_live_blueprint());
     game_live_add_definition(live, definition);
-    game_behavior_world *behaviors = game_live_behaviors(live);
+    game_behavior_world *behaviors = live->behaviors;
     game_behavior_attach(behaviors, e1, "parallel");
     game_behavior_attach(behaviors, e2, "parallel");
     g_parallel_calls = 0;
-    game_behavior_set_parallel_for(behaviors, reverse_parallel_for, NULL);
+    game_behavior_set_parallel_for(behaviors, host_parallel, NULL);
     game_behavior_pump(behaviors, 1.0);
     check(g_parallel_calls == 1, "PAR-3: host parallel dispatch reaches reflected behavior effects");
     game_behavior_set_breakpoints_enabled(behaviors, 1);
@@ -2778,7 +3019,7 @@ int main(int argc, char **argv)
         graph_free(&gp);
     }
 
-    /* 19. ForLoop inclusive forward and reverse ranges. */
+    /* 19. ForLoop uses half-open forward and reverse ranges. */
     {
         graph gl;
         graph_init(&gl);
@@ -2796,14 +3037,13 @@ int main(int argc, char **argv)
         flow_log_reset();
         flow_run *run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
-            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_index_count == 3 &&
-                g_flow_indices[0] == 2 && g_flow_indices[1] == 3 &&
-                g_flow_indices[2] == 4 && strcmp(g_flow_log, "D") == 0,
-            "CAT-4: ForLoop runs inclusive 2..4 then Completed"
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                g_flow_index_count == 2 && g_flow_indices[0] == 2 &&
+                g_flow_indices[1] == 3 && strcmp(g_flow_log, "D") == 0,
+            "CAT-4: ForLoop runs half-open 2..4 then Completed"
         );
         check(
-            g_flow_index_count == 3 && g_flow_indices[0] == 2 &&
-                g_flow_indices[1] == 3 && g_flow_indices[2] == 4,
+            g_flow_index_count == 2 && g_flow_indices[0] == 2 && g_flow_indices[1] == 3,
             "EXEC-3: each loop activation evaluates fresh data"
         );
         flow_run_free(run);
@@ -2812,9 +3052,9 @@ int main(int argc, char **argv)
         flow_log_reset();
         run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
-            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_index_count == 1 &&
-                g_flow_indices[0] == 2 && strcmp(g_flow_log, "D") == 0,
-            "CAT-4: ForLoop runs inclusive 2..2"
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                g_flow_index_count == 0 && strcmp(g_flow_log, "D") == 0,
+            "CAT-4: ForLoop skips equal bounds"
         );
         flow_run_free(run);
         graph_set_pin_default(&gl, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 4 });
@@ -2822,10 +3062,19 @@ int main(int argc, char **argv)
         flow_log_reset();
         run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
-            run && flow_run_status(run) == FLOW_COMPLETED && g_flow_index_count == 3 &&
-                g_flow_indices[0] == 4 && g_flow_indices[1] == 3 &&
-                g_flow_indices[2] == 2 && strcmp(g_flow_log, "D") == 0,
-            "EXEC-4: ForLoop runs inclusive 4..2 in reverse then completes"
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                g_flow_index_count == 2 && g_flow_indices[0] == 4 &&
+                g_flow_indices[1] == 3 && strcmp(g_flow_log, "D") == 0,
+            "EXEC-4: ForLoop runs half-open 4..2 in reverse then completes"
+        );
+        flow_run_free(run);
+        check(graph_remove_edge(&gl, event, 0, loop, 0) == 0, "EXEC-4: removing Event -> ForLoop disconnects the executable path");
+        flow_log_reset();
+        run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                g_flow_index_count == 0 && g_flow_log_count == 0,
+            "EXEC-4: a disconnected Event does not activate ForLoop"
         );
         flow_run_free(run);
         graph_free(&gl);
@@ -3499,6 +3748,101 @@ int main(int argc, char **argv)
         blueprint_free(bp);
     }
 
+    /* TRACE-1: completed activations leave copied entries at the instance
+     * seam, including fallback records for events with no traversal. */
+    {
+        blueprint *bp = blueprint_new("Trace");
+        node *empty = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        node *done = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        node *done_sink = graph_add_node(bp->graph, &g_sink_a_desc);
+        node *failed = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        node *failed_sink = graph_add_node(bp->graph, &g_sink_error_desc);
+        check(
+            bp && empty && done && done_sink && failed && failed_sink &&
+                graph_set_event_name(bp->graph, empty, "Empty") == 0 &&
+                graph_set_event_name(bp->graph, done, "Done") == 0 &&
+                graph_set_event_name(bp->graph, failed, "Failed") == 0 &&
+                graph_connect_exec(bp->graph, done, 0, done_sink, 0, 0) == 0 &&
+                graph_connect_exec(bp->graph, failed, 0, failed_sink, 0, 0) == 0,
+            "TRACE-1: trace fixture has empty, completed, and failed events"
+        );
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        flow_error error = { 0 };
+        flow_run *act = blueprint_instance_dispatch(bi, "Empty", (flow_inputs){ 0 }, &error);
+        check(
+            act && flow_run_status(act) == FLOW_COMPLETED &&
+                blueprint_instance_release_activation(bi, act) == 0,
+            "TRACE-1: an empty event completes and can be released"
+        );
+        int trace_count = 0;
+        const blueprint_instance_trace_entry *trace = blueprint_instance_trace(bi, &trace_count);
+        check(
+            trace && trace_count == 1 && trace[0].event_name &&
+                strcmp(trace[0].event_name, "Empty") == 0 &&
+                trace[0].state == FLOW_COMPLETED && trace[0].error_code == FLOW_OK,
+            "TRACE-1: an empty event produces a completed fallback entry"
+        );
+        act = blueprint_instance_dispatch(bi, "Failed", (flow_inputs){ 0 }, &error);
+        check(
+            act && flow_run_status(act) == FLOW_FAILED &&
+                flow_run_error(act)->code == -777 &&
+                blueprint_instance_release_activation(bi, act) == 0,
+            "TRACE-2: a failed event preserves its structured run error"
+        );
+        trace = blueprint_instance_trace(bi, &trace_count);
+        check(
+            trace_count == 2 && trace[1].state == FLOW_FAILED &&
+                trace[1].error_code == -777 &&
+                strcmp(trace[1].event_name, "Failed") == 0,
+            "TRACE-2: a failed activation records terminal status and error"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
+    /* TRACE-3: the public trace is oldest-first, bounded, and survives
+     * activation recycling but not instance reuse. */
+    {
+        blueprint *bp = blueprint_new("TraceBound");
+        node *event = graph_add_node(bp->graph, registry_node_by_name("Event"));
+        node *sink = graph_add_node(bp->graph, &g_sink_a_desc);
+        graph_set_event_name(bp->graph, event, "Tick");
+        graph_connect_exec(bp->graph, event, 0, sink, 0, 0);
+        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        check(blueprint_instance_set_activation_pool(bi, 1) == 0, "TRACE-3: activation pooling can be enabled before dispatch");
+        flow_error error = { 0 };
+        int trace_ok = 1;
+        for (int i = 0; i <= BLUEPRINT_INSTANCE_TRACE_MAX; i++) {
+            if (blueprint_instance_tick(bi, (double)i) != FLOW_OK) {
+                trace_ok = 0;
+                break;
+            }
+            flow_run *act = blueprint_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, &error);
+            if (!act || blueprint_instance_release_activation(bi, act) != 0) {
+                trace_ok = 0;
+                break;
+            }
+        }
+        check(trace_ok, "TRACE-3: pooled activations release into the trace");
+        int trace_count = 0;
+        const blueprint_instance_trace_entry *trace = blueprint_instance_trace(bi, &trace_count);
+        check(
+            trace && trace_count == BLUEPRINT_INSTANCE_TRACE_MAX &&
+                trace[0].traversal.timestamp == 1.0 &&
+                trace[trace_count - 1].traversal.timestamp == BLUEPRINT_INSTANCE_TRACE_MAX,
+            "TRACE-3: trace overflow evicts the oldest entry and keeps order"
+        );
+        check(
+            blueprint_instance_pool_release(bi) == 0 &&
+                blueprint_instance_trace(bi, &trace_count) && trace_count == 0 &&
+                blueprint_instance_pool_reuse(bi, bp, NULL, NULL, NULL) == bi &&
+                blueprint_instance_trace(bi, &trace_count) && trace_count == 0,
+            "TRACE-3: instance release and reuse clear copied trace storage"
+        );
+        blueprint_instance_destroy(bi);
+        blueprint_free(bp);
+    }
+
     /* VAR-7: deleting a referenced variable is permitted; the orphaned Get
      * reference fails evaluation with an error naming the lost variable. */
     {
@@ -4089,8 +4433,8 @@ int main(int argc, char **argv)
         blueprint_free(bp);
     }
 
-    /* CMPL-4: an executable node whose exec input has no incoming edge; the
-     * event entry itself is exempt. */
+    /* CMPL-4: an executable node whose exec input has no incoming edge is
+     * unreachable but remains valid to apply; the event entry is exempt. */
     {
         blueprint *bp = blueprint_new("CMPL4");
         node *ev = graph_add_node(bp->graph, &NODE_Event);
@@ -4105,11 +4449,15 @@ int main(int argc, char **argv)
         );
         compile_report rep;
         compile_report_init(&rep);
-        check(blueprint_compile(bp, &rep) == 2, "CMPL-4: two executable nodes with unconnected exec inputs error");
+        check(
+            blueprint_compile(bp, &rep) == 0 && rep.error_count == 0 &&
+                rep.warning_count == 2,
+            "CMPL-4: two executable nodes with unconnected exec inputs warn"
+        );
         int count = 0, on_branch = 0, on_print = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             const compile_diagnostic *d = &rep.items[i];
-            if (d->rule != CMPL_RULE_UNCONNECTED_EXEC || d->severity != CMPL_ERROR) {
+            if (d->rule != CMPL_RULE_UNCONNECTED_EXEC || d->severity != CMPL_WARNING) {
                 continue;
             }
             count++;
@@ -4413,7 +4761,11 @@ int main(int argc, char **argv)
         graph_set_node_reference(bp->graph, set, 4242, "Lost");
         compile_report rep;
         compile_report_init(&rep);
-        check(blueprint_compile(bp, &rep) == 2, "CMPL-16: one node can carry several errors");
+        check(
+            blueprint_compile(bp, &rep) == 1 && rep.error_count == 1 &&
+                rep.warning_count == 1,
+            "CMPL-16: one node can carry an error and a warning"
+        );
         check(
             acount(rep.items) == 2 && rep.items[0].rule == CMPL_RULE_UNCONNECTED_EXEC &&
                 rep.items[1].rule == CMPL_RULE_MISSING_REFERENCE,
@@ -4484,35 +4836,34 @@ int main(int argc, char **argv)
         blueprint_free(bp);
     }
 
-    /* RUN-12: a run refuses to start against a blueprint with compile errors
-     * and reports the first blocking diagnostic; warnings never block. */
+    /* RUN-12: warnings do not block a run; a disconnected executable node is
+     * simply unreachable until an exec edge is connected. */
     {
         blueprint *bp = blueprint_new("Run12");
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
         node *branch = graph_add_node(bp->graph, &NODE_Branch);
         node *print = graph_add_node(bp->graph, &NODE_PrintString);
-        print->y = -50.0f; /* sorts above the branch: the first error */
+        print->y = -50.0f; /* warning order is tested under CMPL-16 */
         blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
         flow_error rerr = { 0 };
         flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
-        check(act == NULL && rerr.code == FLOW_ERR_COMPILE && rerr.node == print, "RUN-12: dispatch refuses to start and reports the first blocking diagnostic");
         check(
-            rerr.message && strstr(rerr.message, "no incoming edge") != NULL,
-            "RUN-12: the refusal carries the blocking diagnostic message"
+            act && flow_run_status(act) == FLOW_COMPLETED && rerr.code == FLOW_OK,
+            "RUN-12: unconnected executable nodes do not block dispatch"
         );
         check(
-            blueprint_instance_enqueue(bi, ev, (flow_inputs){ 0 }, &rerr) == NULL &&
-                rerr.code == FLOW_ERR_COMPILE,
-            "RUN-12: a direct enqueue is refused the same way"
+            blueprint_instance_enqueue(bi, ev, (flow_inputs){ 0 }, &rerr) != NULL &&
+                rerr.code == FLOW_OK,
+            "RUN-12: direct enqueue also accepts unreachable executable nodes"
         );
         blueprint_instance_destroy(bi);
-        /* Fix the graph; the next instance recompiles at the new revision. */
+        /* Connect the event; the next instance recompiles at the new revision. */
         graph_remove_node(bp->graph, print);
         graph_connect_exec(bp->graph, ev, 0, branch, 0, 0);
         bi = blueprint_instance_create(bp, NULL, NULL, NULL);
         act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
-        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: after the error is fixed the same event starts and completes");
+        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: a connected event also starts and completes");
         blueprint_instance_destroy(bi);
         blueprint_free(bp);
     }
@@ -5674,6 +6025,7 @@ int main(int argc, char **argv)
 
     run_ecs_checks();
     run_prototype_checks();
+    run_scene_document_checks();
     run_behavior_checks();
     run_live_checks();
     run_engine_checks();

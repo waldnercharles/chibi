@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(c-blueprints LANGUAGES C CXX)
 
+if(APPLE)
+    execute_process(
+        COMMAND xcrun --show-sdk-path
+        OUTPUT_VARIABLE CBLUEPRINT_SDKROOT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -25,6 +33,15 @@ find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
 find_library(LIBCLANG_LIBRARY NAMES clang
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES lib)
+file(GLOB LIBCLANG_RESOURCE_INCLUDE_DIRS
+    "${LIBCLANG_ROOT}/lib/clang/*/include"
+    "/opt/homebrew/opt/llvm/lib/clang/*/include"
+    "/usr/local/opt/llvm/lib/clang/*/include"
+)
+list(LENGTH LIBCLANG_RESOURCE_INCLUDE_DIRS LIBCLANG_RESOURCE_COUNT)
+if(LIBCLANG_RESOURCE_COUNT)
+    list(GET LIBCLANG_RESOURCE_INCLUDE_DIRS 0 LIBCLANG_RESOURCE_INCLUDE_DIR)
+endif()
 if(NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY)
   message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
 endif()
@@ -129,6 +146,11 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${GAME_REGISTRY}
             GAME
+            --include ${cute_framework_SOURCE_DIR}/include
+            $<$<BOOL:${LIBCLANG_RESOURCE_INCLUDE_DIR}>:--include>
+            $<$<BOOL:${LIBCLANG_RESOURCE_INCLUDE_DIR}>:${LIBCLANG_RESOURCE_INCLUDE_DIR}>
+            $<$<BOOL:${CBLUEPRINT_SDKROOT}>:--sysroot>
+            $<$<BOOL:${CBLUEPRINT_SDKROOT}>:${CBLUEPRINT_SDKROOT}>
     DEPENDS reflect
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
@@ -137,12 +159,12 @@ add_custom_command(
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
 )
-target_link_libraries(game PUBLIC ecs core)
+target_link_libraries(game PUBLIC ecs core cute)
 
 # --- host frame loop and optional viewport surface --------------------------
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
@@ -191,6 +213,7 @@ add_custom_command(
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
 )
+list(REMOVE_ITEM APP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/app/input_behavior.c)
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine demo cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
@@ -212,6 +235,25 @@ target_link_libraries(scene_benchmark PRIVATE game demo)
 # --- integration: headless pico_unit regression suite for the editor<->core
 # interaction path (test/integration.c). Core + demo + pico_unit only; no
 # cute/ImGui, so the suite runs without a window host.
+add_executable(editor_runtime_check test/editor_runtime_check.c ${BASE_REGISTRY})
+target_include_directories(editor_runtime_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(editor_runtime_check PRIVATE editor engine game ecs demo cute)
+set_target_properties(editor_runtime_check PROPERTIES LINKER_LANGUAGE CXX)
+
+add_executable(prototype_authoring_check
+    test/prototype_authoring_check.c
+    app/scene_authoring.c
+    ${BASE_REGISTRY}
+)
+target_include_directories(prototype_authoring_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(prototype_authoring_check PRIVATE editor engine game ecs demo cute)
+set_target_properties(prototype_authoring_check PROPERTIES LINKER_LANGUAGE CXX)
+
+add_executable(input_behavior_check test/input_behavior_check.c ${APP_REGISTRY})
+target_include_directories(input_behavior_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(input_behavior_check PRIVATE engine game ecs demo cute)
+set_target_properties(input_behavior_check PROPERTIES LINKER_LANGUAGE CXX)
+
 add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c ${BASE_REGISTRY})
 target_include_directories(integration PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -285,6 +327,9 @@ if(CLANG_FORMAT)
   add_dependencies(bench_activation format)
   add_dependencies(scene_benchmark format)
   add_dependencies(integration format)
+  add_dependencies(editor_runtime_check format)
+  add_dependencies(prototype_authoring_check format)
+  add_dependencies(input_behavior_check format)
   add_dependencies(registry_consumer format)
   add_dependencies(reflect format)
 endif()

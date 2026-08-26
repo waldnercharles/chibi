@@ -300,6 +300,9 @@ static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
     yyjson_mut_obj_add_uint(doc, o, "to", e->to_id);
     yyjson_mut_obj_add_uint(doc, o, "to_pin", e->to_pin_id);
     yyjson_mut_obj_add_str(doc, o, "kind", graph_edge_kind_name(e->kind));
+    if (e->conversion) {
+        yyjson_mut_obj_add_str(doc, o, "conversion", e->conversion->name);
+    }
     if (e->kind == GRAPH_EDGE_EXEC) {
         yyjson_mut_obj_add_int(doc, o, "order", e->exec_order);
     }
@@ -961,14 +964,31 @@ static int load_edges(graph *g, yyjson_val *edges)
             return -1;
         }
         const char *kind_name = yyjson_get_str(kind);
+        yyjson_val *conversion_value = yyjson_obj_get(v, "conversion");
+        const node_desc *conversion = NULL;
+        if (conversion_value) {
+            if (!yyjson_is_str(conversion_value)) {
+                set_err("edge conversion is not a node name");
+                return -1;
+            }
+            conversion = registry_node_by_name(yyjson_get_str(conversion_value));
+            if (!conversion) {
+                set_err("unknown edge conversion \"%s\"", yyjson_get_str(conversion_value));
+                return -1;
+            }
+        }
         int r;
         if (strcmp(kind_name, "data") == 0) {
             if (yyjson_obj_get(v, "order")) {
                 set_err("data edge has an exec order");
                 return -1;
             }
-            r = graph_connect_data(g, from, fp, to, tp);
+            r = graph_connect_data_conversion(g, from, fp, to, tp, conversion);
         } else if (strcmp(kind_name, "exec") == 0) {
+            if (conversion) {
+                set_err("exec edge cannot have a conversion");
+                return -1;
+            }
             yyjson_val *order = yyjson_obj_get(v, "order");
             if (!yyjson_is_int(order) || yyjson_get_sint(order) < 0 ||
                 yyjson_get_sint(order) > INT_MAX) {

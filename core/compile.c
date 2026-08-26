@@ -6,6 +6,7 @@
 #include "compile.h"
 
 #include "arena.h"
+#include "conv_nodes.h"
 #include "pin_conv.h"
 #include "registry.h"
 
@@ -222,7 +223,8 @@ static void pass_disabled(compile_report *out, const graph *g)
 
 /* CMPL-4: a required exec input with no incoming edge on a node that can
  * only run from an entry path (executable, non-entry under NODE-13). Entry
- * nodes have no exec input and are exempt. */
+ * nodes have no exec input and are exempt. This is a warning because the
+ * disconnected node is unreachable, not invalid to apply. */
 static void pass_unconnected_exec(compile_report *out, const graph *g)
 {
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -243,7 +245,7 @@ static void pass_unconnected_exec(compile_report *out, const graph *g)
             if (graph_exec_input_count(g, n, p) == 0) {
                 emit(
                     out,
-                    CMPL_ERROR,
+                    CMPL_WARNING,
                     n->id,
                     n->input_pins[p].id,
                     CMPL_RULE_UNCONNECTED_EXEC,
@@ -285,6 +287,23 @@ static void pass_incompatible_edges(compile_report *out, const graph *g)
         }
         if ((to->input_pins[tp].flags & PIN_FLAG_WILDCARD) &&
             to->input_pins[tp].type == PIN_FLOW) {
+            continue;
+        }
+        int conversion_ok = e->conversion &&
+                            ((from->output_pins[fp].type != PIN_STRUCT ||
+                              to->input_pins[tp].type != PIN_STRUCT)
+                                 ? e->conversion == conversion_for(
+                                                        from->output_pins[fp].type,
+                                                        to->input_pins[tp].type
+                                                    )
+                                 : e->conversion->input_count == 1 &&
+                                       e->conversion->output_count == 1 &&
+                                       pin_compatible(
+                                           &from->output_pins[fp],
+                                           &e->conversion->inputs[0]
+                                       ) &&
+                                       pin_compatible(&e->conversion->outputs[0], &to->input_pins[tp]));
+        if (conversion_ok) {
             continue;
         }
         if (pin_compatible(&from->output_pins[fp], &to->input_pins[tp])) {

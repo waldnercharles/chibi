@@ -86,6 +86,8 @@ typedef struct
     char **writes;        /* NODE_WRITES type names */
     unsigned effect_flags;
     char *operator_name; /* optional NODE_OPERATOR name */
+    char *conversion_from;
+    char *conversion_to;
 } fn_info;
 
 typedef struct
@@ -321,13 +323,52 @@ static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor, CXClientData 
     return CXChildVisit_Continue;
 }
 
+static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int component, int dense)
+{
+    CXType underlying = clang_getTypedefDeclUnderlyingType(c);
+    CXType record_type = clang_getCanonicalType(underlying);
+    CXCursor definition = clang_getTypeDeclaration(record_type);
+    if (clang_getCursorKind(definition) != CXCursor_StructDecl ||
+        !clang_isCursorDefinition(definition)) {
+        reflect_error(c, "type aliases must name a defined struct");
+        return;
+    }
+
+    struct_info s = { 0 };
+    s.name = strdup(name);
+    s.file = cursor_file_basename(c);
+    s.size = clang_Type_getSizeOf(underlying);
+    s.component = component;
+    s.dense = dense;
+    clang_visitChildren(definition, field_visitor, &s.fields);
+    if (g_failed) {
+        free(s.name);
+        free(s.file);
+        afree(s.fields);
+        return;
+    }
+    apush(ctx->structs, s);
+}
+
 static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData data)
 {
     collect_ctx *ctx = (collect_ctx *)data;
     enum CXCursorKind k = clang_getCursorKind(c);
 
-    if (k == CXCursor_StructDecl && clang_isCursorDefinition(c) &&
-        clang_getCursorKind(parent) != CXCursor_TypedefDecl) {
+    if (k == CXCursor_TypedefDecl) {
+        char *component_alias = annotation_value(c, "node:component-alias:");
+        char *type_alias = annotation_value(c, "node:type-alias:");
+        char *external_type = annotation_value(c, "node:external-type:");
+        if (component_alias || type_alias || external_type) {
+            char *typedef_name = cxstr(clang_getCursorSpelling(c));
+            const char *name = external_type ? external_type : typedef_name;
+            collect_alias(ctx, c, name, component_alias != NULL, 0);
+            free(typedef_name);
+        }
+        free(component_alias);
+        free(type_alias);
+        free(external_type);
+    } else if (k == CXCursor_StructDecl && clang_isCursorDefinition(c) && clang_getCursorKind(parent) != CXCursor_TypedefDecl) {
         int is_type = has_annotate(c, "node:type");
         int is_component = has_annotate(c, "node:component") ||
                            has_annotate(c, "node:component:index:dense");
@@ -372,6 +413,11 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 return CXChildVisit_Recurse;
             }
             f.operator_name = annotation_value(c, "node:operator:");
+            f.conversion_from = annotation_value(c, "node:conversion-from:");
+            f.conversion_to = annotation_value(c, "node:conversion-to:");
+            if ((f.conversion_from == NULL) != (f.conversion_to == NULL)) {
+                reflect_error(c, "a conversion needs both source and target types");
+            }
             char *read_type = annotation_value(c, "node:reads:");
             char *write_type = annotation_value(c, "node:writes:");
             if (read_type) {
@@ -737,6 +783,14 @@ static int fn_has_access(const fn_info *f)
     return acount(f->reads) || acount(f->writes) || f->effect_flags;
 }
 
+static void emit_conversion_fields(FILE *out, const fn_info *f)
+{
+    if (!f->conversion_from || !f->conversion_to) {
+        return;
+    }
+    fprintf(out, "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n", f->conversion_from, f->conversion_to);
+}
+
 static void emit_fn_access(FILE *out, const fn_info *f)
 {
     if (!fn_has_access(f)) {
@@ -829,6 +883,7 @@ static void emit_exec_node(FILE *out, const fn_info *f)
         f->name
     );
     fprintf(out, "    .flow_kind = NODE_FLOW_CUSTOM, .flow = __flow_%s_%s,\n", g_prefix, f->name);
+    emit_conversion_fields(out, f);
     if (fn_has_access(f)) {
         fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
     }
@@ -867,6 +922,7 @@ static void emit_fn_node(FILE *out, const fn_info *f)
     fprintf(out, "    .pure_kind = %s,\n", f->ret_void ? "NODE_PURE_VOID_CALL" : "NODE_PURE_CALL");
     fprintf(out, "    .fn = __wrap_%s_%s,\n", g_prefix, f->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
+    emit_conversion_fields(out, f);
     if (fn_has_access(f)) {
         fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
     }
@@ -1256,6 +1312,7 @@ static void emit(FILE *out, const collect_ctx *ctx)
             fprintf(out, "#include \"%s\"\n", f);
         }
     }
+    fputs("#include \"core/arena.h\"\n", out);
     fputs("#include \"core/type.h\"\n", out);
     fputs("#include \"core/nodes.h\"\n", out);
     fputs("#include \"core/flow.h\"\n", out);
@@ -1513,13 +1570,18 @@ static void set_prefix(const char *source)
 
 int main(int argc, char **argv)
 {
-    if (argc != 3 && argc != 4) {
-        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix]\n");
+    if (argc < 3) {
+        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix] [--include path ...]\n");
         return 2;
     }
     const char *input = argv[1];
     const char *output = argv[2];
-    set_prefix(argc == 4 ? argv[3] : output);
+    int option = 3;
+    const char *prefix = output;
+    if (option < argc && strcmp(argv[option], "--include") != 0) {
+        prefix = argv[option++];
+    }
+    set_prefix(prefix);
 
     char srcdir[1024];
     char rootdir[1024];
@@ -1528,8 +1590,20 @@ int main(int argc, char **argv)
 
     CXIndex idx = clang_createIndex(0, 0);
 
-    const char *const args[] = { "-x", "c", "-I", rootdir };
-    int nargs = (int)(sizeof args / sizeof args[0]);
+    const char *args[32] = { "-x", "c", "-I", rootdir };
+    int nargs = 4;
+    while (option < argc) {
+        if (option + 1 >= argc || nargs + 2 > 32 ||
+            (strcmp(argv[option], "--include") != 0 &&
+             strcmp(argv[option], "--sysroot") != 0)) {
+            fprintf(stderr, "reflect: invalid include option\n");
+            clang_disposeIndex(idx);
+            return 2;
+        }
+        args[nargs++] = strcmp(argv[option], "--sysroot") == 0 ? "-isysroot" : "-I";
+        args[nargs++] = argv[option + 1];
+        option += 2;
+    }
 
     CXTranslationUnit tu = clang_parseTranslationUnit(idx, input, args, nargs, NULL, 0, CXTranslationUnit_None);
     if (!tu) {

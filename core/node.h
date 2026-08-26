@@ -90,6 +90,8 @@ typedef struct
      * Both are static display/search data; NULL means uncategorized. */
     const char *category;
     const char *keywords;
+    const char *conversion_from;
+    const char *conversion_to;
     const node_access *access;
 } node_desc;
 

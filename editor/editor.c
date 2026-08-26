@@ -1,13 +1,16 @@
 #include "editor.h"
 
 #include "../core/conv_nodes.h"
+#include "../core/flow_visual.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
 #include "arrange.h"
 #include "eval_view.h"
 #include "preview_gate.h"
+#include "ui_shell.h"
 
 #include <assert.h>
+// pi-lens-ignore: fatal error
 #include <imgui/dcimgui.h>
 
 CIMGUI_API void ImGui_ClearActiveID(void);
@@ -39,12 +42,10 @@ extern const size_t editor_nerd_symbols_font_size;
 #define ED_TOAST_ICON 18.0f
 #define ED_TOAST_GAP 8.0f
 #define ED_TOAST_CLOSE 20.0f
-#define ED_TOAST_ACTION 22.0f
 #define ED_TOAST_DURATION 4.0
 #define ED_TOAST_FADE 0.4
 
 /* Flow pacing. */
-#define ED_FLOW_SPEED 192.0f
 #define ED_FLOW_DOT_SPACING 64.0f
 #define ED_FLOW_CURVE_SAMPLES 32
 
@@ -82,11 +83,7 @@ enum
     ED_ICON_CLOSE_CODEPOINT = 0xf00d
 };
 
-static const ImWchar ED_ICON_GLYPH_RANGES[] = { ED_ICON_CLOSE_CODEPOINT,
-                                                ED_ICON_CLOSE_CODEPOINT,
-                                                ED_ICON_WARNING_CODEPOINT,
-                                                ED_ICON_WARNING_CODEPOINT,
-                                                0 };
+static const ImWchar ED_ICON_GLYPH_RANGES[] = { 0xf000, 0xf385, 0xf400, 0xf533, 0 };
 static const char ED_ICON_WARNING[] = "\xef\x81\xb1";
 
 typedef enum ed_pin_kind
@@ -136,13 +133,33 @@ typedef struct ed_log_entry
     char message[ED_LOG_MESSAGE];
 } ed_log_entry;
 
+typedef struct ed_graph_view
+{
+    uint64_t graph_id;
+    ImVec2 pan;
+    float zoom;
+    int view_initialized;
+    int entry_index;
+} ed_graph_view;
+
 struct editor
 {
     blueprint *bp;
+    graph *active_graph;
+    ed_graph_view *graph_views;
     eval_view *ev;
     ImFont *icon_font;
     blueprint_instance *instance; /* preview instance, or NULL after an edit */
+    const blueprint_instance *inspection_instance; /* borrowed runtime target */
+    const flow_run *inspection_run; /* borrowed runtime activation */
+    const blueprint_instance_trace_entry *inspection_trace;
+    int inspection_trace_count;
     unsigned instance_generation;
+    unsigned edit_revision;
+    const blueprint *edit_revision_bp;
+    char *edit_revision_snapshot;
+    int edit_revision_initialized;
+    int edit_pending;
     flow_run *activation; /* selected activation the toolbar controls */
     compile_report compile;
     int instance_destroyed; /* UI-55: the last authoring edit destroyed the preview */
@@ -205,17 +222,14 @@ struct editor
     char connect_error[ED_LOG_MESSAGE];
     ImVec2 connect_error_pos;
     double connect_error_until;
-    /* UI-22: the connect-error toast carries an accepted conversion offer. */
-    int connect_offer;
-    const node_desc *connect_offer_desc;
-    ed_pin_view connect_from;
-    ed_pin_view connect_to;
     blueprint_variable *selected_variable;
     int details_history_open;
     char details_title[256];
     char details_comment[512];
     char details_reference_name[256];
     char details_pin_name[256];
+    const editor_event_signature *event_catalog;
+    int event_catalog_count;
 
     char **undo;
     char **redo;
@@ -313,8 +327,8 @@ static const char *ed_node_title(const node *n, char *buf, size_t cap)
 
 static int ed_event_name_used(const editor *e, const char *name)
 {
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        const node *n = e->bp->graph->nodes[i];
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        const node *n = e->active_graph->nodes[i];
         if (n->desc->flow_kind == NODE_FLOW_EVENT && n->reference_name &&
             strcmp(n->reference_name, name) == 0) {
             return 1;
@@ -338,7 +352,7 @@ static void ed_name_spawned_event(editor *e, node *n)
         if (ed_event_name_used(e, name)) {
             continue;
         }
-        graph_set_node_reference(e->bp->graph, n, 0, name);
+        graph_set_node_reference(e->active_graph, n, 0, name);
         return;
     }
 }
@@ -425,6 +439,81 @@ static void ed_clear_selection(editor *e)
 {
     aclear(e->selected);
     aclear(e->selected_links);
+}
+
+static ed_graph_view *ed_graph_view_for(editor *e, uint64_t graph_id, int create)
+{
+    for (int i = 0; i < acount(e->graph_views); i++) {
+        if (e->graph_views[i].graph_id == graph_id) {
+            return &e->graph_views[i];
+        }
+    }
+    if (!create) {
+        return NULL;
+    }
+    apush(e->graph_views, (ed_graph_view){ .graph_id = graph_id, .zoom = 1.0f });
+    return &alast(e->graph_views);
+}
+
+static void ed_save_graph_view(editor *e)
+{
+    if (!e->active_graph) {
+        return;
+    }
+    ed_graph_view *view = ed_graph_view_for(e, e->active_graph->graph_id, 1);
+    view->pan = e->pan;
+    view->zoom = e->zoom;
+    view->view_initialized = e->view_initialized;
+    view->entry_index = e->entry_index;
+}
+
+static void ed_load_graph_view(editor *e)
+{
+    if (!e->active_graph) {
+        e->pan = (ImVec2){ 0.0f, 0.0f };
+        e->zoom = 1.0f;
+        e->view_initialized = 0;
+        e->entry_index = 0;
+        return;
+    }
+    ed_graph_view *view = ed_graph_view_for(e, e->active_graph->graph_id, 0);
+    if (!view) {
+        e->pan = (ImVec2){ 0.0f, 0.0f };
+        e->zoom = 1.0f;
+        e->view_initialized = 0;
+        e->entry_index = 0;
+        return;
+    }
+    e->pan = view->pan;
+    e->zoom = view->zoom;
+    e->view_initialized = view->view_initialized;
+    e->entry_index = view->entry_index;
+}
+
+static int ed_switch_graph(editor *e, graph *graph)
+{
+    if (!e || !graph || graph->owner != e->bp) {
+        return -1;
+    }
+    if (e->active_graph == graph) {
+        return 0;
+    }
+    ed_save_graph_view(e);
+    e->active_graph = graph;
+    ed_load_graph_view(e);
+    ed_clear_selection(e);
+    e->selected_variable = NULL;
+    e->reveal_target = NULL;
+    e->context_node = NULL;
+    e->has_context_link = 0;
+    e->front_node = NULL;
+    e->hovered_node = NULL;
+    e->has_hovered_link = 0;
+    e->spawn_link_pending = 0;
+    e->dragging = 0;
+    e->linking = 0;
+    aclear(e->drag_nodes);
+    return 0;
 }
 
 static int ed_link_selected(const editor *e, const ed_link_ref *link)
@@ -540,6 +629,19 @@ void editor_reveal_node(editor *e, node *n)
     e->view_initialized = 0;
 }
 
+int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id)
+{
+    if (!e || editor_open_graph(e, graph_id) != 0) {
+        return -1;
+    }
+    node *n = graph_node_by_id(e->active_graph, node_id);
+    if (!n) {
+        return -1;
+    }
+    editor_reveal_node(e, n);
+    return 0;
+}
+
 static ImVec4 ed_spec_color(const pin_spec *spec)
 {
     return spec->kind == PIN_EXEC ? (ImVec4){ 1.0f, 0.55f, 0.20f, 1.0f }
@@ -550,10 +652,11 @@ static ImFont *ed_load_icon_font(void)
 {
     ImFontAtlas *atlas = ImGui_GetIO()->Fonts;
     if (!atlas->Fonts.Size) {
-        ImFontAtlas_AddFontDefault(atlas, NULL);
+        ImFontAtlas_AddFontDefaultVector(atlas, NULL);
     }
     ImFontConfig config = { 0 };
     config.FontDataOwnedByAtlas = false;
+    config.MergeMode = true;
     config.GlyphMaxAdvanceX = FLT_MAX;
     config.RasterizerMultiply = 1.0f;
     config.RasterizerDensity = 1.0f;
@@ -591,15 +694,7 @@ static void ed_draw_centered_icon(
 
 static int ed_point_in_rect(ImVec2 p, ImVec2 min, ImVec2 max);
 
-static int ed_connect_error_rect(
-    const editor *e,
-    ImVec2 *min,
-    ImVec2 *max,
-    ImVec2 *close_min,
-    ImVec2 *close_max,
-    ImVec2 *action_min,
-    ImVec2 *action_max
-)
+static int ed_connect_error_rect(const editor *e, ImVec2 *min, ImVec2 *max, ImVec2 *close_min, ImVec2 *close_max)
 {
     if (!e->connect_error[0] ||
         e->monotonic_time >= e->connect_error_until + ED_TOAST_FADE) {
@@ -616,9 +711,6 @@ static int ed_connect_error_rect(
                             .y;
     float height = ED_TOAST_PAD * 2.0f;
     height += text_height > ED_TOAST_ICON ? text_height : ED_TOAST_ICON;
-    if (e->connect_offer) {
-        height += ED_TOAST_GAP + ED_TOAST_ACTION;
-    }
     ImVec2 canvas_max = ed_add(e->canvas_min, e->canvas_size);
     ImVec2 pos = ed_add(e->connect_error_pos, (ImVec2){ 12.0f, 12.0f });
     if (pos.x + width > canvas_max.x) {
@@ -638,23 +730,12 @@ static int ed_connect_error_rect(
     *close_min = (ImVec2){ max->x - ED_TOAST_PAD - ED_TOAST_CLOSE,
                            min->y + ED_TOAST_PAD };
     *close_max = (ImVec2){ max->x - ED_TOAST_PAD, close_min->y + ED_TOAST_CLOSE };
-    if (action_min && action_max) {
-        if (e->connect_offer) {
-            float action_y = max->y - ED_TOAST_PAD - ED_TOAST_ACTION;
-            *action_min = (ImVec2){ min->x + ED_TOAST_PAD, action_y };
-            *action_max = (ImVec2){ max->x - ED_TOAST_PAD, action_y + ED_TOAST_ACTION };
-        } else {
-            *action_min = *action_max = (ImVec2){ 0.0f, 0.0f };
-        }
-    }
     return 1;
 }
 
 static void ed_clear_connect_error(editor *e)
 {
     e->connect_error[0] = '\0';
-    e->connect_offer = 0;
-    e->connect_offer_desc = NULL;
 }
 
 static int ed_connect_error_alpha(const editor *e)
@@ -672,8 +753,8 @@ static int ed_connect_error_alpha(const editor *e)
 
 static void ed_draw_connect_error(const editor *e)
 {
-    ImVec2 min, max, close_min, close_max, action_min, action_max;
-    if (!ed_connect_error_rect(e, &min, &max, &close_min, &close_max, &action_min, &action_max)) {
+    ImVec2 min, max, close_min, close_max;
+    if (!ed_connect_error_rect(e, &min, &max, &close_min, &close_max)) {
         return;
     }
     int alpha = ed_connect_error_alpha(e);
@@ -746,30 +827,6 @@ static void ed_draw_connect_error(const editor *e)
             close_hovered ? 2.5f : 2.0f
         );
     }
-    if (e->connect_offer && e->connect_offer_desc) {
-        char label[64];
-        snprintf(label, sizeof label, "Insert %s", e->connect_offer_desc->name);
-        int action_hovered = ed_point_in_rect(ImGui_GetIO()->MousePos, action_min, action_max);
-        if (action_hovered) {
-            ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-        }
-        ImDrawList_AddRectFilledEx(
-            dl,
-            action_min,
-            action_max,
-            IM_COL32(46, 170, 96, action_hovered ? (int)(alpha * 0.92f) : (int)(alpha * 0.72f)),
-            4.0f,
-            ImDrawFlags_RoundCornersAll
-        );
-        ImVec2 text_size = ImGui_CalcTextSizeEx(label, NULL, false, 0.0f);
-        ImDrawList_AddText(
-            dl,
-            (ImVec2){ action_min.x + (action_max.x - action_min.x - text_size.x) * 0.5f,
-                      action_min.y + (action_max.y - action_min.y - text_size.y) * 0.5f },
-            IM_COL32(235, 255, 242, alpha),
-            label
-        );
-    }
     ImDrawList_PopClipRect(dl);
 }
 
@@ -818,8 +875,8 @@ static ed_pin_view *ed_pin_for(const editor *e, const node *n, int kind, int ind
 
 static int ed_edge_index(const editor *e, const ed_link_ref *link)
 {
-    for (int i = 0; i < acount(e->bp->graph->edges); i++) {
-        const edge *ed = &e->bp->graph->edges[i];
+    for (int i = 0; i < acount(e->active_graph->edges); i++) {
+        const edge *ed = &e->active_graph->edges[i];
         if (ed->from_id == link->from_id && ed->from_pin_id == link->from_pin_id &&
             ed->to_id == link->to_id && ed->to_pin_id == link->to_pin_id) {
             return i;
@@ -895,17 +952,17 @@ static ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n)
 static void ed_build_layout(editor *e)
 {
     int pin_total = 0;
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        const node *n = e->bp->graph->nodes[i];
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        const node *n = e->active_graph->nodes[i];
         pin_total += n->input_count + n->output_count;
     }
-    ed_grow_views(e, acount(e->bp->graph->nodes), pin_total);
+    ed_grow_views(e, acount(e->active_graph->nodes), pin_total);
 
     const float line = ImGui_GetTextLineHeight();
     int pin_at = 0;
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        node *n = e->bp->graph->nodes[i];
-        ImVec2 dimensions = ed_node_dimensions(e, e->bp->graph, n);
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
+        ImVec2 dimensions = ed_node_dimensions(e, e->active_graph, n);
         float title_height = line + 2.0f * ED_TITLE_PAD;
         float row_height = line + 6.0f;
         ImVec2 min = ed_world_to_screen(e, n->x, n->y);
@@ -930,7 +987,7 @@ static void ed_build_layout(editor *e)
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y } };
         }
     }
-    asetlen(e->views, acount(e->bp->graph->nodes));
+    asetlen(e->views, acount(e->active_graph->nodes));
     asetlen(e->pins, pin_at);
 }
 
@@ -966,12 +1023,12 @@ static void ed_select_marquee(editor *e)
             ed_add_selected(e, e->views[i].n);
         }
     }
-    for (int i = 0; i < acount(e->bp->graph->edges); i++) {
-        if (ed_link_in_rect(e, &e->bp->graph->edges[i], min, max)) {
-            ed_link_ref link = { e->bp->graph->edges[i].from_id,
-                                 e->bp->graph->edges[i].from_pin_id,
-                                 e->bp->graph->edges[i].to_id,
-                                 e->bp->graph->edges[i].to_pin_id };
+    for (int i = 0; i < acount(e->active_graph->edges); i++) {
+        if (ed_link_in_rect(e, &e->active_graph->edges[i], min, max)) {
+            ed_link_ref link = { e->active_graph->edges[i].from_id,
+                                 e->active_graph->edges[i].from_pin_id,
+                                 e->active_graph->edges[i].to_id,
+                                 e->active_graph->edges[i].to_pin_id };
             ed_add_selected_link(e, &link);
         }
     }
@@ -1116,8 +1173,8 @@ static float ed_flow_heat(double age, float *thickness, ImVec4 *color, ImVec4 ba
 
 static int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec2 *p2, ImVec2 *p3)
 {
-    node *from_node = graph_node_by_id(e->bp->graph, ed->from_id);
-    node *to_node = graph_node_by_id(e->bp->graph, ed->to_id);
+    node *from_node = graph_node_by_id(e->active_graph, ed->from_id);
+    node *to_node = graph_node_by_id(e->active_graph, ed->to_id);
     int from_pin = -1, to_pin = -1, fo = 0, to_out = 0;
     if (!from_node ||
         !graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) || !fo) {
@@ -1141,8 +1198,8 @@ static int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1
 
 static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
 {
-    for (int i = acount(e->bp->graph->edges) - 1; i >= 0; i--) {
-        const edge *ed = &e->bp->graph->edges[i];
+    for (int i = acount(e->active_graph->edges) - 1; i >= 0; i--) {
+        const edge *ed = &e->active_graph->edges[i];
         ImVec2 p0, p1, p2, p3;
         if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
             continue;
@@ -1326,7 +1383,7 @@ static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 
             }
             changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
             if (changed) {
-                char *copy = graph_own_str(e->bp->graph, e->edit_text, strlen(e->edit_text));
+                char *copy = graph_own_str(e->active_graph, e->edit_text, strlen(e->edit_text));
                 if (copy) {
                     v->str = copy;
                 }
@@ -1346,7 +1403,7 @@ static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 
             }
             changed = ImGui_InputText(id, e->edit_text, sizeof e->edit_text, 0);
             if (changed) {
-                char *copy = graph_own_str(e->bp->graph, e->edit_text, strlen(e->edit_text));
+                char *copy = graph_own_str(e->active_graph, e->edit_text, strlen(e->edit_text));
                 if (copy) {
                     v->str = copy;
                 }
@@ -1365,7 +1422,7 @@ static int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 
     ImGui_PopStyleVar();
     ImGui_PopFont();
     if (changed) {
-        graph_set_pin_default(e->bp->graph, n, kind == ED_PIN_OUTPUT, index, v);
+        graph_set_pin_default(e->active_graph, n, kind == ED_PIN_OUTPUT, index, v);
     }
     ed_finish_value_edit(e, changed);
     return changed;
@@ -1492,7 +1549,7 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
     }
     if (changed) {
         ed_details_begin_mutation(e);
-        if (graph_set_pin_default(e->bp->graph, n, output, index, &value) == 0) {
+        if (graph_set_pin_default(e->active_graph, n, output, index, &value) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1513,7 +1570,8 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
     snprintf(e->details_pin_name, sizeof e->details_pin_name, "%s", spec->name ? spec->name : "");
     if (ImGui_InputText("Name", e->details_pin_name, sizeof e->details_pin_name, 0)) {
         ed_details_begin_mutation(e);
-        if (graph_set_pin_name(e->bp->graph, n, output, index, e->details_pin_name) == 0) {
+        if (graph_set_pin_name(e->active_graph, n, output, index, e->details_pin_name) ==
+            0) {
             e->edit_changed = 1;
         }
     }
@@ -1526,7 +1584,7 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
             pin_type type = spec->type;
             if (ed_pin_type_combo("Type", &type)) {
                 ed_details_begin_mutation(e);
-                if (graph_set_pin_type(e->bp->graph, n, output, index, type, pin_type_name(type)) ==
+                if (graph_set_pin_type(e->active_graph, n, output, index, type, pin_type_name(type)) ==
                     0) {
                     e->edit_changed = 1;
                 }
@@ -1536,7 +1594,8 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
         pin_container container = spec->container;
         if (ed_pin_container_combo("Container", &container)) {
             ed_details_begin_mutation(e);
-            if (graph_set_pin_container(e->bp->graph, n, output, index, container) == 0) {
+            if (graph_set_pin_container(e->active_graph, n, output, index, container) ==
+                0) {
                 e->edit_changed = 1;
             }
         }
@@ -1784,8 +1843,8 @@ static void ed_draw_details_blueprint(editor *e)
         ImGui_SetTooltip("Set an owner handle type above to enable Self nodes");
     }
     ImGui_SeparatorText("Events");
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        node *n = e->bp->graph->nodes[i];
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
         if (n->desc->flow_kind != NODE_FLOW_EVENT) {
             continue;
         }
@@ -1824,12 +1883,18 @@ static void ed_draw_tree(editor *e)
     ImGui_SeparatorText("Graphs");
     if (ImGui_Button("+ New Function")) {
         ed_snapshot_before(e);
-        blueprint_add_function(e->bp, "Function", 0);
+        graph *g = blueprint_add_function(e->bp, "Function", 0);
+        if (g) {
+            editor_open_graph(e, g->graph_id);
+        }
     }
     ImGui_SameLine();
     if (ImGui_Button("+ New Macro")) {
         ed_snapshot_before(e);
-        blueprint_add_macro(e->bp, "Macro");
+        graph *g = blueprint_add_macro(e->bp, "Macro");
+        if (g) {
+            editor_open_graph(e, g->graph_id);
+        }
     }
     for (int i = 0; i < acount(e->bp->graphs); i++) {
         graph *g = e->bp->graphs[i];
@@ -1842,7 +1907,9 @@ static void ed_draw_tree(editor *e)
             g->name && g->name[0] ? g->name : "Default",
             i
         );
-        ImGui_SelectableEx(label, i == 0, 0, (ImVec2){ 0.0f, 0.0f });
+        if (ImGui_SelectableEx(label, e->active_graph == g, 0, (ImVec2){ 0.0f, 0.0f })) {
+            editor_open_graph(e, g->graph_id);
+        }
     }
     ImGui_SeparatorText("Variables");
     if (ImGui_Button("+ New Variable")) {
@@ -1871,8 +1938,8 @@ static void ed_draw_tree(editor *e)
         ImGui_PopID();
     }
     ImGui_SeparatorText("Events");
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        node *n = e->bp->graph->nodes[i];
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
         if (n->desc->flow_kind != NODE_FLOW_EVENT) {
             continue;
         }
@@ -1890,8 +1957,8 @@ static void ed_draw_tree(editor *e)
         ImGui_PopID();
     }
     ImGui_SeparatorText("Nodes");
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        node *n = e->bp->graph->nodes[i];
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
         if (n->desc->flow_kind == NODE_FLOW_EVENT) {
             continue;
         }
@@ -1907,6 +1974,129 @@ static void ed_draw_tree(editor *e)
         ImGui_PopID();
     }
     ImGui_End();
+}
+
+/* EVT-3 makes a duplicate name a compile error, so a name already taken by
+ * another event node is offered as disabled rather than silently creating one. */
+static int ed_event_name_taken(const editor *e, const node *self, const char *name)
+{
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        const node *n = e->active_graph->nodes[i];
+        if (n == self || n->desc->flow_kind != NODE_FLOW_EVENT || !n->reference_name) {
+            continue;
+        }
+        if (strcmp(n->reference_name, name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static const editor_event_signature *ed_event_signature(const editor *e, const char *name)
+{
+    for (int i = 0; i < e->event_catalog_count; i++) {
+        if (name && strcmp(e->event_catalog[i].name, name) == 0) {
+            return &e->event_catalog[i];
+        }
+    }
+    return NULL;
+}
+
+static int ed_event_param_count(const node *n)
+{
+    int count = 0;
+    for (int i = 0; i < n->output_count; i++) {
+        count += n->output_pins[i].kind == PIN_DATA;
+    }
+    return count;
+}
+
+/* Appends only the declared parameters this event is still missing, so no
+ * existing pin is retyped or removed and no edge is invalidated under EVT-5. */
+static int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature)
+{
+    int added = 0;
+    for (int i = ed_event_param_count(n); i < signature->param_count; i++) {
+        const editor_event_param *parameter = &signature->params[i];
+        pin_spec pin = { parameter->name, parameter->type, parameter->type_name, PIN_DATA };
+        added += graph_add_pin(e->active_graph, n, 1, &pin) == 0;
+    }
+    return added;
+}
+
+static void ed_details_event_catalog(editor *e, node *n)
+{
+    if (!e->event_catalog_count) {
+        return;
+    }
+    const char *current = n->reference_name && n->reference_name[0]
+                            ? n->reference_name
+                            : "(unnamed event)";
+    if (ImGui_BeginCombo("Host events", current, 0)) {
+        for (int i = 0; i < e->event_catalog_count; i++) {
+            const editor_event_signature *signature = &e->event_catalog[i];
+            int taken = ed_event_name_taken(e, n, signature->name);
+            int selected = n->reference_name &&
+                           strcmp(n->reference_name, signature->name) == 0;
+            if (ImGui_SelectableEx(
+                    signature->name,
+                    selected,
+                    taken ? ImGuiSelectableFlags_Disabled : 0,
+                    (ImVec2){ 0.0f, 0.0f }
+                )) {
+                ed_snapshot_before(e);
+                if (graph_set_node_reference(
+                        e->active_graph,
+                        n,
+                        n->reference_id,
+                        signature->name
+                    ) == 0) {
+                    /* A parameterless event gets the whole declared signature,
+                     * which is the only case where adding pins cannot surprise. */
+                    if (!ed_event_param_count(n)) {
+                        ed_event_add_declared_params(e, n, signature);
+                    }
+                    e->edit_changed = 1;
+                }
+            }
+            if (taken) {
+                ImGui_SameLine();
+                ImGui_TextUnformatted("(in use)");
+            }
+        }
+        ImGui_EndCombo();
+    }
+    const editor_event_signature *signature = ed_event_signature(e, n->reference_name);
+    if (!signature) {
+        return;
+    }
+    int missing = signature->param_count - ed_event_param_count(n);
+    if (missing <= 0) {
+        return;
+    }
+    char label[128];
+    snprintf(
+        label,
+        sizeof label,
+        "Add %d missing %s parameter%s",
+        missing,
+        signature->name,
+        missing == 1 ? "" : "s"
+    );
+    if (ImGui_Button(label)) {
+        ed_snapshot_before(e);
+        if (ed_event_add_declared_params(e, n, signature)) {
+            e->edit_changed = 1;
+        }
+    }
+    for (int i = 0; i < signature->param_count; i++) {
+        ImGui_Text(
+            "  %d %s (%s)",
+            i + 1,
+            signature->params[i].name,
+            signature->params[i].type_name
+        );
+    }
 }
 
 static void ed_draw_details(editor *e)
@@ -1937,7 +2127,7 @@ static void ed_draw_details(editor *e)
     snprintf(e->details_title, sizeof e->details_title, "%s", n->title_override ? n->title_override : "");
     if (ImGui_InputText("Title override", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
-        if (graph_set_node_title(e->bp->graph, n, e->details_title) == 0) {
+        if (graph_set_node_title(e->active_graph, n, e->details_title) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1945,7 +2135,7 @@ static void ed_draw_details(editor *e)
     snprintf(e->details_comment, sizeof e->details_comment, "%s", n->comment ? n->comment : "");
     if (ImGui_InputTextMultiline("Comment", e->details_comment, sizeof e->details_comment)) {
         ed_details_begin_mutation(e);
-        if (graph_set_node_comment(e->bp->graph, n, e->details_comment) == 0) {
+        if (graph_set_node_comment(e->active_graph, n, e->details_comment) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1953,7 +2143,7 @@ static void ed_draw_details(editor *e)
     bool disabled = n->disabled != 0;
     if (ImGui_Checkbox("Disabled", &disabled)) {
         ed_details_begin_mutation(e);
-        if (graph_set_node_disabled(e->bp->graph, n, disabled) == 0) {
+        if (graph_set_node_disabled(e->active_graph, n, disabled) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1962,7 +2152,7 @@ static void ed_draw_details(editor *e)
     uint64_t reference_id = n->reference_id;
     if (ImGui_InputScalar("Reference ID", ImGuiDataType_U64, &reference_id)) {
         ed_details_begin_mutation(e);
-        if (graph_set_node_reference(e->bp->graph, n, reference_id, n->reference_name) ==
+        if (graph_set_node_reference(e->active_graph, n, reference_id, n->reference_name) ==
             0) {
             e->edit_changed = 1;
         }
@@ -1974,12 +2164,15 @@ static void ed_draw_details(editor *e)
         "%s",
         n->reference_name ? n->reference_name : ""
     );
+    if (n->desc && n->desc->flow_kind == NODE_FLOW_EVENT) {
+        ed_details_event_catalog(e, n);
+    }
     const char *reference_label = n->desc && n->desc->flow_kind == NODE_FLOW_EVENT
                                     ? "Event name"
                                     : "Reference name";
     if (ImGui_InputText(reference_label, e->details_reference_name, sizeof e->details_reference_name, 0)) {
         ed_details_begin_mutation(e);
-        if (graph_set_node_reference(e->bp->graph, n, n->reference_id, e->details_reference_name) ==
+        if (graph_set_node_reference(e->active_graph, n, n->reference_id, e->details_reference_name) ==
             0) {
             e->edit_changed = 1;
         }
@@ -1991,7 +2184,7 @@ static void ed_draw_details(editor *e)
         if (ImGui_Button("Add parameter")) {
             pin_spec parameter = { "Parameter", PIN_I32, "int", PIN_DATA };
             ed_snapshot_before(e);
-            (void)graph_add_pin(e->bp->graph, n, 1, &parameter);
+            (void)graph_add_pin(e->active_graph, n, 1, &parameter);
         }
         ImGui_SameLine();
         if (ImGui_Button("Add Call Event node")) {
@@ -2010,13 +2203,13 @@ static void ed_draw_details(editor *e)
             snprintf(name, sizeof name, "Then%d", n->output_count);
             pin_spec pin = { name, PIN_FLOW, NULL, PIN_EXEC };
             ed_snapshot_before(e);
-            (void)graph_add_pin(e->bp->graph, n, 1, &pin);
+            (void)graph_add_pin(e->active_graph, n, 1, &pin);
         }
         ImGui_SameLine();
         ImGui_BeginDisabled(n->output_count <= 2);
         if (ImGui_Button("Remove last output pin")) {
             ed_snapshot_before(e);
-            (void)graph_remove_pin(e->bp->graph, n, 1, n->output_count - 1);
+            (void)graph_remove_pin(e->active_graph, n, 1, n->output_count - 1);
         }
         ImGui_EndDisabled();
     }
@@ -2050,17 +2243,17 @@ static void ed_draw_details(editor *e)
             ImGui_PushIDInt(20000 + p);
             if (p > 1 && ImGui_Button("Up")) {
                 ed_snapshot_before(e);
-                (void)graph_move_pin(e->bp->graph, n, 1, p, p - 1);
+                (void)graph_move_pin(e->active_graph, n, 1, p, p - 1);
             }
             ImGui_SameLine();
             if (p + 1 < n->output_count && ImGui_Button("Down")) {
                 ed_snapshot_before(e);
-                (void)graph_move_pin(e->bp->graph, n, 1, p, p + 1);
+                (void)graph_move_pin(e->active_graph, n, 1, p, p + 1);
             }
             ImGui_SameLine();
             if (ImGui_Button("Remove")) {
                 ed_snapshot_before(e);
-                (void)graph_remove_pin(e->bp->graph, n, 1, p);
+                (void)graph_remove_pin(e->active_graph, n, 1, p);
             }
             ImGui_PopID();
         }
@@ -2089,7 +2282,7 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
 {
     node *n = view->n;
     for (int p = 0; p < n->input_count; p++) {
-        if (!ed_pin_editable(e->bp->graph, n, ED_PIN_INPUT, p)) {
+        if (!ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, p)) {
             continue;
         }
         ed_pin_view *pin = &e->pins[view->input_first + p];
@@ -2107,7 +2300,7 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
         e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
     }
     for (int p = 0; p < n->output_count; p++) {
-        if (!ed_pin_editable(e->bp->graph, n, ED_PIN_OUTPUT, p)) {
+        if (!ed_pin_editable(e->active_graph, n, ED_PIN_OUTPUT, p)) {
             continue;
         }
         ed_pin_view *pin = &e->pins[view->output_first + p];
@@ -2167,6 +2360,8 @@ static void ed_draw_grid(editor *e, ImDrawList *dl)
     }
 }
 
+static const flow_run *ed_flow_run_for_display(const editor *e);
+
 static int ed_flow_edge_matches(const flow_traversal *record, const edge *ed)
 {
     return record->kind == ed->kind && record->from_id == ed->from_id &&
@@ -2174,15 +2369,25 @@ static int ed_flow_edge_matches(const flow_traversal *record, const edge *ed)
            record->to_id == ed->to_id && record->to_pin_id == ed->to_pin_id;
 }
 
-static const flow_traversal *ed_latest_flow_record(
-    const flow_traversal *records,
-    int record_count,
-    const edge *ed
-)
+static const flow_traversal *ed_latest_flow_record(const editor *e, const edge *ed)
 {
-    for (int i = record_count - 1; i >= 0; i--) {
-        if (ed_flow_edge_matches(&records[i], ed)) {
-            return &records[i];
+    const flow_run *run = ed_flow_run_for_display(e);
+    if (run) {
+        int count = 0;
+        const flow_traversal *records = flow_run_traversals(run, &count);
+        for (int i = count - 1; i >= 0; i--) {
+            if (ed_flow_edge_matches(&records[i], ed)) {
+                return &records[i];
+            }
+        }
+    }
+    if (!e->inspection_instance) {
+        return NULL;
+    }
+    for (int i = e->inspection_trace_count - 1; i >= 0; i--) {
+        const flow_traversal *record = &e->inspection_trace[i].traversal;
+        if (ed_flow_edge_matches(record, ed)) {
+            return record;
         }
     }
     return NULL;
@@ -2197,6 +2402,11 @@ typedef struct ed_flow_style
     ImVec4 wire_color;
     ImVec4 bubble_color;
 } ed_flow_style;
+
+static const flow_run *ed_flow_run_for_display(const editor *e)
+{
+    return e->inspection_instance ? e->inspection_run : e->activation;
+}
 
 static float ed_flow_overview_scale(float zoom)
 {
@@ -2221,12 +2431,7 @@ static ed_flow_style ed_flow_style_for_edge(const editor *e, const edge *ed, ImV
         .wire_color = base,
         .bubble_color = ed_lerp4(base, (ImVec4){ 1.0f, 1.0f, 1.0f, 1.0f }, ED_FLOW_BUBBLE_COLOR_BLEND),
     };
-    if (!e->activation) {
-        return style;
-    }
-    int record_count = 0;
-    const flow_traversal *records = flow_run_traversals(e->activation, &record_count);
-    const flow_traversal *latest = ed_latest_flow_record(records, record_count, ed);
+    const flow_traversal *latest = ed_latest_flow_record(e, ed);
     if (!latest) {
         return style;
     }
@@ -2272,7 +2477,8 @@ static void ed_draw_flow_markers(
     ImVec2 p3,
     ImVec4 color,
     float radius,
-    float opacity
+    float opacity,
+    double age
 )
 {
     if (opacity <= 0.0f) {
@@ -2280,11 +2486,11 @@ static void ed_draw_flow_markers(
     }
     float length = ed_curve_length(p0, p1, p2, p3);
     float spacing = ED_FLOW_DOT_SPACING * e->zoom;
-    float speed = ED_FLOW_SPEED * e->zoom;
     if (length <= 0.0f || spacing <= 0.0f) {
         return;
     }
-    float offset = fmodf((float)e->monotonic_time * speed, spacing);
+    float offset = (float)(flow_visual_marker(age, length) * length);
+    offset = fmodf(offset, spacing);
     if (offset < 0.0f) {
         offset += spacing;
     }
@@ -2308,7 +2514,7 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     }
     ed_link_ref ref = { ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
     int selected = ed_link_selected(e, &ref);
-    node *from_node = graph_node_by_id(e->bp->graph, ed->from_id);
+    node *from_node = graph_node_by_id(e->active_graph, ed->from_id);
     int from_pin = -1, fo = 0;
     const pin_spec *source = NULL;
     if (from_node && graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) && fo) {
@@ -2330,6 +2536,10 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
         color = ed_color(style.wire_color);
     }
     ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
+    /* The record controls whether this edge is active, but not marker phase.
+     * Held input replaces the latest timestamp every frame, which would reset
+     * the bubbles to the same point. The editor clock keeps the stream moving. */
+    double marker_age = ed_latest_flow_record(e, ed) ? e->monotonic_time : 0.0;
     ed_draw_flow_markers(
         e,
         dl,
@@ -2339,7 +2549,8 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
         p3,
         style.bubble_color,
         style.bubble_radius,
-        style.bubble_opacity
+        style.bubble_opacity,
+        marker_age
     );
 }
 
@@ -2406,8 +2617,8 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
                 IM_COL32(220, 224, 232, 255),
                 spec->name
             );
-            const char *value = eval_view_input(e->ev, e->bp->graph, n, row);
-            if (value && !ed_pin_editable(e->bp->graph, n, ED_PIN_INPUT, row)) {
+            const char *value = eval_view_input(e->ev, e->active_graph, n, row);
+            if (value && !ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, row)) {
                 ImVec2 label = ed_text_size(e, spec->name);
                 ed_draw_text(
                     e,
@@ -2439,7 +2650,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
             );
             const char *value = eval_view_output(e->ev, n, row);
             if (value && value[0] &&
-                !ed_pin_editable(e->bp->graph, n, ED_PIN_OUTPUT, row)) {
+                !ed_pin_editable(e->active_graph, n, ED_PIN_OUTPUT, row)) {
                 ImVec2 val = ed_text_size(e, value);
                 ed_draw_text(
                     e,
@@ -2460,8 +2671,8 @@ static void ed_draw_canvas(editor *e)
     ImDrawList *dl = ImGui_GetWindowDrawList();
     ImDrawList_PushClipRect(dl, e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
     ed_draw_grid(e, dl);
-    for (int i = 0; i < acount(e->bp->graph->edges); i++) {
-        ed_draw_link(e, dl, &e->bp->graph->edges[i]);
+    for (int i = 0; i < acount(e->active_graph->edges); i++) {
+        ed_draw_link(e, dl, &e->active_graph->edges[i]);
     }
     for (int i = 0; i < acount(e->views); i++) {
         if (!ed_node_on_top(e, e->views[i].n)) {
@@ -2526,6 +2737,7 @@ static void ed_commit_snapshot(editor *e)
     if (!e->pending_snapshot) {
         return;
     }
+    e->edit_pending = 1;
     ed_push_string(&e->undo, e->pending_snapshot);
     e->pending_snapshot = NULL;
     ed_free_string_stack(&e->redo);
@@ -2538,6 +2750,7 @@ static void ed_snapshot_before(editor *e)
     if (!snapshot) {
         return;
     }
+    e->edit_pending = 1;
     ed_push_string(&e->undo, snapshot);
     ed_free_string_stack(&e->redo);
 }
@@ -2560,19 +2773,25 @@ static int ed_adopt_blueprint(editor *e, const char *json)
     if (e->instance) {
         return -1;
     }
+    uint64_t active_graph_id = e->active_graph ? e->active_graph->graph_id : 0;
+    ed_save_graph_view(e);
     blueprint *fresh = blueprint_load_json(json);
     if (!fresh) {
         return -1;
     }
     blueprint_free(e->bp);
     e->bp = fresh;
+    e->active_graph = blueprint_find_graph(e->bp, active_graph_id);
+    if (!e->active_graph) {
+        e->active_graph = e->bp->graph;
+    }
+    ed_load_graph_view(e);
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     ed_clear_selection(e);
     e->selected_variable = NULL;
     e->dragging = 0;
     e->linking = 0;
-    e->view_initialized = 0;
     e->reveal_target = NULL;
     e->context_node = NULL;
     e->has_context_link = 0;
@@ -2581,6 +2800,7 @@ static int ed_adopt_blueprint(editor *e, const char *json)
     e->edit_text_node = NULL;
     aclear(e->drag_nodes);
     e->log_count = 0;
+    e->edit_pending = 1;
     return 0;
 }
 
@@ -2625,14 +2845,14 @@ static void ed_delete_selected(editor *e)
     for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
         int index = ed_edge_index(e, &e->selected_links[i]);
         if (index >= 0) {
-            edge ed = e->bp->graph->edges[index];
-            node *from = graph_node_by_id(e->bp->graph, ed.from_id);
-            node *to = graph_node_by_id(e->bp->graph, ed.to_id);
+            edge ed = e->active_graph->edges[index];
+            node *from = graph_node_by_id(e->active_graph, ed.from_id);
+            node *to = graph_node_by_id(e->active_graph, ed.to_id);
             int from_pin = -1, to_pin = -1, fo = 0, to_out = 0;
             if (from && to &&
                 graph_pin_by_id(from, ed.from_pin_id, &fo, &from_pin) && fo &&
                 graph_pin_by_id(to, ed.to_pin_id, &to_out, &to_pin) && !to_out) {
-                if (graph_remove_edge(e->bp->graph, from, from_pin, to, to_pin) == 0) {
+                if (graph_remove_edge(e->active_graph, from, from_pin, to, to_pin) == 0) {
                     ed_format_text_repair(e, to);
                 }
             }
@@ -2643,7 +2863,7 @@ static void ed_delete_selected(editor *e)
         if (e->selected[i] == e->front_node) {
             front_deleted = 1;
         }
-        graph_remove_node(e->bp->graph, e->selected[i]);
+        graph_remove_node(e->active_graph, e->selected[i]);
     }
     if (front_deleted) {
         e->front_node = NULL;
@@ -2656,7 +2876,7 @@ static void ed_copy_selected(editor *e)
     if (acount(e->selected) == 0) {
         return;
     }
-    char *json = graph_save_nodes_json(e->bp->graph, e->selected, acount(e->selected));
+    char *json = graph_save_nodes_json(e->active_graph, e->selected, acount(e->selected));
     if (!json) {
         return;
     }
@@ -2684,11 +2904,11 @@ static void ed_paste(editor *e)
         return;
     }
     ed_snapshot_before(e);
-    int first = acount(e->bp->graph->nodes);
-    if (graph_append_json(e->bp->graph, clipboard, 24.0f, 24.0f) == 0) {
+    int first = acount(e->active_graph->nodes);
+    if (graph_append_json(e->active_graph, clipboard, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
-        for (int i = first; i < acount(e->bp->graph->nodes); i++) {
-            ed_add_selected(e, e->bp->graph->nodes[i]);
+        for (int i = first; i < acount(e->active_graph->nodes); i++) {
+            ed_add_selected(e, e->active_graph->nodes[i]);
         }
     }
 }
@@ -2698,16 +2918,16 @@ static void ed_duplicate_selected(editor *e)
     if (acount(e->selected) == 0) {
         return;
     }
-    char *json = graph_save_nodes_json(e->bp->graph, e->selected, acount(e->selected));
+    char *json = graph_save_nodes_json(e->active_graph, e->selected, acount(e->selected));
     if (!json) {
         return;
     }
     ed_snapshot_before(e);
-    int first = acount(e->bp->graph->nodes);
-    if (graph_append_json(e->bp->graph, json, 24.0f, 24.0f) == 0) {
+    int first = acount(e->active_graph->nodes);
+    if (graph_append_json(e->active_graph, json, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
-        for (int i = first; i < acount(e->bp->graph->nodes); i++) {
-            ed_add_selected(e, e->bp->graph->nodes[i]);
+        for (int i = first; i < acount(e->active_graph->nodes); i++) {
+            ed_add_selected(e, e->active_graph->nodes[i]);
         }
     }
     free(json);
@@ -2763,7 +2983,7 @@ static void ed_append_generic_arg(editor *e, node *n)
     char name[32];
     snprintf(name, sizeof name, "Arg%d", n->input_count - 1);
     pin_spec pin = { .name = name, .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD };
-    graph_add_pin(e->bp->graph, n, 0, &pin);
+    graph_add_pin(e->active_graph, n, 0, &pin);
 }
 
 static void ed_format_text_repair(editor *e, node *n)
@@ -2779,7 +2999,7 @@ static void ed_format_text_repair(editor *e, node *n)
         if (!ed_format_text_generic(n, i)) {
             continue;
         }
-        if (graph_remove_pin(e->bp->graph, n, 0, i) == 0) {
+        if (graph_remove_pin(e->active_graph, n, 0, i) == 0) {
             generic_count--;
         }
     }
@@ -2822,24 +3042,26 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                          (in_spec->flags & PIN_FLAG_WILDCARD);
     if (out_spec->kind == PIN_DATA && !generic_target &&
         !pin_types_compatible(out_spec, in_spec)) {
+        const node_desc *conv = conversion_for_pins(out_spec, in_spec);
+        if (conv) {
+            return graph_connect_data_conversion(
+                       e->active_graph,
+                       output->n,
+                       output->index,
+                       input->n,
+                       input->index,
+                       conv
+                   ) == 0;
+        }
         snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
         e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
-        /* UI-22: where TYPE-7 permits, offer the insertion in the toast. A
-         * lossy pair (Real to Integer) has no node and no offer. */
-        const node_desc *conv = conversion_for(out_spec->type, in_spec->type);
-        if (conv) {
-            e->connect_offer = 1;
-            e->connect_offer_desc = conv;
-            e->connect_from = *output;
-            e->connect_to = *input;
-        }
         return 0;
     }
     if (out_spec->kind == PIN_EXEC) {
         int order = output->n->desc->flow_kind == NODE_FLOW_SEQUENCE ? output->index
                                                                      : 0;
         return graph_connect_exec(
-                   e->bp->graph,
+                   e->active_graph,
                    output->n,
                    output->index,
                    input->n,
@@ -2848,7 +3070,7 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                ) == 0;
     }
     int ok = graph_connect_data(
-                 e->bp->graph,
+                 e->active_graph,
                  output->n,
                  output->index,
                  input->n,
@@ -2858,37 +3080,6 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
         ed_format_text_ensure_spare(e, input->n);
     }
     return ok;
-}
-
-/* UI-22: accepted conversion offer from the connect-error toast. Insert the
- * node between the two pins, retype its input to the source type (PIN-3),
- * wire source -> conversion -> target, and select it so the user sees the
- * inserted node. Undo captures the whole insertion as one edit. */
-static void ed_insert_conversion(editor *e)
-{
-    if (!e->connect_offer || !e->connect_offer_desc) {
-        return;
-    }
-    const ed_pin_view *src = &e->connect_from;
-    const ed_pin_view *dst = &e->connect_to;
-    const pin_spec *out = &src->n->output_pins[src->index];
-    ed_begin_authoring_edit(e);
-    e->pending_snapshot = ed_snapshot(e);
-    node *conv = graph_add_node(e->bp->graph, e->connect_offer_desc);
-    int ok = conv &&
-             graph_set_pin_type(e->bp->graph, conv, 0, 0, out->type, pin_type_name(out->type)) ==
-                 0 &&
-             graph_connect_data(e->bp->graph, src->n, src->index, conv, 0) == 0 &&
-             graph_connect_data(e->bp->graph, conv, 0, dst->n, dst->index) == 0;
-    if (!ok) {
-        ed_cancel_snapshot(e);
-        return;
-    }
-    conv->x = (src->n->x + dst->n->x) * 0.5f;
-    conv->y = (src->n->y + dst->n->y) * 0.5f - 24.0f;
-    ed_commit_snapshot(e);
-    ed_select_node(e, conv, 0);
-    ed_clear_connect_error(e);
 }
 
 #define ED_SEARCH_MAX 128
@@ -3165,35 +3356,35 @@ static void ed_handle_popups(editor *e)
                 snprintf(name, sizeof name, "Then%d", n->output_count);
                 pin_spec pin = { name, PIN_FLOW, NULL, PIN_EXEC };
                 ed_snapshot_before(e);
-                graph_add_pin(e->bp->graph, n, 1, &pin);
+                graph_add_pin(e->active_graph, n, 1, &pin);
             }
             if (n->output_count > 2 && ImGui_MenuItem("Remove last output pin")) {
                 ed_snapshot_before(e);
-                graph_remove_pin(e->bp->graph, n, 1, n->output_count - 1);
+                graph_remove_pin(e->active_graph, n, 1, n->output_count - 1);
             }
             ImGui_Separator();
         }
         if (n && ImGui_MenuItem(n->disabled ? "Enable" : "Disable")) {
             ed_snapshot_before(e);
-            graph_set_node_disabled(e->bp->graph, n, !n->disabled);
+            graph_set_node_disabled(e->active_graph, n, !n->disabled);
         }
         if (n && node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
             ImGui_MenuItem(n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint")) {
             ed_snapshot_before(e);
-            graph_set_breakpoint(e->bp->graph, n, !n->breakpoint);
+            graph_set_breakpoint(e->active_graph, n, !n->breakpoint);
         }
         if (n && ImGui_MenuItem(
                      n->breakpoint_enabled ? "Disable All Breakpoints" : "Enable All Breakpoints"
                  )) {
             ed_snapshot_before(e);
-            graph_set_all_breakpoints(e->bp->graph, !e->bp->graph->breakpoints_enabled);
+            graph_set_all_breakpoints(e->active_graph, !e->active_graph->breakpoints_enabled);
         }
         if (n && ImGui_MenuItem("Toggle data watches")) {
             ed_snapshot_before(e);
             for (int i = 0; i < n->input_count; i++) {
                 if (n->input_pins[i].kind == PIN_DATA) {
                     graph_set_pin_watch(
-                        e->bp->graph,
+                        e->active_graph,
                         n,
                         0,
                         i,
@@ -3204,7 +3395,7 @@ static void ed_handle_popups(editor *e)
             for (int i = 0; i < n->output_count; i++) {
                 if (n->output_pins[i].kind == PIN_DATA) {
                     graph_set_pin_watch(
-                        e->bp->graph,
+                        e->active_graph,
                         n,
                         1,
                         i,
@@ -3217,7 +3408,7 @@ static void ed_handle_popups(editor *e)
             for (int i = 0; i < n->input_count; i++) {
                 if (n->input_pins[i].type == PIN_STRUCT) {
                     ed_snapshot_before(e);
-                    graph_split_pin(e->bp->graph, n, 0, i);
+                    graph_split_pin(e->active_graph, n, 0, i);
                     break;
                 }
             }
@@ -3226,7 +3417,7 @@ static void ed_handle_popups(editor *e)
             for (int i = 0; i < n->input_count; i++) {
                 if (n->input_pins[i].split_parent) {
                     ed_snapshot_before(e);
-                    graph_recombine_pin(e->bp->graph, n, 0, i);
+                    graph_recombine_pin(e->active_graph, n, 0, i);
                     break;
                 }
             }
@@ -3308,7 +3499,7 @@ static void ed_handle_popups(editor *e)
                 if (!e->spawn_link_pending) {
                     ed_snapshot_before(e);
                 }
-                node *n = graph_add_node(e->bp->graph, desc);
+                node *n = graph_add_node(e->active_graph, desc);
                 if (n) {
                     ed_name_spawned_event(e, n);
                     n->x = e->popup_x;
@@ -3350,7 +3541,10 @@ static int ed_activation_live(const editor *e)
  * toolbar states the destruction; the next Dispatch recreates the instance. */
 static void ed_begin_authoring_edit(editor *e)
 {
-    if (!e || !e->instance) {
+    if (!e) {
+        return;
+    }
+    if (!e->instance) {
         return;
     }
     blueprint_instance_destroy(e->instance);
@@ -3376,8 +3570,8 @@ static const char *ed_flow_state_name(flow_state state)
 static node *ed_entry_at(const editor *e, int index)
 {
     int at = 0;
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        node *n = e->bp->graph->nodes[i];
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
         if (n->desc->flow_kind != NODE_FLOW_EVENT) {
             continue;
         }
@@ -3391,8 +3585,8 @@ static node *ed_entry_at(const editor *e, int index)
 static int ed_entry_count(const editor *e)
 {
     int count = 0;
-    for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-        if (e->bp->graph->nodes[i]->desc->flow_kind == NODE_FLOW_EVENT) {
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        if (e->active_graph->nodes[i]->desc->flow_kind == NODE_FLOW_EVENT) {
             count++;
         }
     }
@@ -3401,6 +3595,9 @@ static int ed_entry_count(const editor *e)
 
 static void ed_dispatch_selected(editor *e)
 {
+    if (e->active_graph != e->bp->graph) {
+        return;
+    }
     node *entry = ed_entry_at(e, e->entry_index);
     if (!entry || !entry->reference_name) {
         return;
@@ -3449,7 +3646,7 @@ static int ed_node_index(const graph *g, const node *n)
 
 static void ed_auto_arrange(editor *e)
 {
-    graph *g = e->bp->graph;
+    graph *g = e->active_graph;
     int count = acount(g->nodes);
     if (!count) {
         return;
@@ -3514,19 +3711,19 @@ static void ed_auto_arrange(editor *e)
 
 static void ed_zoom_fit(editor *e)
 {
-    int count = acount(e->bp->graph->nodes);
+    int count = acount(e->active_graph->nodes);
     if (!count || e->canvas_size.x <= 0.0f || e->canvas_size.y <= 0.0f) {
         return;
     }
-    node *first = e->bp->graph->nodes[0];
-    ImVec2 first_size = ed_node_dimensions(e, e->bp->graph, first);
+    node *first = e->active_graph->nodes[0];
+    ImVec2 first_size = ed_node_dimensions(e, e->active_graph, first);
     float min_x = first->x;
     float max_x = first->x + first_size.x;
     float min_y = first->y;
     float max_y = first->y + first_size.y;
     for (int i = 1; i < count; i++) {
-        node *n = e->bp->graph->nodes[i];
-        ImVec2 size = ed_node_dimensions(e, e->bp->graph, n);
+        node *n = e->active_graph->nodes[i];
+        ImVec2 size = ed_node_dimensions(e, e->active_graph, n);
         if (n->x < min_x) {
             min_x = n->x;
         }
@@ -3576,10 +3773,13 @@ static void ed_run_step_over(editor *e)
 }
 static void ed_run_stop(editor *e)
 {
-    if (!e->instance || !e->activation) {
+    blueprint_instance *target = e->inspection_instance
+                                   ? (blueprint_instance *)e->inspection_instance
+                                   : e->instance;
+    if (!target || !e->activation) {
         return;
     }
-    (void)blueprint_instance_stop_activation(e->instance, e->activation);
+    (void)blueprint_instance_stop_activation(target, e->activation);
     eval_view_set_run(e->ev, NULL);
 }
 
@@ -3614,8 +3814,8 @@ static void ed_draw_toolbar(editor *e)
                                                             : "(unnamed event)";
     if (ImGui_BeginCombo("Entry", entry_name, 0)) {
         int at = 0;
-        for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-            node *n = e->bp->graph->nodes[i];
+        for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+            node *n = e->active_graph->nodes[i];
             if (n->desc->flow_kind != NODE_FLOW_EVENT) {
                 continue;
             }
@@ -3636,19 +3836,24 @@ static void ed_draw_toolbar(editor *e)
     }
     ImGui_SameLine();
     ed_toolbar_action(e, "Compile", 1, "", ed_compile);
-    ed_toolbar_action(e, "Zoom to fit", acount(e->bp->graph->nodes) > 0, "The graph has no nodes", ed_zoom_fit);
-    ed_toolbar_action(e, "Auto arrange", acount(e->bp->graph->nodes) > 0, "The graph has no nodes", ed_auto_arrange);
+    ed_toolbar_action(e, "Zoom to fit", acount(e->active_graph->nodes) > 0, "The graph has no nodes", ed_zoom_fit);
+    ed_toolbar_action(e, "Auto arrange", acount(e->active_graph->nodes) > 0, "The graph has no nodes", ed_auto_arrange);
     ImGui_SameLine();
     ed_toolbar_action(e, "Undo", acount(e->undo) > 0, "No undo entry is available", ed_undo);
     ed_toolbar_action(e, "Redo", acount(e->redo) > 0, "No redo entry is available", ed_redo);
 
-    int attached = e->instance != NULL;
-    int can_dispatch = entry && entry->reference_name;
+    const blueprint_instance *target_instance = e->inspection_instance
+                                                  ? e->inspection_instance
+                                                  : e->instance;
+    int attached = target_instance != NULL;
+    int can_dispatch = e->active_graph == e->bp->graph && entry && entry->reference_name;
     ed_toolbar_action(
         e,
         "Dispatch",
         can_dispatch,
-        !entry || !entry->reference_name
+        e->active_graph != e->bp->graph
+            ? "Dispatch is available from the default event graph"
+        : !entry || !entry->reference_name
             ? "Select a named event entry point"
             : "Dispatch the selected event; attach its runtime automatically",
         ed_dispatch_selected
@@ -3840,13 +4045,10 @@ static void ed_handle_input(editor *e)
         return;
     }
     if (e->connect_error[0] && mouse_clicked) {
-        ImVec2 min, max, close_min, close_max, action_min, action_max;
-        if (ed_connect_error_rect(e, &min, &max, &close_min, &close_max, &action_min, &action_max) &&
+        ImVec2 min, max, close_min, close_max;
+        if (ed_connect_error_rect(e, &min, &max, &close_min, &close_max) &&
             ed_point_in_rect(mouse, min, max)) {
-            /* UI-22: the accept button inserts the offered conversion. */
-            if (e->connect_offer && ed_point_in_rect(mouse, action_min, action_max)) {
-                ed_insert_conversion(e);
-            } else if (ed_point_in_rect(mouse, close_min, close_max)) {
+            if (ed_point_in_rect(mouse, close_min, close_max)) {
                 ed_clear_connect_error(e);
             }
             return;
@@ -4017,6 +4219,8 @@ editor *editor_new(blueprint *bp)
         return NULL;
     }
     e->bp = bp;
+    e->active_graph = bp ? bp->graph : NULL;
+    e->edit_revision_bp = bp;
     compile_report_init(&e->compile);
     e->ev = eval_view_new();
     e->icon_font = ed_load_icon_font();
@@ -4032,6 +4236,11 @@ blueprint_instance *editor_preview_instance(const editor *e)
 unsigned editor_preview_generation(const editor *e)
 {
     return e ? e->instance_generation : 0;
+}
+
+unsigned editor_edit_revision(const editor *e)
+{
+    return e ? e->edit_revision : 0;
 }
 
 void editor_preview_create(editor *e)
@@ -4050,18 +4259,18 @@ void editor_preview_create(editor *e)
     e->activation = NULL;
 }
 
-flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_error *error)
+static flow_run *editor_dispatch_instance(
+    editor *e,
+    blueprint_instance *target,
+    const char *name,
+    flow_inputs inputs,
+    flow_error *error
+)
 {
-    if (!e) {
+    if (!target) {
         return NULL;
     }
-    if (!e->instance) {
-        editor_preview_create(e);
-    }
-    if (!e->instance) {
-        return NULL;
-    }
-    flow_run *act = blueprint_instance_dispatch(e->instance, name, inputs, error);
+    flow_run *act = blueprint_instance_dispatch(target, name, inputs, error);
     if (!act) {
         return NULL;
     }
@@ -4070,11 +4279,57 @@ flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_
     return act;
 }
 
+flow_run *editor_dispatch_preview(editor *e, const char *name, flow_inputs inputs, flow_error *error)
+{
+    if (!e) {
+        return NULL;
+    }
+    if (!e->instance) {
+        editor_preview_create(e);
+    }
+    return editor_dispatch_instance(e, e->instance, name, inputs, error);
+}
+
+flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_error *error)
+{
+    if (!e) {
+        return NULL;
+    }
+    if (e->inspection_instance) {
+        return editor_dispatch_instance(e, (blueprint_instance *)e->inspection_instance, name, inputs, error);
+    }
+    return editor_dispatch_preview(e, name, inputs, error);
+}
+
+static void ed_refresh_edit_revision(editor *e)
+{
+    if (e->edit_revision_initialized && !e->edit_pending) {
+        return;
+    }
+    char *json = blueprint_save_json(e->bp);
+    if (!json) {
+        return;
+    }
+    int changed = e->edit_revision_initialized
+                    ? e->edit_revision_bp != e->bp || !e->edit_revision_snapshot ||
+                          strcmp(e->edit_revision_snapshot, json) != 0
+                    : e->edit_pending;
+    free(e->edit_revision_snapshot);
+    e->edit_revision_snapshot = json;
+    e->edit_revision_bp = e->bp;
+    e->edit_revision_initialized = 1;
+    e->edit_pending = 0;
+    if (changed) {
+        e->edit_revision++;
+    }
+}
+
 void editor_tick(editor *e, double monotonic_time)
 {
     if (!e) {
         return;
     }
+    ed_refresh_edit_revision(e);
     e->monotonic_time = monotonic_time;
     if (e->connect_error[0] && monotonic_time >= e->connect_error_until + ED_TOAST_FADE) {
         ed_clear_connect_error(e);
@@ -4089,6 +4344,77 @@ const blueprint *editor_blueprint(const editor *e)
     return e ? e->bp : NULL;
 }
 
+int editor_open_blueprint(editor *e, const blueprint *source, uint64_t graph_id)
+{
+    if (!e || !source || !blueprint_find_graph(source, graph_id)) {
+        return -1;
+    }
+    ed_begin_authoring_edit(e);
+    char *json = blueprint_save_json(source);
+    if (!json) {
+        return -1;
+    }
+    int result = ed_adopt_blueprint(e, json);
+    free(json);
+    if (result != 0) {
+        return -1;
+    }
+    ed_free_string_stack(&e->undo);
+    ed_free_string_stack(&e->redo);
+    e->inspection_instance = NULL;
+    e->inspection_run = NULL;
+    return editor_open_graph(e, graph_id);
+}
+
+int editor_open_graph(editor *e, uint64_t graph_id)
+{
+    if (!e || !e->bp) {
+        return -1;
+    }
+    return ed_switch_graph(e, blueprint_find_graph(e->bp, graph_id));
+}
+
+const graph *editor_active_graph(const editor *e)
+{
+    return e ? e->active_graph : NULL;
+}
+
+void editor_set_inspection_instance(editor *e, const blueprint_instance *instance)
+{
+    if (!e) {
+        return;
+    }
+    if (!instance && e->inspection_instance) {
+        e->activation = NULL;
+        e->inspection_trace = NULL;
+        e->inspection_trace_count = 0;
+    }
+    e->inspection_instance = instance;
+    if (instance) {
+        e->activation = (flow_run *)e->inspection_run;
+    }
+}
+
+void editor_set_inspection_run(editor *e, const flow_run *run)
+{
+    if (!e) {
+        return;
+    }
+    e->inspection_run = run;
+    if (e->inspection_instance) {
+        e->activation = (flow_run *)run;
+    }
+}
+
+void editor_set_inspection_trace(editor *e, const blueprint_instance_trace_entry *trace, int count)
+{
+    if (!e) {
+        return;
+    }
+    e->inspection_trace = trace;
+    e->inspection_trace_count = count > 0 ? count : 0;
+}
+
 void editor_free(editor *e)
 {
     if (!e) {
@@ -4098,11 +4424,13 @@ void editor_free(editor *e)
     ed_free_string_stack(&e->redo);
     free(e->pending_snapshot);
     free(e->clipboard);
+    free(e->edit_revision_snapshot);
     if (e->instance) {
         blueprint_instance_destroy(e->instance);
     }
     compile_report_free(&e->compile);
     blueprint_free(e->bp);
+    afree(e->graph_views);
     afree(e->views);
     afree(e->pins);
     afree(e->selected);
@@ -4115,7 +4443,7 @@ void editor_free(editor *e)
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
 {
     ed_snapshot_before(e);
-    node *n = graph_add_node(e->bp->graph, desc);
+    node *n = graph_add_node(e->active_graph, desc);
     if (!n) {
         return NULL;
     }
@@ -4188,24 +4516,51 @@ int editor_load(editor *e, const char *path)
     return result;
 }
 
+void editor_prepare_docking(void)
+{
+    editor_ui_prepare();
+}
+
+int editor_host_captures_keyboard(void)
+{
+    const ImGuiIO *io = ImGui_GetIO();
+    return io->WantCaptureKeyboard || io->WantTextInput;
+}
+
+void editor_set_event_catalog(editor *e, const editor_event_signature *events, int count)
+{
+    if (!e) {
+        return;
+    }
+    e->event_catalog = count > 0 ? events : NULL;
+    e->event_catalog_count = count > 0 ? count : 0;
+}
+
 void editor_draw(editor *e)
 {
     if (!e || !e->ev) {
         return;
     }
     ImGuiIO *io = ImGui_GetIO();
-    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    /* Empty canvas space starts graph gestures, not window moves. Keep title
-     * bars as the intentional window-move affordance for dock layout. */
-    io->ConfigWindowsMoveFromTitleBarOnly = true;
-    (void)ImGui_DockSpaceOverViewport();
     flow_state preview_state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
-    eval_view_set_instance(e->ev, e->instance);
-    if (editor_preview_allowed(preview_state)) {
-        eval_view_refresh(e->ev, e->bp->graph);
+    const blueprint_instance *display_instance = e->inspection_instance
+                                                   ? e->inspection_instance
+                                                   : e->instance;
+    const flow_run *display_run = e->inspection_run
+                                    ? e->inspection_run
+                                    : (e->inspection_instance
+                                           ? NULL
+                                           : (ed_activation_live(e) ? e->activation
+                                                                    : NULL));
+    eval_view_set_instance(e->ev, display_instance);
+    if (!e->inspection_run && editor_preview_allowed(preview_state)) {
+        eval_view_refresh(e->ev, e->active_graph);
     }
-    eval_view_set_run(e->ev, ed_activation_live(e) ? e->activation : NULL);
+    eval_view_set_run(e->ev, display_run);
     ImGui_SetNextWindowSize((ImVec2){ 960.0f, 640.0f }, ImGuiCond_FirstUseEver);
+    if (editor_ui_take_focus(EDITOR_UI_FOCUS_NODE_CANVAS)) {
+        ImGui_SetNextWindowFocus();
+    }
     if (!ImGui_Begin("Node Canvas", NULL, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         ImGui_End();
         return;
@@ -4214,7 +4569,7 @@ void editor_draw(editor *e)
     ed_draw_toolbar(e);
     /* A Dispatch click selects a fresh activation on the instance. Refresh the
      * display source before layout can ask for any pin values. */
-    eval_view_set_run(e->ev, ed_activation_live(e) ? e->activation : NULL);
+    eval_view_set_run(e->ev, display_run);
     e->canvas_min = ImGui_GetCursorScreenPos();
     e->canvas_size = ImGui_GetContentRegionAvail();
     ed_build_layout(e);
@@ -4244,66 +4599,5 @@ void editor_draw(editor *e)
     ed_handle_popups(e);
     ImGui_End();
     ed_draw_tree(e);
-    ImGui_SetNextWindowSize((ImVec2){ 420.0f, 180.0f }, ImGuiCond_FirstUseEver);
-    if (ImGui_Begin("Output Log", NULL, 0)) {
-        ed_draw_log(e);
-    }
-    ImGui_End();
     ed_draw_details(e);
-    ImGui_SetNextWindowSize((ImVec2){ 420.0f, 180.0f }, ImGuiCond_FirstUseEver);
-    if (ImGui_Begin("Compiler Results", NULL, 0)) {
-        if (!acount(e->compile.items)) {
-            ImGui_TextUnformatted("No compiler diagnostics.");
-        }
-        for (int i = 0; i < acount(e->compile.items); i++) {
-            const compile_diagnostic *d = &e->compile.items[i];
-            if (ImGui_SelectableEx(d->message, 0, 0, (ImVec2){ 0.0f, 0.0f })) {
-                node *n = graph_node_by_id(e->bp->graph, d->node_id);
-                if (n) {
-                    editor_reveal_node(e, n);
-                }
-            }
-        }
-    }
-    ImGui_End();
-    ImGui_SetNextWindowSize((ImVec2){ 300.0f, 220.0f }, ImGuiCond_FirstUseEver);
-    if (ImGui_Begin("Breakpoints", NULL, 0)) {
-        bool enabled = e->bp->graph->breakpoints_enabled != 0;
-        if (ImGui_Checkbox("Enable all", &enabled)) {
-            ed_snapshot_before(e);
-            graph_set_all_breakpoints(e->bp->graph, enabled);
-        }
-        for (int i = 0; i < acount(e->bp->graph->nodes); i++) {
-            node *n = e->bp->graph->nodes[i];
-            if (!n->breakpoint_enabled) {
-                continue;
-            }
-            bool active = n->breakpoint != 0;
-            char label[128];
-            snprintf(
-                label,
-                sizeof label,
-                "%s##bp_%llu",
-                n->desc->name,
-                (unsigned long long)n->id
-            );
-            if (ImGui_Checkbox(label, &active)) {
-                ed_snapshot_before(e);
-                graph_set_breakpoint(e->bp->graph, n, active);
-            }
-        }
-    }
-    ImGui_End();
-    ImGui_SetNextWindowSize((ImVec2){ 240.0f, 180.0f }, ImGuiCond_FirstUseEver);
-    if (ImGui_Begin("Minimap", NULL, 0)) {
-        ImGui_Text(
-            "%d nodes  %d links",
-            acount(e->bp->graph->nodes),
-            acount(e->bp->graph->edges)
-        );
-        if (ImGui_Button("Zoom to fit")) {
-            ed_zoom_fit(e);
-        }
-    }
-    ImGui_End();
 }

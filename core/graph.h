@@ -41,6 +41,7 @@ typedef struct edge
     uint64_t to_id;
     uint64_t to_pin_id;
     graph_edge_kind kind;
+    const node_desc *conversion; /* borrowed registry descriptor for data edges */
     union
     {
         int exec_order;
@@ -78,6 +79,14 @@ int graph_kind_from_name(const char *name, graph_kind *kind);
 node *graph_add_node(graph *g, const node_desc *desc);
 
 int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin);
+int graph_connect_data_conversion(
+    graph *g,
+    node *from,
+    int from_pin,
+    node *to,
+    int to_pin,
+    const node_desc *conversion
+);
 int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin);
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order);
 int graph_connect_data_ids(graph *g, uint64_t from_node, uint64_t from_pin, uint64_t to_node, uint64_t to_pin);
@@ -101,6 +110,7 @@ int graph_remove_node(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
+const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
 int graph_exec_input_source_at(
     const graph *g,

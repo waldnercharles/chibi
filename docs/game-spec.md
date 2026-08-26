@@ -27,6 +27,7 @@ authoring).
 
 - [ECS](#ecs-entity-and-component-storage) entity and component storage
 - [PROTO](#proto-prototypes-and-spawning) prototypes and spawning
+- [SCENE](#scene-scene-documents) scene documents
 - [BEH](#beh-behavior-attachment) behavior attachment
 - [PAR](#par-declared-effects-and-parallel-execution) declared effects and parallel execution
 - [APPLY](#apply-authoring-against-a-live-world) authoring against a live world
@@ -134,6 +135,38 @@ formatting, so files diff cleanly.
 `PROTO-8` Editing a prototype document MUST NOT retroactively change entities
 already spawned from it.
 
+`PROTO-9` The prototype editor MUST inspect and write registered component
+fields through descriptor metadata without allocating an entity.
+
+`PROTO-10` Prototype behavior attachments MUST support deterministic add, remove,
+and duplicate rejection by asset name.
+
+`PROTO-11` Capturing an instance against a prototype MUST write only changed
+fields and MUST NOT include unchanged sibling fields.
+
+`PROTO-12` Applying sparse component overrides MUST preserve every unspecified
+field value on the target entity.
+
+## SCENE: scene documents
+
+`SCENE-1` A scene entity MUST identify its reusable prototype and the behavior
+asset names attached to that entity.
+
+`SCENE-2` Loading and saving a scene MUST preserve entity names, prototype names,
+and behavior attachment names.
+
+`SCENE-3` Scene document output MUST be deterministic for the same authored
+entity order and behavior order.
+
+`SCENE-4` A scene MUST reject duplicate entity names rather than silently
+merging two entities.
+
+`SCENE-5` Loading an unsupported scene document version MUST fail before any
+scene entity is created.
+
+`SCENE-6` Scene documents MUST preserve prototype-relative behavior additions
+and removals, while remaining able to load a flat legacy behavior list.
+
 ## BEH: behavior attachment
 
 See `docs/adr/0017`.
@@ -184,6 +217,13 @@ the scheduler alone never reclaims one. The frame pump MUST therefore release
 every finished activation it is not still inspecting, so dispatching an event to
 an entity every frame reclaims that activation's storage within the frame and
 total activation storage stays flat over time.
+
+`BEH-13` The game behavior host MUST expose deterministic per-entity attachment
+inspection, including the asset name, applied definition, runtime instance, and
+attachment order, without exposing mutable attachment storage.
+
+`BEH-14` Attaching a behavior asset MUST run its optional `Begin` event once. A
+missing `Begin` event is a no-op, and a replacement MUST NOT dispatch it twice.
 
 ## PAR: declared effects and parallel execution
 

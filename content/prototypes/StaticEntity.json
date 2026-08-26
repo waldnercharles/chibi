@@ -1,0 +1,8 @@
+{
+  "name": "StaticEntity",
+  "components": {
+    "GameTransform": { "x": 80, "y": 0 },
+    "GameHealth": { "current": 100, "maximum": 100 }
+  },
+  "behaviors": []
+}

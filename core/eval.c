@@ -201,9 +201,32 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
                 runtime_node_set_visiting(state, 0);
                 return r;
             }
+            const node_desc *conversion = graph_input_conversion(g, n, i);
+            if (conversion) {
+                if (!conversion->fn) {
+                    runtime_node_set_visiting(state, 0);
+                    return fail(ctx, n, i, NODE_EVAL_INVALID, "edge conversion has no function");
+                }
+                inputs[i] = conversion->fn(&inputs[i], 1, a);
+                if (inputs[i].type != n->input_pins[i].type ||
+                    (inputs[i].type == PIN_STRUCT && !inputs[i].ptr)) {
+                    runtime_node_set_visiting(state, 0);
+                    return fail(ctx, n, i, NODE_EVAL_INVALID, "edge conversion failed");
+                }
+            }
             pin_coerce(&inputs[i], &n->input_pins[i]);
         } else {
             inputs[i] = n->input_pins[i].default_value;
+        }
+    }
+    /* Reflected wrappers pass structs by value and dereference ptr. */
+    if (n->desc->pure_kind == NODE_PURE_CALL) {
+        for (int i = 0; i < n->input_count; i++) {
+            if (n->input_pins[i].kind == PIN_DATA &&
+                n->input_pins[i].type == PIN_STRUCT && !inputs[i].ptr) {
+                runtime_node_set_visiting(state, 0);
+                return fail(ctx, n, i, NODE_EVAL_INVALID, "data input has no struct value");
+            }
         }
     }
     switch (n->desc->pure_kind) {

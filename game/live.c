@@ -9,23 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct game_live_definition
-{
-    char *name;
-    blueprint *working;
-    blueprint *applied;
-    game_live_world *world;
-    int registered;
-    int dirty;
-};
-
-struct game_live_world
-{
-    ecs_world *ecs;
-    game_behavior_world *behaviors;
-    game_live_definition **definitions;
-};
-
 static void set_message(char *message, size_t size, const char *format, ...)
 {
     if (!message || !size) {
@@ -62,6 +45,7 @@ game_live_definition *game_live_definition_new(const char *asset_name, blueprint
     definition->name = xstrdup(asset_name);
     definition->working = working;
     definition->applied = applied;
+    compile_report_init(&definition->diagnostics);
     return definition;
 }
 
@@ -72,13 +56,14 @@ void game_live_definition_free(game_live_definition *definition)
     }
     blueprint_free(definition->working);
     blueprint_free(definition->applied);
+    compile_report_free(&definition->diagnostics);
     free(definition->name);
     free(definition);
 }
 
-blueprint *game_live_working(game_live_definition *definition)
+game_live_definition *game_live_find_definition(game_live_world *world, const char *asset_name)
 {
-    return definition ? definition->working : NULL;
+    return asset_name ? find_definition(world, asset_name) : NULL;
 }
 
 int game_live_sync_working(game_live_definition *definition, const blueprint *source)
@@ -96,21 +81,6 @@ int game_live_sync_working(game_live_definition *definition, const blueprint *so
     definition->working = copy;
     definition->dirty = 1;
     return 0;
-}
-
-const blueprint *game_live_applied(const game_live_definition *definition)
-{
-    return definition ? definition->applied : NULL;
-}
-
-const char *game_live_definition_name(const game_live_definition *definition)
-{
-    return definition ? definition->name : NULL;
-}
-
-int game_live_definition_dirty(const game_live_definition *definition)
-{
-    return definition ? definition->dirty : 0;
 }
 
 int game_live_mark_dirty(game_live_definition *definition)
@@ -170,6 +140,29 @@ int game_live_add_definition(game_live_world *world, game_live_definition *defin
     return 0;
 }
 
+int game_live_duplicate_definition(game_live_world *world, const char *asset_name, const blueprint *source)
+{
+    if (!world || !asset_name || !asset_name[0] || !source ||
+        find_definition(world, asset_name)) {
+        return -1;
+    }
+    char *json = blueprint_save_json(source);
+    blueprint *working = json ? blueprint_load_json(json) : NULL;
+    free(json);
+    game_live_definition *definition = working
+                                         ? game_live_definition_new(asset_name, working)
+                                         : NULL;
+    if (!definition) {
+        blueprint_free(working);
+        return -1;
+    }
+    if (game_live_add_definition(world, definition) != 0) {
+        game_live_definition_free(definition);
+        return -1;
+    }
+    return 0;
+}
+
 int game_live_apply(game_live_world *world, game_live_definition *definition, char *message, size_t message_size)
 {
     if (!world || !definition || definition->world != world || !definition->registered) {
@@ -187,16 +180,17 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
         set_message(message, message_size, "working definition could not be loaded: %s", graph_last_error());
         return -1;
     }
-    compile_report report;
-    compile_report_init(&report);
-    if (blueprint_compile(snapshot, &report) != 0 && compile_report_blocked(&report)) {
-        const compile_diagnostic *diagnostic = compile_report_first_error(&report);
+    compile_report_free(&definition->diagnostics);
+    compile_report_init(&definition->diagnostics);
+    if (blueprint_compile(snapshot, &definition->diagnostics) != 0 &&
+        compile_report_blocked(&definition->diagnostics)) {
+        const compile_diagnostic *diagnostic = compile_report_first_error(
+            &definition->diagnostics
+        );
         set_message(message, message_size, "apply blocked: %s", diagnostic->message);
-        compile_report_free(&report);
         blueprint_free(snapshot);
         return -1;
     }
-    compile_report_free(&report);
     blueprint *old = NULL;
     if (game_behavior_replace_asset(world->behaviors, definition->name, snapshot, &old) !=
         0) {
@@ -214,9 +208,4 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
         definition->name
     );
     return 0;
-}
-
-game_behavior_world *game_live_behaviors(game_live_world *world)
-{
-    return world ? world->behaviors : NULL;
 }

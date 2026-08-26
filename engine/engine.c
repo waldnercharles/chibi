@@ -1,7 +1,9 @@
 #include "engine.h"
 
 #include "../core/array.h"
+#include "../core/registry.h"
 #include "../core/xalloc.h"
+#include "../game/components.h" /* IWYU pragma: keep */
 
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +22,6 @@ struct engine
     engine_system *systems;
     engine_render_fn render;
     void *render_user;
-    ecs_entity player;
     engine_focus focus;
     engine_frame_timing timing;
 };
@@ -98,33 +99,34 @@ int engine_route_escape(engine *engine)
     return 0;
 }
 
-int engine_set_player(engine *engine, ecs_entity entity)
+static void legacy_input_delta(const char *action, double value, double *x, double *y)
 {
-    if (!engine || !ecs_entity_is_alive(engine->world, entity)) {
-        return -1;
+    *x = 0.0;
+    *y = 0.0;
+    if (strcmp(action, "MoveLeft") == 0 || strcmp(action, "MoveRight") == 0) {
+        *x = value;
     }
-    engine->player = entity;
-    return 0;
+    if (strcmp(action, "MoveUp") == 0 || strcmp(action, "MoveDown") == 0) {
+        *y = value;
+    }
 }
 
-int engine_dispatch_player_input(engine *engine, const char *action, double value, int pressed, flow_error *error)
+int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error)
 {
-    if (!engine || !action || engine->focus != ENGINE_FOCUS_VIEWPORT ||
-        !ecs_entity_is_alive(engine->world, engine->player)) {
+    if (!engine || !action || engine->focus != ENGINE_FOCUS_VIEWPORT) {
         return FLOW_ERR_STATE;
     }
+    double x;
+    double y;
+    legacy_input_delta(action, pressed ? value : 0.0, &x, &y);
+    CF_V2 delta = { (float)x, (float)y };
     pin_value inputs[] = {
-        { .type = PIN_NAME, .type_name = "name", .str = action },
-        { .type = PIN_F64, .type_name = "double", .d = value },
-        { .type = PIN_BOOL, .type_name = "bool", .b = pressed != 0 },
+        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &delta },
     };
-    return game_behavior_dispatch(
-        game_live_behaviors(engine->live),
-        engine->player,
-        "Input",
-        (flow_inputs){ inputs, 3, NULL },
-        error
-    );
+    const flow_inputs dispatch = registry_type_by_name("CF_V2")
+                                   ? (flow_inputs){ inputs, 1, NULL }
+                                   : (flow_inputs){ 0 };
+    return game_behavior_dispatch_all(engine->live->behaviors, "Input", dispatch, error);
 }
 
 int engine_frame(engine *engine, double monotonic_time)
@@ -137,7 +139,7 @@ int engine_frame(engine *engine, double monotonic_time)
     if (clock_now(&start) != 0) {
         return FLOW_ERR_STATE;
     }
-    int result = game_behavior_pump(game_live_behaviors(engine->live), monotonic_time);
+    int result = game_behavior_pump(engine->live->behaviors, monotonic_time);
     if (clock_now(&end) != 0) {
         return FLOW_ERR_STATE;
     }

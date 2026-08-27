@@ -1,6 +1,6 @@
 ---
 title: Hot Cache
-updated: 2026-08-27T19:07:40Z
+updated: 2026-08-27T20:53:02Z
 ---
 
 # Hot Cache
@@ -9,18 +9,18 @@ updated: 2026-08-27T19:07:40Z
 
 ## Recent Activity
 
+- [2026-08-27T20:53:02Z] CAPTURE: recorded the ECS-native editor experiment and baseline checkpoint.
 - [2026-08-27T19:07:40Z] CAPTURE: recorded the UE5-aligned entity authoring MVP and its phased implementation order.
 - [2026-08-27T05:23:15Z] WIKI_RESTORE: restored the c-blueprints vault pages, manifest, index, log, and hot cache after deletion.
-- [2026-08-27T05:10:02Z] WIKI_UPDATE: synced c-blueprints and created six pages covering runtime ownership, ECS behavior composition, live authoring, architecture decisions, and validation.
 
 ## Active Threads
 
 - Phase 10 game runtime: build the real operator catalog, measure pooled activation cost, then validate the 2,000-entity scene target.
-- UE5-aligned editor: finish Prototype authoring first, then component defaults, reusable Behaviors, isolated preview, and scene instances one slice at a time.
+- Editor architecture experiment: compare query-driven ECS Systems with per-entity Behavior instances, starting with one vertical slice.
 
 ## Key Takeaways
 
-The editor should separate the reusable Prototype asset from scene instances and isolated preview targets. Prototype components and defaults belong to asset authoring; World Outliner selection belongs to scene inspection. ECS remains the runtime storage and composition layer.
+The runtime architecture is preserved while the editor model is tested separately. A Prototype can remain component composition, while a System may define behavior over every Entity matching a query. The experiment must measure usability, runtime cost, latent state, and debugging before replacing the current model.
 
 ## Flagged Contradictions
 

@@ -20,7 +20,7 @@ base_confidence: 0.86
 lifecycle: draft
 lifecycle_changed: 2026-08-27
 created: 2026-08-27T05:10:02Z
-updated: 2026-08-27T19:07:40Z
+updated: 2026-08-27T20:53:02Z
 ---
 
 # c-blueprints architecture decisions
@@ -60,6 +60,12 @@ The implementation is phased so each slice can be validated independently:
 4. Preview one Prototype and its Behaviors in an isolated runtime world.
 5. Add Prototype instances to a scene and inspect or override instance state.
 6. Add the broader Blueprint graph workflow only where the MVP needs it.
+
+## ECS-native editor experiment
+
+The current implementation is preserved as a baseline at commit `672f4ca8` on `main`. The branch `experiment/ecs-native-editor` explores an ECS-native authoring model rather than replacing the runtime architecture immediately.
+
+The experiment treats a Prototype as component composition and treats a System as behavior over a query of matching Entities. Its first slice will author one Prototype and one query-driven system, then compare authoring clarity, runtime cost, per-entity state, and debugging against the current per-entity Behavior model. This is an experiment, not an accepted replacement. ^[inferred]
 
 ## Superseded directions
 

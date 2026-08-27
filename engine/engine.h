@@ -4,6 +4,7 @@
 #include "../ecs/ecs.h"
 #include "../game/live.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct engine engine;
@@ -36,6 +37,9 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
 int engine_set_focus(engine *engine, engine_focus focus);
 engine_focus engine_get_focus(const engine *engine);
 int engine_route_escape(engine *engine);
+int engine_set_playing(engine *engine, bool playing);
+bool engine_is_playing(const engine *engine);
+int engine_step(engine *engine);
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error);
 int engine_frame(engine *engine, double monotonic_time);
 const engine_frame_timing *engine_last_timing(const engine *engine);

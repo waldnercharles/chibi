@@ -99,6 +99,39 @@ graph *blueprint_find_graph_by_name(const blueprint *bp, const char *name)
     return NULL;
 }
 
+static void blueprint_refresh_graph_references(blueprint *bp, uint64_t graph_id, const char *name)
+{
+    for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
+        graph *g = bp->graphs[graph_index];
+        for (int node_index = 0; node_index < acount(g->nodes); node_index++) {
+            node *n = g->nodes[node_index];
+            if (n->reference_id != graph_id ||
+                (n->desc != &NODE_CallFunction &&
+                 n->desc != &NODE_CallPureFunction && n->desc != &NODE_CallMacro)) {
+                continue;
+            }
+            n->reference_name = graph_own_str(g, name, strlen(name));
+        }
+    }
+}
+
+int blueprint_rename_graph(blueprint *bp, uint64_t graph_id, const char *name)
+{
+    if (!bp || !blueprint_mutable(bp) || graph_id == 0 || !name || !name[0]) {
+        return -1;
+    }
+    graph *g = blueprint_find_graph(bp, graph_id);
+    graph *same = blueprint_find_graph_by_name(bp, name);
+    if (!g || (same && same != g)) {
+        return -1;
+    }
+    if (graph_set_metadata(g, name, g->description ? g->description : "") != 0) {
+        return -1;
+    }
+    blueprint_refresh_graph_references(bp, graph_id, name);
+    return 0;
+}
+
 int blueprint_delete_graph(blueprint *bp, uint64_t graph_id)
 {
     if (!bp || !blueprint_mutable(bp) || graph_id == 0) {
@@ -490,95 +523,94 @@ node *blueprint_add_self_node(blueprint *bp)
     return n;
 }
 
-node *blueprint_add_function_call_node(blueprint *bp, graph *function_graph)
+static int blueprint_add_call_pin(graph *caller, node *call, int output, const pin_spec *source)
 {
-    if (!bp || !blueprint_mutable(bp) || !function_graph ||
-        function_graph->kind != GRAPH_FUNCTION) {
+    pin_spec pin = *source;
+    pin.id = 0;
+    if (pin.type_name) {
+        pin.type_name = graph_own_str(caller, pin.type_name, strlen(pin.type_name));
+    }
+    if (pin.container >= PIN_CONTAINER_ARRAY && pin.default_value.ptr) {
+        pin.default_value.ptr = pin_array_clone_to_graph(
+            caller,
+            (const pin_array *)pin.default_value.ptr
+        );
+    } else if (
+        (pin.type == PIN_STR || pin.type == PIN_NAME) && pin.default_value.str
+    ) {
+        pin.default_value.str = graph_own_str(
+            caller,
+            pin.default_value.str,
+            strlen(pin.default_value.str)
+        );
+    }
+    return graph_add_pin(caller, call, output, &pin) < 0 ? -1 : 0;
+}
+
+static node *blueprint_add_call_node(blueprint *bp, graph *caller, graph *target, graph_kind kind)
+{
+    if (!bp || !blueprint_mutable(bp) || !caller || caller->owner != bp ||
+        !target || target->owner != bp || target->kind != kind) {
         return NULL;
     }
-    node *entry = graph_node_by_id(function_graph, function_graph->entry_id);
-    node *ret = graph_node_by_id(function_graph, function_graph->return_id);
+    node *entry = graph_node_by_id(target, target->entry_id);
+    node *ret = graph_node_by_id(target, target->return_id);
     if (!entry || !ret) {
         return NULL;
     }
-    int pure = 1;
-    for (int i = 0; i < entry->output_count; i++) {
-        pure &= entry->output_pins[i].kind != PIN_EXEC;
+    int pure = kind == GRAPH_FUNCTION;
+    for (int i = 0; pure && i < entry->output_count; i++) {
+        pure = entry->output_pins[i].kind != PIN_EXEC;
     }
-    for (int i = 0; i < ret->input_count; i++) {
-        pure &= ret->input_pins[i].kind != PIN_EXEC;
+    for (int i = 0; pure && i < ret->input_count; i++) {
+        pure = ret->input_pins[i].kind != PIN_EXEC;
     }
-    node *call = graph_add_node(bp->graph, pure ? &NODE_CallPureFunction : &NODE_CallFunction);
+    const node_desc *desc = kind == GRAPH_MACRO
+                              ? &NODE_CallMacro
+                              : (pure ? &NODE_CallPureFunction : &NODE_CallFunction);
+    node *call = graph_add_node(caller, desc);
     if (!call) {
         return NULL;
     }
-    graph_set_node_reference(
-        bp->graph,
-        call,
-        function_graph->graph_id,
-        function_graph->name
-    );
+    if (graph_set_node_reference(caller, call, target->graph_id, target->name) != 0) {
+        graph_remove_node(caller, call);
+        return NULL;
+    }
     for (int i = 0; i < entry->output_count; i++) {
-        pin_spec p = entry->output_pins[i];
-        if (p.kind != PIN_DATA) {
-            continue;
-        }
-        p.id = 0;
-        if (graph_add_pin(bp->graph, call, 0, &p) < 0) {
+        if (entry->output_pins[i].kind == PIN_DATA &&
+            blueprint_add_call_pin(caller, call, 0, &entry->output_pins[i]) != 0) {
+            graph_remove_node(caller, call);
             return NULL;
         }
     }
     for (int i = 0; i < ret->input_count; i++) {
-        pin_spec p = ret->input_pins[i];
-        if (p.kind != PIN_DATA) {
-            continue;
-        }
-        p.id = 0;
-        if (graph_add_pin(bp->graph, call, 1, &p) < 0) {
+        if (ret->input_pins[i].kind == PIN_DATA &&
+            blueprint_add_call_pin(caller, call, 1, &ret->input_pins[i]) != 0) {
+            graph_remove_node(caller, call);
             return NULL;
         }
     }
     return call;
+}
+
+node *blueprint_add_function_call_node_to_graph(blueprint *bp, graph *caller, graph *function_graph)
+{
+    return blueprint_add_call_node(bp, caller, function_graph, GRAPH_FUNCTION);
+}
+
+node *blueprint_add_macro_call_node_to_graph(blueprint *bp, graph *caller, graph *macro_graph)
+{
+    return blueprint_add_call_node(bp, caller, macro_graph, GRAPH_MACRO);
+}
+
+node *blueprint_add_function_call_node(blueprint *bp, graph *function_graph)
+{
+    return blueprint_add_function_call_node_to_graph(bp, bp ? bp->graph : NULL, function_graph);
 }
 
 node *blueprint_add_macro_call_node(blueprint *bp, graph *macro_graph)
 {
-    if (!bp || !blueprint_mutable(bp) || !macro_graph ||
-        macro_graph->kind != GRAPH_MACRO) {
-        return NULL;
-    }
-    node *call = graph_add_node(bp->graph, &NODE_CallMacro);
-    if (!call) {
-        return NULL;
-    }
-    graph_set_node_reference(bp->graph, call, macro_graph->graph_id, macro_graph->name);
-    return call;
-}
-
-node *blueprint_add_call_event_node(blueprint *bp, node *event_node)
-{
-    if (!bp || !blueprint_mutable(bp) || !event_node ||
-        event_node->desc->flow_kind != NODE_FLOW_EVENT) {
-        return NULL;
-    }
-    node *n = graph_add_node(bp->graph, &NODE_CallEvent);
-    if (!n) {
-        return NULL;
-    }
-    graph_set_node_reference(bp->graph, n, event_node->id, event_node->reference_name);
-    for (int i = 0; i < event_node->output_count; i++) {
-        const pin_spec *p = &event_node->output_pins[i];
-        if (p->kind != PIN_DATA) {
-            continue;
-        }
-        pin_spec param = *p;
-        param.id = 0;
-        param.default_value = (pin_value){ 0 };
-        if (graph_add_pin(bp->graph, n, 0, &param) < 0) {
-            return NULL;
-        }
-    }
-    return n;
+    return blueprint_add_macro_call_node_to_graph(bp, bp ? bp->graph : NULL, macro_graph);
 }
 
 graph *blueprint_add_function(blueprint *bp, const char *name, int pure)

@@ -58,12 +58,42 @@ void game_live_definition_free(game_live_definition *definition)
     blueprint_free(definition->applied);
     compile_report_free(&definition->diagnostics);
     free(definition->name);
+    free(definition->path);
     free(definition);
 }
 
 game_live_definition *game_live_find_definition(game_live_world *world, const char *asset_name)
 {
     return asset_name ? find_definition(world, asset_name) : NULL;
+}
+
+const char *game_live_definition_path(const game_live_definition *definition)
+{
+    return definition ? definition->path : NULL;
+}
+
+int game_live_definition_set_path(game_live_definition *definition, const char *path)
+{
+    if (!definition || !path || !path[0]) {
+        return -1;
+    }
+    char *copy = xstrdup(path);
+    free(definition->path);
+    definition->path = copy;
+    return 0;
+}
+
+int game_live_definition_count(const game_live_world *world)
+{
+    return world ? acount(world->definitions) : 0;
+}
+
+game_live_definition *game_live_definition_at(game_live_world *world, int index)
+{
+    if (!world || index < 0 || index >= acount(world->definitions)) {
+        return NULL;
+    }
+    return world->definitions[index];
 }
 
 int game_live_sync_working(game_live_definition *definition, const blueprint *source)

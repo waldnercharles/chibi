@@ -103,8 +103,6 @@ struct node
     int output_count;
     pin_spec *input_pins;
     pin_spec *output_pins;
-    char *title_override;
-    char *comment;
     uint64_t reference_id;
     char *reference_name;
     float x, y;

@@ -76,7 +76,7 @@ int demo_graph_seed_flow(graph *g)
         return -1;
     }
 
-    if (graph_set_event_name(g, event, "OnStart")) {
+    if (graph_set_event_name(g, event, "Begin")) {
         return -1;
     }
     pin_value true_value = { .type = PIN_BOOL, .b = true };

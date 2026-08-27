@@ -1,6 +1,9 @@
 # Editor document system
 
-Status: the explicit active-document slice is implemented. The editor uses three top-level document kinds: `Scene`, `Prototype`, and `Behavior`. A generic document registry is reserved for future asset editors; it is not implemented by the current UI slices.
+Status: ADR 0021 and `docs/unreal-blueprint-editor-plan.md` define the current
+workflow. The editor uses three top-level document kinds: `Scene`, `Prototype`,
+and `Behavior`. A generic document registry is reserved for future asset
+editors; it is not implemented by the current UI slices.
 
 ## Purpose
 
@@ -22,12 +25,15 @@ A Scene document represents one scene resource or the current in-memory scene.
 Its default surfaces are:
 
 - Scene viewport;
-- Scene hierarchy;
-- Details for the selected scene instance;
-- scene and runtime output;
+- World Outliner;
+- the universal Inspector for the selected scene instance;
+- Scene Runtime controls and diagnostics;
 - Content Drawer for opening or spawning related assets.
 
-A scene actor is a selection inside the Scene document, not a fourth document kind. Its Details surface can show prototype identity, component overrides, behavior additions and removals, and runtime attachment state.
+A scene actor is a selection inside the Scene document, not a fourth document kind.
+Its Inspector can show Prototype identity, inherited/local component fields, and
+runtime attachment state. Scene instances cannot add or remove components or
+Behaviors.
 
 ### Prototype
 
@@ -41,10 +47,10 @@ Its default surfaces are:
 - prototype defaults, includes, and validation;
 - save and apply commands where the model permits them.
 
-The current Prototype Details surface implements the first authoring step: it
-shows the selected prototype identity and attached behavior assets, then adds
-an already registered behavior through the Properties panel. The Content
-Drawer remains an asset browser and does not own attachment commands.
+Components owns Prototype component structure. My Blueprint lists attached
+Behavior modules and their graph members. Inspector edits Prototype defaults and
+reports dirty state. The Content Drawer remains an asset browser and does not
+own attachment commands.
 
 The preview must use an isolated runtime or preview world. Editing a prototype must not mutate an already spawned scene instance.
 
@@ -55,10 +61,10 @@ A Behavior document represents one behavior asset and its working blueprint.
 Its default surfaces are:
 
 - the event graph canvas;
-- the graph tree for event, function, and macro graphs;
-- node and pin Details;
-- compiler results;
-- breakpoints and runtime inspection when an instance is selected.
+- My Blueprint for event, function, macro, and variable members;
+- the universal Inspector for node and variable context;
+- compiler results and Output Log;
+- runtime inspection only when a Scene Runtime attachment is selected.
 
 Opening a behavior preserves graph view state by stable graph identity. Runtime inspection is a selection subcontext, not a separate document kind.
 
@@ -108,11 +114,19 @@ The document/context owner should decide which panel windows submit content for 
 The current direction is:
 
 - central tabs for Scene and Node Canvas;
-- a left context area for Scene hierarchy and Blueprint tree;
-- a right Details area split between graph-node Details and Prototype Details;
-- one bottom tab host for Content Drawer, Breakpoints, Compiler Results, and Output Log.
+- a left Components/My Blueprint area for Blueprint documents;
+- a left World Outliner for Scene documents;
+- one right universal Inspector;
+- one bottom tab host for Compiler Results, Output Log, and Content Drawer.
 
-Content Drawer is open by default in the bottom host. It scans the configurable `content/` root, opens at that root, navigates one directory at a time, and preserves project-relative paths through breadcrumbs and back/forward history. It supports Grid and List views, case-insensitive path search, single selection, and double-click activation. Recognized prototype and behavior files open through their existing document commands; unknown files remain visible without a fabricated type. A persistent asset index, resource thumbnails, and drag/drop are deferred.
+Content Drawer is a normal dockable tab and is closed by default in the Blueprint
+workspace. It scans the configurable `content/` root, opens at that root,
+navigates one directory at a time, and preserves project-relative paths through
+breadcrumbs and back/forward history. It supports Grid and List views,
+case-insensitive path search, single selection, and double-click activation.
+Recognized Prototype and Behavior files open through their document commands;
+unknown files remain visible without a fabricated type. A persistent asset
+index, resource thumbnails, and drag/drop are deferred.
 
 ## Data-driven boundaries
 
@@ -128,16 +142,22 @@ All edits should go through model commands or existing mutation APIs so they rem
 
 ## Growth path
 
-1. The host active-document state, filesystem-backed Content Drawer, and the first Prototype Details behavior attachment command are implemented by this slice.
-2. Build Scene Details for selected instances.
-3. Build the Prototype preview and Components surfaces.
-4. Add behavior removal, new behavior authoring, and the live apply boundary.
-5. Route future Behavior document view state and panel availability through the exposed context.
-6. Extract the shared document and panel descriptor contract before adding another asset editor.
+1. The host active-document state and filesystem-backed Content Drawer remain
+   fixed boundaries.
+2. Complete the universal Inspector's scene-instance override and Revert paths.
+3. Add document-aware history and complete Revert All behavior.
+4. Add Prototype Preview as a separate runtime target.
+5. Route future Behavior document view state and panel availability through the
+   exposed context.
+6. Extract the shared document and panel descriptor contract before adding
+   another asset editor.
 
 Do not implement a generic registry before the first three document kinds expose real workflows. The registry should capture repeated contracts from those implementations rather than guess at every future editor in advance.
 
-## Implemented active-document slice
+## Historical active-document slice
+
+The following notes describe the pre-ADR-0021 slice and remain for migration
+history. The plan and ADR above define the current shell.
 
 `app/scene_authoring.c` now owns one explicit `app_editor_document_context` with a fixed kind switch and a borrowed stable identity. The current transitions are:
 
@@ -156,9 +176,10 @@ The current code has the model seams but not the full document router:
 
 - `editor/editor.c` still owns behavior graph editing and graph view state, while the host owns the top-level context;
 - `editor/ui_shell.c` owns theme and docking;
-- prototype component APIs and an isolated preview still need replacement surfaces;
-- the Prototype Details panel currently attaches registered behavior assets but does not remove them or create new behavior assets;
-- attachment is an in-memory model command; prototype save and the full live apply lifecycle remain separate commands;
-- the Scene hierarchy is still read-only;
-- an isolated prototype preview still needs an explicit preview-world boundary;
-- scene-instance Details and context-specific panel visibility still need to be routed from the exposed context.
+- Prototype Preview still needs an explicit preview-world boundary;
+- scene-instance field editing needs document history and complete Revert All
+  behavior;
+- Prototype Preview still needs its separate runtime world;
+- Save As uses deterministic content-root paths because a file-picker UI is not
+  implemented;
+- the context router is explicit but remains a fixed three-kind switch.

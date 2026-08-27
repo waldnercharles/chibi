@@ -115,13 +115,6 @@ static pin_spec set_variable_outputs[] = {
 static pin_spec self_outputs[] = {
     { "Self", PIN_HANDLE, NULL, PIN_DATA },
 };
-static pin_spec call_event_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-};
-static pin_spec call_event_outputs[] = {
-    { "Then", PIN_FLOW, NULL, PIN_EXEC },
-};
-
 static pin_spec function_entry_outputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
 };
@@ -438,40 +431,6 @@ static int flow_call_macro(node *n, flow_context *ctx)
     return flow_execute_function(n, ctx, 1);
 }
 
-static int flow_call_event(node *n, flow_context *ctx)
-{
-    blueprint_instance *bi = flow_context_instance(ctx);
-    if (!bi) {
-        return flow_context_fail(ctx, FLOW_ERR_STATE, "Call Event requires an instance");
-    }
-    node *target = graph_node_by_id(bi->bp->graph, n->reference_id);
-    if (!target || target->desc->flow_kind != NODE_FLOW_EVENT) {
-        return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "Call Event references a missing event");
-    }
-    int count = n->input_count - 1;
-    pin_value *params = count
-                          ? (pin_value *)flow_context_scratch_alloc(ctx, (size_t)count * sizeof *params)
-                          : NULL;
-    if (count && !params) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Call Event parameter allocation failed");
-    }
-    for (int i = 0; i < count; i++) {
-        int result = flow_context_eval_data(ctx, 1 + i, &params[i]);
-        if (result) {
-            return result;
-        }
-    }
-    flow_error err = { 0 };
-    if (!blueprint_instance_enqueue(bi, target, (flow_inputs){ params, count, NULL }, &err)) {
-        return flow_context_fail(
-            ctx,
-            err.code ? err.code : FLOW_ERR_NODE,
-            err.message ? err.message : "Call Event dispatch failed"
-        );
-    }
-    return flow_context_continue(ctx, 0);
-}
-
 node_desc NODE_Event = {
     .name = "Event",
     .input_count = 0,
@@ -613,16 +572,6 @@ node_desc NODE_Self = {
     .pure_kind = NODE_PURE_SELF,
     .display_class = NODE_DISPLAY_PURE,
 };
-node_desc NODE_CallEvent = {
-    .name = "Call Event",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = call_event_inputs,
-    .outputs = call_event_outputs,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = flow_call_event,
-    .display_class = NODE_DISPLAY_EVENT,
-};
 node_desc NODE_FunctionEntry = {
     .name = "Function Entry",
     .input_count = 0,
@@ -684,7 +633,6 @@ node_desc *const FLOW_NODES[] = {
     &NODE_GetVariable,
     &NODE_SetVariable,
     &NODE_Self,
-    &NODE_CallEvent,
     &NODE_FunctionEntry,
     &NODE_Return,
     &NODE_CallFunction,

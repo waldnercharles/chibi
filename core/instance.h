@@ -158,9 +158,9 @@ int blueprint_instance_breakpoints_enabled(const blueprint_instance *bi);
  * is destroyed. */
 pin_value *blueprint_instance_scratch(blueprint_instance *bi, uint64_t node_id);
 
-/* Create a separate activation for `entry` on this instance (EVT-11). Used
- * by the Call Event node; never C-recurses. Returns the new activation, or
- * NULL with a structured error. The scheduler runs it on the next pump. */
+/* Create a separate activation for `entry` on this instance. Used by host
+ * dispatch; never C-recurses. Returns the new activation, or NULL with a
+ * structured error. The scheduler runs it on the next pump. */
 flow_run *blueprint_instance_enqueue(
     blueprint_instance *bi,
     node *entry,

@@ -23,6 +23,8 @@ struct engine
     engine_render_fn render;
     void *render_user;
     engine_focus focus;
+    bool playing;
+    bool step_requested;
     engine_frame_timing timing;
 };
 
@@ -46,6 +48,7 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     engine *result = (engine *)xcalloc(1, sizeof *result);
     result->world = world;
     result->live = live;
+    result->playing = true;
     return result;
 }
 
@@ -99,6 +102,32 @@ int engine_route_escape(engine *engine)
     return 0;
 }
 
+int engine_set_playing(engine *engine, bool playing)
+{
+    if (!engine) {
+        return -1;
+    }
+    engine->playing = playing;
+    if (playing) {
+        engine->step_requested = false;
+    }
+    return 0;
+}
+
+bool engine_is_playing(const engine *engine)
+{
+    return engine && engine->playing;
+}
+
+int engine_step(engine *engine)
+{
+    if (!engine) {
+        return -1;
+    }
+    engine->step_requested = true;
+    return 0;
+}
+
 static void legacy_input_delta(const char *action, double value, double *x, double *y)
 {
     *x = 0.0;
@@ -113,7 +142,7 @@ static void legacy_input_delta(const char *action, double value, double *x, doub
 
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error)
 {
-    if (!engine || !action || engine->focus != ENGINE_FOCUS_VIEWPORT) {
+    if (!engine || !action || engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing) {
         return FLOW_ERR_STATE;
     }
     double x;
@@ -139,7 +168,11 @@ int engine_frame(engine *engine, double monotonic_time)
     if (clock_now(&start) != 0) {
         return FLOW_ERR_STATE;
     }
-    int result = game_behavior_pump(engine->live->behaviors, monotonic_time);
+    int result = 0;
+    if (engine->playing || engine->step_requested) {
+        result = game_behavior_pump(engine->live->behaviors, monotonic_time);
+        engine->step_requested = false;
+    }
     if (clock_now(&end) != 0) {
         return FLOW_ERR_STATE;
     }

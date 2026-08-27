@@ -22,6 +22,7 @@ typedef int ImGuiTreeNodeFlags;
 typedef int ImGuiWindowFlags;
 typedef int ImGuiPopupFlags;
 typedef int ImGuiCond;
+typedef int ImGuiDataType;
 
 enum
 {
@@ -32,6 +33,19 @@ enum
     ImGuiTreeNodeFlags_Leaf = 1 << 8,
     ImGuiTreeNodeFlags_SpanAvailWidth = 1 << 11,
     ImGuiMouseCursor_Hand = 7,
+    ImGuiDataType_S8 = 0,
+    ImGuiDataType_U8 = 1,
+    ImGuiDataType_S16 = 2,
+    ImGuiDataType_U16 = 3,
+    ImGuiDataType_S32 = 4,
+    ImGuiDataType_U32 = 5,
+    ImGuiDataType_S64 = 6,
+    ImGuiDataType_U64 = 7,
+    ImGuiDataType_Float = 8,
+    ImGuiDataType_Double = 9,
+    ImGuiDataType_Bool = 10,
+    ImGuiDataType_String = 11,
+    ImGuiDataType_COUNT = 12,
 };
 
 void ImGui_PushFontFloat(ImFont *font, float font_size_base_unscaled);
@@ -46,6 +60,24 @@ void ImGui_End(void);
 bool ImGui_BeginChild(const char *id, ImVec2 size, ImGuiChildFlags child_flags, ImGuiWindowFlags window_flags);
 void ImGui_EndChild(void);
 bool ImGui_InputText(const char *label, char *buffer, size_t buffer_size, ImGuiInputTextFlags flags);
+bool ImGui_InputScalar(const char *label, ImGuiDataType data_type, void *data);
+bool ImGui_InputInt(const char *label, int *value);
+bool ImGui_InputFloatEx(
+    const char *label,
+    float *value,
+    float step,
+    float step_fast,
+    const char *format,
+    ImGuiInputTextFlags flags
+);
+bool ImGui_InputDoubleEx(
+    const char *label,
+    double *value,
+    double step,
+    double step_fast,
+    const char *format,
+    ImGuiInputTextFlags flags
+);
 bool ImGui_Button(const char *label);
 void ImGui_SameLine(void);
 void ImGui_IndentEx(float width);
@@ -57,7 +89,10 @@ void ImGui_OpenPopup(const char *id, ImGuiPopupFlags flags);
 void ImGui_CloseCurrentPopup(void);
 bool ImGui_MenuItem(const char *label);
 bool ImGui_MenuItemEx(const char *label, const char *icon, bool selected, bool enabled);
+void ImGui_Text(const char *format, ...);
+void ImGui_TextDisabled(const char *format, ...);
 void ImGui_TextUnformatted(const char *text);
+void ImGui_SeparatorText(const char *label);
 bool ImGui_Checkbox(const char *label, bool *value);
 void ImGui_Separator(void);
 bool ImGui_SelectableEx(const char *label, bool selected, ImGuiSelectableFlags flags, ImVec2 size);

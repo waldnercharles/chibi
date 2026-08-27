@@ -1032,6 +1032,23 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
     return 0;
 }
 
+int game_prototype_remove_component(game_prototype *prototype, const char *component_name)
+{
+    if (!prototype || !component_name) {
+        return -1;
+    }
+    for (int i = 0; i < acount(prototype->components); i++) {
+        game_prototype_component *component = &prototype->components[i];
+        if (strcmp(component->desc->name, component_name) != 0) {
+            continue;
+        }
+        free(component->data);
+        adel(prototype->components, i);
+        return 0;
+    }
+    return -1;
+}
+
 int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name)
 {
     if (!prototype || !asset_name || !asset_name[0]) {

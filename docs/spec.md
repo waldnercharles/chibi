@@ -48,8 +48,8 @@ exception, MAY is optional.
 The parity target is the Blueprint scripting language, not the Unreal engine
 object model. See `docs/adr/0001`.
 
-In scope: generic persistent Blueprint definitions and instances, named and
-custom events with parameters, variables including array, set, and map
+In scope: generic persistent Blueprint definitions and instances, host-catalog
+events with fixed signatures, variables including array, set, and map
 containers, user-defined functions, macros, delegates and event dispatchers,
 the full flow-control catalog, a compile and validation pass, and an
 interactive debugger.
@@ -253,19 +253,17 @@ behavior, its default title, its pin template, and its category.
 
 `NODE-2` A node MUST carry a canvas position. Core evaluation MUST ignore it.
 
-`NODE-3` A node MUST carry an optional title override. When set, the editor
-displays it instead of the descriptor name; it MUST NOT affect behavior or
-lookup.
+`NODE-3` WITHDRAWN by ADR 0021. Node title overrides are not authored state.
+Nodes display their descriptor name or an internal reference label.
 
-`NODE-4` A node MUST carry an optional user comment string, rendered as a
-bubble attached to the node.
+`NODE-4` WITHDRAWN by ADR 0021. Node-level comments are not authored state.
+Graph comment boxes remain the annotation entity under `NODE-9`.
 
 `NODE-5` A node MUST carry two general instance-reference fields: a 64-bit
 reference ID and a reference name. Together with instance pins these express
-every per-node configuration in this document: the target of a variable Get or
-Set, the target of a function or macro call, a custom event's name, and a
-switch's enum type. No feature may add a bespoke per-node field where these
-suffice.
+variable, function, macro, and other node-specific internal targets. Event
+names are selected from the host catalog and are not free-form node metadata.
+No feature may add a bespoke per-node field where these suffice.
 
 `NODE-6` WITHDRAWN. It incorrectly required every impure node to have an exec
 input, excluding executable entry nodes. It is replaced by `NODE-13`.
@@ -412,24 +410,21 @@ defaults, or metadata.
 `EVT-1` An event node is an entry point: it has no exec input, at least one
 exec output, and zero or more data outputs that carry the event's parameters.
 
-`EVT-2` An event's name MUST be authored through the editor. It is stored in
-the node's reference name field.
+`EVT-2` An event's name MUST be selected from the host event catalog through
+the editor. It is stored in the node's reference name field.
 
 `EVT-3` Event names MUST be unique within a blueprint. A duplicate MUST be a
 compile error, and dispatching a duplicated name MUST fail rather than pick
 one.
 
-`EVT-4` A custom event's parameter list MUST be authored through the editor:
-add, remove, rename, retype, reorder, and set a default per parameter. Each
-parameter is a data output pin on the event node, so this is an instance-pin
-operation under `PIN-14`.
+`EVT-4` WITHDRAWN by ADR 0021. Event parameter lists are not free-form editor
+state. Catalog signatures create fixed data output pins.
 
-`EVT-5` Reordering or retyping a parameter MUST update the matching call nodes
-and MUST invalidate only the edges that are no longer type-compatible, each
-reported by `CMPL`.
+`EVT-5` WITHDRAWN by ADR 0021. Custom event call-site signature propagation is
+deferred with custom events.
 
-`EVT-6` A Call Event node MUST invoke a custom event by ID, taking that event's
-parameters as data inputs, and MUST have an exec input and an exec output.
+`EVT-6` WITHDRAWN by ADR 0021. Call Event and its custom-event invocation path
+are deferred.
 
 `EVT-7` Dispatching an event by name MUST fail with a distinct, inspectable
 error for unknown name and for duplicate name.
@@ -442,14 +437,20 @@ signatures. Dispatching an event on a Blueprint instance MUST create a distinct
 activation carrying copied parameter values. Core MUST assign no lifecycle
 meaning to an event name.
 
-`EVT-10` The demo host MUST dispatch `Begin()` once after creating its preview
-instance, `Tick(Real DeltaSeconds)` once per host frame, and
-`Input(Name Action, Real Value, Bool Pressed)` from host input. These signatures
-are demo conventions and MUST NOT be registered as mandatory core event types.
+`EVT-10` The host event catalog MUST provide `Begin()`, `Tick(Real
+DeltaSeconds)`, and `Input(CF_V2 Delta)` signatures. These signatures are host
+conventions and MUST NOT be registered as mandatory core event types.
 
-`EVT-11` A Call Event node MUST target an event in the same Blueprint instance.
-It creates a separate activation through the instance scheduler rather than
-recursing through the C call stack.
+`EVT-11` WITHDRAWN by ADR 0021. Call Event is deferred with custom events.
+
+`EVT-19` The editor MUST create event nodes only from the supplied host event
+catalog. A created catalog event MUST receive the catalog name and every
+catalog data pin in declared order. The editor MUST NOT expose free-form event
+creation or parameter surgery.
+
+`EVT-20` Fixed catalog event pins MUST be read-only in Inspector. Literal
+values connected to or authored on other nodes remain editable. Dynamic pin
+operations are permitted only for node types that own that behavior.
 
 `EVT-12` Typed delegates and event dispatchers are a planned core language
 family for communication between persistent Blueprint instances. Their callback
@@ -1060,26 +1061,28 @@ Editor-only and runtime state MUST NOT be written, per `FMT-16`.
 editor. No feature ships whose configuration requires hand-editing JSON. This
 is the binding constraint on every other `UI` requirement.
 
-`UI-2` The editor MUST present a canvas, a toolbar, a blueprint tree, a details
-panel, a compiler results panel, and an output log.
+`UI-2` The editor MUST present a canvas, a toolbar, Components, My Blueprint,
+a universal Inspector, a compiler results panel, and an output log.
 
-`UI-3` The blueprint tree MUST list graphs by kind, events, functions, macros,
-and variables, and MUST support creating, renaming, deleting, and opening each.
+`UI-3` My Blueprint MUST list graphs by kind, functions, macros, variables, and
+Prototype-owned Behavior modules. It MUST NOT duplicate an Events list or an
+active graph's Nodes list.
 
-`UI-4` The details panel MUST be context-sensitive on the current selection and
-MUST expose every authorable property of it: for a node, its title override,
-comment, reference target, and per-pin name, type, container, and default; for
-an event or function, its parameter list with add, remove, rename, retype,
-reorder, and default; for a variable, its name, type, container, default, and
-category.
+`UI-4` The universal Inspector MUST be context-sensitive on the current
+selection and MUST expose every remaining authorable property of it: fixed
+catalog signatures are read-only, node execution state remains editable, and
+variable/component/instance fields use their owning document's model. Node
+title overrides, node comments, reference IDs, and generic pin schema editing
+are not Inspector properties.
 
-`UI-5` The details panel MUST be the single place a per-node property is
-edited. A property reachable only through a context menu or only through the
+`UI-5` The universal Inspector MUST be the single place a contextual property
+is edited. A property reachable only through a context menu or only through the
 canvas is a defect.
 
-`UI-6` The toolbar MUST offer Compile, Run, Pause, Resume, Step, and Stop,
-plus an entry-point selector listing the blueprint's events, and MUST show the
-current run state and step count.
+`UI-6` A Behavior toolbar MUST offer Compile, Run, Pause, Resume, Step, and
+Stop, plus an entry-point selector listing catalog events, and MUST show the
+current run state and step count. Scene Runtime MUST separately offer Play,
+Pause, Step, Restart, and Stop.
 
 `UI-7` A toolbar action that is invalid in the current run state MUST be
 disabled with a reason on hover, never silently ignored.
@@ -1116,9 +1119,10 @@ nodes, pins, and links.
 bound to keyboard shortcuts, and the binding table MUST be data, not a chain of
 conditionals, so it can be listed in the UI.
 
-`UI-17` Undo and redo MUST cover every authoring operation in this document,
-including pin edits, parameter list edits, variable edits, and graph creation
-and deletion.
+`UI-17` Undo and redo MUST cover every authoring operation in the active
+Prototype, Behavior, or Scene document, including pin edits, variable edits,
+component edits, scene overrides, and graph creation and deletion. A propagated
+Prototype edit MUST undo as one transaction.
 
 `UI-18` Undo MUST NOT capture run state. Starting, stepping, pausing, or
 stopping a run MUST NOT create an undo entry.
@@ -1155,13 +1159,11 @@ the node.
 remove, reorder, and set each case value. For Switch on Enum the list is
 derived and MUST be read-only.
 
-`UI-29` Find in blueprint MUST exist: one search across every graph over node
-titles, descriptor names, pin names, comments, literal values, and variable
-names, with navigable results.
+`UI-29` WITHDRAWN by ADR 0021. Find in Blueprint is deferred until user testing
+shows a need.
 
-`UI-30` Find references MUST exist for a variable, an event, a function, and a
-macro, listing every referencing node with navigation, so deleting one is an
-informed decision.
+`UI-30` WITHDRAWN by ADR 0021. Find references is deferred with Find in
+Blueprint.
 
 `UI-31` Double-clicking a call node MUST open its target graph. Double-clicking
 a wire MUST insert a reroute node at that point.
@@ -1240,23 +1242,23 @@ canvas or pressing Escape MUST release it.
 `UI-51` Dragging any node in a multi-selection MUST move every selected node
 together and preserve their relative positions.
 
-`UI-53` The details panel MUST expose the Blueprint definition's optional owner
-handle type and the complete authored event signatures. Service-backed pins
-MUST remain visible while connected, MAY hide while unconnected and resolved,
-and MUST reappear with an unresolved indication when their service is absent.
+`UI-53` The universal Inspector MUST expose the Blueprint definition's
+optional owner handle type and fixed host event signatures. Catalog event pins
+MUST remain read-only. Service-backed pins MUST remain visible while connected,
+MAY hide while unconnected and resolved, and MUST reappear with an unresolved
+indication when their service is absent.
 
 `UI-54` The preview runtime MUST identify its Blueprint instance and current
 event activation separately. Stopping one activation MUST leave persistent
 instance variables available for later event dispatch; destroying or replacing
 the preview instance MUST clear them.
 
-`UI-55` An authoring action while a preview instance is attached MUST state that
-it destroys the preview instance first, then perform the edit. It MUST NOT be
-presented as a rejected edit or as stopping only the selected activation.
+`UI-55` Behavior graph edits MUST mutate a working copy while an existing
+preview keeps its applied snapshot. Editing MUST NOT require preview teardown
+or be rejected because a preview is attached.
 
 `UI-56` WITHDRAWN. It routed every authored mutation through instance teardown,
-which makes editing cost scale with the number of live instances. It is
-replaced by `UI-57`.
+which makes editing cost scale with the number of live instances.
 
 `UI-57` The editor MUST route every replacement of a running definition through
 one choke point, and MUST state that applying destroys and recreates that

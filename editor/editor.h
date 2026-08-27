@@ -6,6 +6,15 @@
 
 typedef struct editor editor;
 
+typedef enum
+{
+    EDITOR_UI_CONTEXT_SCENE,
+    EDITOR_UI_CONTEXT_PROTOTYPE,
+    EDITOR_UI_CONTEXT_BEHAVIOR,
+} editor_ui_context;
+
+typedef int (*editor_save_handler)(editor *e, void *user);
+
 /* The editor takes ownership of bp and frees it in editor_free(). */
 editor *editor_new(blueprint *bp);
 void editor_free(editor *e);
@@ -22,19 +31,18 @@ const graph *editor_active_graph(const editor *e);
 /* Creates the host dockspace before other dockable windows are submitted. */
 void editor_prepare_docking(void);
 
+/* Chooses which editor-owned side panels and canvas are submitted. */
+void editor_set_ui_context(editor *e, editor_ui_context context);
+void editor_set_graph_visible(editor *e, int visible);
+void editor_set_save_handler(editor *e, editor_save_handler handler, void *user);
+
 /* ENG-3: true while a panel is consuming the keyboard, so the host must not
  * also route those keys to a focused viewport or to the graph canvas. */
 int editor_host_captures_keyboard(void);
 
-/* The events this host dispatches, with the parameter signature each one
- * carries. EVT-9 keeps core free of lifecycle meaning and EVT-10 makes these
- * host conventions, so the vocabulary is supplied rather than built in.
- *
- * The signature matters as much as the name: an event node's parameters are
- * matched positionally by type, and flow_event() substitutes a pin's default
- * for any parameter whose type does not match the dispatched value, silently.
- * Declaring the signature lets the editor create parameters that receive the
- * host's values instead of zeroes. */
+/* The fixed event signatures supplied by the host. Core keeps lifecycle names
+ * out of its runtime vocabulary; the editor uses this catalog when it creates
+ * event nodes and their pins. */
 typedef struct
 {
     const char *name;
@@ -49,8 +57,7 @@ typedef struct
     int param_count;
 } editor_event_signature;
 
-/* `events` is borrowed and must outlive the editor. Free text stays available,
- * since a custom event's name and signature are arbitrary. */
+/* `events` is borrowed and must outlive the editor. */
 void editor_set_event_catalog(editor *e, const editor_event_signature *events, int count);
 
 /* Renders the canvas and handles input. Call once per frame after
@@ -63,6 +70,8 @@ void editor_tick(editor *e, double monotonic_time);
 
 /* Returns the revision of the last committed authoring edit. */
 unsigned editor_edit_revision(const editor *e);
+void editor_undo(editor *e);
+void editor_redo(editor *e);
 
 /* Selects and centers a node in the canvas. */
 void editor_select_node(editor *e, node *n);
@@ -80,9 +89,9 @@ int editor_save(const editor *e, const char *path);
  * success, -1 on error (the existing blueprint is left untouched). */
 int editor_load(editor *e, const char *path);
 
-/* Preview instance (UI-54/55/56). The editor owns one blueprint_instance;
- * any authoring mutation destroys it at the edit choke point and releases the
- * definition's mutation guard. The host recreates it and drives dispatch. */
+/* Preview instance (UI-54/55/57). The editor owns a runtime instance over a
+ * cloned applied snapshot. Authoring mutations stay on the working Blueprint;
+ * an explicit reset replaces the snapshot. */
 blueprint_instance *editor_preview_instance(const editor *e);
 
 /* Borrow a runtime instance for read-only graph inspection. The caller owns
@@ -98,6 +107,7 @@ unsigned editor_preview_generation(const editor *e);
 
 /* Create the preview runtime if missing. No-op when one is attached. */
 void editor_preview_create(editor *e);
+void editor_preview_reset(editor *e);
 
 /* Dispatch an authored event through the selected inspection instance, or
  * the editor preview when no runtime instance is selected. */

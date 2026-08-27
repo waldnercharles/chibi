@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "c-blueprints": {
+      "source_cwd": "/Users/cwaldner/Personal/c-blueprints",
+      "last_synced": "2026-08-27T05:23:15Z",
+      "last_commit_synced": "aba5896397a48e334393749c185f2b36ec160792",
+      "pages_in_vault": [
+        "projects/c-blueprints/c-blueprints.md",
+        "projects/c-blueprints/concepts/runtime-evaluation-and-identity.md",
+        "projects/c-blueprints/concepts/ecs-prototypes-and-behavior-composition.md",
+        "projects/c-blueprints/concepts/live-authoring-and-runtime-targets.md",
+        "projects/c-blueprints/skills/validation-workflow.md",
+        "projects/c-blueprints/references/architecture-decisions.md"
+      ]
+    }
+  }
+}

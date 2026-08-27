@@ -132,8 +132,13 @@ overridable by the including document, and an include cycle MUST be an error.
 `PROTO-7` Prototype output MUST be deterministic in key order and number
 formatting, so files diff cleanly.
 
-`PROTO-8` Editing a prototype document MUST NOT retroactively change entities
-already spawned from it.
+`PROTO-8` Editing a Prototype component field MUST propagate to matching live
+instances that still inherit that field. A Scene field override MUST remain
+local to its instance.
+
+`PROTO-13` Prototype component additions and removals MUST propagate to every
+matching live instance. Scene instances MUST NOT author structural component
+changes.
 
 `PROTO-9` The prototype editor MUST inspect and write registered component
 fields through descriptor metadata without allocating an entity.
@@ -149,11 +154,11 @@ field value on the target entity.
 
 ## SCENE: scene documents
 
-`SCENE-1` A scene entity MUST identify its reusable prototype and the behavior
-asset names attached to that entity.
+`SCENE-1` A scene entity MUST identify its reusable Prototype. Its Behavior
+attachments are inherited from that Prototype.
 
-`SCENE-2` Loading and saving a scene MUST preserve entity names, prototype names,
-and behavior attachment names.
+`SCENE-2` Loading and saving a scene MUST preserve entity names, Prototype names,
+and component field overrides.
 
 `SCENE-3` Scene document output MUST be deterministic for the same authored
 entity order and behavior order.
@@ -164,8 +169,12 @@ merging two entities.
 `SCENE-5` Loading an unsupported scene document version MUST fail before any
 scene entity is created.
 
-`SCENE-6` Scene documents MUST preserve prototype-relative behavior additions
-and removals, while remaining able to load a flat legacy behavior list.
+`SCENE-6` WITHDRAWN by ADR 0021. Scene-local Behavior additions and removals
+are not authored state.
+
+`SCENE-7` A Scene instance field edit MUST be stored as a sparse override. The
+Inspector MUST distinguish inherited and local values, and Revert MUST restore
+the current Prototype value.
 
 ## BEH: behavior attachment
 
@@ -222,8 +231,26 @@ total activation storage stays flat over time.
 inspection, including the asset name, applied definition, runtime instance, and
 attachment order, without exposing mutable attachment storage.
 
-`BEH-14` Attaching a behavior asset MUST run its optional `Begin` event once. A
+`BEH-14` Attaching a Behavior asset MUST run its optional `Begin` event once. A
 missing `Begin` event is a no-op, and a replacement MUST NOT dispatch it twice.
+
+## LIVE: editor runtime and persistence
+
+`LIVE-1` Prototype Preview and Scene Runtime MUST use separate runtime worlds.
+They MAY share authored data but MUST NOT share entity handles, behavior
+instances, activations, logs, or restart state.
+
+`LIVE-2` Scene Runtime MUST expose Play, Pause, Step, Restart, and Stop. It MUST
+start stopped. Restart MUST rebuild from current in-memory authored data, and
+Stop MUST discard runtime state without undoing authored data.
+
+`LIVE-3` A Behavior Save MUST write the authored working graph before compile or
+apply. A blocked apply MUST leave the previous valid runtime snapshot active and
+MUST report the blocked state through diagnostics.
+
+`LIVE-4` Save and Save All MUST be explicit document-aware operations. Auto-save
+is not required. Undo and redo MUST be scoped to the authored document, and one
+Prototype edit plus its propagation MUST be one transaction.
 
 ## PAR: declared effects and parallel execution
 

@@ -9,9 +9,6 @@ typedef struct
     char *prototype;
     char *components_json;
     char **behaviors;
-    char **behavior_additions;
-    char **behavior_removals;
-    int has_behavior_overrides;
 } game_scene_entity;
 
 typedef struct game_scene_document
@@ -33,14 +30,6 @@ int game_scene_document_set_entity_components(
     game_scene_document *document,
     int index,
     const char *components_json
-);
-int game_scene_document_set_entity_behavior_overrides(
-    game_scene_document *document,
-    int entity,
-    const char *const *additions,
-    int addition_count,
-    const char *const *removals,
-    int removal_count
 );
 char *game_scene_document_save(const game_scene_document *document);
 game_scene_document *game_scene_document_load(const char *json, char *error, size_t error_size);

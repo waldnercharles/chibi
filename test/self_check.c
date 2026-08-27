@@ -327,7 +327,7 @@ static node_desc g_watch_desc = {
 };
 
 /* Phase 3 capture sinks: a flow node records one data input so a test can
- * observe values that flowed through Get Variable, Self, and Call Event. */
+ * observe values that flowed through Get Variable and Self. */
 static int g_captured_int;
 static char g_captured_str[64];
 static uint64_t g_captured_handle;
@@ -905,6 +905,13 @@ static void run_prototype_checks(void)
             !game_prototype_has_graph(prototype, "debug.graph"),
         "PROTO-10: prototype behavior attachments are editable"
     );
+    check(
+        prototype && game_prototype_remove_component(prototype, "GameTransform") == 0 &&
+            acount(prototype->components) == 1 &&
+            game_prototype_add_component(prototype, &GAME_COMPONENT_GameTransform) == 0 &&
+            acount(prototype->components) == 2,
+        "PROTO-13: prototype component structure is editable"
+    );
     game_prototype *base = game_prototype_clone(prototype, error, sizeof error);
     GAME_GameHealth_get(world, entity)->current = 7;
     char *overrides = game_prototype_capture_overrides_json(base, world, entity);
@@ -1025,18 +1032,6 @@ static void run_scene_document_checks(void)
             strstr(document->entities[0].components_json, "GameHealth"),
         "SCENE-2: a scene entity stores generic component overrides"
     );
-    const char *additions[] = { "Patrol" };
-    const char *removals[] = { "Damage" };
-    check(
-        game_scene_document_set_entity_behavior_overrides(document, 0, additions, 1, removals, 1) ==
-                0 &&
-            document->entities[0].has_behavior_overrides &&
-            acount(document->entities[0].behavior_additions) == 1 &&
-            strcmp(document->entities[0].behavior_additions[0], "Patrol") == 0 &&
-            acount(document->entities[0].behavior_removals) == 1 &&
-            strcmp(document->entities[0].behavior_removals[0], "Damage") == 0,
-        "SCENE-6: scene entities store behavior additions and removals"
-    );
     char *saved = game_scene_document_save(document);
     char error[256];
     game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
@@ -1046,12 +1041,9 @@ static void run_scene_document_checks(void)
             strcmp(loaded->entities[0].prototype, "PlayerPrototype") == 0 &&
             strstr(loaded->entities[0].components_json, "GameHealth") &&
             acount(loaded->entities[0].behaviors) == 2 &&
-            strcmp(loaded->entities[0].behaviors[1], "Damage") == 0 &&
-            loaded->entities[0].has_behavior_overrides &&
-            strcmp(loaded->entities[0].behavior_additions[0], "Patrol") == 0 &&
-            strcmp(loaded->entities[0].behavior_removals[0], "Damage") == 0,
+            strcmp(loaded->entities[0].behaviors[1], "Damage") == 0,
         "SCENE-2: scene documents round-trip behavior attachment names and "
-        "overrides"
+        "component overrides"
     );
     char *resaved = game_scene_document_save(loaded);
     check(saved && resaved && strcmp(saved, resaved) == 0, "SCENE-3: scene document save output is deterministic");
@@ -1472,6 +1464,12 @@ static void run_engine_checks(void)
             timing->systems_ms >= 0.0 && timing->rendering_ms >= 0.0,
         "ENG-7: behavior, systems, and rendering timing are separately "
         "reportable"
+    );
+    check(
+        runtime && engine_set_playing(runtime, false) == 0 &&
+            !engine_is_playing(runtime) && engine_step(runtime) == 0 &&
+            engine_frame(runtime, 3.0) == FLOW_OK && !engine_is_playing(runtime),
+        "ENG-8: paused runtime advances only for an explicit step"
     );
     engine_free(runtime);
     game_live_world_free(live);
@@ -2345,8 +2343,6 @@ int main(int argc, char **argv)
             check(graph_set_pin_default(&full, all, 1, i, &values[i]) == 0, "FMT-6: every authored pin default is set");
         }
         if (all) {
-            check(graph_set_node_title(&full, all, "Configured literal") == 0, "NODE-3: title override is authored");
-            check(graph_set_node_comment(&full, all, "round-trip comment") == 0, "NODE-4: node comment is authored");
             check(graph_set_node_reference(&full, all, 4242, "Target") == 0, "NODE-5: node reference fields are authored");
             check(graph_set_node_disabled(&full, all, 1) == 0, "NODE-11: disabled state is authored");
             all->x = 12.25f;
@@ -2396,8 +2392,6 @@ int main(int argc, char **argv)
         }
         check(graph_set_pin_default(&full, make_node, 1, 0, &values[12]) == 0, "FMT-6: struct authored default is set");
         if (bool_lit) {
-            check(graph_set_node_title(&full, bool_lit, "Configured literal") == 0, "NODE-3: title override is authored");
-            check(graph_set_node_comment(&full, bool_lit, "round-trip comment") == 0, "NODE-4: node comment is authored");
             check(graph_set_node_reference(&full, bool_lit, 4242, "Target") == 0, "NODE-5: node reference fields are authored");
             check(graph_set_node_disabled(&full, bool_lit, 1) == 0, "NODE-11: disabled state is authored");
             bool_lit->x = 12.25f;
@@ -2433,10 +2427,7 @@ int main(int argc, char **argv)
             node *loaded_str = graph_node_by_id(full_b, str_lit->id);
             node *loaded_make = graph_node_by_id(full_b, make_node->id);
             check(
-                loaded_bool &&
-                    strcmp(loaded_bool->title_override, "Configured literal") == 0 &&
-                    strcmp(loaded_bool->comment, "round-trip comment") == 0 &&
-                    loaded_bool->reference_id == 4242 &&
+                loaded_bool && loaded_bool->reference_id == 4242 &&
                     strcmp(loaded_bool->reference_name, "Target") == 0 &&
                     loaded_bool->disabled && loaded_bool->x == 12.25f,
                 "FMT-5: optional node fields survive first load"
@@ -2601,7 +2592,7 @@ int main(int argc, char **argv)
         check(acount(gf.nodes) == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
         check(
             gf.nodes[0]->reference_name &&
-                strcmp(gf.nodes[0]->reference_name, "OnStart") == 0,
+                strcmp(gf.nodes[0]->reference_name, "Begin") == 0,
             "EXEC-1: flow demo graph has named Event entry"
         );
         graph_free(&gf);
@@ -4248,43 +4239,6 @@ int main(int argc, char **argv)
         blueprint_free(bp);
     }
 
-    /* EVT-6 / EVT-11: Call Event invokes a custom event as a separate
-     * activation through the scheduler, never through the C call stack. */
-    {
-        blueprint *bp = blueprint_new("Call");
-        node *outer = graph_add_node(bp->graph, registry_node_by_name("Event"));
-        graph_set_event_name(bp->graph, outer, "Outer");
-        node *inner = graph_add_node(bp->graph, registry_node_by_name("Event"));
-        graph_set_event_name(bp->graph, inner, "Inner");
-        pin_spec msg = { "Message", PIN_STR, "const char *", PIN_DATA };
-        graph_add_pin(bp->graph, inner, 1, &msg);
-        node *cap = graph_add_node(bp->graph, &g_str_capture_desc);
-        graph_connect_exec(bp->graph, inner, 0, cap, 0, 0);
-        graph_connect_data(bp->graph, inner, 1, cap, 1);
-        node *call = blueprint_add_call_event_node(bp, inner);
-        check(
-            call != NULL && call->input_count == 2 &&
-                call->reference_id == inner->id,
-            "EVT-6: Call Event mirrors the event's parameters as data inputs"
-        );
-        check(
-            call->input_count == 2 && call->input_pins[1].type == PIN_STR,
-            "EVT-5: Call Event pins track the authored event signature"
-        );
-        node *str_lit = graph_add_node(bp->graph, registry_node_by_name("String"));
-        graph_set_pin_default(bp->graph, str_lit, 0, 0, &(pin_value){ .type = PIN_STR, .str = "hello from call" });
-        graph_connect_exec(bp->graph, outer, 0, call, 0, 0);
-        graph_connect_data(bp->graph, str_lit, 0, call, 1);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        g_captured_str[0] = 0;
-        flow_error perr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Outer", (flow_inputs){ 0 }, &perr);
-        check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-6: the Outer activation completes");
-        check(strcmp(g_captured_str, "hello from call") == 0 && acount(bi->activations) == 2, "EVT-11: Call Event delivered the parameter through a separate activation");
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
-    }
-
     /* CAT-32: Self is a pure node whose output has the definition's owner
      * handle type; it is rejected without an owner type and evaluates to the
      * instance's supplied owner handle. */
@@ -4571,7 +4525,6 @@ int main(int argc, char **argv)
         node *set = blueprint_add_set_node(bp, v->id);
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
-        node *call = blueprint_add_call_event_node(bp, ev);
         compile_report rep;
         compile_report_init(&rep);
         blueprint_compile(bp, &rep);
@@ -4603,7 +4556,7 @@ int main(int argc, char **argv)
                 refs++;
             }
         }
-        check(refs == 3, "CMPL-7: the Call Event reports the removed event");
+        check(refs == 2, "CMPL-7: variable references remain after event removal");
         compile_report_free(&rep);
         blueprint_free(bp);
     }
@@ -5371,7 +5324,7 @@ int main(int argc, char **argv)
             "UI-1: every Blueprint document value has an authored model surface"
         );
         check(event && registry_node_count() > 0, "UI-2: canvas, tree, and catalog surfaces have model data");
-        check(graph_set_node_title(bp->graph, literal, "Value") == 0, "UI-5: per-node properties have one graph mutation API");
+        check(graph_set_node_disabled(bp->graph, literal, true) == 0, "UI-5: node execution state has one graph mutation API");
         compile_report surface_report;
         compile_report_init(&surface_report);
         blueprint_compile(bp, &surface_report);
@@ -5391,7 +5344,7 @@ int main(int argc, char **argv)
         check(bp->owner_type_name && PIN_FLAG_SERVICE != 0, "UI-53: owner and service-backed pin metadata are inspectable");
         blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
         check(bi && bi->bp == bp, "UI-54: preview identity is separate from an activation");
-        check(bp->graph->flow_pause_count > 0, "UI-55: an attached preview is destroyed before authoring mutation");
+        check(bi && bi->bp == bp, "UI-55: runtime instance state is separate from an activation");
         blueprint_instance_destroy(bi);
         check(bp->graph->flow_pause_count == 0, "UI-57: the replacement choke point releases the applied definition");
         check(
@@ -5901,6 +5854,18 @@ int main(int argc, char **argv)
             blueprint_add_function(macro_bp, "Collapsed", 0) != NULL,
             "FN-11: the editor has a collapse target for selected nodes"
         );
+        graph *caller = blueprint_add_function(macro_bp, "Caller", 0);
+        node *caller_macro = caller
+                               ? blueprint_add_macro_call_node_to_graph(macro_bp, caller, macro)
+                               : NULL;
+        uint64_t macro_id = macro ? macro->graph_id : 0;
+        check(caller_macro && caller_macro->reference_id == macro_id, "FN-7: a reusable call can be placed in a non-default graph");
+        check(
+            blueprint_rename_graph(macro_bp, macro_id, "RenamedMacro") == 0 &&
+                strcmp(macro->name, "RenamedMacro") == 0 && caller_macro->reference_name &&
+                strcmp(caller_macro->reference_name, "RenamedMacro") == 0,
+            "UI-3: renaming a graph refreshes its call labels"
+        );
         check(macro->kind == GRAPH_MACRO, "FN-12: macro products remain behind an explicit decision boundary");
         check(PIN_ENUM != PIN_I32, "TYPE-4: enum values retain a nominal enum type");
         check(registry_type_count() >= 0, "REFL-5: enum reflection shares the generated type registry");
@@ -5914,6 +5879,18 @@ int main(int argc, char **argv)
         check(registry_node_by_name("Set Members in Struct") != NULL, "UI-25: struct split/set-member surfaces are available from the pin model");
         check(PIN_FLAG_ADVANCED != 0, "UI-26: advanced pins have an expander flag");
         check(acount(macro_bp->graphs) >= 3, "UI-33: graph-level authored entities have detail surfaces");
+        check(
+            blueprint_delete_graph(macro_bp, macro_id) == 0 &&
+                blueprint_find_graph(macro_bp, macro_id) == NULL,
+            "BP-8: a user-created macro can be removed without deleting "
+            "EventGraph"
+        );
+        uint64_t caller_id = caller ? caller->graph_id : 0;
+        check(
+            blueprint_delete_graph(macro_bp, caller_id) == 0 &&
+                blueprint_find_graph(macro_bp, caller_id) == NULL,
+            "BP-8: a user-created function graph can be removed"
+        );
         blueprint_free(macro_bp);
         graph comment_graph;
         graph_init(&comment_graph);

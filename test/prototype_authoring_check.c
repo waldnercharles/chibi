@@ -2,6 +2,7 @@
 #include "../app/scene_authoring.h"
 #include "../core/blueprint.h"
 #include "../core/registry.h"
+#include "../core/serialize.h"
 #include "../editor/editor.h"
 #include "../editor/ui_shell.h"
 #include "../engine/engine.h"
@@ -10,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static const char PLAYER_PROTOTYPE_JSON
     [] = "{\"name\":\"PlayerPrototype\",\"components\":{"
@@ -21,6 +24,33 @@ static const char
                        "\"GameTransform\":{\"x\":80,\"y\":0},"
                        "\"GameHealth\":{\"current\":100,\"maximum\":100}},"
                        "\"behaviors\":[\"SceneBehavior\"]}";
+
+static int count_component(ecs_world *world, ecs_component_id component)
+{
+    ecs_query query;
+    int count = 0;
+    if (ecs_query_begin(world, &query, &component, 1) != ECS_OK) {
+        return 0;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        count++;
+    }
+    ecs_query_end(&query);
+    return count;
+}
+
+static int write_file(const char *path, const char *text)
+{
+    FILE *file = fopen(path, "wb");
+    if (!file) {
+        return -1;
+    }
+    size_t length = strlen(text);
+    size_t wrote = fwrite(text, 1, length, file);
+    int closed = fclose(file);
+    return wrote == length && closed == 0 ? 0 : -1;
+}
 
 static char *read_file(const char *path)
 {
@@ -70,7 +100,7 @@ int main(int argc, char **argv)
     ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL);
     game_live_world *live = game_live_world_new(world);
     game_live_definition *definition = game_live_definition_new("SceneBehavior", blueprint_new("SceneBehavior"));
-    editor *graph_editor = editor_new(blueprint_new("Editor"));
+    editor *graph_editor = editor_new(blueprint_new("InputBehavior"));
     engine *runtime = engine_new(world, live);
     app_scene_authoring *scene = app_scene_authoring_new(
         world,
@@ -82,7 +112,8 @@ int main(int argc, char **argv)
         NULL,
         runtime
     );
-    int ok = world && live && definition && graph_editor && runtime && scene;
+    int ok = world && live && definition && graph_editor && runtime && scene &&
+             !engine_is_playing(runtime);
     int stage = 0;
     int attachments_before = -1;
     if (ok && !editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE)) {
@@ -131,6 +162,42 @@ int main(int argc, char **argv)
         ok = 0;
         stage = 3;
     }
+    if (ok && app_scene_authoring_set_prototype_field(
+                  scene,
+                  "EnemyPrototype",
+                  "GameHealth",
+                  "current",
+                  (pin_value){ .type = PIN_I32, .i = 81 }
+              ) != 0) {
+        ok = 0;
+        stage = 17;
+    }
+    if (ok) {
+        const ecs_component_id health = GAME_COMPONENT_GameHealth.id;
+        ecs_query query;
+        ecs_entity entity;
+        int found = 0;
+        if (ecs_query_begin(world, &query, &health, 1) == ECS_OK) {
+            while (ecs_query_next(&query, &entity)) {
+                found |= GAME_GameHealth_get(world, entity)->current == 81;
+            }
+            ecs_query_end(&query);
+        }
+        if (!found) {
+            ok = 0;
+            stage = 18;
+        }
+    }
+    int transforms_before = count_component(world, GAME_COMPONENT_GameTransform.id);
+    if (ok &&
+        (app_scene_authoring_remove_prototype_component(scene, "EnemyPrototype", "GameTransform") !=
+             0 ||
+         count_component(world, GAME_COMPONENT_GameTransform.id) != transforms_before - 1 ||
+         app_scene_authoring_add_prototype_component(scene, "EnemyPrototype", "GameTransform") != 0 ||
+         count_component(world, GAME_COMPONENT_GameTransform.id) != transforms_before)) {
+        ok = 0;
+        stage = 19;
+    }
     if (ok) {
         attachments_before = game_behavior_attachment_count(live->behaviors);
     }
@@ -143,6 +210,16 @@ int main(int argc, char **argv)
                   attachments_before + 1) {
         ok = 0;
         stage = 14;
+    }
+    if (ok &&
+        (app_scene_authoring_detach_prototype_behavior(scene, "EnemyPrototype", "InputBehavior") !=
+             0 ||
+         game_behavior_attachment_count(live->behaviors) != attachments_before ||
+         app_scene_authoring_attach_prototype_behavior(scene, "EnemyPrototype", "InputBehavior") !=
+             0 ||
+         game_behavior_attachment_count(live->behaviors) != attachments_before + 1)) {
+        ok = 0;
+        stage = 20;
     }
     game_live_definition *input_definition = game_live_find_definition(live, "InputBehavior");
     if (ok && (app_scene_authoring_open_behavior(scene, "InputBehavior") != 0 ||
@@ -184,10 +261,47 @@ int main(int argc, char **argv)
     ok = ok && saved_scene && saved_prototype &&
          strstr(saved_scene, "EnemyPrototype") &&
          strstr(saved_scene, "InputBehavior") &&
-         strstr(saved_scene, "behavior_additions") &&
+         !strstr(saved_scene, "behavior_additions") &&
          strstr(saved_prototype, "GameHealth") &&
          strstr(saved_prototype, "SceneBehavior") &&
-         strstr(saved_prototype, "InputBehavior") && strstr(saved_prototype, "80");
+         strstr(saved_prototype, "InputBehavior") && strstr(saved_prototype, "81");
+
+    const char *save_as_root = "prototype_authoring_check_content";
+    char save_as_path[256];
+    snprintf(save_as_path, sizeof save_as_path, "%s/behaviors/InputBehavior.json", save_as_root);
+    if (ok && (app_scene_authoring_open_behavior(scene, "InputBehavior") != 0 ||
+               (mkdir(save_as_root, 448) != 0 && access(save_as_root, F_OK) != 0) ||
+               app_scene_authoring_set_content_root(scene, save_as_root) != 0 ||
+               app_scene_authoring_save_as(scene) != 0)) {
+        ok = 0;
+        stage = 21;
+    }
+    char *saved_behavior = ok ? read_file(save_as_path) : NULL;
+    blueprint *disk_behavior = saved_behavior ? blueprint_load_json(saved_behavior)
+                                              : NULL;
+    if (disk_behavior) {
+        blueprint_set_description(disk_behavior, "reloaded from disk");
+        char *disk_json = blueprint_save_json(disk_behavior);
+        if (!disk_json || write_file(save_as_path, disk_json) != 0) {
+            ok = 0;
+            stage = 22;
+        }
+        free(disk_json);
+    } else if (ok) {
+        ok = 0;
+        stage = 22;
+    }
+    blueprint_free(disk_behavior);
+    free(saved_behavior);
+    if (ok &&
+        (app_scene_authoring_reload(scene) != 0 || input_definition->dirty ||
+         !input_definition->working->description ||
+         strcmp(input_definition->working->description, "reloaded from disk") != 0 ||
+         !input_definition->applied->description ||
+         strcmp(input_definition->applied->description, "reloaded from disk") != 0)) {
+        ok = 0;
+        stage = 23;
+    }
     if (!ok) {
         fprintf(
             stderr,
@@ -203,6 +317,10 @@ int main(int argc, char **argv)
     free(saved_prototype);
     remove(scene_path);
     remove(prototype_path);
+    remove(save_as_path);
+    remove("prototype_authoring_check_content/Scene.json");
+    rmdir("prototype_authoring_check_content/behaviors");
+    rmdir(save_as_root);
     app_scene_authoring_free(scene);
     engine_free(runtime);
     editor_free(graph_editor);

@@ -3,8 +3,7 @@
 The event-driven preview is available with `./build/app --event-demo --frames
 600`. The bounded frame count keeps a verification session reproducible. The
 host-authored demo uses the same editor surfaces as a graph built from scratch:
-`Begin()`, `Tick(Real DeltaSeconds)`, and `Input(Name Action, Real Value,
-Bool Pressed)`.
+`Begin()`, `Tick(Real DeltaSeconds)`, and `Input(CF_V2 Delta)`.
 
 ## UI screenshot capture
 
@@ -31,47 +30,48 @@ The first Prototype authoring slice follows Lumix's separate asset-browser and
 Properties pattern:
 
 1. Reset the layout if needed by removing `imgui.ini`, then start `./build/app`.
-2. In Content Drawer, select a prototype card. Selection stays in the Scene
-   context and does not open a prototype document or move the central tab.
-3. Use the `Prototype Details` panel below the graph `Details` panel on the
-   right. It shows the selected prototype identity and its Behaviors.
-4. Click `Add Behavior` and choose a behavior asset that is not already
-   listed. `InputBehavior` is loaded from `content/behaviors/InputBehavior.json`.
-5. The attachment updates the prototype graph and currently spawned actors that
-   use that prototype. The panel reports success or the failure reason.
-6. Use the Content Drawer prototype action `Spawn instance` to check that later
-   instances inherit the prototype behavior list.
+2. Open Content Drawer from Window, select a prototype card, then open it. The
+   Prototype workspace shows `Components`, `My Blueprint`, and `Inspector`.
+3. Select a component in Components. Inspector shows its reflected default
+   fields. `Add Component` and `Remove Component` change the Prototype-owned
+   component set and update matching scene instances.
+4. Expand My Blueprint. It lists attached Behaviors and their graph members.
+   `Add Behavior` and `Detach` update the Prototype and matching instances.
+5. Edit a scalar component default in Inspector. Matching instances receive the
+   new inherited value immediately. A scene-instance override remains local.
+6. Save the active Prototype through File > Save. File > Save As... chooses a
+   deterministic path under the content root; File > Reload from disk restores
+   the source file.
 
-The command is currently in memory. Prototype Details does not yet remove
-attachments, edit Components, save a prototype, or run the full live-apply
-lifecycle. Input delivery is based on behavior attachments, not a designated
-player entity.
+Prototype structure is Prototype-owned. Scene instances cannot add or remove
+components or Behaviors. Input delivery is based on Behavior attachments, not a
+designated player entity.
 
-## Preview instance (UI-54, UI-55, UI-56)
+## Preview instance (UI-54, UI-55, UI-57)
 
-1. Start the event demo and click **Dispatch**. The toolbar shows `Runtime:
-   attached`, the selected activation state and step count, and the output log
-   receives `Print String` output.
-2. While a `Delay` activation is suspended, dispatch another event. The
+1. Open Scene Runtime and use Play, Pause, Step, Restart, and Stop. The target
+   starts stopped, and Restart rebuilds from current in-memory authored data.
+2. Open a Behavior graph and click Dispatch. The Behavior toolbar shows the
+   selected activation state and step count. Compiler Results and Output Log
+   remain dockable bottom tabs.
+3. While a `Delay` activation is suspended, dispatch another catalog event. The
    instance remains attached while the selected activation changes.
-3. Click **Stop**. The next dispatch sees the same instance variables and node
-   scratch. Destroying the preview instance clears both.
-4. Edit a node position, pin value, or connection while attached. The edit is
-   accepted after the preview is destroyed; the toolbar reports `Runtime reset
-   by the last edit`. Dispatch creates a fresh instance and fires `Begin()`.
-5. Press and release Space. The host sends `Input` with the authored Name,
-   Real, and Bool parameters.
+4. Edit a node position, pin value, or connection. Behavior Save writes the
+   authored graph and applies it. A blocked apply leaves the previous runtime
+   snapshot active and reports the failure in diagnostics.
+5. Press and release Space while Scene Runtime has focus. The host sends the
+   fixed `Input` signature.
 
 ## Authoring surfaces (UI-1, UI-3, UI-4, UI-53)
 
-1. Use the Blueprint tree to add a variable. The details panel edits its name,
-   type, default, container, and category. Duplicate names show a diagnostic.
-2. Select an Event node. Edit its name and parameter pins in the details panel,
-   including name, type, order, and default. Add a Call Event node and dispatch
-   it.
+1. Use My Blueprint to add a variable. Inspector edits its name, type, default,
+   container, and category. Duplicate names show a diagnostic.
+2. Open the graph spawn menu and create a catalog Event. Its name and pins come
+   from the host signature. Inspector shows those pins as read-only. Custom
+   Event creation, parameter surgery, and Call Event are unavailable.
 3. With no node selected, edit the optional owner handle type and add Self.
-4. Select each literal. Its `Value` input is editable on the node and in the
-   details panel. Save and load to verify authored values and Name spelling.
+4. Select each literal. Its `Value` input is editable on the node and in
+   Inspector. Save and load to verify authored values and Name spelling.
 5. Click **Compile**. Compiler Results lists diagnostics; selecting one reveals
    the named node.
 
@@ -85,7 +85,7 @@ player entity.
    they pass rather than through them. The graph view remains the source of
    truth for navigation and layout.
 3. Run the flow demo with `./build/app --flow-demo --frames 600 --fps 60`. It
-   dispatches the authored `OnStart` entry automatically; observe edge markers
+   dispatches the authored `Begin` entry automatically; observe edge markers
    and heat. Repeat with `--fps 30` and `--fps 144`. The traversal history and
    animation are derived from run records, not evaluator callbacks.
 

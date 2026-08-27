@@ -10,6 +10,7 @@ typedef struct game_live_world game_live_world;
 typedef struct game_live_definition
 {
     char *name;
+    char *path;
     blueprint *working;
     blueprint *applied;
     game_live_world *world;
@@ -28,6 +29,10 @@ struct game_live_world
 game_live_definition *game_live_definition_new(const char *asset_name, blueprint *working);
 void game_live_definition_free(game_live_definition *definition);
 game_live_definition *game_live_find_definition(game_live_world *world, const char *asset_name);
+const char *game_live_definition_path(const game_live_definition *definition);
+int game_live_definition_set_path(game_live_definition *definition, const char *path);
+int game_live_definition_count(const game_live_world *world);
+game_live_definition *game_live_definition_at(game_live_world *world, int index);
 int game_live_sync_working(game_live_definition *definition, const blueprint *source);
 int game_live_mark_dirty(game_live_definition *definition);
 

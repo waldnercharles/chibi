@@ -40,6 +40,7 @@ graph *blueprint_add_function(blueprint *bp, const char *name, int pure);
 graph *blueprint_add_macro(blueprint *bp, const char *name);
 graph *blueprint_find_graph(const blueprint *bp, uint64_t graph_id);
 graph *blueprint_find_graph_by_name(const blueprint *bp, const char *name);
+int blueprint_rename_graph(blueprint *bp, uint64_t graph_id, const char *name);
 int blueprint_delete_graph(blueprint *bp, uint64_t graph_id);
 void blueprint_free(blueprint *bp);
 
@@ -86,7 +87,10 @@ int blueprint_set_variable_default(blueprint *bp, uint64_t id, const pin_value *
 node *blueprint_add_get_node(blueprint *bp, uint64_t variable_id);
 node *blueprint_add_set_node(blueprint *bp, uint64_t variable_id);
 node *blueprint_add_self_node(blueprint *bp); /* NULL when no owner type */
-node *blueprint_add_call_event_node(blueprint *bp, node *event_node);
+/* Add a call node to `caller`. Both graphs must belong to `bp`. */
+node *blueprint_add_function_call_node_to_graph(blueprint *bp, graph *caller, graph *function_graph);
+node *blueprint_add_macro_call_node_to_graph(blueprint *bp, graph *caller, graph *macro_graph);
+/* Convenience forms that add the call to the default event graph. */
 node *blueprint_add_function_call_node(blueprint *bp, graph *function_graph);
 node *blueprint_add_macro_call_node(blueprint *bp, graph *macro_graph);
 

@@ -19,12 +19,40 @@ typedef enum editor_ui_asset_selection
     EDITOR_UI_ASSET_ACTIVE,
 } editor_ui_asset_selection;
 
+typedef enum
+{
+    EDITOR_UI_COMMAND_SAVE,
+    EDITOR_UI_COMMAND_SAVE_AS,
+    EDITOR_UI_COMMAND_SAVE_ALL,
+    EDITOR_UI_COMMAND_RELOAD,
+    EDITOR_UI_COMMAND_UNDO,
+    EDITOR_UI_COMMAND_REDO,
+    EDITOR_UI_COMMAND_NEW_PROTOTYPE,
+    EDITOR_UI_COMMAND_NEW_BEHAVIOR,
+    EDITOR_UI_COMMAND_FOCUS_SCENE,
+    EDITOR_UI_COMMAND_FOCUS_SCENE_RUNTIME,
+    EDITOR_UI_COMMAND_FOCUS_COMPONENTS,
+    EDITOR_UI_COMMAND_FOCUS_MY_BLUEPRINT,
+    EDITOR_UI_COMMAND_FOCUS_INSPECTOR,
+    EDITOR_UI_COMMAND_FOCUS_COMPILER_RESULTS,
+    EDITOR_UI_COMMAND_FOCUS_OUTPUT_LOG,
+    EDITOR_UI_COMMAND_REFRESH_CONTENT,
+} editor_ui_command;
+
+typedef int (*editor_ui_command_handler)(editor_ui_command command, void *user);
+
 typedef enum editor_ui_focus_target
 {
     EDITOR_UI_FOCUS_NONE,
     EDITOR_UI_FOCUS_SCENE,
+    EDITOR_UI_FOCUS_SCENE_RUNTIME,
     EDITOR_UI_FOCUS_NODE_CANVAS,
     EDITOR_UI_FOCUS_CONTENT_DRAWER,
+    EDITOR_UI_FOCUS_COMPONENTS,
+    EDITOR_UI_FOCUS_MY_BLUEPRINT,
+    EDITOR_UI_FOCUS_INSPECTOR,
+    EDITOR_UI_FOCUS_COMPILER_RESULTS,
+    EDITOR_UI_FOCUS_OUTPUT_LOG,
 } editor_ui_focus_target;
 
 #define EDITOR_UI_ASSET_CARD_WIDTH 148.0f
@@ -38,6 +66,7 @@ bool editor_ui_content_drawer_open(void);
 void editor_ui_set_content_drawer_open(bool open);
 
 void editor_ui_prepare(void);
+void editor_ui_set_command_handler(editor_ui_command_handler handler, void *user);
 bool editor_ui_section_header(const char *label, const char *action_id);
 bool editor_ui_asset_row(
     const char *id,

@@ -122,7 +122,6 @@ static const editor_event_signature APP_EVENT_CATALOG[] = {
     { "Begin", NULL, 0 },
     { "Tick", APP_TICK_PARAMS, 1 },
     { "Input", APP_INPUT_PARAMS, 1 },
-    { "OnStart", NULL, 0 },
 };
 
 enum
@@ -362,15 +361,14 @@ int main(int argc, char **argv)
 
     /* EVT-10 demo conventions: the host drives one preview instance and
      * dispatches Begin() once per instance (re)creation for the event demo.
-     * The flow demo starts its authored OnStart entry so its traversal records
+     * The flow demo starts its authored Begin entry so its traversal records
      * are visible without a JSON edit or a separate setup step. Tick(Real
      * DeltaSeconds) runs once per frame, and Input(CF_V2 Delta)
      * comes from the keys in APP_INPUT_BINDINGS and is broadcast
      * to attached behaviors. None of these names are core
      * lifecycle entries; dispatch fails silently when the authored graph has no
-     * such event. An authoring edit destroys the instance at the editor choke
-     * point (UI-56), so the selected demo event fires again when the instance
-     * is recreated. */
+     * such event. Behavior graph edits remain in the working copy until Save
+     * applies them to the runtime snapshot. */
     if (seed && (flow_demo || event_demo)) {
         editor_preview_create(ed);
     }
@@ -384,13 +382,12 @@ int main(int argc, char **argv)
         double seconds = CF_SECONDS;
         editor_tick(ed, seconds);
         app_scene_authoring_set_editor_working(scene, editor_blueprint(ed));
-        (void)app_scene_authoring_apply_pending(scene);
 
         blueprint_instance *bi = editor_preview_instance(ed);
         if (bi) {
             if (editor_preview_generation(ed) != instance_gen) {
                 instance_gen = editor_preview_generation(ed);
-                demo_dispatch(ed, flow_demo ? "OnStart" : "Begin", (flow_inputs){ 0 });
+                demo_dispatch(ed, "Begin", (flow_inputs){ 0 });
             }
             double delta = seconds - last_seconds;
             if (delta > 0.0 && delta < 1.0) {

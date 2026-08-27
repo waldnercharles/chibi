@@ -45,8 +45,6 @@ static void free_entity(game_scene_entity *entity)
     free(entity->prototype);
     free(entity->components_json);
     free_names(&entity->behaviors);
-    free_names(&entity->behavior_additions);
-    free_names(&entity->behavior_removals);
 }
 
 static int read_name_array(
@@ -165,37 +163,6 @@ int game_scene_document_set_entity_components(game_scene_document *document, int
     return 0;
 }
 
-int game_scene_document_set_entity_behavior_overrides(
-    game_scene_document *document,
-    int entity,
-    const char *const *additions,
-    int addition_count,
-    const char *const *removals,
-    int removal_count
-)
-{
-    assert(entity >= 0 && entity < acount(document->entities));
-    if (addition_count < 0 || removal_count < 0 ||
-        (addition_count && !additions) || (removal_count && !removals)) {
-        return -1;
-    }
-    game_scene_entity *value = &document->entities[entity];
-    char **next_additions = NULL;
-    char **next_removals = NULL;
-    if (copy_names(&next_additions, additions, addition_count) != 0 ||
-        copy_names(&next_removals, removals, removal_count) != 0) {
-        free_names(&next_additions);
-        free_names(&next_removals);
-        return -1;
-    }
-    free_names(&value->behavior_additions);
-    free_names(&value->behavior_removals);
-    value->behavior_additions = next_additions;
-    value->behavior_removals = next_removals;
-    value->has_behavior_overrides = 1;
-    return 0;
-}
-
 char *game_scene_document_save(const game_scene_document *document)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -223,18 +190,6 @@ char *game_scene_document_save(const game_scene_document *document)
             yyjson_mut_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
         }
         yyjson_mut_obj_add_val(json, value, "behaviors", behaviors);
-        if (entity->has_behavior_overrides) {
-            yyjson_mut_val *additions = yyjson_mut_arr(json);
-            yyjson_mut_val *removals = yyjson_mut_arr(json);
-            for (int j = 0; j < acount(entity->behavior_additions); j++) {
-                yyjson_mut_arr_add_strcpy(json, additions, entity->behavior_additions[j]);
-            }
-            for (int j = 0; j < acount(entity->behavior_removals); j++) {
-                yyjson_mut_arr_add_strcpy(json, removals, entity->behavior_removals[j]);
-            }
-            yyjson_mut_obj_add_val(json, value, "behavior_additions", additions);
-            yyjson_mut_obj_add_val(json, value, "behavior_removals", removals);
-        }
         yyjson_mut_arr_add_val(entities, value);
     }
     yyjson_mut_obj_add_val(json, root, "entities", entities);
@@ -243,17 +198,9 @@ char *game_scene_document_save(const game_scene_document *document)
     return result;
 }
 
-static void load_fail(
-    game_scene_document *document,
-    yyjson_doc *parsed,
-    char **behaviors,
-    char **additions,
-    char **removals
-)
+static void load_fail(game_scene_document *document, yyjson_doc *parsed, char **behaviors)
 {
     free_names(&behaviors);
-    free_names(&additions);
-    free_names(&removals);
     game_scene_document_free(document);
     yyjson_doc_free(parsed);
 }
@@ -294,35 +241,21 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
         yyjson_val *behaviors = yyjson_is_obj(entity_value)
                                   ? yyjson_obj_get(entity_value, "behaviors")
                                   : NULL;
-        yyjson_val *behavior_additions = yyjson_is_obj(entity_value)
-                                           ? yyjson_obj_get(entity_value, "behavior_additions")
-                                           : NULL;
-        yyjson_val *behavior_removals = yyjson_is_obj(entity_value)
-                                          ? yyjson_obj_get(entity_value, "behavior_removals")
-                                          : NULL;
         yyjson_val *components = yyjson_is_obj(entity_value)
                                    ? yyjson_obj_get(entity_value, "components")
                                    : NULL;
         if (!yyjson_is_str(entity_name) || !yyjson_get_len(entity_name) ||
             !yyjson_is_str(prototype) || !yyjson_get_len(prototype) ||
             (behaviors && !yyjson_is_arr(behaviors)) ||
-            (components && !yyjson_is_obj(components)) ||
-            (behavior_additions && !yyjson_is_arr(behavior_additions)) ||
-            (behavior_removals && !yyjson_is_arr(behavior_removals))) {
+            (components && !yyjson_is_obj(components))) {
             set_error(error, error_size, "invalid scene entity at index %d", index);
-            load_fail(document, parsed, NULL, NULL, NULL);
+            load_fail(document, parsed, NULL);
             return NULL;
         }
         char **behavior_names = NULL;
-        char **behavior_addition_names = NULL;
-        char **behavior_removal_names = NULL;
         if (read_name_array(behaviors, &behavior_names, error, error_size, index, "behaviors") !=
-                0 ||
-            read_name_array(behavior_additions, &behavior_addition_names, error, error_size, index, "behavior additions") !=
-                0 ||
-            read_name_array(behavior_removals, &behavior_removal_names, error, error_size, index, "behavior removals") !=
-                0) {
-            load_fail(document, parsed, behavior_names, behavior_addition_names, behavior_removal_names);
+            0) {
+            load_fail(document, parsed, behavior_names);
             return NULL;
         }
         if (game_scene_document_add_entity(
@@ -333,7 +266,7 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
                 acount(behavior_names)
             ) != 0) {
             set_error(error, error_size, "duplicate or invalid scene entity at index %d", index);
-            load_fail(document, parsed, behavior_names, behavior_addition_names, behavior_removal_names);
+            load_fail(document, parsed, behavior_names);
             return NULL;
         }
         int entity_index = acount(document->entities) - 1;
@@ -343,26 +276,11 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
             free(components_json);
             if (component_result != 0) {
                 set_error(error, error_size, "invalid components at scene entity %d", index);
-                load_fail(document, parsed, behavior_names, behavior_addition_names, behavior_removal_names);
+                load_fail(document, parsed, behavior_names);
                 return NULL;
             }
         }
-        if ((behavior_additions || behavior_removals) &&
-            game_scene_document_set_entity_behavior_overrides(
-                document,
-                entity_index,
-                (const char *const *)behavior_addition_names,
-                acount(behavior_addition_names),
-                (const char *const *)behavior_removal_names,
-                acount(behavior_removal_names)
-            ) != 0) {
-            set_error(error, error_size, "invalid behavior overrides at scene entity %d", index);
-            load_fail(document, parsed, behavior_names, behavior_addition_names, behavior_removal_names);
-            return NULL;
-        }
         free_names(&behavior_names);
-        free_names(&behavior_addition_names);
-        free_names(&behavior_removal_names);
         index++;
     }
     yyjson_doc_free(parsed);

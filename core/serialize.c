@@ -316,12 +316,6 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const node *n)
     yyjson_mut_obj_add_str(doc, o, "type", n->desc->name);
     yyjson_mut_obj_add_real(doc, o, "x", n->x);
     yyjson_mut_obj_add_real(doc, o, "y", n->y);
-    if (n->title_override) {
-        yyjson_mut_obj_add_str(doc, o, "title", n->title_override);
-    }
-    if (n->comment) {
-        yyjson_mut_obj_add_str(doc, o, "comment", n->comment);
-    }
     yyjson_mut_obj_add_uint(doc, o, "reference_id", n->reference_id);
     if (n->reference_name) {
         yyjson_mut_obj_add_str(doc, o, "reference_name", n->reference_name);
@@ -799,15 +793,7 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
         if (y && yyjson_is_num(y)) {
             n->y = (float)yyjson_get_real(y);
         }
-        yyjson_val *title = yyjson_obj_get(v, "title"),
-                   *comment = yyjson_obj_get(v, "comment"),
-                   *refname = yyjson_obj_get(v, "reference_name");
-        if (title && yyjson_is_str(title)) {
-            n->title_override = graph_own_str(g, yyjson_get_str(title), yyjson_get_len(title));
-        }
-        if (comment && yyjson_is_str(comment)) {
-            n->comment = graph_own_str(g, yyjson_get_str(comment), yyjson_get_len(comment));
-        }
+        yyjson_val *refname = yyjson_obj_get(v, "reference_name");
         yyjson_val *refid = yyjson_obj_get(v, "reference_id");
         if (refid && yyjson_is_uint(refid)) {
             n->reference_id = yyjson_get_uint(refid);

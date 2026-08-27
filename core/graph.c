@@ -901,35 +901,6 @@ int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, u
     return 0;
 }
 
-static int set_node_text(graph *g, node *n, char **slot, const char *text)
-{
-    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
-        return -1;
-    }
-    if (!text) {
-        *slot = NULL;
-        graph_changed(g);
-        return 0;
-    }
-    char *copy = graph_own_str(g, text, strlen(text));
-    if (!copy) {
-        return -1;
-    }
-    *slot = copy;
-    graph_changed(g);
-    return 0;
-}
-
-int graph_set_node_title(graph *g, node *n, const char *title)
-{
-    return set_node_text(g, n, &n->title_override, title);
-}
-
-int graph_set_node_comment(graph *g, node *n, const char *comment)
-{
-    return set_node_text(g, n, &n->comment, comment);
-}
-
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {

@@ -375,9 +375,8 @@ static void pass_data_cycles(compile_report *out, const graph *g, arena *tmp)
     }
 }
 
-/* CMPL-7: a reference to a retired or missing variable, event, function, or
- * macro. Get/Set reference variables; Call Event references an event node.
- * Function and macro references arrive with Phase 4. */
+/* CMPL-7: a reference to a retired or missing variable, function, or macro.
+ * Get/Set reference variables; Function and macro references use graph IDs. */
 static void pass_references(compile_report *out, const blueprint *bp)
 {
     for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
@@ -396,19 +395,6 @@ static void pass_references(compile_report *out, const blueprint *bp)
                         0,
                         CMPL_RULE_MISSING_REFERENCE,
                         "references a missing variable (id %llu)",
-                        (unsigned long long)n->reference_id
-                    );
-                }
-            } else if (n->desc == &NODE_CallEvent) {
-                const node *target = graph_node_by_id(g, n->reference_id);
-                if (!target || target->desc->flow_kind != NODE_FLOW_EVENT) {
-                    emit(
-                        out,
-                        CMPL_ERROR,
-                        n->id,
-                        0,
-                        CMPL_RULE_MISSING_REFERENCE,
-                        "references a missing event (id %llu)",
                         (unsigned long long)n->reference_id
                     );
                 }

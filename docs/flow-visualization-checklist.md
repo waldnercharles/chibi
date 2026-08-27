@@ -18,10 +18,10 @@ The requirements are defined by `docs/spec.md` (`DBG-15`, `DBG-16`, and
 - [x] Confirm the renderer consumes traversal records and has no evaluator
   callback in its render path (`UI-49`).
 - [x] Launch the bounded flow-demo window with
-  `./build/app --flow-demo --frames 600 --fps 60`; it dispatches `OnStart` and
+  `./build/app --flow-demo --frames 600 --fps 60`; it dispatches `Begin` and
   exits cleanly after the requested frames.
 - [x] Repeat the bounded launch smoke at 30 and 144 FPS; both runs dispatch
-  `OnStart` and exit cleanly after the requested frames.
+  `Begin` and exit cleanly after the requested frames.
 - [ ] Manually verify the visual treatment at 30, 60, and 144 FPS in the flow demo.
 - [ ] Manually verify branch-end and stopped-flow fades in the running window.
 

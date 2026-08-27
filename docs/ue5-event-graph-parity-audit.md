@@ -9,7 +9,9 @@ This document records the audit of the former parity claims in `docs/spec.md`,
 separates fixed Blueprint language constructs from generated engine actions,
 and explains the reordered work. The append-only requirement withdrawals and
 replacements are now in the spec under ADR 0007. The spec and roadmap are the
-normative and scheduling sources when wording differs from this record.
+normative and scheduling sources when wording differs from this record. ADR 0021
+defers custom Events and Call Event in the current editor even where this audit
+records them as parity capabilities.
 
 ## Parity definition
 

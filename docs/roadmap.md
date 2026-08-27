@@ -5,11 +5,12 @@ Requirement IDs such as `RUN-4` refer to that document. Decisions are recorded
 in `docs/adr/`.
 
 `docs/ue5-event-graph-parity-audit.md` audits the catalog against UE 5.8.
-Section 0 is reconciled into the spec: the current order after the completed
-foundation is an event-driven vertical slice, Functions, Arrays, then
-Delegates. ADR 0011 replaces run-scoped behavior state with persistent
-Blueprint instances. The pre-audit phases remain at the end of this file only
-as historical implementation notes.
+ADR 0021 is the current editor workflow: Prototype is the Blueprint shell,
+Behavior remains a reusable module, and Scene instances expose local field
+overrides. Sections that describe the former mixed Details/Blueprint workbench
+or custom Event authoring are historical and no longer define the next UI
+slice. The pre-audit phases remain at the end of this file as historical
+implementation notes.
 
 ## Working agreement
 
@@ -43,45 +44,33 @@ execution runtime that no UI ever called.
 
 ## Current state
 
-Verified against the tree at commit `606c694` plus working-tree changes.
-`cmake --build build && ./build/self_check` passes.
+The current working tree builds with `cmake --build build`; the self-check,
+integration, editor runtime, prototype authoring, and input behavior checks
+pass.
 
 Present and working:
 
-- `core/graph.c`: node and edge storage, data and exec connection rules, the
-  one-driver data rule, the exec order field, the paused-mutation guard.
-- `core/eval.c`: pull-based data evaluation with memoization and a cycle guard.
-- `core/flow.c`: imperative execution over an explicit `flow_frame`
-  continuation stack, latent suspension against a host monotonic clock,
-  ordered fan-out, a step budget, and topology-change detection.
-- `core/flow_nodes.c`: Event, Branch, Sequence and Sequence4, ForLoop, Delay.
-- `core/serialize.c`: graph JSON v2 with data and exec edges, plus subset save
-  and append.
-- `reflect/reflect.c`: libclang tool emitting prefixed `type_desc`, Make, Break,
-  and call descriptors into a build-directory registry pack; target-specific
-  pack composition provides the global lookup surface.
-- `editor/editor.c`: canvas with placement, dragging, pan, zoom, selection,
-  marquee, type-checked linking, deletion, spawn menu with filter, JSON undo
-  and redo, clipboard, and typed editors for unconnected scalar inputs.
+- Core graph storage, typed connections, evaluation, execution, latent runs, and
+  compiler diagnostics.
+- The editor canvas with placement, linking, selection, clipboard, typed scalar
+  editing, and per-Blueprint JSON undo/redo.
+- The Prototype shell with Components, My Blueprint, and the universal Inspector.
+- The Scene shell with World Outliner, instance overrides, Revert controls, and
+  Scene Runtime Play, Pause, Step, Restart, and Stop controls.
+- Behavior working-copy Save plus compile/apply, atomic document writes, Save
+  All, deterministic Save As paths, and Reload from disk.
+- Fixed-signature host Event catalog authoring. Custom Event and Call Event
+  authoring, node title overrides, node comments, and generic pin-schema
+  surgery are withdrawn by ADR 0021.
 
-Known gaps that drive the phase order:
+Known gaps:
 
-- No execution UI at all. `graph_run_event()`, `flow_run_start()`,
-  `flow_run_resume()`, and `flow_run_tick()` are called from zero UI sites.
-- No pause, step, stop, or reset in the runtime. `flow_run_resume()` runs to
-  completion or to a latent suspension, and nothing else.
-- No way to set an event name outside JSON. `graph_set_event_name()` exists and
-  `editor/editor.c` never calls it.
-- `node_desc` holds file-static pin arrays, so per-instance pins are
-  impossible. `sequence_outputs[]` is fixed at four entries.
-- Edges reference nodes by array index, and `graph_remove_node()` shifts the
-  array, so no stored reference survives a delete.
-- `eval_view_refresh()` re-evaluates every data output every frame and writes
-  into `n->outputs[pin]`, the same storage execution writes.
-- `core/flow.c` and `core/eval.c` keep error state in file-static globals
-  (`g_flow_error`, `g_status`).
-- No variables, no functions, no macros, no blueprint container, no compile
-  pass, no breakpoints, no watches.
+- Prototype Preview still needs a separate runtime world from Scene Runtime.
+- Prototype and Scene history need complete per-document grouping and Revert All
+  behavior.
+- Save As still uses a deterministic path because no file-picker UI exists.
+- The document router remains a fixed three-kind switch; a multi-document
+  registry and child entity/component hierarchy are deferred.
 
 ## Phase 0: baseline (done)
 
@@ -217,7 +206,8 @@ Deliverables:
 4. Edges reference node and pin IDs. Rewrite `graph_input_source()`,
    `graph_exec_input_source()`, `graph_exec_output_target()`, and
    `graph_remove_edge()` accordingly. `ID-6`.
-5. Node title override, comment, reference ID, and reference name fields.
+5. Internal reference ID and reference name fields. Node title overrides and
+   node comments are withdrawn by ADR 0021.
    Delete `node.event_name` and move event names onto the reference name.
    `NODE-3`, `NODE-4`, `NODE-5`.
 6. User-extensible pin groups with a declared minimum and maximum, and add and
@@ -350,7 +340,8 @@ Runtime and language deliverables:
    event activations. Instance variables and node scratch persist; stacks,
    temporaries, memo, errors, watches, and latent state stay activation-local.
    `EXEC-15` through `EXEC-19`, `RUN-16` through `RUN-20`.
-3. Make Event and Call Event fully authorable with generic typed signatures.
+3. Keep editor Event creation limited to the host catalog. Custom Events and
+   Call Event are deferred by ADR 0021.
    Core assigns no lifecycle names. `EVT-1` through `EVT-7`, `EVT-9`,
    `EVT-11`.
 4. Add `PIN_NAME`, nominal `PIN_HANDLE`, optional typed Self, and corrected
@@ -800,8 +791,12 @@ traceable until their replacement phase gains equivalent detailed checks.
 
 ### Former phase 3: details panel, events with parameters, diagnostics
 
-Goal: the editor becomes the only place authoring happens. Custom events get
-real signatures. Diagnostics get infrastructure that later phases extend.
+Historical section. ADR 0021 withdraws its custom Event and Call Event goals;
+the current implementation target is the universal Inspector and fixed host
+catalog events described in `docs/unreal-blueprint-editor-plan.md`.
+
+Goal: the editor becomes the only place authoring happens. Diagnostics get
+infrastructure that later phases extend.
 
 Estimate: 4 to 5 days.
 
@@ -814,7 +809,8 @@ Covers: `EVT-1` through `EVT-8`, `RUN-12`, `DBG-9`, `CMPL-1` through `CMPL-6`,
 
 Deliverables:
 
-1. Details panel driven by selection, exposing every authorable node property
+1. Universal Inspector driven by selection, exposing every remaining node,
+   variable, component, and scene-instance property
    and every per-pin property. `UI-4`, `UI-5`.
 2. Panel layout, dockable from the start. Set `ImGuiConfigFlags_DockingEnable`,
    host a dockspace with `ImGui_DockSpaceOverViewport()`, and make the canvas,
@@ -826,13 +822,12 @@ Deliverables:
    build: `ImGuiConfigFlags_DockingEnable`, `ImGui_DockSpace` and
    `ImGui_DockSpaceOverViewport` are exposed by cute_framework's bundled
    dcimgui.h. `UI-2`, `UI-42`, `UI-43`.
-3. Event name editing in the details panel, replacing the JSON-only path.
-   `EVT-2`.
-4. Custom event parameter list editing: add, remove, rename, retype, reorder,
-   and default per parameter, on top of phase 2 instance pins. `EVT-4`.
-5. Call Event node referencing an event by ID, with pins mirroring the event's
-   parameters and revalidation on signature change. `EVT-5`, `EVT-6`.
-6. Lifecycle events Begin and Tick, host-triggered. `EVT-8`.
+3. Fixed host-catalog Event creation in the universal Inspector. `EVT-2`,
+   `EVT-19`, `EVT-20`.
+4. Custom Event parameter editing is deferred by ADR 0021. `EVT-4`.
+5. Call Event is deferred by ADR 0021. `EVT-5`, `EVT-6`.
+6. Lifecycle events remain host catalog entries rather than core language
+   entries. `EVT-8`, `EVT-10`.
 7. Diagnostic list type, compile entry point, ordering, and navigation, with
    the rules expressible now: a missing required exec input, an incompatible
    data edge, a data cycle, and duplicate names. The cycle case already exists

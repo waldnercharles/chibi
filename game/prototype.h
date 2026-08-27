@@ -95,6 +95,7 @@ int game_prototype_write_field(
     pin_value value
 );
 int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc);
+int game_prototype_remove_component(game_prototype *prototype, const char *component_name);
 int game_prototype_add_graph(game_prototype *prototype, const char *asset_name);
 int game_prototype_remove_graph(game_prototype *prototype, const char *asset_name);
 int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name);

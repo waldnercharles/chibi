@@ -750,6 +750,9 @@ static int register_graph_supported(
 static int simd_graph_supported(const graph_ir *ir)
 {
 #if defined(__aarch64__)
+    if (getenv("CB_DISABLE_SIMD")) {
+        return 0;
+    }
     if (!sljit_has_cpu_feature(SLJIT_HAS_SIMD)) {
         return 0;
     }

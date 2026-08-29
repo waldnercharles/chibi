@@ -1,7 +1,10 @@
 #include "../ecs/ecs.h"
 #include "../game/generated.h"
+#include "../game/query.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static int check(int condition, const char *message)
 {
@@ -14,6 +17,34 @@ static int check(int condition, const char *message)
 static int add(ecs_world *world, ecs_entity entity, ecs_component_id component)
 {
     return ecs_world_record_add(world, entity, component, NULL, 0) == ECS_OK;
+}
+
+static const ecs_component_desc *resolve_component(const char *name, void *)
+{
+    if (!strcmp(name, GAME_COMPONENT_GameTransform.name)) {
+        return &GAME_COMPONENT_GameTransform;
+    }
+    if (!strcmp(name, GAME_COMPONENT_GameMovement.name)) {
+        return &GAME_COMPONENT_GameMovement;
+    }
+    if (!strcmp(name, GAME_COMPONENT_GameInput.name)) {
+        return &GAME_COMPONENT_GameInput;
+    }
+    return NULL;
+}
+
+static const char *component_name(ecs_component_id id, void *)
+{
+    if (id == GAME_COMPONENT_GameTransform.id) {
+        return GAME_COMPONENT_GameTransform.name;
+    }
+    if (id == GAME_COMPONENT_GameMovement.id) {
+        return GAME_COMPONENT_GameMovement.name;
+    }
+    if (id == GAME_COMPONENT_GameInput.id) {
+        return GAME_COMPONENT_GameInput.name;
+    }
+    return NULL;
 }
 
 int main(void)
@@ -59,6 +90,13 @@ int main(void)
     }
     failures += check(result == 0 && count == 1, "boolean query returns one entity");
     ecs_query_end(&query);
+
+    char *json = game_query_save(root, resolve_component, component_name, NULL);
+    char error[128] = { 0 };
+    ecs_query_expr *roundtrip = game_query_load(json, resolve_component, NULL, error, sizeof error);
+    failures += check(json && roundtrip, error[0] ? error : "query round-trips through JSON");
+    free(json);
+    ecs_query_expr_free(roundtrip);
 
     ecs_query_expr_free(root);
     ecs_query_expr *unknown = ecs_query_expr_has(UINT64_C(0xffff));

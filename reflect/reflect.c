@@ -63,6 +63,7 @@ typedef struct
 {
     char *name;
     char *file; /* header basename where the definition lives */
+    unsigned line;
     field_info *fields;
     long long size;
     int component;
@@ -99,6 +100,86 @@ typedef struct
     struct_info *structs;
     fn_info *fns;
 } collect_ctx;
+
+typedef struct
+{
+    char *file;
+    unsigned line;
+    uint64_t id;
+    char *key;
+    char *name;
+} component_identity;
+
+static component_identity *g_component_identities;
+static const char *g_manifest_path;
+
+static uint64_t component_id(const struct_info *s)
+{
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        component_identity *identity = &g_component_identities[i];
+        if (identity->line == s->line && strcmp(identity->file, s->file) == 0) {
+            return identity->id;
+        }
+        if (strcmp(identity->name, s->name) == 0) {
+            return identity->id;
+        }
+    }
+    return stable_service_id(s->name);
+}
+
+static const char *component_key(const struct_info *s)
+{
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        component_identity *identity = &g_component_identities[i];
+        if (identity->line == s->line && strcmp(identity->file, s->file) == 0) {
+            return identity->key;
+        }
+        if (strcmp(identity->name, s->name) == 0) {
+            return identity->key;
+        }
+    }
+    return s->name;
+}
+
+static void load_component_manifest(const char *path)
+{
+    if (!path) {
+        return;
+    }
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof line, file)) {
+        if (line[0] == '#' || line[0] == '\n') {
+            continue;
+        }
+        char file_name[256];
+        char key[128];
+        char name[128];
+        unsigned line_number;
+        unsigned long long id;
+        if (sscanf(line, "%255s %u %llu %127s %127s", file_name, &line_number, &id, key, name) !=
+                5 ||
+            !id) {
+            fprintf(stderr, "reflect: invalid component manifest line: %s", line);
+            g_failed = 1;
+            continue;
+        }
+        apush(
+            g_component_identities,
+            (component_identity){
+                strdup(file_name),
+                line_number,
+                (uint64_t)id,
+                strdup(key),
+                strdup(name),
+            }
+        );
+    }
+    fclose(file);
+}
 
 static char *cxstr(CXString s)
 {
@@ -341,6 +422,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
     struct_info s = { 0 };
     s.name = strdup(name);
     s.file = cursor_file_basename(c);
+    clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
     s.size = clang_Type_getSizeOf(underlying);
     s.component = component;
     s.dense = dense;
@@ -387,6 +469,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             struct_info s = { 0 };
             s.name = cxstr(clang_getCursorSpelling(c));
             s.file = cursor_file_basename(c);
+            clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
             s.size = clang_Type_getSizeOf(clang_getCursorType(c));
             s.component = is_component;
             s.dense = has_annotate(c, "node:component:index:dense");
@@ -1359,15 +1442,17 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
 static void emit_component_accessors(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
-    uint64_t id = stable_service_id(name);
+    uint64_t id = component_id(s);
     fprintf(
         out,
         "const ecs_component_desc %s_COMPONENT_%s = { .id = UINT64_C(%llu), "
-        ".name = \"%s\", .element_size = sizeof(%s), .type = &%s_T_%s, "
+        ".key = \"%s\", .name = \"%s\", .element_size = sizeof(%s), .type = "
+        "&%s_T_%s, "
         ".layout_hash = UINT64_C(%llu), .index = %s };\n",
         g_prefix,
         name,
         (unsigned long long)id,
+        component_key(s),
         name,
         name,
         g_prefix,
@@ -1716,13 +1801,14 @@ static void set_prefix(const char *source)
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix] [--include path ...]\n");
+        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix] [--manifest path] [--include path ...]\n");
         return 2;
     }
     const char *input = argv[1];
     const char *output = argv[2];
     int option = 3;
     const char *prefix = output;
+    const char *manifest = NULL;
     if (option < argc && strcmp(argv[option], "--include") != 0) {
         prefix = argv[option++];
     }
@@ -1738,10 +1824,20 @@ int main(int argc, char **argv)
     const char *args[32] = { "-x", "c", "-I", rootdir };
     int nargs = 4;
     while (option < argc) {
-        if (option + 1 >= argc || nargs + 2 > 32 ||
-            (strcmp(argv[option], "--include") != 0 &&
-             strcmp(argv[option], "--sysroot") != 0)) {
+        if (option + 1 >= argc || (strcmp(argv[option], "--include") != 0 &&
+                                   strcmp(argv[option], "--sysroot") != 0 &&
+                                   strcmp(argv[option], "--manifest") != 0)) {
             fprintf(stderr, "reflect: invalid include option\n");
+            clang_disposeIndex(idx);
+            return 2;
+        }
+        if (strcmp(argv[option], "--manifest") == 0) {
+            manifest = argv[option + 1];
+            option += 2;
+            continue;
+        }
+        if (nargs + 2 > 32) {
+            fprintf(stderr, "reflect: too many include options\n");
             clang_disposeIndex(idx);
             return 2;
         }
@@ -1769,6 +1865,7 @@ int main(int argc, char **argv)
     }
 
     collect_ctx ctx = { NULL, NULL };
+    load_component_manifest(manifest);
     clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, &ctx);
     if (g_failed) {
         clang_disposeTranslationUnit(tu);

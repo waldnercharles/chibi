@@ -37,6 +37,7 @@ typedef enum
 typedef struct
 {
     ecs_component_id id;
+    const char *key; /* persistent reflected identity */
     const char *name;
     size_t element_size;
     const type_desc *type;

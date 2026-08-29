@@ -1,0 +1,5 @@
+# file line id key current_name
+components.h 12 1376052968821171689 game.GameTransform GameTransform
+components.h 14 4594947644670299697 game.GameHealth GameHealth
+components.h 21 992505279072269918 game.GameMovement GameMovement
+components.h 27 194520663397847877 game.GameInput GameInput

@@ -193,7 +193,8 @@ target_link_libraries(ecs PUBLIC core)
 
 # --- generated game component pack ------------------------------------------
 set(GAME_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/game_registry.c)
-set(GAME_REFLECT_ARGS --include ${cute_framework_SOURCE_DIR}/include)
+set(GAME_COMPONENT_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/game/component_ids.tsv)
+set(GAME_REFLECT_ARGS --manifest ${GAME_COMPONENT_MANIFEST} --include ${cute_framework_SOURCE_DIR}/include)
 if(LIBCLANG_RESOURCE_INCLUDE_DIR)
     list(APPEND GAME_REFLECT_ARGS --include ${LIBCLANG_RESOURCE_INCLUDE_DIR})
 endif()
@@ -211,6 +212,7 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/game/components.h
+            ${GAME_COMPONENT_MANIFEST}
             ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
     COMMENT "Generating the game reflection pack"
     VERBATIM

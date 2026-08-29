@@ -182,6 +182,7 @@ int main(void)
         "the scene input route has viewport focus"
     );
     flow_error flow = { 0 };
+    game_behavior_set_delta_seconds(live->behaviors, 1.0 / 180.0);
     int right_count = transform && other_transform && runtime
                         ? engine_dispatch_input(runtime, "MoveRight", 1.0, 1, &flow)
                         : -1;

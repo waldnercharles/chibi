@@ -371,8 +371,12 @@ add_executable(registry_consumer
 target_include_directories(registry_consumer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(registry_consumer PRIVATE core demo)
 
-# --- clang-format (format runs before every build target) ---
-find_program(CLANG_FORMAT clang-format)
+# --- clang-format (format runs before every build target) -------------------
+# The web toolchain's clang-format may not understand the project's native
+# configuration. Formatting is a native developer check, not a web dependency.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  find_program(CLANG_FORMAT clang-format)
+endif()
 if(CLANG_FORMAT)
   file(GLOB FORMAT_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c

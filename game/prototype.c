@@ -33,7 +33,8 @@ static const ecs_component_desc *find_descriptor(const game_prototype_registry *
 {
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
-        if (desc && strcmp(desc->name, name) == 0) {
+        if (desc && (strcmp(desc->name, name) == 0 ||
+                     (desc->key && strcmp(desc->key, name) == 0))) {
             return desc;
         }
     }
@@ -54,7 +55,9 @@ static const type_desc *find_type(const game_prototype_registry *registry, const
 static game_prototype_component *find_component(game_prototype *prototype, const char *name)
 {
     for (int i = 0; i < acount(prototype->components); i++) {
-        if (strcmp(prototype->components[i].desc->name, name) == 0) {
+        const ecs_component_desc *desc = prototype->components[i].desc;
+        if (strcmp(desc->name, name) == 0 ||
+            (desc->key && strcmp(desc->key, name) == 0)) {
             return &prototype->components[i];
         }
     }
@@ -638,7 +641,12 @@ char *game_prototype_save(const game_prototype *prototype)
             component->data,
             component->desc->type
         );
-        yyjson_mut_obj_add_val(doc, components, component->desc->name, object);
+        yyjson_mut_obj_add_val(
+            doc,
+            components,
+            component->desc->key ? component->desc->key : component->desc->name,
+            object
+        );
     }
     afree(order);
     if (acount(prototype->graphs)) {
@@ -754,7 +762,12 @@ char *game_prototype_capture_overrides_json(const game_prototype *base, const ec
             yyjson_mut_obj_add_val(doc, fields, field->name, write_value(doc, base, current, field));
         }
         if (fields) {
-            yyjson_mut_obj_add_val(doc, components, component->desc->name, fields);
+            yyjson_mut_obj_add_val(
+                doc,
+                components,
+                component->desc->key ? component->desc->key : component->desc->name,
+                fields
+            );
         }
     }
     afree(order);

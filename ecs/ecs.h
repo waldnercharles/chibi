@@ -81,6 +81,10 @@ ecs_query_expr *ecs_query_expr_new(ecs_query_expr_kind kind);
 ecs_query_expr *ecs_query_expr_has(ecs_component_id component);
 ecs_query_expr *ecs_query_expr_clone(const ecs_query_expr *expr);
 int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child);
+ecs_query_expr_kind ecs_query_expr_get_kind(const ecs_query_expr *expr);
+ecs_component_id ecs_query_expr_get_component(const ecs_query_expr *expr);
+int ecs_query_expr_child_count(const ecs_query_expr *expr);
+const ecs_query_expr *ecs_query_expr_child(const ecs_query_expr *expr, int index);
 void ecs_query_expr_free(ecs_query_expr *expr);
 
 struct ecs_query

@@ -97,6 +97,30 @@ int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child)
     return ECS_OK;
 }
 
+ecs_query_expr_kind ecs_query_expr_get_kind(const ecs_query_expr *expr)
+{
+    assert(expr);
+    return expr->kind;
+}
+
+ecs_component_id ecs_query_expr_get_component(const ecs_query_expr *expr)
+{
+    assert(expr && expr->kind == ECS_QUERY_HAS);
+    return expr->component;
+}
+
+int ecs_query_expr_child_count(const ecs_query_expr *expr)
+{
+    assert(expr);
+    return acount(expr->children);
+}
+
+const ecs_query_expr *ecs_query_expr_child(const ecs_query_expr *expr, int index)
+{
+    assert(expr && index >= 0 && index < acount(expr->children));
+    return expr->children[index];
+}
+
 void ecs_query_expr_free(ecs_query_expr *expr)
 {
     if (!expr) {

@@ -1272,10 +1272,11 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         name,
         name
     );
+    fprintf(out, "static pin_spec %s_%s_structural_outputs[] = { { \"Then\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
     fprintf(
         out,
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
-        ".output_count = 1, .inputs = %s_%s_set_inputs, .outputs = "
+        ".output_count = 2, .inputs = %s_%s_set_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_set_%s, .type = &%s_T_%s, .access = &%s_%s_set_access "
         "};\n\n",
@@ -1322,7 +1323,7 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         out,
         "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
         ".output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
-        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "%s_%s_structural_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_add_%s, .access = &%s_%s_structural_access };\n",
         g_prefix,
         name,
@@ -1340,7 +1341,7 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         out,
         "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
         "1, .output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
-        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "%s_%s_structural_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_remove_%s, .access = &%s_%s_structural_access };\n\n",
         g_prefix,
         name,

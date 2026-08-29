@@ -270,6 +270,14 @@ int main(int argc, char **argv)
         return 1;
     }
     authoring = movement_authoring_new(world, player, system, graph_editor, runtime);
+    char *system_json = text_file_read(MOVEMENT_SYSTEM_PATH);
+    char query_error[256] = { 0 };
+    if (authoring && system_json &&
+        movement_authoring_set_query_json(authoring, system_json, query_error, sizeof query_error) !=
+            0) {
+        fprintf(stderr, "could not load system query: %s\n", query_error);
+    }
+    free(system_json);
     if (!authoring ||
         engine_add_system(runtime, movement_authoring_system, authoring) != 0) {
         movement_authoring_free(authoring);

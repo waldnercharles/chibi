@@ -28,5 +28,12 @@ char *game_system_document_save(
     game_query_component_name_resolver name,
     void *user
 );
+char *game_system_document_save_blueprint(
+    const blueprint *definition,
+    const ecs_query_expr *query,
+    game_query_component_resolver resolve,
+    game_query_component_name_resolver name,
+    void *user
+);
 
 #endif

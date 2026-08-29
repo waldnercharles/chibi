@@ -3,12 +3,15 @@
 #include "../core/serialize.h"
 #include "../core/xalloc.h"
 #include "../game/generated.h"
+#include "../game/query.h"
+#include "../game/system_document.h"
 #include "cute_host.h"
 #include "scene_draw.h"
 #include "scene_imgui.h"
 
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MOVEMENT_SYSTEM_PATH "content/systems/MovementSystem.json"
@@ -24,8 +27,56 @@ struct movement_authoring
     engine *runtime;
     unsigned synced_revision;
     double last_time;
+    bool require_health;
     char status[256];
 };
+
+static const ecs_component_desc *resolve_component(const char *name, void *)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if (strcmp(component->name, name) == 0 ||
+            (component->key && strcmp(component->key, name) == 0)) {
+            return component;
+        }
+    }
+    return NULL;
+}
+
+static const char *component_key(ecs_component_id id, void *)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if (component->id == id) {
+            return component->key ? component->key : component->name;
+        }
+    }
+    return NULL;
+}
+
+static int write_atomic(const char *path, const char *text)
+{
+    size_t size = strlen(path) + 5;
+    char *temporary = (char *)xmalloc(size);
+    snprintf(temporary, size, "%s.tmp", path);
+    FILE *file = fopen(temporary, "wb");
+    if (!file) {
+        free(temporary);
+        return -1;
+    }
+    int result = fputs(text, file) < 0;
+    if (fclose(file) != 0) {
+        result = -1;
+    }
+    if (!result && rename(temporary, path) != 0) {
+        result = -1;
+    }
+    if (result) {
+        remove(temporary);
+    }
+    free(temporary);
+    return result;
+}
 
 static void set_status(movement_authoring *authoring, const char *message)
 {
@@ -118,6 +169,31 @@ void movement_authoring_input(movement_authoring *authoring, bool viewport_focus
     input->move = (CF_V2){ x, y };
 }
 
+int movement_authoring_set_query_json(
+    movement_authoring *authoring,
+    const char *json,
+    char *error,
+    size_t error_size
+)
+{
+    if (!authoring || !json || !strstr(json, "\"query\"")) {
+        return 0;
+    }
+    game_system_document
+        *document = game_system_document_load(json, resolve_component, NULL, error, error_size);
+    if (!document) {
+        return -1;
+    }
+    const ecs_query_expr *query = game_system_document_query(document);
+    int result = game_system_set_query(authoring->system, query);
+    if (result == 0 && query && ecs_query_expr_get_kind(query) == ECS_QUERY_HAS) {
+        authoring->require_health = ecs_query_expr_get_component(query) ==
+                                    GAME_COMPONENT_GameHealth.id;
+    }
+    game_system_document_free(document);
+    return result;
+}
+
 static const char *component_name(ecs_component_id id)
 {
     if (id == GAME_COMPONENT_GameTransform.id) {
@@ -172,6 +248,17 @@ static void draw_system_panel(movement_authoring *authoring)
     int count = game_system_query_count(authoring->system);
     for (int i = 0; i < count; i++) {
         ImGui_Text("- %s", component_name(game_system_query_at(authoring->system, i)));
+    }
+    ImGui_SeparatorText("Authored filter");
+    ImGui_TextUnformatted("All inferred terms plus:");
+    if (ImGui_Checkbox("GameHealth", &authoring->require_health)) {
+        ecs_query_expr *filter = authoring->require_health
+                                   ? ecs_query_expr_has(
+                                         GAME_COMPONENT_GameHealth.id
+                                     )
+                                   : NULL;
+        game_system_set_query(authoring->system, filter);
+        ecs_query_expr_free(filter);
     }
     ImGui_Separator();
     bool playing = engine_is_playing(authoring->runtime);
@@ -261,7 +348,20 @@ void movement_authoring_system(ecs_world *, double monotonic_time, void *user)
     }
 }
 
-int movement_authoring_save(editor *editor, void *)
+int movement_authoring_save(editor *editor, void *user)
 {
-    return editor_save(editor, MOVEMENT_SYSTEM_PATH);
+    movement_authoring *authoring = (movement_authoring *)user;
+    char *json = game_system_document_save_blueprint(
+        editor_blueprint(editor),
+        game_system_query_expression(authoring->system),
+        resolve_component,
+        component_key,
+        NULL
+    );
+    if (!json) {
+        return -1;
+    }
+    int result = write_atomic(MOVEMENT_SYSTEM_PATH, json);
+    free(json);
+    return result;
 }

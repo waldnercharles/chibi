@@ -137,21 +137,22 @@ game_system_document *game_system_document_load(
     return document;
 }
 
-char *game_system_document_save(
-    const game_system_document *document,
+char *game_system_document_save_blueprint(
+    const blueprint *definition,
+    const ecs_query_expr *query,
     game_query_component_resolver resolve,
     game_query_component_name_resolver name,
     void *user
 )
 {
-    if (!document || !document->blueprint) {
+    if (!definition) {
         return NULL;
     }
-    char *blueprint_json = blueprint_save_json(document->blueprint);
-    if (!blueprint_json || !document->query) {
+    char *blueprint_json = blueprint_save_json(definition);
+    if (!blueprint_json || !query) {
         return blueprint_json;
     }
-    char *query_json = game_query_save(document->query, resolve, name, user);
+    char *query_json = game_query_save(query, resolve, name, user);
     if (!query_json) {
         free(blueprint_json);
         return NULL;
@@ -173,4 +174,16 @@ char *game_system_document_save(
     free(blueprint_json);
     free(query_json);
     return json;
+}
+
+char *game_system_document_save(
+    const game_system_document *document,
+    game_query_component_resolver resolve,
+    game_query_component_name_resolver name,
+    void *user
+)
+{
+    return document
+             ? game_system_document_save_blueprint(document->blueprint, document->query, resolve, name, user)
+             : NULL;
 }

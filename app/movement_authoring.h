@@ -7,6 +7,7 @@
 #include "../game/system.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /* The branch's only authored runtime: one Entity, one System, one graph. */
 typedef struct movement_authoring movement_authoring;
@@ -21,6 +22,12 @@ movement_authoring *movement_authoring_new(
 void movement_authoring_free(movement_authoring *authoring);
 void movement_authoring_sync(movement_authoring *authoring);
 void movement_authoring_input(movement_authoring *authoring, bool viewport_focused);
+int movement_authoring_set_query_json(
+    movement_authoring *authoring,
+    const char *json,
+    char *error,
+    size_t error_size
+);
 void movement_authoring_system(ecs_world *, double monotonic_time, void *user);
 void movement_authoring_draw(movement_authoring *authoring);
 void movement_authoring_render(void *user);

@@ -4,7 +4,6 @@
 #include "../editor/ui_shell.h"
 #include "../engine/engine.h"
 #include "../game/generated.h"
-#include "../game/live.h"
 #include "../game/prototype.h"
 #include "cute_host.h"
 #include "movement_authoring.h"
@@ -87,7 +86,6 @@ typedef struct
     editor *graph_editor;
     game_system *system;
     engine *runtime;
-    game_live_world *live;
     ecs_world *world;
     engine_viewport *viewport;
     movement_authoring *authoring;
@@ -101,7 +99,6 @@ static void app_cleanup(app_loop *loop)
 {
     movement_authoring_free(loop->authoring);
     engine_free(loop->runtime);
-    game_live_world_free(loop->live);
     game_system_free(loop->system);
     editor_free(loop->graph_editor);
     ecs_world_free(loop->world);
@@ -220,33 +217,16 @@ int main(int argc, char **argv)
 
     registry_validate();
     char *json = text_file_read(MOVEMENT_SYSTEM_PATH);
+    blueprint *editor_definition = json ? blueprint_load_json(json) : NULL;
     blueprint *runtime_definition = json ? blueprint_load_json(json) : NULL;
     free(json);
-    char *behavior_editor_json = text_file_read("content/behaviors/InputBehavior.json");
-    blueprint *editor_definition = behavior_editor_json
-                                     ? blueprint_load_json(behavior_editor_json)
-                                     : NULL;
-    free(behavior_editor_json);
     ecs_world *world = ecs_world_new();
     engine_viewport *viewport = engine_viewport_new(640, 360);
     editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
     game_system *system = world && runtime_definition
                             ? game_system_new(world, runtime_definition)
                             : NULL;
-    char *behavior_json = text_file_read("content/behaviors/InputBehavior.json");
-    blueprint *behavior_working = behavior_json ? blueprint_load_json(behavior_json)
-                                                : NULL;
-    free(behavior_json);
-    game_live_world *live = world ? game_live_world_new(world) : NULL;
-    game_live_definition *behavior_definition = behavior_working
-                                                  ? game_live_definition_new("InputBehavior", behavior_working)
-                                                  : NULL;
-    if (!live || !behavior_definition ||
-        game_live_add_definition(live, behavior_definition) != 0) {
-        game_live_definition_free(behavior_definition);
-        behavior_definition = NULL;
-    }
-    engine *runtime = world && live ? engine_new(world, live) : NULL;
+    engine *runtime = world ? engine_new(world, NULL) : NULL;
     movement_authoring *authoring = NULL;
     game_prototype *player_prototype = NULL;
     ecs_entity player = { 0 };
@@ -256,7 +236,6 @@ int main(int argc, char **argv)
         ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) != ECS_OK) {
         movement_authoring_free(authoring);
         engine_free(runtime);
-        game_live_world_free(live);
         game_system_free(system);
         editor_free(graph_editor);
         game_prototype_free(player_prototype);
@@ -292,10 +271,9 @@ int main(int argc, char **argv)
     }
     authoring = movement_authoring_new(world, player, system, graph_editor, runtime);
     if (!authoring ||
-        game_behavior_attach(live->behaviors, player, "InputBehavior") != 0) {
+        engine_add_system(runtime, movement_authoring_system, authoring) != 0) {
         movement_authoring_free(authoring);
         engine_free(runtime);
-        game_live_world_free(live);
         game_system_free(system);
         editor_free(graph_editor);
         game_prototype_free(player_prototype);
@@ -311,7 +289,7 @@ int main(int argc, char **argv)
         APP_EVENT_CATALOG,
         (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
     );
-    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
+    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_SYSTEM);
     editor_set_save_handler(graph_editor, movement_authoring_save, authoring);
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
     editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
@@ -321,7 +299,6 @@ int main(int argc, char **argv)
         .graph_editor = graph_editor,
         .system = system,
         .runtime = runtime,
-        .live = live,
         .world = world,
         .viewport = viewport,
         .authoring = authoring,

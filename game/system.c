@@ -999,19 +999,14 @@ static system_program *program_new(const blueprint *definition, const node *tick
             return NULL;
         }
     }
-    program->event_delta = output_total;
-    program->value_count = output_total + 1;
-    if (program->value_count) {
-        program->aliases = (int *)xmalloc(
-            (size_t)program->value_count * sizeof *program->aliases
-        );
-        for (int i = 0; i < program->value_count; i++) {
+    program->value_count = output_total;
+    if (output_total) {
+        program->aliases = (int *)xmalloc((size_t)output_total * sizeof *program->aliases);
+        for (int i = 0; i < output_total; i++) {
             program->aliases[i] = -1;
         }
         program->slots = (system_slot *)
-            xcalloc((size_t)program->value_count, sizeof *program->slots);
-        program->slots[program->event_delta].type = PIN_F32;
-        program->slots[program->event_delta].type_name = "float";
+            xcalloc((size_t)output_total, sizeof *program->slots);
         for (int i = 0; i < acount(program->graph->nodes); i++) {
             const node *target = program->graph->nodes[i];
             for (int output = 0; output < target->output_count; output++) {

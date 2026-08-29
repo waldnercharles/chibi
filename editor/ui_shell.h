@@ -66,6 +66,8 @@ bool editor_ui_content_drawer_open(void);
 void editor_ui_set_content_drawer_open(bool open);
 
 void editor_ui_prepare(void);
+void editor_ui_reset_layout(void);
+void editor_ui_set_framebuffer_target(bool target);
 void editor_ui_set_command_handler(editor_ui_command_handler handler, void *user);
 bool editor_ui_section_header(const char *label, const char *action_id);
 bool editor_ui_asset_row(

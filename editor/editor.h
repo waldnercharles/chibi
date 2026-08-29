@@ -11,6 +11,7 @@ typedef enum
     EDITOR_UI_CONTEXT_SCENE,
     EDITOR_UI_CONTEXT_PROTOTYPE,
     EDITOR_UI_CONTEXT_BEHAVIOR,
+    EDITOR_UI_CONTEXT_SYSTEM,
 } editor_ui_context;
 
 typedef int (*editor_save_handler)(editor *e, void *user);
@@ -100,6 +101,8 @@ blueprint_instance *editor_preview_instance(const editor *e);
 void editor_set_inspection_instance(editor *e, const blueprint_instance *instance);
 void editor_set_inspection_run(editor *e, const flow_run *run);
 void editor_set_inspection_trace(editor *e, const blueprint_instance_trace_entry *trace, int count);
+/* Updates render-only activity for a host execution path without tracing nodes. */
+void editor_set_execution_pulse(editor *e, double monotonic_time);
 
 /* Monotonic counter bumped on every instance (re)creation, so the host can
  * dispatch a once-per-instance event such as the demo Begin() convention. */

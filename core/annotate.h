@@ -22,6 +22,8 @@
 /* REFL-9: the contract is explicit. NODE_FN is a pure pull-evaluated
  * operation; NODE_EXEC is an ordered flow operation. */
 #define NODE_FN __attribute__((annotate("node:fn")))
+#define NODE_JIT(NAME) __attribute__((annotate("node:jit:" NAME)))
+#define NODE_JIT_FAST_MATH __attribute__((annotate("node:jit-fast-math")))
 #define NODE_EXEC __attribute__((annotate("node:exec")))
 #define NODE_OUT __attribute__((annotate("node:out")))
 #define NODE_SERVICE(T) __attribute__((annotate("node:service:" #T)))

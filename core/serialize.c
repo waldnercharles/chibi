@@ -448,6 +448,9 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     yyjson_mut_obj_add_str(doc, root, "name", g->name ? g->name : "");
     yyjson_mut_obj_add_str(doc, root, "description", g->description ? g->description : "");
     yyjson_mut_obj_add_bool(doc, root, "breakpoints_enabled", g->breakpoints_enabled != 0);
+    if (g->dataflow) {
+        yyjson_mut_obj_add_bool(doc, root, "dataflow", true);
+    }
     write_comment_boxes(doc, root, g);
     yyjson_mut_val *nodes = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "nodes", nodes);
@@ -496,6 +499,9 @@ static void write_blueprint_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, c
     yyjson_mut_obj_add_str(doc, obj, "kind", graph_kind_name(g->kind));
     yyjson_mut_obj_add_str(doc, obj, "name", g->name ? g->name : "");
     yyjson_mut_obj_add_bool(doc, obj, "breakpoints_enabled", g->breakpoints_enabled != 0);
+    if (g->dataflow) {
+        yyjson_mut_obj_add_bool(doc, obj, "dataflow", true);
+    }
     write_comment_boxes(doc, obj, g);
     if (g->entry_id) {
         yyjson_mut_obj_add_uint(doc, obj, "entry_id", g->entry_id);
@@ -586,6 +592,14 @@ static int read_struct_default(const type_desc *type, yyjson_val *def, pin_value
     return 0;
 }
 
+static int compact_component_node(const graph *g, const node *n)
+{
+    return g && g->dataflow && n && n->desc && n->desc->type &&
+           n->desc->access && n->desc->name &&
+           ((!strncmp(n->desc->name, "Get_", 4) && n->desc->access->read_count == 1) ||
+            (!strncmp(n->desc->name, "Set_", 4) && n->desc->access->write_count == 1));
+}
+
 static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
 {
     if (!arr || !yyjson_is_arr(arr)) {
@@ -603,7 +617,8 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
     int count = output ? n->output_count : n->input_count;
     int serialized_count = (int)yyjson_arr_size(arr);
     if (serialized_count < count &&
-        (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return)) {
+        (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return ||
+         compact_component_node(g, n))) {
         while (count > serialized_count) {
             if (graph_remove_pin(g, n, output, count - 1)) {
                 set_err(
@@ -1050,6 +1065,10 @@ graph *graph_load_json(const char *json)
     if (breakpoints && yyjson_is_bool(breakpoints)) {
         g->breakpoints_enabled = yyjson_get_bool(breakpoints);
     }
+    yyjson_val *dataflow = yyjson_obj_get(root, "dataflow");
+    if (dataflow && yyjson_is_bool(dataflow)) {
+        g->dataflow = yyjson_get_bool(dataflow);
+    }
     if (load_comment_boxes(g, yyjson_obj_get(root, "comment_boxes"))) {
         goto fail;
     }
@@ -1180,6 +1199,10 @@ static int load_blueprint_graph(blueprint *bp, yyjson_val *obj, uint64_t request
     yyjson_val *breakpoints = yyjson_obj_get(obj, "breakpoints_enabled");
     if (breakpoints && yyjson_is_bool(breakpoints)) {
         g->breakpoints_enabled = yyjson_get_bool(breakpoints);
+    }
+    yyjson_val *dataflow = yyjson_obj_get(obj, "dataflow");
+    if (dataflow && yyjson_is_bool(dataflow)) {
+        g->dataflow = yyjson_get_bool(dataflow);
     }
     yyjson_val *entry_json = yyjson_obj_get(obj, "entry_id");
     yyjson_val *return_json = yyjson_obj_get(obj, "return_id");

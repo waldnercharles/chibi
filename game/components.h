@@ -3,7 +3,11 @@
 
 #include "../core/annotate.h"
 
-#include <cute_math.h> /* Game owns the external math representation. */
+typedef struct CF_V2
+{
+    float x;
+    float y;
+} CF_V2;
 
 typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameTransform;
 
@@ -13,5 +17,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHealth)
     int maximum;
 }
 GameHealth;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameMovement)
+{
+    float speed;
+}
+GameMovement;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameInput)
+{
+    CF_V2 move;
+}
+GameInput;
 
 #endif

@@ -180,6 +180,9 @@ struct editor
     int instance_destroyed; /* the preview was reset or has not been created */
     int entry_index;
     double monotonic_time;
+    double execution_pulse_time;
+    uint64_t execution_pulse_graph_id;
+    int execution_pulse_active;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
     double run_started_at;
@@ -2725,6 +2728,12 @@ static float ed_flow_overview_scale(float zoom)
     return ed_max(1.0f, ed_min(ED_FLOW_MAX_OVERVIEW_SCALE, 1.0f / zoom));
 }
 
+static int ed_execution_pulse_active(const editor *e)
+{
+    return e->execution_pulse_active && e->active_graph &&
+           e->execution_pulse_graph_id == e->active_graph->graph_id;
+}
+
 static ed_flow_style ed_flow_style_for_edge(const editor *e, const edge *ed, ImVec4 base, int selected, int hovered)
 {
     float resting = selected ? ED_FLOW_SELECTED_THICKNESS
@@ -2741,10 +2750,11 @@ static ed_flow_style ed_flow_style_for_edge(const editor *e, const edge *ed, ImV
         .bubble_color = ed_lerp4(base, (ImVec4){ 1.0f, 1.0f, 1.0f, 1.0f }, ED_FLOW_BUBBLE_COLOR_BLEND),
     };
     const flow_traversal *latest = ed_latest_flow_record(e, ed);
-    if (!latest) {
+    if (!latest && !ed_execution_pulse_active(e)) {
         return style;
     }
-    double age = e->monotonic_time - latest->timestamp;
+    double age = latest ? e->monotonic_time - latest->timestamp
+                        : e->monotonic_time - e->execution_pulse_time;
     if (age < 0.0) {
         age = 0.0;
     }
@@ -2848,7 +2858,9 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     /* The record controls whether this edge is active, but not marker phase.
      * Held input replaces the latest timestamp every frame, which would reset
      * the bubbles to the same point. The editor clock keeps the stream moving. */
-    double marker_age = ed_latest_flow_record(e, ed) ? e->monotonic_time : 0.0;
+    double marker_age = (ed_latest_flow_record(e, ed) || ed_execution_pulse_active(e))
+                          ? e->monotonic_time
+                          : 0.0;
     ed_draw_flow_markers(
         e,
         dl,
@@ -3641,8 +3653,94 @@ static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate
     return pin_types_compatible(source, candidate);
 }
 
+static int ed_system_node_allowed(const node_desc *desc)
+{
+    static const char *const names[] = {
+        "Event",
+        "Get_GameInput",
+        "Set_GameInput",
+        "Get_GameMovement",
+        "Set_GameMovement",
+        "Get_GameTransform",
+        "Set_GameTransform",
+        "Add",
+        "Multiply",
+        "Subtract",
+        "Divide",
+    };
+    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
+        if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ed_compact_system_node(editor *e, node *n)
+{
+    if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM || !n || !n->desc) {
+        return 0;
+    }
+    if (n->desc == &NODE_Event || !n->desc->type) {
+        return 0;
+    }
+    int get = strncmp(n->desc->name, "Get_", 4) == 0;
+    int set = strncmp(n->desc->name, "Set_", 4) == 0;
+    if (!get && !set) {
+        return 0;
+    }
+    if (get) {
+        for (int i = n->input_count - 1; i >= 0; i--) {
+            if (graph_remove_pin(e->active_graph, n, 0, i) != 0) {
+                return -1;
+            }
+        }
+        for (int i = n->output_count - 1; i >= 0; i--) {
+            if (graph_remove_pin(e->active_graph, n, 1, i) != 0) {
+                return -1;
+            }
+        }
+    } else {
+        for (int i = n->input_count - 1; i >= 0; i--) {
+            if (graph_remove_pin(e->active_graph, n, 0, i) != 0) {
+                return -1;
+            }
+        }
+        pin_spec exec = { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC };
+        if (graph_add_pin(e->active_graph, n, 0, &exec) < 0) {
+            return -1;
+        }
+    }
+    int output = get;
+    if (n->desc->type->alias_of) {
+        pin_spec pin = {
+            .name = "Value",
+            .type = PIN_STRUCT,
+            .type_name = n->desc->type->alias_of,
+            .kind = PIN_DATA,
+        };
+        return graph_add_pin(e->active_graph, n, output, &pin) < 0 ? -1 : 0;
+    }
+    for (int i = 0; i < n->desc->type->field_count; i++) {
+        const type_field *field = &n->desc->type->fields[i];
+        pin_spec pin = {
+            .name = field->name,
+            .type = field->type,
+            .type_name = field->type_name,
+            .kind = PIN_DATA,
+        };
+        if (graph_add_pin(e->active_graph, n, output, &pin) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
 {
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM && !ed_system_node_allowed(desc)) {
+        return 0;
+    }
     if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction ||
         desc == &NODE_CallMacro) {
         return 0;
@@ -3796,7 +3894,8 @@ static void ed_handle_popups(editor *e)
             ImGui_SetKeyboardFocusHere();
             e->search_selected = 0;
         }
-        if (ImGui_MenuItem("Add Comment Box")) {
+        if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM &&
+            ImGui_MenuItem("Add Comment Box")) {
             ed_snapshot_before(e);
             graph_add_comment_box(e->active_graph, "Comment", e->popup_x, e->popup_y, 320.0f, 160.0f);
             e->spawn_link_pending = 0;
@@ -3860,6 +3959,10 @@ static void ed_handle_popups(editor *e)
                     ed_snapshot_before(e);
                 }
                 node *n = graph_add_node(e->active_graph, desc);
+                if (n && ed_compact_system_node(e, n) != 0) {
+                    graph_remove_node(e->active_graph, n);
+                    n = NULL;
+                }
                 if (n && ed_name_spawned_event(e, n) != 0) {
                     graph_remove_node(e->active_graph, n);
                     n = NULL;
@@ -4152,6 +4255,17 @@ static void ed_toolbar_action(
 
 static void ed_draw_toolbar(editor *e)
 {
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
+        ed_toolbar_action(e, "Compile", 1, "", ed_compile);
+        ed_toolbar_action(e, "Zoom to fit", acount(e->active_graph->nodes) > 0, "The graph has no nodes", ed_zoom_fit);
+        ed_toolbar_action(e, "Auto arrange", acount(e->active_graph->nodes) > 0, "The graph has no nodes", ed_auto_arrange);
+        ImGui_SameLine();
+        ed_toolbar_action(e, "Undo", acount(e->undo) > 0, "No undo entry is available", ed_undo);
+        ed_toolbar_action(e, "Redo", acount(e->redo) > 0, "No redo entry is available", ed_redo);
+        ImGui_NewLine();
+        ImGui_TextUnformatted("Tick runs once for each Entity matching the System query.");
+        return;
+    }
     int entries = ed_entry_count(e);
     if (e->entry_index >= entries) {
         e->entry_index = entries ? entries - 1 : 0;
@@ -4303,6 +4417,9 @@ static void ed_draw_compiler_results(editor *e)
 
 static void ed_center_initial_view(editor *e)
 {
+    if (e->canvas_size.x <= 0.0f || e->canvas_size.y <= 0.0f) {
+        return;
+    }
     if (e->reveal_target) {
         ed_node_view *view = ed_view_for(e, e->reveal_target);
         if (view) {
@@ -4830,6 +4947,16 @@ void editor_set_inspection_trace(editor *e, const blueprint_instance_trace_entry
     e->inspection_trace_count = count > 0 ? count : 0;
 }
 
+void editor_set_execution_pulse(editor *e, double monotonic_time)
+{
+    if (!e || !e->active_graph) {
+        return;
+    }
+    e->execution_pulse_time = monotonic_time;
+    e->execution_pulse_graph_id = e->active_graph->graph_id;
+    e->execution_pulse_active = 1;
+}
+
 void editor_free(editor *e)
 {
     if (!e) {
@@ -4940,10 +5067,13 @@ void editor_prepare_docking(void)
 
 void editor_set_ui_context(editor *e, editor_ui_context context)
 {
-    if (!e || context < EDITOR_UI_CONTEXT_SCENE || context > EDITOR_UI_CONTEXT_BEHAVIOR) {
+    if (!e || context < EDITOR_UI_CONTEXT_SCENE || context > EDITOR_UI_CONTEXT_SYSTEM) {
         return;
     }
     e->ui_context = context;
+    if (context == EDITOR_UI_CONTEXT_SYSTEM && e->active_graph) {
+        e->active_graph->dataflow = 1;
+    }
 }
 
 void editor_set_graph_visible(editor *e, int visible)
@@ -5023,10 +5153,23 @@ void editor_draw(editor *e)
     /* A Dispatch click selects a fresh activation on the instance. Refresh the
      * display source before layout can ask for any pin values. */
     eval_view_set_run(e->ev, display_run);
-    e->canvas_min = ImGui_GetCursorScreenPos();
-    e->canvas_size = ImGui_GetContentRegionAvail();
+    ImVec2 canvas_min = ImGui_GetCursorScreenPos();
+    ImVec2 canvas_size = ImGui_GetContentRegionAvail();
+    int canvas_changed = e->canvas_min.x != canvas_min.x ||
+                         e->canvas_min.y != canvas_min.y ||
+                         e->canvas_size.x != canvas_size.x ||
+                         e->canvas_size.y != canvas_size.y;
+    if (e->view_initialized && canvas_changed) {
+        e->view_initialized = 0;
+    }
+    e->canvas_min = canvas_min;
+    e->canvas_size = canvas_size;
     ed_build_layout(e);
-    ed_center_initial_view(e);
+    if (canvas_changed) {
+        ed_zoom_fit(e);
+    } else {
+        ed_center_initial_view(e);
+    }
     ImVec2 hover_mouse = io->MousePos;
     e->hovered_node = NULL;
     e->has_hovered_link = 0;
@@ -5056,6 +5199,8 @@ void editor_draw(editor *e)
         ed_draw_tree(e);
         ed_draw_details(e);
     }
-    ed_draw_compiler_results(e);
-    ed_draw_output_log(e);
+    if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM) {
+        ed_draw_compiler_results(e);
+        ed_draw_output_log(e);
+    }
 }

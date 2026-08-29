@@ -22,6 +22,11 @@ static int node_desc_validate(const node_desc *d)
     }
     switch (d->pure_kind) {
         case NODE_PURE_CONST: break;
+        case NODE_PURE_COPY:
+            if (d->input_count != 1 || d->output_count != 1) {
+                return 0;
+            }
+            break;
         case NODE_PURE_MAKE:
             if (!d->type || d->input_count != d->type->field_count ||
                 d->output_count != 1 || d->outputs[0].type != PIN_STRUCT) {

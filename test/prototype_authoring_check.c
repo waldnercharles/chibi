@@ -3,6 +3,7 @@
 #include "../core/blueprint.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
+#include "../core/text_file.h"
 #include "../editor/editor.h"
 #include "../editor/ui_shell.h"
 #include "../engine/engine.h"
@@ -50,31 +51,6 @@ static int write_file(const char *path, const char *text)
     size_t wrote = fwrite(text, 1, length, file);
     int closed = fclose(file);
     return wrote == length && closed == 0 ? 0 : -1;
-}
-
-static char *read_file(const char *path)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file || fseek(file, 0, SEEK_END) != 0) {
-        if (file) {
-            fclose(file);
-        }
-        return NULL;
-    }
-    long size = ftell(file);
-    if (size < 0 || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return NULL;
-    }
-    char *text = (char *)malloc((size_t)size + 1);
-    if (!text) {
-        fclose(file);
-        return NULL;
-    }
-    size_t length = fread(text, 1, (size_t)size, file);
-    fclose(file);
-    text[length] = '\0';
-    return text;
 }
 
 int main(int argc, char **argv)
@@ -256,8 +232,8 @@ int main(int argc, char **argv)
         ok = 0;
         stage = 6;
     }
-    char *saved_scene = read_file(scene_path);
-    char *saved_prototype = read_file(prototype_path);
+    char *saved_scene = text_file_read(scene_path);
+    char *saved_prototype = text_file_read(prototype_path);
     ok = ok && saved_scene && saved_prototype &&
          strstr(saved_scene, "EnemyPrototype") &&
          strstr(saved_scene, "InputBehavior") &&
@@ -276,7 +252,7 @@ int main(int argc, char **argv)
         ok = 0;
         stage = 21;
     }
-    char *saved_behavior = ok ? read_file(save_as_path) : NULL;
+    char *saved_behavior = ok ? text_file_read(save_as_path) : NULL;
     blueprint *disk_behavior = saved_behavior ? blueprint_load_json(saved_behavior)
                                               : NULL;
     if (disk_behavior) {

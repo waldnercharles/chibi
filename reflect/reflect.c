@@ -3,7 +3,8 @@
  * Parses an annotated C source file and emits one registry pack source:
  * one type_desc per "node:type" struct (real sizeof/offsetof), and one
  * Make + Break node_desc per struct plus a call node_desc per "node:fn"
- * function.
+ * function. Typed adapters and optional JIT lowering hints are generated for
+ * reflected functions as well.
  */
 #include "../core/array.h" // IWYU pragma: keep
 #include "../core/pin.h"
@@ -66,6 +67,7 @@ typedef struct
     long long size;
     int component;
     int dense;
+    char *alias_of;
 } struct_info;
 
 typedef struct
@@ -86,6 +88,8 @@ typedef struct
     char **writes;        /* NODE_WRITES type names */
     unsigned effect_flags;
     char *operator_name; /* optional NODE_OPERATOR name */
+    char *jit_kind;
+    unsigned jit_flags;
     char *conversion_from;
     char *conversion_to;
 } fn_info;
@@ -340,10 +344,17 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
     s.size = clang_Type_getSizeOf(underlying);
     s.component = component;
     s.dense = dense;
+    CXString definition_name = clang_getCursorSpelling(definition);
+    const char *underlying_name = clang_getCString(definition_name);
+    if (underlying_name && strcmp(name, underlying_name) != 0) {
+        s.alias_of = strdup(underlying_name);
+    }
+    clang_disposeString(definition_name);
     clang_visitChildren(definition, field_visitor, &s.fields);
     if (g_failed) {
         free(s.name);
         free(s.file);
+        free(s.alias_of);
         afree(s.fields);
         return;
     }
@@ -384,6 +395,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             if (g_failed) {
                 free(s.name);
                 free(s.file);
+                free(s.alias_of);
                 afree(s.fields);
             } else {
                 apush(ctx->structs, s);
@@ -413,6 +425,15 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 return CXChildVisit_Recurse;
             }
             f.operator_name = annotation_value(c, "node:operator:");
+            f.jit_kind = annotation_value(c, "node:jit:");
+            if (f.jit_kind && strcmp(f.jit_kind, "v2-scale") != 0 &&
+                strcmp(f.jit_kind, "v2-add") != 0 &&
+                strcmp(f.jit_kind, "v2-move") != 0) {
+                reflect_error(c, "unknown node JIT lowering kind");
+            }
+            if (has_annotate(c, "node:jit-fast-math")) {
+                f.jit_flags |= 1u << 0;
+            }
             f.conversion_from = annotation_value(c, "node:conversion-from:");
             f.conversion_to = annotation_value(c, "node:conversion-to:");
             if ((f.conversion_from == NULL) != (f.conversion_to == NULL)) {
@@ -564,9 +585,75 @@ static void emit_native_arg(FILE *out, const fn_info *f, int index)
     emit_arg(out, f->ptype[index], f->ppin[index], index);
 }
 
+static int fn_fast_supported(const fn_info *f)
+{
+    if (f->ret_void) {
+        return 0;
+    }
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (f->pout[i] || f->pservice[i] || !f->ppin[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int fn_direct_supported(const fn_info *f)
+{
+    return fn_fast_supported(f) && acount(f->pname) <= 4;
+}
+
+static void emit_fast_arg(FILE *out, const fn_info *f, int index)
+{
+    fprintf(out, "*(%s *)inputs[%d]", f->ptype[index], index);
+}
+
+static void emit_direct_arg(FILE *out, const fn_info *f, int index)
+{
+    fprintf(out, "*(%s *)input%d", f->ptype[index], index);
+}
+
+static void emit_fast_direct_fn(FILE *out, const fn_info *f)
+{
+    if (!fn_direct_supported(f)) {
+        return;
+    }
+    fprintf(out, "static int __fast_direct_%s_%s(void *out", g_prefix, f->name);
+    for (int i = 0; i < acount(f->pname); i++) {
+        fprintf(out, ", const void *input%d", i);
+    }
+    fprintf(out, ") {\n    *(%s *)out = %s(", f->ret, f->name);
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (i) {
+            fputs(", ", out);
+        }
+        emit_direct_arg(out, f, i);
+    }
+    fputs(");\n    return 0;\n}\n\n", out);
+}
+
+/* Emit a typed adapter for the system bytecode backend. */
+static void emit_fast_fn(FILE *out, const fn_info *f)
+{
+    if (!fn_fast_supported(f)) {
+        return;
+    }
+    fprintf(out, "static int __fast_%s_%s(void *out, const void *const *inputs) {\n", g_prefix, f->name);
+    fprintf(out, "    *(%s *)out = %s(", f->ret, f->name);
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (i) {
+            fputs(", ", out);
+        }
+        emit_fast_arg(out, f, i);
+    }
+    fputs(");\n    return 0;\n}\n\n", out);
+}
+
 /* Emit the uniform-signature wrapper that adapts a pure native fn to node_fn. */
 static void emit_fn(FILE *out, const fn_info *f)
 {
+    emit_fast_direct_fn(out, f);
+    emit_fast_fn(out, f);
     fprintf(out, "static pin_value __wrap_%s_%s(const pin_value *args, int nargs, arena *a) {\n", g_prefix, f->name);
     fprintf(out, "    (void)nargs;\n");
     int struct_ret = f->ret_pin && !strcmp(f->ret_pin, "PIN_STRUCT");
@@ -783,6 +870,34 @@ static int fn_has_access(const fn_info *f)
     return acount(f->reads) || acount(f->writes) || f->effect_flags;
 }
 
+static const char *jit_kind_name(const char *kind)
+{
+    if (!kind) {
+        return NULL;
+    }
+    if (strcmp(kind, "v2-scale") == 0) {
+        return "NODE_JIT_MUL";
+    }
+    if (strcmp(kind, "v2-add") == 0) {
+        return "NODE_JIT_ADD";
+    }
+    if (strcmp(kind, "v2-move") == 0) {
+        return "NODE_JIT_V2_MOVE";
+    }
+    return NULL;
+}
+
+static void emit_jit_kind(FILE *out, const fn_info *f)
+{
+    const char *kind = jit_kind_name(f->jit_kind);
+    if (kind) {
+        fprintf(out, "    .jit_kind = %s,\n", kind);
+    }
+    if (f->jit_flags) {
+        fprintf(out, "    .jit_flags = NODE_JIT_FLAG_FAST_MATH,\n");
+    }
+}
+
 static void emit_conversion_fields(FILE *out, const fn_info *f)
 {
     if (!f->conversion_from || !f->conversion_to) {
@@ -920,7 +1035,17 @@ static void emit_fn_node(FILE *out, const fn_info *f)
         fputs("    .outputs = NULL,\n", out);
     }
     fprintf(out, "    .pure_kind = %s,\n", f->ret_void ? "NODE_PURE_VOID_CALL" : "NODE_PURE_CALL");
+    emit_jit_kind(out, f);
     fprintf(out, "    .fn = __wrap_%s_%s,\n", g_prefix, f->name);
+    if (fn_fast_supported(f)) {
+        fprintf(out, "    .fast = __fast_%s_%s,\n", g_prefix, f->name);
+    }
+    if (fn_direct_supported(f)) {
+        static const char *member[] = { "zero", "one", "two", "three", "four" };
+        int count = acount(f->pname);
+        fprintf(out, "    .direct = { .%s = __fast_direct_%s_%s },\n", member[count], g_prefix, f->name);
+        fprintf(out, "    .direct_count = %d,\n", count + 1);
+    }
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     emit_conversion_fields(out, f);
     if (fn_has_access(f)) {
@@ -1111,9 +1236,12 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Get_%s = { .name = \"Get_%s\", .input_count = 1, "
         ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
         "%s_%s_get_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_get_%s, .access = &%s_%s_get_access };\n\n",
+        "__flow_%s_get_%s, .type = &%s_T_%s, .access = &%s_%s_get_access "
+        "};\n\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,
@@ -1138,9 +1266,12 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
         ".output_count = 1, .inputs = %s_%s_set_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_set_%s, .access = &%s_%s_set_access };\n\n",
+        "__flow_%s_set_%s, .type = &%s_T_%s, .access = &%s_%s_set_access "
+        "};\n\n",
         g_prefix,
         name,
+        name,
+        g_prefix,
         name,
         g_prefix,
         name,
@@ -1355,6 +1486,9 @@ static void emit(FILE *out, const collect_ctx *ctx)
         fprintf(out, "    .size = sizeof(%s),\n", s->name);
         fprintf(out, "    .fields = %s_%s_fields,\n", g_prefix, s->name);
         fprintf(out, "    .field_count = %d,\n", acount(s->fields));
+        if (s->alias_of) {
+            fprintf(out, "    .alias_of = \"%s\",\n", s->alias_of);
+        }
         fputs("};\n\n", out);
     }
 

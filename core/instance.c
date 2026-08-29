@@ -115,6 +115,9 @@ static void instance_trace_clear(blueprint_instance *bi)
 
 static void instance_trace_push(blueprint_instance *bi, const flow_run *run, const flow_traversal *traversal)
 {
+    if (!bi->trace_enabled) {
+        return;
+    }
     if (acount(bi->trace) == BLUEPRINT_INSTANCE_TRACE_MAX) {
         free(bi->trace[0].event_name);
         memmove(
@@ -187,6 +190,7 @@ blueprint_instance *blueprint_instance_create(
     bi->bp = bp;
     bi->next_delegate_id = 1;
     bi->alive = 1;
+    bi->trace_enabled = 1;
     bi->now = now;
     bi->now_user = now_user;
     compile_report_init(&bi->compile);
@@ -283,6 +287,27 @@ int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act)
         }
     }
     return -1;
+}
+
+int blueprint_instance_rebind(blueprint_instance *bi, const pin_value *owner)
+{
+    if (!bi || !bi->alive || acount(bi->activations)) {
+        return -1;
+    }
+    instance_init_values(bi);
+    aclear(bi->scratch);
+    instance_set_owner(bi, owner);
+    return 0;
+}
+
+void blueprint_instance_set_trace_enabled(blueprint_instance *bi, int enabled)
+{
+    if (bi) {
+        bi->trace_enabled = enabled != 0;
+        if (!bi->trace_enabled) {
+            instance_trace_clear(bi);
+        }
+    }
 }
 
 int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled)

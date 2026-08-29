@@ -359,6 +359,9 @@ frame at a defined point in that order.
 `ENG-7` Frame timing MUST be separately reportable for behavior, systems, and
 rendering, so a regression can be attributed.
 
+`ENG-8` A paused runtime MUST advance only for an explicit Step action. A normal
+frame while paused MUST NOT advance simulation state.
+
 ## HOT: module hot reload
 
 `HOT-1` The game module MAY be loaded as a shared library and reloaded when its

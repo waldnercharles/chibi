@@ -72,6 +72,11 @@ struct ecs_query
     int component_count;
     uint32_t cursor;
     uint32_t limit;
+    const uint32_t *dense;
+    int dense_count;
+    int dense_cursor;
+    int dense_index;
+    void *component_refs; /* private query plan */
 };
 
 /* A world owns fixed-size entity slots and the registered component columns. */

@@ -99,7 +99,7 @@
         },
         {
           "id": 9,
-          "type": "game_add_v2",
+          "type": "Add",
           "x": 120.0,
           "y": 80.0,
           "reference_id": 0,

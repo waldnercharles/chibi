@@ -2,6 +2,7 @@
 #include "../core/conv_nodes.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
+#include "../core/text_file.h"
 #include "../engine/engine.h"
 #include "../game/behavior.h"
 #include "../game/generated.h"
@@ -25,35 +26,6 @@ static int check(int condition, const char *message)
     }
     fprintf(stderr, "FAIL: %s\n", message);
     return 1;
-}
-
-static char *read_file(const char *path)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file || fseek(file, 0, SEEK_END) != 0) {
-        if (file) {
-            fclose(file);
-        }
-        return NULL;
-    }
-    long size = ftell(file);
-    if (size < 0 || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return NULL;
-    }
-    char *json = (char *)malloc((size_t)size + 1);
-    if (!json) {
-        fclose(file);
-        return NULL;
-    }
-    size_t read = fread(json, 1, (size_t)size, file);
-    fclose(file);
-    if (read != (size_t)size) {
-        free(json);
-        return NULL;
-    }
-    json[read] = '\0';
-    return json;
 }
 
 static int remove_edge_between(graph *g, const char *from_name, const char *to_name)
@@ -102,12 +74,13 @@ int main(void)
         cf_v2 && cf_v2->field_count == 2 && strcmp(cf_v2->fields[0].name, "x") == 0,
         "CF_V2 is registered as an external reflected type"
     );
+    failures += check(pin_types_compatible(&game_position, &cute_position), "GameTransform and CF_V2 share an implicit type alias");
     failures += check(
         conversion_for_pins(&game_position, &cute_position) ==
             registry_node_by_name("game_transform_to_cf"),
-        "GameTransform converts to CF_V2 through the conversion registry"
+        "GameTransform retains an explicit CF_V2 conversion for legacy graphs"
     );
-    char *json = read_file("content/behaviors/InputBehavior.json");
+    char *json = text_file_read("content/behaviors/InputBehavior.json");
     blueprint *working = json ? blueprint_load_json(json) : NULL;
     free(json);
     char *original_json = working ? blueprint_save_json(working) : NULL;
@@ -273,7 +246,7 @@ int main(void)
 
     edited = definition->working->graph;
     int removed = edited &&
-                  remove_edge_between(edited, "Get_GameTransform", "game_add_v2") == 0;
+                  remove_edge_between(edited, "Get_GameTransform", "Add") == 0;
     failures += check(removed, "removing a data edge from the working behavior succeeds");
     if (removed) {
         game_live_mark_dirty(definition);

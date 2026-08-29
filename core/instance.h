@@ -65,6 +65,7 @@ struct blueprint_instance
     flow_run **activation_pool; /* idle reusable activations */
     blueprint_instance_trace_entry *trace; /* oldest-to-newest completed records */
     int pool_enabled;
+    int trace_enabled;
     int breakpoints_override;
     int breakpoints_enabled;
     blueprint_delegate_binding *delegates; /* outgoing weak bindings */
@@ -114,6 +115,11 @@ int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act);
  * instance has no active activations. */
 int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled);
 int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act);
+
+/* Rebind a reusable synchronous instance to one Entity. Runtime variables and
+ * scratch are reset; no activation may be queued. */
+int blueprint_instance_rebind(blueprint_instance *bi, const pin_value *owner);
+void blueprint_instance_set_trace_enabled(blueprint_instance *bi, int enabled);
 
 /* Borrow the bounded, oldest-to-newest execution trace. Entries remain valid
  * until the instance is released, reused, or destroyed. */

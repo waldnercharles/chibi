@@ -20,6 +20,7 @@ typedef struct
     size_t size;
     const type_field *fields;
     int field_count;
+    const char *alias_of; /* optional underlying nominal type name */
 } type_desc;
 
 /* The only two functions that touch raw struct bytes. */

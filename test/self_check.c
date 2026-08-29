@@ -702,10 +702,14 @@ static void run_ecs_checks(void)
 
     ecs_world *generated_world = ecs_world_new();
     check(
-        GAME_REGISTRY_COMPONENT_COUNT == 2 &&
+        GAME_REGISTRY_COMPONENT_COUNT == 4 &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameTransform, NULL) ==
                 ECS_OK &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameHealth, NULL) ==
+                ECS_OK &&
+            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameMovement, NULL) ==
+                ECS_OK &&
+            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameInput, NULL) ==
                 ECS_OK &&
             GAME_COMPONENT_GameHealth.index == ECS_INDEX_DENSE &&
             GAME_COMPONENT_GameHealth.layout_hash ==

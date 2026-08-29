@@ -992,6 +992,17 @@ host debugger can inspect one entity without changing another entity's run.
 retained with the entity and behavior asset identity so the host can inspect
 messages without confusing them with the editor preview log.
 
+## TRACE: runtime trace retention
+
+`TRACE-1` A completed activation MUST leave a terminal trace record, including
+for an event with no traversed edges, until its inspection record is released.
+
+`TRACE-2` A failed activation's trace record MUST retain its event name and
+structured error code after the activation is released.
+
+`TRACE-3` Runtime trace storage MUST be bounded oldest-first, survive activation
+pooling, and clear when an instance is reused.
+
 ## FMT: file format
 
 `FMT-1` A blueprint MUST serialize to a single JSON document with

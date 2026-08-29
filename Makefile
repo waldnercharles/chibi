@@ -1,7 +1,8 @@
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR := build
+BENCHMARK_BUILD_DIR ?= build-release
 
-.PHONY: all build run format check-format test spec-check clean
+.PHONY: all build run benchmark format check-format test spec-check clean
 
 all: build
 
@@ -10,6 +11,13 @@ build:
 
 run: build
 	$(BUILD_DIR)/app $(ARGS)
+
+benchmark:
+	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(BENCHMARK_BUILD_DIR) --target bench_activation scene_benchmark system_benchmark
+	$(BENCHMARK_BUILD_DIR)/bench_activation $(ARGS)
+	$(BENCHMARK_BUILD_DIR)/scene_benchmark
+	$(BENCHMARK_BUILD_DIR)/system_benchmark $(ARGS)
 
 format:
 	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target format
@@ -22,6 +30,7 @@ test: build spec-check
 	$(BUILD_DIR)/editor_runtime_check
 	$(BUILD_DIR)/prototype_authoring_check
 	$(BUILD_DIR)/input_behavior_check
+	$(BUILD_DIR)/movement_system_check
 	$(BUILD_DIR)/integration
 	$(BUILD_DIR)/registry_consumer
 
@@ -31,4 +40,4 @@ spec-check:
 	python3 tools/spec_coverage.py
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR) $(BENCHMARK_BUILD_DIR)

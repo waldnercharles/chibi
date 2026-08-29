@@ -235,6 +235,10 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
         (conversion && !conversion_matches(out, in, conversion))) {
         return -1;
     }
+    if (out->flags & PIN_FLAG_WILDCARD && !(in->flags & PIN_FLAG_WILDCARD)) {
+        graph_wildcard_resolve_group(g, from, out->group, in->type, in->type_name);
+        out = &from->output_pins[from_pin];
+    }
     if (in->flags & PIN_FLAG_WILDCARD) {
         if (conversion) {
             return -1;

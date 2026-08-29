@@ -70,6 +70,7 @@ typedef struct graph
     unsigned long long topology_revision;
     unsigned flow_pause_count;
     unsigned breakpoints_enabled;
+    unsigned dataflow; /* compact graph executes from data dependencies */
 } graph;
 
 void graph_init(graph *g);

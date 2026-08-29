@@ -1,0 +1,7 @@
+[allowlist]
+description = "Generated build and pi-lens cache files are not project source."
+paths = [
+  '''build/.*''',
+  '''build-verify/.*''',
+  '''\.pi-lens/.*''',
+]

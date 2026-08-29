@@ -171,9 +171,12 @@ int engine_viewport_draw(engine_viewport *viewport)
      * rather than the app window's. cf_draw_push/pop keep both off the
      * editor's own draw state. */
     cf_draw_push();
-    cf_draw_projection(
-        cf_ortho_2d(0.0f, 0.0f, (float)viewport->width, (float)viewport->height)
-    );
+    cf_draw_projection(cf_ortho_2d(
+        (float)viewport->width * 0.5f,
+        (float)viewport->height * 0.5f,
+        (float)viewport->width,
+        (float)viewport->height
+    ));
     if (viewport->render) {
         viewport->render(viewport->render_user);
     }

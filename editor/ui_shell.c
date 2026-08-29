@@ -10,13 +10,10 @@
 #undef IMGUI_STB_NAMESPACE
 #include <imgui/dcimgui_internal.h>
 
-#define UI_DOCKSPACE_ID ((ImGuiID)0xc0b1e608u)
-#define UI_LEFT_RATIO 0.21f
-#define UI_LEFT_COMPONENTS_RATIO 0.42f
-#define UI_WORLD_OUTLINER_RATIO 0.36f
-#define UI_RIGHT_RATIO 0.22f
-#define UI_SCENE_RUNTIME_RATIO 0.42f
-#define UI_BOTTOM_RATIO 0.18f
+#define UI_DOCKSPACE_ID ((ImGuiID)0x5e7a2d41u)
+#define UI_SYSTEM_RATIO 0.20f
+#define UI_ENTITY_RATIO 0.22f
+#define UI_SCENE_RATIO 0.34f
 
 enum
 {
@@ -595,27 +592,38 @@ static void ui_apply_theme(void)
     style->Colors[ImGuiCol_NavCursor] = UI_ACCENT;
 }
 
+static bool ui_framebuffer_target;
+
 static ImGuiViewport ui_layout_viewport(void)
 {
-    /* DockBuilder uses ImGui's logical coordinates, not framebuffer pixels. */
-    return *ImGui_GetMainViewport();
+    ImGuiViewport view = *ImGui_GetMainViewport();
+    if (ui_framebuffer_target) {
+        /* cute_framework reports an offscreen target's pixel size as
+         * DisplaySize while retaining the window's framebuffer scale. */
+        float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
+        if (scale > 1.0f) {
+            view.Pos.x /= scale;
+            view.Pos.y /= scale;
+            view.Size.x /= scale;
+            view.Size.y /= scale;
+            view.WorkPos.x /= scale;
+            view.WorkPos.y /= scale;
+            view.WorkSize.x /= scale;
+            view.WorkSize.y /= scale;
+        }
+    }
+    return view;
 }
 
 static void ui_build_default_layout(void)
 {
     ImGuiViewport layout = ui_layout_viewport();
-    ImGuiID left;
-    ImGuiID components;
-    ImGuiID left_top;
-    ImGuiID world_outliner;
-    ImGuiID my_blueprint;
+    ImGuiID system;
     ImGuiID rest;
-    ImGuiID right;
-    ImGuiID inspector;
-    ImGuiID scene_runtime;
+    ImGuiID entity;
     ImGuiID center;
-    ImGuiID bottom;
-    ImGuiID main;
+    ImGuiID scene;
+    ImGuiID canvas;
 
     if (ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID)) {
         ImGui_DockBuilderRemoveNode(UI_DOCKSPACE_ID);
@@ -623,24 +631,13 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderAddNodeEx(UI_DOCKSPACE_ID, ImGuiDockNodeFlags_DockSpace);
     ImGui_DockBuilderSetNodePos(UI_DOCKSPACE_ID, layout.WorkPos);
     ImGui_DockBuilderSetNodeSize(UI_DOCKSPACE_ID, layout.WorkSize);
-    ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_LEFT_RATIO, &left, &rest);
-    ImGui_DockBuilderSplitNode(left, ImGuiDir_Down, UI_LEFT_COMPONENTS_RATIO, &components, &left_top);
-    ImGui_DockBuilderSplitNode(left_top, ImGuiDir_Left, UI_WORLD_OUTLINER_RATIO, &world_outliner, &my_blueprint);
-    ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_RIGHT_RATIO, &right, &center);
-    ImGui_DockBuilderSplitNode(right, ImGuiDir_Down, UI_SCENE_RUNTIME_RATIO, &inspector, &scene_runtime);
-    ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &main);
-    /* The last window in a node is selected by the builder. Keep the graph and
-     * the Blueprint side panels visible in the default layout. */
-    ImGui_DockBuilderDockWindow("World Outliner", world_outliner);
-    ImGui_DockBuilderDockWindow("My Blueprint", my_blueprint);
-    ImGui_DockBuilderDockWindow("Components", components);
-    ImGui_DockBuilderDockWindow("Node Canvas", main);
-    ImGui_DockBuilderDockWindow("Scene", main);
-    ImGui_DockBuilderDockWindow("Content Drawer", bottom);
-    ImGui_DockBuilderDockWindow("Compiler Results", bottom);
-    ImGui_DockBuilderDockWindow("Output Log", bottom);
-    ImGui_DockBuilderDockWindow("Scene Runtime", scene_runtime);
-    ImGui_DockBuilderDockWindow("Inspector", inspector);
+    ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_SYSTEM_RATIO, &system, &rest);
+    ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_ENTITY_RATIO, &entity, &center);
+    ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_SCENE_RATIO, &scene, &canvas);
+    ImGui_DockBuilderDockWindow("System", system);
+    ImGui_DockBuilderDockWindow("Entity", entity);
+    ImGui_DockBuilderDockWindow("Scene", scene);
+    ImGui_DockBuilderDockWindow("Node Canvas", canvas);
     editor_ui_set_content_drawer_open(false);
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
@@ -652,88 +649,18 @@ static void ui_draw_menu(void)
     }
     ImGui_TextColoredUnformatted(UI_ACCENT, "C Blueprints");
     ImGui_SameLine();
-    ImGui_TextDisabledUnformatted("Editor");
-    bool enabled = ui_command_handler != NULL;
-    if (ImGui_BeginMenu("File")) {
-        if (ImGui_MenuItemEx("Save", "Ctrl+S", false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_SAVE, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Save As...", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_SAVE_AS, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Save All", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_SAVE_ALL, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Reload from disk", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_RELOAD, ui_command_user);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("Edit")) {
-        if (ImGui_MenuItemEx("Undo", "Ctrl+Z", false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_UNDO, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Redo", "Ctrl+Y", false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_REDO, ui_command_user);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("Asset")) {
-        if (ImGui_MenuItemEx("New Prototype", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_NEW_PROTOTYPE, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("New Behavior", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_NEW_BEHAVIOR, ui_command_user);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("View")) {
-        if (ImGui_MenuItemEx("World Outliner", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_SCENE, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Scene Runtime", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_SCENE_RUNTIME, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Components", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_COMPONENTS, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("My Blueprint", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_MY_BLUEPRINT, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Inspector", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_INSPECTOR, ui_command_user);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("Debug")) {
-        if (ImGui_MenuItemEx("Compiler Results", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_COMPILER_RESULTS, ui_command_user);
-        }
-        if (ImGui_MenuItemEx("Output Log", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_FOCUS_OUTPUT_LOG, ui_command_user);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("Window")) {
-        if (ImGui_MenuItem("Reset default layout")) {
-            ui_reset_layout = 1;
-        }
-        if (ImGui_MenuItemEx("Content Drawer", NULL, ui_content_drawer_open, true)) {
-            editor_ui_set_content_drawer_open(!ui_content_drawer_open);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("Tools")) {
-        if (ImGui_MenuItemEx("Refresh Content", NULL, false, enabled) && enabled) {
-            ui_command_handler(EDITOR_UI_COMMAND_REFRESH_CONTENT, ui_command_user);
-        }
-        ImGui_EndMenu();
-    }
-    if (ImGui_BeginMenu("Help")) {
-        ImGui_TextUnformatted("C Blueprints editor");
-        ImGui_EndMenu();
-    }
+    ImGui_TextDisabledUnformatted("Movement System");
     ImGui_EndMainMenuBar();
+}
+
+void editor_ui_reset_layout(void)
+{
+    ui_reset_layout = 1;
+}
+
+void editor_ui_set_framebuffer_target(bool target)
+{
+    ui_framebuffer_target = target;
 }
 
 void editor_ui_prepare(void)
@@ -749,12 +676,13 @@ void editor_ui_prepare(void)
 
     ui_draw_menu();
     ImGuiIO *io = ImGui_GetIO();
+    ImGuiViewport layout = ui_layout_viewport();
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io->ConfigWindowsMoveFromTitleBarOnly = true;
-    if (ui_reset_layout || !ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID)) {
+    if ((ui_reset_layout || !ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID)) &&
+        layout.WorkSize.x > 0.0f && layout.WorkSize.y > 0.0f) {
         ui_build_default_layout();
         ui_reset_layout = 0;
     }
-    ImGuiViewport layout = ui_layout_viewport();
     (void)ImGui_DockSpaceOverViewportEx(UI_DOCKSPACE_ID, &layout, ImGuiDockNodeFlags_None, NULL);
 }

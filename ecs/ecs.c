@@ -115,6 +115,12 @@ static int entity_matches(const ecs_world *world, ecs_entity entity)
            world->generations[entity.slot] == entity.generation;
 }
 
+static int component_matches(const ecs_component *component, uint32_t slot)
+{
+    uint64_t bit = UINT64_C(1) << (slot % 64u);
+    return (component->occupancy[slot / 64u] & bit) != 0;
+}
+
 static void occupancy_add(ecs_component *component, uint32_t slot)
 {
     uint64_t *word = &component->occupancy[slot / 64u];
@@ -737,17 +743,37 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
     memset(query, 0, sizeof *query);
     query->world = world;
     query->component_count = component_count;
+    query->dense_count = -1;
+    query->dense_index = -1;
     if (component_count) {
         query->components = (ecs_component_id *)xmalloc(
             (size_t)component_count * sizeof *query->components
         );
+        const ecs_component **refs = (const ecs_component **)xmalloc(
+            (size_t)component_count * sizeof *refs
+        );
+        query->component_refs = refs;
+        const ecs_component *candidate = NULL;
         for (int i = 0; i < component_count; i++) {
-            if (!find_component(world, components[i])) {
+            const ecs_component *component = find_component(world, components[i]);
+            if (!component) {
+                free(query->component_refs);
                 free(query->components);
                 memset(query, 0, sizeof *query);
                 return ECS_ERR_COMPONENT;
             }
             query->components[i] = components[i];
+            refs[i] = component;
+            if (component->desc.index == ECS_INDEX_DENSE &&
+                (!candidate || acount(component->dense) < acount(candidate->dense))) {
+                candidate = component;
+                query->dense_index = i;
+            }
+        }
+        if (candidate) {
+            query->dense = candidate->dense;
+            query->dense_count = acount(candidate->dense);
+            query->dense_cursor = -1;
         }
     }
     query->limit = world->high_water;
@@ -760,19 +786,22 @@ int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
     if (!query || !query->world || !out_entity) {
         return ECS_ERR_ARGUMENT;
     }
-    while (++query->cursor <= query->limit) {
-        ecs_entity entity = { query->cursor, query->world->generations[query->cursor] };
-        if (!entity_matches(query->world, entity)) {
+    while (query->dense_count >= 0 ? ++query->dense_cursor < query->dense_count
+                                   : ++query->cursor <= query->limit) {
+        uint32_t slot = query->dense_count >= 0 ? query->dense[query->dense_cursor]
+                                                : query->cursor;
+        ecs_entity entity = { slot, query->world->generations[slot] };
+        if (query->dense_count < 0 && !entity_matches(query->world, entity)) {
             continue;
         }
-        int found = 1;
-        for (int i = 0; i < query->component_count; i++) {
-            if (!ecs_component_has(query->world, entity, query->components[i])) {
-                found = 0;
+        const ecs_component *const *refs = (const ecs_component *const *)query->component_refs;
+        int i;
+        for (i = 0; i < query->component_count; i++) {
+            if (i != query->dense_index && !component_matches(refs[i], slot)) {
                 break;
             }
         }
-        if (found) {
+        if (i == query->component_count) {
             *out_entity = entity;
             return 1;
         }
@@ -787,6 +816,7 @@ void ecs_query_end(ecs_query *query)
     }
     assert(query->world->iteration_depth > 0);
     query->world->iteration_depth--;
+    free(query->component_refs);
     free(query->components);
     memset(query, 0, sizeof *query);
 }

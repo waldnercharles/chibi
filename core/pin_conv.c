@@ -1,6 +1,22 @@
 #include "pin_conv.h"
 
+#include "registry.h"
+
 #include <string.h>
+
+#define PIN_TYPE_ALIAS_DEPTH 16
+
+static const char *type_root(const char *name)
+{
+    for (int i = 0; i < PIN_TYPE_ALIAS_DEPTH; i++) {
+        const type_desc *type = registry_type_by_name(name);
+        if (!type || !type->alias_of || strcmp(type->alias_of, name) == 0) {
+            return name;
+        }
+        name = type->alias_of;
+    }
+    return name;
+}
 
 int pin_compatible(const pin_spec *a, const pin_spec *b)
 {
@@ -13,7 +29,8 @@ int pin_compatible(const pin_spec *a, const pin_spec *b)
         return 0;
     }
     if (a->type == PIN_STRUCT || a->type == PIN_ENUM || a->type == PIN_HANDLE) {
-        return a->type_name && b->type_name && strcmp(a->type_name, b->type_name) == 0;
+        return a->type_name && b->type_name &&
+               strcmp(type_root(a->type_name), type_root(b->type_name)) == 0;
     }
     return 1;
 }

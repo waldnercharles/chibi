@@ -59,10 +59,48 @@ enum
 };
 
 typedef pin_value (*node_fn)(const pin_value *inputs, int input_count, arena *a);
+/* Typed adapters: output and inputs point at storage for the declared pin types. */
+typedef int (*node_fast_fn)(void *output, const void *const *inputs);
+typedef int (*node_fast0_fn)(void *output);
+typedef int (*node_fast1_fn)(void *output, const void *input0);
+typedef int (*node_fast2_fn)(void *output, const void *input0, const void *input1);
+typedef int (*node_fast3_fn)(void *output, const void *input0, const void *input1, const void *input2);
+typedef int (*node_fast4_fn)(
+    void *output,
+    const void *input0,
+    const void *input1,
+    const void *input2,
+    const void *input3
+);
+
+typedef union
+{
+    node_fast0_fn zero;
+    node_fast1_fn one;
+    node_fast2_fn two;
+    node_fast3_fn three;
+    node_fast4_fn four;
+} node_fast_direct_fn;
+
+typedef enum
+{
+    NODE_JIT_NONE = 0,
+    NODE_JIT_MUL,
+    NODE_JIT_ADD,
+    NODE_JIT_SUB,
+    NODE_JIT_DIV,
+    NODE_JIT_V2_MOVE,
+} node_jit_kind;
+
+enum
+{
+    NODE_JIT_FLAG_FAST_MATH = 1u << 0,
+};
 
 typedef enum
 {
     NODE_PURE_CONST = 0, /* outputs pre-set (literal, or written by flow) */
+    NODE_PURE_COPY,      /* one data input copied to one data output */
     NODE_PURE_MAKE,      /* desc->type: field inputs -> one struct output */
     NODE_PURE_BREAK,     /* desc->type: one struct input -> field outputs */
     NODE_PURE_CALL,      /* desc->fn: inputs -> one output */
@@ -80,8 +118,13 @@ typedef struct
     pin_spec *inputs;
     pin_spec *outputs;
     node_pure_kind pure_kind; /* how to compute DATA outputs; CONST is zero default */
+    node_jit_kind jit_kind;
+    unsigned jit_flags;
     const type_desc *type;
     node_fn fn;
+    node_fast_fn fast;
+    node_fast_direct_fn direct;
+    int direct_count; /* arity plus one; zero means no direct adapter */
     node_flow_kind flow_kind;
     node_flow_fn flow;
     int latent;
@@ -178,7 +221,23 @@ static inline node_behavior node_desc_behavior(const node_desc *d)
 
 static inline node_behavior node_behavior_for(const node *n)
 {
-    return node_desc_behavior(n ? n->desc : NULL);
+    if (!n) {
+        return NODE_BEHAVIOR_PURE;
+    }
+    int exec_input = 0, exec_output = 0;
+    for (int i = 0; i < n->input_count; i++) {
+        exec_input |= n->input_pins[i].kind == PIN_EXEC;
+    }
+    for (int i = 0; i < n->output_count; i++) {
+        exec_output |= n->output_pins[i].kind == PIN_EXEC;
+    }
+    if (exec_input) {
+        return NODE_BEHAVIOR_EXEC;
+    }
+    if (exec_output) {
+        return NODE_BEHAVIOR_ENTRY;
+    }
+    return NODE_BEHAVIOR_PURE;
 }
 
 #endif

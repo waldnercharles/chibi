@@ -1,6 +1,7 @@
 #include "prototype.h"
 
 #include "../core/array.h"
+#include "../core/registry.h"
 #include "../core/value_array.h"
 #include "../core/xalloc.h"
 #include "../third_party/yyjson/yyjson.h"
@@ -47,7 +48,7 @@ static const type_desc *find_type(const game_prototype_registry *registry, const
             return desc->type;
         }
     }
-    return NULL;
+    return registry_type_by_name(name);
 }
 
 static game_prototype_component *find_component(game_prototype *prototype, const char *name)

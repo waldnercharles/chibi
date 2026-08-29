@@ -560,7 +560,8 @@ activations without expanding the language surface.
 
 Estimate: split after the Phase 3 preview debugger exposes real usage.
 
-Covers: `DBG-1` through `DBG-16`, `NODE-11`, `NODE-12`, `UI-10` through
+Covers: `DBG-1` through `DBG-16`, `TRACE-1` through `TRACE-3`, `NODE-11`,
+`NODE-12`, `UI-10` through
 `UI-12`, `UI-15`, `UI-16`, `UI-20`, `UI-32`, `UI-34`, `UI-35`, `UI-37`,
 `UI-38`, `UI-44` through `UI-52`.
 
@@ -600,11 +601,11 @@ storage), `0019` (parallel activation), and `0020` (live authoring).
 
 Estimate: not set until slice 0 reports a number.
 
-Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-12`, `SCENE-1`
-through `SCENE-6`, `BEH-1` through `BEH-14`, `DBG-18` through `DBG-19`,
+Covers: `ECS-1` through `ECS-18`, `PROTO-1` through `PROTO-13`, `SCENE-1`
+through `SCENE-7`, `BEH-1` through `BEH-14`, `DBG-18` through `DBG-19`,
 `PAR-1` through
-`PAR-11`, `APPLY-1` through `APPLY-11`, `ENG-1` through `ENG-7`, `HOT-1`
-through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
+`PAR-11`, `APPLY-1` through `APPLY-11`, `LIVE-1` through `LIVE-4`, `ENG-1`
+through `ENG-8`, `HOT-1` through `HOT-7`, `EXEC-20`, `RUN-21`, `UI-57`.
 
 ### Prerequisite: the operator catalog is missing
 

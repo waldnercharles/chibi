@@ -25,6 +25,30 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(cute_framework)
 
+# --- SLJIT backend ----------------------------------------------------------
+option(CBLUEPRINT_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
+set(CBLUEPRINT_SJLIT_SOURCE_DIR "" CACHE PATH "Use an existing SLJIT checkout")
+if(CBLUEPRINT_ENABLE_SJLIT)
+    if(CBLUEPRINT_SJLIT_SOURCE_DIR)
+        set(SLJIT_SOURCE_DIR ${CBLUEPRINT_SJLIT_SOURCE_DIR})
+    else()
+        FetchContent_Declare(
+            sljit
+            GIT_REPOSITORY https://github.com/zherczeg/sljit.git
+            GIT_TAG        a0020dd49a21020434ff838fc308626c48cd8f05
+            UPDATE_DISCONNECTED TRUE
+        )
+        FetchContent_GetProperties(sljit)
+        if(NOT sljit_POPULATED)
+            FetchContent_Populate(sljit)
+        endif()
+        set(SLJIT_SOURCE_DIR ${sljit_SOURCE_DIR})
+    endif()
+    add_library(cblueprint_sljit STATIC ${SLJIT_SOURCE_DIR}/sljit_src/sljitLir.c)
+    target_include_directories(cblueprint_sljit PUBLIC ${SLJIT_SOURCE_DIR}/sljit_src)
+    target_compile_definitions(cblueprint_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
+endif()
+
 # libclang (build tool only; runtime stays dependency-free).
 set(LIBCLANG_ROOT "" CACHE PATH "LLVM installation prefix")
 find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
@@ -129,6 +153,12 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
+if(CBLUEPRINT_ENABLE_SJLIT)
+    target_compile_definitions(core PRIVATE CBLUEPRINT_HAVE_SJLIT=1)
+    target_link_libraries(core PRIVATE cblueprint_sljit)
+else()
+    target_compile_definitions(core PRIVATE CBLUEPRINT_HAVE_SJLIT=0)
+endif()
 
 # --- headless ECS consumer module -------------------------------------------
 file(GLOB_RECURSE ECS_SOURCES CONFIGURE_DEPENDS
@@ -159,7 +189,7 @@ add_custom_command(
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/system.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
@@ -195,17 +225,28 @@ add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE core cute)
 
-# --- app: cute_framework host loop ---
+# --- app: the minimal ECS movement editor -------------------------------
+# Legacy scene/behavior sources remain in regression targets below, but the
+# shipped app does not compile or expose them.
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
+set(APP_REGISTRY_PACKS
+    CORE_EXTRA_PACK
+    CORE_FLOW_PACK
+    CORE_ARRAY_PACK
+    CORE_STATE_PACK
+    CORE_SWITCH_PACK
+    CORE_REROUTE_PACK
+    CORE_SET_MAP_PACK
+    CORE_STRUCT_PACK
+)
 add_custom_command(
     OUTPUT ${APP_REGISTRY}
     COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
             ${APP_REGISTRY}
-            ${BASE_REGISTRY_PACKS}
+            ${APP_REGISTRY_PACKS}
             GAME_REGISTRY_PACK
-    DEPENDS ${BASE_REGISTRY}
-            ${GAME_REGISTRY}
+    DEPENDS ${GAME_REGISTRY}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
     COMMENT "Composing the app registry pack list"
     VERBATIM
@@ -213,9 +254,13 @@ add_custom_command(
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
 )
-list(REMOVE_ITEM APP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/app/input_behavior.c)
+list(REMOVE_ITEM APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/input_behavior.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/demo_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/scene_authoring.c
+)
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
-target_link_libraries(app PRIVATE editor engine demo cute)
+target_link_libraries(app PRIVATE editor engine game cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---
@@ -231,6 +276,10 @@ target_link_libraries(bench_activation PRIVATE core demo)
 add_executable(scene_benchmark test/scene_benchmark.c ${BASE_REGISTRY})
 target_include_directories(scene_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(scene_benchmark PRIVATE game demo)
+
+add_executable(system_benchmark test/system_benchmark.c ${APP_REGISTRY})
+target_include_directories(system_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(system_benchmark PRIVATE game ecs)
 
 # --- integration: headless pico_unit regression suite for the editor<->core
 # interaction path (test/integration.c). Core + demo + pico_unit only; no
@@ -253,6 +302,11 @@ add_executable(input_behavior_check test/input_behavior_check.c ${APP_REGISTRY})
 target_include_directories(input_behavior_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(input_behavior_check PRIVATE engine game ecs demo cute)
 set_target_properties(input_behavior_check PROPERTIES LINKER_LANGUAGE CXX)
+
+add_executable(movement_system_check test/movement_system_check.c ${APP_REGISTRY})
+target_include_directories(movement_system_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(movement_system_check PRIVATE game ecs)
+set_target_properties(movement_system_check PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c ${BASE_REGISTRY})
 target_include_directories(integration PRIVATE
@@ -326,10 +380,12 @@ if(CLANG_FORMAT)
   add_dependencies(self_check format)
   add_dependencies(bench_activation format)
   add_dependencies(scene_benchmark format)
+  add_dependencies(system_benchmark format)
   add_dependencies(integration format)
   add_dependencies(editor_runtime_check format)
   add_dependencies(prototype_authoring_check format)
   add_dependencies(input_behavior_check format)
+  add_dependencies(movement_system_check format)
   add_dependencies(registry_consumer format)
   add_dependencies(reflect format)
 endif()

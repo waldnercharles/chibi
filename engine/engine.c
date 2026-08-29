@@ -42,7 +42,7 @@ static int clock_now(struct timespec *out)
 
 engine *engine_new(ecs_world *world, game_live_world *live)
 {
-    if (!world || !live) {
+    if (!world) {
         return NULL;
     }
     engine *result = (engine *)xcalloc(1, sizeof *result);
@@ -155,6 +155,9 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
     const flow_inputs dispatch = registry_type_by_name("CF_V2")
                                    ? (flow_inputs){ inputs, 1, NULL }
                                    : (flow_inputs){ 0 };
+    if (!engine->live) {
+        return FLOW_ERR_STATE;
+    }
     return game_behavior_dispatch_all(engine->live->behaviors, "Input", dispatch, error);
 }
 
@@ -169,10 +172,11 @@ int engine_frame(engine *engine, double monotonic_time)
         return FLOW_ERR_STATE;
     }
     int result = 0;
-    if (engine->playing || engine->step_requested) {
+    bool simulate = engine->playing || engine->step_requested;
+    if (simulate && engine->live) {
         result = game_behavior_pump(engine->live->behaviors, monotonic_time);
-        engine->step_requested = false;
     }
+    engine->step_requested = false;
     if (clock_now(&end) != 0) {
         return FLOW_ERR_STATE;
     }
@@ -180,23 +184,26 @@ int engine_frame(engine *engine, double monotonic_time)
     if (result < 0) {
         return result;
     }
-    if (clock_now(&start) != 0) {
-        return FLOW_ERR_STATE;
-    }
-    result = ecs_world_apply_commands(engine->world);
-    engine->timing.command_apply_count++;
-    if (clock_now(&end) != 0) {
-        return FLOW_ERR_STATE;
-    }
-    engine->timing.systems_ms = elapsed_ms(start, end);
-    if (result != ECS_OK) {
-        return result;
-    }
-    if (clock_now(&start) != 0) {
-        return FLOW_ERR_STATE;
-    }
-    for (int i = 0; i < acount(engine->systems); i++) {
-        engine->systems[i].fn(engine->world, monotonic_time, engine->systems[i].user);
+    if (simulate) {
+        if (clock_now(&start) != 0) {
+            return FLOW_ERR_STATE;
+        }
+        result = ecs_world_apply_commands(engine->world);
+        engine->timing.command_apply_count++;
+        if (clock_now(&end) != 0) {
+            return FLOW_ERR_STATE;
+        }
+        engine->timing.systems_ms = elapsed_ms(start, end);
+        if (result != ECS_OK) {
+            return result;
+        }
+        if (clock_now(&start) != 0) {
+            return FLOW_ERR_STATE;
+        }
+        for (int i = 0; i < acount(engine->systems); i++) {
+            engine->systems[i]
+                .fn(engine->world, monotonic_time, engine->systems[i].user);
+        }
     }
     if (engine->render) {
         engine->render(engine->render_user);

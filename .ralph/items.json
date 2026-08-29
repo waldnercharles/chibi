@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "runtime_contract": {
+    "source_docs": [],
+    "verification_gates": [
+      { "name": "Build application", "command": "cmake --build build --target app -j4" },
+      { "name": "Core regression checks", "command": "./build/self_check" },
+      { "name": "Editor runtime regression", "command": "./build/editor_runtime_check" },
+      { "name": "Prototype authoring regression", "command": "./build/prototype_authoring_check" },
+      { "name": "Integration regression", "command": "./build/integration" },
+      { "name": "Registry regression", "command": "./build/registry_consumer" },
+      { "name": "Specification coverage", "command": "python3 tools/spec_coverage.py" },
+      { "name": "Application headless smoke", "command": "cmake --build build --target app -j4 && build/app --headless --screenshot --frames 3" }
+    ],
+    "require_progress_append": true,
+    "require_one_item_per_iteration": true,
+    "require_commit": true
+  },
+  "items": [
+    {
+      "category": "persistence",
+      "description": "Integrate game_system_document as the app's System asset model, preserving graph and query state across versioned atomic Save, Save As, Reload, Save All, Undo, Redo, and Revert boundaries.",
+      "steps": ["Open or load a System asset with no query and one with a nested query.", "Edit graph and query state, exercise save/reload and dirty-history boundaries, and verify both states round-trip.", "Run focused tests for absent queries, nested queries, invalid operators, unknown keys, and atomic persistence."],
+      "passes": true,
+      "regression_notes": "Integrated the System asset document into movement authoring, preserved optional/nested query state through document save/load, rejected unknown query keys, and retained atomic app writes. Verified all required gates and screenshot dimensions (3840x2160)."
+    },
+    {
+      "category": "editor",
+      "description": "Replace the temporary System query checkbox with a recursive editor-owned All/Any/Not query builder with stable editing, component/tag search, validation, preview counts, diagnostics, deterministic reorder, and per-edit undo.",
+      "steps": ["Open the System query editor against an active ECS world.", "Add, remove, search, reorder, and edit nested terms and groups, including empty and missing-component cases.", "Verify preview counts, diagnostics, undo, serialization, and the headless app screenshot."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "identity",
+      "description": "Add generated stable prototype/tag identity independent of visible names, apply it at spawn, expose it to Inspector and query selection, and preserve matching through rename and duplicate cases.",
+      "steps": ["Create, rename, duplicate, and spawn prototype assets with stable identities.", "Inspect spawned identity tags and select them in the query picker.", "Round-trip assets and run tests proving rename, duplicate, spawn, and query matching behavior."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "editor",
+      "description": "Wire the shipped app into document-based Scene, Prototype, Behavior, and System workflows with shared graph presentation, universal Inspector and diagnostics, explicit save/apply/reload boundaries, and no demo-specific MovementSystem wording.",
+      "steps": ["Open each supported document kind and verify its declared panels, selection context, and central surface.", "Edit and inspect scene instances, prototypes, behaviors, and systems through their document models rather than shell state.", "Verify the shipped app workflow with the headless screenshot and focused document/runtime regressions."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "runtime",
+      "description": "Unify System and Behavior compilation around shared graph IR/program storage, node descriptors, adapters, diagnostics, and JIT lowering, including explicit entity/continuation execution state.",
+      "steps": ["Compile one graph through the shared program path for batch and entity execution.", "Execute both adapters with equivalent inputs and compare component results, diagnostics, and backend selection.", "Verify latent state is resumable without a C-stack continuation and preserve movement System batch performance checks."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "performance",
+      "description": "Compile expression-query plans into candidate indexes and OR groups with deterministic deduplication and ascending slot order without invalidating JIT column assumptions.",
+      "steps": ["Run equivalent simple AND, nested OR, NOT, and mixed expression queries against populated worlds.", "Compare planned results and ordering with the existing semantic reference.", "Run a benchmark showing expression planning does not regress simple AND query behavior or movement execution."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "identity",
+      "description": "Complete reflected component identity migration with declaration fingerprints, manifest history/aliases, ambiguity diagnostics, duplicate validation, and stable-key graph resolution.",
+      "steps": ["Reflect components through rename, compatible layout change, declaration move, incompatible field change, and ambiguous-match fixtures.", "Verify stable IDs/keys and actionable failure for ambiguity or duplicate identity.", "Load renamed component nodes from old graphs and run hot-reload and registry regressions."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "data",
+      "description": "Move NeonSwarm gameplay tuning and composition data from hard-coded C tables into reflected, editor-owned assets with explicit save, apply, and revert behavior.",
+      "steps": ["Load player, enemy, wave, arena, weapon, projectile, progression, support, and material data from authored assets.", "Edit representative values and compositions in the editor, then save, apply, reload, and revert them.", "Run runtime and persistence checks proving spawned gameplay uses the authored data without losing existing behavior."],
+      "passes": false,
+      "regression_notes": ""
+    },
+    {
+      "category": "functional",
+      "description": "Add the next domain node families on the shared execution foundation, with registry packs, UI context allowlists, stable resolution, and discoverable spawn-menu names.",
+      "steps": ["Author graphs using the selected vector/entity/query/timer/event/gameplay domain nodes.", "Verify each node appears by name in every applicable spawn menu and compiles through the shared backend.", "Execute representative graphs and run registry, runtime, and headless UI checks."],
+      "passes": false,
+      "regression_notes": ""
+    }
+  ]
+}

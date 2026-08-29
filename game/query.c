@@ -124,6 +124,15 @@ static ecs_query_expr *load_value(load_context *context, yyjson_val *value)
     }
     const char *op = yyjson_get_str(op_value);
     if (!strcmp(op, "has")) {
+        yyjson_obj_iter keys = yyjson_obj_iter_with(value);
+        yyjson_val *key;
+        while ((key = yyjson_obj_iter_next(&keys))) {
+            const char *name = yyjson_get_str(key);
+            if (strcmp(name, "op") != 0 && strcmp(name, "component") != 0) {
+                set_error(context->error, context->error_size, "unknown has query key %s", name);
+                return NULL;
+            }
+        }
         yyjson_val *component_value = yyjson_obj_get(value, "component");
         if (!yyjson_is_str(component_value)) {
             set_error(context->error, context->error_size, "has term is missing component");
@@ -148,6 +157,15 @@ static ecs_query_expr *load_value(load_context *context, yyjson_val *value)
     if (kind == ECS_QUERY_HAS) {
         set_error(context->error, context->error_size, "unknown query operator %s", op);
         return NULL;
+    }
+    yyjson_obj_iter keys = yyjson_obj_iter_with(value);
+    yyjson_val *key;
+    while ((key = yyjson_obj_iter_next(&keys))) {
+        const char *name = yyjson_get_str(key);
+        if (strcmp(name, "op") != 0 && strcmp(name, "terms") != 0) {
+            set_error(context->error, context->error_size, "unknown %s query key %s", op, name);
+            return NULL;
+        }
     }
     yyjson_val *terms = yyjson_obj_get(value, "terms");
     if (!yyjson_is_arr(terms)) {

@@ -20,6 +20,7 @@ game_system_document *game_system_document_new(const char *name);
 void game_system_document_free(game_system_document *document);
 const blueprint *game_system_document_blueprint(const game_system_document *document);
 blueprint *game_system_document_blueprint_mutable(game_system_document *document);
+int game_system_document_replace_blueprint(game_system_document *document, blueprint *definition);
 const ecs_query_expr *game_system_document_query(const game_system_document *document);
 int game_system_document_set_query(game_system_document *document, const ecs_query_expr *expression);
 char *game_system_document_save(

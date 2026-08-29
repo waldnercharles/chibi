@@ -55,6 +55,16 @@ blueprint *game_system_document_blueprint_mutable(game_system_document *document
     return document ? document->blueprint : NULL;
 }
 
+int game_system_document_replace_blueprint(game_system_document *document, blueprint *definition)
+{
+    if (!document || !definition) {
+        return -1;
+    }
+    blueprint_free(document->blueprint);
+    document->blueprint = definition;
+    return 0;
+}
+
 const ecs_query_expr *game_system_document_query(const game_system_document *document)
 {
     return document ? document->query : NULL;
@@ -109,8 +119,8 @@ game_system_document *game_system_document_load(
     size_t error_size
 )
 {
-    if (!json || !resolve) {
-        set_error(error, error_size, "system document or resolver is missing");
+    if (!json) {
+        set_error(error, error_size, "system document is missing");
         return NULL;
     }
     blueprint *definition = blueprint_load_json(json);
@@ -124,10 +134,22 @@ game_system_document *game_system_document_load(
         set_error(error, error_size, "malformed system document");
         return NULL;
     }
+    yyjson_val *root = yyjson_doc_get_root(parsed);
+    if (!yyjson_is_obj(root)) {
+        yyjson_doc_free(parsed);
+        blueprint_free(definition);
+        set_error(error, error_size, "system document root must be an object");
+        return NULL;
+    }
     game_system_document *document = (game_system_document *)xcalloc(1, sizeof *document);
     document->blueprint = definition;
-    yyjson_val *root = yyjson_doc_get_root(parsed);
     int has_query = yyjson_obj_get(root, "query") != NULL;
+    if (has_query && !resolve) {
+        yyjson_doc_free(parsed);
+        game_system_document_free(document);
+        set_error(error, error_size, "system query resolver is missing");
+        return NULL;
+    }
     document->query = query_from_root(root, resolve, user, error, error_size);
     yyjson_doc_free(parsed);
     if (has_query && !document->query) {

@@ -1,6 +1,7 @@
 #include "movement_authoring.h"
 
 #include "../core/serialize.h"
+#include "../core/text_file.h"
 #include "../core/xalloc.h"
 #include "../game/generated.h"
 #include "../game/query.h"
@@ -23,6 +24,7 @@ struct movement_authoring
     ecs_world *world;
     ecs_entity player;
     game_system *system;
+    game_system_document *document;
     editor *editor;
     engine *runtime;
     unsigned synced_revision;
@@ -114,6 +116,16 @@ movement_authoring *movement_authoring_new(
     authoring->system = system;
     authoring->editor = editor;
     authoring->runtime = runtime;
+    char *json = text_file_read(MOVEMENT_SYSTEM_PATH);
+    char error[256] = { 0 };
+    authoring->document = json
+                            ? game_system_document_load(json, resolve_component, NULL, error, sizeof error)
+                            : NULL;
+    free(json);
+    if (!authoring->document) {
+        free(authoring);
+        return NULL;
+    }
     authoring->synced_revision = UINT_MAX;
     set_status(authoring, "Ready");
     return authoring;
@@ -121,6 +133,7 @@ movement_authoring *movement_authoring_new(
 
 void movement_authoring_free(movement_authoring *authoring)
 {
+    game_system_document_free(authoring ? authoring->document : NULL);
     free(authoring);
 }
 
@@ -132,8 +145,8 @@ void movement_authoring_sync(movement_authoring *authoring)
     }
     char *json = blueprint_save_json(editor_blueprint(authoring->editor));
     blueprint *definition = json ? blueprint_load_json(json) : NULL;
-    free(json);
     if (!definition) {
+        free(json);
         set_status(authoring, graph_last_error());
         authoring->synced_revision = revision;
         return;
@@ -147,8 +160,17 @@ void movement_authoring_sync(movement_authoring *authoring)
             set_status(authoring, "System graph could not compile");
         }
     } else {
-        set_status(authoring, "System graph compiled");
+        blueprint *document_definition = blueprint_load_json(json);
+        if (!document_definition ||
+            game_system_document_replace_blueprint(authoring->document, document_definition) !=
+                0) {
+            blueprint_free(document_definition);
+            set_status(authoring, "System document could not be updated");
+        } else {
+            set_status(authoring, "System graph compiled");
+        }
     }
+    free(json);
     authoring->synced_revision = revision;
 }
 
@@ -186,6 +208,9 @@ int movement_authoring_set_query_json(
     }
     const ecs_query_expr *query = game_system_document_query(document);
     int result = game_system_set_query(authoring->system, query);
+    if (result == 0 && game_system_document_set_query(authoring->document, query) != 0) {
+        result = -1;
+    }
     if (result == 0 && query && ecs_query_expr_get_kind(query) == ECS_QUERY_HAS) {
         authoring->require_health = ecs_query_expr_get_component(query) ==
                                     GAME_COMPONENT_GameHealth.id;
@@ -351,13 +376,21 @@ void movement_authoring_system(ecs_world *, double monotonic_time, void *user)
 int movement_authoring_save(editor *editor, void *user)
 {
     movement_authoring *authoring = (movement_authoring *)user;
-    char *json = game_system_document_save_blueprint(
-        editor_blueprint(editor),
-        game_system_query_expression(authoring->system),
-        resolve_component,
-        component_key,
-        NULL
-    );
+    char *blueprint_json = blueprint_save_json(editor_blueprint(editor));
+    blueprint *definition = blueprint_json ? blueprint_load_json(blueprint_json) : NULL;
+    free(blueprint_json);
+    if (!definition ||
+        game_system_document_replace_blueprint(authoring->document, definition) != 0) {
+        blueprint_free(definition);
+        return -1;
+    }
+    if (game_system_document_set_query(
+            authoring->document,
+            game_system_query_expression(authoring->system)
+        ) != 0) {
+        return -1;
+    }
+    char *json = game_system_document_save(authoring->document, resolve_component, component_key, NULL);
     if (!json) {
         return -1;
     }

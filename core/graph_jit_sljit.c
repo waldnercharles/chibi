@@ -538,6 +538,8 @@ static int call_kind(const graph_ir_instruction *instruction)
         case NODE_JIT_ADD: return 3;
         case NODE_JIT_SUB: return 5;
         case NODE_JIT_DIV: return 6;
+        case NODE_JIT_MIN: return 7;
+        case NODE_JIT_MAX: return 8;
         case NODE_JIT_V2_MOVE: return 4;
         default: return 0;
     }
@@ -675,7 +677,7 @@ static int register_instruction_supported(
                         (output == SJLIT_VALUE_F32 && left == SJLIT_VALUE_F32 &&
                          right == SJLIT_VALUE_F32));
             }
-            if (kind == 3 || kind == 5 || kind == 6) {
+            if (kind == 3 || kind == 5 || kind == 6 || kind == 7 || kind == 8) {
                 sljit_value_kind left = value_location_kind(
                     &values[instruction->inputs[0]]
                 );
@@ -961,6 +963,34 @@ static int emit_register_set(
     return 0;
 }
 
+static int emit_minmax(sljit_builder *builder, int maximum, sljit_s32 output, sljit_s32 left, sljit_s32 right)
+{
+    struct sljit_jump *select_right = sljit_emit_fcmp(
+        builder->compiler,
+        (maximum ? SLJIT_F_LESS : SLJIT_F_GREATER),
+        left,
+        0,
+        right,
+        0
+    );
+    if (!select_right || emit_fop1(builder, SLJIT_MOV_F32, output, 0, left, 0)) {
+        return -1;
+    }
+    struct sljit_jump *done = sljit_emit_jump(builder->compiler, SLJIT_JUMP);
+    struct sljit_label *right_label = sljit_emit_label(builder->compiler);
+    if (!done || !right_label ||
+        emit_fop1(builder, SLJIT_MOV_F32, output, 0, right, 0)) {
+        return -1;
+    }
+    struct sljit_label *done_label = sljit_emit_label(builder->compiler);
+    if (!done_label) {
+        return -1;
+    }
+    sljit_set_label(select_right, right_label);
+    sljit_set_label(done, done_label);
+    return 0;
+}
+
 static int emit_register_instruction(
     sljit_register_builder *registers,
     const graph_ir_instruction *instruction,
@@ -1092,6 +1122,15 @@ static int emit_register_instruction(
                 *input0 = &registers->locations[instruction->inputs[0]];
             const sljit_value_location
                 *input1 = &registers->locations[instruction->inputs[1]];
+            if (output.kind == SJLIT_VALUE_F32 && (kind == 7 || kind == 8)) {
+                return emit_minmax(
+                    registers->builder,
+                    kind == 8,
+                    output.regs[0],
+                    input0->regs[0],
+                    input1->regs[0]
+                );
+            }
             if (output.kind == SJLIT_VALUE_F32) {
                 sljit_s32 op = kind == 2 ? SLJIT_MUL_F32
                              : kind == 3 ? SLJIT_ADD_F32
@@ -1178,6 +1217,24 @@ static int emit_register_instruction(
                         0,
                         input1->regs[1],
                         0
+                    )) {
+                    return -1;
+                }
+            } else if (kind == 7 || kind == 8) {
+                int maximum = kind == 8;
+                if (emit_minmax(
+                        registers->builder,
+                        maximum,
+                        output.regs[0],
+                        input0->regs[0],
+                        input1->regs[0]
+                    ) ||
+                    emit_minmax(
+                        registers->builder,
+                        maximum,
+                        output.regs[1],
+                        input0->regs[1],
+                        input1->regs[1]
                     )) {
                     return -1;
                 }

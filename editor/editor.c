@@ -3667,6 +3667,8 @@ static int ed_system_node_allowed(const node_desc *desc)
         "Multiply",
         "Subtract",
         "Divide",
+        "Min",
+        "Max",
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {

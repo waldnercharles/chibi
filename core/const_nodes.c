@@ -17,7 +17,9 @@ enum
     GENERIC_ADD,
     GENERIC_SUB,
     GENERIC_MUL,
-    GENERIC_DIV
+    GENERIC_DIV,
+    GENERIC_MIN,
+    GENERIC_MAX
 };
 
 static pin_value literal_identity(const pin_value *inputs, int input_count, arena *a)
@@ -35,22 +37,30 @@ static pin_value numeric_op(pin_value a, pin_value b, int operation)
             result.f = operation == GENERIC_MUL ? a.f * b.f
                      : operation == GENERIC_SUB ? a.f - b.f
                      : operation == GENERIC_DIV ? a.f / b.f
+                     : operation == GENERIC_MIN ? (a.f < b.f ? a.f : b.f)
+                     : operation == GENERIC_MAX ? (a.f > b.f ? a.f : b.f)
                                                 : a.f + b.f;
             break;
         case PIN_F64:
             result.d = operation == GENERIC_MUL ? a.d * b.d
                      : operation == GENERIC_SUB ? a.d - b.d
                      : operation == GENERIC_DIV ? a.d / b.d
+                     : operation == GENERIC_MIN ? (a.d < b.d ? a.d : b.d)
+                     : operation == GENERIC_MAX ? (a.d > b.d ? a.d : b.d)
                                                 : a.d + b.d;
             break;
         case PIN_I32:
             result.i = operation == GENERIC_MUL ? a.i * b.i
                      : operation == GENERIC_SUB ? a.i - b.i
+                     : operation == GENERIC_MIN ? (a.i < b.i ? a.i : b.i)
+                     : operation == GENERIC_MAX ? (a.i > b.i ? a.i : b.i)
                                                 : a.i + b.i;
             break;
         case PIN_I64:
             result.i64 = operation == GENERIC_MUL ? a.i64 * b.i64
                        : operation == GENERIC_SUB ? a.i64 - b.i64
+                       : operation == GENERIC_MIN ? (a.i64 < b.i64 ? a.i64 : b.i64)
+                       : operation == GENERIC_MAX ? (a.i64 > b.i64 ? a.i64 : b.i64)
                                                   : a.i64 + b.i64;
             break;
         default: result.type = PIN_FLOW; break;
@@ -106,6 +116,16 @@ static pin_value generic_divide(const pin_value *inputs, int input_count, arena 
     return generic_binary(inputs, input_count, a, GENERIC_DIV);
 }
 
+static pin_value generic_min(const pin_value *inputs, int input_count, arena *a)
+{
+    return generic_binary(inputs, input_count, a, GENERIC_MIN);
+}
+
+static pin_value generic_max(const pin_value *inputs, int input_count, arena *a)
+{
+    return generic_binary(inputs, input_count, a, GENERIC_MAX);
+}
+
 static int generic_add_fast(void *output, const void *const *inputs)
 {
     const float *a = inputs[0];
@@ -146,6 +166,26 @@ static int generic_multiply_fast(void *output, const void *const *inputs)
     return 0;
 }
 
+static int generic_min_fast(void *output, const void *const *inputs)
+{
+    const float *a = inputs[0];
+    const float *b = inputs[1];
+    float *result = output;
+    result[0] = a[0] < b[0] ? a[0] : b[0];
+    result[1] = a[1] < b[1] ? a[1] : b[1];
+    return 0;
+}
+
+static int generic_max_fast(void *output, const void *const *inputs)
+{
+    const float *a = inputs[0];
+    const float *b = inputs[1];
+    float *result = output;
+    result[0] = a[0] > b[0] ? a[0] : b[0];
+    result[1] = a[1] > b[1] ? a[1] : b[1];
+    return 0;
+}
+
 static int generic_add_direct(void *output, const void *a, const void *b)
 {
     const void *inputs[] = { a, b };
@@ -168,6 +208,18 @@ static int generic_divide_direct(void *output, const void *a, const void *b)
 {
     const void *inputs[] = { a, b };
     return generic_divide_fast(output, inputs);
+}
+
+static int generic_min_direct(void *output, const void *a, const void *b)
+{
+    const void *inputs[] = { a, b };
+    return generic_min_fast(output, inputs);
+}
+
+static int generic_max_direct(void *output, const void *a, const void *b)
+{
+    const void *inputs[] = { a, b };
+    return generic_max_fast(output, inputs);
 }
 
 #define GENERIC_BINARY_DESC(VAR, NAME, FN, KEYWORDS, JIT, FAST, DIRECT)                                    \
@@ -216,6 +268,8 @@ GENERIC_BINARY_DESC(
     generic_subtract_direct
 )
 GENERIC_BINARY_DESC(NODE_Divide, "Divide", generic_divide, "divide over vector", NODE_JIT_DIV, generic_divide_fast, generic_divide_direct)
+GENERIC_BINARY_DESC(NODE_Min, "Min", generic_min, "min minimum vector", NODE_JIT_MIN, generic_min_fast, generic_min_direct)
+GENERIC_BINARY_DESC(NODE_Max, "Max", generic_max, "max maximum vector", NODE_JIT_MAX, generic_max_fast, generic_max_direct)
 
 #define LITERAL_DESC(VAR, NAME, PTYPE, PNAME)                                  \
     static pin_spec VAR##_inputs[] = {                                         \

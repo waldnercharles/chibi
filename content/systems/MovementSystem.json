@@ -1,7 +1,7 @@
 {
   "version": 3,
   "name": "MovementSystem",
-  "id_counter": 44,
+  "id_counter": 45,
   "description": "Moves entities from GameInput using GameMovement speed.",
   "owner_type": "ecs.entity",
   "variables": [],
@@ -317,6 +317,18 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0
+            },
+            {
+              "id": 44,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
             }
           ]
         }

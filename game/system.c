@@ -568,7 +568,7 @@ static int compile_value(system_program *program, const node *target, int output
     int ok = 1;
     switch (desc->pure_kind) {
         case NODE_PURE_DELTA:
-            if (target->output_count != 1 || program->event_delta < 0) {
+            if (target->output_count != 1) {
                 ok = 0;
                 break;
             }
@@ -979,7 +979,7 @@ static system_program *program_new(const blueprint *definition, const node *tick
     system_program *program = (system_program *)xcalloc(1, sizeof *program);
     graph_ir_init(&program->ir);
     program->graph = definition->graph;
-    program->event_delta = -1;
+    program->event_delta = 0;
     int output_total = 0;
     for (int i = 0; i < acount(program->graph->nodes); i++) {
         program->node_base = (int *)
@@ -999,14 +999,19 @@ static system_program *program_new(const blueprint *definition, const node *tick
             return NULL;
         }
     }
-    program->value_count = output_total;
-    if (output_total) {
-        program->aliases = (int *)xmalloc((size_t)output_total * sizeof *program->aliases);
-        for (int i = 0; i < output_total; i++) {
+    program->event_delta = output_total;
+    program->value_count = output_total + 1;
+    if (program->value_count) {
+        program->aliases = (int *)xmalloc(
+            (size_t)program->value_count * sizeof *program->aliases
+        );
+        for (int i = 0; i < program->value_count; i++) {
             program->aliases[i] = -1;
         }
         program->slots = (system_slot *)
-            xcalloc((size_t)output_total, sizeof *program->slots);
+            xcalloc((size_t)program->value_count, sizeof *program->slots);
+        program->slots[program->event_delta].type = PIN_F32;
+        program->slots[program->event_delta].type_name = "float";
         for (int i = 0; i < acount(program->graph->nodes); i++) {
             const node *target = program->graph->nodes[i];
             for (int output = 0; output < target->output_count; output++) {
@@ -1022,7 +1027,7 @@ static system_program *program_new(const blueprint *definition, const node *tick
     int compile_result = found ? (next ? compile_exec(program, next) : -1)
                        : program->graph->dataflow ? compile_dataflow(program)
                                                   : -1;
-    if (compile_result != 0 || program->event_delta < 0) {
+    if (compile_result != 0) {
         free(program->node_base);
         free(program->node_state);
         free(program->aliases);

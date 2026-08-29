@@ -1159,13 +1159,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
     fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add requires ecs.world\");\n", out);
     fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
-    fprintf(
-        out,
-        "    if (%s_%s_add(__world, __entity, 0) != ECS_OK) return "
-        "flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add failed\");\n",
-        g_prefix,
-        name
-    );
+    fprintf(out, "    int __added = 0;\n    if (!%s_%s_get(__world, __entity)) {\n", g_prefix, name);
+    fprintf(out, "        __added = %s_%s_add(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
+    fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __added };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 
     fprintf(out, "static int __flow_%s_remove_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
@@ -1173,13 +1169,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
     fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove requires ecs.world\");\n", out);
     fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
-    fprintf(
-        out,
-        "    if (%s_%s_remove(__world, __entity, 0) != ECS_OK) return "
-        "flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove failed\");\n",
-        g_prefix,
-        name
-    );
+    fprintf(out, "    int __removed = 0;\n    if (%s_%s_get(__world, __entity)) {\n", g_prefix, name);
+    fprintf(out, "        __removed = %s_%s_remove(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
+    fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __removed };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 }
 
@@ -1275,6 +1267,13 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
     fprintf(out, "static pin_spec %s_%s_structural_outputs[] = { { \"Then\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
     fprintf(
         out,
+        "static pin_spec %s_%s_component_outputs[] = { { \"Then\", PIN_FLOW, "
+        "NULL, PIN_EXEC }, { \"Value\", PIN_BOOL, \"bool\" } };\n",
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
         ".output_count = 2, .inputs = %s_%s_set_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
@@ -1322,8 +1321,8 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
     fprintf(
         out,
         "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
-        ".output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
-        "%s_%s_structural_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_add_%s, .access = &%s_%s_structural_access };\n",
         g_prefix,
         name,
@@ -1340,8 +1339,8 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
     fprintf(
         out,
         "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
-        "1, .output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
-        "%s_%s_structural_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "1, .output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_remove_%s, .access = &%s_%s_structural_access };\n\n",
         g_prefix,
         name,

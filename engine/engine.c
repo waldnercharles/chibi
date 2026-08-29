@@ -161,6 +161,7 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
     if (!engine->live) {
         return FLOW_ERR_STATE;
     }
+    game_behavior_set_delta_seconds(engine->live->behaviors, engine->delta_seconds);
     return game_behavior_dispatch_all(engine->live->behaviors, "Input", dispatch, error);
 }
 

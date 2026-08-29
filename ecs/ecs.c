@@ -868,6 +868,8 @@ int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_que
     memset(query, 0, sizeof *query);
     query->world = world;
     query->expression = expression;
+    query->dense_count = -1;
+    query->dense_index = -1;
     query->limit = world->high_water;
     world->iteration_depth++;
     return ECS_OK;

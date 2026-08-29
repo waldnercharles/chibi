@@ -90,6 +90,8 @@ struct game_system
     system_program *program;
     compile_report compile;
     ecs_component_id *query;
+    ecs_query_expr *query_expression;
+    ecs_query_expr *compiled_query_expression;
     node *tick;
     int match_count;
 };
@@ -455,7 +457,9 @@ static int compile_component_set(system_program *program, const node *target)
 {
     int index = program_node_index(program, target);
     if (index < 0 || !target->desc->access || target->desc->access->write_count != 1 ||
-        target->output_count != 0 || node_has_exec_pins(target)) {
+        (target->output_count != 0 &&
+         (target->output_count != 2 || target->output_pins[1].kind != PIN_DATA)) ||
+        node_has_exec_pins(target)) {
         return -1;
     }
     if (program->node_state[index] == 2) {
@@ -513,6 +517,14 @@ static int compile_component_set(system_program *program, const node *target)
     set->component = component;
     set->input_count = 1;
     set->inputs[0] = input;
+    if (target->output_count > 1 && target->output_pins[1].kind == PIN_DATA) {
+        int output = program_register(program, target, 1);
+        if (output < 0) {
+            program->node_state[index] = 0;
+            return -1;
+        }
+        program->aliases[output] = input;
+    }
     program->node_state[index] = 2;
     return 0;
 }
@@ -726,6 +738,14 @@ static int compile_exec(system_program *program, const node *target)
         if (!instruction->component || input < 0) {
             program->node_state[index] = 0;
             return -1;
+        }
+        if (target->output_count > 1 && target->output_pins[1].kind == PIN_DATA) {
+            int output = program_register(program, target, 1);
+            if (output < 0) {
+                program->node_state[index] = 0;
+                return -1;
+            }
+            program->aliases[output] = input;
         }
     }
     program->node_state[index] = 2;
@@ -1386,6 +1406,8 @@ static int rebuild(game_system *system)
     compile_report_init(&system->compile);
     blueprint_compile(system->definition, &system->compile);
     afree(system->query);
+    ecs_query_expr_free(system->compiled_query_expression);
+    system->compiled_query_expression = NULL;
     system->tick = NULL;
     system->match_count = 0;
     build_query(system);
@@ -1402,6 +1424,16 @@ static int rebuild(game_system *system)
                 add_query_component(system, component->id);
             }
         }
+        ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
+        if (system->query_expression) {
+            assert(
+                ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression)) == ECS_OK
+            );
+        }
+        for (int i = 0; i < acount(system->query); i++) {
+            assert(ecs_query_expr_add(query, ecs_query_expr_has(system->query[i])) == ECS_OK);
+        }
+        system->compiled_query_expression = query;
         return 0;
     }
     program_free(system->program);
@@ -1410,6 +1442,18 @@ static int rebuild(game_system *system)
         return -1;
     }
     system->instance = make_instance(system);
+    if (system->instance) {
+        ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
+        if (system->query_expression) {
+            assert(
+                ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression)) == ECS_OK
+            );
+        }
+        for (int i = 0; i < acount(system->query); i++) {
+            assert(ecs_query_expr_add(query, ecs_query_expr_has(system->query[i])) == ECS_OK);
+        }
+        system->compiled_query_expression = query;
+    }
     return system->instance ? 0 : -1;
 }
 
@@ -1433,6 +1477,8 @@ void game_system_free(game_system *system)
     }
     program_free(system->program);
     blueprint_instance_destroy(system->instance);
+    ecs_query_expr_free(system->query_expression);
+    ecs_query_expr_free(system->compiled_query_expression);
     compile_report_free(&system->compile);
     afree(system->query);
     blueprint_free(system->definition);
@@ -1451,6 +1497,22 @@ int game_system_replace(game_system *system, blueprint *definition)
     system->program = NULL;
     system->instance = NULL;
     return rebuild(system);
+}
+
+int game_system_set_query(game_system *system, const ecs_query_expr *expression)
+{
+    if (!system) {
+        return -1;
+    }
+    ecs_query_expr *copy = expression ? ecs_query_expr_clone(expression) : NULL;
+    ecs_query_expr_free(system->query_expression);
+    system->query_expression = copy;
+    return rebuild(system);
+}
+
+const ecs_query_expr *game_system_query_expression(const game_system *system)
+{
+    return system ? system->query_expression : NULL;
 }
 
 static int run_interpreted(game_system *system, ecs_entity entity, double now, double delta, flow_error *error)
@@ -1660,12 +1722,14 @@ int game_system_tick_mode(
         return FLOW_ERR_STATE;
     }
     ecs_query query;
-    int result = ecs_query_begin(
-        system->world,
-        &query,
-        system->query,
-        acount(system->query)
-    );
+    int result = system->compiled_query_expression
+                   ? ecs_query_begin_expression(system->world, &query, system->compiled_query_expression)
+                   : ecs_query_begin(
+                         system->world,
+                         &query,
+                         system->query,
+                         acount(system->query)
+                     );
     if (result != ECS_OK) {
         set_error(error, FLOW_ERR_STATE, NULL, "System query could not start");
         return FLOW_ERR_STATE;

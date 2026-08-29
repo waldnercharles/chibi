@@ -14,6 +14,10 @@ typedef struct game_system game_system;
 game_system *game_system_new(ecs_world *world, blueprint *definition);
 void game_system_free(game_system *system);
 int game_system_replace(game_system *system, blueprint *definition);
+/* The authored filter is combined with the graph's inferred component access
+ * terms. The expression is copied and may be freed by the caller. */
+int game_system_set_query(game_system *system, const ecs_query_expr *expression);
+const ecs_query_expr *game_system_query_expression(const game_system *system);
 
 typedef enum
 {

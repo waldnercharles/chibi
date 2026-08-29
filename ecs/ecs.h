@@ -79,6 +79,7 @@ typedef enum
 
 ecs_query_expr *ecs_query_expr_new(ecs_query_expr_kind kind);
 ecs_query_expr *ecs_query_expr_has(ecs_component_id component);
+ecs_query_expr *ecs_query_expr_clone(const ecs_query_expr *expr);
 int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child);
 void ecs_query_expr_free(ecs_query_expr *expr);
 

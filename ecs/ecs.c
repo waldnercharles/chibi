@@ -74,6 +74,18 @@ ecs_query_expr *ecs_query_expr_has(ecs_component_id component)
     return expr;
 }
 
+ecs_query_expr *ecs_query_expr_clone(const ecs_query_expr *expr)
+{
+    assert(expr);
+    ecs_query_expr *copy = expr->kind == ECS_QUERY_HAS
+                             ? ecs_query_expr_has(expr->component)
+                             : ecs_query_expr_new(expr->kind);
+    for (int i = 0; i < acount(expr->children); i++) {
+        assert(ecs_query_expr_add(copy, ecs_query_expr_clone(expr->children[i])) == ECS_OK);
+    }
+    return copy;
+}
+
 int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child)
 {
     assert(parent && child);

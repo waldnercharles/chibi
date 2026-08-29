@@ -683,6 +683,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->input_user_data = inputs.user_data;
     run->waiting_output = -1;
     eval_context_init(&run->eval);
+    run->eval.delta_seconds = options ? options->delta_seconds : 0.0;
     eval_context_attach_runtime(&run->eval, run->runtime);
     run->eval.instance = run->instance;
     run->eval.on_data_edge = record_evaluated_data_edge;
@@ -781,6 +782,7 @@ flow_run *flow_run_start_reuse(
     }
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
+    run->eval.delta_seconds = options ? options->delta_seconds : run->eval.delta_seconds;
     run->eval.instance = run->instance;
     run->eval.on_data_edge = record_evaluated_data_edge;
     run->eval.on_data_edge_user = run;

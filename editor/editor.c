@@ -151,6 +151,7 @@ typedef struct ed_graph_view
 } ed_graph_view;
 
 static int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature);
+static const flow_traversal *ed_latest_flow_record(const editor *e, const edge *ed);
 
 struct editor
 {
@@ -1267,32 +1268,49 @@ static ImVec2 ed_route_point(const editor *e, const edge *ed, int index, ImVec2 
     );
 }
 
+static float ed_route_tangent(const editor *e, const edge *ed, int index, ImVec2 start, ImVec2 end)
+{
+    float span;
+    if (index == 0) {
+        span = ed_abs(ed_route_point(e, ed, 1, start, end).x - start.x);
+    } else if (index == ed->reroute_count + 1) {
+        span = ed_abs(end.x - ed_route_point(e, ed, index - 1, start, end).x);
+    } else {
+        ImVec2 at = ed_route_point(e, ed, index, start, end);
+        float before = ed_abs(
+            at.x - ed_route_point(e, ed, index - 1, start, end).x
+        );
+        float after = ed_abs(ed_route_point(e, ed, index + 1, start, end).x - at.x);
+        span = ed_min(before, after);
+    }
+    float direction = end.x >= start.x ? 1.0f : -1.0f;
+    /* Keep control points inside short horizontal spans.  A fixed minimum
+     * handle otherwise crosses the reroute knot and produces a visible
+     * back-turn right at the attached pin. */
+    return direction * ed_min(40.0f * e->zoom, span * 0.5f);
+}
+
 static void ed_route_segment(
     const editor *e,
     const edge *ed,
     int segment,
-    ImVec2 p0,
-    ImVec2 p3,
+    ImVec2 start,
+    ImVec2 end,
+    ImVec2 *p0,
     ImVec2 *p1,
-    ImVec2 *p2
+    ImVec2 *p2,
+    ImVec2 *p3
 )
 {
-    ImVec2 before = segment == 0 ? p0 : ed_route_point(e, ed, segment - 1, p0, p3);
-    ImVec2 after = ed_route_point(e, ed, segment + 2, p0, p3);
-    float horizontal = ed_max(40.0f * e->zoom, ed_abs(p3.x - p0.x) * 0.5f);
-    float direction = p3.x >= p0.x ? 1.0f : -1.0f;
-    /* Longer tangents make the bend read as a spline instead of two nearly
-     * straight links. The same tangent is used on both sides of each point,
-     * preserving continuity while giving the wire an exaggerated S-like sweep. */
-    const float tangent_scale = 1.0f / 3.0f;
-    *p1 = segment == 0 ? ed_add(p0, (ImVec2){ horizontal * direction, 0.0f })
-                       : ed_add(p0, ed_scale(ed_sub(after, before), tangent_scale));
-    *p2 = segment == ed->reroute_count
-            ? ed_add(p3, (ImVec2){ -horizontal * direction, 0.0f })
-            : ed_sub(p3, ed_scale(ed_sub(after, before), tangent_scale));
+    *p0 = ed_route_point(e, ed, segment, start, end);
+    *p3 = ed_route_point(e, ed, segment + 1, start, end);
+    float from_tangent = ed_route_tangent(e, ed, segment, start, end);
+    float to_tangent = ed_route_tangent(e, ed, segment + 1, start, end);
+    *p1 = ed_add(*p0, (ImVec2){ from_tangent, 0.0f });
+    *p2 = ed_sub(*p3, (ImVec2){ to_tangent, 0.0f });
 }
 
-static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
+static int ed_hit_link_segment(const editor *e, ImVec2 p, ed_link_ref *out, int *route_segment)
 {
     for (int i = acount(e->active_graph->edges) - 1; i >= 0; i--) {
         const edge *ed = &e->active_graph->edges[i];
@@ -1301,11 +1319,9 @@ static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
             continue;
         }
         if (ed->reroute_count) {
-            ImVec2 start = p0;
             for (int segment = 0; segment <= ed->reroute_count; segment++) {
-                ImVec2 end = ed_route_point(e, ed, segment + 1, p0, p3);
-                ImVec2 c1, c2;
-                ed_route_segment(e, ed, segment, start, end, &c1, &c2);
+                ImVec2 start, c1, c2, end;
+                ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
                 ImVec2 prev = start;
                 for (int s = 1; s <= 16; s++) {
                     ImVec2 next = ed_bezier(start, c1, c2, end, (float)s / 16.0f);
@@ -1315,11 +1331,11 @@ static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
                                               ed->from_pin_id,
                                               ed->to_id,
                                               ed->to_pin_id };
+                        *route_segment = segment;
                         return 1;
                     }
                     prev = next;
                 }
-                start = end;
             }
             continue;
         }
@@ -1328,6 +1344,7 @@ static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
             ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)s / 24.0f);
             if (ed_distance_to_segment(p, prev, next) <= ed_max(7.0f, 5.0f * e->zoom)) {
                 *out = (ed_link_ref){ ed->from_id, ed->from_pin_id, ed->to_id, ed->to_pin_id };
+                *route_segment = 0;
                 return 1;
             }
             prev = next;
@@ -1336,23 +1353,34 @@ static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
     return 0;
 }
 
+static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
+{
+    int segment;
+    return ed_hit_link_segment(e, p, out, &segment);
+}
+
 static int ed_link_in_rect(const editor *e, const edge *ed, ImVec2 min, ImVec2 max)
 {
     ImVec2 p0, p1, p2, p3;
     if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
         return 0;
     }
-    ImVec2 prev = p0;
-    for (int i = 1; i <= 24; i++) {
-        ImVec2 next = ed_bezier(p0, p1, p2, p3, (float)i / 24.0f);
-        ImVec2 a = { prev.x < next.x ? prev.x : next.x,
-                     prev.y < next.y ? prev.y : next.y };
-        ImVec2 b = { prev.x > next.x ? prev.x : next.x,
-                     prev.y > next.y ? prev.y : next.y };
-        if (ed_rects_overlap(min, max, a, b)) {
-            return 1;
+    int segment_count = ed->reroute_count ? ed->reroute_count + 1 : 1;
+    for (int segment = 0; segment < segment_count; segment++) {
+        ImVec2 start = p0, c1 = p1, c2 = p2, end = p3;
+        if (ed->reroute_count) {
+            ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
         }
-        prev = next;
+        ImVec2 prev = start;
+        for (int i = 1; i <= 24; i++) {
+            ImVec2 next = ed_bezier(start, c1, c2, end, (float)i / 24.0f);
+            ImVec2 a = { ed_min(prev.x, next.x), ed_min(prev.y, next.y) };
+            ImVec2 b = { ed_max(prev.x, next.x), ed_max(prev.y, next.y) };
+            if (ed_rects_overlap(min, max, a, b)) {
+                return 1;
+            }
+            prev = next;
+        }
     }
     return 0;
 }
@@ -1691,6 +1719,71 @@ static void ed_draw_details_pin(editor *e, node *n, int output, int index)
         ed_draw_details_default(e, n, output, index);
     }
     ImGui_PopID();
+}
+
+/* UE's Details panel treats a wire as a first-class selection.  Keep this
+ * deliberately read-only: the canvas remains the place where topology is
+ * edited, while the panel answers the useful "what is this connection?"
+ * question without making the user hunt for either endpoint. */
+static void ed_draw_details_edge_endpoint(editor *e, const char *label, uint64_t node_id, uint64_t pin_id)
+{
+    node *n = graph_node_by_id(e->active_graph, node_id);
+    int output = 0;
+    int pin_index = -1;
+    const pin_spec *pin = n ? graph_pin_by_id(n, pin_id, &output, &pin_index) : NULL;
+    char title[256];
+    const char *node_name = n ? ed_node_title(n, title, sizeof title) : "Missing node";
+    const char *pin_name = pin && pin->name ? pin->name : "Missing pin";
+    ImGui_Text("%s", label);
+    ImGui_SameLine();
+    ImGui_Text("%s.%s", node_name, pin_name);
+    if (pin) {
+        ImGui_Text(
+            "    %s | %s | %s",
+            output ? "Output" : "Input",
+            pin->kind == PIN_EXEC ? "Exec" : "Data",
+            pin->kind == PIN_EXEC ? "flow" : pin_type_name(pin->type)
+        );
+    }
+    ImGui_SameLine();
+    ImGui_PushIDInt((int)(node_id ^ pin_id));
+    if (ImGui_SmallButton("Focus")) {
+        editor_reveal_node(e, n);
+    }
+    ImGui_PopID();
+}
+
+static void ed_draw_details_edge(editor *e, const ed_link_ref *ref)
+{
+    int edge_index = ed_edge_index(e, ref);
+    if (edge_index < 0) {
+        ImGui_TextUnformatted("Connection no longer exists");
+        return;
+    }
+    const edge *ed = &e->active_graph->edges[edge_index];
+    ImGui_TextUnformatted("Connection");
+    ImGui_Text("Kind: %s", graph_edge_kind_name(ed->kind));
+    ed_draw_details_edge_endpoint(e, "From:", ed->from_id, ed->from_pin_id);
+    ed_draw_details_edge_endpoint(e, "To:", ed->to_id, ed->to_pin_id);
+    if (ed->kind == GRAPH_EDGE_EXEC) {
+        ImGui_Text("Execution order: %d", ed->exec_order);
+    } else if (ed->conversion) {
+        ImGui_Text("Conversion: %s", ed->conversion->name);
+    } else {
+        ImGui_TextUnformatted("Conversion: none");
+    }
+    ImGui_Text("Reroute points: %d", ed->reroute_count);
+    const flow_traversal *record = ed_latest_flow_record(e, ed);
+    ImGui_SeparatorText("Runtime");
+    if (record) {
+        ImGui_Text(
+            "Last traversed: %.3fs ago",
+            ed_max(0.0f, (float)(e->monotonic_time - record->timestamp))
+        );
+        ImGui_Text("Activation: %lu", record->activation);
+    } else {
+        ImGui_TextUnformatted("Not traversed in the current run");
+    }
 }
 
 static const char *ed_unique_variable_name(const editor *e)
@@ -2945,15 +3038,12 @@ static void ed_draw_reroute_markers(
     }
     ImVec2 points[17 * 17];
     int count = 0;
-    ImVec2 start = p0;
     for (int segment = 0; segment <= ed->reroute_count; segment++) {
-        ImVec2 end = ed_route_point(e, ed, segment + 1, p0, p3);
-        ImVec2 c1, c2;
-        ed_route_segment(e, ed, segment, start, end, &c1, &c2);
+        ImVec2 start, c1, c2, end;
+        ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
         for (int sample = segment ? 1 : 0; sample <= 16; sample++) {
             points[count++] = ed_bezier(start, c1, c2, end, (float)sample / 16.0f);
         }
-        start = end;
     }
     float length = 0.0f;
     for (int i = 1; i < count; i++) {
@@ -3018,13 +3108,10 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     if (!ed->reroute_count) {
         ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
     } else {
-        ImVec2 start = p0;
         for (int segment = 0; segment <= ed->reroute_count; segment++) {
-            ImVec2 end = ed_route_point(e, ed, segment + 1, p0, p3);
-            ImVec2 c1, c2;
-            ed_route_segment(e, ed, segment, start, end, &c1, &c2);
+            ImVec2 start, c1, c2, end;
+            ed_route_segment(e, ed, segment, p0, p3, &start, &c1, &c2, &end);
             ImDrawList_AddBezierCubic(dl, start, c1, c2, end, color, style.thickness, 0);
-            start = end;
         }
     }
     if (selected || hovered) {
@@ -3877,6 +3964,7 @@ static int ed_system_node_allowed(const node_desc *desc)
         "Divide",
         "Min",
         "Max",
+        "Delta Time",
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {
@@ -4342,21 +4430,11 @@ static void ed_auto_arrange(editor *e)
         if (from_at < 0 || to_at < 0) {
             continue;
         }
-        apush(
-            links,
-            (arrange_link){ from_at,
-                            to_at,
-                            from_pin,
-                            to_pin,
-                            ed->from_handle_x,
-                            ed->from_handle_y,
-                            ed->to_handle_x,
-                            ed->to_handle_y,
-                            ed->custom_handles }
-        );
+        apush(links, (arrange_link){ from_at, to_at, from_pin, to_pin });
     }
     arrange_graph layout = { boxes, count, links, acount(links) };
     arrange_layout(&layout, pos);
+
     int moved = 0;
     for (int i = 0; i < count && !moved; i++) {
         moved = g->nodes[i]->x != pos[i].x || g->nodes[i]->y != pos[i].y;
@@ -4406,6 +4484,15 @@ static void ed_zoom_fit(editor *e)
         }
         if (n->y + size.y > max_y) {
             max_y = n->y + size.y;
+        }
+    }
+    for (int i = 0; i < acount(e->active_graph->edges); i++) {
+        const edge *ed = &e->active_graph->edges[i];
+        for (int point = 0; point < ed->reroute_count; point++) {
+            min_x = ed_min(min_x, ed->reroutes[point].x);
+            max_x = ed_max(max_x, ed->reroutes[point].x);
+            min_y = ed_min(min_y, ed->reroutes[point].y);
+            max_y = ed_max(max_y, ed->reroutes[point].y);
         }
     }
     float width = ed_max(max_x - min_x, 1.0f);
@@ -4858,6 +4945,15 @@ static void ed_handle_input(editor *e)
 
     int handle_edge = -1, handle_side = -1;
     if (ed_hit_handle(e, mouse, &handle_edge, &handle_side)) {
+        edge *ed = &e->active_graph->edges[handle_edge];
+        if (io->KeyAlt) {
+            ed_snapshot_before(e);
+            for (int i = handle_side; i + 1 < ed->reroute_count; i++) {
+                ed->reroutes[i] = ed->reroutes[i + 1];
+            }
+            ed->reroute_count--;
+            return;
+        }
         ed_begin_authoring_edit(e);
         e->pending_snapshot = ed_snapshot(e);
         e->handle_edge = handle_edge;
@@ -4867,25 +4963,26 @@ static void ed_handle_input(editor *e)
         return;
     }
 
-    /* Alt-clicking a wire inserts a reroute point. Reroutes are deliberately
-     * points on the wire, not tangent controls, matching the Blueprint UX. */
-    if (io->KeyAlt) {
+    /* Double-clicking (or Alt-clicking) a wire inserts a reroute point into
+     * the segment that was clicked. Alt-clicking an existing point removes it. */
+    if (io->KeyAlt || io->MouseDoubleClicked[0]) {
         ed_link_ref link;
-        if (ed_hit_link(e, mouse, &link)) {
+        int segment;
+        if (ed_hit_link_segment(e, mouse, &link, &segment)) {
             int index = ed_edge_index(e, &link);
             edge *ed = &e->active_graph->edges[index];
-            if (ed->reroute_count < 16) {
+            if (ed->reroute_count < GRAPH_EDGE_MAX_REROUTES) {
                 ed_begin_authoring_edit(e);
                 e->pending_snapshot = ed_snapshot(e);
-                for (int i = ed->reroute_count; i > 0; i--) {
+                for (int i = ed->reroute_count; i > segment; i--) {
                     ed->reroutes[i] = ed->reroutes[i - 1];
                 }
                 ImVec2 point = ed_screen_to_world(e, mouse);
-                ed->reroutes[0].x = point.x;
-                ed->reroutes[0].y = point.y;
+                ed->reroutes[segment].x = point.x;
+                ed->reroutes[segment].y = point.y;
                 ed->reroute_count++;
                 e->handle_edge = index;
-                e->handle_side = 0;
+                e->handle_side = segment;
                 e->dragging_handle = 1;
                 return;
             }

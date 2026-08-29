@@ -34,6 +34,8 @@ typedef struct graph_comment_box
     uint32_t color;
 } graph_comment_box;
 
+#define GRAPH_EDGE_MAX_REROUTES 16
+
 typedef struct edge
 {
     uint64_t from_id;
@@ -55,7 +57,7 @@ typedef struct edge
     {
         float x;
         float y;
-    } reroutes[16];
+    } reroutes[GRAPH_EDGE_MAX_REROUTES];
     /* Kept for compatibility with documents written by the first handle
      * prototype; new editing uses reroutes. */
     float from_handle_x;

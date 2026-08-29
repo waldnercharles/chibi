@@ -26,6 +26,9 @@ struct engine
     bool playing;
     bool step_requested;
     engine_frame_timing timing;
+    double last_time;
+    double delta_seconds;
+    int has_time;
 };
 
 static double elapsed_ms(struct timespec start, struct timespec end)
@@ -172,8 +175,16 @@ int engine_frame(engine *engine, double monotonic_time)
         return FLOW_ERR_STATE;
     }
     int result = 0;
+    double delta_seconds = engine->has_time ? monotonic_time - engine->last_time : 0.0;
+    if (delta_seconds < 0.0) {
+        delta_seconds = 0.0;
+    }
+    engine->last_time = monotonic_time;
+    engine->delta_seconds = delta_seconds;
+    engine->has_time = 1;
     bool simulate = engine->playing || engine->step_requested;
     if (simulate && engine->live) {
+        game_behavior_set_delta_seconds(engine->live->behaviors, delta_seconds);
         result = game_behavior_pump(engine->live->behaviors, monotonic_time);
     }
     engine->step_requested = false;

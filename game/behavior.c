@@ -557,6 +557,16 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
     return result;
 }
 
+void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds)
+{
+    if (!world) {
+        return;
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        blueprint_instance_set_delta_seconds(world->attachments[i].instance, delta_seconds);
+    }
+}
+
 void game_behavior_set_parallel_for(
     game_behavior_world *world,
     flow_parallel_for_fn parallel_for,

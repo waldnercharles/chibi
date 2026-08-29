@@ -567,6 +567,14 @@ static int compile_value(system_program *program, const node *target, int output
     system_instruction *instruction = NULL;
     int ok = 1;
     switch (desc->pure_kind) {
+        case NODE_PURE_DELTA:
+            if (target->output_count != 1 || program->event_delta < 0) {
+                ok = 0;
+                break;
+            }
+            program->aliases[result] = program->event_delta;
+            result = program->event_delta;
+            break;
         case NODE_PURE_CONST:
             instruction = add_instruction(program, SYSTEM_OP_CONST, target);
             instruction->output = result;

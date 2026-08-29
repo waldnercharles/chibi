@@ -603,6 +603,7 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
         .now = bi->now,
         .now_user = bi->now_user,
         .initial_time = bi->current_time,
+        .delta_seconds = bi->delta_seconds,
         .sink = bi->sink,
         .sink_user = bi->sink_user,
         .event_name = entry->reference_name,
@@ -737,6 +738,13 @@ void blueprint_instance_set_parallel_for(
     }
     bi->parallel_for = parallel_for;
     bi->parallel_user = parallel_user;
+}
+
+void blueprint_instance_set_delta_seconds(blueprint_instance *bi, double delta_seconds)
+{
+    if (bi) {
+        bi->delta_seconds = delta_seconds;
+    }
 }
 
 void blueprint_instance_set_breakpoints_enabled(blueprint_instance *bi, int enabled)

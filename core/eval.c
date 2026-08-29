@@ -231,6 +231,9 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
     }
     switch (n->desc->pure_kind) {
         case NODE_PURE_CONST: node_eval_const(n, state, a); break;
+        case NODE_PURE_DELTA:
+            outputs[0] = (pin_value){ .type = PIN_F32, .f = (float)ctx->delta_seconds };
+            break;
         case NODE_PURE_COPY: outputs[0] = inputs[0]; break;
         case NODE_PURE_MAKE:
             node_eval_make(n, state, a);

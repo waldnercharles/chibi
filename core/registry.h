@@ -56,12 +56,12 @@ extern const registry_pack CORE_STRUCT_PACK;
 
 extern node_desc NODE_Event, NODE_Branch, NODE_Sequence, NODE_ForLoop,
     NODE_ForLoopWithBreak, NODE_WhileLoop, NODE_ForEach, NODE_ForEachWithBreak,
-    NODE_Break, NODE_Delay, NODE_PrintString, NODE_GetVariable,
-    NODE_SetVariable, NODE_Self, NODE_FunctionEntry, NODE_Return,
-    NODE_CallFunction, NODE_CallPureFunction, NODE_CallMacro, NODE_SwitchInt,
-    NODE_SwitchString, NODE_SwitchName, NODE_SwitchEnum, NODE_Select,
-    NODE_RerouteData, NODE_RerouteExec, NODE_SetMembers, NODE_Add,
-    NODE_Multiply, NODE_Subtract, NODE_Divide, NODE_Min, NODE_Max;
+    NODE_Break, NODE_Delay, NODE_PrintString, NODE_GetVariable, NODE_SetVariable,
+    NODE_Self, NODE_FunctionEntry, NODE_Return, NODE_CallFunction,
+    NODE_CallPureFunction, NODE_CallMacro, NODE_SwitchInt, NODE_SwitchString,
+    NODE_SwitchName, NODE_SwitchEnum, NODE_Select, NODE_RerouteData,
+    NODE_RerouteExec, NODE_SetMembers, NODE_Add, NODE_Multiply, NODE_Subtract,
+    NODE_Divide, NODE_Min, NODE_Max, NODE_DeltaTime;
 
 int registry_node_count(void);
 const node_desc *registry_node(int index);

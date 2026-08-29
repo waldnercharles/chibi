@@ -1050,7 +1050,8 @@ static int load_edges(graph *g, yyjson_val *edges)
         }
         yyjson_val *points = yyjson_obj_get(v, "reroutes");
         if (points) {
-            if (!yyjson_is_arr(points) || yyjson_arr_size(points) > 16) {
+            if (!yyjson_is_arr(points) ||
+                yyjson_arr_size(points) > GRAPH_EDGE_MAX_REROUTES) {
                 set_err("edge has invalid reroute points");
                 return -1;
             }

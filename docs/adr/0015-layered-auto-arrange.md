@@ -77,7 +77,6 @@ with a gap, so wires from one component cannot tangle with another:
    neither move. This stage carries its own budget: it is an order of magnitude
    dearer per node than stage 6, and sharing one budget let it starve the
    vertical refinement on mid-size graphs.
-
 Stages 1 to 5 optimise a proxy, the crossing count between column orders.
 Stage 6 optimises the drawn geometry, weighting a wire crossing a node body
 above two wires crossing each other, with wire length only as a tie-break.
@@ -164,13 +163,10 @@ unrelated crossings for wire-node collisions without reading better.
 
 What this still does not do: it is a heuristic, not an optimiser, and crossing
 minimisation is NP-complete, so a crossing-free result is never promised. It
-moves nodes only, so it cannot route a wire around an obstacle the way a
-visibility-graph router would; a graph with genuinely unavoidable conflicts
-keeps them. The gutter escape widens what node movement can express, but it is
-still node movement. It ignores comment boxes. A cyclic graph has no left-to-right
-ranking, so its back edges will cross something. Layout is not persisted state:
-positions remain the only layout data, and re-running the command on an
-unchanged graph is idempotent because every tie-break is deterministic.
+ignores comment boxes. A cyclic graph has no left-to-right ranking, so its back
+edges will cross something. Positions remain the only layout data, and
+re-running the command on an unchanged graph is idempotent because every
+tie-break is deterministic.
 
 Because the seed order comes from the authored Y positions, the result stays
 recognisable rather than reshuffling a graph the author has already arranged.

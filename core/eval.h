@@ -38,6 +38,7 @@ typedef struct eval_context
     runtime_store *runtime; /* borrowed when attached by a flow run */
     int runtime_owned;
     unsigned call_depth;
+    double delta_seconds;
 } eval_context;
 
 void eval_context_init(eval_context *ctx);

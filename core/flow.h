@@ -48,6 +48,7 @@ extern "C"
         flow_clock_fn now; /* host monotonic clock; NULL keeps the last supplied time */
         void *now_user; /* borrowed by the run */
         double initial_time;
+        double delta_seconds;
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
         const char *event_name; /* borrowed dispatch name for runtime inspection */

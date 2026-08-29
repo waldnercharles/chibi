@@ -289,6 +289,19 @@ GENERIC_BINARY_DESC(NODE_Max, "Max", generic_max, "max maximum vector", NODE_JIT
         .display_class = NODE_DISPLAY_LITERAL,                                 \
     };
 
+static pin_spec NODE_DeltaTime_outputs[] = {
+    { "Seconds", PIN_F32, "float", PIN_DATA },
+};
+node_desc NODE_DeltaTime = {
+    .name = "Delta Time",
+    .output_count = 1,
+    .outputs = NODE_DeltaTime_outputs,
+    .pure_kind = NODE_PURE_DELTA,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Time",
+    .keywords = "delta time seconds timestep",
+};
+
 LITERAL_DESC(NODE_Bool, "Bool", PIN_BOOL, "bool")
 LITERAL_DESC(NODE_Byte, "Byte", PIN_U8, "byte")
 LITERAL_DESC(NODE_Integer, "Integer", PIN_I32, "int")
@@ -298,10 +311,10 @@ LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name")
 LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *")
 
 node_desc *const EXTRA_NODES[] = {
-    &NODE_Bool,    &NODE_Byte,         &NODE_Integer,     &NODE_Integer64,
-    &NODE_Real,    &NODE_Name,         &NODE_String,      &NODE_To_String,
-    &NODE_Add,     &NODE_Multiply,     &NODE_Subtract,    &NODE_Divide,
-    &NODE_To_Real, &NODE_To_Integer64, &NODE_Format_Text,
+    &NODE_DeltaTime, &NODE_Bool,    &NODE_Byte,         &NODE_Integer,
+    &NODE_Integer64, &NODE_Real,    &NODE_Name,         &NODE_String,
+    &NODE_To_String, &NODE_Add,     &NODE_Multiply,     &NODE_Subtract,
+    &NODE_Divide,    &NODE_To_Real, &NODE_To_Integer64, &NODE_Format_Text,
 };
 const int EXTRA_NODE_COUNT = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0];
 

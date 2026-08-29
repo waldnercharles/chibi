@@ -59,6 +59,7 @@ struct blueprint_instance
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
     double current_time;
+    double delta_seconds;
     flow_sink_fn sink;
     void *sink_user;
     flow_run **activations;     /* scheduler queue, FIFO by dispatch sequence */
@@ -157,6 +158,7 @@ void blueprint_instance_set_parallel_for(
     void *parallel_user
 );
 void blueprint_instance_set_breakpoints_enabled(blueprint_instance *bi, int enabled);
+void blueprint_instance_set_delta_seconds(blueprint_instance *bi, double delta_seconds);
 int blueprint_instance_breakpoints_enabled(const blueprint_instance *bi);
 
 /* Per-node scratch keyed by node ID (EXEC-15). Returns a zero-initialized

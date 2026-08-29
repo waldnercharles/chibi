@@ -1133,6 +1133,10 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
     fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    memcpy(__value, __input.ptr, sizeof(%s));\n", name);
+    fprintf(out, "    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
+    fprintf(out, "    __out->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
+    fputs("    if (!__out->ptr) return FLOW_ERR_NODE;\n", out);
+    fprintf(out, "    memcpy(__out->ptr, __value, sizeof(%s));\n", name);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 
     fprintf(out, "static int __flow_%s_has_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
@@ -1260,7 +1264,14 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         name,
         name
     );
-    fprintf(out, "static pin_spec %s_%s_set_outputs[] = { { \"Then\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_set_outputs[] = { { \"Then\", PIN_FLOW, NULL, "
+        "PIN_EXEC }, { \"Value\", PIN_STRUCT, \"%s\" } };\n",
+        g_prefix,
+        name,
+        name
+    );
     fprintf(
         out,
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "

@@ -42,13 +42,17 @@ int main(void)
         world &&
             ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK &&
             ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) == ECS_OK &&
-            ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) == ECS_OK,
+            ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) == ECS_OK &&
+            ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK,
         "movement components register in the ECS world"
     );
     game_system *system = world ? game_system_new(world, blueprint) : NULL;
     blueprint = NULL;
     failures += check(system != NULL, "MovementSystem creates a query-driven runtime");
     failures += check(system && game_system_query_count(system) == 3, "the system query is derived from its component graph");
+    ecs_query_expr *health_filter = ecs_query_expr_has(GAME_COMPONENT_GameHealth.id);
+    failures += check(system && game_system_set_query(system, health_filter) == 0, "the system accepts an authored query filter");
+    ecs_query_expr_free(health_filter);
     const struct blueprint *compiled_definition = game_system_blueprint(system);
     const graph *compiled_graph = compiled_definition ? compiled_definition->graph
                                                       : NULL;
@@ -110,6 +114,11 @@ int main(void)
     GameTransform *transform = world ? GAME_GameTransform_get(world, player) : NULL;
     GameMovement *movement = world ? GAME_GameMovement_get(world, player) : NULL;
     GameInput *input = world ? GAME_GameInput_get(world, player) : NULL;
+    failures += check(
+        world && GAME_GameHealth_add(world, player, 0) == ECS_OK &&
+            ecs_world_apply_commands(world) == ECS_OK,
+        "the filtered entity receives the authored query term"
+    );
     if (transform && movement && input) {
         movement->speed = 100.0f;
         input->move = (CF_V2){ 1.0f, -0.5f };
@@ -137,6 +146,8 @@ int main(void)
         other_transform && other_transform->x == 0.0f && other_transform->y == 0.0f,
         "the query excludes entities without movement input and configuration"
     );
+
+    failures += check(system && game_system_match_count(system) == 1, "the authored filter excludes otherwise matching entities");
 
     game_system_free(system);
     ecs_world_free(world);

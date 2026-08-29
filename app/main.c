@@ -4,6 +4,7 @@
 #include "../editor/ui_shell.h"
 #include "../engine/engine.h"
 #include "../game/generated.h"
+#include "../game/live.h"
 #include "../game/prototype.h"
 #include "cute_host.h"
 #include "movement_authoring.h"
@@ -86,6 +87,7 @@ typedef struct
     editor *graph_editor;
     game_system *system;
     engine *runtime;
+    game_live_world *live;
     ecs_world *world;
     engine_viewport *viewport;
     movement_authoring *authoring;
@@ -99,6 +101,7 @@ static void app_cleanup(app_loop *loop)
 {
     movement_authoring_free(loop->authoring);
     engine_free(loop->runtime);
+    game_live_world_free(loop->live);
     game_system_free(loop->system);
     editor_free(loop->graph_editor);
     ecs_world_free(loop->world);
@@ -226,7 +229,20 @@ int main(int argc, char **argv)
     game_system *system = world && runtime_definition
                             ? game_system_new(world, runtime_definition)
                             : NULL;
-    engine *runtime = world ? engine_new(world, NULL) : NULL;
+    char *behavior_json = text_file_read("content/behaviors/InputBehavior.json");
+    blueprint *behavior_working = behavior_json ? blueprint_load_json(behavior_json)
+                                                : NULL;
+    free(behavior_json);
+    game_live_world *live = world ? game_live_world_new(world) : NULL;
+    game_live_definition *behavior_definition = behavior_working
+                                                  ? game_live_definition_new("InputBehavior", behavior_working)
+                                                  : NULL;
+    if (!live || !behavior_definition ||
+        game_live_add_definition(live, behavior_definition) != 0) {
+        game_live_definition_free(behavior_definition);
+        behavior_definition = NULL;
+    }
+    engine *runtime = world && live ? engine_new(world, live) : NULL;
     movement_authoring *authoring = NULL;
     game_prototype *player_prototype = NULL;
     ecs_entity player = { 0 };
@@ -236,6 +252,7 @@ int main(int argc, char **argv)
         ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) != ECS_OK) {
         movement_authoring_free(authoring);
         engine_free(runtime);
+        game_live_world_free(live);
         game_system_free(system);
         editor_free(graph_editor);
         game_prototype_free(player_prototype);
@@ -271,9 +288,10 @@ int main(int argc, char **argv)
     }
     authoring = movement_authoring_new(world, player, system, graph_editor, runtime);
     if (!authoring ||
-        engine_add_system(runtime, movement_authoring_system, authoring) != 0) {
+        game_behavior_attach(live->behaviors, player, "InputBehavior") != 0) {
         movement_authoring_free(authoring);
         engine_free(runtime);
+        game_live_world_free(live);
         game_system_free(system);
         editor_free(graph_editor);
         game_prototype_free(player_prototype);
@@ -299,6 +317,7 @@ int main(int argc, char **argv)
         .graph_editor = graph_editor,
         .system = system,
         .runtime = runtime,
+        .live = live,
         .world = world,
         .viewport = viewport,
         .authoring = authoring,

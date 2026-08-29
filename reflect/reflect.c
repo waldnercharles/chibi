@@ -138,7 +138,9 @@ static const char *component_key(const struct_info *s)
             return identity->key;
         }
     }
-    return s->name;
+    static char key[256];
+    snprintf(key, sizeof key, "%s.%s", g_prefix, s->name);
+    return key;
 }
 
 static void load_component_manifest(const char *path)
@@ -176,6 +178,47 @@ static void load_component_manifest(const char *path)
                 strdup(key),
                 strdup(name),
             }
+        );
+    }
+    fclose(file);
+}
+
+static int manifest_has_component(const struct_info *s)
+{
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        component_identity *identity = &g_component_identities[i];
+        if ((identity->line == s->line && strcmp(identity->file, s->file) == 0) ||
+            strcmp(identity->name, s->name) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void record_new_components(const collect_ctx *ctx)
+{
+    if (!g_manifest_path) {
+        return;
+    }
+    FILE *file = fopen(g_manifest_path, "a");
+    if (!file) {
+        fprintf(stderr, "reflect: could not update component manifest %s\n", g_manifest_path);
+        g_failed = 1;
+        return;
+    }
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        const struct_info *s = &ctx->structs[i];
+        if (!s->component || manifest_has_component(s)) {
+            continue;
+        }
+        fprintf(
+            file,
+            "%s %u %llu %s %s\n",
+            s->file,
+            s->line,
+            (unsigned long long)stable_service_id(s->name),
+            component_key(s),
+            s->name
         );
     }
     fclose(file);
@@ -1865,8 +1908,15 @@ int main(int argc, char **argv)
     }
 
     collect_ctx ctx = { NULL, NULL };
+    g_manifest_path = manifest;
     load_component_manifest(manifest);
     clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, &ctx);
+    if (g_failed) {
+        clang_disposeTranslationUnit(tu);
+        clang_disposeIndex(idx);
+        return 1;
+    }
+    record_new_components(&ctx);
     if (g_failed) {
         clang_disposeTranslationUnit(tu);
         clang_disposeIndex(idx);

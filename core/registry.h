@@ -62,6 +62,7 @@ extern node_desc NODE_Event, NODE_Branch, NODE_Sequence, NODE_ForLoop,
     NODE_SwitchName, NODE_SwitchEnum, NODE_Select, NODE_RerouteData,
     NODE_RerouteExec, NODE_SetMembers, NODE_Add, NODE_Multiply, NODE_Subtract,
     NODE_Divide, NODE_Min, NODE_Max, NODE_DeltaTime;
+extern node_desc NODE_Clamp, NODE_Modulo, NODE_Negate, NODE_Abs;
 
 int registry_node_count(void);
 const node_desc *registry_node(int index);

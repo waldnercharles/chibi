@@ -1974,55 +1974,6 @@ static void ed_draw_details_blueprint(editor *e)
         }
     }
     ed_details_finish_mutation(e, ImGui_IsItemEdited());
-    snprintf(
-        e->details_comment,
-        sizeof e->details_comment,
-        "%s",
-        e->bp->description ? e->bp->description : ""
-    );
-    if (ImGui_InputTextMultiline("Description", e->details_comment, sizeof e->details_comment)) {
-        ed_details_begin_mutation(e);
-        blueprint_set_description(e->bp, e->details_comment);
-        e->edit_changed = 1;
-    }
-    ed_details_finish_mutation(e, ImGui_IsItemEdited());
-    snprintf(
-        e->details_title,
-        sizeof e->details_title,
-        "%s",
-        e->bp->owner_type_name ? e->bp->owner_type_name : ""
-    );
-    if (ImGui_InputText("Owner handle type", e->details_title, sizeof e->details_title, 0)) {
-        ed_details_begin_mutation(e);
-        if (e->details_title[0]) {
-            if (blueprint_set_owner_type(e->bp, e->details_title) == 0) {
-                e->edit_changed = 1;
-            }
-        } else {
-            /* Core has no clear-owner API; clear the nominal type directly
-             * while the definition is unguarded (choke point above). */
-            e->bp->owner_type_name = NULL;
-            e->edit_changed = 1;
-        }
-    }
-    ed_details_finish_mutation(e, ImGui_IsItemEdited());
-    ImGui_SeparatorText("Self node");
-    ImGui_BeginDisabled(!e->bp->owner_type_name);
-    if (ImGui_Button("Add Self node")) {
-        ed_snapshot_before(e);
-        node *self = blueprint_add_self_node(e->bp);
-        if (self) {
-            ImVec2 world = ed_view_center_world(e);
-            self->x = world.x;
-            self->y = world.y;
-            ed_select_node(e, self, 0);
-        }
-    }
-    ImGui_EndDisabled();
-    if (!e->bp->owner_type_name &&
-        ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui_SetTooltip("Set an owner handle type above to enable Self nodes");
-    }
 }
 
 static int ed_text_matches(const char *text, const char *filter)
@@ -2714,6 +2665,17 @@ static void ed_draw_details(editor *e)
     }
     if (e->selected_variable) {
         ed_draw_details_variable(e, e->selected_variable);
+        ImGui_End();
+        return;
+    }
+    if (acount(e->selected) == 0 && acount(e->selected_links) == 1) {
+        ed_draw_details_edge(e, &e->selected_links[0]);
+        ImGui_End();
+        return;
+    }
+    if (acount(e->selected) == 0 && acount(e->selected_links) > 1) {
+        ImGui_Text("%d connections selected", acount(e->selected_links));
+        ImGui_TextUnformatted("Select one connection to inspect its endpoints and runtime activity.");
         ImGui_End();
         return;
     }
@@ -3964,6 +3926,10 @@ static int ed_system_node_allowed(const node_desc *desc)
         "Divide",
         "Min",
         "Max",
+        "Clamp",
+        "Modulo",
+        "Negate",
+        "Abs",
         "Delta Time",
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
@@ -5560,6 +5526,10 @@ void editor_draw(editor *e)
     ImGui_End();
     if (e->ui_context == EDITOR_UI_CONTEXT_BEHAVIOR) {
         ed_draw_tree(e);
+        ed_draw_details(e);
+    } else if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
+        /* Systems do not have the Blueprint tree, but their graph still needs
+         * the same UE-style Details panel for node and wire inspection. */
         ed_draw_details(e);
     }
     if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM) {

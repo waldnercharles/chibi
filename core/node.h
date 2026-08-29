@@ -91,6 +91,9 @@ typedef enum
     NODE_JIT_DIV,
     NODE_JIT_MIN,
     NODE_JIT_MAX,
+    NODE_JIT_CLAMP,
+    NODE_JIT_NEG,
+    NODE_JIT_ABS,
     NODE_JIT_V2_MOVE,
 } node_jit_kind;
 

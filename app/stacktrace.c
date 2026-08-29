@@ -9,12 +9,15 @@
 
 #include "../third_party/debugbreak/debugbreak.h"
 
-#include <execinfo.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <execinfo.h>
+#include <signal.h>
 #include <unistd.h>
+#endif
 
 #ifdef _WIN32
 
@@ -26,6 +29,18 @@ void stacktrace_init(char *program_name)
 {
     (void)program_name;
 }
+void stacktrace_assert_handler(bool expr, const char *message, const char *file, int line)
+{
+    if (!expr) {
+        fprintf(stderr, "Assertion failed: %s (%s:%d)\n", message, file, line);
+        debug_break();
+    }
+}
+
+#elif defined(__EMSCRIPTEN__)
+
+void print_stacktrace(int) {}
+void stacktrace_init(char *) {}
 void stacktrace_assert_handler(bool expr, const char *message, const char *file, int line)
 {
     if (!expr) {

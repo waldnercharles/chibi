@@ -2,7 +2,7 @@
 BUILD_DIR := build
 BENCHMARK_BUILD_DIR ?= build-release
 
-.PHONY: all build run benchmark format check-format test spec-check clean
+.PHONY: all build run benchmark web web-serve format check-format test spec-check clean
 
 all: build
 
@@ -18,6 +18,14 @@ benchmark:
 	$(BENCHMARK_BUILD_DIR)/bench_activation $(ARGS)
 	$(BENCHMARK_BUILD_DIR)/scene_benchmark
 	$(BENCHMARK_BUILD_DIR)/system_benchmark $(ARGS)
+
+web:
+	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target reflect
+	emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release -DCBLUEPRINT_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+	cmake --build build-web --target app
+
+web-serve: web
+	emrun --no_browser --port 8099 build-web/app.html
 
 format:
 	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target format

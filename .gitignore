@@ -3,6 +3,7 @@ build/
 # verification session is running out of build/.
 build-verify/
 build-release/
+build-web/
 generated/
 .pi-lens/
 .cache/

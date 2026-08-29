@@ -64,8 +64,8 @@ void ImGui_Image(ImTextureRef texture, ImVec2 size);
 void ImGui_TextUnformatted(const char *text);
 #endif
 
+#include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 struct engine_viewport
 {
@@ -206,12 +206,11 @@ int engine_viewport_draw(engine_viewport *viewport)
             engine_viewport_commit_resize(viewport);
         }
     }
-    ImTextureRef texture = { 0 };
     CF_Texture target = cf_canvas_get_target(viewport->canvas);
-    uint64_t binding_handle = cf_texture_binding_handle(target);
-    (void)binding_handle;
-    ImTextureID texture_id = (ImTextureID)cf_texture_handle(target);
-    memcpy((unsigned char *)&texture + sizeof(void *), &texture_id, sizeof texture_id);
+    ImTextureRef texture = {
+        ._TexData = NULL,
+        ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(target),
+    };
     ImGui_Image(texture, size);
     ImGui_End();
     return 0;

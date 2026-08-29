@@ -27,6 +27,11 @@ FetchContent_MakeAvailable(cute_framework)
 
 # --- SLJIT backend ----------------------------------------------------------
 option(CBLUEPRINT_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # SLJIT emits native machine code into executable memory. Browsers cannot
+    # execute that code from WASM linear memory; web uses bytecode instead.
+    set(CBLUEPRINT_ENABLE_SJLIT OFF CACHE BOOL "Build the SLJIT graph JIT backend" FORCE)
+endif()
 set(CBLUEPRINT_SJLIT_SOURCE_DIR "" CACHE PATH "Use an existing SLJIT checkout")
 if(CBLUEPRINT_ENABLE_SJLIT)
     if(CBLUEPRINT_SJLIT_SOURCE_DIR)
@@ -66,7 +71,8 @@ list(LENGTH LIBCLANG_RESOURCE_INCLUDE_DIRS LIBCLANG_RESOURCE_COUNT)
 if(LIBCLANG_RESOURCE_COUNT)
     list(GET LIBCLANG_RESOURCE_INCLUDE_DIRS 0 LIBCLANG_RESOURCE_INCLUDE_DIR)
 endif()
-if(NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+   (NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY))
   message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
 endif()
 
@@ -86,23 +92,40 @@ add_custom_command(
     VERBATIM
 )
 
-# --- reflect tool ---
-add_executable(reflect reflect/reflect.c core/xalloc.c)
-target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE_DIR})
-target_link_libraries(reflect PRIVATE ${LIBCLANG_LIBRARY})
-get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
-set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIBRARY_DIR})
+# --- reflect tool -----------------------------------------------------------
+# Reflection runs during the build, so it must always be a native host
+# executable. A cross build (notably Emscripten) cannot link libclang into WASM
+# or execute a WASM reflect tool during configuration/build.
+set(CBLUEPRINT_REFLECT_EXECUTABLE "" CACHE FILEPATH
+    "Native reflect executable used when cross-compiling")
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if(NOT CBLUEPRINT_REFLECT_EXECUTABLE OR
+       NOT EXISTS "${CBLUEPRINT_REFLECT_EXECUTABLE}")
+        message(FATAL_ERROR
+            "Emscripten builds require CBLUEPRINT_REFLECT_EXECUTABLE set to a native reflect tool")
+    endif()
+    set(CBLUEPRINT_REFLECT_COMMAND "${CBLUEPRINT_REFLECT_EXECUTABLE}")
+    set(CBLUEPRINT_REFLECT_DEPENDENCY "${CBLUEPRINT_REFLECT_EXECUTABLE}")
+else()
+    add_executable(reflect reflect/reflect.c core/xalloc.c)
+    target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE_DIR})
+    target_link_libraries(reflect PRIVATE ${LIBCLANG_LIBRARY})
+    get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
+    set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIBRARY_DIR})
+    set(CBLUEPRINT_REFLECT_COMMAND $<TARGET_FILE:reflect>)
+    set(CBLUEPRINT_REFLECT_DEPENDENCY reflect)
+endif()
 
 # --- generated registry ---
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 set(GEN_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/demo_registry.c)
 add_custom_command(
     OUTPUT ${GEN_REGISTRY}
-    COMMAND $<TARGET_FILE:reflect>
+    COMMAND ${CBLUEPRINT_REFLECT_COMMAND}
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/demo_nodes.c
             ${GEN_REGISTRY}
             DEMO
-    DEPENDS reflect
+    DEPENDS ${CBLUEPRINT_REFLECT_DEPENDENCY}
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/demo_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/demo/vec3.h
@@ -170,18 +193,21 @@ target_link_libraries(ecs PUBLIC core)
 
 # --- generated game component pack ------------------------------------------
 set(GAME_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/game_registry.c)
+set(GAME_REFLECT_ARGS --include ${cute_framework_SOURCE_DIR}/include)
+if(LIBCLANG_RESOURCE_INCLUDE_DIR)
+    list(APPEND GAME_REFLECT_ARGS --include ${LIBCLANG_RESOURCE_INCLUDE_DIR})
+endif()
+if(CBLUEPRINT_SDKROOT)
+    list(APPEND GAME_REFLECT_ARGS --sysroot ${CBLUEPRINT_SDKROOT})
+endif()
 add_custom_command(
     OUTPUT ${GAME_REGISTRY}
-    COMMAND $<TARGET_FILE:reflect>
+    COMMAND ${CBLUEPRINT_REFLECT_COMMAND}
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${GAME_REGISTRY}
             GAME
-            --include ${cute_framework_SOURCE_DIR}/include
-            $<$<BOOL:${LIBCLANG_RESOURCE_INCLUDE_DIR}>:--include>
-            $<$<BOOL:${LIBCLANG_RESOURCE_INCLUDE_DIR}>:${LIBCLANG_RESOURCE_INCLUDE_DIR}>
-            $<$<BOOL:${CBLUEPRINT_SDKROOT}>:--sysroot>
-            $<$<BOOL:${CBLUEPRINT_SDKROOT}>:${CBLUEPRINT_SDKROOT}>
-    DEPENDS reflect
+            ${GAME_REFLECT_ARGS}
+    DEPENDS ${CBLUEPRINT_REFLECT_DEPENDENCY}
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/game/components.h
@@ -262,6 +288,12 @@ list(REMOVE_ITEM APP_SOURCES
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine game cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set_target_properties(app PROPERTIES SUFFIX ".html")
+    target_link_options(app PRIVATE
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
+    )
+endif()
 
 # --- self-check: builds and evaluates small graphs, asserts outputs ---
 add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
@@ -387,7 +419,9 @@ if(CLANG_FORMAT)
   add_dependencies(input_behavior_check format)
   add_dependencies(movement_system_check format)
   add_dependencies(registry_consumer format)
-  add_dependencies(reflect format)
+  if(TARGET reflect)
+    add_dependencies(reflect format)
+  endif()
 endif()
 
 file(

@@ -6,6 +6,7 @@
 #include "value_array.h"
 #include "xalloc.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -305,6 +306,22 @@ static void write_edge(yyjson_mut_doc *doc, yyjson_mut_val *arr, const edge *e)
     }
     if (e->kind == GRAPH_EDGE_EXEC) {
         yyjson_mut_obj_add_int(doc, o, "order", e->exec_order);
+    }
+    if (e->custom_handles) {
+        yyjson_mut_obj_add_real(doc, o, "from_handle_x", e->from_handle_x);
+        yyjson_mut_obj_add_real(doc, o, "from_handle_y", e->from_handle_y);
+        yyjson_mut_obj_add_real(doc, o, "to_handle_x", e->to_handle_x);
+        yyjson_mut_obj_add_real(doc, o, "to_handle_y", e->to_handle_y);
+    }
+    if (e->reroute_count) {
+        yyjson_mut_val *points = yyjson_mut_arr(doc);
+        for (int i = 0; i < e->reroute_count; i++) {
+            yyjson_mut_val *point = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_real(doc, point, "x", e->reroutes[i].x);
+            yyjson_mut_obj_add_real(doc, point, "y", e->reroutes[i].y);
+            yyjson_mut_arr_add_val(points, point);
+        }
+        yyjson_mut_obj_add_val(doc, o, "reroutes", points);
     }
     yyjson_mut_arr_add_val(arr, o);
 }
@@ -1004,6 +1021,63 @@ static int load_edges(graph *g, yyjson_val *edges)
         if (r) {
             set_err("invalid edge endpoints or incompatible types");
             return -1;
+        }
+        yyjson_val *handle = yyjson_obj_get(v, "from_handle_x");
+        yyjson_val *handle_y = yyjson_obj_get(v, "from_handle_y");
+        yyjson_val *to_handle = yyjson_obj_get(v, "to_handle_x");
+        yyjson_val *to_handle_y = yyjson_obj_get(v, "to_handle_y");
+        if (handle || handle_y || to_handle || to_handle_y) {
+            if (!handle || !handle_y || !to_handle || !to_handle_y ||
+                !yyjson_is_num(handle) || !yyjson_is_num(handle_y) ||
+                !yyjson_is_num(to_handle) || !yyjson_is_num(to_handle_y)) {
+                set_err("edge has invalid bezier handles");
+                return -1;
+            }
+            edge *loaded = NULL;
+            for (int i = acount(g->edges) - 1; i >= 0; i--) {
+                if (g->edges[i].from_id == from_id && g->edges[i].from_pin_id == from_pin &&
+                    g->edges[i].to_id == to_id && g->edges[i].to_pin_id == to_pin) {
+                    loaded = &g->edges[i];
+                    break;
+                }
+            }
+            assert(loaded);
+            loaded->from_handle_x = (float)yyjson_get_real(handle);
+            loaded->from_handle_y = (float)yyjson_get_real(handle_y);
+            loaded->to_handle_x = (float)yyjson_get_real(to_handle);
+            loaded->to_handle_y = (float)yyjson_get_real(to_handle_y);
+            loaded->custom_handles = true;
+        }
+        yyjson_val *points = yyjson_obj_get(v, "reroutes");
+        if (points) {
+            if (!yyjson_is_arr(points) || yyjson_arr_size(points) > 16) {
+                set_err("edge has invalid reroute points");
+                return -1;
+            }
+            edge *loaded = NULL;
+            for (int i = acount(g->edges) - 1; i >= 0; i--) {
+                if (g->edges[i].from_id == from_id && g->edges[i].from_pin_id == from_pin &&
+                    g->edges[i].to_id == to_id && g->edges[i].to_pin_id == to_pin) {
+                    loaded = &g->edges[i];
+                    break;
+                }
+            }
+            assert(loaded);
+            loaded->reroute_count = 0;
+            yyjson_arr_iter pit;
+            yyjson_arr_iter_init(points, &pit);
+            yyjson_val *point;
+            while ((point = yyjson_arr_iter_next(&pit))) {
+                yyjson_val *x = yyjson_obj_get(point, "x"),
+                           *y = yyjson_obj_get(point, "y");
+                if (!yyjson_is_obj(point) || !yyjson_is_num(x) || !yyjson_is_num(y)) {
+                    set_err("edge has invalid reroute point");
+                    return -1;
+                }
+                loaded->reroutes[loaded->reroute_count].x = (float)yyjson_get_real(x);
+                loaded->reroutes[loaded->reroute_count].y = (float)yyjson_get_real(y);
+                loaded->reroute_count++;
+            }
         }
     }
     return 0;

@@ -1,91 +1,45 @@
-/* editor/arrange.c -- layered auto-arrange (ADR 0015).
- *
- * A Sugiyama-style pipeline, run once per weakly connected component:
- *
- *   1. break cycles      depth-first search; back edges are laid out reversed
- *   2. rank              longest path, then pull nodes right onto their
- *                        earliest consumer so pure data nodes sit beside it
- *   3. corridors         a wire spanning several columns gets one placeholder
- *                        per intermediate column, so it reserves vertical
- *                        space instead of running through a node
- *   4. order             median sweeps plus adjacent transposition, keeping
- *                        the best port-aware crossing count seen
- *   5. coordinates       priority method: align each node's pin with its
- *                        neighbour's pin, corridors first so long wires
- *                        stay straight
- *   6. refine            bounded local search on the real cubic curves, which
- *                        is the only stage that sees the drawn geometry
- *
- * Stages 1 to 5 optimise a proxy (crossings between column orders). Stage 6
- * optimises what the user sees. Components are stacked with a gap, so wires
- * from one component cannot tangle with another. */
+
 
 #include "arrange.h"
 
-#include "../core/array.h" // IWYU pragma: keep (apush/acount/asetlen/afree)
+#include "../core/array.h"
 #include "../core/math.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 
-/* Separation. */
 #define AR_RANK_GAP 90.0f
 #define AR_NODE_GAP 36.0f
 #define AR_COMPONENT_GAP 120.0f
-#define AR_WIRE_LANE 22.0f /* vertical space a through-wire corridor claims */
+#define AR_WIRE_LANE 22.0f
 
-/* Clearance kept around a node that has left its column for the gutter. */
 #define AR_GUTTER_MARGIN 24.0f
 
-/* Wire geometry. Mirrors the canvas renderer's control points at zoom 1. */
 #define AR_BEND_MIN 40.0f
 #define AR_CURVE_SAMPLES 12
 
-/* Cost weights. A wire crossing a node body reads worse than two wires
- * crossing each other, and both dominate wire length, which only breaks ties
- * between otherwise equally readable placements. */
 #define AR_COST_CROSS 1.0f
 #define AR_COST_HIT 4.0f
 #define AR_COST_OVERLAP 40.0f
 #define AR_COST_LENGTH 0.0008f
 
-/* Two wires that leave one node, or arrive at one node, are ordered by that
- * node's pin stack. A crossing between them is therefore a pure ordering
- * mistake, and it is drawn right beside the shared node where the curves are
- * still near-parallel, so it reads as two wires running over each other. A
- * crossing between unrelated wires meets at an angle mid-span and reads as a
- * crossing. Weighting the first kind higher makes the ordering stage keep a
- * node's fan-out in pin order rather than treating the two as equivalent.
- * Two is the smallest weight that breaks the tie; higher values start trading
- * unrelated crossings for wire-node collisions without reading better. */
 #define AR_FAN_CROSS_WEIGHT 2
 
-/* Iteration bounds. Every stage is bounded so a dense graph costs a slow
- * frame, never a frozen one. */
 #define AR_ORDER_SWEEPS 8
 #define AR_TRANSPOSE_PASSES 4
 #define AR_COORD_SWEEPS 8
 #define AR_REFINE_PASSES 3
 #define AR_TIGHTEN_PASSES 8
-#define AR_GUTTER_STEPS 4      /* probes each way, per axis */
-#define AR_GUTTER_Y_STEP 24.0f /* vertical probe pitch when leaving a column */
+#define AR_GUTTER_STEPS 4
+#define AR_GUTTER_Y_STEP 24.0f
 
-/* Refinement measures real curves, so one probe costs roughly a wire count
- * plus a node count. Graphs up to a few hundred nodes refine fully; past that
- * the budget runs out and the proxy stages' result stands. That keeps a huge
- * graph to a slow frame instead of a frozen one. */
 #define AR_REFINE_BUDGET 1500000
 
-/* The gutter search is an order of magnitude dearer per box than the vertical
- * one, because it probes two axes. It gets its own budget and runs after the
- * vertical passes have settled, so the two cannot starve each other. */
 #define AR_GUTTER_BUDGET 900000
 
-#define AR_FREE 1.0e9f /* stands for "no obstacle in this direction" */
+#define AR_FREE 1.0e9f
 #define AR_CORRIDOR_PRIORITY 1000000
-
-/* --- wire geometry -------------------------------------------------------- */
 
 typedef struct ar_curve
 {
@@ -109,8 +63,12 @@ static ar_curve ar_curve_of(const arrange_graph *g, const arrange_point *pos, co
                             pos[l->from].y + ar_pin_y(a, l->from_pin) };
     c.p3 = (arrange_point){ pos[l->to].x, pos[l->to].y + ar_pin_y(b, l->to_pin) };
     float bend = math_max(AR_BEND_MIN, math_abs(c.p3.x - c.p0.x) * 0.5f);
-    c.p1 = (arrange_point){ c.p0.x + bend, c.p0.y };
-    c.p2 = (arrange_point){ c.p3.x - bend, c.p3.y };
+    c.p1 = l->custom_handles
+             ? (arrange_point){ c.p0.x + l->from_handle_x, c.p0.y + l->from_handle_y }
+             : (arrange_point){ c.p0.x + bend, c.p0.y };
+    c.p2 = l->custom_handles
+             ? (arrange_point){ c.p3.x + l->to_handle_x, c.p3.y + l->to_handle_y }
+             : (arrange_point){ c.p3.x - bend, c.p3.y };
     return c;
 }
 
@@ -125,7 +83,6 @@ static arrange_point ar_curve_at(const ar_curve *c, float t)
                             a * c->p0.y + b * c->p1.y + d * c->p2.y + e * c->p3.y };
 }
 
-/* The control points bound the curve, so this rejects distant pairs cheaply. */
 static void ar_curve_bounds(const ar_curve *c, arrange_point *min, arrange_point *max)
 {
     *min = vec2_min(vec2_min(c->p0, c->p1), vec2_min(c->p2, c->p3));
@@ -177,7 +134,6 @@ static bool ar_curves_cross(const ar_curve *a, const ar_curve *b)
     return false;
 }
 
-/* Clips the parameter interval against one axis slab. */
 static bool ar_clip_slab(float origin, float delta, float lo, float hi, float *t0, float *t1)
 {
     if (math_abs(delta) < 1.0e-6f) {
@@ -239,8 +195,6 @@ static float ar_curve_length(const ar_curve *c)
     return length;
 }
 
-/* Two wires leaving the same pin, or arriving at the same pin, meet there
- * by construction. That shared point is not a crossing to remove. */
 static bool ar_share_pin(const arrange_link *a, const arrange_link *b)
 {
     if (a->from == b->from && a->from_pin == b->from_pin) {
@@ -266,8 +220,6 @@ static void ar_box_bounds(
     *max = (arrange_point){ pos[box].x + g->boxes[box].width,
                             pos[box].y + g->boxes[box].height };
 }
-
-/* --- scoring ------------------------------------------------------------- */
 
 float arrange_cost(arrange_score score)
 {
@@ -321,12 +273,6 @@ arrange_score arrange_measure(const arrange_graph *g, const arrange_point *pos)
     return score;
 }
 
-/* The defect terms one box's position can change: its own wires' crossings,
- * wires that could run through it, and its own overlaps. Comparing this
- * before and after a candidate move is exact, because the term set depends
- * on the box rather than on the geometry. Wire length is deliberately
- * excluded: a move that only shortens a wire is not worth disturbing the
- * column grid for, so the horizontal search compares these terms alone. */
 static float ar_box_defects(const arrange_graph *g, const arrange_point *pos, int box)
 {
     float cost = 0.0f;
@@ -366,7 +312,7 @@ static float ar_box_defects(const arrange_graph *g, const arrange_point *pos, in
                 continue;
             }
             const arrange_link *b = &g->links[j];
-            /* A pair of incident wires belongs to this box twice; keep one. */
+
             if (ar_link_touches(b, box) && j < i) {
                 continue;
             }
@@ -382,7 +328,6 @@ static float ar_box_defects(const arrange_graph *g, const arrange_point *pos, in
     return cost;
 }
 
-/* Total length of the wires this box can move. */
 static float ar_box_wire_length(const arrange_graph *g, const arrange_point *pos, int box)
 {
     float length = 0.0f;
@@ -402,15 +347,11 @@ static float ar_box_cost(const arrange_graph *g, const arrange_point *pos, int b
            AR_COST_LENGTH * ar_box_wire_length(g, pos, box);
 }
 
-/* --- layout state -------------------------------------------------------- */
-
-/* One layout node: either a real box or a corridor standing in for a wire
- * passing through a column. */
 typedef struct ar_lnode
 {
-    int box; /* -1 for a corridor */
+    int box;
     int rank;
-    int slot; /* index into ctx.flat, so the column order is readable */
+    int slot;
     float y;
     float height;
     float seed;
@@ -418,8 +359,6 @@ typedef struct ar_lnode
     bool fixed;
 } ar_lnode;
 
-/* One column-to-column wire segment. The anchors are y offsets inside the
- * endpoints, so aligning them aligns the drawn pins rather than the boxes. */
 typedef struct ar_ledge
 {
     int from;
@@ -432,18 +371,18 @@ typedef struct ar_ctx
 {
     ar_lnode *nodes;
     ar_ledge *edges;
-    int *flat;       /* node indices grouped by rank */
-    int *rank_start; /* rank_count + 1 offsets into flat */
+    int *flat;
+    int *rank_start;
     int rank_count;
-    int *out_start; /* per-node edge ranges (edges never move) */
+    int *out_start;
     int *out_edge;
     int *in_start;
     int *in_edge;
-    int *rank_edge_start; /* per-rank edge ranges, for crossing counts */
+    int *rank_edge_start;
     int *rank_edge;
-    int *scratch;    /* reused index list */
-    float *values;   /* reused float list */
-    int *best_order; /* best column order seen */
+    int *scratch;
+    float *values;
+    int *best_order;
 } ar_ctx;
 
 static void ar_ctx_free(ar_ctx *c)
@@ -463,7 +402,6 @@ static void ar_ctx_free(ar_ctx *c)
     afree(c->best_order);
 }
 
-/* Fills a compressed adjacency: start[i]..start[i+1] indexes `list`. */
 static void ar_build_adjacency(int node_count, const int *key, int key_count, int **start, int **list)
 {
     asetlen(*start, node_count + 1);
@@ -511,10 +449,6 @@ static void ar_index_edges(ar_ctx *c)
     afree(rank_key);
 }
 
-/* --- ordering ------------------------------------------------------------ */
-
-/* A node's order key, offset by the port fraction so two wires into different
- * rows of the same node are counted in the order they are drawn. */
 static float ar_port_key(const ar_ctx *c, int node, float anchor)
 {
     const ar_lnode *n = &c->nodes[node];
@@ -567,8 +501,6 @@ static void ar_renumber_slots(ar_ctx *c)
     }
 }
 
-/* Sorts one column by `values`, indexed by node. Insertion sort keeps equal
- * keys in their current order, which is what makes repeated sweeps stable. */
 static void ar_sort_rank(ar_ctx *c, int rank, const float *values)
 {
     int first = c->rank_start[rank];
@@ -602,7 +534,6 @@ static float ar_median(float *values, int count)
     return (values[count / 2 - 1] + values[count / 2]) * 0.5f;
 }
 
-/* Median of the neighbour port keys on the fixed side of the sweep. */
 static bool ar_neighbor_median(ar_ctx *c, int node, bool forward, float *out)
 {
     aclear(c->values);
@@ -641,9 +572,6 @@ static void ar_order_sweep(ar_ctx *c, bool forward, float *keys)
     }
 }
 
-/* Crossings contributed by two same-column nodes when `upper` sits above
- * `lower`. Only these pairs change when the two swap, so a candidate swap
- * costs their two degrees instead of a whole-column recount. */
 static int ar_pair_crossings(const ar_ctx *c, int upper, int lower)
 {
     int score = 0;
@@ -670,8 +598,6 @@ static int ar_pair_crossings(const ar_ctx *c, int upper, int lower)
     return score;
 }
 
-/* Swaps adjacent pairs while that removes crossings. Median sweeps cannot
- * see a swap that only helps locally; this can. */
 static void ar_transpose(ar_ctx *c)
 {
     for (int pass = 0; pass < AR_TRANSPOSE_PASSES; pass++) {
@@ -732,8 +658,6 @@ static void ar_order_ranks(ar_ctx *c)
     afree(keys);
 }
 
-/* --- vertical coordinates ------------------------------------------------ */
-
 static void ar_pack_rank(ar_ctx *c, int rank)
 {
     int first = c->rank_start[rank];
@@ -750,8 +674,6 @@ static void ar_pack_rank(ar_ctx *c, int rank)
     }
 }
 
-/* How far `node` can travel before an already placed node blocks it. Nodes
- * in between are movable and are pushed along, so their slack counts. */
 static float ar_slack(const ar_ctx *c, int node, int dir)
 {
     int rank = c->nodes[node].rank;
@@ -795,9 +717,6 @@ static void ar_move(ar_ctx *c, int node, float delta)
     }
 }
 
-/* Median of the box positions that would put this node's pin level with its
- * neighbours' pins on the fixed side of the sweep. Aligning pins rather than
- * box centres is what makes a wire between two connected pins run flat. */
 static bool ar_neighbor_median_y(ar_ctx *c, int node, bool forward, float *out)
 {
     aclear(c->values);
@@ -819,9 +738,6 @@ static bool ar_neighbor_median_y(ar_ctx *c, int node, bool forward, float *out)
     return true;
 }
 
-/* Places one column against the already placed neighbouring column.
- * Corridors go first, so a long wire is straightened before real nodes
- * claim the space it needs. */
 static void ar_align_rank(ar_ctx *c, int rank, bool forward)
 {
     int first = c->rank_start[rank];
@@ -872,17 +788,6 @@ static void ar_assign_y(ar_ctx *c)
     }
 }
 
-/* --- bounded refinement on the drawn curves ------------------------------ */
-
-/* Horizontal room a box has without turning any of its own wires backwards:
- * it must stay right of every producer and left of every consumer. A node with
- * no consumers (a leaf) keeps its column as the right limit, and one with no
- * producers keeps it as the left limit, so neither drifts off into space.
- *
- * Columns exist to make the graph readable, not because a node's x has to
- * equal its rank's x. A leaf with slack can sit in the gutter between two
- * columns, which vacates the column band for wires that need to pass through
- * it - the case a strict column grid cannot express. */
 static void ar_x_limits(const arrange_graph *g, const arrange_point *pos, int box, float *left, float *right)
 {
     *left = -AR_FREE;
@@ -916,17 +821,6 @@ static void ar_x_limits(const arrange_graph *g, const arrange_point *pos, int bo
     }
 }
 
-/* Lets one box leave its column for the gutter between columns, moving in both
- * axes at once, when that strictly removes defects.
- *
- * Both axes have to move together: pulling a leaf left often lands it on a
- * wide neighbour from the previous column, and the vertical room to clear that
- * neighbour only exists off-column. Searching one axis then the other finds
- * neither move, because each is blocked while the other is held still.
- *
- * The bar is a strict reduction in crossings and collisions, so the column
- * grid stands everywhere it is not buying something. Only boxes that currently
- * have a defect are searched, which keeps this off the hot path. */
 static bool ar_try_gutter(const arrange_graph *g, arrange_point *pos, int box, long *budget)
 {
     long probe = g->link_count + g->box_count;
@@ -953,7 +847,7 @@ static bool ar_try_gutter(const arrange_graph *g, arrange_point *pos, int box, l
                 float defects = ar_box_defects(g, pos, box);
                 *budget -= probe;
                 bool fewer = defects < best_defects - 0.001f;
-                /* Among positions that fix as much, take the shortest wires. */
+
                 float length = ar_box_wire_length(g, pos, box);
                 bool tied_shorter = defects < best_defects + 0.001f &&
                                     length < best_length - 1.0f;
@@ -966,7 +860,7 @@ static bool ar_try_gutter(const arrange_graph *g, arrange_point *pos, int box, l
             }
         }
     }
-    /* Leaving the column has to buy a defect, not merely a shorter wire. */
+
     if (best_defects >= base - 0.001f) {
         pos[box] = start;
         return false;
@@ -975,10 +869,6 @@ static bool ar_try_gutter(const arrange_graph *g, arrange_point *pos, int box, l
     return best.x != start.x || best.y != start.y;
 }
 
-/* The proxy stages above optimise column orders. This stage is the only one
- * that reads the real cubic geometry: each node is nudged inside the slack
- * its column neighbours leave, and a nudge is kept only when the measured
- * cost of the wires and collisions it can affect drops. */
 static void ar_refine(const arrange_graph *g, arrange_point *pos, const int *rank_of, int rank_count)
 {
     static const float steps[] = { -64.0f, -32.0f, -16.0f, -8.0f,
@@ -1054,8 +944,6 @@ static void ar_refine(const arrange_graph *g, arrange_point *pos, const int *ran
     }
     afree(column);
 
-    /* Now let boxes escape their column where that removes a defect the
-     * column grid cannot. */
     long gutter = AR_GUTTER_BUDGET;
     for (int pass = 0; pass < AR_REFINE_PASSES && gutter > 0; pass++) {
         bool improved = false;
@@ -1070,8 +958,6 @@ static void ar_refine(const arrange_graph *g, arrange_point *pos, const int *ran
     }
 }
 
-/* --- ranking ------------------------------------------------------------- */
-
 enum
 {
     AR_WHITE,
@@ -1079,9 +965,6 @@ enum
     AR_BLACK
 };
 
-/* Marks the depth-first back edges. Removing them leaves a DAG, and the
- * wire is still drawn between its authored pins; only the column assignment
- * treats it as running the other way. */
 static void ar_break_cycles(
     const arrange_graph *g,
     const int *links,
@@ -1140,9 +1023,6 @@ static void ar_break_cycles(
     afree(stack_at);
 }
 
-/* Longest-path ranks, then one right-pulling pass so a node sits next to
- * its earliest consumer instead of in the leftmost column it is allowed.
- * That is what puts a pure data node beside the node it feeds. */
 static void ar_rank_nodes(int count, const int *edge_src, const int *edge_dst, int edge_count, int *rank)
 {
     int *key = NULL;
@@ -1181,7 +1061,7 @@ static void ar_rank_nodes(int count, const int *edge_src, const int *edge_dst, i
             }
         }
     }
-    assert(acount(topo) == count); /* back-edge removal left a DAG */
+    assert(acount(topo) == count);
 
     for (int pass = 0; pass < AR_TIGHTEN_PASSES; pass++) {
         bool changed = false;
@@ -1208,7 +1088,6 @@ static void ar_rank_nodes(int count, const int *edge_src, const int *edge_dst, i
         }
     }
 
-    /* Compact away columns that ended up empty, so no gap is drawn for them. */
     int max_rank = 0;
     for (int i = 0; i < count; i++) {
         if (rank[i] > max_rank) {
@@ -1240,8 +1119,6 @@ static void ar_rank_nodes(int count, const int *edge_src, const int *edge_dst, i
     afree(start);
     afree(list);
 }
-
-/* --- one component ------------------------------------------------------- */
 
 static void ar_layout_component(
     const arrange_graph *g,
@@ -1390,7 +1267,6 @@ static void ar_layout_component(
         x += width + AR_RANK_GAP;
     }
 
-    /* Refine against the component's own boxes and wires, in local indices. */
     arrange_box *sub_boxes = NULL;
     arrange_link *sub_links = NULL;
     arrange_point *sub_pos = NULL;
@@ -1404,12 +1280,22 @@ static void ar_layout_component(
     }
     for (int i = 0; i < link_count; i++) {
         const arrange_link *l = &g->links[links[i]];
-        apush(sub_links, (arrange_link){ local[l->from], local[l->to], l->from_pin, l->to_pin });
+        apush(
+            sub_links,
+            (arrange_link){ local[l->from],
+                            local[l->to],
+                            l->from_pin,
+                            l->to_pin,
+                            l->from_handle_x,
+                            l->from_handle_y,
+                            l->to_handle_x,
+                            l->to_handle_y,
+                            l->custom_handles }
+        );
     }
     arrange_graph sub = { sub_boxes, count, sub_links, acount(sub_links) };
     ar_refine(&sub, sub_pos, rank_of, c.rank_count);
 
-    /* Stack the component below the ones already placed. */
     float min_x = sub_pos[0].x;
     float min_y = sub_pos[0].y;
     float max_y = sub_pos[0].y + sub_boxes[0].height;
@@ -1437,8 +1323,6 @@ static void ar_layout_component(
     afree(reversed);
     ar_ctx_free(&c);
 }
-
-/* --- driver -------------------------------------------------------------- */
 
 static int ar_find(int *parent, int i)
 {
@@ -1471,7 +1355,7 @@ void arrange_layout(const arrange_graph *g, arrange_point *pos)
     int *boxes = NULL;
     int *links = NULL;
     float stack_y = 0.0f;
-    /* Ascending first-member order keeps the stacking deterministic. */
+
     for (int root = 0; root < g->box_count; root++) {
         if (ar_find(parent, root) != root) {
             continue;

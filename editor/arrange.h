@@ -31,6 +31,11 @@ typedef struct arrange_link
     int to;
     int from_pin;
     int to_pin;
+    float from_handle_x;
+    float from_handle_y;
+    float to_handle_x;
+    float to_handle_y;
+    bool custom_handles;
 } arrange_link;
 
 /* Positions use the shared scalar vector type while retaining a domain name

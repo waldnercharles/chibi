@@ -47,6 +47,22 @@ typedef struct edge
         int exec_order;
         int order;
     };
+    /* Authored world-space reroute points. The renderer joins these with
+     * smooth cubic segments, so every point is a point the wire passes
+     * through (rather than a free Bézier control handle). */
+    int reroute_count;
+    struct
+    {
+        float x;
+        float y;
+    } reroutes[16];
+    /* Kept for compatibility with documents written by the first handle
+     * prototype; new editing uses reroutes. */
+    float from_handle_x;
+    float from_handle_y;
+    float to_handle_x;
+    float to_handle_y;
+    bool custom_handles;
 } edge;
 
 typedef struct graph

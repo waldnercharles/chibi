@@ -8,6 +8,7 @@
 #include "cute_host.h"
 #include "movement_authoring.h"
 #include "stacktrace.h"
+#include "web_loop.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -80,6 +81,80 @@ static const editor_event_signature APP_EVENT_CATALOG[] = {
     { "Tick", APP_TICK_PARAMS, 1 },
 };
 
+typedef struct
+{
+    editor *graph_editor;
+    game_system *system;
+    engine *runtime;
+    ecs_world *world;
+    engine_viewport *viewport;
+    movement_authoring *authoring;
+    int frames;
+    int frame;
+    const char *screenshot_path;
+    int capture_error;
+} app_loop;
+
+static void app_cleanup(app_loop *loop)
+{
+    movement_authoring_free(loop->authoring);
+    engine_free(loop->runtime);
+    game_system_free(loop->system);
+    editor_free(loop->graph_editor);
+    ecs_world_free(loop->world);
+    engine_viewport_free(loop->viewport);
+    cf_destroy_app();
+}
+
+static int app_frame(app_loop *loop)
+{
+    if (!cf_app_is_running()) {
+        return 1;
+    }
+    cf_app_update(NULL);
+    double seconds = CF_SECONDS;
+    editor_tick(loop->graph_editor, seconds);
+    movement_authoring_sync(loop->authoring);
+    int viewport_focused = engine_viewport_focused(loop->viewport);
+    if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
+        engine_viewport_release_focus();
+        engine_route_escape(loop->runtime);
+        viewport_focused = 0;
+    }
+    engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
+    movement_authoring_input(loop->authoring, viewport_focused != 0);
+    if (engine_frame(loop->runtime, seconds) != FLOW_OK) {
+        fprintf(stderr, "runtime frame failed\n");
+    }
+
+    editor_prepare_docking();
+    engine_viewport_draw(loop->viewport);
+    movement_authoring_draw(loop->authoring);
+    editor_draw(loop->graph_editor);
+    cf_app_draw_onto_screen(true);
+
+    int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
+    if (finished && loop->screenshot_path) {
+        loop->capture_error = save_screenshot(loop->screenshot_path);
+        return 1;
+    }
+    return finished;
+}
+
+#ifdef __EMSCRIPTEN__
+static app_loop APP_LOOP_STATE;
+static app_loop *APP_LOOP;
+
+static void app_web_frame(void)
+{
+    if (!app_frame(APP_LOOP)) {
+        return;
+    }
+    app_cleanup(APP_LOOP);
+    app_web_cancel_main_loop();
+}
+#endif
+
 int main(int argc, char **argv)
 {
     stacktrace_init(argv[0]);
@@ -126,12 +201,18 @@ int main(int argc, char **argv)
     }
     cf_app_init_imgui();
     if (screenshot_path) {
+#ifdef __EMSCRIPTEN__
+        fprintf(stderr, "screenshots are unavailable on web builds\n");
+        cf_destroy_app();
+        return 1;
+#else
         if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
             fprintf(stderr, "the active graphics backend cannot render ImGui offscreen\n");
             cf_destroy_app();
             return 1;
         }
         editor_ui_set_framebuffer_target(true);
+#endif
     }
 
     registry_validate();
@@ -214,48 +295,30 @@ int main(int argc, char **argv)
     editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
     engine_viewport_set_render_callback(viewport, movement_authoring_render, authoring);
 
-    int frame = 0;
-    int capture_error = screenshot_path != NULL;
-    while ((headless && (frames == 0 || frame < frames)) ||
+    app_loop loop = {
+        .graph_editor = graph_editor,
+        .system = system,
+        .runtime = runtime,
+        .world = world,
+        .viewport = viewport,
+        .authoring = authoring,
+        .frames = frames,
+        .screenshot_path = screenshot_path,
+        .capture_error = screenshot_path != NULL,
+    };
+#ifdef __EMSCRIPTEN__
+    /* Browser event processing must return to the browser between frames. */
+    APP_LOOP_STATE = loop;
+    APP_LOOP = &APP_LOOP_STATE;
+    app_web_set_main_loop(app_web_frame);
+#else
+    while ((headless && (frames == 0 || loop.frame < frames)) ||
            (!headless && cf_app_is_running())) {
-        cf_app_update(NULL);
-        double seconds = CF_SECONDS;
-        editor_tick(graph_editor, seconds);
-        movement_authoring_sync(authoring);
-        int viewport_focused = engine_viewport_focused(viewport);
-        if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
-            engine_viewport_release_focus();
-            engine_route_escape(runtime);
-            viewport_focused = 0;
-        }
-        engine_set_focus(runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
-        movement_authoring_input(authoring, viewport_focused != 0);
-        if (engine_frame(runtime, seconds) != FLOW_OK) {
-            fprintf(stderr, "runtime frame failed\n");
-        }
-
-        editor_prepare_docking();
-        engine_viewport_draw(viewport);
-        movement_authoring_draw(authoring);
-        editor_draw(graph_editor);
-        cf_app_draw_onto_screen(true);
-
-        int finished = frames > 0 && ++frame >= frames;
-        if (finished && screenshot_path) {
-            capture_error = save_screenshot(screenshot_path);
-            break;
-        }
-        if (finished) {
+        if (app_frame(&loop)) {
             break;
         }
     }
-
-    movement_authoring_free(authoring);
-    engine_free(runtime);
-    game_system_free(system);
-    editor_free(graph_editor);
-    ecs_world_free(world);
-    engine_viewport_free(viewport);
-    cf_destroy_app();
-    return capture_error;
+    app_cleanup(&loop);
+#endif
+    return loop.capture_error;
 }

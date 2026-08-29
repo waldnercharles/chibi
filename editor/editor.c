@@ -206,6 +206,9 @@ struct editor
     ImVec2 select_end;
 
     int dragging;
+    int dragging_handle;
+    int handle_edge;
+    int handle_side;
     int drag_toggle_selected;
     node *drag_toggle_node;
     ImVec2 drag_start_mouse;
@@ -1209,9 +1212,84 @@ static int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1
     *p0 = from->pos;
     *p3 = to->pos;
     float bend = ed_max(40.0f * e->zoom, ed_abs(to->pos.x - from->pos.x) * 0.5f);
-    *p1 = ed_add(*p0, (ImVec2){ bend, 0.0f });
-    *p2 = ed_add(*p3, (ImVec2){ -bend, 0.0f });
+    *p1 = ed_add(
+        *p0,
+        ed->custom_handles
+            ? (ImVec2){ ed->from_handle_x * e->zoom, ed->from_handle_y * e->zoom }
+            : (ImVec2){ bend, 0.0f }
+    );
+    *p2 = ed_add(
+        *p3,
+        ed->custom_handles
+            ? (ImVec2){ ed->to_handle_x * e->zoom, ed->to_handle_y * e->zoom }
+            : (ImVec2){ -bend, 0.0f }
+    );
     return 1;
+}
+
+static int ed_hit_handle(const editor *e, ImVec2 mouse, int *edge_index, int *side)
+{
+    for (int i = acount(e->active_graph->edges) - 1; i >= 0; i--) {
+        const edge *ed = &e->active_graph->edges[i];
+        ImVec2 p0, p1, p2, p3;
+        if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3) || !ed->reroute_count) {
+            continue;
+        }
+        float radius = ed_max(8.0f, 6.0f * e->zoom);
+        for (int point = 0; point < ed->reroute_count; point++) {
+            ImVec2 at = ed_world_to_screen(
+                e,
+                ed->reroutes[point].x,
+                ed->reroutes[point].y
+            );
+            if (ed_distance(at, mouse) <= radius) {
+                *edge_index = i;
+                *side = point;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static ImVec2 ed_route_point(const editor *e, const edge *ed, int index, ImVec2 start, ImVec2 end)
+{
+    if (index == 0) {
+        return start;
+    }
+    if (index == ed->reroute_count + 1) {
+        return end;
+    }
+    return ed_world_to_screen(
+        e,
+        ed->reroutes[index - 1].x,
+        ed->reroutes[index - 1].y
+    );
+}
+
+static void ed_route_segment(
+    const editor *e,
+    const edge *ed,
+    int segment,
+    ImVec2 p0,
+    ImVec2 p3,
+    ImVec2 *p1,
+    ImVec2 *p2
+)
+{
+    ImVec2 before = segment == 0 ? p0 : ed_route_point(e, ed, segment - 1, p0, p3);
+    ImVec2 after = ed_route_point(e, ed, segment + 2, p0, p3);
+    float horizontal = ed_max(40.0f * e->zoom, ed_abs(p3.x - p0.x) * 0.5f);
+    float direction = p3.x >= p0.x ? 1.0f : -1.0f;
+    /* Longer tangents make the bend read as a spline instead of two nearly
+     * straight links. The same tangent is used on both sides of each point,
+     * preserving continuity while giving the wire an exaggerated S-like sweep. */
+    const float tangent_scale = 1.0f / 3.0f;
+    *p1 = segment == 0 ? ed_add(p0, (ImVec2){ horizontal * direction, 0.0f })
+                       : ed_add(p0, ed_scale(ed_sub(after, before), tangent_scale));
+    *p2 = segment == ed->reroute_count
+            ? ed_add(p3, (ImVec2){ -horizontal * direction, 0.0f })
+            : ed_sub(p3, ed_scale(ed_sub(after, before), tangent_scale));
 }
 
 static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
@@ -1220,6 +1298,29 @@ static int ed_hit_link(const editor *e, ImVec2 p, ed_link_ref *out)
         const edge *ed = &e->active_graph->edges[i];
         ImVec2 p0, p1, p2, p3;
         if (!ed_link_curve(e, ed, &p0, &p1, &p2, &p3)) {
+            continue;
+        }
+        if (ed->reroute_count) {
+            ImVec2 start = p0;
+            for (int segment = 0; segment <= ed->reroute_count; segment++) {
+                ImVec2 end = ed_route_point(e, ed, segment + 1, p0, p3);
+                ImVec2 c1, c2;
+                ed_route_segment(e, ed, segment, start, end, &c1, &c2);
+                ImVec2 prev = start;
+                for (int s = 1; s <= 16; s++) {
+                    ImVec2 next = ed_bezier(start, c1, c2, end, (float)s / 16.0f);
+                    if (ed_distance_to_segment(p, prev, next) <=
+                        ed_max(7.0f, 5.0f * e->zoom)) {
+                        *out = (ed_link_ref){ ed->from_id,
+                                              ed->from_pin_id,
+                                              ed->to_id,
+                                              ed->to_pin_id };
+                        return 1;
+                    }
+                    prev = next;
+                }
+                start = end;
+            }
             continue;
         }
         ImVec2 prev = p0;
@@ -2808,7 +2909,9 @@ static void ed_draw_flow_markers(
     if (length <= 0.0f || spacing <= 0.0f) {
         return;
     }
-    float offset = (float)(flow_visual_marker(age, length) * length);
+    float canvas_length = length / e->zoom;
+    float offset = (float)(flow_visual_marker(age, canvas_length) *
+                           canvas_length * e->zoom);
     offset = fmodf(offset, spacing);
     if (offset < 0.0f) {
         offset += spacing;
@@ -2822,6 +2925,64 @@ static void ed_draw_flow_markers(
         }
         ImVec2 position = ed_curve_at_distance(p0, p1, p2, p3, distance, length);
         ImDrawList_AddCircleFilled(dl, position, radius, ed_color(color), 12);
+    }
+}
+
+static void ed_draw_reroute_markers(
+    const editor *e,
+    ImDrawList *dl,
+    const edge *ed,
+    ImVec2 p0,
+    ImVec2 p3,
+    ImVec4 color,
+    float radius,
+    float opacity,
+    double age
+)
+{
+    if (opacity <= 0.0f) {
+        return;
+    }
+    ImVec2 points[17 * 17];
+    int count = 0;
+    ImVec2 start = p0;
+    for (int segment = 0; segment <= ed->reroute_count; segment++) {
+        ImVec2 end = ed_route_point(e, ed, segment + 1, p0, p3);
+        ImVec2 c1, c2;
+        ed_route_segment(e, ed, segment, start, end, &c1, &c2);
+        for (int sample = segment ? 1 : 0; sample <= 16; sample++) {
+            points[count++] = ed_bezier(start, c1, c2, end, (float)sample / 16.0f);
+        }
+        start = end;
+    }
+    float length = 0.0f;
+    for (int i = 1; i < count; i++) {
+        length += ed_distance(points[i - 1], points[i]);
+    }
+    float spacing = ED_FLOW_DOT_SPACING * e->zoom;
+    if (length <= 0.0f || spacing <= 0.0f) {
+        return;
+    }
+    float offset = fmodf((float)(flow_visual_marker(age, length / e->zoom) * length), spacing);
+    if (offset < 0.0f) {
+        offset += spacing;
+    }
+    color.w *= opacity;
+    for (float distance = offset; distance < length; distance += spacing) {
+        float walked = 0.0f;
+        for (int i = 1; i < count; i++) {
+            float segment = ed_distance(points[i - 1], points[i]);
+            if (walked + segment >= distance) {
+                float t = segment > 0.0f ? (distance - walked) / segment : 0.0f;
+                ImVec2 position = ed_add(
+                    points[i - 1],
+                    ed_scale(ed_sub(points[i], points[i - 1]), t)
+                );
+                ImDrawList_AddCircleFilled(dl, position, radius, ed_color(color), 12);
+                break;
+            }
+            walked += segment;
+        }
     }
 }
 
@@ -2854,25 +3015,63 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     } else if (style.opacity > 0.0f) {
         color = ed_color(style.wire_color);
     }
-    ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
+    if (!ed->reroute_count) {
+        ImDrawList_AddBezierCubic(dl, p0, p1, p2, p3, color, style.thickness, 0);
+    } else {
+        ImVec2 start = p0;
+        for (int segment = 0; segment <= ed->reroute_count; segment++) {
+            ImVec2 end = ed_route_point(e, ed, segment + 1, p0, p3);
+            ImVec2 c1, c2;
+            ed_route_segment(e, ed, segment, start, end, &c1, &c2);
+            ImDrawList_AddBezierCubic(dl, start, c1, c2, end, color, style.thickness, 0);
+            start = end;
+        }
+    }
+    if (selected || hovered) {
+        ImU32 guide = IM_COL32(190, 205, 230, 150);
+        ImU32 knob = selected ? IM_COL32(255, 190, 70, 255)
+                              : IM_COL32(180, 215, 255, 255);
+        for (int point = 0; point < ed->reroute_count; point++) {
+            ImVec2 at = ed_world_to_screen(
+                e,
+                ed->reroutes[point].x,
+                ed->reroutes[point].y
+            );
+            ImDrawList_AddCircleFilled(dl, at, ed_max(4.0f, 5.0f * e->zoom), knob, 12);
+        }
+    }
     /* The record controls whether this edge is active, but not marker phase.
      * Held input replaces the latest timestamp every frame, which would reset
      * the bubbles to the same point. The editor clock keeps the stream moving. */
     double marker_age = (ed_latest_flow_record(e, ed) || ed_execution_pulse_active(e))
                           ? e->monotonic_time
                           : 0.0;
-    ed_draw_flow_markers(
-        e,
-        dl,
-        p0,
-        p1,
-        p2,
-        p3,
-        style.bubble_color,
-        style.bubble_radius,
-        style.bubble_opacity,
-        marker_age
-    );
+    if (ed->reroute_count) {
+        ed_draw_reroute_markers(
+            e,
+            dl,
+            ed,
+            p0,
+            p3,
+            style.bubble_color,
+            style.bubble_radius,
+            style.bubble_opacity,
+            marker_age
+        );
+    } else {
+        ed_draw_flow_markers(
+            e,
+            dl,
+            p0,
+            p1,
+            p2,
+            p3,
+            style.bubble_color,
+            style.bubble_radius,
+            style.bubble_opacity,
+            marker_age
+        );
+    }
 }
 
 static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
@@ -3316,6 +3515,15 @@ static void ed_update_drag(editor *e, ImVec2 mouse)
         e->drag_nodes[i].n->x = e->drag_nodes[i].x + delta.x;
         e->drag_nodes[i].n->y = e->drag_nodes[i].y + delta.y;
     }
+}
+
+static void ed_update_handle_drag(editor *e, ImVec2 mouse)
+{
+    edge *ed = &e->active_graph->edges[e->handle_edge];
+    assert(e->handle_side >= 0 && e->handle_side < ed->reroute_count);
+    ImVec2 point = ed_screen_to_world(e, mouse);
+    ed->reroutes[e->handle_side].x = point.x;
+    ed->reroutes[e->handle_side].y = point.y;
 }
 
 /* CAT-38: a Format Text node always carries one trailing Generic argument
@@ -4134,7 +4342,18 @@ static void ed_auto_arrange(editor *e)
         if (from_at < 0 || to_at < 0) {
             continue;
         }
-        apush(links, (arrange_link){ from_at, to_at, from_pin, to_pin });
+        apush(
+            links,
+            (arrange_link){ from_at,
+                            to_at,
+                            from_pin,
+                            to_pin,
+                            ed->from_handle_x,
+                            ed->from_handle_y,
+                            ed->to_handle_x,
+                            ed->to_handle_y,
+                            ed->custom_handles }
+        );
     }
     arrange_graph layout = { boxes, count, links, acount(links) };
     arrange_layout(&layout, pos);
@@ -4579,6 +4798,15 @@ static void ed_handle_input(editor *e)
         }
         return;
     }
+    if (e->dragging_handle) {
+        if (!mouse_released) {
+            ed_update_handle_drag(e, mouse);
+        } else {
+            ed_commit_snapshot(e);
+            e->dragging_handle = 0;
+        }
+        return;
+    }
     if (e->selecting) {
         if (!mouse_released) {
             e->select_end = mouse;
@@ -4626,6 +4854,42 @@ static void ed_handle_input(editor *e)
     }
     if (!hovered || !mouse_clicked) {
         return;
+    }
+
+    int handle_edge = -1, handle_side = -1;
+    if (ed_hit_handle(e, mouse, &handle_edge, &handle_side)) {
+        ed_begin_authoring_edit(e);
+        e->pending_snapshot = ed_snapshot(e);
+        e->handle_edge = handle_edge;
+        e->handle_side = handle_side;
+        e->dragging_handle = 1;
+        ed_update_handle_drag(e, mouse);
+        return;
+    }
+
+    /* Alt-clicking a wire inserts a reroute point. Reroutes are deliberately
+     * points on the wire, not tangent controls, matching the Blueprint UX. */
+    if (io->KeyAlt) {
+        ed_link_ref link;
+        if (ed_hit_link(e, mouse, &link)) {
+            int index = ed_edge_index(e, &link);
+            edge *ed = &e->active_graph->edges[index];
+            if (ed->reroute_count < 16) {
+                ed_begin_authoring_edit(e);
+                e->pending_snapshot = ed_snapshot(e);
+                for (int i = ed->reroute_count; i > 0; i--) {
+                    ed->reroutes[i] = ed->reroutes[i - 1];
+                }
+                ImVec2 point = ed_screen_to_world(e, mouse);
+                ed->reroutes[0].x = point.x;
+                ed->reroutes[0].y = point.y;
+                ed->reroute_count++;
+                e->handle_edge = index;
+                e->handle_side = 0;
+                e->dragging_handle = 1;
+                return;
+            }
+        }
     }
 
     ed_pin_view *pin = ed_hit_pin(e, mouse);

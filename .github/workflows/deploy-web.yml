@@ -1,0 +1,68 @@
+name: Deploy web app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native reflection dependencies
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+          actions-cache-folder: emsdk-cache
+
+      - name: Build native reflection tool
+        run: |
+          cmake -S . -B build-host -DCMAKE_BUILD_TYPE=Release -DCBLUEPRINT_ENABLE_SJLIT=OFF
+          cmake --build build-host --target reflect
+
+      - name: Build web app
+        run: |
+          emcmake cmake -S . -B build-web \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCBLUEPRINT_REFLECT_EXECUTABLE=$GITHUB_WORKSPACE/build-host/reflect
+          cmake --build build-web --target app
+
+      - name: Assemble Pages artifact
+        run: |
+          mkdir site
+          cp build-web/app.html site/index.html
+          cp build-web/app.js build-web/app.wasm build-web/app.data site/
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

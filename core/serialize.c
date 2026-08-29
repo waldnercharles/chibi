@@ -633,13 +633,14 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
     int i = 0;
     int count = output ? n->output_count : n->input_count;
     int serialized_count = (int)yyjson_arr_size(arr);
-    if (serialized_count < count &&
-        (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return ||
-         compact_component_node(g, n))) {
+    /* Missing pins are filled from the descriptor. This keeps older JSON
+     * compatible when a node gains pins; their IDs are allocated normally. */
+    if (serialized_count > count && !compact_component_node(g, n) &&
+        n->desc != &NODE_FunctionEntry && n->desc != &NODE_Return) {
         while (count > serialized_count) {
             if (graph_remove_pin(g, n, output, count - 1)) {
                 set_err(
-                    "node %llu cannot shrink %s pin list",
+                    "node %llu cannot remove %s pin",
                     (unsigned long long)n->id,
                     output ? "output" : "input"
                 );
@@ -742,12 +743,14 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         }
         i++;
     }
-    return i == count ? 0
-                      : (set_err(
-                             "node %llu pin count does not match descriptor",
-                             (unsigned long long)n->id
-                         ),
-                         -1);
+    if (i <= count) {
+        return 0;
+    }
+    set_err(
+        "node %llu pin count does not match descriptor",
+        (unsigned long long)n->id
+    );
+    return -1;
 }
 
 static int load_comment_boxes(graph *g, yyjson_val *json)

@@ -217,7 +217,7 @@ add_custom_command(
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/system.c game/query.c game/system_document.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game

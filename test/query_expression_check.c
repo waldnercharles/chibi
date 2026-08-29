@@ -2,6 +2,7 @@
 #include "../ecs/ecs.h"
 #include "../game/generated.h"
 #include "../game/query.h"
+#include "../game/query_editor.h"
 #include "../game/system_document.h"
 
 #include <stdio.h>
@@ -142,6 +143,41 @@ int main(void)
         "unknown query terms are rejected"
     );
     ecs_query_expr_free(unknown);
+    game_query_editor *query_editor = game_query_editor_new(NULL);
+    int root_path[1] = { 0 };
+    failures += check(
+        game_query_editor_add(
+            query_editor,
+            NULL,
+            0,
+            ECS_QUERY_HAS,
+            GAME_COMPONENT_GameTransform.id
+        ) == 0,
+        "query editor adds a term"
+    );
+    failures += check(
+        game_query_editor_add(
+            query_editor,
+            NULL,
+            0,
+            ECS_QUERY_ANY,
+            GAME_COMPONENT_GameMovement.id
+        ) == 0,
+        "query editor adds a nested group"
+    );
+    failures += check(
+        game_query_editor_move(query_editor, root_path, 1, 1) == 0 &&
+            game_query_editor_undo(query_editor) == 0 &&
+            game_query_editor_redo(query_editor) == 0,
+        "query editor reorders and tracks history"
+    );
+    char query_error[64] = { 0 };
+    failures += check(
+        game_query_editor_validate(game_query_editor_expression(query_editor), query_error, sizeof query_error) ==
+            0,
+        "query editor validates edited trees"
+    );
+    game_query_editor_free(query_editor);
     (void)movement_input;
     (void)unrelated;
     ecs_world_free(world);

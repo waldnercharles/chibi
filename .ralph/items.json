@@ -28,8 +28,8 @@
       "category": "editor",
       "description": "Replace the temporary System query checkbox with a recursive editor-owned All/Any/Not query builder with stable editing, component/tag search, validation, preview counts, diagnostics, deterministic reorder, and per-edit undo.",
       "steps": ["Open the System query editor against an active ECS world.", "Add, remove, search, reorder, and edit nested terms and groups, including empty and missing-component cases.", "Verify preview counts, diagnostics, undo, serialization, and the headless app screenshot."],
-      "passes": false,
-      "regression_notes": ""
+      "passes": true,
+      "regression_notes": "Added an editor-owned recursive query tree with All/Any/Not groups, component/tag search, validation diagnostics, preview counts, deterministic reorder, and query-specific undo/redo. Added focused query-editor mutation/history coverage. Verified all required gates and screenshot dimensions (3840x2160)."
     },
     {
       "category": "identity",

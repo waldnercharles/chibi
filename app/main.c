@@ -220,9 +220,13 @@ int main(int argc, char **argv)
 
     registry_validate();
     char *json = text_file_read(MOVEMENT_SYSTEM_PATH);
-    blueprint *editor_definition = json ? blueprint_load_json(json) : NULL;
     blueprint *runtime_definition = json ? blueprint_load_json(json) : NULL;
     free(json);
+    char *behavior_editor_json = text_file_read("content/behaviors/InputBehavior.json");
+    blueprint *editor_definition = behavior_editor_json
+                                     ? blueprint_load_json(behavior_editor_json)
+                                     : NULL;
+    free(behavior_editor_json);
     ecs_world *world = ecs_world_new();
     engine_viewport *viewport = engine_viewport_new(640, 360);
     editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
@@ -307,7 +311,7 @@ int main(int argc, char **argv)
         APP_EVENT_CATALOG,
         (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
     );
-    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_SYSTEM);
+    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
     editor_set_save_handler(graph_editor, movement_authoring_save, authoring);
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
     editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);

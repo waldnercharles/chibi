@@ -4,6 +4,7 @@ build/
 build-verify/
 build-release/
 build-web/
+build-reflect/
 generated/
 .pi-lens/
 .cache/

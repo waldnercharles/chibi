@@ -18,6 +18,7 @@
 
 typedef struct ecs_world ecs_world;
 typedef struct ecs_query ecs_query;
+typedef struct ecs_query_expr ecs_query_expr;
 
 typedef struct
 {
@@ -65,6 +66,22 @@ typedef struct
     int zeroed_fields;
 } ecs_migration_report;
 
+/* Query expressions are deliberately independent of the graph/editor layer.
+ * A term matches component presence; groups provide the boolean vocabulary
+ * used by authored system queries. */
+typedef enum
+{
+    ECS_QUERY_ALL,
+    ECS_QUERY_ANY,
+    ECS_QUERY_NOT,
+    ECS_QUERY_HAS,
+} ecs_query_expr_kind;
+
+ecs_query_expr *ecs_query_expr_new(ecs_query_expr_kind kind);
+ecs_query_expr *ecs_query_expr_has(ecs_component_id component);
+int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child);
+void ecs_query_expr_free(ecs_query_expr *expr);
+
 struct ecs_query
 {
     ecs_world *world;
@@ -76,6 +93,7 @@ struct ecs_query
     int dense_count;
     int dense_cursor;
     int dense_index;
+    const ecs_query_expr *expression;
     void *component_refs; /* private query plan */
 };
 
@@ -134,9 +152,11 @@ int ecs_component_write_field(
     pin_value value
 );
 
-/* Queries visit the intersection in ascending slot order, including when one
- * or more components use the dense occupancy index. */
+/* Simple component lists visit their intersection in ascending slot order.
+ * Expression queries also visit in ascending slot order and support boolean
+ * component presence tests. */
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count);
+int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_query_expr *expression);
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity);
 void ecs_query_end(ecs_query *query);
 int ecs_world_iteration_begin(ecs_world *world);

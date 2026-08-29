@@ -34,6 +34,13 @@ typedef struct
     size_t value_size;
 } ecs_command;
 
+struct ecs_query_expr
+{
+    ecs_query_expr_kind kind;
+    ecs_component_id component;
+    ecs_query_expr **children;
+};
+
 struct ecs_world
 {
     uint32_t generations[ECS_ENTITY_SLOT_COUNT];
@@ -49,6 +56,46 @@ struct ecs_world
     ecs_destroy_observer destroy_observer;
     void *destroy_observer_user;
 };
+
+ecs_query_expr *ecs_query_expr_new(ecs_query_expr_kind kind)
+{
+    assert(kind == ECS_QUERY_ALL || kind == ECS_QUERY_ANY || kind == ECS_QUERY_NOT);
+    ecs_query_expr *expr = (ecs_query_expr *)xcalloc(1, sizeof *expr);
+    expr->kind = kind;
+    return expr;
+}
+
+ecs_query_expr *ecs_query_expr_has(ecs_component_id component)
+{
+    assert(component);
+    ecs_query_expr *expr = (ecs_query_expr *)xcalloc(1, sizeof *expr);
+    expr->kind = ECS_QUERY_HAS;
+    expr->component = component;
+    return expr;
+}
+
+int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child)
+{
+    assert(parent && child);
+    if (parent->kind == ECS_QUERY_HAS ||
+        (parent->kind == ECS_QUERY_NOT && acount(parent->children) == 1)) {
+        return ECS_ERR_ARGUMENT;
+    }
+    apush(parent->children, child);
+    return ECS_OK;
+}
+
+void ecs_query_expr_free(ecs_query_expr *expr)
+{
+    if (!expr) {
+        return;
+    }
+    for (int i = 0; i < acount(expr->children); i++) {
+        ecs_query_expr_free(expr->children[i]);
+    }
+    afree(expr->children);
+    free(expr);
+}
 
 static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)
 {
@@ -781,6 +828,64 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
     return ECS_OK;
 }
 
+static int query_expression_valid(const ecs_world *world, const ecs_query_expr *expr)
+{
+    if (!expr) {
+        return 0;
+    }
+    if (expr->kind == ECS_QUERY_HAS) {
+        return find_component_const(world, expr->component) != NULL;
+    }
+    if (expr->kind == ECS_QUERY_NOT && acount(expr->children) != 1) {
+        return 0;
+    }
+    for (int i = 0; i < acount(expr->children); i++) {
+        if (!query_expression_valid(world, expr->children[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_query_expr *expression)
+{
+    if (!world || !query || world->iteration_depth ||
+        !query_expression_valid(world, expression)) {
+        return ECS_ERR_ARGUMENT;
+    }
+    memset(query, 0, sizeof *query);
+    query->world = world;
+    query->expression = expression;
+    query->limit = world->high_water;
+    world->iteration_depth++;
+    return ECS_OK;
+}
+
+static int query_expression_matches(const ecs_world *world, const ecs_query_expr *expr, uint32_t slot)
+{
+    if (expr->kind == ECS_QUERY_HAS) {
+        const ecs_component *component = find_component_const(world, expr->component);
+        return component_matches(component, slot);
+    }
+    if (expr->kind == ECS_QUERY_NOT) {
+        return !query_expression_matches(world, expr->children[0], slot);
+    }
+    if (expr->kind == ECS_QUERY_ANY) {
+        for (int i = 0; i < acount(expr->children); i++) {
+            if (query_expression_matches(world, expr->children[i], slot)) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    for (int i = 0; i < acount(expr->children); i++) {
+        if (!query_expression_matches(world, expr->children[i], slot)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
 {
     if (!query || !query->world || !out_entity) {
@@ -792,6 +897,10 @@ int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
                                                 : query->cursor;
         ecs_entity entity = { slot, query->world->generations[slot] };
         if (query->dense_count < 0 && !entity_matches(query->world, entity)) {
+            continue;
+        }
+        if (query->expression &&
+            !query_expression_matches(query->world, query->expression, slot)) {
             continue;
         }
         const ecs_component *const *refs = (const ecs_component *const *)query->component_refs;

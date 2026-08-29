@@ -1,6 +1,8 @@
+#include "../core/text_file.h"
 #include "../ecs/ecs.h"
 #include "../game/generated.h"
 #include "../game/query.h"
+#include "../game/system_document.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +47,21 @@ static const char *component_name(ecs_component_id id, void *)
         return GAME_COMPONENT_GameInput.name;
     }
     return NULL;
+}
+
+static char *append_query(const char *blueprint_json)
+{
+    size_t size = strlen(blueprint_json);
+    while (size &&
+           (blueprint_json[size - 1] == ' ' || blueprint_json[size - 1] == '\n')) {
+        size--;
+    }
+    const char query[] = ",\"query\":{\"op\":\"has\",\"component\":"
+                         "\"GameTransform\"}}";
+    char *json = (char *)malloc(size + sizeof query);
+    memcpy(json, blueprint_json, size - 1);
+    memcpy(json + size - 1, query, sizeof query);
+    return json;
 }
 
 int main(void)
@@ -97,6 +114,26 @@ int main(void)
     failures += check(json && roundtrip, error[0] ? error : "query round-trips through JSON");
     free(json);
     ecs_query_expr_free(roundtrip);
+
+    char *blueprint_json = text_file_read("content/systems/MovementSystem.json");
+    char *document_json = blueprint_json ? append_query(blueprint_json) : NULL;
+    game_system_document *document = document_json ? game_system_document_load(
+                                                         document_json,
+                                                         resolve_component,
+                                                         NULL,
+                                                         error,
+                                                         sizeof error
+                                                     )
+                                                   : NULL;
+    failures += check(document != NULL, error[0] ? error : "system document loads");
+    char *saved_document = document
+                             ? game_system_document_save(document, resolve_component, component_name, NULL)
+                             : NULL;
+    failures += check(saved_document != NULL, "system document saves");
+    free(saved_document);
+    game_system_document_free(document);
+    free(document_json);
+    free(blueprint_json);
 
     ecs_query_expr_free(root);
     ecs_query_expr *unknown = ecs_query_expr_has(UINT64_C(0xffff));

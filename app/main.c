@@ -165,11 +165,7 @@ static int app_frame(app_loop *loop)
     cf_app_draw_onto_screen(true);
 
     if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&
-        app_recording_capture(
-            &loop->recording,
-            (CF_Canvas){ engine_viewport_canvas_id(loop->viewport) },
-            (float)seconds
-        ) != 0) {
+        app_recording_capture(&loop->recording, cf_app_get_canvas(), (float)seconds) != 0) {
         loop->capture_error = 1;
         fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop->recording));
         return 1;
@@ -356,15 +352,14 @@ int main(int argc, char **argv)
     if (recording_path && app_recording_start(
                               &loop.recording,
                               recording_virtual_path,
-                              engine_viewport_width(viewport),
-                              engine_viewport_height(viewport),
+                              cf_app_get_canvas_width(),
+                              cf_app_get_canvas_height(),
                               APP_RECORDING_FPS
                           ) != 0) {
         fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop.recording));
         app_cleanup(&loop);
         return 1;
     }
-    engine_viewport_set_resize_locked(viewport, recording_path != NULL);
 #ifdef __EMSCRIPTEN__
     /* Browser event processing must return to the browser between frames. */
     APP_LOOP_STATE = loop;

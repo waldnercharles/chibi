@@ -20,7 +20,7 @@ set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-    GIT_TAG        a13f4661f5ba27e8d45027b52f121c170478642
+    GIT_TAG        ad13c5ea7262fdede97a3a39c77eef3da286ebcf
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)

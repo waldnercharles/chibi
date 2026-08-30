@@ -526,6 +526,7 @@ static void run_ecs_checks(void)
     ecs_component_id position = 0;
     ecs_component_id health = 0;
     ecs_component_desc position_desc = {
+        .key = "ecs.Position",
         .name = "Position",
         .element_size = sizeof(ecs_position),
         .type = &g_ecs_position_type,
@@ -551,6 +552,13 @@ static void run_ecs_checks(void)
             registered->layout_hash == ecs_layout_hash(&g_ecs_position_type),
         "ECS-4: descriptor reports its stable column base and reflected layout "
         "hash"
+    );
+    ecs_component_desc duplicate_key = position_desc;
+    duplicate_key.id = 0;
+    duplicate_key.name = "RenamedPosition";
+    check(
+        ecs_world_register_component(world, &duplicate_key, NULL) == ECS_ERR_DUPLICATE,
+        "ECS-4: duplicate persistent component keys are rejected"
     );
 
     ecs_entity e1 = ecs_world_create_entity(world);
@@ -1617,7 +1625,8 @@ static const type_desc g_hot_health_v2_type = { "GameHealth",
                                                 3 };
 static ecs_component_desc g_hot_health_v2_component = {
     .id = 4594947644670299697ULL,
-    .name = "GameHealth",
+    .key = "game.GameHealth",
+    .name = "GameHealthV2",
     .element_size = sizeof(hot_health_v2),
     .type = &g_hot_health_v2_type,
     .layout_hash = 0,
@@ -1705,6 +1714,12 @@ static void run_hot_reload_checks(void)
             migrated->current == 75 && migrated->maximum == 100 && migrated->armor == 0,
         "HOT-4: layout hashes report changed components and HOT-5 migrates "
         "fields by name"
+    );
+    check(
+        ecs_world_component(world, g_hot_health_v2_component.id) &&
+            strcmp(ecs_world_component(world, g_hot_health_v2_component.id)->name, "GameHealthV2") ==
+                0,
+        "HOT-5: stable component identity permits a reflected rename"
     );
     check(
         blueprint_instance_tick(instance, 2.0) == FLOW_OK &&

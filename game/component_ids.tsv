@@ -1,5 +1,5 @@
-# file line id key current_name
-components.h 12 1376052968821171689 game.GameTransform GameTransform
-components.h 14 4594947644670299697 game.GameHealth GameHealth
-components.h 21 992505279072269918 game.GameMovement GameMovement
-components.h 27 194520663397847877 game.GameInput GameInput
+# file line id key current_name fingerprint aliases
+components.h 12 1376052968821171689 game.GameTransform GameTransform 12509057193377376126 -
+components.h 14 4594947644670299697 game.GameHealth GameHealth 12925661080887578070 -
+components.h 21 992505279072269918 game.GameMovement GameMovement 11124396295353598960 -
+components.h 27 194520663397847877 game.GameInput GameInput 12127342636814476452 -

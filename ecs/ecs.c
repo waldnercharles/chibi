@@ -167,7 +167,6 @@ uint64_t ecs_layout_hash(const type_desc *type)
         return 0;
     }
     uint64_t hash = UINT64_C(1469598103934665603);
-    hash = hash_string(hash, type->name);
     hash = hash_bytes(hash, &type->size, sizeof type->size);
     hash = hash_bytes(hash, &type->field_count, sizeof type->field_count);
     for (int i = 0; i < type->field_count; i++) {
@@ -429,6 +428,14 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     if (desc->id && find_component(world, desc->id)) {
         return ECS_ERR_DUPLICATE;
     }
+    if (desc->key) {
+        for (int i = 0; i < acount(world->components); i++) {
+            if (world->components[i].desc.key &&
+                strcmp(world->components[i].desc.key, desc->key) == 0) {
+                return ECS_ERR_DUPLICATE;
+            }
+        }
+    }
     ecs_component_id id = desc->id;
     if (!id) {
         id = 1;
@@ -495,7 +502,8 @@ int ecs_world_migrate_component(
                                  ? find_component(world, replacement->id)
                                  : NULL;
     if (!component || !replacement->type || !replacement->name ||
-        strcmp(component->desc.name, replacement->name) != 0 ||
+        (replacement->key && component->desc.key &&
+         strcmp(component->desc.key, replacement->key) != 0) ||
         replacement->element_size != replacement->type->size) {
         return ECS_ERR_ARGUMENT;
     }

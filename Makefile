@@ -34,7 +34,9 @@ format:
 check-format:
 	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target check-format
 
-test: build
+test:
+	cmake -S . -B $(BUILD_DIR)
+	cmake --build $(BUILD_DIR) --target test_suite
 	$(BUILD_DIR)/test_suite
 
 clean:

@@ -28,7 +28,7 @@ Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-
 ### Pull requests
 
 - Keep PR bodies concise; omit test verification command lists.
-- Attach a screenshot or video showing the app validated through computer-use.
+- For visually verifiable changes, attach a feature-specific screenshot or video showing the app validated through computer-use; non-visual changes use focused automated evidence instead.
 
 ### Domain docs
 

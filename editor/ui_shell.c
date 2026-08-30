@@ -10,10 +10,10 @@
 #undef IMGUI_STB_NAMESPACE
 #include <imgui/dcimgui_internal.h>
 
-#define UI_DOCKSPACE_ID ((ImGuiID)0x5e7a2d41u)
-#define UI_SYSTEM_RATIO 0.20f
-#define UI_ENTITY_RATIO 0.22f
-#define UI_SCENE_RATIO 0.34f
+#define UI_DOCKSPACE_ID ((ImGuiID)0x5e7a2d42u)
+#define UI_LEFT_RATIO 0.18f
+#define UI_RIGHT_RATIO 0.20f
+#define UI_BOTTOM_RATIO 0.25f
 
 enum
 {
@@ -621,11 +621,11 @@ static ImGuiViewport ui_layout_viewport(void)
 static void ui_build_default_layout(void)
 {
     ImGuiViewport layout = ui_layout_viewport();
-    ImGuiID system;
+    ImGuiID left;
     ImGuiID rest;
-    ImGuiID entity;
+    ImGuiID right;
     ImGuiID center;
-    ImGuiID scene;
+    ImGuiID bottom;
     ImGuiID canvas;
 
     if (ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID)) {
@@ -634,13 +634,15 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderAddNodeEx(UI_DOCKSPACE_ID, ImGuiDockNodeFlags_DockSpace);
     ImGui_DockBuilderSetNodePos(UI_DOCKSPACE_ID, layout.WorkPos);
     ImGui_DockBuilderSetNodeSize(UI_DOCKSPACE_ID, layout.WorkSize);
-    ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_SYSTEM_RATIO, &system, &rest);
-    ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_ENTITY_RATIO, &entity, &center);
-    ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_SCENE_RATIO, &scene, &canvas);
-    ImGui_DockBuilderDockWindow("System", system);
-    ImGui_DockBuilderDockWindow("Entity", entity);
-    ImGui_DockBuilderDockWindow("Scene", scene);
+    ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_LEFT_RATIO, &left, &rest);
+    ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_RIGHT_RATIO, &right, &center);
+    ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &canvas);
+    ImGui_DockBuilderDockWindow("World Outliner", left);
+    ImGui_DockBuilderDockWindow("Inspector", right);
+    ImGui_DockBuilderDockWindow("Output Log", bottom);
+    ImGui_DockBuilderDockWindow("Compiler Results", bottom);
     ImGui_DockBuilderDockWindow("Node Canvas", canvas);
+    ImGui_DockBuilderDockWindow("Scene", canvas);
     editor_ui_set_content_drawer_open(false);
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
@@ -682,10 +684,13 @@ void editor_ui_prepare(void)
     ImGuiViewport layout = ui_layout_viewport();
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io->ConfigWindowsMoveFromTitleBarOnly = true;
-    if ((ui_reset_layout || !ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID)) &&
-        layout.WorkSize.x > 0.0f && layout.WorkSize.y > 0.0f) {
+    (void)ImGui_DockSpaceOverViewportEx(UI_DOCKSPACE_ID, &layout, ImGuiDockNodeFlags_None, NULL);
+    ImGuiDockNode *root = ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID);
+    bool empty = root && !root->ChildNodes[0] && !root->ChildNodes[1] &&
+                 root->Windows.Size == 0;
+    if ((ui_reset_layout || empty) && layout.WorkSize.x > 0.0f &&
+        layout.WorkSize.y > 0.0f) {
         ui_build_default_layout();
         ui_reset_layout = 0;
     }
-    (void)ImGui_DockSpaceOverViewportEx(UI_DOCKSPACE_ID, &layout, ImGuiDockNodeFlags_None, NULL);
 }

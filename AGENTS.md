@@ -1,17 +1,12 @@
-# c-blueprints agent rules
+### Coding Guidelines
 
-Spartan C. Less code is a feature: delete dead code and unused abstraction.
-
+- Less code is a feature: delete dead code and unused abstraction.
 - Flatten: guard clauses and early returns; no `else` after `return`/`break`.
 - Small single-purpose functions; minimal public surface and parameter count.
-- Fail fast: `assert` invalid state, no defensive `NULL` checks, abort on OOM via
-  `xmalloc`/`xrealloc`. Root-cause pointer bugs; never mask them.
-- Types: `int` for domain values and indices, `size_t` for sizes and size-taking
-  APIs, unsigned only for bit manipulation; `bool` not `int`.
-- No `(void)` on parameterless functions; omit the unused parameter name instead
-  of `(void)param`.
-- Use the shared vector (`apush`/`acount`/`afree`/`asetlen` from `core/array.h`),
-  not a hand-rolled grow-by-doubling.
+- Fail fast: `assert` invalid state, no defensive `NULL` checks, abort on out-of-memory via `xmalloc`/`xrealloc`. Root-cause pointer bugs; never mask them.
+- Types: `int` for domain values and indices, `size_t` for sizes and size-taking APIs, unsigned only for bit manipulation; `bool` not `int`.
+- No `(void)` on parameterless functions; omit the unused parameter name instead of `(void)param`.
+- Use the shared vector (`apush`/`acount`/`afree`/`asetlen` from `core/array.h`), not a hand-rolled grow-by-doubling.
 - `"local.h"` for project headers, `<sys.h>` for standard/third-party.
 - Keep ownership and lifetime explicit; `static` for file-private.
 - Prefer direct calls or `switch` over function-pointer tables and indirection.
@@ -19,7 +14,6 @@ Spartan C. Less code is a feature: delete dead code and unused abstraction.
 - Name magic numbers and invariants (`#define`/`enum`/`static const`).
 - New nodes must be added to the appropriate registry pack and every UI context
   allowlist/filter; verify they are discoverable by name in the spawn menu.
-- UI/UX changes: run `build/app --headless --screenshot`, inspect `/tmp/c-blueprints-screenshot.png`, and report the captured dimensions. Use `--frames N` when a longer settle period is needed.
 
 ## Agent skills
 

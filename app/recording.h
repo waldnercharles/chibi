@@ -18,6 +18,9 @@ typedef struct
     int height;
     int frames;
     float click_timer;
+    float cursor_x;
+    float cursor_y;
+    bool cursor_initialized;
     app_recording_state state;
     char error[256];
 } app_recording;

@@ -13,6 +13,7 @@
 #include "web_loop.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -131,9 +132,19 @@ static void draw_recording_cursor(app_loop *loop, float seconds)
         loop->recording.click_timer = 0.35f;
     }
     loop->recording.click_timer -= seconds;
-    float x = cf_mouse_x() - (float)cf_app_get_canvas_width() * 0.5f;
-    float y = (float)cf_app_get_canvas_height() * 0.5f - cf_mouse_y();
-    float size = loop->recording.click_timer > 0.0f ? 28.0f : 18.0f;
+    float target_x = cf_mouse_x() - (float)cf_app_get_canvas_width() * 0.5f;
+    float target_y = (float)cf_app_get_canvas_height() * 0.5f - cf_mouse_y();
+    if (!loop->recording.cursor_initialized) {
+        loop->recording.cursor_x = target_x;
+        loop->recording.cursor_y = target_y;
+        loop->recording.cursor_initialized = true;
+    }
+    float follow = 1.0f - expf(-12.0f * seconds);
+    loop->recording.cursor_x += (target_x - loop->recording.cursor_x) * follow;
+    loop->recording.cursor_y += (target_y - loop->recording.cursor_y) * follow;
+    float x = loop->recording.cursor_x;
+    float y = loop->recording.cursor_y;
+    float size = 18.0f;
     cf_draw_push_color((app_cf_color){ 1.0f, 0.75f, 0.1f, 1.0f });
     cf_draw_quad_fill(
         (app_cf_aabb){ { x - size * 0.5f, y - 1.5f }, { x + size * 0.5f, y + 1.5f } },
@@ -144,7 +155,8 @@ static void draw_recording_cursor(app_loop *loop, float seconds)
         0.0f
     );
     if (loop->recording.click_timer > 0.0f) {
-        cf_draw_circle((app_cf_circle){ { x, y }, 24.0f }, 3.0f);
+        float ring = 24.0f + (0.35f - loop->recording.click_timer) * 28.0f;
+        cf_draw_circle((app_cf_circle){ { x, y }, ring }, 3.0f);
     }
     cf_draw_pop_color();
 }

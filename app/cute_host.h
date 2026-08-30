@@ -115,9 +115,15 @@ typedef struct
 {
     float r, g, b, a;
 } app_cf_color;
+typedef struct
+{
+    app_cf_v2 p;
+    float r;
+} app_cf_circle;
 void cf_draw_push_color(app_cf_color color);
 app_cf_color cf_draw_pop_color(void);
 void cf_draw_quad_fill(app_cf_aabb bounds, float chubbiness);
+void cf_draw_circle(app_cf_circle circle, float thickness);
 CF_Result cf_image_save_png_to_memory(CF_Image *image, void **data, int *size);
 void cf_free(void *ptr);
 const char *cf_fs_get_working_directory(void);

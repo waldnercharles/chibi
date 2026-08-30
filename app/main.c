@@ -143,6 +143,9 @@ static void draw_recording_cursor(app_loop *loop, float seconds)
         (app_cf_aabb){ { x - 1.5f, y - size * 0.5f }, { x + 1.5f, y + size * 0.5f } },
         0.0f
     );
+    if (loop->recording.click_timer > 0.0f) {
+        cf_draw_circle((app_cf_circle){ { x, y }, 24.0f }, 3.0f);
+    }
     cf_draw_pop_color();
 }
 

@@ -30,13 +30,13 @@ static game_live_definition *find_definition(game_live_world *world, const char 
     return NULL;
 }
 
-game_live_definition *game_live_definition_new(const char *asset_name, blueprint *working)
+game_live_definition *game_live_definition_new(const char *asset_name, behavior_asset *working)
 {
     if (!asset_name || !asset_name[0] || !working) {
         return NULL;
     }
-    char *json = blueprint_save_json(working);
-    blueprint *applied = json ? blueprint_load_json(json) : NULL;
+    char *json = behavior_asset_save_json(working);
+    behavior_asset *applied = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!applied) {
         return NULL;
@@ -54,8 +54,8 @@ void game_live_definition_free(game_live_definition *definition)
     if (!definition) {
         return;
     }
-    blueprint_free(definition->working);
-    blueprint_free(definition->applied);
+    behavior_asset_free(definition->working);
+    behavior_asset_free(definition->applied);
     compile_report_free(&definition->diagnostics);
     free(definition->name);
     free(definition->path);
@@ -96,18 +96,18 @@ game_live_definition *game_live_definition_at(game_live_world *world, int index)
     return world->definitions[index];
 }
 
-int game_live_sync_working(game_live_definition *definition, const blueprint *source)
+int game_live_sync_working(game_live_definition *definition, const behavior_asset *source)
 {
     if (!definition || !source) {
         return -1;
     }
-    char *json = blueprint_save_json(source);
-    blueprint *copy = json ? blueprint_load_json(json) : NULL;
+    char *json = behavior_asset_save_json(source);
+    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!copy) {
         return -1;
     }
-    blueprint_free(definition->working);
+    behavior_asset_free(definition->working);
     definition->working = copy;
     definition->dirty = 1;
     return 0;
@@ -115,7 +115,7 @@ int game_live_sync_working(game_live_definition *definition, const blueprint *so
 
 int game_live_mark_dirty(game_live_definition *definition)
 {
-    if (!definition || !blueprint_mutable(definition->working)) {
+    if (!definition || !behavior_asset_mutable(definition->working)) {
         return -1;
     }
     definition->dirty = 1;
@@ -170,20 +170,20 @@ int game_live_add_definition(game_live_world *world, game_live_definition *defin
     return 0;
 }
 
-int game_live_duplicate_definition(game_live_world *world, const char *asset_name, const blueprint *source)
+int game_live_duplicate_definition(game_live_world *world, const char *asset_name, const behavior_asset *source)
 {
     if (!world || !asset_name || !asset_name[0] || !source ||
         find_definition(world, asset_name)) {
         return -1;
     }
-    char *json = blueprint_save_json(source);
-    blueprint *working = json ? blueprint_load_json(json) : NULL;
+    char *json = behavior_asset_save_json(source);
+    behavior_asset *working = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     game_live_definition *definition = working
                                          ? game_live_definition_new(asset_name, working)
                                          : NULL;
     if (!definition) {
-        blueprint_free(working);
+        behavior_asset_free(working);
         return -1;
     }
     if (game_live_add_definition(world, definition) != 0) {
@@ -203,8 +203,8 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
         set_message(message, message_size, "definition has no unapplied edits");
         return 0;
     }
-    char *json = blueprint_save_json(definition->working);
-    blueprint *snapshot = json ? blueprint_load_json(json) : NULL;
+    char *json = behavior_asset_save_json(definition->working);
+    behavior_asset *snapshot = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!snapshot) {
         set_message(message, message_size, "working definition could not be loaded: %s", graph_last_error());
@@ -212,25 +212,25 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
     }
     compile_report_free(&definition->diagnostics);
     compile_report_init(&definition->diagnostics);
-    if (blueprint_compile(snapshot, &definition->diagnostics) != 0 &&
+    if (behavior_asset_compile(snapshot, &definition->diagnostics) != 0 &&
         compile_report_blocked(&definition->diagnostics)) {
         const compile_diagnostic *diagnostic = compile_report_first_error(
             &definition->diagnostics
         );
         set_message(message, message_size, "apply blocked: %s", diagnostic->message);
-        blueprint_free(snapshot);
+        behavior_asset_free(snapshot);
         return -1;
     }
-    blueprint *old = NULL;
+    behavior_asset *old = NULL;
     if (game_behavior_replace_asset(world->behaviors, definition->name, snapshot, &old) !=
         0) {
         set_message(message, message_size, "definition replacement failed");
-        blueprint_free(snapshot);
+        behavior_asset_free(snapshot);
         return -1;
     }
     definition->applied = snapshot;
     definition->dirty = 0;
-    blueprint_free(old);
+    behavior_asset_free(old);
     set_message(
         message,
         message_size,

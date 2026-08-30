@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "name": "Progression",
+  "kind": "progression",
+  "data": { "xp_per_enemy": 10, "xp_per_level": 100, "difficulty_scale": 1.1 },
+  "composition": ["Wave", "Enemy"]
+}

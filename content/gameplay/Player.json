@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "name": "Player",
+  "kind": "player",
+  "data": { "max_health": 100, "move_speed": 180, "fire_rate": 4 },
+  "composition": ["GameTransform", "GameMovement", "GameInput"]
+}

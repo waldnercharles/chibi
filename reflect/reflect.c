@@ -63,6 +63,7 @@ typedef struct
 {
     char *name;
     char *file; /* header basename where the definition lives */
+    unsigned line;
     field_info *fields;
     long long size;
     int component;
@@ -99,6 +100,289 @@ typedef struct
     struct_info *structs;
     fn_info *fns;
 } collect_ctx;
+
+typedef struct
+{
+    char *file;
+    unsigned line;
+    uint64_t id;
+    char *key;
+    char *name;
+    uint64_t fingerprint;
+    char *aliases;
+} component_identity;
+
+static component_identity *g_component_identities;
+static const char *g_manifest_path;
+static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size);
+static uint64_t hash_string(uint64_t hash, const char *text);
+static const char *component_key(const struct_info *s);
+
+static uint64_t declaration_fingerprint(const struct_info *s)
+{
+    uint64_t hash = UINT64_C(1469598103934665603);
+    hash = hash_bytes(hash, &s->size, sizeof s->size);
+    for (int i = 0; i < acount(s->fields); i++) {
+        const field_info *field = &s->fields[i];
+        hash = hash_string(hash, field->name);
+        hash = hash_string(hash, field->spelling);
+        hash = hash_bytes(hash, &field->offset, sizeof field->offset);
+        hash = hash_bytes(hash, &field->size, sizeof field->size);
+    }
+    return hash ? hash : 1;
+}
+
+static int alias_has(const char *aliases, const char *name)
+{
+    if (!aliases) {
+        return 0;
+    }
+    size_t length = strlen(name);
+    const char *at = aliases;
+    while (*at) {
+        if (strncmp(at, name, length) == 0 &&
+            (at[length] == '\0' || at[length] == '|')) {
+            return 1;
+        }
+        at = strchr(at, '|');
+        if (!at) {
+            break;
+        }
+        at++;
+    }
+    return 0;
+}
+
+static void add_alias(component_identity *identity, const char *name)
+{
+    if (!name || !name[0] || alias_has(identity->aliases, name)) {
+        return;
+    }
+    size_t old_size = identity->aliases ? strlen(identity->aliases) : 0;
+    size_t name_size = strlen(name);
+    char *aliases = (char *)
+        realloc(identity->aliases, old_size + name_size + (old_size ? 2 : 1));
+    if (!aliases) {
+        fprintf(stderr, "reflect: out of memory recording component alias\n");
+        g_failed = 1;
+        return;
+    }
+    if (old_size) {
+        aliases[old_size++] = '|';
+    }
+    memcpy(aliases + old_size, name, name_size + 1);
+    identity->aliases = aliases;
+}
+
+static int manifest_match(const struct_info *s)
+{
+    int found = -1;
+    uint64_t fingerprint = declaration_fingerprint(s);
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        component_identity *identity = &g_component_identities[i];
+        int match = (identity->fingerprint && identity->fingerprint == fingerprint) ||
+                    strcmp(identity->name, s->name) == 0 ||
+                    alias_has(identity->aliases, s->name) ||
+                    (identity->line == s->line && strcmp(identity->file, s->file) == 0);
+        if (!match) {
+            continue;
+        }
+        if (found >= 0 && g_component_identities[found].id != identity->id) {
+            fprintf(
+                stderr,
+                "reflect: ambiguous component identity for %s (manifest "
+                "entries %s and %s)\n",
+                s->name,
+                g_component_identities[found].name,
+                identity->name
+            );
+            g_failed = 1;
+            return -1;
+        }
+        found = i;
+    }
+    return found;
+}
+
+static uint64_t component_id(const struct_info *s)
+{
+    int index = manifest_match(s);
+    if (index >= 0) {
+        return g_component_identities[index].id;
+    }
+    return stable_service_id(component_key(s));
+}
+
+static const char *component_key(const struct_info *s)
+{
+    int index = manifest_match(s);
+    if (index >= 0) {
+        return g_component_identities[index].key;
+    }
+    static char key[256];
+    snprintf(key, sizeof key, "%s.%s", g_prefix, s->name);
+    return key;
+}
+
+static void load_component_manifest(const char *path)
+{
+    if (!path) {
+        return;
+    }
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        return;
+    }
+    char line[512];
+    while (fgets(line, sizeof line, file)) {
+        if (line[0] == '#' || line[0] == '\n') {
+            continue;
+        }
+        char file_name[256];
+        char key[128];
+        char name[128];
+        char fingerprint[64] = "0";
+        char aliases[256] = "";
+        unsigned line_number;
+        unsigned long long id;
+        int count = sscanf(
+            line,
+            "%255s %u %llu %127s %127s %63s %255s",
+            file_name,
+            &line_number,
+            &id,
+            key,
+            name,
+            fingerprint,
+            aliases
+        );
+        if (count < 5 || !id || (count >= 6 && !strtoull(fingerprint, NULL, 10))) {
+            fprintf(stderr, "reflect: invalid component manifest line: %s", line);
+            g_failed = 1;
+            continue;
+        }
+        apush(
+            g_component_identities,
+            (component_identity){
+                strdup(file_name),
+                line_number,
+                (uint64_t)id,
+                strdup(key),
+                strdup(name),
+                count >= 6 ? (uint64_t)strtoull(fingerprint, NULL, 10) : 0,
+                count >= 7 ? strdup(aliases) : NULL,
+            }
+        );
+    }
+    fclose(file);
+
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        for (int j = i + 1; j < acount(g_component_identities); j++) {
+            component_identity *left = &g_component_identities[i];
+            component_identity *right = &g_component_identities[j];
+            if (left->id == right->id && strcmp(left->key, right->key) != 0) {
+                fprintf(
+                    stderr,
+                    "reflect: duplicate component identity %llu for %s and "
+                    "%s\n",
+                    (unsigned long long)left->id,
+                    left->name,
+                    right->name
+                );
+                g_failed = 1;
+            }
+            if (strcmp(left->key, right->key) == 0 && left->id != right->id) {
+                fprintf(stderr, "reflect: duplicate component key %s\n", left->key);
+                g_failed = 1;
+            }
+        }
+    }
+}
+
+static void record_new_components(const collect_ctx *ctx)
+{
+    if (!g_manifest_path) {
+        return;
+    }
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        const struct_info *s = &ctx->structs[i];
+        if (!s->component) {
+            continue;
+        }
+        int index = manifest_match(s);
+        uint64_t fingerprint = declaration_fingerprint(s);
+        if (index < 0) {
+            char key[256];
+            snprintf(key, sizeof key, "%s.%s", g_prefix, s->name);
+            apush(
+                g_component_identities,
+                ((component_identity){ strdup(s->file),
+                                       s->line,
+                                       stable_service_id(key),
+                                       strdup(key),
+                                       strdup(s->name),
+                                       fingerprint,
+                                       NULL })
+            );
+            continue;
+        }
+        component_identity *identity = &g_component_identities[index];
+        if (strcmp(identity->name, s->name) != 0) {
+            add_alias(identity, identity->name);
+        }
+        free(identity->file);
+        free(identity->name);
+        identity->file = strdup(s->file);
+        identity->line = s->line;
+        identity->name = strdup(s->name);
+        identity->fingerprint = fingerprint;
+    }
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        const struct_info *left = &ctx->structs[i];
+        if (!left->component) {
+            continue;
+        }
+        for (int j = i + 1; j < acount(ctx->structs); j++) {
+            const struct_info *right = &ctx->structs[j];
+            if (right->component && component_id(left) == component_id(right)) {
+                fprintf(
+                    stderr,
+                    "reflect: duplicate component identity %llu for "
+                    "declarations %s and %s\n",
+                    (unsigned long long)component_id(left),
+                    left->name,
+                    right->name
+                );
+                g_failed = 1;
+            }
+        }
+    }
+    if (g_failed) {
+        return;
+    }
+    FILE *file = fopen(g_manifest_path, "w");
+    if (!file) {
+        fprintf(stderr, "reflect: could not update component manifest %s\n", g_manifest_path);
+        g_failed = 1;
+        return;
+    }
+    fputs("# file line id key current_name fingerprint aliases\n", file);
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        const component_identity *identity = &g_component_identities[i];
+        fprintf(
+            file,
+            "%s %u %llu %s %s %llu %s\n",
+            identity->file,
+            identity->line,
+            (unsigned long long)identity->id,
+            identity->key,
+            identity->name,
+            (unsigned long long)identity->fingerprint,
+            identity->aliases ? identity->aliases : "-"
+        );
+    }
+    fclose(file);
+}
 
 static char *cxstr(CXString s)
 {
@@ -341,6 +625,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
     struct_info s = { 0 };
     s.name = strdup(name);
     s.file = cursor_file_basename(c);
+    clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
     s.size = clang_Type_getSizeOf(underlying);
     s.component = component;
     s.dense = dense;
@@ -387,6 +672,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             struct_info s = { 0 };
             s.name = cxstr(clang_getCursorSpelling(c));
             s.file = cursor_file_basename(c);
+            clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
             s.size = clang_Type_getSizeOf(clang_getCursorType(c));
             s.component = is_component;
             s.dense = has_annotate(c, "node:component:index:dense");
@@ -1090,7 +1376,6 @@ static int pin_value_number(const char *pin)
 static uint64_t component_layout_hash(const struct_info *s)
 {
     uint64_t hash = UINT64_C(1469598103934665603);
-    hash = hash_string(hash, s->name);
     size_t size = (size_t)s->size;
     int field_count = acount(s->fields);
     hash = hash_bytes(hash, &size, sizeof size);
@@ -1114,9 +1399,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
     const char *name = s->name;
     fprintf(out, "static int __flow_%s_get_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Get requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(out, "    const %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
     fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
@@ -1127,19 +1412,23 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_set_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n    pin_value __input;\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n    pin_value __input;\n", out);
     fputs("    if (!__world || !__instance || flow_context_eval_data(ctx, 1, &__input) != FLOW_OK || !__input.ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set requires a value\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(out, "    %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
     fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    memcpy(__value, __input.ptr, sizeof(%s));\n", name);
+    fprintf(out, "    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
+    fprintf(out, "    __out->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
+    fputs("    if (!__out->ptr) return FLOW_ERR_NODE;\n", out);
+    fprintf(out, "    memcpy(__out->ptr, __value, sizeof(%s));\n", name);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 
     fprintf(out, "static int __flow_%s_has_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Has requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(
         out,
         "    pin_value *__out = flow_context_output_value(ctx, 1);\n    "
@@ -1152,30 +1441,22 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_add_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
-    fprintf(
-        out,
-        "    if (%s_%s_add(__world, __entity, 0) != ECS_OK) return "
-        "flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add failed\");\n",
-        g_prefix,
-        name
-    );
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
+    fprintf(out, "    int __added = 0;\n    if (!%s_%s_get(__world, __entity)) {\n", g_prefix, name);
+    fprintf(out, "        __added = %s_%s_add(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
+    fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __added };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 
     fprintf(out, "static int __flow_%s_remove_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
-    fprintf(
-        out,
-        "    if (%s_%s_remove(__world, __entity, 0) != ECS_OK) return "
-        "flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove failed\");\n",
-        g_prefix,
-        name
-    );
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
+    fprintf(out, "    int __removed = 0;\n    if (%s_%s_get(__world, __entity)) {\n", g_prefix, name);
+    fprintf(out, "        __removed = %s_%s_remove(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
+    fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __removed };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 }
 
@@ -1260,11 +1541,26 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
         name,
         name
     );
-    fprintf(out, "static pin_spec %s_%s_set_outputs[] = { { \"Then\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_set_outputs[] = { { \"Then\", PIN_FLOW, NULL, "
+        "PIN_EXEC }, { \"Value\", PIN_STRUCT, \"%s\" } };\n",
+        g_prefix,
+        name,
+        name
+    );
+    fprintf(out, "static pin_spec %s_%s_structural_outputs[] = { { \"Then\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_component_outputs[] = { { \"Then\", PIN_FLOW, "
+        "NULL, PIN_EXEC }, { \"Value\", PIN_BOOL, \"bool\" } };\n",
+        g_prefix,
+        name
+    );
     fprintf(
         out,
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
-        ".output_count = 1, .inputs = %s_%s_set_inputs, .outputs = "
+        ".output_count = 2, .inputs = %s_%s_set_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_set_%s, .type = &%s_T_%s, .access = &%s_%s_set_access "
         "};\n\n",
@@ -1310,8 +1606,8 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
     fprintf(
         out,
         "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
-        ".output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
-        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        ".output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_add_%s, .access = &%s_%s_structural_access };\n",
         g_prefix,
         name,
@@ -1328,8 +1624,8 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
     fprintf(
         out,
         "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
-        "1, .output_count = 1, .inputs = %s_%s_get_inputs, .outputs = "
-        "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
+        "1, .output_count = 2, .inputs = %s_%s_get_inputs, .outputs = "
+        "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_remove_%s, .access = &%s_%s_structural_access };\n\n",
         g_prefix,
         name,
@@ -1348,15 +1644,17 @@ static void emit_component_nodes_desc(FILE *out, const struct_info *s)
 static void emit_component_accessors(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
-    uint64_t id = stable_service_id(name);
+    uint64_t id = component_id(s);
     fprintf(
         out,
         "const ecs_component_desc %s_COMPONENT_%s = { .id = UINT64_C(%llu), "
-        ".name = \"%s\", .element_size = sizeof(%s), .type = &%s_T_%s, "
+        ".key = \"%s\", .name = \"%s\", .element_size = sizeof(%s), .type = "
+        "&%s_T_%s, "
         ".layout_hash = UINT64_C(%llu), .index = %s };\n",
         g_prefix,
         name,
         (unsigned long long)id,
+        component_key(s),
         name,
         name,
         g_prefix,
@@ -1705,13 +2003,14 @@ static void set_prefix(const char *source)
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix] [--include path ...]\n");
+        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix] [--manifest path] [--include path ...]\n");
         return 2;
     }
     const char *input = argv[1];
     const char *output = argv[2];
     int option = 3;
     const char *prefix = output;
+    const char *manifest = NULL;
     if (option < argc && strcmp(argv[option], "--include") != 0) {
         prefix = argv[option++];
     }
@@ -1727,10 +2026,20 @@ int main(int argc, char **argv)
     const char *args[32] = { "-x", "c", "-I", rootdir };
     int nargs = 4;
     while (option < argc) {
-        if (option + 1 >= argc || nargs + 2 > 32 ||
-            (strcmp(argv[option], "--include") != 0 &&
-             strcmp(argv[option], "--sysroot") != 0)) {
+        if (option + 1 >= argc || (strcmp(argv[option], "--include") != 0 &&
+                                   strcmp(argv[option], "--sysroot") != 0 &&
+                                   strcmp(argv[option], "--manifest") != 0)) {
             fprintf(stderr, "reflect: invalid include option\n");
+            clang_disposeIndex(idx);
+            return 2;
+        }
+        if (strcmp(argv[option], "--manifest") == 0) {
+            manifest = argv[option + 1];
+            option += 2;
+            continue;
+        }
+        if (nargs + 2 > 32) {
+            fprintf(stderr, "reflect: too many include options\n");
             clang_disposeIndex(idx);
             return 2;
         }
@@ -1758,7 +2067,15 @@ int main(int argc, char **argv)
     }
 
     collect_ctx ctx = { NULL, NULL };
+    g_manifest_path = manifest;
+    load_component_manifest(manifest);
     clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, &ctx);
+    if (g_failed) {
+        clang_disposeTranslationUnit(tu);
+        clang_disposeIndex(idx);
+        return 1;
+    }
+    record_new_components(&ctx);
     if (g_failed) {
         clang_disposeTranslationUnit(tu);
         clang_disposeIndex(idx);

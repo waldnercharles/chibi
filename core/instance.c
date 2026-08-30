@@ -1,5 +1,5 @@
-/* core/instance.c -- persistent Blueprint instances and the activation
- * scheduler (ADR 0011). An instance owns variable storage, per-node scratch,
+/* core/instance.c -- persistent Behavior Asset instances and the activation
+ * scheduler. An instance owns variable storage, per-node scratch,
  * an optional owner handle, and the ready/suspended activations that belong
  * to it. Activations are flow_run values created instance-owned: they never
  * acquire or release the definition's mutation guard, which the instance
@@ -20,18 +20,18 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
     }
 }
 
-/* RUN-12: refuse to start when the blueprint has compile errors, reporting
+/* RUN-12: refuse to start when the behavior_asset has compile errors, reporting
  * the first blocking diagnostic (CMPL-16 order). The report is cached per
  * instance and rebuilt whenever the topology revision moves, so it stays
  * correct across edits. Messages point into the cached report and remain
  * valid for the instance's lifetime. */
-static int instance_blocked(blueprint_instance *bi, flow_error *error)
+static int instance_blocked(behavior_instance *bi, flow_error *error)
 {
     unsigned long long rev = graph_topology_revision(bi->bp->graph);
     if (bi->compile_revision != rev) {
         compile_report_free(&bi->compile);
         compile_report_init(&bi->compile);
-        blueprint_compile(bi->bp, &bi->compile);
+        behavior_asset_compile(bi->bp, &bi->compile);
         bi->compile_revision = rev;
     }
     if (!compile_report_blocked(&bi->compile)) {
@@ -42,7 +42,7 @@ static int instance_blocked(blueprint_instance *bi, flow_error *error)
     return 1;
 }
 
-static char *instance_own_str(blueprint_instance *bi, const char *s)
+static char *instance_own_str(behavior_instance *bi, const char *s)
 {
     if (!s) {
         return NULL;
@@ -52,7 +52,7 @@ static char *instance_own_str(blueprint_instance *bi, const char *s)
     return copy;
 }
 
-static void instance_clear_values(blueprint_instance *bi)
+static void instance_clear_values(behavior_instance *bi)
 {
     for (int i = 0; i < bi->variable_count; i++) {
         if (bi->variables[i].container >= PIN_CONTAINER_ARRAY) {
@@ -65,7 +65,7 @@ static void instance_clear_values(blueprint_instance *bi)
     aclear(bi->strings);
 }
 
-static void instance_init_values(blueprint_instance *bi)
+static void instance_init_values(behavior_instance *bi)
 {
     int count = acount(bi->bp->variables);
     instance_clear_values(bi);
@@ -93,7 +93,7 @@ static void instance_init_values(blueprint_instance *bi)
     }
 }
 
-static void instance_set_owner(blueprint_instance *bi, const pin_value *owner)
+static void instance_set_owner(behavior_instance *bi, const pin_value *owner)
 {
     bi->owner = (pin_value){ .type = PIN_FLOW };
     if (bi->bp->owner_type_name) {
@@ -105,7 +105,7 @@ static void instance_set_owner(blueprint_instance *bi, const pin_value *owner)
     }
 }
 
-static void instance_trace_clear(blueprint_instance *bi)
+static void instance_trace_clear(behavior_instance *bi)
 {
     for (int i = 0; i < acount(bi->trace); i++) {
         free(bi->trace[i].event_name);
@@ -113,23 +113,23 @@ static void instance_trace_clear(blueprint_instance *bi)
     aclear(bi->trace);
 }
 
-static void instance_trace_push(blueprint_instance *bi, const flow_run *run, const flow_traversal *traversal)
+static void instance_trace_push(behavior_instance *bi, const flow_run *run, const flow_traversal *traversal)
 {
     if (!bi->trace_enabled) {
         return;
     }
-    if (acount(bi->trace) == BLUEPRINT_INSTANCE_TRACE_MAX) {
+    if (acount(bi->trace) == BEHAVIOR_ASSET_INSTANCE_TRACE_MAX) {
         free(bi->trace[0].event_name);
         memmove(
             bi->trace,
             bi->trace + 1,
-            (size_t)(BLUEPRINT_INSTANCE_TRACE_MAX - 1) * sizeof *bi->trace
+            (size_t)(BEHAVIOR_ASSET_INSTANCE_TRACE_MAX - 1) * sizeof *bi->trace
         );
-        asetlen(bi->trace, BLUEPRINT_INSTANCE_TRACE_MAX - 1);
+        asetlen(bi->trace, BEHAVIOR_ASSET_INSTANCE_TRACE_MAX - 1);
     }
     const node *current = flow_run_current_node(run);
     const flow_error *error = flow_run_error(run);
-    blueprint_instance_trace_entry entry = {
+    behavior_instance_trace_entry entry = {
         .traversal = traversal ? *traversal : (flow_traversal){
             .timestamp = bi->current_time,
         },
@@ -141,7 +141,7 @@ static void instance_trace_push(blueprint_instance *bi, const flow_run *run, con
     apush(bi->trace, entry);
 }
 
-static void instance_trace_run(blueprint_instance *bi, const flow_run *run)
+static void instance_trace_run(behavior_instance *bi, const flow_run *run)
 {
     int count = 0;
     const flow_traversal *traversals = flow_run_traversals(run, &count);
@@ -157,7 +157,7 @@ static void instance_trace_run(blueprint_instance *bi, const flow_run *run)
 /* Run the scheduler until no activation can make progress: at most one
  * activation runs at a time, and the next ready activation is the oldest
  * non-terminal one (FIFO by dispatch sequence, EXEC-17). */
-static int scheduler_pump(blueprint_instance *bi)
+static int scheduler_pump(behavior_instance *bi)
 {
     int result = FLOW_OK;
     for (;;) {
@@ -176,8 +176,8 @@ static int scheduler_pump(blueprint_instance *bi)
     return result;
 }
 
-blueprint_instance *blueprint_instance_create(
-    blueprint *bp,
+behavior_instance *behavior_instance_create(
+    behavior_asset *bp,
     const pin_value *owner,
     flow_clock_fn now,
     void *now_user
@@ -186,7 +186,7 @@ blueprint_instance *blueprint_instance_create(
     if (!bp) {
         return NULL;
     }
-    blueprint_instance *bi = (blueprint_instance *)xcalloc(1, sizeof *bi);
+    behavior_instance *bi = (behavior_instance *)xcalloc(1, sizeof *bi);
     bi->bp = bp;
     bi->next_delegate_id = 1;
     bi->alive = 1;
@@ -202,7 +202,7 @@ blueprint_instance *blueprint_instance_create(
     return bi;
 }
 
-static node *instance_event_by_id(blueprint_instance *bi, uint64_t event_id)
+static node *instance_event_by_id(behavior_instance *bi, uint64_t event_id)
 {
     if (!bi || !bi->alive) {
         return NULL;
@@ -216,7 +216,7 @@ static node *instance_event_by_id(blueprint_instance *bi, uint64_t event_id)
     return NULL;
 }
 
-static blueprint_delegate_binding *find_delegate(blueprint_instance *source, uint64_t id, int *index)
+static behavior_delegate_binding *find_delegate(behavior_instance *source, uint64_t id, int *index)
 {
     if (!source) {
         return NULL;
@@ -232,7 +232,7 @@ static blueprint_delegate_binding *find_delegate(blueprint_instance *source, uin
     return NULL;
 }
 
-static void remove_incoming_ref(blueprint_instance *target, blueprint_instance *source, uint64_t id)
+static void remove_incoming_ref(behavior_instance *target, behavior_instance *source, uint64_t id)
 {
     if (!target) {
         return;
@@ -246,7 +246,7 @@ static void remove_incoming_ref(blueprint_instance *target, blueprint_instance *
     }
 }
 
-static int delegate_signature_matches(const blueprint_delegate_binding *binding, const node *event)
+static int delegate_signature_matches(const behavior_delegate_binding *binding, const node *event)
 {
     int count = 0;
     for (int i = 0; i < event->output_count; i++) {
@@ -275,7 +275,7 @@ static int delegate_signature_matches(const blueprint_delegate_binding *binding,
     return 1;
 }
 
-int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act)
+int behavior_instance_remove_activation(behavior_instance *bi, flow_run *act)
 {
     if (!bi || !act) {
         return -1;
@@ -289,7 +289,7 @@ int blueprint_instance_remove_activation(blueprint_instance *bi, flow_run *act)
     return -1;
 }
 
-int blueprint_instance_rebind(blueprint_instance *bi, const pin_value *owner)
+int behavior_instance_rebind(behavior_instance *bi, const pin_value *owner)
 {
     if (!bi || !bi->alive || acount(bi->activations)) {
         return -1;
@@ -300,7 +300,7 @@ int blueprint_instance_rebind(blueprint_instance *bi, const pin_value *owner)
     return 0;
 }
 
-void blueprint_instance_set_trace_enabled(blueprint_instance *bi, int enabled)
+void behavior_instance_set_trace_enabled(behavior_instance *bi, int enabled)
 {
     if (bi) {
         bi->trace_enabled = enabled != 0;
@@ -310,7 +310,7 @@ void blueprint_instance_set_trace_enabled(blueprint_instance *bi, int enabled)
     }
 }
 
-int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled)
+int behavior_instance_set_activation_pool(behavior_instance *bi, int enabled)
 {
     if (!bi || !bi->alive || acount(bi->activations)) {
         return -1;
@@ -327,9 +327,9 @@ int blueprint_instance_set_activation_pool(blueprint_instance *bi, int enabled)
     return 0;
 }
 
-int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act)
+int behavior_instance_release_activation(behavior_instance *bi, flow_run *act)
 {
-    if (!bi || !act || blueprint_instance_remove_activation(bi, act) != 0) {
+    if (!bi || !act || behavior_instance_remove_activation(bi, act) != 0) {
         return -1;
     }
     instance_trace_run(bi, act);
@@ -345,7 +345,7 @@ int blueprint_instance_release_activation(blueprint_instance *bi, flow_run *act)
     return 0;
 }
 
-const blueprint_instance_trace_entry *blueprint_instance_trace(const blueprint_instance *bi, int *count)
+const behavior_instance_trace_entry *behavior_instance_trace(const behavior_instance *bi, int *count)
 {
     if (count) {
         *count = bi ? acount(bi->trace) : 0;
@@ -353,14 +353,14 @@ const blueprint_instance_trace_entry *blueprint_instance_trace(const blueprint_i
     return bi ? bi->trace : NULL;
 }
 
-static void instance_detach_bindings(blueprint_instance *bi)
+static void instance_detach_bindings(behavior_instance *bi)
 {
     /* EVT-14: detach weak incoming and outgoing bindings before releasing the
      * target instance. No callback can observe this instance afterward. */
     while (acount(bi->delegate_incoming)) {
-        blueprint_delegate_ref ref = bi->delegate_incoming[acount(bi->delegate_incoming) - 1];
+        behavior_delegate_ref ref = bi->delegate_incoming[acount(bi->delegate_incoming) - 1];
         adel(bi->delegate_incoming, acount(bi->delegate_incoming) - 1);
-        blueprint_instance_unbind_event(ref.source, ref.binding_id);
+        behavior_instance_unbind_event(ref.source, ref.binding_id);
     }
     for (int i = 0; i < acount(bi->delegates); i++) {
         remove_incoming_ref(bi->delegates[i].target, bi, bi->delegates[i].id);
@@ -369,7 +369,7 @@ static void instance_detach_bindings(blueprint_instance *bi)
     afree(bi->delegate_incoming);
 }
 
-int blueprint_instance_pool_release(blueprint_instance *bi)
+int behavior_instance_pool_release(behavior_instance *bi)
 {
     if (!bi) {
         return -1;
@@ -397,9 +397,9 @@ int blueprint_instance_pool_release(blueprint_instance *bi)
     return 0;
 }
 
-blueprint_instance *blueprint_instance_pool_reuse(
-    blueprint_instance *bi,
-    blueprint *bp,
+behavior_instance *behavior_instance_pool_reuse(
+    behavior_instance *bi,
+    behavior_asset *bp,
     const pin_value *owner,
     flow_clock_fn now,
     void *now_user
@@ -420,12 +420,12 @@ blueprint_instance *blueprint_instance_pool_reuse(
     return bi;
 }
 
-void blueprint_instance_destroy(blueprint_instance *bi)
+void behavior_instance_destroy(behavior_instance *bi)
 {
     if (!bi) {
         return;
     }
-    blueprint_instance_pool_release(bi);
+    behavior_instance_pool_release(bi);
     for (int i = 0; i < acount(bi->activation_pool); i++) {
         flow_run_free(bi->activation_pool[i]);
     }
@@ -444,7 +444,7 @@ void blueprint_instance_destroy(blueprint_instance *bi)
     free(bi);
 }
 
-uint64_t blueprint_instance_bind_event(blueprint_instance *source, blueprint_instance *target, uint64_t event_id)
+uint64_t behavior_instance_bind_event(behavior_instance *source, behavior_instance *target, uint64_t event_id)
 {
     if (!source || !target || !source->alive || !target->alive || source == target) {
         return 0;
@@ -459,9 +459,9 @@ uint64_t blueprint_instance_bind_event(blueprint_instance *source, blueprint_ins
             return source->delegates[i].id;
         }
     }
-    blueprint_delegate_binding binding = { .id = source->next_delegate_id++,
-                                           .target = target,
-                                           .event_id = event_id };
+    behavior_delegate_binding binding = { .id = source->next_delegate_id++,
+                                          .target = target,
+                                          .event_id = event_id };
     for (int i = 0; i < event->output_count; i++) {
         const pin_spec *p = &event->output_pins[i];
         if (p->kind != PIN_DATA) {
@@ -472,14 +472,14 @@ uint64_t blueprint_instance_bind_event(blueprint_instance *source, blueprint_ins
         apush(binding.type_names, p->type_name);
     }
     apush(source->delegates, binding);
-    apush(target->delegate_incoming, (blueprint_delegate_ref){ source, binding.id });
+    apush(target->delegate_incoming, (behavior_delegate_ref){ source, binding.id });
     return binding.id;
 }
 
-int blueprint_instance_unbind_event(blueprint_instance *source, uint64_t binding_id)
+int behavior_instance_unbind_event(behavior_instance *source, uint64_t binding_id)
 {
     int index = -1;
-    blueprint_delegate_binding *binding = find_delegate(source, binding_id, &index);
+    behavior_delegate_binding *binding = find_delegate(source, binding_id, &index);
     if (!binding) {
         return -1;
     }
@@ -491,15 +491,15 @@ int blueprint_instance_unbind_event(blueprint_instance *source, uint64_t binding
     return 0;
 }
 
-flow_run *blueprint_instance_dispatch_delegate(
-    blueprint_instance *source,
+flow_run *behavior_instance_dispatch_delegate(
+    behavior_instance *source,
     uint64_t binding_id,
     flow_inputs inputs,
     flow_error *error
 )
 {
     set_error(error, FLOW_OK, NULL, NULL);
-    blueprint_delegate_binding *binding = find_delegate(source, binding_id, NULL);
+    behavior_delegate_binding *binding = find_delegate(source, binding_id, NULL);
     if (!binding || !binding->target || !binding->target->alive) {
         set_error(error, FLOW_ERR_INVALID_GRAPH, NULL, "delegate target is unavailable");
         return NULL;
@@ -529,10 +529,10 @@ flow_run *blueprint_instance_dispatch_delegate(
         }
         at++;
     }
-    return blueprint_instance_dispatch(binding->target, event->reference_name, inputs, error);
+    return behavior_instance_dispatch(binding->target, event->reference_name, inputs, error);
 }
 
-int blueprint_instance_bind_service(blueprint_instance *bi, const char *type_name, void *value)
+int behavior_instance_bind_service(behavior_instance *bi, const char *type_name, void *value)
 {
     if (!bi || !bi->alive || !type_name || !type_name[0]) {
         return -1;
@@ -547,7 +547,7 @@ int blueprint_instance_bind_service(blueprint_instance *bi, const char *type_nam
     return 0;
 }
 
-void *blueprint_instance_service(const blueprint_instance *bi, const char *type_name)
+void *behavior_instance_service(const behavior_instance *bi, const char *type_name)
 {
     if (!bi || !bi->alive || !type_name) {
         return NULL;
@@ -560,8 +560,8 @@ void *blueprint_instance_service(const blueprint_instance *bi, const char *type_
     return NULL;
 }
 
-int blueprint_instance_broadcast_event(
-    blueprint_instance *source,
+int behavior_instance_broadcast_event(
+    behavior_instance *source,
     uint64_t event_id,
     flow_inputs inputs,
     flow_error *error
@@ -581,7 +581,7 @@ int blueprint_instance_broadcast_event(
         if (!find_delegate(source, snapshot[i], NULL)) {
             continue;
         }
-        if (blueprint_instance_dispatch_delegate(source, snapshot[i], inputs, error)) {
+        if (behavior_instance_dispatch_delegate(source, snapshot[i], inputs, error)) {
             dispatched++;
         }
     }
@@ -589,7 +589,7 @@ int blueprint_instance_broadcast_event(
     return dispatched;
 }
 
-flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_inputs inputs, flow_error *error)
+flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inputs inputs, flow_error *error)
 {
     if (!bi || !entry) {
         set_error(error, FLOW_ERR_ARGUMENT, entry, "invalid activation entry");
@@ -603,6 +603,7 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
         .now = bi->now,
         .now_user = bi->now_user,
         .initial_time = bi->current_time,
+        .delta_seconds = bi->delta_seconds,
         .sink = bi->sink,
         .sink_user = bi->sink_user,
         .event_name = entry->reference_name,
@@ -625,8 +626,8 @@ flow_run *blueprint_instance_enqueue(blueprint_instance *bi, node *entry, flow_i
     return act;
 }
 
-flow_run *blueprint_instance_dispatch(
-    blueprint_instance *bi,
+flow_run *behavior_instance_dispatch(
+    behavior_instance *bi,
     const char *name,
     flow_inputs inputs,
     flow_error *error
@@ -656,11 +657,11 @@ flow_run *blueprint_instance_dispatch(
     }
     /* RUN-12: checked after event lookup so unknown and duplicate dispatch
      * failures keep their distinct codes (EVT-7); a valid event on a broken
-     * blueprint reports the first blocking diagnostic. */
+     * behavior_asset reports the first blocking diagnostic. */
     if (instance_blocked(bi, error)) {
         return NULL;
     }
-    flow_run *act = blueprint_instance_enqueue(bi, found, inputs, error);
+    flow_run *act = behavior_instance_enqueue(bi, found, inputs, error);
     if (!act) {
         return NULL;
     }
@@ -668,7 +669,7 @@ flow_run *blueprint_instance_dispatch(
     return act;
 }
 
-int blueprint_instance_tick(blueprint_instance *bi, double now)
+int behavior_instance_tick(behavior_instance *bi, double now)
 {
     if (!bi) {
         return FLOW_ERR_ARGUMENT;
@@ -677,13 +678,13 @@ int blueprint_instance_tick(blueprint_instance *bi, double now)
     return scheduler_pump(bi);
 }
 
-int blueprint_instance_stop_activation(blueprint_instance *bi, flow_run *act)
+int behavior_instance_stop_activation(behavior_instance *bi, flow_run *act)
 {
     (void)bi;
     return flow_run_stop(act);
 }
 
-int blueprint_instance_get_variable(blueprint_instance *bi, uint64_t id, pin_value *out)
+int behavior_instance_get_variable(behavior_instance *bi, uint64_t id, pin_value *out)
 {
     if (!bi || !out) {
         return -1;
@@ -697,7 +698,7 @@ int blueprint_instance_get_variable(blueprint_instance *bi, uint64_t id, pin_val
     return -1;
 }
 
-int blueprint_instance_set_variable(blueprint_instance *bi, uint64_t id, const pin_value *value)
+int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin_value *value)
 {
     if (!bi || !value) {
         return -1;
@@ -721,13 +722,13 @@ int blueprint_instance_set_variable(blueprint_instance *bi, uint64_t id, const p
     return -1;
 }
 
-pin_value blueprint_instance_owner(const blueprint_instance *bi)
+pin_value behavior_instance_owner(const behavior_instance *bi)
 {
     return bi ? bi->owner : (pin_value){ .type = PIN_FLOW };
 }
 
-void blueprint_instance_set_parallel_for(
-    blueprint_instance *bi,
+void behavior_instance_set_parallel_for(
+    behavior_instance *bi,
     flow_parallel_for_fn parallel_for,
     void *parallel_user
 )
@@ -739,7 +740,14 @@ void blueprint_instance_set_parallel_for(
     bi->parallel_user = parallel_user;
 }
 
-void blueprint_instance_set_breakpoints_enabled(blueprint_instance *bi, int enabled)
+void behavior_instance_set_delta_seconds(behavior_instance *bi, double delta_seconds)
+{
+    if (bi) {
+        bi->delta_seconds = delta_seconds;
+    }
+}
+
+void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enabled)
 {
     if (!bi) {
         return;
@@ -748,7 +756,7 @@ void blueprint_instance_set_breakpoints_enabled(blueprint_instance *bi, int enab
     bi->breakpoints_enabled = enabled != 0;
 }
 
-int blueprint_instance_breakpoints_enabled(const blueprint_instance *bi)
+int behavior_instance_breakpoints_enabled(const behavior_instance *bi)
 {
     if (!bi || !bi->bp || !bi->bp->graph) {
         return 0;
@@ -757,7 +765,7 @@ int blueprint_instance_breakpoints_enabled(const blueprint_instance *bi)
                                     : bi->bp->graph->breakpoints_enabled != 0;
 }
 
-pin_value *blueprint_instance_scratch(blueprint_instance *bi, uint64_t node_id)
+pin_value *behavior_instance_scratch(behavior_instance *bi, uint64_t node_id)
 {
     for (int i = 0; i < acount(bi->scratch); i++) {
         if (bi->scratch[i].node_id == node_id) {

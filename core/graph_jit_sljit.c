@@ -540,6 +540,9 @@ static int call_kind(const graph_ir_instruction *instruction)
         case NODE_JIT_DIV: return 6;
         case NODE_JIT_MIN: return 7;
         case NODE_JIT_MAX: return 8;
+        case NODE_JIT_CLAMP: return 9;
+        case NODE_JIT_NEG: return 10;
+        case NODE_JIT_ABS: return 11;
         case NODE_JIT_V2_MOVE: return 4;
         default: return 0;
     }
@@ -689,6 +692,21 @@ static int register_instruction_supported(
                          left == SJLIT_VALUE_VEC2 && right == SJLIT_VALUE_VEC2) ||
                         (output == SJLIT_VALUE_F32 && left == SJLIT_VALUE_F32 &&
                          right == SJLIT_VALUE_F32));
+            }
+            if (kind == 9) {
+                sljit_value_kind bound = value_location_kind(
+                    &values[instruction->inputs[1]]
+                );
+                return instruction->input_count == 3 &&
+                       (output == SJLIT_VALUE_F32 || output == SJLIT_VALUE_VEC2) &&
+                       value_location_kind(&values[instruction->inputs[0]]) == output &&
+                       bound == output &&
+                       value_location_kind(&values[instruction->inputs[2]]) == output;
+            }
+            if (kind == 10 || kind == 11) {
+                return instruction->input_count == 1 &&
+                       (output == SJLIT_VALUE_F32 || output == SJLIT_VALUE_VEC2) &&
+                       value_location_kind(&values[instruction->inputs[0]]) == output;
             }
             if (kind == 4) {
                 return instruction->input_count == 3 && output == SJLIT_VALUE_VEC2 &&
@@ -994,6 +1012,12 @@ static int emit_minmax(sljit_builder *builder, int maximum, sljit_s32 output, sl
     return 0;
 }
 
+static int emit_clamp(sljit_builder *builder, sljit_s32 output, sljit_s32 value, sljit_s32 low, sljit_s32 high)
+{
+    return emit_minmax(builder, 0, output, value, high) ||
+           emit_minmax(builder, 1, output, output, low);
+}
+
 static int emit_register_instruction(
     sljit_register_builder *registers,
     const graph_ir_instruction *instruction,
@@ -1059,6 +1083,25 @@ static int emit_register_instruction(
                     instruction->output,
                     instruction->inputs[0]
                 );
+            }
+            if (kind == 10 || kind == 11) {
+                sljit_value_location output;
+                sljit_value_kind output_kind = value_location_kind(
+                    &values[instruction->output]
+                );
+                if (alloc_location(registers, output_kind, &output)) {
+                    return -1;
+                }
+                sljit_s32 op = kind == 10 ? SLJIT_NEG_F32 : SLJIT_ABS_F32;
+                const sljit_value_location
+                    *input = &registers->locations[instruction->inputs[0]];
+                if (emit_fop1(registers->builder, op, output.regs[0], 0, input->regs[0], 0) ||
+                    (output.kind == SJLIT_VALUE_VEC2 &&
+                     emit_fop1(registers->builder, op, output.regs[1], 0, input->regs[1], 0))) {
+                    return -1;
+                }
+                registers->locations[instruction->output] = output;
+                return 0;
             }
             if (kind == 2 && registers->simd) {
                 int add_index = registers->last_use[instruction->output];
@@ -1132,6 +1175,17 @@ static int emit_register_instruction(
                     output.regs[0],
                     input0->regs[0],
                     input1->regs[0]
+                );
+            }
+            if (output.kind == SJLIT_VALUE_F32 && kind == 9) {
+                const sljit_value_location
+                    *input2 = &registers->locations[instruction->inputs[2]];
+                return emit_clamp(
+                    registers->builder,
+                    output.regs[0],
+                    input0->regs[0],
+                    input1->regs[0],
+                    input2->regs[0]
                 );
             }
             if (output.kind == SJLIT_VALUE_F32) {
@@ -1238,6 +1292,25 @@ static int emit_register_instruction(
                         output.regs[1],
                         input0->regs[1],
                         input1->regs[1]
+                    )) {
+                    return -1;
+                }
+            } else if (kind == 9) {
+                const sljit_value_location
+                    *input2 = &registers->locations[instruction->inputs[2]];
+                if (emit_clamp(
+                        registers->builder,
+                        output.regs[0],
+                        input0->regs[0],
+                        input1->regs[0],
+                        input2->regs[0]
+                    ) ||
+                    emit_clamp(
+                        registers->builder,
+                        output.regs[1],
+                        input0->regs[1],
+                        input1->regs[1],
+                        input2->regs[1]
                     )) {
                     return -1;
                 }

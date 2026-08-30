@@ -22,6 +22,12 @@ static int node_desc_validate(const node_desc *d)
     }
     switch (d->pure_kind) {
         case NODE_PURE_CONST: break;
+        case NODE_PURE_DELTA:
+            if (d->input_count != 0 || d->output_count != 1 ||
+                d->outputs[0].type != PIN_F32) {
+                return 0;
+            }
+            break;
         case NODE_PURE_COPY:
             if (d->input_count != 1 || d->output_count != 1) {
                 return 0;

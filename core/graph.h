@@ -21,7 +21,7 @@ typedef enum
     GRAPH_MACRO,
 } graph_kind;
 
-typedef struct blueprint blueprint;
+typedef struct behavior_asset behavior_asset;
 
 typedef struct graph_comment_box
 {
@@ -33,6 +33,8 @@ typedef struct graph_comment_box
     char *title;
     uint32_t color;
 } graph_comment_box;
+
+#define GRAPH_EDGE_MAX_REROUTES 16
 
 typedef struct edge
 {
@@ -55,7 +57,7 @@ typedef struct edge
     {
         float x;
         float y;
-    } reroutes[16];
+    } reroutes[GRAPH_EDGE_MAX_REROUTES];
     /* Kept for compatibility with documents written by the first handle
      * prototype; new editing uses reroutes. */
     float from_handle_x;
@@ -70,7 +72,7 @@ typedef struct graph
     node **nodes;
     uint64_t graph_id;
     graph_kind kind;
-    blueprint *owner; /* borrowed; NULL for a standalone graph */
+    behavior_asset *owner; /* borrowed; NULL for a standalone graph */
     uint64_t entry_id;
     uint64_t return_id;
     int call_depth_limit;
@@ -80,7 +82,7 @@ typedef struct graph
     char **strings;
     void **blocks;
     uint64_t id_counter;
-    uint64_t *shared_id_counter; /* Blueprint graphs share one ID namespace. */
+    uint64_t *shared_id_counter; /* Behavior Asset graphs share one ID namespace. */
     char *name;
     char *description;
     unsigned long long topology_revision;

@@ -49,7 +49,7 @@ typedef struct
 struct flow_run
 {
     graph *graph;
-    blueprint_instance *instance; /* owning instance, or NULL standalone */
+    behavior_instance *instance; /* owning instance, or NULL standalone */
     int graph_guard_owned; /* 1 when this run holds graph_flow_pause itself */
     flow_state state;
     unsigned long step_budget;
@@ -683,6 +683,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->input_user_data = inputs.user_data;
     run->waiting_output = -1;
     eval_context_init(&run->eval);
+    run->eval.delta_seconds = options ? options->delta_seconds : 0.0;
     eval_context_attach_runtime(&run->eval, run->runtime);
     run->eval.instance = run->instance;
     run->eval.on_data_edge = record_evaluated_data_edge;
@@ -781,6 +782,7 @@ flow_run *flow_run_start_reuse(
     }
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
+    run->eval.delta_seconds = options ? options->delta_seconds : run->eval.delta_seconds;
     run->eval.instance = run->instance;
     run->eval.on_data_edge = record_evaluated_data_edge;
     run->eval.on_data_edge_user = run;
@@ -1044,6 +1046,11 @@ flow_state flow_run_status(const flow_run *run)
     return run ? run->state : FLOW_IDLE;
 }
 
+double flow_run_wake_time(const flow_run *run)
+{
+    return run ? run->wake_time : 0.0;
+}
+
 const flow_error *flow_run_error(const flow_run *run)
 {
     return run ? &run->error : NULL;
@@ -1163,7 +1170,7 @@ void flow_run_free(flow_run *run)
         return;
     }
     if (run->instance) {
-        blueprint_instance_remove_activation(run->instance, run);
+        behavior_instance_remove_activation(run->instance, run);
     }
     flow_run_reset(run);
     free(run);
@@ -1457,7 +1464,7 @@ flow_inputs flow_context_inputs(const struct flow_context *ctx)
                            : (flow_inputs){ NULL, 0, NULL };
 }
 
-blueprint_instance *flow_context_instance(const struct flow_context *ctx)
+behavior_instance *flow_context_instance(const struct flow_context *ctx)
 {
     return ctx && ctx->run ? ctx->run->instance : NULL;
 }

@@ -193,7 +193,8 @@ target_link_libraries(ecs PUBLIC core)
 
 # --- generated game component pack ------------------------------------------
 set(GAME_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/game_registry.c)
-set(GAME_REFLECT_ARGS --include ${cute_framework_SOURCE_DIR}/include)
+set(GAME_COMPONENT_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/game/component_ids.tsv)
+set(GAME_REFLECT_ARGS --manifest ${GAME_COMPONENT_MANIFEST} --include ${cute_framework_SOURCE_DIR}/include)
 if(LIBCLANG_RESOURCE_INCLUDE_DIR)
     list(APPEND GAME_REFLECT_ARGS --include ${LIBCLANG_RESOURCE_INCLUDE_DIR})
 endif()
@@ -211,11 +212,13 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/game/components.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/game/authored_data_types.h
+            ${GAME_COMPONENT_MANIFEST}
             ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/system.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
@@ -232,7 +235,7 @@ target_link_libraries(engine PUBLIC game ecs core cute)
 target_compile_definitions(engine PRIVATE ENGINE_CUTE_AVAILABLE=1 ENGINE_IMGUI_AVAILABLE=1)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 
-# --- demo nodes (real TUs; interface.h declares what Blueprints sees) ---
+# --- demo nodes (real TUs; interface.h declares what Behavior Assets sees) ---
 # demo/demo_nodes.c is reflect input, not a compiled TU, so it stays explicit.
 add_library(demo STATIC
     demo/vec3.c
@@ -283,7 +286,7 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
 list(REMOVE_ITEM APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/app/input_behavior.c
     ${CMAKE_CURRENT_SOURCE_DIR}/app/demo_graph.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/scene_authoring.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/movement_authoring.c
 )
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine game cute)
@@ -295,10 +298,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     )
 endif()
 
-# --- self-check: builds and evaluates small graphs, asserts outputs ---
-add_executable(self_check test/self_check.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
-target_include_directories(self_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(self_check PRIVATE engine game ecs demo)
+# --- test suite: consolidated headless regression checks --------------------
+add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
+target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_suite PRIVATE engine game ecs demo)
 
 # --- activation benchmark: headless per-instance event dispatch -------------
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
@@ -313,63 +316,11 @@ add_executable(system_benchmark test/system_benchmark.c ${APP_REGISTRY})
 target_include_directories(system_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(system_benchmark PRIVATE game ecs)
 
-# --- integration: headless pico_unit regression suite for the editor<->core
-# interaction path (test/integration.c). Core + demo + pico_unit only; no
-# cute/ImGui, so the suite runs without a window host.
-add_executable(editor_runtime_check test/editor_runtime_check.c ${BASE_REGISTRY})
-target_include_directories(editor_runtime_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(editor_runtime_check PRIVATE editor engine game ecs demo cute)
-set_target_properties(editor_runtime_check PROPERTIES LINKER_LANGUAGE CXX)
+add_executable(query_benchmark test/query_benchmark.c ${APP_REGISTRY})
+target_include_directories(query_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(query_benchmark PRIVATE game ecs)
 
-add_executable(prototype_authoring_check
-    test/prototype_authoring_check.c
-    app/scene_authoring.c
-    ${BASE_REGISTRY}
-)
-target_include_directories(prototype_authoring_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(prototype_authoring_check PRIVATE editor engine game ecs demo cute)
-set_target_properties(prototype_authoring_check PROPERTIES LINKER_LANGUAGE CXX)
-
-add_executable(input_behavior_check test/input_behavior_check.c ${APP_REGISTRY})
-target_include_directories(input_behavior_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(input_behavior_check PRIVATE engine game ecs demo cute)
-set_target_properties(input_behavior_check PROPERTIES LINKER_LANGUAGE CXX)
-
-add_executable(movement_system_check test/movement_system_check.c ${APP_REGISTRY})
-target_include_directories(movement_system_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(movement_system_check PRIVATE game ecs)
-set_target_properties(movement_system_check PROPERTIES LINKER_LANGUAGE CXX)
-
-add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c ${BASE_REGISTRY})
-target_include_directories(integration PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers
-)
-target_link_libraries(integration PRIVATE core demo)
-
-# --- consumer registry pack fixture ---------------------------------------
-set(CONSUMER_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/consumer_registry.c)
-# Pack order is the catalog and lookup order.
-set(CONSUMER_REGISTRY_PACKS ${BASE_REGISTRY_PACKS} CONSUMER_REGISTRY_PACK)
-add_custom_command(
-    OUTPUT ${CONSUMER_REGISTRY}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-            ${CONSUMER_REGISTRY}
-            ${CONSUMER_REGISTRY_PACKS}
-    DEPENDS ${GEN_REGISTRY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/consumer_pack.c
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-    COMMENT "Composing the consumer registry pack list"
-    VERBATIM
-)
-add_executable(registry_consumer
-    test/registry_consumer.c
-    test/consumer_pack.c
-    ${CONSUMER_REGISTRY}
-)
-target_include_directories(registry_consumer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(registry_consumer PRIVATE core demo)
+set_target_properties(query_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- clang-format (format runs before every build target) -------------------
 # The web toolchain's clang-format may not understand the project's native
@@ -413,16 +364,11 @@ if(CLANG_FORMAT)
   add_dependencies(demo format)
   add_dependencies(editor format)
   add_dependencies(app format)
-  add_dependencies(self_check format)
+  add_dependencies(test_suite format)
   add_dependencies(bench_activation format)
   add_dependencies(scene_benchmark format)
   add_dependencies(system_benchmark format)
-  add_dependencies(integration format)
-  add_dependencies(editor_runtime_check format)
-  add_dependencies(prototype_authoring_check format)
-  add_dependencies(input_behavior_check format)
-  add_dependencies(movement_system_check format)
-  add_dependencies(registry_consumer format)
+  add_dependencies(query_benchmark format)
   if(TARGET reflect)
     add_dependencies(reflect format)
   endif()

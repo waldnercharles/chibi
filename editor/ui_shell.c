@@ -64,6 +64,7 @@ static const struct
     [EDITOR_UI_ASSET_BEHAVIOR] = { UI_ASSET_GLYPH_BEHAVIOR, UI_ICON_BLUE, UI_ICON_BLUE_BG },
     [EDITOR_UI_ASSET_FOLDER] = { UI_ASSET_GLYPH_FOLDER, UI_ICON_FOLDER, UI_ICON_PURPLE_BG },
     [EDITOR_UI_ASSET_FILE] = { UI_ASSET_GLYPH_FILE, UI_TEXT_MUTED, UI_FRAME },
+    [EDITOR_UI_ASSET_SYSTEM] = { UI_ASSET_GLYPH_FILE, UI_ACCENT, UI_ICON_BLUE_BG },
 };
 static const float UI_SECTION_HEIGHT = 28.0f;
 static const float UI_SECTION_ACTION_SIZE = 22.0f;
@@ -98,7 +99,8 @@ void editor_ui_request_focus(editor_ui_focus_target target)
         target == EDITOR_UI_FOCUS_NONE || target == EDITOR_UI_FOCUS_SCENE ||
         target == EDITOR_UI_FOCUS_SCENE_RUNTIME || target == EDITOR_UI_FOCUS_NODE_CANVAS ||
         target == EDITOR_UI_FOCUS_CONTENT_DRAWER || target == EDITOR_UI_FOCUS_COMPONENTS ||
-        target == EDITOR_UI_FOCUS_MY_BLUEPRINT || target == EDITOR_UI_FOCUS_INSPECTOR ||
+        target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
+        target == EDITOR_UI_FOCUS_INSPECTOR ||
         target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
     );
     ui_focus_request = target;
@@ -110,7 +112,8 @@ bool editor_ui_take_focus(editor_ui_focus_target target)
         target == EDITOR_UI_FOCUS_SCENE || target == EDITOR_UI_FOCUS_SCENE_RUNTIME ||
         target == EDITOR_UI_FOCUS_NODE_CANVAS ||
         target == EDITOR_UI_FOCUS_CONTENT_DRAWER || target == EDITOR_UI_FOCUS_COMPONENTS ||
-        target == EDITOR_UI_FOCUS_MY_BLUEPRINT || target == EDITOR_UI_FOCUS_INSPECTOR ||
+        target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
+        target == EDITOR_UI_FOCUS_INSPECTOR ||
         target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
     );
     if (ui_focus_request != target) {
@@ -647,9 +650,9 @@ static void ui_draw_menu(void)
     if (!ImGui_BeginMainMenuBar()) {
         return;
     }
-    ImGui_TextColoredUnformatted(UI_ACCENT, "C Blueprints");
+    ImGui_TextColoredUnformatted(UI_ACCENT, "C Behavior Assets");
     ImGui_SameLine();
-    ImGui_TextDisabledUnformatted("Movement System");
+    ImGui_TextDisabledUnformatted("Document Workspace");
     ImGui_EndMainMenuBar();
 }
 

@@ -11,7 +11,7 @@ extern "C"
 #endif
 
     typedef struct flow_run flow_run;
-    typedef struct blueprint_instance blueprint_instance;
+    typedef struct behavior_instance behavior_instance;
 
     typedef struct
     {
@@ -48,10 +48,11 @@ extern "C"
         flow_clock_fn now; /* host monotonic clock; NULL keeps the last supplied time */
         void *now_user; /* borrowed by the run */
         double initial_time;
+        double delta_seconds;
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
         const char *event_name; /* borrowed dispatch name for runtime inspection */
-        blueprint_instance *instance; /* owning instance, or NULL for a standalone run */
+        behavior_instance *instance; /* owning instance, or NULL for a standalone run */
         flow_parallel_for_fn parallel_for; /* host-supplied, never owned */
         void *parallel_user;
         unsigned call_depth; /* internal function-call depth, zero at an entry */
@@ -137,6 +138,7 @@ extern "C"
     int flow_run_reset(flow_run *run);
 
     flow_state flow_run_status(const flow_run *run);
+    double flow_run_wake_time(const flow_run *run);
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
     flow_inputs flow_run_inputs(const flow_run *run);
@@ -206,7 +208,7 @@ extern "C"
     );
     int flow_context_emit(struct flow_context *ctx, const char *message);
     flow_inputs flow_context_inputs(const struct flow_context *ctx);
-    blueprint_instance *flow_context_instance(const struct flow_context *ctx);
+    behavior_instance *flow_context_instance(const struct flow_context *ctx);
     /* Retain a completed nested run until this activation is reset/freed. */
     int flow_context_retain_run(struct flow_context *ctx, flow_run *child);
     /* Allocate from the run-owned arena (DATA-6). */

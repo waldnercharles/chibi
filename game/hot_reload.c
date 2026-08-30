@@ -53,7 +53,11 @@ const game_hot_image *game_hot_module_active(const game_hot_module *module)
     return module ? &module->active : NULL;
 }
 
-static int validate_blueprint(const blueprint *definition, const game_hot_image *image, game_hot_report *report)
+static int validate_behavior_asset(
+    const behavior_asset *definition,
+    const game_hot_image *image,
+    game_hot_report *report
+)
 {
     for (int g = 0; g < acount(definition->graphs); g++) {
         const graph *graph = definition->graphs[g];
@@ -75,13 +79,17 @@ static int validate_blueprint(const blueprint *definition, const game_hot_image 
     return 0;
 }
 
-int game_hot_rebind_blueprint(blueprint *definition, const game_hot_image *image, game_hot_report *report)
+int game_hot_rebind_behavior_asset(
+    behavior_asset *definition,
+    const game_hot_image *image,
+    game_hot_report *report
+)
 {
     if (!definition || !image || !image->resolve_node) {
         report_message(report, "invalid hot-reload image");
         return -1;
     }
-    if (validate_blueprint(definition, image, report)) {
+    if (validate_behavior_asset(definition, image, report)) {
         return -1;
     }
     for (int g = 0; g < acount(definition->graphs); g++) {
@@ -128,7 +136,7 @@ int game_hot_module_reload(
     game_hot_module *module,
     const game_hot_image *candidate,
     ecs_world *world,
-    blueprint *const *definitions,
+    behavior_asset *const *definitions,
     int definition_count,
     game_hot_report *report
 )
@@ -142,7 +150,7 @@ int game_hot_module_reload(
         return -1;
     }
     for (int i = 0; i < definition_count; i++) {
-        if (validate_blueprint(definitions[i], candidate, report)) {
+        if (validate_behavior_asset(definitions[i], candidate, report)) {
             return -1;
         }
     }
@@ -150,7 +158,7 @@ int game_hot_module_reload(
         return -1;
     }
     for (int i = 0; i < definition_count; i++) {
-        if (game_hot_rebind_blueprint(definitions[i], candidate, report)) {
+        if (game_hot_rebind_behavior_asset(definitions[i], candidate, report)) {
             return -1;
         }
     }

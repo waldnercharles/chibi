@@ -1,0 +1,14 @@
+# file line id key current_name fingerprint aliases
+components.h 12 1376052968821171689 game.GameTransform GameTransform 12509057193377376126 -
+components.h 14 4594947644670299697 game.GameHealth GameHealth 12925661080887578070 -
+components.h 21 992505279072269918 game.GameMovement GameMovement 11124396295353598960 -
+components.h 27 194520663397847877 game.GameInput GameInput 12127342636814476452 -
+authored_data_types.h 8 13851233449581075996 GAME.GamePlayerData GamePlayerData 9848221335497568270 -
+authored_data_types.h 15 2286623500389258159 GAME.GameEnemyData GameEnemyData 16066308666996547841 -
+authored_data_types.h 22 5436105433392993464 GAME.GameWaveData GameWaveData 4666188745489317700 -
+authored_data_types.h 29 13025157664699520476 GAME.GameArenaData GameArenaData 9547960603014949612 -
+authored_data_types.h 36 8323825390515380453 GAME.GameWeaponData GameWeaponData 12868518528685265977 -
+authored_data_types.h 43 14103807144713077350 GAME.GameProjectileData GameProjectileData 17533186008649650448 -
+authored_data_types.h 50 3646085371478531492 GAME.GameProgressionData GameProgressionData 8234073820175890041 -
+authored_data_types.h 57 14466805393366402340 GAME.GameSupportData GameSupportData 3962219828511936245 -
+authored_data_types.h 64 9916895415638772812 GAME.GameMaterialData GameMaterialData 11762114818479096631 -

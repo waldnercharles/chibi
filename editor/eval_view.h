@@ -15,7 +15,7 @@ void eval_view_free(eval_view *v);
  * editor_preview_allowed() is false. */
 void eval_view_refresh(eval_view *v, graph *g);
 void eval_view_set_run(eval_view *v, const flow_run *run);
-void eval_view_set_instance(eval_view *v, const blueprint_instance *bi);
+void eval_view_set_instance(eval_view *v, const behavior_instance *bi);
 const char *eval_view_error(const eval_view *v);
 
 /* Formatted value for a DATA output pin, or "" for EXEC/bad pins. */

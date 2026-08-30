@@ -17,4 +17,20 @@ Spartan C. Less code is a feature: delete dead code and unused abstraction.
 - Prefer direct calls or `switch` over function-pointer tables and indirection.
 - Follow existing naming and clang-format; short names only in tight local scope.
 - Name magic numbers and invariants (`#define`/`enum`/`static const`).
+- New nodes must be added to the appropriate registry pack and every UI context
+  allowlist/filter; verify they are discoverable by name in the spawn menu.
 - UI/UX changes: run `build/app --headless --screenshot`, inspect `/tmp/c-blueprints-screenshot.png`, and report the captured dimensions. Use `--frames N` when a longer settle period is needed.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `waldnercharles/c-blueprints`; use the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain-doc layout rooted at `CONTEXT.md`, with ADRs at `docs/adr/` when needed. See `docs/agents/domain.md`.

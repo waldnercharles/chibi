@@ -1,7 +1,7 @@
 #ifndef CBLUEPRINT_GAME_HOT_RELOAD_H
 #define CBLUEPRINT_GAME_HOT_RELOAD_H
 
-#include "../core/blueprint.h"
+#include "../core/behavior_asset.h"
 #include "../ecs/ecs.h"
 
 #include <stddef.h>
@@ -40,11 +40,15 @@ int game_hot_module_reload(
     game_hot_module *module,
     const game_hot_image *candidate,
     ecs_world *world,
-    blueprint *const *definitions,
+    behavior_asset *const *definitions,
     int definition_count,
     game_hot_report *report
 );
-int game_hot_rebind_blueprint(blueprint *definition, const game_hot_image *image, game_hot_report *report);
+int game_hot_rebind_behavior_asset(
+    behavior_asset *definition,
+    const game_hot_image *image,
+    game_hot_report *report
+);
 int game_hot_reload_components(ecs_world *world, const game_hot_image *image, game_hot_report *report);
 int game_hot_reload_available(void);
 

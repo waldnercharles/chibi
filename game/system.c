@@ -6,6 +6,7 @@
 #include "../core/graph_jit_sljit.h"
 #include "../core/instance.h"
 #include "../core/pin_conv.h"
+#include "../core/program.h"
 #include "../core/registry.h"
 #include "../core/xalloc.h"
 #include "generated.h"
@@ -68,14 +69,21 @@ typedef struct
     int *aliases;
     int value_count;
     int event_delta;
-    graph_ir ir;
+    union
+    {
+        graph_program shared;
+        struct
+        {
+            graph_ir ir;
+            graph_sljit_program *sljit;
+        };
+    };
     system_instruction *instructions;
     pin_value *values;
     system_slot *slots;
     unsigned char *storage;
     size_t storage_size;
     int typed;
-    graph_sljit_program *sljit;
     graph_jit_column *sljit_columns;
     void **sljit_bases;
     int sljit_column_count;
@@ -85,11 +93,13 @@ typedef struct
 struct game_system
 {
     ecs_world *world;
-    blueprint *definition;
-    blueprint_instance *instance;
+    behavior_asset *definition;
+    behavior_instance *instance;
     system_program *program;
     compile_report compile;
     ecs_component_id *query;
+    ecs_query_expr *query_expression;
+    ecs_query_expr *compiled_query_expression;
     node *tick;
     int match_count;
 };
@@ -455,7 +465,9 @@ static int compile_component_set(system_program *program, const node *target)
 {
     int index = program_node_index(program, target);
     if (index < 0 || !target->desc->access || target->desc->access->write_count != 1 ||
-        target->output_count != 0 || node_has_exec_pins(target)) {
+        (target->output_count != 0 &&
+         (target->output_count != 2 || target->output_pins[1].kind != PIN_DATA)) ||
+        node_has_exec_pins(target)) {
         return -1;
     }
     if (program->node_state[index] == 2) {
@@ -513,6 +525,14 @@ static int compile_component_set(system_program *program, const node *target)
     set->component = component;
     set->input_count = 1;
     set->inputs[0] = input;
+    if (target->output_count > 1 && target->output_pins[1].kind == PIN_DATA) {
+        int output = program_register(program, target, 1);
+        if (output < 0) {
+            program->node_state[index] = 0;
+            return -1;
+        }
+        program->aliases[output] = input;
+    }
     program->node_state[index] = 2;
     return 0;
 }
@@ -567,6 +587,14 @@ static int compile_value(system_program *program, const node *target, int output
     system_instruction *instruction = NULL;
     int ok = 1;
     switch (desc->pure_kind) {
+        case NODE_PURE_DELTA:
+            if (target->output_count != 1) {
+                ok = 0;
+                break;
+            }
+            program->aliases[result] = program->event_delta;
+            result = program->event_delta;
+            break;
         case NODE_PURE_CONST:
             instruction = add_instruction(program, SYSTEM_OP_CONST, target);
             instruction->output = result;
@@ -718,6 +746,14 @@ static int compile_exec(system_program *program, const node *target)
         if (!instruction->component || input < 0) {
             program->node_state[index] = 0;
             return -1;
+        }
+        if (target->output_count > 1 && target->output_pins[1].kind == PIN_DATA) {
+            int output = program_register(program, target, 1);
+            if (output < 0) {
+                program->node_state[index] = 0;
+                return -1;
+            }
+            program->aliases[output] = input;
         }
     }
     program->node_state[index] = 2;
@@ -966,12 +1002,12 @@ static void program_build_ir(system_program *program)
     assert(graph_ir_validate(&program->ir, NULL) == 0);
 }
 
-static system_program *program_new(const blueprint *definition, const node *tick)
+static system_program *program_new(const behavior_asset *definition, const node *tick)
 {
     system_program *program = (system_program *)xcalloc(1, sizeof *program);
-    graph_ir_init(&program->ir);
+    graph_program_init(&program->shared);
     program->graph = definition->graph;
-    program->event_delta = -1;
+    program->event_delta = 0;
     int output_total = 0;
     for (int i = 0; i < acount(program->graph->nodes); i++) {
         program->node_base = (int *)
@@ -1014,7 +1050,7 @@ static system_program *program_new(const blueprint *definition, const node *tick
     int compile_result = found ? (next ? compile_exec(program, next) : -1)
                        : program->graph->dataflow ? compile_dataflow(program)
                                                   : -1;
-    if (compile_result != 0 || program->event_delta < 0) {
+    if (compile_result != 0) {
         free(program->node_base);
         free(program->node_state);
         free(program->aliases);
@@ -1030,7 +1066,7 @@ static system_program *program_new(const blueprint *definition, const node *tick
     program->typed = program_can_run_typed(program);
     if (program->typed) {
         program_prepare_storage(program);
-        program->sljit = graph_sljit_compile(&program->ir, NULL);
+        graph_program_compile_backend(&program->shared, NULL);
     }
     arena_init(&program->arena, 4096);
     return program;
@@ -1042,10 +1078,9 @@ static void program_free(system_program *program)
         return;
     }
     arena_free(&program->arena);
-    graph_sljit_free(program->sljit);
+    graph_program_free(&program->shared);
     free(program->sljit_columns);
     free(program->sljit_bases);
-    graph_ir_free(&program->ir);
     free(program->storage);
     free(program->aliases);
     free(program->slots);
@@ -1360,15 +1395,15 @@ static int program_run_typed(system_program *program, ecs_entity entity, double 
     return FLOW_OK;
 }
 
-static blueprint_instance *make_instance(game_system *system)
+static behavior_instance *make_instance(game_system *system)
 {
-    blueprint_instance *instance = blueprint_instance_create(system->definition, NULL, NULL, NULL);
+    behavior_instance *instance = behavior_instance_create(system->definition, NULL, NULL, NULL);
     if (!instance) {
         return NULL;
     }
-    blueprint_instance_set_activation_pool(instance, 1);
-    blueprint_instance_set_trace_enabled(instance, 0);
-    blueprint_instance_bind_service(instance, "ecs.world", system->world);
+    behavior_instance_set_activation_pool(instance, 1);
+    behavior_instance_set_trace_enabled(instance, 0);
+    behavior_instance_bind_service(instance, "ecs.world", system->world);
     return instance;
 }
 
@@ -1376,8 +1411,10 @@ static int rebuild(game_system *system)
 {
     compile_report_free(&system->compile);
     compile_report_init(&system->compile);
-    blueprint_compile(system->definition, &system->compile);
+    behavior_asset_compile(system->definition, &system->compile);
     afree(system->query);
+    ecs_query_expr_free(system->compiled_query_expression);
+    system->compiled_query_expression = NULL;
     system->tick = NULL;
     system->match_count = 0;
     build_query(system);
@@ -1394,6 +1431,16 @@ static int rebuild(game_system *system)
                 add_query_component(system, component->id);
             }
         }
+        ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
+        if (system->query_expression) {
+            assert(
+                ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression)) == ECS_OK
+            );
+        }
+        for (int i = 0; i < acount(system->query); i++) {
+            assert(ecs_query_expr_add(query, ecs_query_expr_has(system->query[i])) == ECS_OK);
+        }
+        system->compiled_query_expression = query;
         return 0;
     }
     program_free(system->program);
@@ -1402,10 +1449,22 @@ static int rebuild(game_system *system)
         return -1;
     }
     system->instance = make_instance(system);
+    if (system->instance) {
+        ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
+        if (system->query_expression) {
+            assert(
+                ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression)) == ECS_OK
+            );
+        }
+        for (int i = 0; i < acount(system->query); i++) {
+            assert(ecs_query_expr_add(query, ecs_query_expr_has(system->query[i])) == ECS_OK);
+        }
+        system->compiled_query_expression = query;
+    }
     return system->instance ? 0 : -1;
 }
 
-game_system *game_system_new(ecs_world *world, blueprint *definition)
+game_system *game_system_new(ecs_world *world, behavior_asset *definition)
 {
     if (!world || !definition) {
         return NULL;
@@ -1424,25 +1483,43 @@ void game_system_free(game_system *system)
         return;
     }
     program_free(system->program);
-    blueprint_instance_destroy(system->instance);
+    behavior_instance_destroy(system->instance);
+    ecs_query_expr_free(system->query_expression);
+    ecs_query_expr_free(system->compiled_query_expression);
     compile_report_free(&system->compile);
     afree(system->query);
-    blueprint_free(system->definition);
+    behavior_asset_free(system->definition);
     free(system);
 }
 
-int game_system_replace(game_system *system, blueprint *definition)
+int game_system_replace(game_system *system, behavior_asset *definition)
 {
     if (!system || !definition) {
         return -1;
     }
     program_free(system->program);
-    blueprint_instance_destroy(system->instance);
-    blueprint_free(system->definition);
+    behavior_instance_destroy(system->instance);
+    behavior_asset_free(system->definition);
     system->definition = definition;
     system->program = NULL;
     system->instance = NULL;
     return rebuild(system);
+}
+
+int game_system_set_query(game_system *system, const ecs_query_expr *expression)
+{
+    if (!system) {
+        return -1;
+    }
+    ecs_query_expr *copy = expression ? ecs_query_expr_clone(expression) : NULL;
+    ecs_query_expr_free(system->query_expression);
+    system->query_expression = copy;
+    return rebuild(system);
+}
+
+const ecs_query_expr *game_system_query_expression(const game_system *system)
+{
+    return system ? system->query_expression : NULL;
 }
 
 static int run_interpreted(game_system *system, ecs_entity entity, double now, double delta, flow_error *error)
@@ -1458,30 +1535,30 @@ static int run_interpreted(game_system *system, ecs_entity entity, double now, d
         .type_name = "float",
     };
     flow_inputs inputs = { &tick_delta, 1, NULL };
-    if (blueprint_instance_rebind(system->instance, &owner) != 0) {
+    if (behavior_instance_rebind(system->instance, &owner) != 0) {
         set_error(error, FLOW_ERR_STATE, NULL, "system instance is busy");
         return FLOW_ERR_STATE;
     }
-    flow_run *run = blueprint_instance_enqueue(system->instance, system->tick, inputs, error);
+    flow_run *run = behavior_instance_enqueue(system->instance, system->tick, inputs, error);
     if (!run) {
         return error && error->code ? error->code : FLOW_ERR_STATE;
     }
-    int result = blueprint_instance_tick(system->instance, now);
+    int result = behavior_instance_tick(system->instance, now);
     flow_state state = flow_run_status(run);
     if (result < 0 || state == FLOW_FAILED) {
         if (error && flow_run_error(run)) {
             *error = *flow_run_error(run);
         }
-        blueprint_instance_release_activation(system->instance, run);
+        behavior_instance_release_activation(system->instance, run);
         return result < 0 ? result : FLOW_ERR_NODE;
     }
     if (state != FLOW_COMPLETED) {
-        blueprint_instance_stop_activation(system->instance, run);
-        blueprint_instance_release_activation(system->instance, run);
+        behavior_instance_stop_activation(system->instance, run);
+        behavior_instance_release_activation(system->instance, run);
         set_error(error, FLOW_ERR_STATE, system->tick, "System Tick must complete in one frame");
         return FLOW_ERR_STATE;
     }
-    blueprint_instance_release_activation(system->instance, run);
+    behavior_instance_release_activation(system->instance, run);
     return FLOW_OK;
 }
 
@@ -1652,12 +1729,14 @@ int game_system_tick_mode(
         return FLOW_ERR_STATE;
     }
     ecs_query query;
-    int result = ecs_query_begin(
-        system->world,
-        &query,
-        system->query,
-        acount(system->query)
-    );
+    int result = system->compiled_query_expression
+                   ? ecs_query_begin_expression(system->world, &query, system->compiled_query_expression)
+                   : ecs_query_begin(
+                         system->world,
+                         &query,
+                         system->query,
+                         acount(system->query)
+                     );
     if (result != ECS_OK) {
         set_error(error, FLOW_ERR_STATE, NULL, "System query could not start");
         return FLOW_ERR_STATE;
@@ -1696,7 +1775,7 @@ int game_system_tick(game_system *system, double monotonic_time, double delta_se
     return game_system_tick_mode(system, monotonic_time, delta_seconds, error, GAME_SYSTEM_EXEC_AUTO);
 }
 
-const blueprint *game_system_blueprint(const game_system *system)
+const behavior_asset *game_system_behavior_asset(const game_system *system)
 {
     return system ? system->definition : NULL;
 }
@@ -1757,4 +1836,9 @@ int game_system_uses_sljit_simd(const game_system *system)
 const graph_ir *game_system_graph_ir(const game_system *system)
 {
     return system && system->program ? &system->program->ir : NULL;
+}
+
+const graph_program *game_system_program(const game_system *system)
+{
+    return system && system->program ? &system->program->shared : NULL;
 }

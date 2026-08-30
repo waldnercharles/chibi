@@ -11,18 +11,18 @@ struct game_scene
 {
     ecs_world *world;
     game_behavior_world *behaviors;
-    blueprint *definition;
+    behavior_asset *definition;
     ecs_entity *entities;
     int entity_count;
     int behavior_count;
     double behavior_ms;
 };
 
-static blueprint *scene_definition(void)
+static behavior_asset *scene_definition(void)
 {
-    blueprint *definition = blueprint_new("SeededSceneBehavior");
-    if (!definition || blueprint_set_owner_type(definition, "ecs.entity") != 0) {
-        blueprint_free(definition);
+    behavior_asset *definition = behavior_asset_new("SeededSceneBehavior");
+    if (!definition || behavior_asset_set_owner_type(definition, "ecs.entity") != 0) {
+        behavior_asset_free(definition);
         return NULL;
     }
     node *event = graph_add_node(definition->graph, registry_node_by_name("Event"));
@@ -32,7 +32,7 @@ static blueprint *scene_definition(void)
         graph_set_event_name(definition->graph, event, "Tick") != 0 ||
         graph_set_pin_default(definition->graph, branch, 0, 1, &condition) != 0 ||
         graph_connect_exec(definition->graph, event, 0, branch, 0, 0) != 0) {
-        blueprint_free(definition);
+        behavior_asset_free(definition);
         return NULL;
     }
     return definition;
@@ -131,7 +131,7 @@ void game_scene_free(game_scene *scene)
         return;
     }
     game_behavior_world_free(scene->behaviors);
-    blueprint_free(scene->definition);
+    behavior_asset_free(scene->definition);
     ecs_world_free(scene->world);
     free(scene->entities);
     free(scene);

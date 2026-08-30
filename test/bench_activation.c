@@ -1,6 +1,6 @@
 /* test/bench_activation.c -- headless per-instance activation benchmark. */
 #include "../core/array.h"
-#include "../core/blueprint.h"
+#include "../core/behavior_asset.h"
 #include "../core/compile.h"
 #include "../core/flow.h"
 #include "../core/instance.h"
@@ -57,7 +57,7 @@ static const node_desc *resolve_node(const char *name)
     return desc;
 }
 
-static blueprint *make_blueprint(void)
+static behavior_asset *make_behavior_asset(void)
 {
     const node_desc *event_desc = resolve_node("Event");
     const node_desc *branch_desc = resolve_node("Branch");
@@ -74,11 +74,11 @@ static blueprint *make_blueprint(void)
         fail("variable descriptors do not match the registry descriptors");
     }
 
-    blueprint *bp = blueprint_new("Activation benchmark");
+    behavior_asset *bp = behavior_asset_new("Activation benchmark");
     if (!bp) {
         return NULL;
     }
-    blueprint_variable *counter = blueprint_add_variable(
+    behavior_variable *counter = behavior_asset_add_variable(
         bp,
         "Counter",
         PIN_I32,
@@ -87,7 +87,7 @@ static blueprint *make_blueprint(void)
         &(pin_value){ .type = PIN_I32, .i = 0 },
         "Benchmark"
     );
-    blueprint_variable *ticked = blueprint_add_variable(
+    behavior_variable *ticked = behavior_asset_add_variable(
         bp,
         "Ticked",
         PIN_BOOL,
@@ -97,36 +97,36 @@ static blueprint *make_blueprint(void)
         "Benchmark"
     );
     if (!counter || !ticked) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
 
     graph *g = bp->graph;
     node *event = graph_add_node(g, event_desc);
     node *branch = graph_add_node(g, branch_desc);
-    node *set = blueprint_add_set_node(bp, ticked->id);
-    node *get = blueprint_add_get_node(bp, counter->id);
+    node *set = behavior_asset_add_set_node(bp, ticked->id);
+    node *get = behavior_asset_add_get_node(bp, counter->id);
     node *reroute_a = graph_add_node(g, reroute_desc);
     node *reroute_b = graph_add_node(g, reroute_desc);
     node *select = graph_add_node(g, select_desc);
     node *truth = graph_add_node(g, bool_desc);
     if (!event || !branch || !set || !get || !reroute_a || !reroute_b ||
         !select || !truth) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     if (graph_set_event_name(g, event, "Tick") != 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     pin_spec delta = { "DeltaSeconds", PIN_F64, "double", PIN_DATA };
     if (graph_add_pin(g, event, 1, &delta) < 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     if (graph_set_pin_default(g, truth, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = true }) !=
         0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     if (graph_connect_exec(g, event, 0, branch, 0, 0) != 0 ||
@@ -137,14 +137,14 @@ static blueprint *make_blueprint(void)
         graph_connect_data(g, truth, 0, select, 1) != 0 ||
         graph_connect_data(g, select, 0, branch, 1) != 0 ||
         graph_connect_data(g, select, 0, set, 1) != 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     assert(acount(g->nodes) == GRAPH_NODE_COUNT);
     return bp;
 }
 
-static void check_queues_empty(blueprint_instance **instances, int count)
+static void check_queues_empty(behavior_instance **instances, int count)
 {
     for (int i = 0; i < count; i++) {
         assert(acount(instances[i]->activations) == 0);
@@ -156,10 +156,10 @@ static void check_queues_empty(blueprint_instance **instances, int count)
     }
 }
 
-static void dispatch_and_release(blueprint_instance *instance, const flow_inputs *inputs)
+static void dispatch_and_release(behavior_instance *instance, const flow_inputs *inputs)
 {
     flow_error error = { 0 };
-    flow_run *run = blueprint_instance_dispatch(instance, "Tick", *inputs, &error);
+    flow_run *run = behavior_instance_dispatch(instance, "Tick", *inputs, &error);
     if (!run) {
         fprintf(
             stderr,
@@ -179,10 +179,10 @@ static void dispatch_and_release(blueprint_instance *instance, const flow_inputs
             run_error ? run_error->code : 0,
             run_error && run_error->message ? run_error->message : "<none>"
         );
-        blueprint_instance_release_activation(instance, run);
+        behavior_instance_release_activation(instance, run);
         exit(EXIT_FAILURE);
     }
-    if (blueprint_instance_release_activation(instance, run) != 0) {
+    if (behavior_instance_release_activation(instance, run) != 0) {
         fail("could not release completed activation");
     }
     assert(acount(instance->activations) == 0);
@@ -207,16 +207,16 @@ static void print_compile_errors(const compile_report *report)
     }
 }
 
-static uint64_t run_variant(blueprint *bp, int instance_count, int frame_count, int pooled)
+static uint64_t run_variant(behavior_asset *bp, int instance_count, int frame_count, int pooled)
 {
-    blueprint_instance **instances = (blueprint_instance **)
+    behavior_instance **instances = (behavior_instance **)
         xcalloc((size_t)instance_count, sizeof *instances);
     for (int i = 0; i < instance_count; i++) {
-        instances[i] = blueprint_instance_create(bp, NULL, NULL, NULL);
+        instances[i] = behavior_instance_create(bp, NULL, NULL, NULL);
         if (!instances[i]) {
             fail("could not create benchmark instance");
         }
-        if (pooled && blueprint_instance_set_activation_pool(instances[i], 1) != 0) {
+        if (pooled && behavior_instance_set_activation_pool(instances[i], 1) != 0) {
             fail("could not enable activation pool");
         }
     }
@@ -244,10 +244,10 @@ static uint64_t run_variant(blueprint *bp, int instance_count, int frame_count, 
         fail("clock_gettime end failed");
     }
 
-    blueprint_variable *ticked_variable = blueprint_find_variable_by_name(bp, "Ticked");
+    behavior_variable *ticked_variable = behavior_asset_find_variable_by_name(bp, "Ticked");
     pin_value ticked;
     if (!ticked_variable ||
-        blueprint_instance_get_variable(instances[0], ticked_variable->id, &ticked) != 0 ||
+        behavior_instance_get_variable(instances[0], ticked_variable->id, &ticked) != 0 ||
         !ticked.b) {
         fail("benchmark graph did not take the Branch true path");
     }
@@ -259,7 +259,7 @@ static uint64_t run_variant(blueprint *bp, int instance_count, int frame_count, 
     printf("ns_per_activation=%.3f\n", (double)total_ns / (double)activation_count);
 
     for (int i = 0; i < instance_count; i++) {
-        blueprint_instance_destroy(instances[i]);
+        behavior_instance_destroy(instances[i]);
     }
     free(instances);
     return total_ns;
@@ -275,17 +275,17 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    blueprint *bp = make_blueprint();
+    behavior_asset *bp = make_behavior_asset();
     if (!bp) {
-        fail("could not construct benchmark blueprint");
+        fail("could not construct benchmark behavior_asset");
     }
     compile_report report;
     compile_report_init(&report);
-    if (blueprint_compile(bp, &report) != 0) {
+    if (behavior_asset_compile(bp, &report) != 0) {
         print_compile_errors(&report);
         compile_report_free(&report);
-        blueprint_free(bp);
-        fail("benchmark blueprint did not compile");
+        behavior_asset_free(bp);
+        fail("benchmark behavior_asset did not compile");
     }
     compile_report_free(&report);
 
@@ -299,6 +299,6 @@ int main(int argc, char **argv)
     printf("resolution=registry_node_by_name(name) returned non-NULL for every descriptor\n");
     run_variant(bp, instance_count, frame_count, 0);
     run_variant(bp, instance_count, frame_count, 1);
-    blueprint_free(bp);
+    behavior_asset_free(bp);
     return EXIT_SUCCESS;
 }

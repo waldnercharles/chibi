@@ -1,7 +1,7 @@
 #include "serialize.h"
 
 #include "../third_party/yyjson/yyjson.h"
-#include "blueprint.h"
+#include "behavior_asset.h"
 #include "registry.h"
 #include "value_array.h"
 #include "xalloc.h"
@@ -490,7 +490,7 @@ char *graph_save_nodes_json(const graph *g, node *const *subset, int count)
                                                      : NULL;
 }
 
-static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const blueprint_variable *v)
+static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const behavior_variable *v)
 {
     yyjson_mut_val *o = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_uint(doc, o, "id", v->id);
@@ -507,7 +507,7 @@ static void write_variable(yyjson_mut_doc *doc, yyjson_mut_val *arr, const bluep
     yyjson_mut_arr_add_val(arr, o);
 }
 
-static void write_blueprint_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, const graph *g)
+static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, const graph *g)
 {
     yyjson_mut_val *obj = yyjson_mut_obj(doc);
     if (g->graph_id) {
@@ -538,10 +538,10 @@ static void write_blueprint_graph(yyjson_mut_doc *doc, yyjson_mut_val *graphs, c
     yyjson_mut_arr_add_val(graphs, obj);
 }
 
-/* FMT-1/FMT-2/FMT-16/FMT-18: the version-3 Blueprint document carries the
- * schema version, Blueprint name, ID counter, description, optional owner
+/* FMT-1/FMT-2/FMT-16/FMT-18: the version-3 Behavior Asset document carries the
+ * schema version, Behavior Asset name, ID counter, description, optional owner
  * handle type, variable list, and every graph. Runtime state never appears. */
-char *blueprint_save_json(const blueprint *bp)
+char *behavior_asset_save_json(const behavior_asset *bp)
 {
     if (!bp || !bp->graph) {
         return NULL;
@@ -567,7 +567,7 @@ char *blueprint_save_json(const blueprint *bp)
     yyjson_mut_val *graphs = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "graphs", graphs);
     for (int i = 0; i < acount(bp->graphs); i++) {
-        write_blueprint_graph(doc, graphs, bp->graphs[i]);
+        write_behavior_asset_graph(doc, graphs, bp->graphs[i]);
     }
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
@@ -1050,7 +1050,8 @@ static int load_edges(graph *g, yyjson_val *edges)
         }
         yyjson_val *points = yyjson_obj_get(v, "reroutes");
         if (points) {
-            if (!yyjson_is_arr(points) || yyjson_arr_size(points) > 16) {
+            if (!yyjson_is_arr(points) ||
+                yyjson_arr_size(points) > GRAPH_EDGE_MAX_REROUTES) {
                 set_err("edge has invalid reroute points");
                 return -1;
             }
@@ -1132,7 +1133,7 @@ graph *graph_load_json(const char *json)
         g->description = graph_own_str(g, yyjson_get_str(metadata_description), yyjson_get_len(metadata_description));
     }
     if (!g->name || !g->description) {
-        set_err("missing blueprint metadata");
+        set_err("missing behavior_asset metadata");
         goto fail;
     }
     yyjson_val *breakpoints = yyjson_obj_get(root, "breakpoints_enabled");
@@ -1158,7 +1159,7 @@ fail:
     return NULL;
 }
 
-static int load_variable(blueprint *bp, yyjson_val *v)
+static int load_variable(behavior_asset *bp, yyjson_val *v)
 {
     if (!yyjson_is_obj(v)) {
         set_err("variable is not an object");
@@ -1208,7 +1209,7 @@ static int load_variable(blueprint *bp, yyjson_val *v)
             return -1;
         }
     }
-    blueprint_variable *var = blueprint_add_variable(
+    behavior_variable *var = behavior_asset_add_variable(
         bp,
         yyjson_get_str(name),
         pt,
@@ -1225,7 +1226,7 @@ static int load_variable(blueprint *bp, yyjson_val *v)
     return 0;
 }
 
-static int load_blueprint_graph(blueprint *bp, yyjson_val *obj, uint64_t requested_counter, int is_default)
+static int load_behavior_asset_graph(behavior_asset *bp, yyjson_val *obj, uint64_t requested_counter, int is_default)
 {
     if (!yyjson_is_obj(obj)) {
         set_err("graph is not an object");
@@ -1243,7 +1244,7 @@ static int load_blueprint_graph(blueprint *bp, yyjson_val *obj, uint64_t request
         return -1;
     }
     if (is_default && kind != GRAPH_EVENT) {
-        set_err("the first Blueprint graph must be an event graph");
+        set_err("the first Behavior Asset graph must be an event graph");
         return -1;
     }
     uint64_t graph_id = 0;
@@ -1302,11 +1303,11 @@ static int load_blueprint_graph(blueprint *bp, yyjson_val *obj, uint64_t request
     return 0;
 }
 
-/* FMT-1/FMT-8/FMT-17: load a version-3 Blueprint document. The unavailable
+/* FMT-1/FMT-8/FMT-17: load a version-3 Behavior Asset document. The unavailable
  * owner handle type name is preserved as authored, never substituted. */
-blueprint *blueprint_load_json(const char *json)
+behavior_asset *behavior_asset_load_json(const char *json)
 {
-    blueprint *bp = NULL;
+    behavior_asset *bp = NULL;
     if (!json) {
         set_err("null JSON input");
         return NULL;
@@ -1319,18 +1320,18 @@ blueprint *blueprint_load_json(const char *json)
     yyjson_val *root = yyjson_doc_get_root(doc);
     yyjson_val *version = yyjson_is_obj(root) ? yyjson_obj_get(root, "version") : NULL;
     if (!yyjson_is_uint(version) || yyjson_get_uint(version) != GRAPH_SCHEMA_VERSION) {
-        set_err("unsupported blueprint schema version (expected 3)");
+        set_err("unsupported behavior_asset schema version (expected 3)");
         goto fail;
     }
     yyjson_val *graphs = yyjson_obj_get(root, "graphs");
     if (!yyjson_is_arr(graphs) || yyjson_arr_size(graphs) < 1) {
-        set_err("blueprint requires at least one graph");
+        set_err("behavior_asset requires at least one graph");
         goto fail;
     }
     yyjson_val *metadata_name = yyjson_obj_get(root, "name");
     yyjson_val *metadata_description = yyjson_obj_get(root, "description");
     if (!yyjson_is_str(metadata_name) || !yyjson_is_str(metadata_description)) {
-        set_err("blueprint requires name and description");
+        set_err("behavior_asset requires name and description");
         goto fail;
     }
     uint64_t requested_counter = 1;
@@ -1340,15 +1341,16 @@ blueprint *blueprint_load_json(const char *json)
         goto fail;
     }
     requested_counter = yyjson_get_uint(counter);
-    bp = blueprint_new(yyjson_get_str(metadata_name));
+    bp = behavior_asset_new(yyjson_get_str(metadata_name));
     if (!bp) {
         set_err("out of memory");
         goto fail;
     }
     bp->graph->id_counter = requested_counter;
-    blueprint_set_description(bp, yyjson_get_str(metadata_description));
+    behavior_asset_set_description(bp, yyjson_get_str(metadata_description));
     yyjson_val *owner = yyjson_obj_get(root, "owner_type");
-    if (yyjson_is_str(owner) && blueprint_set_owner_type(bp, yyjson_get_str(owner))) {
+    if (yyjson_is_str(owner) &&
+        behavior_asset_set_owner_type(bp, yyjson_get_str(owner))) {
         set_err("cannot set owner type");
         goto fail;
     }
@@ -1372,13 +1374,13 @@ blueprint *blueprint_load_json(const char *json)
     yyjson_val *graph_json;
     int graph_index = 0;
     while ((graph_json = yyjson_arr_iter_next(&git))) {
-        if (load_blueprint_graph(bp, graph_json, requested_counter, graph_index == 0)) {
+        if (load_behavior_asset_graph(bp, graph_json, requested_counter, graph_index == 0)) {
             goto fail;
         }
         graph_index++;
     }
     if (graph_index == 0) {
-        set_err("blueprint requires a default event graph");
+        set_err("behavior_asset requires a default event graph");
         goto fail;
     }
     yyjson_doc_free(doc);
@@ -1386,7 +1388,7 @@ blueprint *blueprint_load_json(const char *json)
 fail:
     yyjson_doc_free(doc);
     if (bp) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
     return NULL;
 }

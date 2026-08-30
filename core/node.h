@@ -91,6 +91,9 @@ typedef enum
     NODE_JIT_DIV,
     NODE_JIT_MIN,
     NODE_JIT_MAX,
+    NODE_JIT_CLAMP,
+    NODE_JIT_NEG,
+    NODE_JIT_ABS,
     NODE_JIT_V2_MOVE,
 } node_jit_kind;
 
@@ -102,12 +105,13 @@ enum
 typedef enum
 {
     NODE_PURE_CONST = 0, /* outputs pre-set (literal, or written by flow) */
-    NODE_PURE_COPY,      /* one data input copied to one data output */
-    NODE_PURE_MAKE,      /* desc->type: field inputs -> one struct output */
-    NODE_PURE_BREAK,     /* desc->type: one struct input -> field outputs */
-    NODE_PURE_CALL,      /* desc->fn: inputs -> one output */
-    NODE_PURE_GET,       /* variable read from the blueprint instance */
-    NODE_PURE_SELF,      /* owner handle read from the blueprint instance */
+    NODE_PURE_DELTA, /* current simulation step from the evaluation context */
+    NODE_PURE_COPY,  /* one data input copied to one data output */
+    NODE_PURE_MAKE,  /* desc->type: field inputs -> one struct output */
+    NODE_PURE_BREAK, /* desc->type: one struct input -> field outputs */
+    NODE_PURE_CALL,  /* desc->fn: inputs -> one output */
+    NODE_PURE_GET,   /* variable read from the behavior_asset instance */
+    NODE_PURE_SELF,  /* owner handle read from the behavior_asset instance */
     NODE_PURE_FUNCTION,  /* pure function graph call */
     NODE_PURE_VOID_CALL, /* reflected pure call with no data result */
 } node_pure_kind;

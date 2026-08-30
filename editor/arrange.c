@@ -18,7 +18,6 @@
 
 #define AR_BEND_MIN 40.0f
 #define AR_CURVE_SAMPLES 12
-
 #define AR_COST_CROSS 1.0f
 #define AR_COST_HIT 4.0f
 #define AR_COST_OVERLAP 40.0f

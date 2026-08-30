@@ -34,10 +34,18 @@ typedef struct
     void *data;
 } game_prototype_component;
 
+typedef struct
+{
+    ecs_component_desc desc;
+    char *name;
+} game_prototype_tag;
+
 typedef struct game_prototype
 {
     char *name;
+    char *identity;
     const game_prototype_registry *registry;
+    game_prototype_tag tag;
     game_prototype_component *components;
     char **graphs;
     char **strings;
@@ -50,7 +58,12 @@ game_prototype *game_prototype_load(
     size_t error_size
 );
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);
+game_prototype *game_prototype_duplicate(const game_prototype *prototype, char *error, size_t error_size);
 int game_prototype_set_name(game_prototype *prototype, const char *name);
+const char *game_prototype_identity(const game_prototype *prototype);
+const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype);
+int game_prototype_register_tag(const game_prototype *prototype, ecs_world *world);
+int game_prototype_matches(const game_prototype *prototype, const ecs_world *world, ecs_entity entity);
 game_prototype *game_prototype_capture_entity(
     const char *name,
     const ecs_world *world,

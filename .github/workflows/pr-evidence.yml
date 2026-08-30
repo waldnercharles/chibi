@@ -1,0 +1,20 @@
+name: Pull request evidence
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  evidence:
+    name: Evidence contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PR evidence
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 tools/check_pr_evidence.py "$PR_BODY"

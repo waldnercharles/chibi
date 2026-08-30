@@ -11,6 +11,40 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const type_desc PROTOTYPE_TAG_TYPE = { "PrototypeTag", 1, NULL, 0, NULL };
+static uint64_t next_identity = 1;
+
+static uint64_t identity_id(const char *identity)
+{
+    uint64_t hash = UINT64_C(1469598103934665603);
+    for (const unsigned char *p = (const unsigned char *)identity; *p; p++) {
+        hash ^= *p;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash ? hash : 1;
+}
+
+static char *new_identity(void)
+{
+    char identity[32];
+    snprintf(identity, sizeof identity, "prototype-%016llx", (unsigned long long)next_identity++);
+    return xstrdup(identity);
+}
+
+static void setup_tag(game_prototype *prototype)
+{
+    prototype->tag.name = xmalloc(strlen(prototype->identity) + 16);
+    sprintf(prototype->tag.name, "PrototypeTag:%s", prototype->identity);
+    prototype->tag.desc = (ecs_component_desc){
+        .id = identity_id(prototype->identity),
+        .key = prototype->identity,
+        .name = prototype->tag.name,
+        .element_size = 1,
+        .type = &PROTOTYPE_TAG_TYPE,
+        .index = ECS_INDEX_BITSET,
+    };
+}
+
 static void set_error(char *error, size_t size, const char *format, ...)
 {
     if (!error || !size) {
@@ -339,7 +373,20 @@ static game_prototype *load_document(
     }
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
+    prototype->identity = new_identity();
     prototype->registry = registry;
+    yyjson_val *identity = yyjson_obj_get(root, "identity");
+    if (identity) {
+        if (!yyjson_is_str(identity) || !yyjson_get_len(identity)) {
+            set_error(error, error_size, "prototype identity must be a non-empty string");
+            game_prototype_free(prototype);
+            yyjson_doc_free(doc);
+            return NULL;
+        }
+        free(prototype->identity);
+        prototype->identity = xstrdup(yyjson_get_str(identity));
+    }
+    setup_tag(prototype);
     char *next_stack[64];
     if (stack_count >= (int)(sizeof next_stack / sizeof next_stack[0])) {
         set_error(error, error_size, "prototype include depth exceeded");
@@ -448,6 +495,51 @@ game_prototype *game_prototype_clone(const game_prototype *prototype, char *erro
     return copy;
 }
 
+game_prototype *game_prototype_duplicate(const game_prototype *prototype, char *error, size_t error_size)
+{
+    game_prototype *copy = game_prototype_clone(prototype, error, error_size);
+    if (!copy) {
+        return NULL;
+    }
+    free(copy->identity);
+    copy->identity = new_identity();
+    free(copy->tag.name);
+    setup_tag(copy);
+    return copy;
+}
+
+const char *game_prototype_identity(const game_prototype *prototype)
+{
+    return prototype ? prototype->identity : NULL;
+}
+
+const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype)
+{
+    return prototype ? &prototype->tag.desc : NULL;
+}
+
+int game_prototype_register_tag(const game_prototype *prototype, ecs_world *world)
+{
+    if (!prototype || !world) {
+        return ECS_ERR_ARGUMENT;
+    }
+    for (int i = 0; i < ecs_world_component_count(world); i++) {
+        const ecs_component_desc *desc = ecs_world_component_at(world, i);
+        if (desc->id == prototype->tag.desc.id) {
+            return desc->key && strcmp(desc->key, prototype->identity) == 0
+                     ? ECS_OK
+                     : ECS_ERR_DUPLICATE;
+        }
+    }
+    return ecs_world_register_component(world, &prototype->tag.desc, NULL);
+}
+
+int game_prototype_matches(const game_prototype *prototype, const ecs_world *world, ecs_entity entity)
+{
+    return prototype && world && ecs_entity_is_alive(world, entity) &&
+           ecs_component_has(world, entity, prototype->tag.desc.id);
+}
+
 int game_prototype_set_name(game_prototype *prototype, const char *name)
 {
     if (!prototype || !name || !name[0]) {
@@ -473,7 +565,9 @@ game_prototype *game_prototype_capture_entity(
     }
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
+    prototype->identity = new_identity();
     prototype->registry = registry;
+    setup_tag(prototype);
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
         if (!desc || !ecs_component_has(world, entity, desc->id)) {
@@ -504,6 +598,8 @@ void game_prototype_free(game_prototype *prototype)
     }
     afree(prototype->strings);
     free(prototype->name);
+    free(prototype->identity);
+    free(prototype->tag.name);
     free(prototype);
 }
 
@@ -613,6 +709,7 @@ char *game_prototype_save(const game_prototype *prototype)
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_strcpy(doc, root, "name", prototype->name);
+    yyjson_mut_obj_add_strcpy(doc, root, "identity", prototype->identity);
     yyjson_mut_val *components = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_val(doc, root, "components", components);
     int *order = NULL;
@@ -929,6 +1026,10 @@ int game_prototype_spawn(
         set_error(error, error_size, "prototype has behavior graphs but no attach hook");
         return ECS_ERR_ARGUMENT;
     }
+    if (game_prototype_register_tag(prototype, world) != ECS_OK) {
+        set_error(error, error_size, "prototype identity tag could not be registered");
+        return ECS_ERR_DUPLICATE;
+    }
     ecs_entity entity = ecs_world_record_create(world, 0);
     if (!entity.slot || ecs_world_apply_commands(world) != ECS_OK) {
         set_error(error, error_size, "prototype entity allocation failed");
@@ -946,6 +1047,11 @@ int game_prototype_spawn(
             ecs_world_destroy_entity(world, entity);
             return ECS_ERR_COMPONENT;
         }
+    }
+    if (ecs_world_record_add(world, entity, prototype->tag.desc.id, NULL, 0)) {
+        set_error(error, error_size, "prototype identity tag could not be added");
+        ecs_world_destroy_entity(world, entity);
+        return ECS_ERR_COMPONENT;
     }
     if (ecs_world_apply_commands(world) != ECS_OK) {
         set_error(error, error_size, "prototype component application failed");

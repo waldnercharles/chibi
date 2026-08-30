@@ -147,6 +147,34 @@ int main(void)
     char error[256] = { 0 };
     game_prototype *prototype = game_prototype_load(INPUT_ENTITY_JSON, &registry, error, sizeof error);
     failures += check(prototype != NULL, "an input entity prototype loads with InputBehavior");
+    const char *identity = prototype ? game_prototype_identity(prototype) : NULL;
+    failures += check(identity && identity[0], "a prototype receives a generated identity");
+    char *saved_identity = prototype ? game_prototype_save(prototype) : NULL;
+    game_prototype *prototype_roundtrip = saved_identity
+                                            ? game_prototype_load(saved_identity, &registry, error, sizeof error)
+                                            : NULL;
+    failures += check(
+        prototype_roundtrip &&
+            strcmp(game_prototype_identity(prototype_roundtrip), identity) == 0,
+        "prototype identity survives save and load"
+    );
+    if (prototype) {
+        failures += check(
+            game_prototype_set_name(prototype, "RenamedInput") == 0 &&
+                strcmp(game_prototype_identity(prototype), identity) == 0,
+            "renaming a prototype does not change its identity"
+        );
+    }
+    game_prototype *duplicate = prototype
+                                  ? game_prototype_duplicate(prototype, error, sizeof error)
+                                  : NULL;
+    failures += check(
+        duplicate && strcmp(game_prototype_identity(duplicate), identity) != 0,
+        "duplicating a prototype generates a distinct identity"
+    );
+    game_prototype_free(duplicate);
+    game_prototype_free(prototype_roundtrip);
+    free(saved_identity);
 
     ecs_entity entity = { 0 };
     game_prototype_spawn_hooks hooks = { attach_behavior, live->behaviors };
@@ -166,6 +194,22 @@ int main(void)
             attachment.definition == definition->applied,
         "the input entity has the applied InputBehavior attached"
     );
+    const ecs_component_desc *tag = prototype ? game_prototype_tag_desc(prototype)
+                                              : NULL;
+    ecs_query_expr *tag_query = tag ? ecs_query_expr_has(tag->id) : NULL;
+    ecs_query tag_matches;
+    int tag_count = tag &&
+                    ecs_query_begin_expression(ecs, &tag_matches, tag_query) == ECS_OK;
+    if (tag_count) {
+        ecs_entity matched;
+        tag_count = ecs_query_next(&tag_matches, &matched) &&
+                    matched.slot == entity.slot &&
+                    !ecs_query_next(&tag_matches, &matched);
+        ecs_query_end(&tag_matches);
+    }
+    failures += check(tag_count, "spawn applies the identity tag and query matching finds it");
+    failures += check(tag && game_prototype_matches(prototype, ecs, entity), "prototype matching uses the stable identity tag");
+    ecs_query_expr_free(tag_query);
 
     ecs_entity other = { 0 };
     if (prototype) {

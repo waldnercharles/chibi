@@ -794,11 +794,13 @@ static int prototype_attach(ecs_world *world, ecs_entity entity, const char *gra
 static void run_prototype_checks(void)
 {
     static const char
-        *derived_json = "{\"name\":\"Enemy\",\"includes\":[\"BaseEnemy\"],"
+        *derived_json = "{\"name\":\"Enemy\",\"identity\":\"enemy-id\","
+                        "\"includes\":[\"BaseEnemy\"],"
                         "\"components\":{\"GameHealth\":{\"current\":100}},"
                         "\"behaviors\":[\"attack.graph\"]}";
     static const char
         *reordered_json = "{\"behaviors\":[\"attack.graph\",\"idle.graph\"],"
+                          "\"identity\":\"enemy-id\","
                           "\"components\":{\"GameTransform\":{\"y\":2,\"x\":1},"
                           "\"GameHealth\":{\"maximum\":50,\"current\":100}},"
                           "\"name\":\"Enemy\"}";

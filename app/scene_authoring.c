@@ -2664,6 +2664,8 @@ static void draw_components(app_scene_authoring *scene)
     if (ImGui_SelectableEx(label, scene->selected_component < 0, 0, (ImVec2){ 0.0f, 0.0f })) {
         select_component(scene, -1);
     }
+    ImGui_TextDisabled("Identity: %s", game_prototype_identity(asset->prototype));
+    ImGui_TextDisabled("Tag: %s", game_prototype_tag_desc(asset->prototype)->name);
     ImGui_SeparatorText("Components");
     if (!acount(asset->prototype->components)) {
         ImGui_TextUnformatted("No components.");

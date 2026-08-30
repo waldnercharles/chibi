@@ -212,12 +212,13 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/game/components.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/game/authored_data_types.h
             ${GAME_COMPONENT_MANIFEST}
             ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
@@ -350,6 +351,10 @@ set_target_properties(query_expression_check PROPERTIES LINKER_LANGUAGE CXX)
 add_executable(query_benchmark test/query_benchmark.c ${APP_REGISTRY})
 target_include_directories(query_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(query_benchmark PRIVATE game ecs)
+
+add_executable(authored_data_check test/authored_data_check.c ${APP_REGISTRY})
+target_include_directories(authored_data_check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(authored_data_check PRIVATE game ecs)
 set_target_properties(query_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c ${BASE_REGISTRY})
@@ -436,6 +441,7 @@ if(CLANG_FORMAT)
   add_dependencies(movement_system_check format)
   add_dependencies(query_expression_check format)
   add_dependencies(query_benchmark format)
+  add_dependencies(authored_data_check format)
   add_dependencies(registry_consumer format)
   if(TARGET reflect)
     add_dependencies(reflect format)

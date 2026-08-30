@@ -1,4 +1,5 @@
 /* Parsed by reflect, not compiled directly. */
+#include "authored_data_types.h"
 #include "components.h"
 #include "interface.h"
 

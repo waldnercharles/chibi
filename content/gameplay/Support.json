@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "name": "Support",
+  "kind": "support",
+  "data": { "heal_amount": 25, "cooldown": 8, "charges": 2 },
+  "composition": ["Player"]
+}

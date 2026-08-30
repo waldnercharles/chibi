@@ -41,6 +41,8 @@ enum
 static int save_active_document(app_scene_authoring *scene);
 static int app_ui_command(editor_ui_command command, void *user);
 static int app_editor_save(editor *, void *user);
+static char *read_scene_file(const char *path);
+static int open_system_asset(app_scene_authoring *scene, const char *path);
 
 static int write_text_file_atomic(const char *path, const char *text)
 {
@@ -118,6 +120,8 @@ struct app_scene_authoring
     app_scene_prototype_resolve_fn resolve_prototype;
     void *resolve_user;
     game_prototype_registry registry;
+    game_system_document *system_document;
+    char *system_path;
     engine *runtime;
     scene_actor *actors;
     scene_prototype_asset *prototypes;
@@ -145,6 +149,29 @@ struct app_scene_authoring
 };
 
 static int refresh_prototype_instances(app_scene_authoring *scene, scene_prototype_asset *asset);
+
+static const ecs_component_desc *resolve_system_component(const char *name, void *)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if (strcmp(component->name, name) == 0 ||
+            (component->key && strcmp(component->key, name) == 0)) {
+            return component;
+        }
+    }
+    return NULL;
+}
+
+static const char *system_component_name(ecs_component_id id, void *)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if (component->id == id) {
+            return component->key ? component->key : component->name;
+        }
+    }
+    return NULL;
+}
 
 static char *content_path_join(const char *base, const char *name)
 {
@@ -403,6 +430,11 @@ static void set_document(app_scene_authoring *scene, app_editor_document_kind ki
             editor_set_graph_visible(scene->graph_editor, 0);
             editor_ui_request_focus(EDITOR_UI_FOCUS_COMPONENTS);
             return;
+        case APP_EDITOR_DOCUMENT_SYSTEM:
+            editor_set_ui_context(scene->graph_editor, EDITOR_UI_CONTEXT_SYSTEM);
+            editor_set_graph_visible(scene->graph_editor, 1);
+            editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+            return;
     }
 }
 
@@ -418,6 +450,7 @@ static bool document_asset_active(
         case APP_EDITOR_DOCUMENT_BEHAVIOR:
             return kind == scene->document.kind && scene->document.id && id &&
                    strcmp(scene->document.id, id) == 0;
+        case APP_EDITOR_DOCUMENT_SYSTEM: return false;
     }
     return false;
 }
@@ -1405,6 +1438,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     free(scene->content_root);
     free(scene->content_dir);
     free(scene->scene_path);
+    game_system_document_free(scene->system_document);
+    free(scene->system_path);
     free(scene->content_selected_path);
     for (int i = 0; i < acount(scene->content_history); i++) {
         free(scene->content_history[i]);
@@ -1872,6 +1907,9 @@ static int reload_prototype_document(app_scene_authoring *scene)
 
 static int reload_active_document(app_scene_authoring *scene)
 {
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        return scene->system_path ? open_system_asset(scene, scene->system_path) : -1;
+    }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         return reload_prototype_document(scene);
     }
@@ -2085,6 +2123,9 @@ static editor_ui_asset_kind content_entry_kind(
     if (*behavior_index >= 0) {
         return EDITOR_UI_ASSET_BEHAVIOR;
     }
+    if (content_path_in_folder(scene, path, "systems")) {
+        return EDITOR_UI_ASSET_SYSTEM;
+    }
     return EDITOR_UI_ASSET_FILE;
 }
 
@@ -2133,6 +2174,52 @@ static void select_content_entry(app_scene_authoring *scene, const scene_content
     }
 }
 
+static int open_system_asset(app_scene_authoring *scene, const char *path)
+{
+    char *json = read_scene_file(path);
+    if (!json) {
+        return -1;
+    }
+    char error[256] = { 0 };
+    game_system_document *document = game_system_document_load(
+        json,
+        resolve_system_component,
+        NULL,
+        error,
+        sizeof error
+    );
+    free(json);
+    if (!document) {
+        snprintf(scene->message, sizeof scene->message, "Could not open System: %s", error);
+        return -1;
+    }
+    const blueprint *source = game_system_document_blueprint(document);
+    graph *graph = blueprint_find_graph((blueprint *)source, 0);
+    if (!graph ||
+        editor_open_blueprint(scene->graph_editor, source, graph->graph_id) != 0) {
+        game_system_document_free(document);
+        return -1;
+    }
+    game_system_document_free(scene->system_document);
+    free(scene->system_path);
+    scene->system_document = document;
+    scene->system_path = xstrdup(path);
+    scene->editor_working = editor_blueprint(scene->graph_editor);
+    set_document(scene, APP_EDITOR_DOCUMENT_SYSTEM, source->name);
+    snprintf(
+        scene->message,
+        sizeof scene->message,
+        "Editing System asset %s.",
+        source->name
+    );
+    return 0;
+}
+
+int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path)
+{
+    return scene && path ? open_system_asset(scene, path) : -1;
+}
+
 static void open_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
 {
     if (entry->directory) {
@@ -2150,6 +2237,12 @@ static void open_content_entry(app_scene_authoring *scene, const scene_content_e
         const char *name = game_behavior_asset_name_at(behaviors, behavior_index);
         if (open_behavior_asset(scene, name) != 0) {
             snprintf(scene->message, sizeof scene->message, "Could not open behavior asset.");
+        }
+        return;
+    }
+    if (content_path_in_folder(scene, entry->path, "systems")) {
+        if (open_system_asset(scene, entry->path) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Could not open System asset.");
         }
     }
 }
@@ -3325,6 +3418,34 @@ static void draw_content_drawer(app_scene_authoring *scene)
     editor_ui_set_content_drawer_open(open);
 }
 
+static int save_system_document(app_scene_authoring *scene, const char *path)
+{
+    char *graph_json = blueprint_save_json(editor_blueprint(scene->graph_editor));
+    blueprint *graph = graph_json ? blueprint_load_json(graph_json) : NULL;
+    free(graph_json);
+    if (!graph ||
+        game_system_document_replace_blueprint(scene->system_document, graph) != 0) {
+        blueprint_free(graph);
+        return -1;
+    }
+    char *json = game_system_document_save(
+        scene->system_document,
+        resolve_system_component,
+        system_component_name,
+        NULL
+    );
+    if (!json) {
+        return -1;
+    }
+    int result = write_text_file_atomic(path, json);
+    free(json);
+    if (result == 0) {
+        free(scene->system_path);
+        scene->system_path = xstrdup(path);
+    }
+    return result;
+}
+
 static int save_as_active_document(app_scene_authoring *scene)
 {
     char *path = document_default_path(scene);
@@ -3333,7 +3454,9 @@ static int save_as_active_document(app_scene_authoring *scene)
         return -1;
     }
     int result = -1;
-    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        result = scene->system_document ? save_system_document(scene, path) : -1;
+    } else if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         result = asset
                    ? app_scene_authoring_save_prototype(scene, asset->prototype->name, path)
@@ -3369,6 +3492,13 @@ static int save_as_active_document(app_scene_authoring *scene)
 
 static int save_active_document(app_scene_authoring *scene)
 {
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        if (!scene->system_document || !scene->system_path) {
+            snprintf(scene->message, sizeof scene->message, "System requires Save As.");
+            return -1;
+        }
+        return save_system_document(scene, scene->system_path);
+    }
     if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         if (!asset || !asset->path) {
@@ -3559,6 +3689,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
             draw_scene_inspector(scene, "Scene Runtime", EDITOR_UI_FOCUS_SCENE_RUNTIME);
             sync_editor_inspection(scene);
             break;
+        case APP_EDITOR_DOCUMENT_SYSTEM: sync_editor_inspection(scene); break;
     }
     draw_content_drawer(scene);
 }

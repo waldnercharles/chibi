@@ -3,6 +3,7 @@
 
 #include "../engine/engine.h"
 #include "../game/live.h"
+#include "../game/system_document.h"
 
 typedef struct app_scene_authoring app_scene_authoring;
 typedef struct editor editor;
@@ -13,6 +14,7 @@ typedef enum
     APP_EDITOR_DOCUMENT_SCENE,
     APP_EDITOR_DOCUMENT_PROTOTYPE,
     APP_EDITOR_DOCUMENT_BEHAVIOR,
+    APP_EDITOR_DOCUMENT_SYSTEM,
 } app_editor_document_kind;
 
 typedef struct
@@ -67,6 +69,7 @@ int app_scene_authoring_remove_prototype_component(
 void app_scene_authoring_free(app_scene_authoring *scene);
 int app_scene_authoring_seed_default(app_scene_authoring *scene);
 int app_scene_authoring_open_behavior(app_scene_authoring *scene, const char *asset_name);
+int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_attach_prototype_behavior(
     app_scene_authoring *scene,
     const char *prototype_name,

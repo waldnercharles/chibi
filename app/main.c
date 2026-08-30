@@ -1,12 +1,13 @@
 #include "../core/registry.h"
 #include "../core/serialize.h"
-#include "../core/text_file.h"
+#include "../editor/editor.h"
 #include "../editor/ui_shell.h"
 #include "../engine/engine.h"
 #include "../game/generated.h"
+#include "../game/live.h"
 #include "../game/prototype.h"
 #include "cute_host.h"
-#include "movement_authoring.h"
+#include "scene_authoring.h"
 #include "stacktrace.h"
 #include "web_loop.h"
 
@@ -18,7 +19,6 @@
 #define APP_WINDOW_HEIGHT 1080
 #define APP_DEFAULT_SCREENSHOT_PATH "/tmp/c-blueprints-screenshot.png"
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
-#define MOVEMENT_SYSTEM_PATH "content/systems/MovementSystem.json"
 
 static int save_screenshot(const char *path)
 {
@@ -84,11 +84,11 @@ static const editor_event_signature APP_EVENT_CATALOG[] = {
 typedef struct
 {
     editor *graph_editor;
-    game_system *system;
     engine *runtime;
     ecs_world *world;
+    game_live_world *live;
     engine_viewport *viewport;
-    movement_authoring *authoring;
+    app_scene_authoring *authoring;
     int frames;
     int frame;
     const char *screenshot_path;
@@ -97,9 +97,9 @@ typedef struct
 
 static void app_cleanup(app_loop *loop)
 {
-    movement_authoring_free(loop->authoring);
+    app_scene_authoring_free(loop->authoring);
     engine_free(loop->runtime);
-    game_system_free(loop->system);
+    game_live_world_free(loop->live);
     editor_free(loop->graph_editor);
     ecs_world_free(loop->world);
     engine_viewport_free(loop->viewport);
@@ -114,7 +114,6 @@ static int app_frame(app_loop *loop)
     cf_app_update(NULL);
     double seconds = CF_SECONDS;
     editor_tick(loop->graph_editor, seconds);
-    movement_authoring_sync(loop->authoring);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
         engine_viewport_release_focus();
@@ -122,14 +121,14 @@ static int app_frame(app_loop *loop)
         viewport_focused = 0;
     }
     engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
-    movement_authoring_input(loop->authoring, viewport_focused != 0);
-    if (engine_frame(loop->runtime, seconds) != FLOW_OK) {
+    app_scene_authoring_input(loop->authoring, "viewport", 0.0, viewport_focused != 0);
+    if (app_scene_authoring_frame(loop->authoring, seconds) != FLOW_OK) {
         fprintf(stderr, "runtime frame failed\n");
     }
 
     editor_prepare_docking();
     engine_viewport_draw(loop->viewport);
-    movement_authoring_draw(loop->authoring);
+    app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
 
@@ -206,113 +205,93 @@ int main(int argc, char **argv)
         cf_destroy_app();
         return 1;
 #else
-        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
-            fprintf(stderr, "the active graphics backend cannot render ImGui offscreen\n");
-            cf_destroy_app();
-            return 1;
-        }
-        editor_ui_set_framebuffer_target(true);
+        /* The host presents ImGui on its normal canvas; readback still works
+         * for the headless smoke path. */
 #endif
     }
 
     registry_validate();
-    char *json = text_file_read(MOVEMENT_SYSTEM_PATH);
-    blueprint *editor_definition = json ? blueprint_load_json(json) : NULL;
-    blueprint *runtime_definition = json ? blueprint_load_json(json) : NULL;
-    free(json);
+    blueprint *editor_definition = blueprint_new("AppBehavior");
     ecs_world *world = ecs_world_new();
     engine_viewport *viewport = engine_viewport_new(640, 360);
     editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
-    game_system *system = world && runtime_definition
-                            ? game_system_new(world, runtime_definition)
-                            : NULL;
-    engine *runtime = world ? engine_new(world, NULL) : NULL;
-    movement_authoring *authoring = NULL;
-    game_prototype *player_prototype = NULL;
-    ecs_entity player = { 0 };
-    if (!world || !viewport || !graph_editor || !system || !runtime ||
-        ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) != ECS_OK ||
-        ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) != ECS_OK ||
-        ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) != ECS_OK) {
-        movement_authoring_free(authoring);
+    game_live_world *live = world ? game_live_world_new(world) : NULL;
+    char *definition_json = editor_definition ? blueprint_save_json(editor_definition)
+                                              : NULL;
+    blueprint *definition_blueprint = definition_json
+                                        ? blueprint_load_json(definition_json)
+                                        : NULL;
+    free(definition_json);
+    game_live_definition *definition = definition_blueprint
+                                         ? game_live_definition_new("AppBehavior", definition_blueprint)
+                                         : NULL;
+    engine *runtime = world ? engine_new(world, live) : NULL;
+    app_scene_authoring *authoring = NULL;
+    int components_ok = ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) ==
+                            ECS_OK;
+    if (!world || !components_ok || !viewport || !graph_editor || !live ||
+        !definition || !runtime || game_live_add_definition(live, definition) != 0) {
+        app_scene_authoring_free(authoring);
         engine_free(runtime);
-        game_system_free(system);
+        game_live_definition_free(definition);
+        game_live_world_free(live);
         editor_free(graph_editor);
-        game_prototype_free(player_prototype);
         ecs_world_free(world);
         engine_viewport_free(viewport);
         cf_destroy_app();
         return 1;
     }
-    const game_prototype_registry registry = {
-        GAME_REGISTRY_COMPONENTS,
-        GAME_REGISTRY_COMPONENT_COUNT,
+    authoring = app_scene_authoring_new(
+        world,
+        live,
+        definition,
+        editor_blueprint(graph_editor),
+        graph_editor,
         NULL,
         NULL,
-    };
-    char player_error[256] = { 0 };
-    char *player_json = text_file_read("content/prototypes/Player.json");
-    player_prototype = player_json
-                         ? game_prototype_load(player_json, &registry, player_error, sizeof player_error)
-                         : NULL;
-    free(player_json);
-    if (!player_prototype ||
-        game_prototype_spawn(player_prototype, world, NULL, &player, player_error, sizeof player_error) !=
-            ECS_OK) {
-        fprintf(stderr, "could not spawn Player: %s\\n", player_error);
+        runtime
+    );
+    if (authoring) {
+        (void)app_scene_authoring_load_content(authoring);
+        (void)app_scene_authoring_seed_default(authoring);
+    }
+    if (!authoring || app_scene_authoring_apply_pending(authoring) != 0) {
+        app_scene_authoring_free(authoring);
         engine_free(runtime);
-        game_system_free(system);
+        game_live_world_free(live);
         editor_free(graph_editor);
-        game_prototype_free(player_prototype);
         ecs_world_free(world);
         engine_viewport_free(viewport);
         cf_destroy_app();
         return 1;
     }
-    authoring = movement_authoring_new(world, player, system, graph_editor, runtime);
-    char *system_json = text_file_read(MOVEMENT_SYSTEM_PATH);
-    char query_error[256] = { 0 };
-    if (authoring && system_json &&
-        movement_authoring_set_query_json(authoring, system_json, query_error, sizeof query_error) !=
-            0) {
-        fprintf(stderr, "could not load system query: %s\n", query_error);
-    }
-    free(system_json);
-    if (!authoring ||
-        engine_add_system(runtime, movement_authoring_system, authoring) != 0) {
-        movement_authoring_free(authoring);
-        engine_free(runtime);
-        game_system_free(system);
-        editor_free(graph_editor);
-        game_prototype_free(player_prototype);
-        ecs_world_free(world);
-        engine_viewport_free(viewport);
-        cf_destroy_app();
-        return 1;
-    }
-    game_prototype_free(player_prototype);
     editor_ui_reset_layout();
     editor_set_event_catalog(
         graph_editor,
         APP_EVENT_CATALOG,
         (int)(sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG)
     );
-    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_SYSTEM);
-    editor_set_save_handler(graph_editor, movement_authoring_save, authoring);
+    editor_set_ui_context(graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
     engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
     editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
-    engine_viewport_set_render_callback(viewport, movement_authoring_render, authoring);
+    engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);
 
     app_loop loop = {
         .graph_editor = graph_editor,
-        .system = system,
         .runtime = runtime,
         .world = world,
+        .live = live,
         .viewport = viewport,
         .authoring = authoring,
         .frames = frames,
         .screenshot_path = screenshot_path,
-        .capture_error = screenshot_path != NULL,
+        .capture_error = 0,
     };
 #ifdef __EMSCRIPTEN__
     /* Browser event processing must return to the browser between frames. */

@@ -285,7 +285,7 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
 list(REMOVE_ITEM APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/app/input_behavior.c
     ${CMAKE_CURRENT_SOURCE_DIR}/app/demo_graph.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/scene_authoring.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/app/movement_authoring.c
 )
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine game cute)

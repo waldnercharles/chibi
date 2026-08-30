@@ -278,6 +278,21 @@ int main(int argc, char **argv)
         ok = 0;
         stage = 23;
     }
+    game_system_document *system_fixture = game_system_document_new("TestSystem");
+    char *system_json = system_fixture
+                          ? game_system_document_save(system_fixture, NULL, NULL, NULL)
+                          : NULL;
+    const char *system_path = "prototype_authoring_check_system.json";
+    if (system_json) {
+        write_file(system_path, system_json);
+    }
+    game_system_document_free(system_fixture);
+    free(system_json);
+    if (ok && (app_scene_authoring_open_system(scene, system_path) != 0 ||
+               app_scene_authoring_document(scene).kind != APP_EDITOR_DOCUMENT_SYSTEM)) {
+        ok = 0;
+        stage = 24;
+    }
     if (!ok) {
         fprintf(
             stderr,
@@ -293,6 +308,7 @@ int main(int argc, char **argv)
     free(saved_prototype);
     remove(scene_path);
     remove(prototype_path);
+    remove(system_path);
     remove(save_as_path);
     remove("prototype_authoring_check_content/Scene.json");
     rmdir("prototype_authoring_check_content/behaviors");

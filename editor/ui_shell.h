@@ -10,6 +10,7 @@ typedef enum editor_ui_asset_kind
     EDITOR_UI_ASSET_BEHAVIOR,
     EDITOR_UI_ASSET_FOLDER,
     EDITOR_UI_ASSET_FILE,
+    EDITOR_UI_ASSET_SYSTEM,
 } editor_ui_asset_kind;
 
 typedef enum editor_ui_asset_selection

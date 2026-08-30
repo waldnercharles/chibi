@@ -25,6 +25,11 @@ Issues live in GitHub Issues for `waldnercharles/c-blueprints`; use the `gh` CLI
 
 Use the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
 
+### Pull requests
+
+- Keep PR bodies concise; omit test verification command lists.
+- Attach a screenshot or video showing the app validated through computer-use.
+
 ### Domain docs
 
 This repository uses a single-context domain-doc layout rooted at `CONTEXT.md`, with ADRs at `docs/adr/` when needed. See `docs/agents/domain.md`.

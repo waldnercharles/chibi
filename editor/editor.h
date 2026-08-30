@@ -1,7 +1,7 @@
 #ifndef CBLUEPRINT_EDITOR_H
 #define CBLUEPRINT_EDITOR_H
 
-#include "../core/blueprint.h"
+#include "../core/behavior_asset.h"
 #include "../core/instance.h"
 
 typedef struct editor editor;
@@ -17,15 +17,15 @@ typedef enum
 typedef int (*editor_save_handler)(editor *e, void *user);
 
 /* The editor takes ownership of bp and frees it in editor_free(). */
-editor *editor_new(blueprint *bp);
+editor *editor_new(behavior_asset *bp);
 void editor_free(editor *e);
 
 /* Returns the editor-owned working document without transferring ownership. */
-const blueprint *editor_blueprint(const editor *e);
+const behavior_asset *editor_behavior_asset(const editor *e);
 
-/* Replaces the editable Blueprint with a copy of source and opens graph_id. */
-int editor_open_blueprint(editor *e, const blueprint *source, uint64_t graph_id);
-/* Opens a graph in the editor without changing Blueprint runtime semantics. */
+/* Replaces the editable Behavior Asset with a copy of source and opens graph_id. */
+int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id);
+/* Opens a graph in the editor without changing Behavior Asset runtime semantics. */
 int editor_open_graph(editor *e, uint64_t graph_id);
 const graph *editor_active_graph(const editor *e);
 
@@ -83,24 +83,24 @@ int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id);
  * node for wiring, or NULL on allocation failure. */
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y);
 
-/* Save the blueprint to `path` as JSON. Returns 0 on success, -1 on error. */
+/* Save the behavior_asset to `path` as JSON. Returns 0 on success, -1 on error. */
 int editor_save(const editor *e, const char *path);
 
-/* Replace the editor's blueprint with the JSON at `path`. Returns 0 on
- * success, -1 on error (the existing blueprint is left untouched). */
+/* Replace the editor's behavior_asset with the JSON at `path`. Returns 0 on
+ * success, -1 on error (the existing behavior_asset is left untouched). */
 int editor_load(editor *e, const char *path);
 
 /* Preview instance (UI-54/55/57). The editor owns a runtime instance over a
- * cloned applied snapshot. Authoring mutations stay on the working Blueprint;
- * an explicit reset replaces the snapshot. */
-blueprint_instance *editor_preview_instance(const editor *e);
+ * cloned applied snapshot. Authoring mutations stay on the working Behavior
+ * Asset; an explicit reset replaces the snapshot. */
+behavior_instance *editor_preview_instance(const editor *e);
 
 /* Borrow a runtime instance for read-only graph inspection. The caller owns
  * the instance and must clear or replace it before the instance is detached or
  * destroyed. */
-void editor_set_inspection_instance(editor *e, const blueprint_instance *instance);
+void editor_set_inspection_instance(editor *e, const behavior_instance *instance);
 void editor_set_inspection_run(editor *e, const flow_run *run);
-void editor_set_inspection_trace(editor *e, const blueprint_instance_trace_entry *trace, int count);
+void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count);
 /* Updates render-only activity for a host execution path without tracing nodes. */
 void editor_set_execution_pulse(editor *e, double monotonic_time);
 

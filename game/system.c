@@ -93,8 +93,8 @@ typedef struct
 struct game_system
 {
     ecs_world *world;
-    blueprint *definition;
-    blueprint_instance *instance;
+    behavior_asset *definition;
+    behavior_instance *instance;
     system_program *program;
     compile_report compile;
     ecs_component_id *query;
@@ -1002,7 +1002,7 @@ static void program_build_ir(system_program *program)
     assert(graph_ir_validate(&program->ir, NULL) == 0);
 }
 
-static system_program *program_new(const blueprint *definition, const node *tick)
+static system_program *program_new(const behavior_asset *definition, const node *tick)
 {
     system_program *program = (system_program *)xcalloc(1, sizeof *program);
     graph_program_init(&program->shared);
@@ -1395,15 +1395,15 @@ static int program_run_typed(system_program *program, ecs_entity entity, double 
     return FLOW_OK;
 }
 
-static blueprint_instance *make_instance(game_system *system)
+static behavior_instance *make_instance(game_system *system)
 {
-    blueprint_instance *instance = blueprint_instance_create(system->definition, NULL, NULL, NULL);
+    behavior_instance *instance = behavior_instance_create(system->definition, NULL, NULL, NULL);
     if (!instance) {
         return NULL;
     }
-    blueprint_instance_set_activation_pool(instance, 1);
-    blueprint_instance_set_trace_enabled(instance, 0);
-    blueprint_instance_bind_service(instance, "ecs.world", system->world);
+    behavior_instance_set_activation_pool(instance, 1);
+    behavior_instance_set_trace_enabled(instance, 0);
+    behavior_instance_bind_service(instance, "ecs.world", system->world);
     return instance;
 }
 
@@ -1411,7 +1411,7 @@ static int rebuild(game_system *system)
 {
     compile_report_free(&system->compile);
     compile_report_init(&system->compile);
-    blueprint_compile(system->definition, &system->compile);
+    behavior_asset_compile(system->definition, &system->compile);
     afree(system->query);
     ecs_query_expr_free(system->compiled_query_expression);
     system->compiled_query_expression = NULL;
@@ -1464,7 +1464,7 @@ static int rebuild(game_system *system)
     return system->instance ? 0 : -1;
 }
 
-game_system *game_system_new(ecs_world *world, blueprint *definition)
+game_system *game_system_new(ecs_world *world, behavior_asset *definition)
 {
     if (!world || !definition) {
         return NULL;
@@ -1483,23 +1483,23 @@ void game_system_free(game_system *system)
         return;
     }
     program_free(system->program);
-    blueprint_instance_destroy(system->instance);
+    behavior_instance_destroy(system->instance);
     ecs_query_expr_free(system->query_expression);
     ecs_query_expr_free(system->compiled_query_expression);
     compile_report_free(&system->compile);
     afree(system->query);
-    blueprint_free(system->definition);
+    behavior_asset_free(system->definition);
     free(system);
 }
 
-int game_system_replace(game_system *system, blueprint *definition)
+int game_system_replace(game_system *system, behavior_asset *definition)
 {
     if (!system || !definition) {
         return -1;
     }
     program_free(system->program);
-    blueprint_instance_destroy(system->instance);
-    blueprint_free(system->definition);
+    behavior_instance_destroy(system->instance);
+    behavior_asset_free(system->definition);
     system->definition = definition;
     system->program = NULL;
     system->instance = NULL;
@@ -1535,30 +1535,30 @@ static int run_interpreted(game_system *system, ecs_entity entity, double now, d
         .type_name = "float",
     };
     flow_inputs inputs = { &tick_delta, 1, NULL };
-    if (blueprint_instance_rebind(system->instance, &owner) != 0) {
+    if (behavior_instance_rebind(system->instance, &owner) != 0) {
         set_error(error, FLOW_ERR_STATE, NULL, "system instance is busy");
         return FLOW_ERR_STATE;
     }
-    flow_run *run = blueprint_instance_enqueue(system->instance, system->tick, inputs, error);
+    flow_run *run = behavior_instance_enqueue(system->instance, system->tick, inputs, error);
     if (!run) {
         return error && error->code ? error->code : FLOW_ERR_STATE;
     }
-    int result = blueprint_instance_tick(system->instance, now);
+    int result = behavior_instance_tick(system->instance, now);
     flow_state state = flow_run_status(run);
     if (result < 0 || state == FLOW_FAILED) {
         if (error && flow_run_error(run)) {
             *error = *flow_run_error(run);
         }
-        blueprint_instance_release_activation(system->instance, run);
+        behavior_instance_release_activation(system->instance, run);
         return result < 0 ? result : FLOW_ERR_NODE;
     }
     if (state != FLOW_COMPLETED) {
-        blueprint_instance_stop_activation(system->instance, run);
-        blueprint_instance_release_activation(system->instance, run);
+        behavior_instance_stop_activation(system->instance, run);
+        behavior_instance_release_activation(system->instance, run);
         set_error(error, FLOW_ERR_STATE, system->tick, "System Tick must complete in one frame");
         return FLOW_ERR_STATE;
     }
-    blueprint_instance_release_activation(system->instance, run);
+    behavior_instance_release_activation(system->instance, run);
     return FLOW_OK;
 }
 
@@ -1775,7 +1775,7 @@ int game_system_tick(game_system *system, double monotonic_time, double delta_se
     return game_system_tick_mode(system, monotonic_time, delta_seconds, error, GAME_SYSTEM_EXEC_AUTO);
 }
 
-const blueprint *game_system_blueprint(const game_system *system)
+const behavior_asset *game_system_behavior_asset(const game_system *system)
 {
     return system ? system->definition : NULL;
 }

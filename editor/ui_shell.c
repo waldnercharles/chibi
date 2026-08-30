@@ -99,7 +99,8 @@ void editor_ui_request_focus(editor_ui_focus_target target)
         target == EDITOR_UI_FOCUS_NONE || target == EDITOR_UI_FOCUS_SCENE ||
         target == EDITOR_UI_FOCUS_SCENE_RUNTIME || target == EDITOR_UI_FOCUS_NODE_CANVAS ||
         target == EDITOR_UI_FOCUS_CONTENT_DRAWER || target == EDITOR_UI_FOCUS_COMPONENTS ||
-        target == EDITOR_UI_FOCUS_MY_BLUEPRINT || target == EDITOR_UI_FOCUS_INSPECTOR ||
+        target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
+        target == EDITOR_UI_FOCUS_INSPECTOR ||
         target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
     );
     ui_focus_request = target;
@@ -111,7 +112,8 @@ bool editor_ui_take_focus(editor_ui_focus_target target)
         target == EDITOR_UI_FOCUS_SCENE || target == EDITOR_UI_FOCUS_SCENE_RUNTIME ||
         target == EDITOR_UI_FOCUS_NODE_CANVAS ||
         target == EDITOR_UI_FOCUS_CONTENT_DRAWER || target == EDITOR_UI_FOCUS_COMPONENTS ||
-        target == EDITOR_UI_FOCUS_MY_BLUEPRINT || target == EDITOR_UI_FOCUS_INSPECTOR ||
+        target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
+        target == EDITOR_UI_FOCUS_INSPECTOR ||
         target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
     );
     if (ui_focus_request != target) {
@@ -648,7 +650,7 @@ static void ui_draw_menu(void)
     if (!ImGui_BeginMainMenuBar()) {
         return;
     }
-    ImGui_TextColoredUnformatted(UI_ACCENT, "C Blueprints");
+    ImGui_TextColoredUnformatted(UI_ACCENT, "C Behavior Assets");
     ImGui_SameLine();
     ImGui_TextDisabledUnformatted("Document Workspace");
     ImGui_EndMainMenuBar();

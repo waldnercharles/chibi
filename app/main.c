@@ -205,25 +205,29 @@ int main(int argc, char **argv)
         cf_destroy_app();
         return 1;
 #else
-        /* The host presents ImGui on its normal canvas; readback still works
-         * for the headless smoke path. */
+        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
+            fprintf(stderr, "could not set the screenshot render target\n");
+            cf_destroy_app();
+            return 1;
+        }
 #endif
     }
 
     registry_validate();
-    blueprint *editor_definition = blueprint_new("AppBehavior");
+    behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
     ecs_world *world = ecs_world_new();
     engine_viewport *viewport = engine_viewport_new(640, 360);
     editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
     game_live_world *live = world ? game_live_world_new(world) : NULL;
-    char *definition_json = editor_definition ? blueprint_save_json(editor_definition)
-                                              : NULL;
-    blueprint *definition_blueprint = definition_json
-                                        ? blueprint_load_json(definition_json)
-                                        : NULL;
+    char *definition_json = editor_definition
+                              ? behavior_asset_save_json(editor_definition)
+                              : NULL;
+    behavior_asset *definition_behavior_asset = definition_json
+                                                  ? behavior_asset_load_json(definition_json)
+                                                  : NULL;
     free(definition_json);
-    game_live_definition *definition = definition_blueprint
-                                         ? game_live_definition_new("AppBehavior", definition_blueprint)
+    game_live_definition *definition = definition_behavior_asset
+                                         ? game_live_definition_new("AppBehavior", definition_behavior_asset)
                                          : NULL;
     engine *runtime = world ? engine_new(world, live) : NULL;
     app_scene_authoring *authoring = NULL;
@@ -251,7 +255,7 @@ int main(int argc, char **argv)
         world,
         live,
         definition,
-        editor_blueprint(graph_editor),
+        editor_behavior_asset(graph_editor),
         graph_editor,
         NULL,
         NULL,

@@ -98,7 +98,7 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
     if (!ctx->instance) {
         return fail(ctx, n, 0, NODE_EVAL_INVALID, "pure function requires an instance");
     }
-    graph *target = blueprint_find_graph(ctx->instance->bp, n->reference_id);
+    graph *target = behavior_asset_find_graph(ctx->instance->bp, n->reference_id);
     if (!target || target->kind != GRAPH_FUNCTION) {
         return fail(ctx, n, 0, NODE_EVAL_INVALID, "pure function graph is missing");
     }
@@ -267,7 +267,7 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             if (!ctx->instance) {
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, "Get Variable requires an instance");
             }
-            if (blueprint_instance_get_variable(ctx->instance, n->reference_id, &outputs[0]) !=
+            if (behavior_instance_get_variable(ctx->instance, n->reference_id, &outputs[0]) !=
                 0) {
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, "Get Variable references a lost variable");
             }
@@ -276,7 +276,7 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             if (!ctx->instance) {
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, "Self requires an instance");
             }
-            outputs[0] = blueprint_instance_owner(ctx->instance);
+            outputs[0] = behavior_instance_owner(ctx->instance);
             break;
         case NODE_PURE_FUNCTION:
             if (eval_pure_function(g, n, a, ctx)) {

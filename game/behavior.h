@@ -20,12 +20,12 @@ typedef struct
 
 game_behavior_world *game_behavior_world_new(ecs_world *world);
 void game_behavior_world_free(game_behavior_world *world);
-int game_behavior_register_asset(game_behavior_world *world, const char *asset_name, blueprint *definition);
+int game_behavior_register_asset(game_behavior_world *world, const char *asset_name, behavior_asset *definition);
 int game_behavior_replace_asset(
     game_behavior_world *world,
     const char *asset_name,
-    blueprint *definition,
-    blueprint **old_definition
+    behavior_asset *definition,
+    behavior_asset **old_definition
 );
 int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const char *asset_name);
 int game_behavior_detach_asset(game_behavior_world *world, ecs_entity entity, const char *asset_name);
@@ -83,8 +83,8 @@ typedef struct
 {
     ecs_entity entity;
     const char *asset_name;
-    const blueprint *definition;
-    blueprint_instance *instance;
+    const behavior_asset *definition;
+    behavior_instance *instance;
     uint64_t sequence;
     int debug_hold;
 } game_behavior_attachment_info;
@@ -113,9 +113,9 @@ int game_behavior_entity_state_at(
 int game_behavior_asset_registered(const game_behavior_world *world, const char *asset_name);
 int game_behavior_asset_count(const game_behavior_world *world);
 const char *game_behavior_asset_name_at(const game_behavior_world *world, int index);
-const blueprint *game_behavior_asset_definition_at(const game_behavior_world *world, int index);
+const behavior_asset *game_behavior_asset_definition_at(const game_behavior_world *world, int index);
 int game_behavior_pool_size(const game_behavior_world *world, const char *asset_name);
-blueprint_instance *game_behavior_instance(
+behavior_instance *game_behavior_instance(
     game_behavior_world *world,
     ecs_entity entity,
     const char *asset_name
@@ -125,7 +125,7 @@ blueprint_instance *game_behavior_instance(
  * runtime owns the shared entity and instance invariants; it does not put ECS
  * types into core. */
 typedef int (*game_behavior_promote_fn)(
-    blueprint *definition,
+    behavior_asset *definition,
     uint64_t variable_id,
     ecs_component_id component_id,
     void *user

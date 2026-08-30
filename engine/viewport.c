@@ -161,15 +161,8 @@ void engine_viewport_release_focus(void)
     ImGui_SetWindowFocusStr(NULL);
 }
 
-int engine_viewport_draw(engine_viewport *viewport)
+static void draw_viewport_canvas(engine_viewport *viewport)
 {
-    if (!viewport || !viewport->canvas.id) {
-        return -1;
-    }
-    /* cf_render_to flushes the queued draw commands into the canvas, so the
-     * scene must be queued before it, under a projection sized to this target
-     * rather than the app window's. cf_draw_push/pop keep both off the
-     * editor's own draw state. */
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(
         (float)viewport->width * 0.5f,
@@ -182,6 +175,18 @@ int engine_viewport_draw(engine_viewport *viewport)
     }
     cf_render_to(viewport->canvas, true);
     cf_draw_pop();
+}
+
+int engine_viewport_draw(engine_viewport *viewport)
+{
+    if (!viewport || !viewport->canvas.id) {
+        return -1;
+    }
+    /* cf_render_to flushes the queued draw commands into the canvas, so the
+     * scene must be queued before it, under a projection sized to this target
+     * rather than the app window's. cf_draw_push/pop keep both off the
+     * editor's own draw state. */
+    draw_viewport_canvas(viewport);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE)) {
         ImGui_SetNextWindowFocus();
     }
@@ -203,7 +208,14 @@ int engine_viewport_draw(engine_viewport *viewport)
     if (width > 0 && height > 0) {
         engine_viewport_request_resize(viewport, width, height);
         if (viewport->stable_resize_frames >= 2) {
-            engine_viewport_commit_resize(viewport);
+            int resized = viewport->resize_pending;
+            if (engine_viewport_commit_resize(viewport) != 0) {
+                ImGui_End();
+                return -1;
+            }
+            if (resized) {
+                draw_viewport_canvas(viewport);
+            }
         }
     }
     CF_Texture target = cf_canvas_get_target(viewport->canvas);

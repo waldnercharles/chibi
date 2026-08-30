@@ -125,7 +125,7 @@ int demo_graph_seed_flow(graph *g)
     return 0;
 }
 
-static node *event_node(blueprint *bp, const char *name, float x, float y)
+static node *event_node(behavior_asset *bp, const char *name, float x, float y)
 {
     node *event = graph_add_node(bp->graph, registry_node_by_name("Event"));
     if (!event || graph_set_event_name(bp->graph, event, name)) {
@@ -136,12 +136,12 @@ static node *event_node(blueprint *bp, const char *name, float x, float y)
     return event;
 }
 
-int demo_graph_seed_event_demo(blueprint *bp)
+int demo_graph_seed_event_demo(behavior_asset *bp)
 {
     if (!bp) {
         return -1;
     }
-    blueprint_variable *health = blueprint_add_variable(
+    behavior_variable *health = behavior_asset_add_variable(
         bp,
         "Health",
         PIN_I32,
@@ -150,7 +150,7 @@ int demo_graph_seed_event_demo(blueprint *bp)
         &(pin_value){ .type = PIN_I32, .i = 100 },
         "State"
     );
-    blueprint_variable *last_action = blueprint_add_variable(
+    behavior_variable *last_action = behavior_asset_add_variable(
         bp,
         "LastAction",
         PIN_NAME,
@@ -164,14 +164,14 @@ int demo_graph_seed_event_demo(blueprint *bp)
     }
 
     node *begin = event_node(bp, "Begin", -560.0f, -160.0f);
-    node *set_health = blueprint_add_set_node(bp, health->id);
+    node *set_health = behavior_asset_add_set_node(bp, health->id);
     node *tick = event_node(bp, "Tick", -560.0f, 40.0f);
-    node *get_health = blueprint_add_get_node(bp, health->id);
+    node *get_health = behavior_asset_add_get_node(bp, health->id);
     node *to_string = graph_add_node(bp->graph, registry_node_by_name("To String"));
     node *format = graph_add_node(bp->graph, registry_node_by_name("Format Text"));
     node *print = graph_add_node(bp->graph, registry_node_by_name("Print String"));
     node *input = event_node(bp, "Input", -560.0f, 260.0f);
-    node *set_action = blueprint_add_set_node(bp, last_action->id);
+    node *set_action = behavior_asset_add_set_node(bp, last_action->id);
     if (!begin || !set_health || !tick || !get_health || !to_string ||
         !format || !print || !input || !set_action) {
         return -1;

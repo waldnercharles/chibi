@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cblueprints_reflect LANGUAGES C)
+project(cbehavior_assets_reflect LANGUAGES C)
 
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)

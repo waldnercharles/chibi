@@ -10,7 +10,7 @@
 
 struct game_system_document
 {
-    blueprint *blueprint;
+    behavior_asset *behavior_asset;
     ecs_query_expr *query;
 };
 
@@ -27,8 +27,8 @@ game_system_document *game_system_document_new(const char *name)
         return NULL;
     }
     game_system_document *document = (game_system_document *)xcalloc(1, sizeof *document);
-    document->blueprint = blueprint_new(name);
-    if (!document->blueprint) {
+    document->behavior_asset = behavior_asset_new(name);
+    if (!document->behavior_asset) {
         free(document);
         return NULL;
     }
@@ -40,28 +40,28 @@ void game_system_document_free(game_system_document *document)
     if (!document) {
         return;
     }
-    blueprint_free(document->blueprint);
+    behavior_asset_free(document->behavior_asset);
     ecs_query_expr_free(document->query);
     free(document);
 }
 
-const blueprint *game_system_document_blueprint(const game_system_document *document)
+const behavior_asset *game_system_document_behavior_asset(const game_system_document *document)
 {
-    return document ? document->blueprint : NULL;
+    return document ? document->behavior_asset : NULL;
 }
 
-blueprint *game_system_document_blueprint_mutable(game_system_document *document)
+behavior_asset *game_system_document_behavior_asset_mutable(game_system_document *document)
 {
-    return document ? document->blueprint : NULL;
+    return document ? document->behavior_asset : NULL;
 }
 
-int game_system_document_replace_blueprint(game_system_document *document, blueprint *definition)
+int game_system_document_replace_behavior_asset(game_system_document *document, behavior_asset *definition)
 {
     if (!document || !definition) {
         return -1;
     }
-    blueprint_free(document->blueprint);
-    document->blueprint = definition;
+    behavior_asset_free(document->behavior_asset);
+    document->behavior_asset = definition;
     return 0;
 }
 
@@ -123,26 +123,26 @@ game_system_document *game_system_document_load(
         set_error(error, error_size, "system document is missing");
         return NULL;
     }
-    blueprint *definition = blueprint_load_json(json);
+    behavior_asset *definition = behavior_asset_load_json(json);
     if (!definition) {
-        set_error(error, error_size, "malformed system blueprint");
+        set_error(error, error_size, "malformed system behavior_asset");
         return NULL;
     }
     yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
     if (!parsed) {
-        blueprint_free(definition);
+        behavior_asset_free(definition);
         set_error(error, error_size, "malformed system document");
         return NULL;
     }
     yyjson_val *root = yyjson_doc_get_root(parsed);
     if (!yyjson_is_obj(root)) {
         yyjson_doc_free(parsed);
-        blueprint_free(definition);
+        behavior_asset_free(definition);
         set_error(error, error_size, "system document root must be an object");
         return NULL;
     }
     game_system_document *document = (game_system_document *)xcalloc(1, sizeof *document);
-    document->blueprint = definition;
+    document->behavior_asset = definition;
     int has_query = yyjson_obj_get(root, "query") != NULL;
     if (has_query && !resolve) {
         yyjson_doc_free(parsed);
@@ -159,8 +159,8 @@ game_system_document *game_system_document_load(
     return document;
 }
 
-char *game_system_document_save_blueprint(
-    const blueprint *definition,
+char *game_system_document_save_behavior_asset(
+    const behavior_asset *definition,
     const ecs_query_expr *query,
     game_query_component_resolver resolve,
     game_query_component_name_resolver name,
@@ -170,30 +170,31 @@ char *game_system_document_save_blueprint(
     if (!definition) {
         return NULL;
     }
-    char *blueprint_json = blueprint_save_json(definition);
-    if (!blueprint_json || !query) {
-        return blueprint_json;
+    char *behavior_asset_json = behavior_asset_save_json(definition);
+    if (!behavior_asset_json || !query) {
+        return behavior_asset_json;
     }
     char *query_json = game_query_save(query, resolve, name, user);
     if (!query_json) {
-        free(blueprint_json);
+        free(behavior_asset_json);
         return NULL;
     }
-    size_t blueprint_size = strlen(blueprint_json);
-    while (blueprint_size && (blueprint_json[blueprint_size - 1] == ' ' ||
-                              blueprint_json[blueprint_size - 1] == '\n')) {
-        blueprint_size--;
+    size_t behavior_asset_size = strlen(behavior_asset_json);
+    while (behavior_asset_size &&
+           (behavior_asset_json[behavior_asset_size - 1] == ' ' ||
+            behavior_asset_json[behavior_asset_size - 1] == '\n')) {
+        behavior_asset_size--;
     }
-    if (!blueprint_size || blueprint_json[blueprint_size - 1] != '}') {
-        free(blueprint_json);
+    if (!behavior_asset_size || behavior_asset_json[behavior_asset_size - 1] != '}') {
+        free(behavior_asset_json);
         free(query_json);
         return NULL;
     }
-    blueprint_json[blueprint_size - 1] = '\0';
-    size_t size = blueprint_size + strlen(query_json) + 12;
+    behavior_asset_json[behavior_asset_size - 1] = '\0';
+    size_t size = behavior_asset_size + strlen(query_json) + 12;
     char *json = (char *)xmalloc(size);
-    snprintf(json, size, "%s,\"query\":%s}", blueprint_json, query_json);
-    free(blueprint_json);
+    snprintf(json, size, "%s,\"query\":%s}", behavior_asset_json, query_json);
+    free(behavior_asset_json);
     free(query_json);
     return json;
 }
@@ -205,7 +206,12 @@ char *game_system_document_save(
     void *user
 )
 {
-    return document
-             ? game_system_document_save_blueprint(document->blueprint, document->query, resolve, name, user)
-             : NULL;
+    return document ? game_system_document_save_behavior_asset(
+                          document->behavior_asset,
+                          document->query,
+                          resolve,
+                          name,
+                          user
+                      )
+                    : NULL;
 }

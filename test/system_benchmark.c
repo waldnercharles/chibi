@@ -141,14 +141,14 @@ int main(int argc, char **argv)
     }
     registry_validate();
     char *json = text_file_read("content/systems/MovementSystem.json");
-    blueprint *definition = json ? blueprint_load_json(json) : NULL;
+    behavior_asset *definition = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     ecs_world *world = ecs_world_new();
     if (!definition || !world ||
         ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) != ECS_OK ||
         ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) != ECS_OK ||
         ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) != ECS_OK) {
-        blueprint_free(definition);
+        behavior_asset_free(definition);
         ecs_world_free(world);
         fprintf(stderr, "could not initialize benchmark world\n");
         return 1;
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     if (!system || !entities) {
         game_system_free(system);
         if (!system) {
-            blueprint_free(definition);
+            behavior_asset_free(definition);
         }
         ecs_world_free(world);
         free(entities);
@@ -174,7 +174,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "could not create benchmark entity\n");
             free(entities);
             game_system_free(system);
-            blueprint_free(definition);
+            behavior_asset_free(definition);
             ecs_world_free(world);
             return 1;
         }
@@ -185,7 +185,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "movement graph did not compile to typed bytecode and SLJIT\n");
         free(entities);
         game_system_free(system);
-        blueprint_free(definition);
+        behavior_asset_free(definition);
         ecs_world_free(world);
         return 1;
     }
@@ -270,7 +270,7 @@ int main(int argc, char **argv)
 cleanup:
     free(entities);
     game_system_free(system);
-    blueprint_free(definition);
+    behavior_asset_free(definition);
     ecs_world_free(world);
     return result;
 }

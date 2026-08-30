@@ -291,7 +291,7 @@ static int flow_print_string(node *n, flow_context *ctx)
 
 static int flow_set_variable(node *n, flow_context *ctx)
 {
-    blueprint_instance *bi = flow_context_instance(ctx);
+    behavior_instance *bi = flow_context_instance(ctx);
     if (!bi) {
         return flow_context_fail(ctx, FLOW_ERR_STATE, "Set Variable requires an instance");
     }
@@ -300,7 +300,7 @@ static int flow_set_variable(node *n, flow_context *ctx)
     if (result) {
         return result;
     }
-    if (blueprint_instance_set_variable(bi, n->reference_id, &value) != 0) {
+    if (behavior_instance_set_variable(bi, n->reference_id, &value) != 0) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "Set Variable references a lost variable");
     }
     *flow_context_output_value(ctx, 1) = value;
@@ -330,11 +330,11 @@ static int flow_function_return(node *n, flow_context *ctx)
 
 static int flow_execute_function(node *n, flow_context *ctx, int macro)
 {
-    blueprint_instance *bi = flow_context_instance(ctx);
+    behavior_instance *bi = flow_context_instance(ctx);
     if (!bi) {
         return flow_context_fail(ctx, FLOW_ERR_STATE, "function call requires an instance");
     }
-    graph *target = blueprint_find_graph(bi->bp, n->reference_id);
+    graph *target = behavior_asset_find_graph(bi->bp, n->reference_id);
     if (!target ||
         (macro ? target->kind != GRAPH_MACRO : target->kind != GRAPH_FUNCTION)) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "function graph reference is missing");

@@ -1,4 +1,4 @@
-/* test/self_check.c -- constructs small graphs in code and asserts outputs.
+/* test/test_suite.c -- constructs small graphs in code and asserts outputs.
  *
  * Exercises: generated Make/Break/call nodes (from the reflection pack), the
  * hand-written constant escape hatch, per-run memoization, the cycle guard,
@@ -7,7 +7,7 @@
 #include "../app/demo_graph.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
-#include "../core/blueprint.h"
+#include "../core/behavior_asset.h"
 #include "../core/compile.h"
 #include "../core/conv_nodes.h"
 #include "../core/eval.h"
@@ -33,7 +33,9 @@
 #include "../game/prototype.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
+#define PICO_UNIT_IMPLEMENTATION
 #include "../third_party/fmt/fmt.h"
+#include "../third_party/pico_headers/pico_unit.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -538,19 +540,22 @@ static void run_ecs_checks(void)
         .type = &g_ecs_health_type,
         .index = ECS_INDEX_DENSE,
     };
-    check(ECS_MAX_ENTITIES == 10000, "ECS-1: world uses the fixed 10,000-slot default");
+    check(ECS_MAX_ENTITIES == 10000, "world uses the fixed 10,000-slot default");
     check(
         ecs_world_register_component(world, &position_desc, &position) == ECS_OK &&
             ecs_world_register_component(world, &health_desc, &health) == ECS_OK,
-        "ECS-4: runtime component descriptors register with columns and layout "
+        "runtime component descriptors register with columns and layout "
         "hashes"
     );
     const ecs_component_desc *registered = ecs_world_component(world, position);
-    check(sizeof(ecs_entity) == 8 && !ecs_entity_is_alive(world, (ecs_entity){ 0, 0 }), "ECS-2: handles are 64-bit slot/generation pairs and slot zero is invalid");
+    check(
+        sizeof(ecs_entity) == 8 && !ecs_entity_is_alive(world, (ecs_entity){ 0, 0 }),
+        "handles are 64-bit slot/generation pairs and slot zero is invalid"
+    );
     check(
         registered && registered->column_base &&
             registered->layout_hash == ecs_layout_hash(&g_ecs_position_type),
-        "ECS-4: descriptor reports its stable column base and reflected layout "
+        "descriptor reports its stable column base and reflected layout "
         "hash"
     );
     ecs_component_desc duplicate_key = position_desc;
@@ -558,23 +563,20 @@ static void run_ecs_checks(void)
     duplicate_key.name = "RenamedPosition";
     check(
         ecs_world_register_component(world, &duplicate_key, NULL) == ECS_ERR_DUPLICATE,
-        "ECS-4: duplicate persistent component keys are rejected"
+        "duplicate persistent component keys are rejected"
     );
 
     ecs_entity e1 = ecs_world_create_entity(world);
     ecs_entity e2 = ecs_world_create_entity(world);
     ecs_entity e3 = ecs_world_create_entity(world);
-    check(
-        ecs_entity_is_alive(world, e1) && ecs_entity_is_alive(world, e2),
-        "ECS-11: entity allocation returns live lowest-index slots"
-    );
+    check(ecs_entity_is_alive(world, e1) && ecs_entity_is_alive(world, e2), "entity allocation returns live lowest-index slots");
     check(
         ecs_world_record_add(world, e1, position, NULL, 1) == ECS_OK &&
             ecs_world_record_add(world, e1, health, NULL, 2) == ECS_OK &&
             ecs_world_record_add(world, e2, position, NULL, 3) == ECS_OK &&
             ecs_world_record_add(world, e3, health, NULL, 4) == ECS_OK &&
             ecs_world_apply_commands(world) == ECS_OK,
-        "ECS-12: structural changes wait in the command buffer for apply"
+        "structural changes wait in the command buffer for apply"
     );
 
     ecs_position *p1 = (ecs_position *)ecs_component_data(world, e1, position);
@@ -585,25 +587,22 @@ static void run_ecs_checks(void)
     p2->y = 4.0f;
     check(
         p1 && p2 && (unsigned char *)p2 - (unsigned char *)p1 == sizeof(ecs_position),
-        "ECS-5: component values use stable flat columns with element stride"
+        "component values use stable flat columns with element stride"
     );
     pin_value field = { .type = PIN_F32, .type_name = "float", .f = 9.0f };
     check(
         ecs_component_write_field(world, e1, position, 0, field) == ECS_OK &&
             ecs_component_read_field(world, e1, position, 0, &field) == ECS_OK &&
             field.f == 9.0f,
-        "ECS-6: generic runtime-id access reads and writes without C type "
+        "generic runtime-id access reads and writes without C type "
         "knowledge"
     );
     check(
         ecs_component_read_field(world, e1, position, 1, &field) == ECS_OK &&
             field.f == 2.0f,
-        "ECS-7: component field access goes through pin read/write helpers"
+        "component field access goes through pin read/write helpers"
     );
-    check(
-        ecs_component_has(world, e1, position) && ecs_component_has(world, e1, health),
-        "ECS-8: each component tracks occupancy"
-    );
+    check(ecs_component_has(world, e1, position) && ecs_component_has(world, e1, health), "each component tracks occupancy");
 
     ecs_component_id query_components[] = { position, health };
     ecs_query query;
@@ -611,19 +610,19 @@ static void run_ecs_checks(void)
     int found_count = 0;
     check(
         ecs_query_begin(world, &query, query_components, 2) == ECS_OK,
-        "ECS-10: intersection queries can begin over multiple component ids"
+        "intersection queries can begin over multiple component ids"
     );
     while (ecs_query_next(&query, &found[found_count])) {
         found_count++;
     }
     ecs_query_end(&query);
-    check(found_count == 1 && found[0].slot == e1.slot, "ECS-10: a query visits exactly entities holding every named component");
-    check(ecs_query_begin(world, &query, &health, 1) == ECS_OK, "ECS-9: dense occupancy remains a query-compatible index");
+    check(found_count == 1 && found[0].slot == e1.slot, "a query visits exactly entities holding every named component");
+    check(ecs_query_begin(world, &query, &health, 1) == ECS_OK, "dense occupancy remains a query-compatible index");
     int dense_ordered = ecs_query_next(&query, &found[0]) &&
                         ecs_query_next(&query, &found[1]) &&
                         found[0].slot < found[1].slot;
     ecs_query_end(&query);
-    check(dense_ordered, "ECS-9: dense and bitset indexes preserve observable ascending order");
+    check(dense_ordered, "dense and bitset indexes preserve observable ascending order");
 
     ecs_world *ordered = ecs_world_new();
     ecs_component_id ordered_position = 0;
@@ -634,7 +633,7 @@ static void run_ecs_checks(void)
     ecs_position second = { 2.0f, 0.0f };
     ecs_world_record_add(ordered, ordered_b, ordered_position, &second, 20);
     ecs_world_record_add(ordered, ordered_a, ordered_position, &first, 10);
-    check(ecs_world_apply_commands(ordered) == ECS_OK, "ECS-13: command application sorts by explicit sort key");
+    check(ecs_world_apply_commands(ordered) == ECS_OK, "command application sorts by explicit sort key");
     ecs_world *reverse = ecs_world_new();
     ecs_component_id reverse_position = 0;
     ecs_world_register_component(reverse, &position_desc, &reverse_position);
@@ -643,22 +642,22 @@ static void run_ecs_checks(void)
     ecs_world_record_add(reverse, reverse_a, reverse_position, &first, 10);
     ecs_world_record_add(reverse, reverse_b, reverse_position, &second, 20);
     ecs_world_apply_commands(reverse);
-    check(ecs_world_hash(ordered) == ecs_world_hash(reverse), "ECS-13: the same sorted command set has one result regardless of recording order");
+    check(ecs_world_hash(ordered) == ecs_world_hash(reverse), "the same sorted command set has one result regardless of recording order");
     check(
         ecs_world_record_create(world, 0).slot != 0 &&
             ecs_world_command_count(world) == 1,
-        "ECS-12: a recorded create is not alive before the sync point"
+        "a recorded create is not alive before the sync point"
     );
     ecs_world_clear_commands(world);
 
-    check(ecs_world_record_add(world, e2, health, NULL, 1) == ECS_OK, "ECS-16: a valid structural command is accepted");
+    check(ecs_world_record_add(world, e2, health, NULL, 1) == ECS_OK, "a valid structural command is accepted");
     check(
         ecs_query_begin(world, &query, &position, 1) == ECS_OK &&
             ecs_world_apply_commands(world) == ECS_ERR_ITERATING,
-        "ECS-14: command application is rejected during iteration"
+        "command application is rejected during iteration"
     );
     ecs_query_end(&query);
-    check(ecs_world_apply_commands(world) == ECS_OK, "ECS-14: the command buffer applies at a defined sync point");
+    check(ecs_world_apply_commands(world) == ECS_OK, "the command buffer applies at a defined sync point");
 
     g_ecs_observed_component = position;
     g_ecs_observed_x = 0.0f;
@@ -667,29 +666,26 @@ static void run_ecs_checks(void)
         ecs_world_record_destroy(world, e1, 1) == ECS_OK &&
             ecs_component_data(world, e1, position) != NULL &&
             ecs_world_apply_commands(world) == ECS_OK && g_ecs_observed_x == 9.0f,
-        "ECS-15: destroyed values remain readable until command application"
+        "destroyed values remain readable until command application"
     );
     check(
         !ecs_entity_is_alive(world, e1) &&
             ecs_world_generation(world, e1.slot) != e1.generation,
-        "ECS-3: destroy advances generation and invalidates stale handles"
+        "destroy advances generation and invalidates stale handles"
     );
     ecs_entity recycled = ecs_world_create_entity(world);
-    check(
-        recycled.slot == e1.slot && recycled.generation != e1.generation,
-        "ECS-11: freeing a low slot makes it the next allocation"
-    );
+    check(recycled.slot == e1.slot && recycled.generation != e1.generation, "freeing a low slot makes it the next allocation");
     check(
         ecs_world_record_add(world, e3, health, NULL, 1) == ECS_ERR_DUPLICATE &&
             ecs_world_record_remove(world, e3, position, 1) == ECS_ERR_COMPONENT &&
             ecs_world_record_destroy(world, e1, 1) == ECS_ERR_ENTITY,
-        "ECS-16: duplicate, missing, and stale structural operations report "
+        "duplicate, missing, and stale structural operations report "
         "errors"
     );
     check(
         ecs_world_live_count(world) == 3 &&
             ecs_world_high_water_mark(world) >= recycled.slot,
-        "ECS-8: live count and occupancy remain coherent after structural "
+        "live count and occupancy remain coherent after structural "
         "changes"
     );
 
@@ -703,10 +699,14 @@ static void run_ecs_checks(void)
     check(
         ecs_world_hash(ordered) == ecs_world_hash(reverse) &&
             ecs_world_hash(ordered) != 0,
-        "ECS-18: identical seeded worlds expose an identical deterministic hash"
+        "identical seeded worlds expose an identical deterministic hash"
     );
-    check(ecs_world_component_count(ordered) == 1, "ECS-4: component registration remains independent per world");
-    check(ecs_world_iteration_begin(world) == ECS_OK && ecs_world_iteration_end(world) == ECS_OK, "ECS-17: ECS lifecycle and iteration are headless with no host dependency");
+    check(ecs_world_component_count(ordered) == 1, "component registration remains independent per world");
+    check(
+        ecs_world_iteration_begin(world) == ECS_OK &&
+            ecs_world_iteration_end(world) == ECS_OK,
+        "ECS lifecycle and iteration are headless with no host dependency"
+    );
 
     ecs_world *generated_world = ecs_world_new();
     check(
@@ -722,7 +722,7 @@ static void run_ecs_checks(void)
             GAME_COMPONENT_GameHealth.index == ECS_INDEX_DENSE &&
             GAME_COMPONENT_GameHealth.layout_hash ==
                 ecs_layout_hash(GAME_COMPONENT_GameHealth.type),
-        "ECS-4: reflection emits component descriptors, ids, layout hashes, "
+        "reflection emits component descriptors, ids, layout hashes, "
         "and index policy"
     );
     ecs_entity generated_entity = ecs_world_create_entity(generated_world);
@@ -730,7 +730,7 @@ static void run_ecs_checks(void)
         GAME_GameTransform_add(generated_world, generated_entity, 1) == ECS_OK &&
             GAME_GameHealth_add(generated_world, generated_entity, 2) == ECS_OK &&
             ecs_world_apply_commands(generated_world) == ECS_OK,
-        "ECS-6: generated typed component accessors add through runtime "
+        "generated typed component accessors add through runtime "
         "descriptors"
     );
     pin_value generated_value = { .type = PIN_F32, .type_name = "float", .f = 12.0f };
@@ -743,7 +743,7 @@ static void run_ecs_checks(void)
             generated_value
         ) == ECS_OK &&
             GAME_GameTransform_get(generated_world, generated_entity)->x == 12.0f,
-        "ECS-7: generated component access uses the shared reflected field path"
+        "generated component access uses the shared reflected field path"
     );
     check(
         GAME_GameTransform_has(generated_world, generated_entity) &&
@@ -751,7 +751,7 @@ static void run_ecs_checks(void)
             GAME_NODE_Get_GameTransform.flow &&
             GAME_NODE_Set_GameTransform.flow && GAME_NODE_Has_GameHealth.flow &&
             GAME_NODE_Add_GameHealth.flow && GAME_NODE_Remove_GameHealth.flow,
-        "ECS-6: generated Get, Set, Has, Add, and Remove nodes are emitted"
+        "generated Get, Set, Has, Add, and Remove nodes are emitted"
     );
     ecs_world_free(generated_world);
 
@@ -820,8 +820,8 @@ static void run_prototype_checks(void)
     };
     char error[256];
     game_prototype *prototype = game_prototype_load(derived_json, &registry, error, sizeof error);
-    check(prototype && strcmp(prototype->name, "Enemy") == 0, "PROTO-1: a prototype names components and attached graph assets");
-    check(prototype && acount(prototype->components) == 2, "PROTO-2: a prototype is data and does not allocate an entity slot");
+    check(prototype && strcmp(prototype->name, "Enemy") == 0, "a prototype names components and attached graph assets");
+    check(prototype && acount(prototype->components) == 2, "a prototype is data and does not allocate an entity slot");
     const ecs_component_desc *health = NULL;
     const GameHealth *health_value = NULL;
     for (int i = 0; prototype && i < acount(prototype->components); i++) {
@@ -834,18 +834,15 @@ static void run_prototype_checks(void)
     check(
         health && health_value && health_value->current == 100 &&
             health_value->maximum == 50,
-        "PROTO-3: include values load and local fields override by name"
+        "include values load and local fields override by name"
     );
     char *saved = prototype ? game_prototype_save(prototype) : NULL;
     game_prototype *reordered = game_prototype_load(reordered_json, &registry, error, sizeof error);
     char *saved_reordered = reordered ? game_prototype_save(reordered) : NULL;
-    check(
-        saved && saved_reordered && strcmp(saved, saved_reordered) == 0,
-        "PROTO-4: generic descriptor-driven load/save is deterministic"
-    );
+    check(saved && saved_reordered && strcmp(saved, saved_reordered) == 0, "generic descriptor-driven load/save is deterministic");
     check(
         saved && strstr(saved, "GameTransform") && strstr(saved, "GameHealth"),
-        "PROTO-7: prototype output contains generic component values"
+        "prototype output contains generic component values"
     );
     free(saved);
     free(saved_reordered);
@@ -853,10 +850,7 @@ static void run_prototype_checks(void)
 
     game_prototype_registry missing = { GAME_REGISTRY_COMPONENTS, 1, prototype_include, NULL };
     game_prototype *missing_component = game_prototype_load(derived_json, &missing, error, sizeof error);
-    check(
-        !missing_component && strstr(error, "GameHealth"),
-        "PROTO-5: an unavailable component fails by name without partial data"
-    );
+    check(!missing_component && strstr(error, "GameHealth"), "an unavailable component fails by name without partial data");
     const game_prototype_registry cycles = {
         GAME_REGISTRY_COMPONENTS,
         GAME_REGISTRY_COMPONENT_COUNT,
@@ -864,7 +858,7 @@ static void run_prototype_checks(void)
         NULL,
     };
     game_prototype *cycle = game_prototype_load(g_cycle_a, &cycles, error, sizeof error);
-    check(!cycle && strstr(error, "cycle"), "PROTO-6: include cycles are rejected");
+    check(!cycle && strstr(error, "cycle"), "include cycles are rejected");
 
     ecs_world *world = ecs_world_new();
     ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL);
@@ -877,7 +871,7 @@ static void run_prototype_checks(void)
             game_prototype_spawn(prototype, world, NULL, &no_hook_entity, error, sizeof error) ==
                 ECS_ERR_ARGUMENT &&
             ecs_world_live_count(world) == 0 && strstr(error, "attach hook"),
-        "PROTO-3: behavior-bearing prototypes cannot silently skip attachment"
+        "behavior-bearing prototypes cannot silently skip attachment"
     );
     ecs_entity entity = { 0 };
     check(
@@ -885,7 +879,7 @@ static void run_prototype_checks(void)
             game_prototype_spawn(prototype, world, &hooks, &entity, error, sizeof error) ==
                 ECS_OK &&
             g_prototype_attach_count == 2 && ecs_entity_is_alive(world, entity),
-        "PROTO-3: spawning writes generic component fields and attaches each "
+        "spawning writes generic component fields and attaches each "
         "graph asset"
     );
     pin_value health_field = { 0 };
@@ -904,7 +898,7 @@ static void run_prototype_checks(void)
             ) == 0 &&
             game_prototype_read_field(prototype, "GameHealth", "current", &health_field) == 0 &&
             health_field.i == 101,
-        "PROTO-9: prototype component fields can be inspected and edited"
+        "prototype component fields can be inspected and edited"
     );
     game_prototype_write_field(
         prototype,
@@ -917,14 +911,14 @@ static void run_prototype_checks(void)
             game_prototype_has_graph(prototype, "debug.graph") &&
             game_prototype_remove_graph(prototype, "debug.graph") == 0 &&
             !game_prototype_has_graph(prototype, "debug.graph"),
-        "PROTO-10: prototype behavior attachments are editable"
+        "prototype behavior attachments are editable"
     );
     check(
         prototype && game_prototype_remove_component(prototype, "GameTransform") == 0 &&
             acount(prototype->components) == 1 &&
             game_prototype_add_component(prototype, &GAME_COMPONENT_GameTransform) == 0 &&
             acount(prototype->components) == 2,
-        "PROTO-13: prototype component structure is editable"
+        "prototype component structure is editable"
     );
     game_prototype *base = game_prototype_clone(prototype, error, sizeof error);
     GAME_GameHealth_get(world, entity)->current = 7;
@@ -932,7 +926,7 @@ static void run_prototype_checks(void)
     check(
         base && overrides && strstr(overrides, "\"current\": 7") &&
             !strstr(overrides, "\"maximum\""),
-        "PROTO-11: instance capture stores sparse field overrides"
+        "instance capture stores sparse field overrides"
     );
     ecs_entity override_entity = { 0 };
     check(
@@ -949,40 +943,46 @@ static void run_prototype_checks(void)
             ) == 0 &&
             GAME_GameHealth_get(world, override_entity)->current == 7 &&
             GAME_GameHealth_get(world, override_entity)->maximum == 50,
-        "PROTO-12: sparse field overrides apply without zeroing sibling fields"
+        "sparse field overrides apply without zeroing sibling fields"
     );
     GAME_GameHealth_get(world, entity)->current = 100;
     free(overrides);
     game_prototype_free(base);
     game_prototype *captured = game_prototype_capture_entity("CapturedEnemy", world, entity, &registry);
     char *captured_components = game_prototype_components_json(captured);
-    check(captured && captured_components && strstr(captured_components, "GameHealth"), "PROTO-4: a live entity can be captured through the generic prototype registry");
+    check(
+        captured && captured_components && strstr(captured_components, "GameHealth"),
+        "a live entity can be captured through the generic prototype registry"
+    );
     free(captured_components);
     game_prototype_free(captured);
     game_prototype_free(prototype);
     GameHealth *spawned_health = GAME_GameHealth_get(world, entity);
-    check(spawned_health && spawned_health->current == 100 && spawned_health->maximum == 50, "PROTO-8: editing/freeing a prototype does not change spawned entity values");
+    check(
+        spawned_health && spawned_health->current == 100 && spawned_health->maximum == 50,
+        "editing/freeing a prototype does not change spawned entity values"
+    );
     ecs_world_free(world);
-    check(health != NULL, "PROTO-4: descriptor lookup is independent of component C types");
+    check(health != NULL, "descriptor lookup is independent of component C types");
 }
 
-static blueprint *make_behavior_blueprint(const char *name, int latent)
+static behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
 {
-    blueprint *bp = blueprint_new(name);
+    behavior_asset *bp = behavior_asset_new(name);
     if (!bp) {
         return NULL;
     }
     graph *graph = bp->graph;
     node *event = graph_add_node(graph, registry_node_by_name("Event"));
     if (!event || graph_set_event_name(graph, event, "Tick") != 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     node *begin = NULL;
     if (!latent) {
         begin = graph_add_node(graph, registry_node_by_name("Event"));
         if (!begin || graph_set_event_name(graph, begin, "Begin") != 0) {
-            blueprint_free(bp);
+            behavior_asset_free(bp);
             return NULL;
         }
     }
@@ -991,12 +991,12 @@ static blueprint *make_behavior_blueprint(const char *name, int latent)
         pin_value duration = { .type = PIN_F64, .type_name = "double", .d = 1.0 };
         if (!delay || graph_set_pin_default(graph, delay, 0, 1, &duration) != 0 ||
             graph_connect_exec(graph, event, 0, delay, 0, 0) != 0) {
-            blueprint_free(bp);
+            behavior_asset_free(bp);
             return NULL;
         }
         return bp;
     }
-    blueprint_variable *counter = blueprint_add_variable(
+    behavior_variable *counter = behavior_asset_add_variable(
         bp,
         "Counter",
         PIN_I32,
@@ -1005,12 +1005,12 @@ static blueprint *make_behavior_blueprint(const char *name, int latent)
         &(pin_value){ .type = PIN_I32, .i = 0 },
         "Behavior"
     );
-    node *set = counter ? blueprint_add_set_node(bp, counter->id) : NULL;
+    node *set = counter ? behavior_asset_add_set_node(bp, counter->id) : NULL;
     pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
     if (!counter || !set || graph_set_pin_default(graph, set, 0, 1, &one) != 0 ||
         graph_connect_exec(graph, event, 0, set, 0, 0) != 0 ||
         graph_connect_exec(graph, begin, 0, set, 0, 0) != 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     return bp;
@@ -1018,7 +1018,7 @@ static blueprint *make_behavior_blueprint(const char *name, int latent)
 
 static int g_promote_probe;
 static int behavior_promote_probe(
-    blueprint *definition,
+    behavior_asset *definition,
     uint64_t variable_id,
     ecs_component_id component_id,
     void *user
@@ -1038,13 +1038,13 @@ static void run_scene_document_checks(void)
         document &&
             game_scene_document_add_entity(document, "Player", "PlayerPrototype", behaviors, 2) ==
                 0,
-        "SCENE-1: a scene entity stores its prototype and behavior assets"
+        "a scene entity stores its prototype and behavior assets"
     );
     check(
         game_scene_document_set_entity_components(document, 0, "{\"GameHealth\":{\"current\":7,\"maximum\":9}}") ==
                 0 &&
             strstr(document->entities[0].components_json, "GameHealth"),
-        "SCENE-2: a scene entity stores generic component overrides"
+        "a scene entity stores generic component overrides"
     );
     char *saved = game_scene_document_save(document);
     char error[256];
@@ -1056,23 +1056,23 @@ static void run_scene_document_checks(void)
             strstr(loaded->entities[0].components_json, "GameHealth") &&
             acount(loaded->entities[0].behaviors) == 2 &&
             strcmp(loaded->entities[0].behaviors[1], "Damage") == 0,
-        "SCENE-2: scene documents round-trip behavior attachment names and "
+        "scene documents round-trip behavior attachment names and "
         "component overrides"
     );
     char *resaved = game_scene_document_save(loaded);
-    check(saved && resaved && strcmp(saved, resaved) == 0, "SCENE-3: scene document save output is deterministic");
+    check(saved && resaved && strcmp(saved, resaved) == 0, "scene document save output is deterministic");
     game_scene_document *duplicate = game_scene_document_new("Duplicate");
     check(
         duplicate && game_scene_document_add_entity(duplicate, "A", "P", NULL, 0) == 0 &&
             game_scene_document_add_entity(duplicate, "A", "P", NULL, 0) != 0,
-        "SCENE-4: duplicate scene entity names are rejected"
+        "duplicate scene entity names are rejected"
     );
     game_scene_document *invalid = game_scene_document_load(
         "{\"version\":2,\"name\":\"Bad\",\"entities\":[]}",
         error,
         sizeof error
     );
-    check(!invalid && strstr(error, "version 1"), "SCENE-5: unsupported scene versions are rejected");
+    check(!invalid && strstr(error, "version 1"), "unsupported scene versions are rejected");
     free(saved);
     free(resaved);
     game_scene_document_free(invalid);
@@ -1081,19 +1081,19 @@ static void run_scene_document_checks(void)
     game_scene_document_free(document);
 }
 
-static blueprint *make_log_behavior(void)
+static behavior_asset *make_log_behavior(void)
 {
-    blueprint *bp = blueprint_new("LogBehavior");
+    behavior_asset *bp = behavior_asset_new("LogBehavior");
     node *event = bp ? graph_add_node(bp->graph, registry_node_by_name("Event")) : NULL;
     node *print = bp ? graph_add_node(bp->graph, registry_node_by_name("Print String"))
                      : NULL;
     node *text = bp ? make_string(bp->graph, "entity log") : NULL;
     if (!bp || !event || !print || !text ||
-        blueprint_set_owner_type(bp, "ecs.entity") != 0 ||
+        behavior_asset_set_owner_type(bp, "ecs.entity") != 0 ||
         graph_set_event_name(bp->graph, event, "Log") != 0 ||
         graph_connect_exec(bp->graph, event, 0, print, 0, 0) != 0 ||
         graph_connect_data(bp->graph, text, 0, print, 1) != 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     return bp;
@@ -1109,9 +1109,9 @@ static void run_behavior_checks(void)
     GAME_GameHealth_add(ecs, e2, 2);
     ecs_world_apply_commands(ecs);
 
-    blueprint *behavior = make_behavior_blueprint("Behavior", 0);
-    blueprint *latent = make_behavior_blueprint("Windup", 1);
-    blueprint *logging = make_log_behavior();
+    behavior_asset *behavior = make_behavior_behavior_asset("Behavior", 0);
+    behavior_asset *latent = make_behavior_behavior_asset("Windup", 1);
+    behavior_asset *logging = make_log_behavior();
     game_behavior_world *world = game_behavior_world_new(ecs);
     check(
         behavior && latent && logging && world &&
@@ -1119,31 +1119,31 @@ static void run_behavior_checks(void)
             game_behavior_register_asset(world, "move_again", behavior) == 0 &&
             game_behavior_register_asset(world, "windup", latent) == 0 &&
             game_behavior_register_asset(world, "logging", logging) == 0,
-        "BEH-1: behavior assets can be composed as several instances per entity"
+        "behavior assets can be composed as several instances per entity"
     );
     check(
         game_behavior_attach(world, e1, "move") == 0 &&
             game_behavior_attach(world, e1, "move_again") == 0 &&
             game_behavior_attach(world, e2, "move") == 0,
-        "BEH-1: each attached graph asset creates one per-entity instance"
+        "each attached graph asset creates one per-entity instance"
     );
     check(
         game_behavior_attach(world, e2, "move_again") == 0 &&
             game_behavior_set_debug_hold(world, e2, "move_again", 1) == 0 &&
             game_behavior_pump(world, 0.0) == FLOW_OK,
-        "DBG-18: an inspection hold can retain a completed Begin activation"
+        "an inspection hold can retain a completed Begin activation"
     );
-    blueprint_instance *e2_begin_hold = game_behavior_instance(world, e2, "move_again");
+    behavior_instance *e2_begin_hold = game_behavior_instance(world, e2, "move_again");
     check(
         e2_begin_hold && acount(e2_begin_hold->activations) == 1 &&
             flow_run_status(e2_begin_hold->activations[0]) == FLOW_COMPLETED,
-        "DBG-18: retained Begin activation is available for inspection"
+        "retained Begin activation is available for inspection"
     );
     game_behavior_set_debug_hold(world, e2, "move_again", 0);
     game_behavior_pump(world, 0.0);
     game_behavior_detach_asset(world, e2, "move_again");
-    blueprint_instance *e1_move = game_behavior_instance(world, e1, "move");
-    blueprint_instance *e1_again = game_behavior_instance(world, e1, "move_again");
+    behavior_instance *e1_move = game_behavior_instance(world, e1, "move");
+    behavior_instance *e1_again = game_behavior_instance(world, e1, "move_again");
     game_behavior_attachment_info e1_first;
     game_behavior_attachment_info e1_second;
     check(
@@ -1157,58 +1157,64 @@ static void run_behavior_checks(void)
             e1_first.instance == e1_move && e1_second.instance == e1_again &&
             e1_first.sequence < e1_second.sequence &&
             game_behavior_attachment_info_at(world, e1, 2, &e1_first) != 0,
-        "BEH-13: entity attachment inspection lists assets and instances in "
+        "entity attachment inspection lists assets and instances in "
         "attach order"
     );
     check(
         game_behavior_detach_asset(world, e2, "move") == 1 &&
             game_behavior_attachment_count_for_entity(world, e2) == 0 &&
             game_behavior_attach(world, e2, "move") == 0,
-        "BEH-13: one named behavior asset can be detached without removing "
+        "one named behavior asset can be detached without removing "
         "others"
     );
     check(
         e1_move && e1_again && e1_move != e1_again &&
-            blueprint_instance_owner(e1_move).u64 == ecs_entity_to_u64(e1) &&
-            blueprint_instance_owner(e1_move).type == PIN_HANDLE,
-        "BEH-2: attached instances are independent and carry the owning entity "
+            behavior_instance_owner(e1_move).u64 == ecs_entity_to_u64(e1) &&
+            behavior_instance_owner(e1_move).type == PIN_HANDLE,
+        "attached instances are independent and carry the owning entity "
         "handle"
     );
-    blueprint_variable *counter = blueprint_find_variable_by_name(behavior, "Counter");
+    behavior_variable *counter = behavior_asset_find_variable_by_name(behavior, "Counter");
     pin_value begin_value;
     check(
         counter &&
-            blueprint_instance_get_variable(e1_move, counter->id, &begin_value) == 0 &&
+            behavior_instance_get_variable(e1_move, counter->id, &begin_value) == 0 &&
             begin_value.i == 1,
-        "BEH-14: attaching an asset runs its Begin event once"
+        "attaching an asset runs its Begin event once"
     );
-    check(game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2, "BEH-8: named dispatch reaches every matching attachment in attach order");
+    check(
+        game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2,
+        "named dispatch reaches every matching attachment in attach order"
+    );
     pin_value first;
     pin_value second;
-    blueprint_instance_get_variable(e1_move, counter->id, &first);
-    blueprint_instance_get_variable(e1_again, counter->id, &second);
-    check(first.i == 1 && second.i == 1, "BEH-4: each instance owns private variable state");
-    blueprint_instance_set_variable(e1_move, counter->id, &(pin_value){ .type = PIN_I32, .i = 9 });
-    blueprint_instance_get_variable(e1_again, counter->id, &second);
-    check(second.i == 1 && GAME_GameHealth_get(ecs, e1)->current == 0, "BEH-5: shared entity state is a component, not another instance variable");
+    behavior_instance_get_variable(e1_move, counter->id, &first);
+    behavior_instance_get_variable(e1_again, counter->id, &second);
+    check(first.i == 1 && second.i == 1, "each instance owns private variable state");
+    behavior_instance_set_variable(e1_move, counter->id, &(pin_value){ .type = PIN_I32, .i = 9 });
+    behavior_instance_get_variable(e1_again, counter->id, &second);
+    check(
+        second.i == 1 && GAME_GameHealth_get(ecs, e1)->current == 0,
+        "shared entity state is a component, not another instance variable"
+    );
     check(
         game_behavior_dispatch(world, e1, "Missing", (flow_inputs){ 0 }, NULL) == 0,
-        "BEH-9: an attachment without a pumped event costs nothing"
+        "an attachment without a pumped event costs nothing"
     );
 
-    blueprint_instance *pooled = e1_move;
+    behavior_instance *pooled = e1_move;
     game_behavior_detach_entity(world, e1);
     check(
         game_behavior_attachment_count_for_entity(world, e1) == 0 &&
             game_behavior_attachment_info_at(world, e1, 0, &e1_first) != 0,
-        "BEH-13: detaching an entity removes its inspectable attachments"
+        "detaching an entity removes its inspectable attachments"
     );
-    check(game_behavior_pool_size(world, "move") == 1, "BEH-10: detached instance storage enters the definition pool");
+    check(game_behavior_pool_size(world, "move") == 1, "detached instance storage enters the definition pool");
     game_behavior_attach(world, e1, "move");
     check(
         game_behavior_instance(world, e1, "move") == pooled &&
             game_behavior_pool_size(world, "move") == 0,
-        "BEH-10: steady-state attach/detach reuses the same instance storage"
+        "steady-state attach/detach reuses the same instance storage"
     );
     g_promote_probe = 0;
     check(
@@ -1221,20 +1227,20 @@ static void run_behavior_checks(void)
             NULL
         ) == 0 &&
             g_promote_probe,
-        "BEH-6: the editor promotion operation has a component-bound callback"
+        "the editor promotion operation has a component-bound callback"
     );
     check(
         game_behavior_attach(world, e1, "logging") == 0 &&
             game_behavior_dispatch(world, e1, "Log", (flow_inputs){ 0 }, NULL) == 1 &&
             game_behavior_log_count(world) == 1,
-        "DBG-19: entity behavior messages are retained in the runtime log"
+        "entity behavior messages are retained in the runtime log"
     );
     game_behavior_log_info log;
     check(
         game_behavior_log_info_at(world, 0, &log) == 0 &&
             log.entity.slot == e1.slot && strcmp(log.asset_name, "logging") == 0 &&
             strcmp(log.message, "entity log") == 0,
-        "DBG-19: runtime log entries identify their entity and behavior asset"
+        "runtime log entries identify their entity and behavior asset"
     );
     game_behavior_clear_logs(world);
 
@@ -1243,70 +1249,76 @@ static void run_behavior_checks(void)
             game_behavior_attach(world, e2, "windup") == 0 &&
             game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL) == 2 &&
             game_behavior_dispatch(world, e2, "Tick", (flow_inputs){ 0 }, NULL) == 2,
-        "BEH-11: latent behavior runs as a continuation on each owning entity"
+        "latent behavior runs as a continuation on each owning entity"
     );
     game_behavior_entity_state entity_state;
     check(
         game_behavior_entity_state_at(world, e1, "windup", &entity_state) == 0 &&
             entity_state.active && entity_state.suspended &&
             entity_state.entity.slot == e1.slot,
-        "BEH-11: continuation state is explicit and scoped to its entity"
+        "continuation state is explicit and scoped to its entity"
     );
-    blueprint_instance *e1_windup = game_behavior_instance(world, e1, "windup");
-    blueprint_instance *e2_windup = game_behavior_instance(world, e2, "windup");
+    behavior_instance *e1_windup = game_behavior_instance(world, e1, "windup");
+    behavior_instance *e2_windup = game_behavior_instance(world, e2, "windup");
     check(
         e1_windup != e2_windup && acount(e1_windup->activations) == 1 &&
             acount(e2_windup->activations) == 1,
-        "BEH-2: two entities of one graph share no activation state"
+        "two entities of one graph share no activation state"
     );
     check(
         game_behavior_set_debug_hold(world, e1, "windup", 1) == 0 &&
             game_behavior_set_breakpoints_enabled_for_asset(world, e1, "windup", 0) == 0 &&
             game_behavior_breakpoints_enabled_for_asset(world, e1, "windup") == 0,
-        "DBG-18: breakpoint and activation retention can be scoped to one "
+        "breakpoint and activation retention can be scoped to one "
         "entity asset"
     );
     game_behavior_pump(world, 2.0);
     check(
         game_behavior_entity_state_at(world, e1, "windup", &entity_state) == 0 &&
             !entity_state.active && !entity_state.suspended,
-        "BEH-11: entity continuation state becomes inspectable when resumed"
+        "entity continuation state becomes inspectable when resumed"
     );
     check(
         acount(e1_windup->activations) == 1 &&
             flow_run_status(e1_windup->activations[0]) == FLOW_COMPLETED &&
             acount(e2_windup->activations) == 0,
-        "DBG-18: a selected entity retains its completed activation for "
+        "a selected entity retains its completed activation for "
         "inspection"
     );
     game_behavior_set_debug_hold(world, e1, "windup", 0);
     game_behavior_pump(world, 2.0);
-    check(acount(e1_windup->activations) == 0 && acount(e2_windup->activations) == 0, "BEH-12: finished activations are reaped after inspection hold is released");
+    check(
+        acount(e1_windup->activations) == 0 && acount(e2_windup->activations) == 0,
+        "finished activations are reaped after inspection hold is released"
+    );
     for (int frame = 0; frame < 600; frame++) {
         game_behavior_dispatch(world, e1, "Tick", (flow_inputs){ 0 }, NULL);
         game_behavior_pump(world, (double)frame + 3.0);
     }
-    check(acount(game_behavior_instance(world, e1, "move")->activations) == 0, "BEH-12: per-frame dispatch leaves every completed activation queue empty");
+    check(
+        acount(game_behavior_instance(world, e1, "move")->activations) == 0,
+        "per-frame dispatch leaves every completed activation queue empty"
+    );
     check(
         game_behavior_destroy_entity(world, e2) == ECS_OK &&
             game_behavior_instance(world, e2, "move") == NULL,
-        "BEH-7: entity destruction tears down every attached behavior first"
+        "entity destruction tears down every attached behavior first"
     );
     game_behavior_world_free(world);
-    blueprint_free(behavior);
-    blueprint_free(latent);
-    blueprint_free(logging);
+    behavior_asset_free(behavior);
+    behavior_asset_free(latent);
+    behavior_asset_free(logging);
     ecs_world_free(ecs);
 }
 
-static blueprint *make_live_blueprint(void)
+static behavior_asset *make_live_behavior_asset(void)
 {
-    blueprint *bp = blueprint_new("LiveWorking");
-    if (!bp || blueprint_set_owner_type(bp, "ecs.entity") != 0) {
-        blueprint_free(bp);
+    behavior_asset *bp = behavior_asset_new("LiveWorking");
+    if (!bp || behavior_asset_set_owner_type(bp, "ecs.entity") != 0) {
+        behavior_asset_free(bp);
         return NULL;
     }
-    blueprint_variable *counter = blueprint_add_variable(
+    behavior_variable *counter = behavior_asset_add_variable(
         bp,
         "Counter",
         PIN_I32,
@@ -1318,7 +1330,7 @@ static blueprint *make_live_blueprint(void)
     node *begin = graph_add_node(bp->graph, registry_node_by_name("Event"));
     node *tick = graph_add_node(bp->graph, registry_node_by_name("Event"));
     node *input = graph_add_node(bp->graph, registry_node_by_name("Event"));
-    node *set = counter ? blueprint_add_set_node(bp, counter->id) : NULL;
+    node *set = counter ? behavior_asset_add_set_node(bp, counter->id) : NULL;
     pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
     if (!counter || !begin || !tick || !input || !set ||
         graph_set_event_name(bp->graph, begin, "Begin") != 0 ||
@@ -1327,7 +1339,7 @@ static blueprint *make_live_blueprint(void)
         graph_set_pin_default(bp->graph, set, 0, 1, &one) != 0 ||
         graph_connect_exec(bp->graph, begin, 0, set, 0, 0) != 0 ||
         graph_connect_exec(bp->graph, tick, 0, set, 0, 1) != 0) {
-        blueprint_free(bp);
+        behavior_asset_free(bp);
         return NULL;
     }
     return bp;
@@ -1345,101 +1357,102 @@ static void run_live_checks(void)
     GAME_GameHealth_get(ecs, e1)->current = 7;
 
     game_live_world *world = game_live_world_new(ecs);
-    game_live_definition *definition = game_live_definition_new("live", make_live_blueprint());
+    game_live_definition *definition = game_live_definition_new("live", make_live_behavior_asset());
     game_live_definition *other_definition = game_live_definition_new(
         "other",
-        make_behavior_blueprint("Other", 0)
+        make_behavior_behavior_asset("Other", 0)
     );
     check(
         world && definition && other_definition &&
             game_live_add_definition(world, definition) == 0 &&
             game_live_add_definition(world, other_definition) == 0,
-        "APPLY-1: a live definition owns a mutable working copy and an applied "
+        "a live definition owns a mutable working copy and an applied "
         "snapshot"
     );
     game_behavior_world *behaviors = world->behaviors;
     check(
         game_behavior_attach(behaviors, e1, "live") == 0 &&
             game_behavior_attach(behaviors, e1, "other") == 0,
-        "APPLY-2: runtime instances attach only to the applied snapshot"
+        "runtime instances attach only to the applied snapshot"
     );
-    blueprint_instance *live_before = game_behavior_instance(behaviors, e1, "live");
-    check(
-        blueprint_instance_service(live_before, "ecs.world") == ecs,
-        "BEH-4: attached instances receive the owning ECS world service"
-    );
-    const blueprint *applied_before = definition->applied;
-    blueprint_instance *other_before = game_behavior_instance(behaviors, e1, "other");
+    behavior_instance *live_before = game_behavior_instance(behaviors, e1, "live");
+    check(behavior_instance_service(live_before, "ecs.world") == ecs, "attached instances receive the owning ECS world service");
+    const behavior_asset *applied_before = definition->applied;
+    behavior_instance *other_before = game_behavior_instance(behaviors, e1, "other");
     uint64_t node_id = definition->working->graph->nodes[0]->id;
     check(
-        blueprint_mutable(definition->working) &&
-            blueprint_set_name(definition->working, "LiveEdited") == 0 &&
-            blueprint_set_name((blueprint *)definition->applied, "Rejected") != 0,
-        "EXEC-20: working definitions are mutable while attached applied "
+        behavior_asset_mutable(definition->working) &&
+            behavior_asset_set_name(definition->working, "LiveEdited") == 0 &&
+            behavior_asset_set_name((behavior_asset *)definition->applied, "Rejected") != 0,
+        "working definitions are mutable while attached applied "
         "snapshots are immutable"
     );
     check(
         game_live_mark_dirty(definition) == 0 && definition->dirty &&
             strcmp(definition->applied->name, "LiveWorking") == 0,
-        "APPLY-7: Compile/apply is explicit and unapplied edits are visible"
+        "Compile/apply is explicit and unapplied edits are visible"
     );
-    blueprint *working = definition->working;
-    blueprint_set_description(working, "edited working copy");
+    behavior_asset *working = definition->working;
+    behavior_asset_set_description(working, "edited working copy");
     game_live_mark_dirty(definition);
     char message[256];
     check(
         game_live_apply(world, definition, message, sizeof message) == 0 &&
             !definition->dirty && strstr(message, "destroyed and recreated"),
-        "UI-57: one replacement choke point states that only this definition "
+        "one replacement choke point states that only this definition "
         "is recreated"
     );
-    blueprint_instance *live_after = game_behavior_instance(behaviors, e1, "live");
-    blueprint_instance *other_after = game_behavior_instance(behaviors, e1, "other");
+    behavior_instance *live_after = game_behavior_instance(behaviors, e1, "live");
+    behavior_instance *other_after = game_behavior_instance(behaviors, e1, "other");
     check(
         live_after && live_after->bp == definition->applied &&
             live_after->bp != applied_before,
-        "APPLY-4: applying replaces the changed definition's instances as one "
+        "applying replaces the changed definition's instances as one "
         "operation"
     );
-    check(other_after == other_before && GAME_GameHealth_get(ecs, e1)->current == 7, "APPLY-5: applying is scoped and leaves other behaviors and components intact");
-    check(definition->applied->graph->nodes[0]->id == node_id, "APPLY-6: snapshot replacement preserves node identity");
-    blueprint_variable *counter = blueprint_find_variable_by_name(definition->applied, "Counter");
+    check(
+        other_after == other_before && GAME_GameHealth_get(ecs, e1)->current == 7,
+        "applying is scoped and leaves other behaviors and components intact"
+    );
+    check(definition->applied->graph->nodes[0]->id == node_id, "snapshot replacement preserves node identity");
+    behavior_variable *counter = behavior_asset_find_variable_by_name(definition->applied, "Counter");
     pin_value begin_value = { 0 };
     check(
         counter &&
-            blueprint_instance_get_variable(live_after, counter->id, &begin_value) == 0 &&
+            behavior_instance_get_variable(live_after, counter->id, &begin_value) == 0 &&
             begin_value.i == 1,
-        "APPLY-11: recreated instances run their Begin event"
+        "recreated instances run their Begin event"
     );
-    check(begin_value.i == 1, "APPLY-10: apply keeps observable behavior defined when transient state is recreated");
+    check(begin_value.i == 1, "apply keeps observable behavior defined when transient state is recreated");
     check(
         game_behavior_instance(behaviors, e2, "other") == NULL &&
             game_behavior_attachment_count(behaviors) == 2,
-        "RUN-21: replacing one definition does not create instances for "
+        "replacing one definition does not create instances for "
         "unrelated entities"
     );
     check(
         game_live_apply(world, definition, message, sizeof message) == 0 &&
             strstr(message, "no unapplied edits"),
-        "APPLY-3: a clean applied snapshot is stable until another explicit "
+        "a clean applied snapshot is stable until another explicit "
         "apply"
     );
-    blueprint_variable *invalid_counter = blueprint_find_variable_by_name(working, "Counter");
+    behavior_variable *invalid_counter = behavior_asset_find_variable_by_name(working, "Counter");
     check(
         invalid_counter &&
-            blueprint_delete_variable(working, invalid_counter->id) == 0 &&
+            behavior_asset_delete_variable(working, invalid_counter->id) == 0 &&
             game_live_mark_dirty(definition) == 0 &&
             game_live_apply(world, definition, message, sizeof message) != 0 &&
             definition->diagnostics.error_count > 0,
-        "APPLY-8: blocked apply retains structured graph diagnostics"
+        "blocked apply retains structured graph diagnostics"
     );
     check(
-        game_live_mark_dirty(definition) == 0 && blueprint_mutable(definition->working),
-        "APPLY-8: authoring remains available on the working copy after apply"
+        game_live_mark_dirty(definition) == 0 &&
+            behavior_asset_mutable(definition->working),
+        "authoring remains available on the working copy after apply"
     );
     check(
         definition->dirty && definition->applied->graph->nodes[0]->id == node_id,
-        "APPLY-9: runtime state stays out of working-copy history and applied "
+        "runtime state stays out of working-copy history and applied "
         "identity"
     );
     game_live_world_free(world);
@@ -1459,12 +1472,12 @@ static void run_engine_checks(void)
 {
     ecs_world *ecs = ecs_world_new();
     game_live_world *live = game_live_world_new(ecs);
-    game_live_definition *definition = game_live_definition_new("engine", make_live_blueprint());
+    game_live_definition *definition = game_live_definition_new("engine", make_live_behavior_asset());
     ecs_entity entity = ecs_world_create_entity(ecs);
     check(
         live && definition && game_live_add_definition(live, definition) == 0 &&
             game_behavior_attach(live->behaviors, entity, "engine") == 0,
-        "ENG-5: the world and behavior attachment run headlessly without a "
+        "the world and behavior attachment run headlessly without a "
         "window"
     );
     engine *runtime = engine_new(ecs, live);
@@ -1472,15 +1485,18 @@ static void run_engine_checks(void)
     check(
         runtime && engine_add_system(runtime, engine_test_system, NULL) == 0 &&
             engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT) == 0,
-        "ENG-3: the host exposes one explicit viewport focus"
+        "the host exposes one explicit viewport focus"
     );
     flow_error error = { 0 };
-    check(engine_dispatch_input(runtime, "Jump", 1.0, 1, &error) == 1 && error.code == 0, "ENG-4: generic input reaches attached behaviors through typed event dispatch");
+    check(
+        engine_dispatch_input(runtime, "Jump", 1.0, 1, &error) == 1 && error.code == 0,
+        "generic input reaches attached behaviors through typed event dispatch"
+    );
     check(
         engine_frame(runtime, 1.0) == FLOW_OK && engine_frame(runtime, 2.0) == FLOW_OK &&
             engine_route_escape(runtime) == 0 &&
             engine_get_focus(runtime) == ENGINE_FOCUS_NONE,
-        "ENG-6: each frame advances monotonic behavior then applies commands "
+        "each frame advances monotonic behavior then applies commands "
         "once"
     );
     const engine_frame_timing *timing = engine_last_timing(runtime);
@@ -1488,14 +1504,14 @@ static void run_engine_checks(void)
         timing && timing->frame == 2 && timing->command_apply_count == 2 &&
             g_engine_system_frames == 2 && timing->behavior_ms >= 0.0 &&
             timing->systems_ms >= 0.0 && timing->rendering_ms >= 0.0,
-        "ENG-7: behavior, systems, and rendering timing are separately "
+        "behavior, systems, and rendering timing are separately "
         "reportable"
     );
     check(
         runtime && engine_set_playing(runtime, false) == 0 &&
             !engine_is_playing(runtime) && engine_step(runtime) == 0 &&
             engine_frame(runtime, 3.0) == FLOW_OK && !engine_is_playing(runtime),
-        "ENG-8: paused runtime advances only for an explicit step"
+        "paused runtime advances only for an explicit step"
     );
     engine_free(runtime);
     game_live_world_free(live);
@@ -1518,59 +1534,63 @@ static void run_parallel_checks(void)
             GAME_NODE_game_component_probe.access->read_count == 1 &&
             GAME_NODE_game_component_probe.access->reads[0] ==
                 GAME_COMPONENT_GameHealth.id,
-        "PAR-1: node descriptors declare component reads, writes, and scope "
+        "node descriptors declare component reads, writes, and scope "
         "flags"
     );
     check(
         GAME_NODE_Set_GameHealth.access &&
             (GAME_NODE_Set_GameHealth.access->flags & NODE_EFFECT_ENTITY_SCOPED),
-        "PAR-5: generated component writes are entity-scoped"
+        "generated component writes are entity-scoped"
     );
-    check(GAME_NODE_Add_GameHealth.access && (GAME_NODE_Add_GameHealth.access->flags & NODE_EFFECT_STRUCTURAL), "PAR-7: structural component effects are declared for deferred recording");
+    check(
+        GAME_NODE_Add_GameHealth.access &&
+            (GAME_NODE_Add_GameHealth.access->flags & NODE_EFFECT_STRUCTURAL),
+        "structural component effects are declared for deferred recording"
+    );
 
-    blueprint *safe = blueprint_new("SafeEffects");
+    behavior_asset *safe = behavior_asset_new("SafeEffects");
     graph_add_node(safe->graph, &GAME_NODE_game_component_probe);
     compile_report safe_report;
     compile_report_init(&safe_report);
-    blueprint_compile(safe, &safe_report);
+    behavior_asset_compile(safe, &safe_report);
     const compile_effects *safe_effects = compile_report_effects(&safe_report);
     check(
         safe_effects && safe_effects->parallel_eligible && !safe_effects->all_writes &&
             safe_effects->topology_revision == graph_topology_revision(safe->graph),
-        "PAR-4: compile caches a per-entry effect mask against topology "
+        "compile caches a per-entry effect mask against topology "
         "revision"
     );
 
-    blueprint *unsafe = blueprint_new("ConservativeEffects");
+    behavior_asset *unsafe = behavior_asset_new("ConservativeEffects");
     graph_add_node(unsafe->graph, registry_node_by_name("Print String"));
     compile_report unsafe_report;
     compile_report_init(&unsafe_report);
-    blueprint_compile(unsafe, &unsafe_report);
+    behavior_asset_compile(unsafe, &unsafe_report);
     const compile_effects *unsafe_effects = compile_report_effects(&unsafe_report);
     check(
         unsafe_effects && unsafe_effects->all_writes && !unsafe_effects->parallel_eligible,
-        "PAR-2: an undeclared node conservatively writes every component"
+        "an undeclared node conservatively writes every component"
     );
     check(
         compile_effects_conflict(safe_effects, safe_effects, 1) &&
             !compile_effects_conflict(safe_effects, safe_effects, 0) &&
             compile_effects_conflict(safe_effects, unsafe_effects, 0),
-        "PAR-6: same-instance activations serialize while independent declared "
+        "same-instance activations serialize while independent declared "
         "effects can run"
     );
     check(
         unsafe_effects->blocking_node_id != 0 && unsafe_effects->blocking_reason,
-        "PAR-11: compile reports the node and effect that blocks concurrency"
+        "compile reports the node and effect that blocks concurrency"
     );
     flow_parallel_for_fn host_parallel = reverse_parallel_for;
-    check(host_parallel != NULL, "PAR-8: parallel execution is a host-supplied callback, not a core thread pool");
+    check(host_parallel != NULL, "parallel execution is a host-supplied callback, not a core thread pool");
 
     ecs_world *ecs = ecs_world_new();
     ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
     ecs_entity e1 = ecs_world_create_entity(ecs);
     ecs_entity e2 = ecs_world_create_entity(ecs);
     game_live_world *live = game_live_world_new(ecs);
-    game_live_definition *definition = game_live_definition_new("parallel", make_live_blueprint());
+    game_live_definition *definition = game_live_definition_new("parallel", make_live_behavior_asset());
     game_live_add_definition(live, definition);
     game_behavior_world *behaviors = live->behaviors;
     game_behavior_attach(behaviors, e1, "parallel");
@@ -1578,11 +1598,11 @@ static void run_parallel_checks(void)
     g_parallel_calls = 0;
     game_behavior_set_parallel_for(behaviors, host_parallel, NULL);
     game_behavior_pump(behaviors, 1.0);
-    check(g_parallel_calls == 1, "PAR-3: host parallel dispatch reaches reflected behavior effects");
+    check(g_parallel_calls == 1, "host parallel dispatch reaches reflected behavior effects");
     game_behavior_set_breakpoints_enabled(behaviors, 1);
     g_parallel_calls = 0;
     game_behavior_pump(behaviors, 2.0);
-    check(g_parallel_calls == 0, "PAR-9: enabling a breakpoint forces single-threaded behavior execution");
+    check(g_parallel_calls == 0, "enabling a breakpoint forces single-threaded behavior execution");
     game_live_world_free(live);
     ecs_world_free(ecs);
 
@@ -1598,13 +1618,13 @@ static void run_parallel_checks(void)
     ecs_world_apply_commands(second);
     GAME_GameHealth_get(first, first_entity)->current = 42;
     GAME_GameHealth_get(second, second_entity)->current = 42;
-    check(ecs_world_hash(first) == ecs_world_hash(second), "PAR-10: a seeded world hash is identical across execution scheduling");
+    check(ecs_world_hash(first) == ecs_world_hash(second), "a seeded world hash is identical across execution scheduling");
     ecs_world_free(first);
     ecs_world_free(second);
     compile_report_free(&safe_report);
     compile_report_free(&unsafe_report);
-    blueprint_free(safe);
-    blueprint_free(unsafe);
+    behavior_asset_free(safe);
+    behavior_asset_free(unsafe);
 }
 
 typedef struct
@@ -1674,18 +1694,15 @@ static void run_hot_reload_checks(void)
     health->current = 75;
     health->maximum = 100;
 
-    blueprint *latent = make_behavior_blueprint("HotLatent", 1);
-    blueprint_set_owner_type(latent, "ecs.entity");
+    behavior_asset *latent = make_behavior_behavior_asset("HotLatent", 1);
+    behavior_asset_set_owner_type(latent, "ecs.entity");
     pin_value owner = { .type = PIN_HANDLE,
                         .u64 = ecs_entity_to_u64(entity),
                         .type_name = "ecs.entity" };
-    blueprint_instance *instance = blueprint_instance_create(latent, &owner, NULL, NULL);
+    behavior_instance *instance = behavior_instance_create(latent, &owner, NULL, NULL);
     flow_error error = { 0 };
-    flow_run *suspended = blueprint_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, &error);
-    check(
-        suspended && flow_run_status(suspended) == FLOW_SUSPENDED,
-        "HOT-3: a latent activation is suspended before module reload"
-    );
+    flow_run *suspended = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, &error);
+    check(suspended && flow_run_status(suspended) == FLOW_SUSPENDED, "a latent activation is suspended before module reload");
     const ecs_component_desc *components[] = { &g_hot_health_v2_component };
     game_hot_image old_image = {
         "hot-v1",
@@ -1699,32 +1716,32 @@ static void run_hot_reload_checks(void)
     };
     game_hot_module *module = game_hot_module_new(&old_image);
     game_hot_report report;
-    blueprint *definitions[] = { latent };
-    check(module && game_hot_reload_available(), "HOT-1: the game module has a reloadable image and a static-link availability path");
+    behavior_asset *definitions[] = { latent };
+    check(module && game_hot_reload_available(), "the game module has a reloadable image and a static-link availability path");
     check(
         game_hot_module_reload(module, &new_image, world, definitions, 1, &report) == 0 &&
             report.rebound_nodes >= 2 && report.changed_components == 1 &&
             latent->graph->nodes[0]->desc == &g_hot_event_desc,
-        "HOT-2: reload re-resolves every graph descriptor by name"
+        "reload re-resolves every graph descriptor by name"
     );
     hot_health_v2 *migrated = (hot_health_v2 *)
         ecs_component_data(world, entity, g_hot_health_v2_component.id);
     check(
         report.preserved_fields == 2 && report.zeroed_fields == 1 && migrated &&
             migrated->current == 75 && migrated->maximum == 100 && migrated->armor == 0,
-        "HOT-4: layout hashes report changed components and HOT-5 migrates "
+        "layout hashes report changed components and HOT-5 migrates "
         "fields by name"
     );
     check(
         ecs_world_component(world, g_hot_health_v2_component.id) &&
             strcmp(ecs_world_component(world, g_hot_health_v2_component.id)->name, "GameHealthV2") ==
                 0,
-        "HOT-5: stable component identity permits a reflected rename"
+        "stable component identity permits a reflected rename"
     );
     check(
-        blueprint_instance_tick(instance, 2.0) == FLOW_OK &&
+        behavior_instance_tick(instance, 2.0) == FLOW_OK &&
             flow_run_status(suspended) == FLOW_COMPLETED,
-        "HOT-3: a suspended Delay resumes after descriptor rebinding"
+        "a suspended Delay resumes after descriptor rebinding"
     );
 
     game_hot_image bad_image = { "broken", hot_fail_node, NULL, NULL, 0 };
@@ -1736,18 +1753,18 @@ static void run_hot_reload_checks(void)
             ((hot_health_v2 *)
                  ecs_component_data(world, entity, g_hot_health_v2_component.id))
                     ->current == 75,
-        "HOT-6: a failed reload leaves the previous module and world running"
+        "a failed reload leaves the previous module and world running"
     );
     check(
         game_hot_reload_components(world, &new_image, &report) == 0 &&
             report.changed_components == 0,
-        "HOT-4: reloading an unchanged layout is a no-op"
+        "reloading an unchanged layout is a no-op"
     );
-    blueprint_instance_destroy(instance);
+    behavior_instance_destroy(instance);
     game_hot_module_free(module);
-    blueprint_free(latent);
+    behavior_asset_free(latent);
     ecs_world_free(world);
-    check(GAME_HOT_RELOAD == 1, "HOT-7: release builds retain a static link without requiring reload");
+    check(GAME_HOT_RELOAD == 1, "release builds retain a static link without requiring reload");
 }
 
 static void run_scene_checks(void)
@@ -1761,7 +1778,7 @@ static void run_scene_checks(void)
         deterministic &= game_scene_frame(many, (double)frame / 60.0) == ECS_OK;
         deterministic &= game_scene_hash(one) == game_scene_hash(many);
     }
-    check(deterministic, "ECS-18: a seeded 600-frame scene has identical per-frame hashes at one and many workers");
+    check(deterministic, "a seeded 600-frame scene has identical per-frame hashes at one and many workers");
     game_scene_free(one);
     game_scene_free(many);
 
@@ -1776,25 +1793,27 @@ static void run_scene_checks(void)
     check(
         budget_ok && game_scene_entity_count(budget) == 2000 &&
             game_scene_behavior_count(budget) == 500 && average_behavior_ms < 2.0,
-        "ENG-7: 2000 live entities with 500 per-frame behaviors stay under 2 "
+        "2000 live entities with 500 per-frame behaviors stay under 2 "
         "ms average behavior time"
     );
     game_scene_free(budget);
 }
 
-int main(int argc, char **argv)
+static char *program_name;
+
+TEST_CASE(all_checks)
 {
-    stacktrace_init(argv[0]);
+    stacktrace_init(program_name);
     registry_validate();
     g_watch_desc.type = registry_type_by_name("Vec3");
-    check(editor_preview_allowed(FLOW_IDLE), "DBG-6: idle preview is allowed");
+    check(editor_preview_allowed(FLOW_IDLE), "idle preview is allowed");
     check(
         !editor_preview_allowed(FLOW_RUNNING) &&
             !editor_preview_allowed(FLOW_SUSPENDED) &&
             !editor_preview_allowed(FLOW_PAUSED) &&
             !editor_preview_allowed(FLOW_COMPLETED) &&
             !editor_preview_allowed(FLOW_FAILED),
-        "DBG-10: preview is suspended for every non-idle run state"
+        "preview is suspended for every non-idle run state"
     );
 
     arena a;
@@ -1809,13 +1828,13 @@ int main(int argc, char **argv)
     const node_desc *make = find_node("Make_Vec3");
     const node_desc *brk = find_node("Break_Vec3");
     const node_desc *add = find_node("add_floats");
-    check(make && brk && add, "REFL-3: registry exposes Make_Vec3, Break_Vec3, add_floats");
-    check(1, "SCOPE-1: core target is host-independent by its link contract");
-    check(make && make->type && make->type->field_count == 3, "TYPE-2: reflected struct has a type descriptor");
+    check(make && brk && add, "registry exposes Make_Vec3, Break_Vec3, add_floats");
+    check(1, "core target is host-independent by its link contract");
+    check(make && make->type && make->type->field_count == 3, "reflected struct has a type descriptor");
     check(
         make && make->type && make->type->fields &&
             make->type->fields[0].size == sizeof(float),
-        "TYPE-3: reflected fields carry compiler layout"
+        "reflected fields carry compiler layout"
     );
     check(
         PIN_BOOL != PIN_I8 && PIN_I8 != PIN_U8 && PIN_U8 != PIN_I16 &&
@@ -1823,47 +1842,47 @@ int main(int argc, char **argv)
             PIN_U32 != PIN_I64 && PIN_I64 != PIN_U64 && PIN_U64 != PIN_F32 &&
             PIN_F32 != PIN_F64 && PIN_F64 != PIN_STR && PIN_STR != PIN_STRUCT &&
             PIN_STRUCT != PIN_ENUM && PIN_ENUM != PIN_FLOW,
-        "TYPE-1: primitive and flow pin types are distinct"
+        "primitive and flow pin types are distinct"
     );
     pin_spec i32_pin = { "i", PIN_I32, "int", PIN_DATA };
     pin_spec i64_pin = { "i", PIN_I64, "long", PIN_DATA };
-    check(!pin_types_compatible(&i32_pin, &i64_pin), "TYPE-6: integer widths stay distinct");
-    check(g_const_desc.pure_kind == NODE_PURE_CONST, "NODE-8: hand-authored node descriptor is usable");
+    check(!pin_types_compatible(&i32_pin, &i64_pin), "integer widths stay distinct");
+    check(g_const_desc.pure_kind == NODE_PURE_CONST, "hand-authored node descriptor is usable");
     check(
         make && make->type && make->type->name && strcmp(make->type->name, "Vec3") == 0,
-        "REFL-1: build-time registry exposes reflected types"
+        "build-time registry exposes reflected types"
     );
-    check(make && make->inputs && make->outputs, "REFL-2: annotations emit descriptor pin metadata");
-    check(add && add->fn, "REFL-4: annotated function emits a call adapter");
+    check(make && make->inputs && make->outputs, "annotations emit descriptor pin metadata");
+    check(add && add->fn, "annotated function emits a call adapter");
     check(
         make && make->type->fields[0].offset == 0 && make->type->size >= sizeof(float),
-        "REFL-6: generated layout uses sizeof and offsetof"
+        "generated layout uses sizeof and offsetof"
     );
     check(
         make && brk && make->pure_kind == NODE_PURE_MAKE && brk->pure_kind == NODE_PURE_BREAK,
-        "REFL-7: annotation expansion keeps Make and Break policy"
+        "annotation expansion keeps Make and Break policy"
     );
-    check(registry_node_count() > 0, "SCOPE-4: the parity surface is a classified registry, not a fixed count claim");
-    check(registry_type_count() >= 0, "SCOPE-5: core reflection remains host-independent");
-    check(registry_service_count() >= 0, "REFL-9: generated registry has explicit function contracts");
-    check(registry_service_count() >= 0, "REFL-10: reflected outputs have a stable registry surface");
-    check(registry_service_count() >= 0, "REFL-11: generated service descriptors have stable identity");
-    check(registry_service_count() >= 0, "REFL-12: generated service pins have a binding table");
-    check(registry_operator_count() >= 0, "REFL-13: reflection emits an operator signature table");
-    check(registry_service_count() >= 0, "REFL-14: service snapshots are available to activations");
-    check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "TYPE-11: the complete primitive pin set is distinct");
-    check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "TYPE-14: operator resolution has no implicit C fallback");
+    check(registry_node_count() > 0, "the parity surface is a classified registry, not a fixed count claim");
+    check(registry_type_count() >= 0, "core reflection remains host-independent");
+    check(registry_service_count() >= 0, "generated registry has explicit function contracts");
+    check(registry_service_count() >= 0, "reflected outputs have a stable registry surface");
+    check(registry_service_count() >= 0, "generated service descriptors have stable identity");
+    check(registry_service_count() >= 0, "generated service pins have a binding table");
+    check(registry_operator_count() >= 0, "reflection emits an operator signature table");
+    check(registry_service_count() >= 0, "service snapshots are available to activations");
+    check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "the complete primitive pin set is distinct");
+    check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "operator resolution has no implicit C fallback");
 
     /* 1. two constants -> add call node */
     node *c1 = make_const(&g, 2.0f);
     node *c2 = make_const(&g, 3.0f);
     node *a1 = graph_add_node(&g, add);
-    check(graph_connect(&g, c1, 0, a1, 0) == 0, "TYPE-5: connect c1 -> add.a");
-    check(graph_connect(&g, c2, 0, a1, 1) == 0, "TYPE-5: connect c2 -> add.b");
+    check(graph_connect(&g, c1, 0, a1, 0) == 0, "connect c1 -> add.a");
+    check(graph_connect(&g, c2, 0, a1, 1) == 0, "connect c2 -> add.b");
 
     pin_value sum;
-    check(graph_eval_output(&g, a1, 0, &a, &sum, &eval_ctx) == 0, "CAT-23: eval reflected call node");
-    check(sum.type == PIN_F32 && sum.f == 5.0f, "DATA-4: 2.0 + 3.0 == 5.0");
+    check(graph_eval_output(&g, a1, 0, &a, &sum, &eval_ctx) == 0, "eval reflected call node");
+    check(sum.type == PIN_F32 && sum.f == 5.0f, "2.0 + 3.0 == 5.0");
 
     /* 2. Make(Vec3) -> Break(Vec3) round trip */
     eval_context_reset_runtime(&eval_ctx);
@@ -1880,14 +1899,14 @@ int main(int argc, char **argv)
     graph_connect(&g, mk, 0, br, 0);
 
     pin_value oy;
-    check(graph_eval_output(&g, br, 1, &a, &oy, &eval_ctx) == 0, "DATA-1: eval Break(Vec3).y");
+    check(graph_eval_output(&g, br, 1, &a, &oy, &eval_ctx) == 0, "eval Break(Vec3).y");
     pin_value make_output;
     check(
         eval_context_output(&eval_ctx, mk, 0, &make_output) == 0 &&
             make_output.ptr != NULL,
-        "DATA-6: Make(Vec3) value is arena-owned"
+        "Make(Vec3) value is arena-owned"
     );
-    check(oy.type == PIN_F32 && oy.f == 2.0f, "DATA-9: Make(Vec3) -> Break(Vec3): y == 2.0");
+    check(oy.type == PIN_F32 && oy.f == 2.0f, "Make(Vec3) -> Break(Vec3): y == 2.0");
 
     /* 3. memo: one eval across two reads */
     eval_context_reset_runtime(&eval_ctx);
@@ -1895,10 +1914,10 @@ int main(int argc, char **argv)
     g_count = 0;
     node *ctr = graph_add_node(&g, &g_counter_desc);
     pin_value v1, v2;
-    check(graph_eval_output(&g, ctr, 0, &a, &v1, &eval_ctx) == 0, "DATA-1: eval counter (1st read)");
-    check(graph_eval_output(&g, ctr, 0, &a, &v2, &eval_ctx) == 0, "DATA-2: eval counter (2nd read)");
-    check(g_count == 1, "DATA-2: memo: eval ran once for two reads");
-    check(v1.f == 1.0f && v2.f == 1.0f, "DATA-2: memo: both reads see the same value");
+    check(graph_eval_output(&g, ctr, 0, &a, &v1, &eval_ctx) == 0, "eval counter (1st read)");
+    check(graph_eval_output(&g, ctr, 0, &a, &v2, &eval_ctx) == 0, "eval counter (2nd read)");
+    check(g_count == 1, "memo: eval ran once for two reads");
+    check(v1.f == 1.0f && v2.f == 1.0f, "memo: both reads see the same value");
 
     /* 4. cycle guard */
     eval_context_reset_runtime(&eval_ctx);
@@ -1908,12 +1927,12 @@ int main(int argc, char **argv)
     graph_connect(&g, A, 0, B, 0); /* A.out -> B.a */
     graph_connect(&g, B, 0, A, 0); /* B.out -> A.a */
     pin_value junk;
-    check(graph_eval_output(&g, A, 0, &a, &junk, &eval_ctx) != 0, "DATA-3: cycle detected (eval returns error)");
+    check(graph_eval_output(&g, A, 0, &a, &junk, &eval_ctx) != 0, "cycle detected (eval returns error)");
     check(
         eval_context_status(&eval_ctx)->code == -2 &&
             eval_context_status(&eval_ctx)->node == A &&
             eval_context_status(&eval_ctx)->pin >= -1,
-        "DATA-7: evaluation status lives on the explicit context"
+        "evaluation status lives on the explicit context"
     );
     eval_context independent_a, independent_b;
     eval_context_init(&independent_a);
@@ -1925,16 +1944,16 @@ int main(int argc, char **argv)
         graph_eval_output(&g, c1, 0, &a, &isolated, &independent_a) == 0 &&
             eval_context_status(&independent_a)->code == 0 &&
             eval_context_status(&independent_b)->code == 0,
-        "SCOPE-3: evaluation status is isolated per context"
+        "evaluation status is isolated per context"
     );
 
     /* 5. remove a node and its edges */
     int nb = acount(g.nodes);
     int eb = acount(g.edges);
-    check(graph_remove_node(&g, A) == 0, "BP-9: remove node A");
-    check(acount(g.nodes) == nb - 1, "BP-9: node count drops by one");
-    check(acount(g.edges) == eb - 2, "BP-9: A's two edges dropped");
-    check(graph_remove_node(&g, A) == -1, "BP-10: removing a missing node fails");
+    check(graph_remove_node(&g, A) == 0, "remove node A");
+    check(acount(g.nodes) == nb - 1, "node count drops by one");
+    check(acount(g.edges) == eb - 2, "A's two edges dropped");
+    check(graph_remove_node(&g, A) == -1, "removing a missing node fails");
 
     /* Phase 2 identity and instance-pin invariants. */
     {
@@ -1943,12 +1962,12 @@ int main(int argc, char **argv)
         node *a_id = graph_add_node(&ids, add);
         uint64_t retired = a_id->id;
         uint64_t retired_pin = a_id->output_pins[0].id;
-        check(graph_remove_node(&ids, a_id) == 0, "ID-4: deleting a node retires its ID");
+        check(graph_remove_node(&ids, a_id) == 0, "deleting a node retires its ID");
         node *b_id = graph_add_node(&ids, add);
         check(
             b_id->id != retired && b_id->output_pins[0].id != retired_pin &&
                 graph_node_by_id(&ids, retired) == NULL,
-            "ID-2: new allocations never reuse retired IDs"
+            "new allocations never reuse retired IDs"
         );
         node *p1 = graph_add_node(&ids, add);
         node *p2 = graph_add_node(&ids, add);
@@ -1956,14 +1975,14 @@ int main(int argc, char **argv)
             graph_set_pin_name(&ids, p1, 0, 0, "left") == 0 &&
                 strcmp(p1->input_pins[0].name, "left") == 0 &&
                 strcmp(p2->input_pins[0].name, "a") == 0,
-            "PIN-3: instance pin edits do not mutate sibling instances"
+            "instance pin edits do not mutate sibling instances"
         );
-        check(strcmp(add->inputs[0].name, "a") == 0 && strcmp(p2->input_pins[0].name, "a") == 0, "PIN-1: instance pin storage is copied from an untouched descriptor template");
+        check(strcmp(add->inputs[0].name, "a") == 0 && strcmp(p2->input_pins[0].name, "a") == 0, "instance pin storage is copied from an untouched descriptor template");
         pin_value authored = { .type = PIN_F32, .type_name = "float", .f = 7.0f };
         check(
             graph_set_pin_default(&ids, p1, 0, 0, &authored) == 0 &&
                 p1->input_pins[0].default_value.f == 7.0f,
-            "PIN-4: authored defaults have separate instance storage"
+            "authored defaults have separate instance storage"
         );
         pin_spec extra = { "ThenExtra", PIN_FLOW, NULL, PIN_EXEC };
         node *seq = graph_add_node(&ids, registry_node_by_name("Sequence"));
@@ -1971,35 +1990,35 @@ int main(int argc, char **argv)
         check(
             graph_add_pin(&ids, seq, 1, &extra) == old_outputs &&
                 seq->output_count == old_outputs + 1,
-            "PIN-14: user-extensible groups add instance pins"
+            "user-extensible groups add instance pins"
         );
         check(
             graph_remove_pin(&ids, seq, 1, old_outputs) == 0 &&
                 seq->output_count == old_outputs,
-            "PIN-14: removing an instance pin succeeds"
+            "removing an instance pin succeeds"
         );
         check(
             b_id->id != 0 && b_id->input_pins[0].id != 0 && b_id->output_pins[0].id != 0,
-            "ID-1: nodes and pins carry stable non-zero IDs"
+            "nodes and pins carry stable non-zero IDs"
         );
         check(
             b_id->input_pins[0].name && b_id->input_pins[0].type_name &&
                 b_id->input_pins[0].kind == PIN_DATA,
-            "PIN-2: instance pins carry identity, shape, kind, and defaults"
+            "instance pins carry identity, shape, kind, and defaults"
         );
-        check(b_id->desc == add, "NODE-1: each node references one descriptor");
+        check(b_id->desc == add, "each node references one descriptor");
         b_id->x = 3.5f;
         b_id->y = -2.25f;
-        check(b_id->x == 3.5f && b_id->y == -2.25f, "NODE-2: node canvas position is authored data");
+        check(b_id->x == 3.5f && b_id->y == -2.25f, "node canvas position is authored data");
         check(
             node_desc_is_pure(&g_const_desc) && !node_desc_is_pure(&g_sink_a_desc),
-            "NODE-6: descriptors explicitly distinguish pure and impure"
+            "descriptors explicitly distinguish pure and impure"
         );
-        check(g_const_desc.display_class == NODE_DISPLAY_LITERAL, "NODE-12: descriptors carry a display class");
+        check(g_const_desc.display_class == NODE_DISPLAY_LITERAL, "descriptors carry a display class");
         check(
             graph_node_by_id(&ids, 0) == NULL &&
                 graph_pin_by_id(b_id, 0, NULL, NULL) == NULL,
-            "ID-3: zero is never an allocated or resolvable ID"
+            "zero is never an allocated or resolvable ID"
         );
         char *id_json = graph_save_json(&ids);
         graph *id_loaded = id_json ? graph_load_json(id_json) : NULL;
@@ -2011,7 +2030,7 @@ int main(int argc, char **argv)
                     NULL,
                     NULL
                 ),
-            "ID-1: node and pin IDs survive save/load"
+            "node and pin IDs survive save/load"
         );
         if (id_loaded) {
             graph_free(id_loaded);
@@ -2026,7 +2045,7 @@ int main(int argc, char **argv)
                 p2->input_pins[0].id
             ) != 0 ||
                 acount(ids.edges) == 1,
-            "ID-6: cross-entity APIs address endpoints by IDs"
+            "cross-entity APIs address endpoints by IDs"
         );
         graph_free(&ids);
     }
@@ -2046,7 +2065,7 @@ int main(int argc, char **argv)
                 graph_eval_output(&authored, literal, 0, &authored_arena, &evaluated, &eval_ctx) ==
                     0 &&
                 evaluated.d == 9.0 && literal->input_pins[0].default_value.d == 9.0,
-            "PIN-4: setting an authored default changes evaluation after a "
+            "setting an authored default changes evaluation after a "
             "later eval"
         );
         authored_json = graph_save_json(&authored);
@@ -2054,7 +2073,7 @@ int main(int argc, char **argv)
         check(
             authored_loaded &&
                 authored_loaded->nodes[0]->input_pins[0].default_value.d == 9.0,
-            "PIN-4: changed authored default is recorded by save"
+            "changed authored default is recorded by save"
         );
         arena_free(&authored_arena);
         if (authored_loaded) {
@@ -2073,7 +2092,7 @@ int main(int argc, char **argv)
         check(
             graph_connect_data(&real, real_const, 0, real_delay, 1) == 0 &&
                 real_delay->input_pins[1].type == PIN_F64,
-            "TYPE-10: F32 output connects to F64 Real input"
+            "F32 output connects to F64 Real input"
         );
         static pin_spec int_output[] = { { "value", PIN_I32, "int" } };
         static pin_spec int64_input[] = { { "value", PIN_I64, "int64" } };
@@ -2091,10 +2110,7 @@ int main(int argc, char **argv)
         };
         node *integer = graph_add_node(&real, &int_source);
         node *integer64 = graph_add_node(&real, &int_target);
-        check(
-            graph_connect(&real, integer, 0, integer64, 0) != 0,
-            "TYPE-6: Integer output remains incompatible with Integer64 input"
-        );
+        check(graph_connect(&real, integer, 0, integer64, 0) != 0, "Integer output remains incompatible with Integer64 input");
         graph_set_event_name(&real, real_event, "Real");
         graph_connect_exec(&real, real_event, 0, real_delay, 0, 0);
         flow_run *real_run = graph_run_event(&real, "Real", (flow_inputs){ 0 }, &dispatch_error);
@@ -2103,7 +2119,7 @@ int main(int argc, char **argv)
             real_run &&
                 flow_run_watch_input(real_run, real_delay, 1, &real_input) == 0 &&
                 real_input.type == PIN_F64 && real_input.d == 2.5,
-            "TYPE-10: Real boundary converts F32 value to F64 for Delay"
+            "Real boundary converts F32 value to F64 for Delay"
         );
         if (real_run) {
             flow_run_free(real_run);
@@ -2115,7 +2131,7 @@ int main(int argc, char **argv)
         check(
             pin_compatible(&f32, &f64) && pin_coerce(&converted, &f32) &&
                 converted.type == PIN_F32 && converted.f == 7.25f,
-            "TYPE-10: Real boundary also converts F64 to F32"
+            "Real boundary also converts F64 to F32"
         );
         graph_free(&real);
     }
@@ -2126,7 +2142,7 @@ int main(int argc, char **argv)
         const char *names[] = { "Bool", "Byte", "Integer", "Integer64",
                                 "Real", "Name", "String" };
         for (int i = 0; i < 7; i++) {
-            check(registry_node_by_name(names[i]) != NULL, "CAT-30: core literal is registered");
+            check(registry_node_by_name(names[i]) != NULL, "core literal is registered");
         }
         node *lb = graph_add_node(&literals, registry_node_by_name("Bool"));
         node *lbyte = graph_add_node(&literals, registry_node_by_name("Byte"));
@@ -2138,7 +2154,7 @@ int main(int argc, char **argv)
         check(
             lb && lb->input_count == 1 && lb->output_count == 1 &&
                 lb->input_pins[0].kind == PIN_DATA && lb->output_pins[0].kind == PIN_DATA,
-            "CAT-30: a literal has one Value input and one return output"
+            "a literal has one Value input and one return output"
         );
         pin_value vb = { .type = PIN_BOOL, .b = true },
                   vbyte = { .type = PIN_U8, .u8 = 7 };
@@ -2176,7 +2192,7 @@ int main(int argc, char **argv)
                 }
             }
         }
-        check(literal_values == 3, "CAT-30: literals hold authored values through save/load");
+        check(literal_values == 3, "literals hold authored values through save/load");
         if (literal_loaded) {
             graph_free(literal_loaded);
         }
@@ -2190,14 +2206,14 @@ int main(int argc, char **argv)
         node *early = make_const(&ordering, 1.0f);
         node *late = make_const(&ordering, 2.0f);
         node *target = graph_add_node(&ordering, add);
-        check(graph_connect(&ordering, late, 0, target, 0) == 0, "ID-6: ID edge is authored before deletion");
-        check(graph_remove_node(&ordering, early) == 0, "ID-6: deleting an earlier array entry succeeds");
+        check(graph_connect(&ordering, late, 0, target, 0) == 0, "ID edge is authored before deletion");
+        check(graph_remove_node(&ordering, early) == 0, "deleting an earlier array entry succeeds");
         node *source = NULL;
         int source_pin = -1;
         check(
             graph_input_source(&ordering, target, 0, &source, &source_pin) &&
                 source == late && source_pin == 0,
-            "ID-6: edge still resolves to the original node after reorder"
+            "edge still resolves to the original node after reorder"
         );
         graph_free(&ordering);
     }
@@ -2210,8 +2226,8 @@ int main(int argc, char **argv)
         node *r2 = make_const(&g_replace, 5.0f);
         node *ra = graph_add_node(&g_replace, add);
         check(graph_connect(&g_replace, r1, 0, ra, 0) == 0, "replace: first driver connects");
-        check(graph_connect(&g_replace, r2, 0, ra, 0) == 0, "PIN-6: replace: second driver connects");
-        check(acount(g_replace.edges) == 1 && g_replace.edges[0].from_id == r2->id, "PIN-6: replace: input has one driver");
+        check(graph_connect(&g_replace, r2, 0, ra, 0) == 0, "replace: second driver connects");
+        check(acount(g_replace.edges) == 1 && g_replace.edges[0].from_id == r2->id, "replace: input has one driver");
         graph_free(&g_replace);
     }
 
@@ -2222,19 +2238,19 @@ int main(int argc, char **argv)
         node *rc1 = make_const(&g6, 4.0f);
         node *rc2 = make_const(&g6, 5.0f);
         node *radd = graph_add_node(&g6, add);
-        check(graph_connect(&g6, rc1, 0, radd, 0) == 0, "BP-11: remove_edge: c1 -> add.a");
-        check(graph_connect(&g6, rc2, 0, radd, 0) == 0, "PIN-6: remove_edge: c2 -> add.a replaces c1");
-        check(graph_connect(&g6, rc2, 0, radd, 1) == 0, "PIN-6: remove_edge: c2 -> add.b");
-        check(acount(g6.edges) == 2, "BP-11: remove_edge: two edges");
-        check(graph_remove_edge(&g6, rc1, 0, radd, 0) == -1, "BP-10: remove_edge: replaced edge is absent");
-        check(graph_remove_edge(&g6, rc2, 0, radd, 0) == 0, "BP-11: remove_edge: c2 -> add.a removed");
-        check(acount(g6.edges) == 1, "BP-11: remove_edge: one edge remains");
+        check(graph_connect(&g6, rc1, 0, radd, 0) == 0, "remove_edge: c1 -> add.a");
+        check(graph_connect(&g6, rc2, 0, radd, 0) == 0, "remove_edge: c2 -> add.a replaces c1");
+        check(graph_connect(&g6, rc2, 0, radd, 1) == 0, "remove_edge: c2 -> add.b");
+        check(acount(g6.edges) == 2, "remove_edge: two edges");
+        check(graph_remove_edge(&g6, rc1, 0, radd, 0) == -1, "remove_edge: replaced edge is absent");
+        check(graph_remove_edge(&g6, rc2, 0, radd, 0) == 0, "remove_edge: c2 -> add.a removed");
+        check(acount(g6.edges) == 1, "remove_edge: one edge remains");
 
         arena a6;
         arena_init(&a6, 4096);
         pin_value out;
-        check(graph_eval_output(&g6, radd, 0, &a6, &out, &eval_ctx) == 0, "DATA-1: remove_edge: eval after removal");
-        check(out.type == PIN_F32 && out.f == 5.0f, "PIN-5: remove_edge: unconnected a defaults to zero");
+        check(graph_eval_output(&g6, radd, 0, &a6, &out, &eval_ctx) == 0, "remove_edge: eval after removal");
+        check(out.type == PIN_F32 && out.f == 5.0f, "remove_edge: unconnected a defaults to zero");
         arena_free(&a6);
         graph_free(&g6);
     }
@@ -2250,7 +2266,7 @@ int main(int argc, char **argv)
             graph_connect(&fan, driver, 0, fan_a, 0) == 0 &&
                 graph_connect(&fan, driver, 0, fan_b, 0) == 0 &&
                 graph_connect(&fan, driver, 0, fan_c, 0) == 0,
-            "PIN-7: one data output drives three inputs"
+            "one data output drives three inputs"
         );
         arena fan_arena;
         arena_init(&fan_arena, 4096);
@@ -2262,11 +2278,11 @@ int main(int argc, char **argv)
                 fan_value.f == 8.0f &&
                 graph_eval_output(&fan, fan_c, 0, &fan_arena, &fan_value, &eval_ctx) == 0 &&
                 fan_value.f == 8.0f,
-            "PIN-7: every driven input receives the output value"
+            "every driven input receives the output value"
         );
         check(
             graph_remove_edge(&fan, driver, 0, fan_b, 0) == 0 && acount(fan.edges) == 2,
-            "PIN-7: removing one fan-out edge leaves the other two"
+            "removing one fan-out edge leaves the other two"
         );
         arena_free(&fan_arena);
         graph_free(&fan);
@@ -2277,7 +2293,7 @@ int main(int argc, char **argv)
         graph g2;
         graph_init(&g2);
         const node_desc *cc = registry_node_by_name("Real");
-        check(cc != NULL, "CAT-30: registry exposes Real literal");
+        check(cc != NULL, "registry exposes Real literal");
 
         node *rc1 = graph_add_node(&g2, cc);
         graph_set_pin_default(
@@ -2310,25 +2326,22 @@ int main(int argc, char **argv)
             printf("\n--- serialized graph ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
-            check(g3 != NULL, "FMT-8: roundtrip: load from JSON");
+            check(g3 != NULL, "roundtrip: load from JSON");
             if (g3) {
-                check(acount(g3->nodes) == 3, "FMT-2: roundtrip: node count survives");
-                check(acount(g3->edges) == 2, "FMT-4: roundtrip: edge count survives");
-                check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "FMT-5: roundtrip: node position survives");
-                check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "FMT-5: roundtrip: second node position survives");
+                check(acount(g3->nodes) == 3, "roundtrip: node count survives");
+                check(acount(g3->edges) == 2, "roundtrip: edge count survives");
+                check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "roundtrip: node position survives");
+                check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "roundtrip: second node position survives");
 
                 arena a2;
                 arena_init(&a2, 4096);
                 pin_value out;
-                check(
-                    graph_eval_output(g3, g3->nodes[2], 0, &a2, &out, &eval_ctx) == 0,
-                    "DATA-4: roundtrip: eval loaded add node"
-                );
-                check(out.type == PIN_F32 && out.f == 5.0f, "DATA-4: roundtrip: 2.0 + 3.0 == 5.0");
+                check(graph_eval_output(g3, g3->nodes[2], 0, &a2, &out, &eval_ctx) == 0, "roundtrip: eval loaded add node");
+                check(out.type == PIN_F32 && out.f == 5.0f, "roundtrip: 2.0 + 3.0 == 5.0");
                 char *json2 = graph_save_json(g3);
                 graph *g4 = json2 ? graph_load_json(json2) : NULL;
                 char *json3 = g4 ? graph_save_json(g4) : NULL;
-                check(json2 && json3 && strcmp(json2, json3) == 0, "FMT-12: load/save/load/save is byte-identical");
+                check(json2 && json3 && strcmp(json2, json3) == 0, "load/save/load/save is byte-identical");
                 if (g4) {
                     graph_free(g4);
                 }
@@ -2346,12 +2359,12 @@ int main(int argc, char **argv)
     {
         graph full;
         graph_init(&full);
-        check(graph_set_metadata(&full, "RoundTrip", "all authored fields") == 0, "FMT-14: blueprint metadata is authored");
+        check(graph_set_metadata(&full, "RoundTrip", "all authored fields") == 0, "behavior_asset metadata is authored");
         /* In-memory authored defaults across every pin width on a hand-written
          * all-types fixture. The fixture is not registry-loadable, so the
          * byte-identical round trip below uses a separate loadable graph. */
         node *all = graph_add_node(&full, &g_all_types_desc);
-        check(all != NULL, "FMT-2: comprehensive fixture node created");
+        check(all != NULL, "comprehensive fixture node created");
         Vec3 *vec = graph_own_block(&full, sizeof *vec);
         if (vec) {
             *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
@@ -2373,17 +2386,17 @@ int main(int argc, char **argv)
             { .type = PIN_ENUM, .e = 3 },
         };
         for (int i = 0; all && i < 14; i++) {
-            check(graph_set_pin_default(&full, all, 1, i, &values[i]) == 0, "FMT-6: every authored pin default is set");
+            check(graph_set_pin_default(&full, all, 1, i, &values[i]) == 0, "every authored pin default is set");
         }
         if (all) {
-            check(graph_set_node_reference(&full, all, 4242, "Target") == 0, "NODE-5: node reference fields are authored");
-            check(graph_set_node_disabled(&full, all, 1) == 0, "NODE-11: disabled state is authored");
+            check(graph_set_node_reference(&full, all, 4242, "Target") == 0, "node reference fields are authored");
+            check(graph_set_node_disabled(&full, all, 1) == 0, "disabled state is authored");
             all->x = 12.25f;
             all->y = -7.5f;
         }
         /* The all-widths fixture is not registry-loadable, so drop it before
          * the byte-identical round trip, which uses loadable nodes only. */
-        check(graph_remove_node(&full, all) == 0, "FMT-2: all-widths fixture removed before round trip");
+        check(graph_remove_node(&full, all) == 0, "all-widths fixture removed before round trip");
 
         /* Loadable fixture: corrected literals, a Make node for the struct
          * authored default, both edge kinds, an extended group, and node
@@ -2403,7 +2416,7 @@ int main(int argc, char **argv)
         check(
             bool_lit && byte_lit && int_lit && int64_lit && real_lit && name_lit &&
                 str_lit && make_node && event && sequence && sink && sum,
-            "FMT-2: comprehensive fixture nodes created"
+            "comprehensive fixture nodes created"
         );
         node *literal_nodes[] = {
             bool_lit, byte_lit, int_lit, int64_lit, real_lit, name_lit, str_lit,
@@ -2420,29 +2433,29 @@ int main(int argc, char **argv)
         for (int i = 0; i < 7; i++) {
             check(
                 graph_set_pin_default(&full, literal_nodes[i], 0, 0, &lit_defaults[i]) == 0,
-                "FMT-6: every authored pin default is set"
+                "every authored pin default is set"
             );
         }
-        check(graph_set_pin_default(&full, make_node, 1, 0, &values[12]) == 0, "FMT-6: struct authored default is set");
+        check(graph_set_pin_default(&full, make_node, 1, 0, &values[12]) == 0, "struct authored default is set");
         if (bool_lit) {
-            check(graph_set_node_reference(&full, bool_lit, 4242, "Target") == 0, "NODE-5: node reference fields are authored");
-            check(graph_set_node_disabled(&full, bool_lit, 1) == 0, "NODE-11: disabled state is authored");
+            check(graph_set_node_reference(&full, bool_lit, 4242, "Target") == 0, "node reference fields are authored");
+            check(graph_set_node_disabled(&full, bool_lit, 1) == 0, "disabled state is authored");
             bool_lit->x = 12.25f;
             bool_lit->y = -7.5f;
         }
-        check(graph_set_event_name(&full, event, "Full") == 0, "EVT-2: event reference name is serialized");
+        check(graph_set_event_name(&full, event, "Full") == 0, "event reference name is serialized");
         pin_spec added = { "Then4", PIN_FLOW, NULL, PIN_EXEC };
         int added_index = sequence ? graph_add_pin(&full, sequence, 1, &added) : -1;
-        check(added_index >= 2, "PIN-14: extended Sequence pin is present");
+        check(added_index >= 2, "extended Sequence pin is present");
         check(
             graph_connect(&full, real_lit, 0, sum, 0) == 0 &&
                 graph_connect(&full, str_lit, 0, sink, 1) == 0,
-            "FMT-4: data edge endpoints use pin IDs"
+            "data edge endpoints use pin IDs"
         );
         check(
             graph_connect_exec(&full, event, 0, sequence, 0, 11) == 0 &&
                 graph_connect_exec(&full, sequence, added_index, sink, 0, 13) == 0,
-            "FMT-4: exec edge order is serialized"
+            "exec edge order is serialized"
         );
         char *full_a = graph_save_json(&full);
         graph *full_b = full_a ? graph_load_json(full_a) : NULL;
@@ -2452,7 +2465,7 @@ int main(int argc, char **argv)
         check(
             full_b && full_d && full_a && full_c && full_e &&
                 strcmp(full_a, full_c) == 0 && strcmp(full_c, full_e) == 0,
-            "FMT-12: all pin types, edges, groups, and node fields round-trip "
+            "all pin types, edges, groups, and node fields round-trip "
             "byte-identically"
         );
         if (full_b) {
@@ -2463,7 +2476,7 @@ int main(int argc, char **argv)
                 loaded_bool && loaded_bool->reference_id == 4242 &&
                     strcmp(loaded_bool->reference_name, "Target") == 0 &&
                     loaded_bool->disabled && loaded_bool->x == 12.25f,
-                "FMT-5: optional node fields survive first load"
+                "optional node fields survive first load"
             );
             check(
                 loaded_bool && loaded_str && loaded_make &&
@@ -2472,7 +2485,7 @@ int main(int argc, char **argv)
                     strcmp(loaded_str->input_pins[0].default_value.str, "authored") == 0 &&
                     loaded_make->output_pins[0].default_value.ptr &&
                     ((Vec3 *)loaded_make->output_pins[0].default_value.ptr)->y == 2.5f,
-                "PIN-2: scalar, string, and struct instance pin fields survive "
+                "scalar, string, and struct instance pin fields survive "
                 "first load"
             );
         }
@@ -2484,9 +2497,9 @@ int main(int argc, char **argv)
         graph *reordered_loaded = reordered ? graph_load_json(reordered) : NULL;
         check(
             reordered && full_a && strcmp(reordered, full_a) == 0 && reordered_loaded,
-            "FMT-3: node array position carries no reference meaning"
+            "node array position carries no reference meaning"
         );
-        check(full_a && reordered && strcmp(full_a, reordered) == 0, "FMT-13: deterministic output is byte-identical");
+        check(full_a && reordered && strcmp(full_a, reordered) == 0, "deterministic output is byte-identical");
         full.nodes[0] = saved_first;
         full.nodes[1] = saved_second;
         if (reordered_loaded) {
@@ -2510,7 +2523,7 @@ int main(int argc, char **argv)
         graph g4;
         graph_init(&g4);
         const node_desc *cs = registry_node_by_name("String");
-        check(cs != NULL, "CAT-30: registry exposes String literal");
+        check(cs != NULL, "registry exposes String literal");
         node *s1 = graph_add_node(&g4, cs);
         pin_value hello = { .type = PIN_STR,
                             .type_name = "const char *",
@@ -2521,13 +2534,13 @@ int main(int argc, char **argv)
         check(json != NULL, "string const: serialize");
         if (json) {
             graph *g5 = graph_load_json(json);
-            check(g5 && acount(g5->nodes) == 1, "FMT-1: string const: load");
+            check(g5 && acount(g5->nodes) == 1, "string const: load");
             if (g5) {
                 check(
                     g5->nodes[0]->input_pins[0].type == PIN_STR &&
                         strcmp(g5->nodes[0]->input_pins[0].default_value.str, "hello, world") ==
                             0,
-                    "FMT-6: string const: value round-trips"
+                    "string const: value round-trips"
                 );
                 graph_free(g5);
             }
@@ -2548,14 +2561,14 @@ int main(int argc, char **argv)
             "{\"version\":3,\"nodes\":[{\"type\":\"add_floats\"}],\"edges\":[]"
             "}",
         };
-        check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "FMT-8: malformed JSON rejected");
-        check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "FMT-8: missing edges array rejected");
-        check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "FMT-8: unknown node type rejected");
-        check(graph_load_json(bad[3]) == NULL, "FMT-8: malformed pin list rejected");
+        check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
+        check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "missing edges array rejected");
+        check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "unknown node type rejected");
+        check(graph_load_json(bad[3]) == NULL, "malformed pin list rejected");
         check(
             graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
                 strstr(graph_last_error(), "version"),
-            "FMT-8: unsupported schema version rejected"
+            "unsupported schema version rejected"
         );
     }
 
@@ -2573,18 +2586,18 @@ int main(int argc, char **argv)
         const char *s_bool = pin_value_to_string(&bv);
         printf("  fmt samples: f32 2.5 -> \"%s\", f32 5.0 -> \"%s\", str -> \"%s\", bool -> \"%s\"\n", s_f32, s_five, s_str, s_bool);
 
-        check(strcmp(s_f32, "2.5") == 0, "UI-39: fmt: f32 2.5 -> \"2.5\"");
-        check(strcmp(s_five, "5") == 0, "UI-39: fmt: f32 5.0 -> \"5\"");
-        check(strcmp(s_str, "hello") == 0, "UI-39: fmt: str -> \"hello\"");
-        check(strcmp(s_bool, "true") == 0, "UI-39: fmt: bool true -> \"true\"");
-        check(strcmp(pin_value_to_string(&iv), "-42") == 0, "UI-39: fmt: i32 -42 -> \"-42\"");
+        check(strcmp(s_f32, "2.5") == 0, "fmt: f32 2.5 -> \"2.5\"");
+        check(strcmp(s_five, "5") == 0, "fmt: f32 5.0 -> \"5\"");
+        check(strcmp(s_str, "hello") == 0, "fmt: str -> \"hello\"");
+        check(strcmp(s_bool, "true") == 0, "fmt: bool true -> \"true\"");
+        check(strcmp(pin_value_to_string(&iv), "-42") == 0, "fmt: i32 -42 -> \"-42\"");
     }
 
     /* 12. seed graph evaluates to 5.0 */
     {
         graph gs;
         graph_init(&gs);
-        check(demo_graph_seed(&gs) == 0, "SCOPE-2: seed graph builds");
+        check(demo_graph_seed(&gs) == 0, "seed graph builds");
 
         const node_desc *adddesc = registry_node_by_name("add_floats");
         node *addn = NULL;
@@ -2600,8 +2613,8 @@ int main(int argc, char **argv)
             arena as;
             arena_init(&as, 4096);
             pin_value seed_sum;
-            check(graph_eval_output(&gs, addn, 0, &as, &seed_sum, &eval_ctx) == 0, "DATA-1: seed graph evals");
-            check(seed_sum.type == PIN_F32 && seed_sum.f == 5.0f, "DATA-4: seed graph: 2.0 + 3.0 == 5.0");
+            check(graph_eval_output(&gs, addn, 0, &as, &seed_sum, &eval_ctx) == 0, "seed graph evals");
+            check(seed_sum.type == PIN_F32 && seed_sum.f == 5.0f, "seed graph: 2.0 + 3.0 == 5.0");
             arena_free(&as);
         }
         graph_free(&gs);
@@ -2626,7 +2639,7 @@ int main(int argc, char **argv)
         check(
             gf.nodes[0]->reference_name &&
                 strcmp(gf.nodes[0]->reference_name, "Begin") == 0,
-            "EXEC-1: flow demo graph has named Event entry"
+            "flow demo graph has named Event entry"
         );
         graph_free(&gf);
     }
@@ -2665,18 +2678,18 @@ int main(int argc, char **argv)
 
         node *subset[] = { c1, ad }; /* c2 is outside the subset */
         char *json = graph_save_nodes_json(&g2, subset, 2);
-        check(json != NULL, "FMT-10: subset: serialize");
+        check(json != NULL, "subset: serialize");
         if (json) {
             printf("\n--- serialized subset ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
-            check(g3 != NULL, "FMT-10: subset: load");
+            check(g3 != NULL, "subset: load");
             if (g3) {
-                check(acount(g3->nodes) == 2, "FMT-10: subset: node count is 2");
-                check(acount(g3->edges) == 1, "FMT-10: subset: crossing edge dropped");
-                check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "FMT-5: subset: node 0 position");
-                check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "FMT-5: subset: node 1 position");
-                check(g3->nodes[0]->input_pins[0].default_value.d == 2.0, "FMT-6: subset: literal value survives");
+                check(acount(g3->nodes) == 2, "subset: node count is 2");
+                check(acount(g3->edges) == 1, "subset: crossing edge dropped");
+                check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "subset: node 0 position");
+                check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "subset: node 1 position");
+                check(g3->nodes[0]->input_pins[0].default_value.d == 2.0, "subset: literal value survives");
                 graph_free(g3);
             }
             free(json);
@@ -2716,7 +2729,7 @@ int main(int argc, char **argv)
 
         node *subset[] = { c1, ad };
         char *json = graph_save_nodes_json(&g4, subset, 2);
-        check(json != NULL, "FMT-10: append: serialize source subset");
+        check(json != NULL, "append: serialize source subset");
         if (json) {
             graph g5;
             graph_init(&g5);
@@ -2724,13 +2737,13 @@ int main(int argc, char **argv)
             check(graph_append_json(&g5, json, 100.0f, 200.0f) == 0, "append: returns 0");
             check(acount(g5.nodes) == 2, "append: node count");
             check(acount(g5.edges) == 1, "append: edge count");
-            check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "FMT-11: append: node 0 offset");
-            check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "FMT-11: append: node 1 offset");
-            check(g5.nodes[0]->input_pins[0].default_value.d == 2.0, "FMT-6: append: literal survives");
+            check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "append: node 0 offset");
+            check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "append: node 1 offset");
+            check(g5.nodes[0]->input_pins[0].default_value.d == 2.0, "append: literal survives");
 
             int n_before = acount(g5.nodes);
-            check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "FMT-8: append: bad json fails");
-            check(acount(g5.nodes) == n_before, "FMT-8: append: graph untouched on error");
+            check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "append: bad json fails");
+            check(acount(g5.nodes) == n_before, "append: graph untouched on error");
 
             graph_free(&g5);
             free(json);
@@ -2745,40 +2758,40 @@ int main(int argc, char **argv)
         const node_desc *event_desc = registry_node_by_name("Event");
         const node_desc *branch_desc = registry_node_by_name("Branch");
         const node_desc *bool_desc = registry_node_by_name("Bool");
-        check(event_desc && branch_desc && bool_desc, "CAT-2: Branch flow built-in is registered");
+        check(event_desc && branch_desc && bool_desc, "Branch flow built-in is registered");
         node *event = graph_add_node(&ge, event_desc);
         node *branch = graph_add_node(&ge, branch_desc);
         node *truth = graph_add_node(&ge, bool_desc);
-        check(graph_set_event_name(&ge, event, "EdgeTest") == 0, "EVT-2: event name is graph metadata");
-        check(graph_connect_exec(&ge, event, 0, branch, 0, 7) == 0, "PIN-10: exec edge connects");
+        check(graph_set_event_name(&ge, event, "EdgeTest") == 0, "event name is graph metadata");
+        check(graph_connect_exec(&ge, event, 0, branch, 0, 7) == 0, "exec edge connects");
         node *fanout = graph_add_node(&ge, &g_sink_a_desc);
-        check(graph_connect_exec(&ge, event, 0, fanout, 0, 0) != 0, "PIN-9: ordinary EXEC output rejects ambiguous fan-out");
-        check(graph_connect_data(&ge, truth, 0, branch, 1) == 0, "TYPE-5: data edge connects");
+        check(graph_connect_exec(&ge, event, 0, fanout, 0, 0) != 0, "ordinary EXEC output rejects ambiguous fan-out");
+        check(graph_connect_data(&ge, truth, 0, branch, 1) == 0, "data edge connects");
         pin_value true_value = { .type = PIN_BOOL, .b = true };
         graph_set_pin_default(&ge, truth, 0, 0, &true_value);
-        check(acount(ge.edges) == 2 && ge.edges[0].kind != ge.edges[1].kind, "DATA-5: data and exec edges remain distinct");
+        check(acount(ge.edges) == 2 && ge.edges[0].kind != ge.edges[1].kind, "data and exec edges remain distinct");
         node *src = NULL;
         int src_pin = -1;
         int order = -1;
         check(
             graph_exec_input_source(&ge, branch, 0, &src, &src_pin, &order) &&
                 src == event && src_pin == 0 && order == 7,
-            "PIN-10: exec input source preserves order"
+            "exec input source preserves order"
         );
         node *target = NULL;
         int target_pin = -1;
         check(
             graph_exec_target_at(&ge, event, 0, 7, &target, &target_pin) &&
                 target == branch && target_pin == 0,
-            "PIN-10: exec target lookup preserves order"
+            "exec target lookup preserves order"
         );
         node *event_merge = graph_add_node(&ge, event_desc);
         check(
             graph_connect_exec(&ge, event_merge, 0, branch, 0, 8) == 0 &&
                 acount(ge.edges) == 3,
-            "PIN-8: exec input accepts multiple incoming drivers"
+            "exec input accepts multiple incoming drivers"
         );
-        check(graph_connect_data(&ge, event, 0, branch, 1) != 0, "TYPE-5: exec output cannot become a data edge");
+        check(graph_connect_data(&ge, event, 0, branch, 1) != 0, "exec output cannot become a data edge");
         graph_free(&ge);
     }
 
@@ -2791,21 +2804,17 @@ int main(int argc, char **argv)
         node *condition = graph_add_node(&gf, registry_node_by_name("Bool"));
         node *yes = graph_add_node(&gf, &g_sink_a_desc);
         node *no = graph_add_node(&gf, &g_sink_b_desc);
-        check(graph_set_event_name(&gf, event, "Choose") == 0, "EVT-2: named event configured");
-        check(graph_connect_exec(&gf, event, 0, branch, 0, 0) == 0, "PIN-10: Event -> Branch exec");
-        check(graph_connect_data(&gf, condition, 0, branch, 1) == 0, "TYPE-5: Branch condition data");
-        check(graph_connect_exec(&gf, branch, 0, yes, 0, 0) == 0, "CAT-2: Branch true edge");
-        check(graph_connect_exec(&gf, branch, 1, no, 0, 0) == 0, "CAT-2: Branch false edge");
+        check(graph_set_event_name(&gf, event, "Choose") == 0, "named event configured");
+        check(graph_connect_exec(&gf, event, 0, branch, 0, 0) == 0, "Event -> Branch exec");
+        check(graph_connect_data(&gf, condition, 0, branch, 1) == 0, "Branch condition data");
+        check(graph_connect_exec(&gf, branch, 0, yes, 0, 0) == 0, "Branch true edge");
+        check(graph_connect_exec(&gf, branch, 1, no, 0, 0) == 0, "Branch false edge");
         graph_set_pin_default(&gf, condition, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = true });
         flow_log_reset();
         flow_run *run = graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error);
-        check(
-            run && flow_run_status(run) == FLOW_COMPLETED &&
-                strcmp(g_flow_log, "A") == 0,
-            "EXEC-1: named event takes Branch true"
-        );
-        check(run != NULL, "RUN-1: named event creates a flow run");
-        check(flow_run_status(run) == FLOW_COMPLETED, "RUN-2: completed run reports one state");
+        check(run && flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "A") == 0, "named event takes Branch true");
+        check(run != NULL, "named event creates a flow run");
+        check(flow_run_status(run) == FLOW_COMPLETED, "completed run reports one state");
         int traversal_count = 0;
         const flow_traversal *traversals = flow_run_traversals(run, &traversal_count);
         check(
@@ -2814,38 +2823,34 @@ int main(int argc, char **argv)
                 traversals[2].kind == GRAPH_EDGE_EXEC &&
                 traversals[0].activation <= traversals[1].activation &&
                 traversals[1].activation <= traversals[2].activation,
-            "DBG-7: traversed exec path is identifiable in order"
+            "traversed exec path is identifiable in order"
         );
         check(
             traversals[0].timestamp <= traversals[1].timestamp &&
                 traversals[1].timestamp <= traversals[2].timestamp,
-            "DBG-15: traversal records carry ordered runtime timestamps"
+            "traversal records carry ordered runtime timestamps"
         );
         flow_run_stop(run);
         int stopped_count = 0;
         (void)flow_run_traversals(run, &stopped_count);
-        check(stopped_count == traversal_count, "UI-50: stopped flow records can settle visually");
+        check(stopped_count == traversal_count, "stopped flow records can settle visually");
         flow_run_free(run);
         graph_set_pin_default(&gf, condition, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = false });
         flow_log_reset();
         run = graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error);
-        check(
-            run && flow_run_status(run) == FLOW_COMPLETED &&
-                strcmp(g_flow_log, "B") == 0,
-            "CAT-2: named event takes Branch false"
-        );
+        check(run && flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "B") == 0, "named event takes Branch false");
         flow_run_free(run);
         check(
             graph_run_event(&gf, "Missing", (flow_inputs){ 0 }, &dispatch_error) == NULL &&
                 dispatch_error.code == FLOW_ERR_UNKNOWN_EVENT,
-            "EVT-7: unknown event reports through the dispatch out-parameter"
+            "unknown event reports through the dispatch out-parameter"
         );
         node *duplicate = graph_add_node(&gf, registry_node_by_name("Event"));
         check(graph_set_event_name(&gf, duplicate, "Choose") == 0, "duplicate event configured");
         check(
             graph_run_event(&gf, "Choose", (flow_inputs){ 0 }, &dispatch_error) == NULL &&
                 dispatch_error.code == FLOW_ERR_DUPLICATE_EVENT,
-            "EVT-7: duplicate event uses dispatch error"
+            "duplicate event uses dispatch error"
         );
         graph_free(&gf);
     }
@@ -2864,24 +2869,20 @@ int main(int argc, char **argv)
         node *a = graph_add_node(&gs, &g_sink_a_desc);
         node *b = graph_add_node(&gs, &g_sink_b_desc);
         node *c = graph_add_node(&gs, &g_sink_c_desc);
-        check(graph_set_event_name(&gs, event, "Sequence") == 0, "EVT-2: sequence event configured");
-        check(graph_connect_exec(&gs, event, 0, sequence, 0, 0) == 0, "PIN-10: event -> sequence");
+        check(graph_set_event_name(&gs, event, "Sequence") == 0, "sequence event configured");
+        check(graph_connect_exec(&gs, event, 0, sequence, 0, 0) == 0, "event -> sequence");
         check(
             graph_connect_exec(&gs, sequence, 0, a, 0, 9) == 0 &&
                 graph_connect_exec(&gs, sequence, 1, b, 0, 4) == 0 &&
                 graph_connect_exec(&gs, sequence, 2, c, 0, 1) == 0,
-            "PIN-9: sequence ordered outputs connect"
+            "sequence ordered outputs connect"
         );
         flow_log_reset();
         flow_run *run = graph_run_event(&gs, "Sequence", (flow_inputs){ 0 }, &dispatch_error);
-        check(
-            run && flow_run_status(run) == FLOW_COMPLETED &&
-                strcmp(g_flow_log, "ABC") == 0,
-            "EXEC-5: Sequence order is 0,1,2,3"
-        );
+        check(run && flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "ABC") == 0, "Sequence order is 0,1,2,3");
         int traversal_count = 0;
         (void)flow_run_traversals(run, &traversal_count);
-        check(traversal_count == 4, "DBG-15: Sequence records each traversed exec edge");
+        check(traversal_count == 4, "Sequence records each traversed exec edge");
         flow_run_free(run);
         graph_free(&gs);
 
@@ -2902,7 +2903,7 @@ int main(int argc, char **argv)
         run = graph_run_event(&capped, "CappedFlow", (flow_inputs){ 0 }, &dispatch_error);
         traversal_count = 0;
         (void)flow_run_traversals(run, &traversal_count);
-        check(traversal_count == 256, "DBG-16: traversal records stay within their bound");
+        check(traversal_count == 256, "traversal records stay within their bound");
         flow_run_free(run);
         graph_free(&capped);
 
@@ -2925,10 +2926,10 @@ int main(int argc, char **argv)
         }
         flow_log_reset();
         run = graph_run_event(&seven, "Seven", (flow_inputs){ 0 }, &dispatch_error);
-        check(seven_sequence && seven_sequence->output_count == 7, "CAT-3: Sequence extends from its default of two outputs");
+        check(seven_sequence && seven_sequence->output_count == 7, "Sequence extends from its default of two outputs");
         check(
             run && flow_run_status(run) == FLOW_COMPLETED && g_flow_log_count == 7,
-            "CAT-3: seven Sequence outputs all fire in ascending order"
+            "seven Sequence outputs all fire in ascending order"
         );
         flow_run_free(run);
         graph_free(&seven);
@@ -2954,9 +2955,12 @@ int main(int argc, char **argv)
         check(
             run && flow_run_status(run) == FLOW_FAILED &&
                 strcmp(g_flow_log, "A") == 0 && flow_run_error(run)->node == error_node,
-            "EXEC-5: Sequence stops immediately on error"
+            "Sequence stops immediately on error"
         );
-        check(flow_run_error(run)->node == error_node && flow_run_error(run)->message, "DBG-9: structured run errors identify the responsible node and message");
+        check(
+            flow_run_error(run)->node == error_node && flow_run_error(run)->message,
+            "structured run errors identify the responsible node and message"
+        );
         flow_run_free(run);
         graph_free(&ge);
     }
@@ -2998,7 +3002,7 @@ int main(int argc, char **argv)
             parameter_run && flow_run_status(parameter_run) == FLOW_COMPLETED &&
                 g_parameter_integer == 7 && g_parameter_flag &&
                 strcmp(g_parameter_text, "first") == 0,
-            "EVT-4: event parameters deliver typed values in order"
+            "event parameters deliver typed values in order"
         );
         flow_run_free(parameter_run);
 
@@ -3007,7 +3011,7 @@ int main(int argc, char **argv)
                 event->output_pins[1].id == moved_id &&
                 event->output_pins[1].default_value.str &&
                 strcmp(event->output_pins[1].default_value.str, "authored") == 0,
-            "PIN-2: moving a pin preserves its ID, authored value, and position"
+            "moving a pin preserves its ID, authored value, and position"
         );
         node *source = NULL;
         int source_pin = -1;
@@ -3017,7 +3021,7 @@ int main(int argc, char **argv)
             resolved && moved_output && source_pin == 1 &&
                 graph_input_source(&gp, sink, 3, &source, &source_pin) == 1 &&
                 source == event && source_pin == 1,
-            "PIN-2: moved pin ID keeps its attached edge resolved"
+            "moved pin ID keeps its attached edge resolved"
         );
 
         pin_value reordered_inputs[] = {
@@ -3037,7 +3041,7 @@ int main(int argc, char **argv)
             parameter_run && flow_run_status(parameter_run) == FLOW_COMPLETED &&
                 g_parameter_integer == 11 && !g_parameter_flag &&
                 strcmp(g_parameter_text, "second") == 0,
-            "EVT-4: reordering parameters reorders delivered values"
+            "reordering parameters reorders delivered values"
         );
         flow_run_free(parameter_run);
         graph_free(&gp);
@@ -3064,11 +3068,11 @@ int main(int argc, char **argv)
             run && flow_run_status(run) == FLOW_COMPLETED &&
                 g_flow_index_count == 2 && g_flow_indices[0] == 2 &&
                 g_flow_indices[1] == 3 && strcmp(g_flow_log, "D") == 0,
-            "CAT-4: ForLoop runs half-open 2..4 then Completed"
+            "ForLoop runs half-open 2..4 then Completed"
         );
         check(
             g_flow_index_count == 2 && g_flow_indices[0] == 2 && g_flow_indices[1] == 3,
-            "EXEC-3: each loop activation evaluates fresh data"
+            "each loop activation evaluates fresh data"
         );
         flow_run_free(run);
         graph_set_pin_default(&gl, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 2 });
@@ -3078,7 +3082,7 @@ int main(int argc, char **argv)
         check(
             run && flow_run_status(run) == FLOW_COMPLETED &&
                 g_flow_index_count == 0 && strcmp(g_flow_log, "D") == 0,
-            "CAT-4: ForLoop skips equal bounds"
+            "ForLoop skips equal bounds"
         );
         flow_run_free(run);
         graph_set_pin_default(&gl, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 4 });
@@ -3089,16 +3093,16 @@ int main(int argc, char **argv)
             run && flow_run_status(run) == FLOW_COMPLETED &&
                 g_flow_index_count == 2 && g_flow_indices[0] == 4 &&
                 g_flow_indices[1] == 3 && strcmp(g_flow_log, "D") == 0,
-            "EXEC-4: ForLoop runs half-open 4..2 in reverse then completes"
+            "ForLoop runs half-open 4..2 in reverse then completes"
         );
         flow_run_free(run);
-        check(graph_remove_edge(&gl, event, 0, loop, 0) == 0, "EXEC-4: removing Event -> ForLoop disconnects the executable path");
+        check(graph_remove_edge(&gl, event, 0, loop, 0) == 0, "removing Event -> ForLoop disconnects the executable path");
         flow_log_reset();
         run = graph_run_event(&gl, "Loop", (flow_inputs){ 0 }, &dispatch_error);
         check(
             run && flow_run_status(run) == FLOW_COMPLETED &&
                 g_flow_index_count == 0 && g_flow_log_count == 0,
-            "EXEC-4: a disconnected Event does not activate ForLoop"
+            "a disconnected Event does not activate ForLoop"
         );
         flow_run_free(run);
         graph_free(&gl);
@@ -3120,20 +3124,20 @@ int main(int argc, char **argv)
         graph_set_pin_default(&gd, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 5.0 });
         flow_log_reset();
         flow_run *run = graph_run_event(&gd, "Wait", (flow_inputs){ 0 }, &dispatch_error);
-        check(run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0, "EXEC-4: Delay suspends flow run");
-        check(graph_connect_exec(&gd, event, 0, done, 0, 0) != 0, "EXEC-8: paused flow rejects topology mutation");
-        check(graph_move_pin(&gd, event, 1, 2, 1) != 0, "EXEC-8: live run rejects instance-pin reordering");
+        check(run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0, "Delay suspends flow run");
+        check(graph_connect_exec(&gd, event, 0, done, 0, 0) != 0, "paused flow rejects topology mutation");
+        check(graph_move_pin(&gd, event, 1, 2, 1) != 0, "live run rejects instance-pin reordering");
         check(
             flow_run_tick_at(run, 4.0) == FLOW_SUSPENDED_RESULT &&
                 flow_run_status(run) == FLOW_SUSPENDED,
-            "EXEC-10: Delay remains suspended before host deadline"
+            "Delay remains suspended before host deadline"
         );
         check(
             flow_run_tick_at(run, 5.0) == FLOW_OK &&
                 flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "D") == 0,
-            "EXEC-10: Delay resumes at host monotonic time"
+            "Delay resumes at host monotonic time"
         );
-        check(flow_run_status(run) == FLOW_COMPLETED, "RUN-10: host-supplied monotonic time advances the run");
+        check(flow_run_status(run) == FLOW_COMPLETED, "host-supplied monotonic time advances the run");
         flow_run_free(run);
         graph_free(&gd);
 
@@ -3153,7 +3157,7 @@ int main(int argc, char **argv)
                 flow_run_tick_at(topology_run, 1.0) == FLOW_ERR_TOPOLOGY &&
                 flow_run_status(topology_run) == FLOW_FAILED &&
                 flow_run_error(topology_run)->code == FLOW_ERR_TOPOLOGY,
-            "EXEC-9: changed topology fails the run"
+            "changed topology fails the run"
         );
         flow_run_free(topology_run);
         graph_free(&gt);
@@ -3173,14 +3177,11 @@ int main(int argc, char **argv)
         graph_set_pin_default(&gn, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 3.0 });
         flow_log_reset();
         run = graph_run_event(&gn, "Nested", (flow_inputs){ 0 }, &dispatch_error);
-        check(
-            run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0,
-            "EXEC-2: nested Sequence suspends at first Delay"
-        );
+        check(run && flow_run_status(run) == FLOW_SUSPENDED && g_flow_log_count == 0, "nested Sequence suspends at first Delay");
         flow_run_tick_at(run, 3.0);
         check(
             flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "AB") == 0,
-            "EXEC-11: nested Sequence resumes remaining outputs in order"
+            "nested Sequence resumes remaining outputs in order"
         );
         flow_run_free(run);
         graph_free(&gn);
@@ -3197,7 +3198,7 @@ int main(int argc, char **argv)
         check(
             run && flow_run_resume(run) == FLOW_ERR_STEP_BUDGET &&
                 flow_run_status(run) == FLOW_FAILED && flow_run_steps(run) == 3,
-            "EXEC-6: flow step budget produces structured failure"
+            "flow step budget produces structured failure"
         );
         flow_run_free(run);
         graph_free(&gbudget);
@@ -3215,7 +3216,7 @@ int main(int argc, char **argv)
             json && strstr(json, "\"version\": 3") &&
                 strstr(json, "\"kind\": \"exec\"") && strstr(json, "\"order\": 12") &&
                 strstr(json, "\"reference_name\": \"Saved\""),
-            "FMT-4: v3 JSON writes ID-based flow metadata"
+            "v3 JSON writes ID-based flow metadata"
         );
         graph *loaded = json ? graph_load_json(json) : NULL;
         check(
@@ -3223,7 +3224,7 @@ int main(int argc, char **argv)
                 loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
                 graph_event_name(loaded->nodes[0]) &&
                 strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
-            "FMT-4: v3 JSON loads flow metadata"
+            "v3 JSON loads flow metadata"
         );
         if (loaded) {
             graph_free(loaded);
@@ -3239,7 +3240,7 @@ int main(int argc, char **argv)
                 graph_append_json(&appended, subset_json, 10.0f, 20.0f) == 0 &&
                 acount(appended.edges) == 1 && appended.edges[0].kind == GRAPH_EDGE_EXEC &&
                 appended.edges[0].exec_order == 12,
-            "FMT-11: append remaps ID-based flow edge"
+            "append remaps ID-based flow edge"
         );
         uint64_t first_copy = appended.nodes[0]->id;
         uint64_t second_copy = appended.nodes[1]->id;
@@ -3251,7 +3252,7 @@ int main(int argc, char **argv)
                 appended.nodes[3]->id != second_copy &&
                 appended.edges[1].from_id == appended.nodes[2]->id &&
                 appended.edges[1].to_id == appended.nodes[3]->id,
-            "ID-5: repeated paste allocates fresh IDs and rewires internal "
+            "repeated paste allocates fresh IDs and rewires internal "
             "edges"
         );
         graph_free(&appended);
@@ -3261,12 +3262,12 @@ int main(int argc, char **argv)
         check(
             graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
                 strstr(graph_last_error(), "version"),
-            "FMT-9: v2 documents are rejected"
+            "v2 documents are rejected"
         );
         check(
             graph_load_json("{\"nodes\":[],\"edges\":[]}") == NULL &&
                 strstr(graph_last_error(), "version"),
-            "FMT-9: versionless documents are rejected"
+            "versionless documents are rejected"
         );
     }
 
@@ -3288,16 +3289,13 @@ int main(int argc, char **argv)
             run && flow_run_step(run) == FLOW_PAUSED_RESULT &&
                 flow_run_status(run) == FLOW_PAUSED &&
                 flow_run_steps(run) == 1 && g_flow_log_count == 0,
-            "RUN-4: one step activates exactly one entry node"
+            "one step activates exactly one entry node"
         );
-        check(
-            flow_run_pause(run) == FLOW_OK && flow_run_status(run) == FLOW_PAUSED,
-            "RUN-3: external pause preserves paused state"
-        );
+        check(flow_run_pause(run) == FLOW_OK && flow_run_status(run) == FLOW_PAUSED, "external pause preserves paused state");
         check(
             flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED &&
                 strcmp(g_flow_log, "ABC") == 0,
-            "RUN-3: resume continues from the next unactivated node"
+            "resume continues from the next unactivated node"
         );
         flow_run_free(run);
 
@@ -3309,13 +3307,13 @@ int main(int argc, char **argv)
         }
         char stepped_log[sizeof g_flow_log];
         snprintf(stepped_log, sizeof stepped_log, "%s", g_flow_log);
-        check(strcmp(stepped_log, "ABC") == 0, "RUN-4: stepping preserves activation order");
+        check(strcmp(stepped_log, "ABC") == 0, "stepping preserves activation order");
         flow_run_free(run);
 
         flow_log_reset();
         run = flow_run_start(&gp, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(run);
-        check(strcmp(g_flow_log, stepped_log) == 0, "RUN-4: stepped output matches uninterrupted resume");
+        check(strcmp(g_flow_log, stepped_log) == 0, "stepped output matches uninterrupted resume");
         flow_run_free(run);
 
         graph gpause;
@@ -3336,13 +3334,10 @@ int main(int argc, char **argv)
         check(
             run && flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 2 &&
                 g_print_count == 1 && g_flow_log_count == 0,
-            "RUN-3: external pause request stops between activations"
+            "external pause request stops between activations"
         );
         (void)flow_run_resume(run);
-        check(
-            flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "A") == 0,
-            "RUN-3: paused run resumes at the next node"
-        );
+        check(flow_run_status(run) == FLOW_COMPLETED && strcmp(g_flow_log, "A") == 0, "paused run resumes at the next node");
         flow_run_free(run);
         graph_free(&gpause);
         graph_free(&gp);
@@ -3364,24 +3359,24 @@ int main(int argc, char **argv)
         check(
             run && flow_run_step(run) == FLOW_PAUSED_RESULT &&
                 flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 1,
-            "RUN-4: step mode pauses after one activation before Delay"
+            "step mode pauses after one activation before Delay"
         );
         check(
             flow_run_step(run) == FLOW_SUSPENDED_RESULT &&
                 flow_run_status(run) == FLOW_SUSPENDED && flow_run_steps(run) == 2,
-            "RUN-4: stepping activates exactly one Delay across suspension"
+            "stepping activates exactly one Delay across suspension"
         );
         check(
             flow_run_tick_at(run, 1.0) == FLOW_PAUSED_RESULT &&
                 flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 3 &&
                 g_flow_log_count == 1 && strcmp(g_flow_log, "D") == 0,
-            "RUN-4: deadline tick keeps step mode and pauses after one "
+            "deadline tick keeps step mode and pauses after one "
             "activation"
         );
         check(
             flow_run_resume(run) == FLOW_OK &&
                 flow_run_status(run) == FLOW_COMPLETED && flow_run_steps(run) == 3,
-            "RUN-3: explicit Resume clears step mode and continues freely"
+            "explicit Resume clears step mode and continues freely"
         );
         flow_run_free(run);
         graph_free(&gs);
@@ -3406,11 +3401,11 @@ int main(int argc, char **argv)
                 flow_run_pause(run) == FLOW_OK &&
                 flow_run_tick_at(run, 1.0) == FLOW_PAUSED_RESULT &&
                 flow_run_status(run) == FLOW_PAUSED && flow_run_steps(run) == 3,
-            "RUN-3: pausing while SUSPENDED steps once after the deadline"
+            "pausing while SUSPENDED steps once after the deadline"
         );
         check(
             flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED,
-            "RUN-3: resumed suspended step completes without another step limit"
+            "resumed suspended step completes without another step limit"
         );
         flow_run_free(run);
         graph_free(&gs);
@@ -3431,7 +3426,7 @@ int main(int argc, char **argv)
             run_a && run_b && error_a == -777 && error_b == -777 &&
                 flow_run_steps(run_a) == 2 && flow_run_steps(run_b) == 2 &&
                 flow_run_error(run_a) != flow_run_error(run_b),
-            "RUN-11: two runs keep independent errors and step counts"
+            "two runs keep independent errors and step counts"
         );
         flow_run_free(run_a);
         flow_run_free(run_b);
@@ -3450,13 +3445,16 @@ int main(int argc, char **argv)
         (void)flow_run_resume(run);
         char first_output[sizeof g_flow_log];
         snprintf(first_output, sizeof first_output, "%s", g_flow_log);
-        check(flow_run_stop(run) == FLOW_OK && flow_run_status(run) == FLOW_IDLE, "RUN-6: stop returns run to idle");
-        check(graph_add_node(&gr, &g_sink_b_desc) != NULL && flow_run_status(run) == FLOW_IDLE, "RUN-6: stop clears activation state and releases graph mutation guard");
+        check(flow_run_stop(run) == FLOW_OK && flow_run_status(run) == FLOW_IDLE, "stop returns run to idle");
+        check(
+            graph_add_node(&gr, &g_sink_b_desc) != NULL && flow_run_status(run) == FLOW_IDLE,
+            "stop clears activation state and releases graph mutation guard"
+        );
         flow_run_free(run);
         flow_log_reset();
         run = flow_run_start(&gr, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(run);
-        check(strcmp(first_output, g_flow_log) == 0, "RUN-6: fresh run output matches the first run");
+        check(strcmp(first_output, g_flow_log) == 0, "fresh run output matches the first run");
         flow_run_free(run);
         graph_free(&gr);
     }
@@ -3475,14 +3473,14 @@ int main(int argc, char **argv)
         flow_options clocked = { .initial_time = 0.0 };
         flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, &clocked, &dispatch_error);
         (void)flow_run_resume(run);
-        check(flow_run_status(run) == FLOW_SUSPENDED, "RUN-6: Delay leaves a suspended run");
+        check(flow_run_status(run) == FLOW_SUSPENDED, "Delay leaves a suspended run");
         check(
             flow_run_stop(run) == FLOW_OK &&
                 flow_run_status(run) == FLOW_IDLE && g_flow_log_count == 0,
-            "RUN-6: stop aborts without activating the continuation"
+            "stop aborts without activating the continuation"
         );
-        check(graph_add_node(&gs, &g_sink_a_desc) != NULL, "RUN-8: stopped run leaves graph mutable");
-        check(graph_add_node(&gs, &g_sink_b_desc) != NULL, "RUN-14: authoring mutation succeeds after suspended run teardown");
+        check(graph_add_node(&gs, &g_sink_a_desc) != NULL, "stopped run leaves graph mutable");
+        check(graph_add_node(&gs, &g_sink_b_desc) != NULL, "authoring mutation succeeds after suspended run teardown");
         flow_run_free(run);
         graph_free(&gs);
     }
@@ -3511,9 +3509,9 @@ int main(int argc, char **argv)
                 g_print_count == 2 && strcmp(g_print_messages[0], "first") == 0 &&
                 strcmp(g_print_messages[1], "second") == 0 &&
                 g_print_origins[0] == print_a && g_print_origins[1] == print_b,
-            "CAT-20: Print String sends ordered messages and originating nodes"
+            "Print String sends ordered messages and originating nodes"
         );
-        check(g_print_count == 2 && g_print_origins[0] == print_a, "EXEC-12: host sink receives output with its origin");
+        check(g_print_count == 2 && g_print_origins[0] == print_a, "host sink receives output with its origin");
         flow_run_free(run);
         graph_free(&gp);
     }
@@ -3535,21 +3533,21 @@ int main(int argc, char **argv)
             watch_result == 0 && copy_result == 0 &&
                 recorded.type == PIN_STRUCT && recorded.ptr != &g_watch_struct &&
                 copied.x == 4.0f && copied.y == 5.0f && copied.z == 6.0f,
-            "DBG-5: struct watch value is copied out of the run arena"
+            "struct watch value is copied out of the run arena"
         );
         check(
             flow_run_watch_output(run, watch_node, 1, &recorded) == 0 &&
                 recorded.ptr != &g_watch_struct && ((Vec3 *)recorded.ptr)->x == 4.0f,
-            "DBG-6: live run watch reads the recorded execution value"
+            "live run watch reads the recorded execution value"
         );
         flow_run_free(run);
-        check(copied.x == 4.0f && copied.y == 5.0f && copied.z == 6.0f, "DBG-5: copied struct remains valid after run free");
+        check(copied.x == 4.0f && copied.y == 5.0f && copied.z == 6.0f, "copied struct remains valid after run free");
         run = flow_run_start(&gw, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(run);
         check(
             flow_run_stop(run) == FLOW_OK &&
                 flow_run_watch_output(run, watch_node, 1, &recorded) != 0,
-            "DBG-14: Stop clears recorded watch values"
+            "Stop clears recorded watch values"
         );
         flow_run_free(run);
         graph_free(&gw);
@@ -3570,7 +3568,7 @@ int main(int argc, char **argv)
         check(
             json && !strstr(json, "\\\"run\\\"") && !strstr(json, "\\\"state\\\"") &&
                 loaded && acount(loaded->nodes) == 2,
-            "RUN-13: suspended save contains authored data and no run state"
+            "suspended save contains authored data and no run state"
         );
         if (loaded) {
             graph_free(loaded);
@@ -3580,14 +3578,14 @@ int main(int argc, char **argv)
         graph_free(&gs);
     }
 
-    /* Phase 3: persistent Blueprint instances, variables, and generic events.
-     * Begin() initializes one instance's variables once; later Tick(Real) and
-     * Input(Name, Real, Bool) events read and write the same state (VAR-11,
-     * EVT-9, EVT-10). */
+    /* Phase 3: persistent Behavior Asset instances, variables, and generic
+     * events. Begin() initializes one instance's variables once; later
+     * Tick(Real) and Input(Name, Real, Bool) events read and write the same
+     * state (VAR-11, EVT-9, EVT-10). */
     {
-        blueprint *bp = blueprint_new("VarDemo");
-        check(bp && bp->graph, "BP-1: a blueprint owns its graph and metadata");
-        blueprint_variable *health = blueprint_add_variable(
+        behavior_asset *bp = behavior_asset_new("VarDemo");
+        check(bp && bp->graph, "a behavior_asset owns its graph and metadata");
+        behavior_variable *health = behavior_asset_add_variable(
             bp,
             "Health",
             PIN_I32,
@@ -3596,17 +3594,17 @@ int main(int argc, char **argv)
             &(pin_value){ .type = PIN_I32, .i = 100 },
             "Stats"
         );
-        check(health != NULL, "VAR-1: variables carry id, name, type, container, default, category");
+        check(health != NULL, "variables carry id, name, type, container, default, category");
         check(
-            blueprint_find_variable_by_name(bp, "Health") == health,
-            "VAR-3: variable names are unique and findable within a blueprint"
+            behavior_asset_find_variable_by_name(bp, "Health") == health,
+            "variable names are unique and findable within a behavior_asset"
         );
         check(
-            blueprint_add_variable(bp, "Health", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) ==
+            behavior_asset_add_variable(bp, "Health", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) ==
                 NULL,
-            "VAR-3: duplicate variable names are rejected"
+            "duplicate variable names are rejected"
         );
-        blueprint_variable *last_action = blueprint_add_variable(
+        behavior_variable *last_action = behavior_asset_add_variable(
             bp,
             "LastAction",
             PIN_NAME,
@@ -3615,7 +3613,7 @@ int main(int argc, char **argv)
             &(pin_value){ .type = PIN_NAME, .str = "" },
             ""
         );
-        check(last_action != NULL, "TYPE-12: a Name variable accepts an authored default");
+        check(last_action != NULL, "a Name variable accepts an authored default");
 
         /* Begin(): Set Health to 50. */
         node *begin_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
@@ -3623,14 +3621,14 @@ int main(int argc, char **argv)
         check(
             begin_ev->input_count == 0 && begin_ev->output_count >= 1 &&
                 begin_ev->output_pins[0].kind == PIN_EXEC,
-            "EVT-1: an Event node is an executable entry point"
+            "an Event node is an executable entry point"
         );
         check(
             graph_event_name(begin_ev) &&
                 strcmp(graph_event_name(begin_ev), "Begin") == 0,
-            "EVT-3: event identity is name-addressed within the Blueprint"
+            "event identity is name-addressed within the Behavior Asset"
         );
-        node *set = blueprint_add_set_node(bp, health->id);
+        node *set = behavior_asset_add_set_node(bp, health->id);
         graph_set_pin_default(bp->graph, set, 0, 1, &(pin_value){ .type = PIN_I32, .i = 50 });
         graph_connect_exec(bp->graph, begin_ev, 0, set, 0, 0);
 
@@ -3639,7 +3637,7 @@ int main(int argc, char **argv)
         graph_set_event_name(bp->graph, tick_ev, "Tick");
         pin_spec delta = { "DeltaSeconds", PIN_F64, "double", PIN_DATA };
         graph_add_pin(bp->graph, tick_ev, 1, &delta);
-        node *get = blueprint_add_get_node(bp, health->id);
+        node *get = behavior_asset_add_get_node(bp, health->id);
         node *capture = graph_add_node(bp->graph, &g_capture_desc);
         graph_connect_exec(bp->graph, tick_ev, 0, capture, 0, 0);
         graph_connect_data(bp->graph, get, 0, capture, 1);
@@ -3656,7 +3654,7 @@ int main(int argc, char **argv)
                 graph_connect_exec(bp->graph, text_ev, 0, string_capture, 0, 0) == 0 &&
                 graph_connect_data(bp->graph, get, 0, to_string, 0) == 0 &&
                 graph_connect_data(bp->graph, to_string, 0, string_capture, 1) == 0,
-            "DBG-17: pure data chain is authored"
+            "pure data chain is authored"
         );
 
         /* Input(Name Action, Real Value, Bool Pressed): Set LastAction. */
@@ -3668,45 +3666,42 @@ int main(int argc, char **argv)
         graph_add_pin(bp->graph, input_ev, 1, &action_param);
         graph_add_pin(bp->graph, input_ev, 1, &val);
         graph_add_pin(bp->graph, input_ev, 1, &pressed);
-        node *set_action = blueprint_add_set_node(bp, last_action->id);
+        node *set_action = behavior_asset_add_set_node(bp, last_action->id);
         graph_connect_exec(bp->graph, input_ev, 0, set_action, 0, 0);
         graph_connect_data(bp->graph, input_ev, 1, set_action, 1);
 
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        check(bi != NULL, "RUN-15: explicit instance creation succeeds");
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        check(bi != NULL, "explicit instance creation succeeds");
         pin_value v;
         check(
-            blueprint_instance_get_variable(bi, health->id, &v) == 0 && v.i == 100,
-            "VAR-11: instance variables initialize from authored defaults once"
+            behavior_instance_get_variable(bi, health->id, &v) == 0 && v.i == 100,
+            "instance variables initialize from authored defaults once"
         );
-        check(bp->graph->flow_pause_count > 0, "RUN-20: creating an instance acquires the mutation guard");
-        check(blueprint_instance_scratch(bi, 99) != NULL, "EXEC-15: instance scratch is keyed by node ID");
-        check(bi->activations == NULL, "EXEC-16: activation-local state starts empty on the instance");
-        check(bp->graph->flow_pause_count == 1, "RUN-21: applied definition is guarded while a preview instance exists");
+        check(bp->graph->flow_pause_count > 0, "creating an instance acquires the mutation guard");
+        check(behavior_instance_scratch(bi, 99) != NULL, "instance scratch is keyed by node ID");
+        check(bi->activations == NULL, "activation-local state starts empty on the instance");
+        check(bp->graph->flow_pause_count == 1, "applied definition is guarded while a preview instance exists");
 
         flow_error perr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Begin", (flow_inputs){ 0 }, &perr);
-        check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-9: Begin dispatch completes");
-        check(flow_run_current_node(act) == NULL, "RUN-16: inspecting a completed activation does not merge scheduler state");
+        flow_run *act = behavior_instance_dispatch(bi, "Begin", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_COMPLETED, "Begin dispatch completes");
+        check(flow_run_current_node(act) == NULL, "inspecting a completed activation does not merge scheduler state");
         check(
             flow_run_call_stack(act, NULL) != NULL || flow_run_status(act) == FLOW_COMPLETED,
-            "RUN-9: an activation exposes an ordered call-stack view"
+            "an activation exposes an ordered call-stack view"
         );
-        check(
-            blueprint_instance_get_variable(bi, health->id, &v) == 0 && v.i == 50,
-            "VAR-4: Set Variable writes instance storage"
-        );
+        check(behavior_instance_get_variable(bi, health->id, &v) == 0 && v.i == 50, "Set Variable writes instance storage");
 
         g_captured_int = -1;
         pin_value tick_params[] = { { .type = PIN_F64, .d = 0.016 } };
-        act = blueprint_instance_dispatch(bi, "Tick", (flow_inputs){ tick_params, 1, NULL }, &perr);
+        act = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ tick_params, 1, NULL }, &perr);
         check(
             act && flow_run_status(act) == FLOW_COMPLETED && g_captured_int == 50,
-            "EVT-10: a later Tick event reads the state Begin wrote"
+            "a later Tick event reads the state Begin wrote"
         );
 
         g_captured_str[0] = '\0';
-        act = blueprint_instance_dispatch(bi, "TickText", (flow_inputs){ 0 }, &perr);
+        act = behavior_instance_dispatch(bi, "TickText", (flow_inputs){ 0 }, &perr);
         int traversal_count = 0;
         const flow_traversal *traversals = flow_run_traversals(act, &traversal_count);
         int saw_get_to_string = 0;
@@ -3723,7 +3718,7 @@ int main(int argc, char **argv)
             act && flow_run_status(act) == FLOW_COMPLETED &&
                 strcmp(g_captured_str, "50") == 0 && saw_get_to_string &&
                 saw_to_string_capture,
-            "DBG-17: pure data chains record every traversed data edge"
+            "pure data chains record every traversed data edge"
         );
 
         pin_value input_params[] = {
@@ -3731,51 +3726,55 @@ int main(int argc, char **argv)
             { .type = PIN_F64, .d = 1.0 },
             { .type = PIN_BOOL, .b = true },
         };
-        act = blueprint_instance_dispatch(bi, "Input", (flow_inputs){ input_params, 3, NULL }, &perr);
-        check(act && flow_run_status(act) == FLOW_COMPLETED, "EVT-9: Input dispatch with parameters completes");
+        act = behavior_instance_dispatch(bi, "Input", (flow_inputs){ input_params, 3, NULL }, &perr);
+        check(act && flow_run_status(act) == FLOW_COMPLETED, "Input dispatch with parameters completes");
         check(
-            blueprint_instance_get_variable(bi, last_action->id, &v) == 0 &&
+            behavior_instance_get_variable(bi, last_action->id, &v) == 0 &&
                 v.type == PIN_NAME && v.str && strcmp(v.str, "Jump") == 0,
-            "EVT-4: event parameters deliver values into instance state"
+            "event parameters deliver values into instance state"
         );
-        check(health->default_value.i == 100, "BP-13: instance execution never mutates authored defaults");
+        check(health->default_value.i == 100, "instance execution never mutates authored defaults");
 
-        check(blueprint_rename_variable(bp, health->id, "HP") != 0, "EXEC-20: renaming a variable is rejected while an instance is attached");
-        check(blueprint_add_variable(bp, "New", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) == NULL, "EXEC-20: adding a variable is rejected while an instance is attached");
         check(
-            graph_add_node(bp->graph, &g_sink_a_desc) == NULL,
-            "EXEC-20: adding a node is rejected while an instance is attached"
+            behavior_asset_rename_variable(bp, health->id, "HP") != 0,
+            "renaming a variable is rejected while an instance is attached"
         );
-        check(blueprint_instance_stop_activation(bi, act) == FLOW_OK, "RUN-17: stopping one activation succeeds");
-        check(bp->graph->flow_pause_count > 0, "RUN-20: stopping one activation does NOT release the mutation guard");
-        blueprint_instance_destroy(bi);
-        check(bp->graph->flow_pause_count == 0, "RUN-20: destroying the last instance releases the mutation guard");
+        check(
+            behavior_asset_add_variable(bp, "New", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL) ==
+                NULL,
+            "adding a variable is rejected while an instance is attached"
+        );
+        check(graph_add_node(bp->graph, &g_sink_a_desc) == NULL, "adding a node is rejected while an instance is attached");
+        check(behavior_instance_stop_activation(bi, act) == FLOW_OK, "stopping one activation succeeds");
+        check(bp->graph->flow_pause_count > 0, "stopping one activation does NOT release the mutation guard");
+        behavior_instance_destroy(bi);
+        check(bp->graph->flow_pause_count == 0, "destroying the last instance releases the mutation guard");
 
         uint64_t health_id = health->id;
         node *get_ref = get;
-        check(blueprint_rename_variable(bp, health_id, "HP") == 0, "VAR-5: renaming a variable succeeds when mutable");
+        check(behavior_asset_rename_variable(bp, health_id, "HP") == 0, "renaming a variable succeeds when mutable");
         check(
             health->name && strcmp(health->name, "HP") == 0 &&
                 get_ref->reference_id == health_id && get_ref->reference_name &&
                 strcmp(get_ref->reference_name, "HP") == 0,
-            "VAR-5: rename updates the referencing node's display without "
+            "rename updates the referencing node's display without "
             "rewriting its reference"
         );
-        check(blueprint_retype_variable(bp, health_id, PIN_F64, "double") == 0, "VAR-6: retyping a variable succeeds");
+        check(behavior_asset_retype_variable(bp, health_id, PIN_F64, "double") == 0, "retyping a variable succeeds");
         check(
             health->type == PIN_F64 && get_ref->output_pins[0].type == PIN_F64,
-            "VAR-5: retyping updates the referencing node's pin type"
+            "retyping updates the referencing node's pin type"
         );
         node *src = NULL;
         int src_pin = -1;
-        check(graph_input_source(bp->graph, capture, 1, &src, &src_pin) == 0, "VAR-6: the now-incompatible edge is invalidated");
-        blueprint_free(bp);
+        check(graph_input_source(bp->graph, capture, 1, &src, &src_pin) == 0, "the now-incompatible edge is invalidated");
+        behavior_asset_free(bp);
     }
 
     /* TRACE-1: completed activations leave copied entries at the instance
      * seam, including fallback records for events with no traversal. */
     {
-        blueprint *bp = blueprint_new("Trace");
+        behavior_asset *bp = behavior_asset_new("Trace");
         node *empty = graph_add_node(bp->graph, registry_node_by_name("Event"));
         node *done = graph_add_node(bp->graph, registry_node_by_name("Event"));
         node *done_sink = graph_add_node(bp->graph, &g_sink_a_desc);
@@ -3788,90 +3787,90 @@ int main(int argc, char **argv)
                 graph_set_event_name(bp->graph, failed, "Failed") == 0 &&
                 graph_connect_exec(bp->graph, done, 0, done_sink, 0, 0) == 0 &&
                 graph_connect_exec(bp->graph, failed, 0, failed_sink, 0, 0) == 0,
-            "TRACE-1: trace fixture has empty, completed, and failed events"
+            "trace fixture has empty, completed, and failed events"
         );
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error error = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Empty", (flow_inputs){ 0 }, &error);
+        flow_run *act = behavior_instance_dispatch(bi, "Empty", (flow_inputs){ 0 }, &error);
         check(
             act && flow_run_status(act) == FLOW_COMPLETED &&
-                blueprint_instance_release_activation(bi, act) == 0,
-            "TRACE-1: an empty event completes and can be released"
+                behavior_instance_release_activation(bi, act) == 0,
+            "an empty event completes and can be released"
         );
         int trace_count = 0;
-        const blueprint_instance_trace_entry *trace = blueprint_instance_trace(bi, &trace_count);
+        const behavior_instance_trace_entry *trace = behavior_instance_trace(bi, &trace_count);
         check(
             trace && trace_count == 1 && trace[0].event_name &&
                 strcmp(trace[0].event_name, "Empty") == 0 &&
                 trace[0].state == FLOW_COMPLETED && trace[0].error_code == FLOW_OK,
-            "TRACE-1: an empty event produces a completed fallback entry"
+            "an empty event produces a completed fallback entry"
         );
-        act = blueprint_instance_dispatch(bi, "Failed", (flow_inputs){ 0 }, &error);
+        act = behavior_instance_dispatch(bi, "Failed", (flow_inputs){ 0 }, &error);
         check(
             act && flow_run_status(act) == FLOW_FAILED &&
                 flow_run_error(act)->code == -777 &&
-                blueprint_instance_release_activation(bi, act) == 0,
-            "TRACE-2: a failed event preserves its structured run error"
+                behavior_instance_release_activation(bi, act) == 0,
+            "a failed event preserves its structured run error"
         );
-        trace = blueprint_instance_trace(bi, &trace_count);
+        trace = behavior_instance_trace(bi, &trace_count);
         check(
             trace_count == 2 && trace[1].state == FLOW_FAILED &&
                 trace[1].error_code == -777 &&
                 strcmp(trace[1].event_name, "Failed") == 0,
-            "TRACE-2: a failed activation records terminal status and error"
+            "a failed activation records terminal status and error"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* TRACE-3: the public trace is oldest-first, bounded, and survives
      * activation recycling but not instance reuse. */
     {
-        blueprint *bp = blueprint_new("TraceBound");
+        behavior_asset *bp = behavior_asset_new("TraceBound");
         node *event = graph_add_node(bp->graph, registry_node_by_name("Event"));
         node *sink = graph_add_node(bp->graph, &g_sink_a_desc);
         graph_set_event_name(bp->graph, event, "Tick");
         graph_connect_exec(bp->graph, event, 0, sink, 0, 0);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        check(blueprint_instance_set_activation_pool(bi, 1) == 0, "TRACE-3: activation pooling can be enabled before dispatch");
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        check(behavior_instance_set_activation_pool(bi, 1) == 0, "activation pooling can be enabled before dispatch");
         flow_error error = { 0 };
         int trace_ok = 1;
-        for (int i = 0; i <= BLUEPRINT_INSTANCE_TRACE_MAX; i++) {
-            if (blueprint_instance_tick(bi, (double)i) != FLOW_OK) {
+        for (int i = 0; i <= BEHAVIOR_ASSET_INSTANCE_TRACE_MAX; i++) {
+            if (behavior_instance_tick(bi, (double)i) != FLOW_OK) {
                 trace_ok = 0;
                 break;
             }
-            flow_run *act = blueprint_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, &error);
-            if (!act || blueprint_instance_release_activation(bi, act) != 0) {
+            flow_run *act = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, &error);
+            if (!act || behavior_instance_release_activation(bi, act) != 0) {
                 trace_ok = 0;
                 break;
             }
         }
-        check(trace_ok, "TRACE-3: pooled activations release into the trace");
+        check(trace_ok, "pooled activations release into the trace");
         int trace_count = 0;
-        const blueprint_instance_trace_entry *trace = blueprint_instance_trace(bi, &trace_count);
+        const behavior_instance_trace_entry *trace = behavior_instance_trace(bi, &trace_count);
         check(
-            trace && trace_count == BLUEPRINT_INSTANCE_TRACE_MAX &&
+            trace && trace_count == BEHAVIOR_ASSET_INSTANCE_TRACE_MAX &&
                 trace[0].traversal.timestamp == 1.0 &&
-                trace[trace_count - 1].traversal.timestamp == BLUEPRINT_INSTANCE_TRACE_MAX,
-            "TRACE-3: trace overflow evicts the oldest entry and keeps order"
+                trace[trace_count - 1].traversal.timestamp == BEHAVIOR_ASSET_INSTANCE_TRACE_MAX,
+            "trace overflow evicts the oldest entry and keeps order"
         );
         check(
-            blueprint_instance_pool_release(bi) == 0 &&
-                blueprint_instance_trace(bi, &trace_count) && trace_count == 0 &&
-                blueprint_instance_pool_reuse(bi, bp, NULL, NULL, NULL) == bi &&
-                blueprint_instance_trace(bi, &trace_count) && trace_count == 0,
-            "TRACE-3: instance release and reuse clear copied trace storage"
+            behavior_instance_pool_release(bi) == 0 &&
+                behavior_instance_trace(bi, &trace_count) && trace_count == 0 &&
+                behavior_instance_pool_reuse(bi, bp, NULL, NULL, NULL) == bi &&
+                behavior_instance_trace(bi, &trace_count) && trace_count == 0,
+            "instance release and reuse clear copied trace storage"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* VAR-7: deleting a referenced variable is permitted; the orphaned Get
      * reference fails evaluation with an error naming the lost variable. */
     {
-        blueprint *bp = blueprint_new("Orphan");
-        blueprint_variable *v = blueprint_add_variable(
+        behavior_asset *bp = behavior_asset_new("Orphan");
+        behavior_variable *v = behavior_asset_add_variable(
             bp,
             "Gone",
             PIN_I32,
@@ -3882,30 +3881,30 @@ int main(int argc, char **argv)
         );
         node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, ev, "Go");
-        node *get = blueprint_add_get_node(bp, v->id);
+        node *get = behavior_asset_add_get_node(bp, v->id);
         node *cap = graph_add_node(bp->graph, &g_capture_desc);
         graph_connect_exec(bp->graph, ev, 0, cap, 0, 0);
         graph_connect_data(bp->graph, get, 0, cap, 1);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        blueprint_instance_destroy(bi);
-        check(blueprint_delete_variable(bp, v->id) == 0, "VAR-7: deleting a referenced variable is permitted");
-        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance_destroy(bi);
+        check(behavior_asset_delete_variable(bp, v->id) == 0, "deleting a referenced variable is permitted");
+        bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error perr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
+        flow_run *act = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
         check(
             act == NULL && perr.code == FLOW_ERR_COMPILE && perr.node == get &&
                 perr.message && strstr(perr.message, "missing variable") != NULL,
-            "VAR-7: an orphaned Get reference is a blocking compile error "
+            "an orphaned Get reference is a blocking compile error "
             "(RUN-12 refuses to start)"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* EXEC-17 / CAT-18: a Delay suspends while a later event executes, and the
      * scheduler's FIFO activation order is deterministic across repeated runs. */
     {
-        blueprint *bp = blueprint_new("Sched");
+        behavior_asset *bp = behavior_asset_new("Sched");
         node *wait_ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, wait_ev, "Wait");
         node *delay = graph_add_node(bp->graph, registry_node_by_name("Delay"));
@@ -3918,49 +3917,50 @@ int main(int argc, char **argv)
         node *done_b = graph_add_node(bp->graph, &g_sink_b_desc);
         graph_connect_exec(bp->graph, fast_ev, 0, done_b, 0, 0);
         for (int run = 0; run < 2; run++) {
-            blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+            behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
             flow_log_reset();
             flow_error perr = { 0 };
-            flow_run *act = blueprint_instance_dispatch(bi, "Wait", (flow_inputs){ 0 }, &perr);
-            check(
-                act && flow_run_status(act) == FLOW_SUSPENDED && g_flow_log_count == 0,
-                "EXEC-17: a Delay suspends its activation"
-            );
-            act = blueprint_instance_dispatch(bi, "Fast", (flow_inputs){ 0 }, &perr);
+            flow_run *act = behavior_instance_dispatch(bi, "Wait", (flow_inputs){ 0 }, &perr);
+            check(act && flow_run_status(act) == FLOW_SUSPENDED && g_flow_log_count == 0, "a Delay suspends its activation");
+            act = behavior_instance_dispatch(bi, "Fast", (flow_inputs){ 0 }, &perr);
             check(
                 act && flow_run_status(act) == FLOW_COMPLETED &&
                     strcmp(g_flow_log, "B") == 0,
-                "EXEC-17: a later event executes while the Delay is suspended"
+                "a later event executes while the Delay is suspended"
             );
-            check(acount(bi->activations) == 2, "EXEC-17: suspended and completed activations coexist");
-            check(acount(bi->activations) == 2, "EXEC-18: re-entry keeps an earlier activation on its continuation stack");
-            check(blueprint_instance_tick(bi, 5.0) == FLOW_OK && strcmp(g_flow_log, "BA") == 0, "EXEC-17: the scheduler resumes the Delay at its deadline in FIFO order");
-            check(act && flow_run_status(act) == FLOW_COMPLETED, "CAT-18: the Delay completes after its duration");
-            blueprint_instance_destroy(bi);
+            check(acount(bi->activations) == 2, "suspended and completed activations coexist");
+            check(acount(bi->activations) == 2, "re-entry keeps an earlier activation on its continuation stack");
+            check(
+                behavior_instance_tick(bi, 5.0) == FLOW_OK &&
+                    strcmp(g_flow_log, "BA") == 0,
+                "the scheduler resumes the Delay at its deadline in FIFO order"
+            );
+            check(act && flow_run_status(act) == FLOW_COMPLETED, "the Delay completes after its duration");
+            behavior_instance_destroy(bi);
         }
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* EXEC-18 isolation: two activations of the same event retain distinct
      * parameter values while they are paused before the same capture node. */
     {
-        blueprint *bp = blueprint_new("ActivationIsolation");
+        behavior_asset *bp = behavior_asset_new("ActivationIsolation");
         node *event = graph_add_node(bp->graph, registry_node_by_name("Event"));
         node *capture = graph_add_node(bp->graph, &g_capture_desc);
         pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
         graph_add_pin(bp->graph, event, 1, &value);
         graph_connect_exec(bp->graph, event, 0, capture, 0, 0);
         graph_connect_data(bp->graph, event, 1, capture, 1);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error first_error = { 0 };
         flow_error second_error = { 0 };
-        flow_run *first = blueprint_instance_enqueue(
+        flow_run *first = behavior_instance_enqueue(
             bi,
             event,
             (flow_inputs){ (pin_value[]){ { .type = PIN_I32, .i = 11 } }, 1, NULL },
             &first_error
         );
-        flow_run *second = blueprint_instance_enqueue(
+        flow_run *second = behavior_instance_enqueue(
             bi,
             event,
             (flow_inputs){ (pin_value[]){ { .type = PIN_I32, .i = 22 } }, 1, NULL },
@@ -3970,7 +3970,7 @@ int main(int argc, char **argv)
             first && second && first_error.code == 0 && second_error.code == 0 &&
                 flow_run_step(first) == FLOW_PAUSED_RESULT &&
                 flow_run_step(second) == FLOW_PAUSED_RESULT,
-            "EXEC-18: same-node activations can be staged independently"
+            "same-node activations can be staged independently"
         );
         (void)flow_run_step(first);
         (void)flow_run_step(second);
@@ -3978,7 +3978,7 @@ int main(int argc, char **argv)
             flow_run_resume(first) == FLOW_OK && flow_run_resume(second) == FLOW_OK &&
                 flow_run_status(first) == FLOW_COMPLETED &&
                 flow_run_status(second) == FLOW_COMPLETED,
-            "EXEC-18: staged activations complete independently"
+            "staged activations complete independently"
         );
         pin_value first_value;
         pin_value second_value;
@@ -3986,16 +3986,16 @@ int main(int argc, char **argv)
             flow_run_watch_input(first, capture, 1, &first_value) == 0 &&
                 flow_run_watch_input(second, capture, 1, &second_value) == 0 &&
                 first_value.i == 11 && second_value.i == 22,
-            "EXEC-18: same-node activation values remain isolated"
+            "same-node activation values remain isolated"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* DBG-5: watched names and arrays are copied out of the activation and
      * remain valid after the source defaults are released. */
     {
-        blueprint *bp = blueprint_new("OwnedWatches");
+        behavior_asset *bp = behavior_asset_new("OwnedWatches");
         node *event = graph_add_node(bp->graph, &NODE_Event);
         node *watch = graph_add_node(bp->graph, &g_owned_watch_desc);
         graph_set_event_name(bp->graph, event, "Owned");
@@ -4008,7 +4008,7 @@ int main(int argc, char **argv)
                 1,
                 &(pin_value){ .type = PIN_NAME, .type_name = "name", .str = "OwnedName" }
             ) == 0,
-            "DBG-5: Name watch default is authored"
+            "Name watch default is authored"
         );
         pin_array *array = pin_array_new(PIN_I32, "int", 2);
         pin_array_push(array, &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 7 });
@@ -4026,12 +4026,12 @@ int main(int argc, char **argv)
                     .ptr = array,
                 }
             ) == 0,
-            "DBG-5: array watch default is authored"
+            "array watch default is authored"
         );
         pin_array_free(array);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error error = { 0 };
-        flow_run *run = blueprint_instance_dispatch(bi, "Owned", (flow_inputs){ 0 }, &error);
+        flow_run *run = behavior_instance_dispatch(bi, "Owned", (flow_inputs){ 0 }, &error);
         pin_value name_value;
         pin_value array_value;
         const pin_array *items = NULL;
@@ -4044,10 +4044,10 @@ int main(int argc, char **argv)
                 array_value.container == PIN_CONTAINER_ARRAY &&
                 (items = (const pin_array *)array_value.ptr) && items->count == 2 &&
                 items->items[0].i == 7 && items->items[1].i == 9,
-            "DBG-5: Name and array watches own their captured values"
+            "Name and array watches own their captured values"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* EXEC-16: activation inputs own pointer-bearing values until the run is
@@ -4091,7 +4091,7 @@ int main(int argc, char **argv)
         check(
             run && flow_run_step(run) == FLOW_PAUSED_RESULT &&
                 flow_run_resume(run) == FLOW_SUSPENDED_RESULT,
-            "EXEC-16: pointer-bearing activation inputs survive suspension"
+            "pointer-bearing activation inputs survive suspension"
         );
         memset(name, 'x', 4);
         memset(text, 'x', 4);
@@ -4109,7 +4109,7 @@ int main(int argc, char **argv)
                 strcmp(owned.values[1].str, "Text") == 0 && owned_array &&
                 owned_array->count == 2 && owned_array->items[0].i == 7 &&
                 owned_array->items[1].i == 9,
-            "EXEC-16: activation copies Name, string, and array inputs"
+            "activation copies Name, string, and array inputs"
         );
         flow_run_free(run);
         graph_free(&g);
@@ -4118,52 +4118,52 @@ int main(int argc, char **argv)
     /* RUN-17: freeing an instance-owned activation removes it from the
      * scheduler before the instance is destroyed. */
     {
-        blueprint *bp = blueprint_new("FreeActivation");
+        behavior_asset *bp = behavior_asset_new("FreeActivation");
         node *event = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, event, "Go");
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error error = { 0 };
-        flow_run *run = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &error);
-        check(run && acount(bi->activations) == 1, "RUN-17: instance owns a returned activation");
+        flow_run *run = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &error);
+        check(run && acount(bi->activations) == 1, "instance owns a returned activation");
         flow_run_free(run);
-        check(acount(bi->activations) == 0, "RUN-17: freeing an activation removes it from its instance");
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        check(acount(bi->activations) == 0, "freeing an activation removes it from its instance");
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* EVT-7: dispatching by name fails distinctly for unknown and duplicate
      * names. */
     {
-        blueprint *bp = blueprint_new("Evt7");
+        behavior_asset *bp = behavior_asset_new("Evt7");
         node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, ev, "Go");
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error err = { 0 };
         check(
-            blueprint_instance_dispatch(bi, "Missing", (flow_inputs){ 0 }, &err) == NULL &&
+            behavior_instance_dispatch(bi, "Missing", (flow_inputs){ 0 }, &err) == NULL &&
                 err.code == FLOW_ERR_UNKNOWN_EVENT,
-            "EVT-7: an unknown event name fails distinctly"
+            "an unknown event name fails distinctly"
         );
-        blueprint_instance_destroy(bi);
+        behavior_instance_destroy(bi);
         node *dup = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, dup, "Go");
-        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        bi = behavior_instance_create(bp, NULL, NULL, NULL);
         err = (flow_error){ 0 };
         check(
-            blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &err) == NULL &&
+            behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &err) == NULL &&
                 err.code == FLOW_ERR_DUPLICATE_EVENT,
-            "EVT-7: a duplicate event name fails distinctly"
+            "a duplicate event name fails distinctly"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* RUN-18: two instances of one definition share no owner, variable,
      * scratch, activation, error, or step-count state. */
     {
-        blueprint *bp = blueprint_new("Two");
-        blueprint_set_owner_type(bp, "Entity");
-        blueprint_variable *v = blueprint_add_variable(
+        behavior_asset *bp = behavior_asset_new("Two");
+        behavior_asset_set_owner_type(bp, "Entity");
+        behavior_variable *v = behavior_asset_add_variable(
             bp,
             "State",
             PIN_I32,
@@ -4178,49 +4178,52 @@ int main(int argc, char **argv)
         graph_connect_exec(bp->graph, boom_ev, 0, boom, 0, 0);
         pin_value o1 = { .type = PIN_HANDLE, .u64 = 111, .type_name = "Entity" };
         pin_value o2 = { .type = PIN_HANDLE, .u64 = 222, .type_name = "Entity" };
-        blueprint_instance *bi1 = blueprint_instance_create(bp, &o1, NULL, NULL);
-        blueprint_instance *bi2 = blueprint_instance_create(bp, &o2, NULL, NULL);
+        behavior_instance *bi1 = behavior_instance_create(bp, &o1, NULL, NULL);
+        behavior_instance *bi2 = behavior_instance_create(bp, &o2, NULL, NULL);
         check(
-            blueprint_instance_owner(bi1).u64 == 111 &&
-                blueprint_instance_owner(bi2).u64 == 222 &&
-                blueprint_instance_owner(bi1).type == PIN_HANDLE,
-            "RUN-18: two instances carry independent owner handles"
+            behavior_instance_owner(bi1).u64 == 111 &&
+                behavior_instance_owner(bi2).u64 == 222 &&
+                behavior_instance_owner(bi1).type == PIN_HANDLE,
+            "two instances carry independent owner handles"
         );
-        blueprint_instance_set_variable(bi1, v->id, &(pin_value){ .type = PIN_I32, .i = 7 });
+        behavior_instance_set_variable(bi1, v->id, &(pin_value){ .type = PIN_I32, .i = 7 });
         pin_value rv;
         check(
-            blueprint_instance_get_variable(bi1, v->id, &rv) == 0 && rv.i == 7 &&
-                blueprint_instance_get_variable(bi2, v->id, &rv) == 0 && rv.i == 100,
-            "RUN-18: two instances have independent variable storage"
+            behavior_instance_get_variable(bi1, v->id, &rv) == 0 && rv.i == 7 &&
+                behavior_instance_get_variable(bi2, v->id, &rv) == 0 && rv.i == 100,
+            "two instances have independent variable storage"
         );
-        pin_value *s1 = blueprint_instance_scratch(bi1, 42);
+        pin_value *s1 = behavior_instance_scratch(bi1, 42);
         s1->type = PIN_I32;
         s1->i = 5;
-        check(blueprint_instance_scratch(bi2, 42)->i == 0, "RUN-18: two instances have independent per-node scratch");
+        check(behavior_instance_scratch(bi2, 42)->i == 0, "two instances have independent per-node scratch");
         flow_error perr = { 0 };
-        flow_run *a1 = blueprint_instance_dispatch(bi1, "Boom", (flow_inputs){ 0 }, &perr);
-        check(a1 && flow_run_status(a1) == FLOW_FAILED && flow_run_steps(a1) == 2, "RUN-18: an error and its step count live on instance one's own activation");
+        flow_run *a1 = behavior_instance_dispatch(bi1, "Boom", (flow_inputs){ 0 }, &perr);
+        check(
+            a1 && flow_run_status(a1) == FLOW_FAILED && flow_run_steps(a1) == 2,
+            "an error and its step count live on instance one's own activation"
+        );
         check(
             acount(bi1->activations) == 1 && acount(bi2->activations) == 0,
-            "RUN-18: one instance's failure leaves the other's queue untouched"
+            "one instance's failure leaves the other's queue untouched"
         );
-        flow_run *a2 = blueprint_instance_dispatch(bi2, "Boom", (flow_inputs){ 0 }, &perr);
+        flow_run *a2 = behavior_instance_dispatch(bi2, "Boom", (flow_inputs){ 0 }, &perr);
         check(
             a2 && flow_run_status(a2) == FLOW_FAILED &&
                 flow_run_error(a1) != flow_run_error(a2),
-            "RUN-18: independent activation errors"
+            "independent activation errors"
         );
-        blueprint_instance_destroy(bi1);
-        blueprint_instance_destroy(bi2);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi1);
+        behavior_instance_destroy(bi2);
+        behavior_asset_free(bp);
     }
 
     /* RUN-15 / RUN-17: stopping one activation preserves instance variables
      * and scratch; destroying the instance cancels every activation and
      * releases the mutation guard without executing another node. */
     {
-        blueprint *bp = blueprint_new("Stop");
-        blueprint_variable *v = blueprint_add_variable(
+        behavior_asset *bp = behavior_asset_new("Stop");
+        behavior_variable *v = behavior_asset_add_variable(
             bp,
             "State",
             PIN_I32,
@@ -4236,91 +4239,94 @@ int main(int argc, char **argv)
         graph_connect_exec(bp->graph, ev, 0, delay, 0, 0);
         graph_connect_exec(bp->graph, delay, 0, done, 0, 0);
         graph_set_pin_default(bp->graph, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 100.0 });
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        blueprint_instance_set_variable(bi, v->id, &(pin_value){ .type = PIN_I32, .i = 9 });
-        blueprint_instance_scratch(bi, delay->id)->type = PIN_I32;
-        blueprint_instance_scratch(bi, delay->id)->i = 42;
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance_set_variable(bi, v->id, &(pin_value){ .type = PIN_I32, .i = 9 });
+        behavior_instance_scratch(bi, delay->id)->type = PIN_I32;
+        behavior_instance_scratch(bi, delay->id)->i = 42;
         flow_error perr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
-        check(act && flow_run_status(act) == FLOW_SUSPENDED, "RUN-15: dispatch leaves a suspended activation");
+        flow_run *act = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_SUSPENDED, "dispatch leaves a suspended activation");
         check(
-            blueprint_instance_stop_activation(bi, act) == FLOW_OK &&
+            behavior_instance_stop_activation(bi, act) == FLOW_OK &&
                 flow_run_status(act) == FLOW_IDLE,
-            "RUN-17: stopping one activation succeeds"
+            "stopping one activation succeeds"
         );
         pin_value rv;
         check(
-            blueprint_instance_get_variable(bi, v->id, &rv) == 0 && rv.i == 9,
-            "RUN-17: stopping an activation preserves instance variables"
+            behavior_instance_get_variable(bi, v->id, &rv) == 0 && rv.i == 9,
+            "stopping an activation preserves instance variables"
         );
-        check(blueprint_instance_scratch(bi, delay->id)->i == 42, "RUN-17: stopping an activation preserves per-node scratch");
+        check(behavior_instance_scratch(bi, delay->id)->i == 42, "stopping an activation preserves per-node scratch");
         int guard_before = bp->graph->flow_pause_count;
-        blueprint_instance_destroy(bi);
-        check(bp->graph->flow_pause_count == guard_before - 1, "RUN-20: destroying the instance releases the mutation guard");
+        behavior_instance_destroy(bi);
+        check(bp->graph->flow_pause_count == guard_before - 1, "destroying the instance releases the mutation guard");
         node *probe = graph_add_node(bp->graph, &g_sink_b_desc);
-        check(probe != NULL, "EXEC-20: the definition becomes mutable after its last instance is destroyed");
+        check(probe != NULL, "the definition becomes mutable after its last instance is destroyed");
         /* The probe node's exec input is unconnected, which is a blocking
          * compile error under RUN-12; remove it before starting again. */
-        check(graph_remove_node(bp->graph, probe) == 0, "EXEC-20: removing the probe restores a valid blueprint");
+        check(graph_remove_node(bp->graph, probe) == 0, "removing the probe restores a valid behavior_asset");
 
-        blueprint_instance *bi2 = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi2 = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_log_reset();
-        act = blueprint_instance_dispatch(bi2, "Go", (flow_inputs){ 0 }, &perr);
-        check(act && flow_run_status(act) == FLOW_SUSPENDED, "RUN-15: a second instance also suspends");
-        blueprint_instance_destroy(bi2);
-        check(g_flow_log_count == 0, "RUN-15: destroying the instance cancels activations without executing another node");
-        blueprint_free(bp);
+        act = behavior_instance_dispatch(bi2, "Go", (flow_inputs){ 0 }, &perr);
+        check(act && flow_run_status(act) == FLOW_SUSPENDED, "a second instance also suspends");
+        behavior_instance_destroy(bi2);
+        check(g_flow_log_count == 0, "destroying the instance cancels activations without executing another node");
+        behavior_asset_free(bp);
     }
 
     /* CAT-32: Self is a pure node whose output has the definition's owner
      * handle type; it is rejected without an owner type and evaluates to the
      * instance's supplied owner handle. */
     {
-        blueprint *bp = blueprint_new("Self");
-        check(blueprint_add_self_node(bp) == NULL, "CAT-32: Self is rejected when the definition declares no owner type");
+        behavior_asset *bp = behavior_asset_new("Self");
+        check(behavior_asset_add_self_node(bp) == NULL, "Self is rejected when the definition declares no owner type");
         /* The owner handle type must resolve in the active registry (CMPL-20),
          * so the test uses a reflected type name. */
-        blueprint_set_owner_type(bp, "Vec3");
+        behavior_asset_set_owner_type(bp, "Vec3");
         check(
             bp->owner_type_name && strcmp(bp->owner_type_name, "Vec3") == 0,
-            "BP-12: a Blueprint definition carries one nominal owner type"
+            "a Behavior Asset definition carries one nominal owner type"
         );
-        node *self = blueprint_add_self_node(bp);
+        node *self = behavior_asset_add_self_node(bp);
         check(
             self && self->output_pins[0].type == PIN_HANDLE &&
                 self->output_pins[0].type_name &&
                 strcmp(self->output_pins[0].type_name, "Vec3") == 0,
-            "CAT-32: Self carries the declared nominal owner handle type"
+            "Self carries the declared nominal owner handle type"
         );
         pin_spec ha = { "a", PIN_HANDLE, "Entity", PIN_DATA };
         pin_spec hb = { "b", PIN_HANDLE, "Entity", PIN_DATA };
         pin_spec hc = { "c", PIN_HANDLE, "Other", PIN_DATA };
-        check(pin_types_compatible(&ha, &hb) && !pin_types_compatible(&ha, &hc), "TYPE-13: handle pins are compatible only when nominal type names match");
+        check(
+            pin_types_compatible(&ha, &hb) && !pin_types_compatible(&ha, &hc),
+            "handle pins are compatible only when nominal type names match"
+        );
         node *ev = graph_add_node(bp->graph, registry_node_by_name("Event"));
         graph_set_event_name(bp->graph, ev, "Go");
         node *cap = graph_add_node(bp->graph, &g_handle_capture_desc);
         graph_connect_exec(bp->graph, ev, 0, cap, 0, 0);
         graph_connect_data(bp->graph, self, 0, cap, 1);
         pin_value owner = { .type = PIN_HANDLE, .u64 = 777, .type_name = "Vec3" };
-        blueprint_instance *bi = blueprint_instance_create(bp, &owner, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, &owner, NULL, NULL);
         g_captured_handle = 0;
         flow_error perr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
+        flow_run *act = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &perr);
         check(
             act && flow_run_status(act) == FLOW_COMPLETED && g_captured_handle == 777,
-            "CAT-32: Self evaluates to the instance's supplied owner handle"
+            "Self evaluates to the instance's supplied owner handle"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
-    /* FMT-16 / FMT-17 / FMT-18: the Blueprint document is byte-identical
+    /* FMT-16 / FMT-17 / FMT-18: the Behavior Asset document is byte-identical
      * before and after execution, and Name spelling plus the owner type
      * round-trip exactly. */
     {
-        blueprint *bp = blueprint_new("FmtBP");
-        blueprint_set_owner_type(bp, "UnavailableOwner");
-        blueprint_add_variable(
+        behavior_asset *bp = behavior_asset_new("FmtBP");
+        behavior_asset_set_owner_type(bp, "UnavailableOwner");
+        behavior_asset_add_variable(
             bp,
             "Tag",
             PIN_NAME,
@@ -4333,27 +4339,29 @@ int main(int argc, char **argv)
         graph_set_event_name(bp->graph, ev, "Go");
         node *name_lit = graph_add_node(bp->graph, registry_node_by_name("Name"));
         graph_set_pin_default(bp->graph, name_lit, 0, 0, &(pin_value){ .type = PIN_NAME, .str = "ExactSpelling" });
-        char *before = blueprint_save_json(bp);
-        check(
-            before && strstr(before, "\"owner_type\": \"UnavailableOwner\""),
-            "FMT-18: the authored owner handle type is written"
-        );
-        blueprint_instance *bi = blueprint_instance_create(
+        char *before = behavior_asset_save_json(bp);
+        check(before && strstr(before, "\"owner_type\": \"UnavailableOwner\""), "the authored owner handle type is written");
+        behavior_instance *bi = behavior_instance_create(
             bp,
             &(pin_value){ .type = PIN_HANDLE, .u64 = 5, .type_name = "UnavailableOwner" },
             NULL,
             NULL
         );
-        blueprint_instance_destroy(bi);
-        char *after = blueprint_save_json(bp);
-        check(before && after && strcmp(before, after) == 0 && !strstr(before, "activations"), "FMT-16: saving before and after execution is byte-identical and carries no runtime state");
-        blueprint *loaded = before ? blueprint_load_json(before) : NULL;
-        check(loaded && loaded->owner_type_name && strcmp(loaded->owner_type_name, "UnavailableOwner") == 0, "FMT-17: an unavailable owner type name is preserved, not substituted");
-        blueprint_variable *lv = loaded ? blueprint_find_variable_by_name(loaded, "Tag")
-                                        : NULL;
+        behavior_instance_destroy(bi);
+        char *after = behavior_asset_save_json(bp);
+        check(before && after && strcmp(before, after) == 0 && !strstr(before, "activations"), "saving before and after execution is byte-identical and carries no runtime state");
+        behavior_asset *loaded = before ? behavior_asset_load_json(before) : NULL;
+        check(
+            loaded && loaded->owner_type_name &&
+                strcmp(loaded->owner_type_name, "UnavailableOwner") == 0,
+            "an unavailable owner type name is preserved, not substituted"
+        );
+        behavior_variable *lv = loaded
+                                  ? behavior_asset_find_variable_by_name(loaded, "Tag")
+                                  : NULL;
         check(
             lv && lv->default_value.str && strcmp(lv->default_value.str, "MyTag") == 0,
-            "FMT-17: a Name variable's authored spelling round-trips exactly"
+            "a Name variable's authored spelling round-trips exactly"
         );
         int spelling = 0;
         if (loaded) {
@@ -4366,64 +4374,67 @@ int main(int argc, char **argv)
                 }
             }
         }
-        check(spelling, "FMT-17: a Name literal's authored spelling round-trips exactly");
-        char *re = loaded ? blueprint_save_json(loaded) : NULL;
-        check(re && before && strcmp(re, before) == 0, "FMT-12: the Blueprint document load/save round-trips byte-identically");
+        check(spelling, "a Name literal's authored spelling round-trips exactly");
+        char *re = loaded ? behavior_asset_save_json(loaded) : NULL;
+        check(re && before && strcmp(re, before) == 0, "the Behavior Asset document load/save round-trips byte-identically");
         if (loaded) {
-            blueprint_free(loaded);
+            behavior_asset_free(loaded);
         }
         free(before);
         free(after);
         free(re);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* NODE-13: descriptors classify as pure, executable entry, or executable;
      * the existing pure helper keeps classifying the same way. */
     {
-        check(node_desc_behavior(&g_const_desc) == NODE_BEHAVIOR_PURE, "NODE-13: a pure descriptor has no exec pins");
-        check(node_desc_behavior(&NODE_Event) == NODE_BEHAVIOR_ENTRY, "NODE-13: an event is an executable entry (no exec input, one exec output)");
-        check(node_desc_behavior(&NODE_Branch) == NODE_BEHAVIOR_EXEC, "NODE-13: a node with an exec input is executable");
+        check(node_desc_behavior(&g_const_desc) == NODE_BEHAVIOR_PURE, "a pure descriptor has no exec pins");
+        check(
+            node_desc_behavior(&NODE_Event) == NODE_BEHAVIOR_ENTRY,
+            "an event is an executable entry (no exec input, one exec output)"
+        );
+        check(node_desc_behavior(&NODE_Branch) == NODE_BEHAVIOR_EXEC, "a node with an exec input is executable");
         check(
             node_desc_is_pure(&g_const_desc) && !node_desc_is_pure(&NODE_Branch),
-            "NODE-13: the existing pure helper agrees with the classification"
+            "the existing pure helper agrees with the classification"
         );
     }
 
     /* CMPL-1: compiling is explicit, ordered, read-only, and clean on an
-     * empty blueprint. */
+     * empty behavior_asset. */
     {
-        blueprint *bp = blueprint_new("CMPL1");
+        behavior_asset *bp = behavior_asset_new("CMPL1");
         compile_report rep;
         compile_report_init(&rep);
         unsigned long long rev = graph_topology_revision(bp->graph);
-        char *before = blueprint_save_json(bp);
-        int errors = blueprint_compile(bp, &rep);
-        char *after = blueprint_save_json(bp);
+        char *before = behavior_asset_save_json(bp);
+        int errors = behavior_asset_compile(bp, &rep);
+        char *after = behavior_asset_save_json(bp);
         check(
             errors == 0 && rep.error_count == 0 && rep.warning_count == 0 &&
                 acount(rep.items) == 0,
-            "CMPL-1: compiling an empty blueprint produces no diagnostics"
+            "compiling an empty behavior_asset produces no diagnostics"
         );
         check(
             rev == graph_topology_revision(bp->graph) && before && after &&
                 strcmp(before, after) == 0,
-            "CMPL-1: the compile pass never modifies the authored graph"
+            "the compile pass never modifies the authored graph"
         );
         check(
             compile_report_blocked(&rep) == 0 && compile_report_first_error(&rep) == NULL,
-            "CMPL-3: an empty report has no blocking error"
+            "an empty report has no blocking error"
         );
         free(before);
         free(after);
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-4: an executable node whose exec input has no incoming edge is
      * unreachable but remains valid to apply; the event entry is exempt. */
     {
-        blueprint *bp = blueprint_new("CMPL4");
+        behavior_asset *bp = behavior_asset_new("CMPL4");
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
         node *branch = graph_add_node(bp->graph, &NODE_Branch);
@@ -4432,14 +4443,14 @@ int main(int argc, char **argv)
         check(
             node_behavior_for(ev) == NODE_BEHAVIOR_ENTRY &&
                 node_behavior_for(branch) == NODE_BEHAVIOR_EXEC,
-            "NODE-13: node instances classify like their descriptors"
+            "node instances classify like their descriptors"
         );
         compile_report rep;
         compile_report_init(&rep);
         check(
-            blueprint_compile(bp, &rep) == 0 && rep.error_count == 0 &&
+            behavior_asset_compile(bp, &rep) == 0 && rep.error_count == 0 &&
                 rep.warning_count == 2,
-            "CMPL-4: two executable nodes with unconnected exec inputs warn"
+            "two executable nodes with unconnected exec inputs warn"
         );
         int count = 0, on_branch = 0, on_print = 0;
         for (int i = 0; i < acount(rep.items); i++) {
@@ -4455,25 +4466,22 @@ int main(int argc, char **argv)
                 on_print = 1;
             }
         }
-        check(count == 2 && on_branch && on_print, "CMPL-4: both diagnostics name the unconnected executable nodes");
+        check(count == 2 && on_branch && on_print, "both diagnostics name the unconnected executable nodes");
         check(
             rep.items[0].node_id == branch->id &&
                 rep.items[0].pin_id == branch->input_pins[0].id &&
                 rep.items[0].graph_id == CMPL_GRAPH_DEFAULT,
-            "CMPL-2: the diagnostic carries graph, node, and pin ids"
+            "the diagnostic carries graph, node, and pin ids"
         );
-        check(
-            strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_EXEC), "CMPL-4") == 0,
-            "CMPL-2: every diagnostic carries a stable rule code"
-        );
+        check(strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_EXEC), "CMPL-4") == 0, "every diagnostic carries a stable rule code");
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-5: a data edge between incompatible pins. The graph API rejects
      * incompatible connections, so the test inserts the edge directly. */
     {
-        blueprint *bp = blueprint_new("CMPL5");
+        behavior_asset *bp = behavior_asset_new("CMPL5");
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
         node *src = graph_add_node(bp->graph, &g_all_types_desc);
@@ -4490,7 +4498,7 @@ int main(int argc, char **argv)
         apush(bp->graph->edges, bad); /* i32 -> Flag bool: incompatible */
         compile_report rep;
         compile_report_init(&rep);
-        blueprint_compile(bp, &rep);
+        behavior_asset_compile(bp, &rep);
         /* The graph also carries the all-types node's unregistered enum output
          * (CMPL-20); count only the incompatible-edge diagnostics here. */
         int bad_edges = 0;
@@ -4499,7 +4507,7 @@ int main(int argc, char **argv)
                 bad_edges++;
             }
         }
-        check(bad_edges == 1, "CMPL-5: one incompatible data edge errors");
+        check(bad_edges == 1, "one incompatible data edge errors");
         const compile_diagnostic *c5 = NULL;
         for (int i = 0; i < acount(rep.items); i++) {
             if (rep.items[i].rule == CMPL_RULE_INCOMPATIBLE_DATA_EDGE) {
@@ -4508,16 +4516,16 @@ int main(int argc, char **argv)
         }
         check(
             c5 && c5->node_id == sink->id && c5->pin_id == sink->input_pins[2].id,
-            "CMPL-5: the diagnostic names the incompatible input pin"
+            "the diagnostic names the incompatible input pin"
         );
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-6: a cycle among data edges reports once, at the closing back
      * edge; an acyclic chain stays clean. */
     {
-        blueprint *bp = blueprint_new("CMPL6");
+        behavior_asset *bp = behavior_asset_new("CMPL6");
         static pin_spec cycle_in[] = { { "In", PIN_I32, "int", PIN_DATA } };
         static pin_spec cycle_out[] = { { "Out", PIN_I32, "int", PIN_DATA } };
         static node_desc cycle_desc = {
@@ -4535,80 +4543,82 @@ int main(int argc, char **argv)
         graph_connect_data(bp->graph, b, 0, c, 0);
         compile_report rep;
         compile_report_init(&rep);
-        check(blueprint_compile(bp, &rep) == 0, "CMPL-6: an acyclic data chain compiles clean");
+        check(behavior_asset_compile(bp, &rep) == 0, "an acyclic data chain compiles clean");
         graph_connect_data(bp->graph, c, 0, a, 0);
         compile_report_free(&rep);
         compile_report_init(&rep);
         check(
-            blueprint_compile(bp, &rep) == 1 && rep.items[0].rule == CMPL_RULE_DATA_CYCLE &&
+            behavior_asset_compile(bp, &rep) == 1 &&
+                rep.items[0].rule == CMPL_RULE_DATA_CYCLE &&
                 rep.items[0].node_id == c->id,
-            "CMPL-6: closing the chain reports one data-cycle error at the "
+            "closing the chain reports one data-cycle error at the "
             "back edge"
         );
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-7: a reference to a retired or missing variable, event, function,
      * or macro. */
     {
-        blueprint *bp = blueprint_new("CMPL7");
-        blueprint_variable *v = blueprint_add_variable(bp, "Score", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "");
-        node *get = blueprint_add_get_node(bp, v->id);
-        node *set = blueprint_add_set_node(bp, v->id);
+        behavior_asset *bp = behavior_asset_new("CMPL7");
+        behavior_variable *
+            v = behavior_asset_add_variable(bp, "Score", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "");
+        node *get = behavior_asset_add_get_node(bp, v->id);
+        node *set = behavior_asset_add_set_node(bp, v->id);
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
         compile_report rep;
         compile_report_init(&rep);
-        blueprint_compile(bp, &rep);
+        behavior_asset_compile(bp, &rep);
         int refs = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) {
                 refs++;
             }
         }
-        check(refs == 0, "CMPL-7: valid variable and event references compile clean");
-        check(blueprint_delete_variable(bp, v->id) == 0, "CMPL-7: deleting a referenced variable is permitted (VAR-7)");
+        check(refs == 0, "valid variable and event references compile clean");
+        check(behavior_asset_delete_variable(bp, v->id) == 0, "deleting a referenced variable is permitted (VAR-7)");
         compile_report_free(&rep);
         compile_report_init(&rep);
-        blueprint_compile(bp, &rep);
+        behavior_asset_compile(bp, &rep);
         refs = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) {
                 refs++;
             }
         }
-        check(refs == 2, "CMPL-7: Get and Set both report the retired variable");
-        check(graph_remove_node(bp->graph, ev) == 0, "CMPL-7: removing the referenced event is permitted");
+        check(refs == 2, "Get and Set both report the retired variable");
+        check(graph_remove_node(bp->graph, ev) == 0, "removing the referenced event is permitted");
         compile_report_free(&rep);
         compile_report_init(&rep);
-        blueprint_compile(bp, &rep);
+        behavior_asset_compile(bp, &rep);
         refs = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             if (rep.items[i].rule == CMPL_RULE_MISSING_REFERENCE) {
                 refs++;
             }
         }
-        check(refs == 2, "CMPL-7: variable references remain after event removal");
+        check(refs == 2, "variable references remain after event removal");
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-8: duplicate event names, duplicate parameter names within one
      * list, and duplicate variable names each report once. */
     {
-        blueprint *bp = blueprint_new("CMPL8");
+        behavior_asset *bp = behavior_asset_new("CMPL8");
         node *e1 = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, e1, "Begin");
         node *e2 = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, e2, "Begin");
         compile_report rep;
         compile_report_init(&rep);
-        blueprint_compile(bp, &rep);
+        behavior_asset_compile(bp, &rep);
         check(
             rep.error_count == 1 && rep.items[0].rule == CMPL_RULE_DUPLICATE_NAME &&
                 rep.items[0].node_id == e2->id,
-            "CMPL-8: two events sharing a name produce one diagnostic on the "
+            "two events sharing a name produce one diagnostic on the "
             "later event"
         );
         node *e3 = graph_add_node(bp->graph, &NODE_Event);
@@ -4617,21 +4627,21 @@ int main(int argc, char **argv)
         pin_spec amount_b = { "Amount", PIN_I32, "int", PIN_DATA };
         graph_add_pin(bp->graph, e3, 1, &amount_a);
         graph_add_pin(bp->graph, e3, 1, &amount_b);
-        blueprint_variable dup_var_a = {
+        behavior_variable dup_var_a = {
             .id = graph_alloc_id(bp->graph),
             .name = graph_own_str(bp->graph, "Score", 5),
             .type = PIN_I32,
             .type_name = "int",
             .container = PIN_CONTAINER_SINGLE,
         };
-        blueprint_variable dup_var_b = dup_var_a;
+        behavior_variable dup_var_b = dup_var_a;
         dup_var_b.id = graph_alloc_id(bp->graph);
         apush(bp->variables, dup_var_a);
         apush(bp->variables, dup_var_b);
         compile_report_free(&rep);
         compile_report_init(&rep);
-        blueprint_compile(bp, &rep);
-        check(rep.error_count == 3, "CMPL-8: duplicate event, parameter, and variable names each error");
+        behavior_asset_compile(bp, &rep);
+        check(rep.error_count == 3, "duplicate event, parameter, and variable names each error");
         int ev_dup = 0, param_dup = 0, var_dup = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             const compile_diagnostic *d = &rep.items[i];
@@ -4646,14 +4656,14 @@ int main(int argc, char **argv)
                 var_dup++;
             }
         }
-        check(ev_dup == 1 && param_dup == 1 && var_dup == 1, "CMPL-8: each duplicate kind reports exactly once");
+        check(ev_dup == 1 && param_dup == 1 && var_dup == 1, "each duplicate kind reports exactly once");
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-12: an unresolved wildcard pin that carries an edge. */
     {
-        blueprint *bp = blueprint_new("CMPL12");
+        behavior_asset *bp = behavior_asset_new("CMPL12");
         static pin_spec wild_in = {
             .name = "Value",
             .type = PIN_FLOW,
@@ -4678,7 +4688,7 @@ int main(int argc, char **argv)
         node *src = graph_add_node(bp->graph, &g_const_desc);
         compile_report rep;
         compile_report_init(&rep);
-        check(blueprint_compile(bp, &rep) == 0, "CMPL-12: an unconnected wildcard pin is not an error");
+        check(behavior_asset_compile(bp, &rep) == 0, "an unconnected wildcard pin is not an error");
         edge we = {
             .from_id = src->id,
             .from_pin_id = src->output_pins[0].id,
@@ -4690,20 +4700,20 @@ int main(int argc, char **argv)
         compile_report_free(&rep);
         compile_report_init(&rep);
         check(
-            blueprint_compile(bp, &rep) == 1 &&
+            behavior_asset_compile(bp, &rep) == 1 &&
                 rep.items[0].rule == CMPL_RULE_UNRESOLVED_WILDCARD &&
                 rep.items[0].node_id == w->id &&
                 rep.items[0].pin_id == w->input_pins[0].id,
-            "CMPL-12: an unresolved wildcard pin that carries an edge errors"
+            "an unresolved wildcard pin that carries an edge errors"
         );
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-16: deterministic ordering by graph, then node position (canvas y,
      * then x, then node id), then rule code. */
     {
-        blueprint *bp = blueprint_new("CMPL16");
+        behavior_asset *bp = behavior_asset_new("CMPL16");
         node *top = graph_add_node(bp->graph, &NODE_PrintString);
         node *mid = graph_add_node(bp->graph, &NODE_Branch);
         node *bot = graph_add_node(bp->graph, &NODE_Branch);
@@ -4716,62 +4726,62 @@ int main(int argc, char **argv)
         compile_report r1, r2;
         compile_report_init(&r1);
         compile_report_init(&r2);
-        blueprint_compile(bp, &r1);
-        blueprint_compile(bp, &r2);
+        behavior_asset_compile(bp, &r1);
+        behavior_asset_compile(bp, &r2);
         int same = acount(r1.items) == acount(r2.items);
         for (int i = 0; same && i < acount(r1.items); i++) {
             same = memcmp(&r1.items[i], &r2.items[i], sizeof r1.items[i]) == 0;
         }
-        check(same && acount(r1.items) == 3, "CMPL-16: compiling twice yields an identical ordered list");
+        check(same && acount(r1.items) == 3, "compiling twice yields an identical ordered list");
         check(
             r1.items[0].node_id == top->id && r1.items[1].node_id == mid->id &&
                 r1.items[2].node_id == bot->id,
-            "CMPL-16: diagnostics order by canvas y, then x, then node id"
+            "diagnostics order by canvas y, then x, then node id"
         );
         check(
             r1.items[0].rule == CMPL_RULE_UNCONNECTED_EXEC &&
                 r1.items[1].rule == CMPL_RULE_UNCONNECTED_EXEC,
-            "CMPL-16: equal-rule diagnostics keep position order"
+            "equal-rule diagnostics keep position order"
         );
         compile_report_free(&r1);
         compile_report_free(&r2);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-16: diagnostics on one node order by rule code; the set node
      * carries both an unconnected exec input (CMPL-4) and a missing variable
      * reference (CMPL-7). */
     {
-        blueprint *bp = blueprint_new("CMPL16b");
+        behavior_asset *bp = behavior_asset_new("CMPL16b");
         node *set = graph_add_node(bp->graph, &NODE_SetVariable);
         graph_set_node_reference(bp->graph, set, 4242, "Lost");
         compile_report rep;
         compile_report_init(&rep);
         check(
-            blueprint_compile(bp, &rep) == 1 && rep.error_count == 1 &&
+            behavior_asset_compile(bp, &rep) == 1 && rep.error_count == 1 &&
                 rep.warning_count == 1,
-            "CMPL-16: one node can carry an error and a warning"
+            "one node can carry an error and a warning"
         );
         check(
             acount(rep.items) == 2 && rep.items[0].rule == CMPL_RULE_UNCONNECTED_EXEC &&
                 rep.items[1].rule == CMPL_RULE_MISSING_REFERENCE,
-            "CMPL-16: diagnostics on one node order by rule code"
+            "diagnostics on one node order by rule code"
         );
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-18: a disabled node is excluded from every rule except one
      * warning reporting that it is disabled. */
     {
-        blueprint *bp = blueprint_new("CMPL18");
+        behavior_asset *bp = behavior_asset_new("CMPL18");
         node *dbranch = graph_add_node(bp->graph, &NODE_Branch);
         node *dget = graph_add_node(bp->graph, &NODE_GetVariable);
         graph_set_node_disabled(bp->graph, dbranch, 1);
         graph_set_node_disabled(bp->graph, dget, 1);
         compile_report rep;
         compile_report_init(&rep);
-        check(blueprint_compile(bp, &rep) == 0 && rep.error_count == 0 && rep.warning_count == 2, "CMPL-18: disabled nodes are excluded from every rule except one warning each");
+        check(behavior_asset_compile(bp, &rep) == 0 && rep.error_count == 0 && rep.warning_count == 2, "disabled nodes are excluded from every rule except one warning each");
         int warn_branch = 0, warn_get = 0, other = 0;
         for (int i = 0; i < acount(rep.items); i++) {
             const compile_diagnostic *d = &rep.items[i];
@@ -4786,15 +4796,15 @@ int main(int argc, char **argv)
                 warn_get++;
             }
         }
-        check(warn_branch == 1 && warn_get == 1 && other == 0, "CMPL-18: exactly one disabled warning per node and no other rules");
+        check(warn_branch == 1 && warn_get == 1 && other == 0, "exactly one disabled warning per node and no other rules");
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* CMPL-20: an authored nominal type name not present in the active
      * registry is a blocking diagnostic that preserves the name. */
     {
-        blueprint *bp = blueprint_new("CMPL20");
+        behavior_asset *bp = behavior_asset_new("CMPL20");
         static pin_spec nominal_in[] = {
             { "Vec3In", PIN_STRUCT, "Vec3", PIN_DATA },
         };
@@ -4812,59 +4822,59 @@ int main(int argc, char **argv)
         graph_add_node(bp->graph, &nominal_desc);
         compile_report rep;
         compile_report_init(&rep);
-        check(blueprint_compile(bp, &rep) == 1, "CMPL-20: a registry-known struct pin compiles, an unknown handle name errors");
+        check(behavior_asset_compile(bp, &rep) == 1, "a registry-known struct pin compiles, an unknown handle name errors");
         check(
             rep.items[0].rule == CMPL_RULE_UNKNOWN_NOMINAL_TYPE &&
                 strstr(rep.items[0].message, "MissingType") != NULL,
-            "CMPL-20: the diagnostic preserves the unresolved type name"
+            "the diagnostic preserves the unresolved type name"
         );
         compile_report_free(&rep);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* RUN-12: warnings do not block a run; a disconnected executable node is
      * simply unreachable until an exec edge is connected. */
     {
-        blueprint *bp = blueprint_new("Run12");
+        behavior_asset *bp = behavior_asset_new("Run12");
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
         node *branch = graph_add_node(bp->graph, &NODE_Branch);
         node *print = graph_add_node(bp->graph, &NODE_PrintString);
         print->y = -50.0f; /* warning order is tested under CMPL-16 */
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error rerr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
+        flow_run *act = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
         check(
             act && flow_run_status(act) == FLOW_COMPLETED && rerr.code == FLOW_OK,
-            "RUN-12: unconnected executable nodes do not block dispatch"
+            "unconnected executable nodes do not block dispatch"
         );
         check(
-            blueprint_instance_enqueue(bi, ev, (flow_inputs){ 0 }, &rerr) != NULL &&
+            behavior_instance_enqueue(bi, ev, (flow_inputs){ 0 }, &rerr) != NULL &&
                 rerr.code == FLOW_OK,
-            "RUN-12: direct enqueue also accepts unreachable executable nodes"
+            "direct enqueue also accepts unreachable executable nodes"
         );
-        blueprint_instance_destroy(bi);
+        behavior_instance_destroy(bi);
         /* Connect the event; the next instance recompiles at the new revision. */
         graph_remove_node(bp->graph, print);
         graph_connect_exec(bp->graph, ev, 0, branch, 0, 0);
-        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
-        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: a connected event also starts and completes");
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        act = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &rerr);
+        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "a connected event also starts and completes");
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
     {
-        blueprint *bp = blueprint_new("Run12w");
+        behavior_asset *bp = behavior_asset_new("Run12w");
         node *ev = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, ev, "Go");
         node *br = graph_add_node(bp->graph, &NODE_Branch);
         graph_set_node_disabled(bp->graph, br, 1);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error werr = { 0 };
-        flow_run *act = blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &werr);
-        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "RUN-12: warnings do not block a start (CMPL-3)");
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        flow_run *act = behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &werr);
+        check(act != NULL && flow_run_status(act) == FLOW_COMPLETED, "warnings do not block a start (CMPL-3)");
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* TYPE-7 / CAT-26 / UI-22: explicit conversion nodes. conversion_for()
@@ -4874,28 +4884,28 @@ int main(int argc, char **argv)
             registry_node_by_name("To String") && registry_node_by_name("To Real") &&
                 registry_node_by_name("To Integer64") &&
                 registry_node_by_name("Format Text"),
-            "CAT-26: conversion and Format Text nodes are registered"
+            "conversion and Format Text nodes are registered"
         );
         check(
             registry_node_by_name("To Real")->category &&
                 registry_node_by_name("Format Text")->keywords,
-            "CAT-27: conversion entries expose category paths and search "
+            "conversion entries expose category paths and search "
             "keywords"
         );
         check(
             conversion_for(PIN_I32, PIN_F64) == &NODE_To_Real &&
                 conversion_for(PIN_I32, PIN_F32) == &NODE_To_Real &&
                 conversion_for(PIN_U8, PIN_F64) == &NODE_To_Real,
-            "TYPE-7: Integer and Byte to Real have an explicit conversion"
+            "Integer and Byte to Real have an explicit conversion"
         );
-        check(conversion_for(PIN_I32, PIN_I64) == &NODE_To_Integer64, "TYPE-7: Integer widens to Integer64 within one signedness");
-        check(conversion_for(PIN_I32, PIN_STR) == &NODE_To_String, "TYPE-7: Integer to String has an explicit conversion");
-        check(conversion_for(PIN_F64, PIN_STR) == &NODE_To_String, "TYPE-7: Real to String has an explicit conversion");
-        check(conversion_for(PIN_BOOL, PIN_STR) == &NODE_To_String, "TYPE-7: Bool to String has an explicit conversion");
-        check(conversion_for(PIN_NAME, PIN_STR) == &NODE_To_String, "TYPE-7: Name to String has an explicit conversion");
-        check(conversion_for(PIN_STR, PIN_F64) == NULL, "TYPE-7: String to Real is not a permitted conversion");
-        check(conversion_for(PIN_F64, PIN_I32) == NULL, "UI-22: Real to Integer is lossy, so no conversion is offered");
-        check(conversion_for(PIN_I64, PIN_I32) == NULL, "UI-22: Integer64 to Integer narrowing is not offered");
+        check(conversion_for(PIN_I32, PIN_I64) == &NODE_To_Integer64, "Integer widens to Integer64 within one signedness");
+        check(conversion_for(PIN_I32, PIN_STR) == &NODE_To_String, "Integer to String has an explicit conversion");
+        check(conversion_for(PIN_F64, PIN_STR) == &NODE_To_String, "Real to String has an explicit conversion");
+        check(conversion_for(PIN_BOOL, PIN_STR) == &NODE_To_String, "Bool to String has an explicit conversion");
+        check(conversion_for(PIN_NAME, PIN_STR) == &NODE_To_String, "Name to String has an explicit conversion");
+        check(conversion_for(PIN_STR, PIN_F64) == NULL, "String to Real is not a permitted conversion");
+        check(conversion_for(PIN_F64, PIN_I32) == NULL, "Real to Integer is lossy, so no conversion is offered");
+        check(conversion_for(PIN_I64, PIN_I32) == NULL, "Integer64 to Integer narrowing is not offered");
     }
 
     /* CAT-26: each conversion converts correctly headless, with the input
@@ -4925,7 +4935,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gc, to_real, 0, &ac, &out, &eval_ctx) == 0 &&
                 out.type == PIN_F64 && out.d == 42.0,
-            "CAT-26: To Real converts Integer 42 to Real 42.0"
+            "To Real converts Integer 42 to Real 42.0"
         );
 
         /* The reported case: an Integer onto a float input (add_floats). To
@@ -4936,7 +4946,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gc, addf, 0, &ac, &out, &eval_ctx) == 0 &&
                 out.type == PIN_F32 && out.f == 42.0f,
-            "CAT-26: Integer through To Real feeds a float input at the "
+            "Integer through To Real feeds a float input at the "
             "boundary"
         );
 
@@ -4954,7 +4964,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gc, to_real_b, 0, &ac, &out, &eval_ctx) == 0 &&
                 out.type == PIN_F64 && out.d == 7.0,
-            "CAT-26: a Byte feeds a retyped To Real input and converts to 7.0"
+            "a Byte feeds a retyped To Real input and converts to 7.0"
         );
 
         node *to_i64 = graph_add_node(&gc, &NODE_To_Integer64);
@@ -4970,7 +4980,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gc, to_i64, 0, &ac, &out, &eval_ctx) == 0 &&
                 out.type == PIN_I64 && out.i64 == -3,
-            "CAT-26: To Integer64 widens Integer -3 to Integer64"
+            "To Integer64 widens Integer -3 to Integer64"
         );
 
         node *to_str = graph_add_node(&gc, &NODE_To_String);
@@ -4996,7 +5006,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gc, to_str, 0, &ac, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, expected_str) == 0,
-            "CAT-26: To String renders a Real identically to "
+            "To String renders a Real identically to "
             "pin_value_to_string"
         );
 
@@ -5040,7 +5050,7 @@ int main(int argc, char **argv)
                 strcmp(out.str, "Foo") == 0 &&
                 graph_eval_output(&gc, to_str_int, 0, &ac, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "-7") == 0,
-            "CAT-26: To String renders Bool, Name, and Integer scalars"
+            "To String renders Bool, Name, and Integer scalars"
         );
 
         /* The conversion output must not alias the pin_value_to_string ring. */
@@ -5050,7 +5060,7 @@ int main(int argc, char **argv)
                                                     .type_name = "double",
                                                     .d = (double)i });
         }
-        check(strcmp(saved.str, "-7") == 0, "CAT-26: To String copies into the arena, not the format ring");
+        check(strcmp(saved.str, "-7") == 0, "To String copies into the arena, not the format ring");
 
         arena_free(&ac);
         graph_free(&gc);
@@ -5069,7 +5079,7 @@ int main(int argc, char **argv)
         check(
             fmt->input_count == 2 && (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD) &&
                 fmt->input_pins[1].type == PIN_FLOW,
-            "CAT-38: Format Text starts with Format and one Generic spare"
+            "Format Text starts with Format and one Generic spare"
         );
         graph_set_pin_default(
             &gf,
@@ -5090,7 +5100,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "Hello Bob World") == 0,
-            "CAT-38: \"Hello {0} World\" with a String argument renders "
+            "\"Hello {0} World\" with a String argument renders "
             "\"Hello Bob World\""
         );
         graph_set_pin_default(
@@ -5104,7 +5114,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 out.str[0] == '\0',
-            "CAT-38: {1} with one argument renders as the empty string"
+            "{1} with one argument renders as the empty string"
         );
         /* The reported crash: an Integer driven straight onto the spare
          * replaces the String driver, re-adopts the pin (PIN-11), and
@@ -5129,7 +5139,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=42") == 0,
-            "CAT-38: a non-string argument renders like its pin display"
+            "a non-string argument renders like its pin display"
         );
         /* {} consumes arguments in order; a Real through a To String
          * conversion renders like its pin display. */
@@ -5145,7 +5155,7 @@ int main(int argc, char **argv)
                                  .flags = PIN_FLAG_WILDCARD };
         graph_add_pin(&gf, fmt, 0, &dynamic_arg);
         snprintf(dynamic_arg_name, sizeof dynamic_arg_name, "renamed");
-        check(strcmp(fmt->input_pins[3].name, "Arg2") == 0, "PIN-2: dynamically added pin owns its name");
+        check(strcmp(fmt->input_pins[3].name, "Arg2") == 0, "dynamically added pin owns its name");
         node *to_str = graph_add_node(&gf, &NODE_To_String);
         graph_set_pin_type(&gf, to_str, 0, 0, PIN_F64, "double");
         node *rlit = graph_add_node(&gf, registry_node_by_name("Real"));
@@ -5169,7 +5179,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "42 3.5") == 0,
-            "CAT-38: {} consumes arguments in order and a Real through To "
+            "{} consumes arguments in order and a Real through To "
             "String renders like its pin display"
         );
         graph_set_pin_default(
@@ -5183,7 +5193,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "|      42|") == 0,
-            "CAT-38: {:>8} applies printf alignment to an argument"
+            "{:>8} applies printf alignment to an argument"
         );
         graph_set_pin_default(
             &gf,
@@ -5196,7 +5206,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "a{b}c") == 0,
-            "CAT-38: {{ and }} print literal braces"
+            "{{ and }} print literal braces"
         );
         /* Precision and base specifiers render through the value's own C
          * type: {:.2f} on a Real, {:x} and {:08d} on an Integer. */
@@ -5225,7 +5235,7 @@ int main(int argc, char **argv)
         check(
             graph_eval_output(&gf, fmt, 0, &af, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "|3.14|2a|00000042|42.00|") == 0,
-            "CAT-38: precision and base specifiers render numeric values"
+            "precision and base specifiers render numeric values"
         );
         arena_free(&af);
         graph_free(&gf);
@@ -5259,12 +5269,12 @@ int main(int argc, char **argv)
         check(
             fmt->input_pins[1].type == PIN_I32 &&
                 (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD),
-            "PIN-11: connecting to the spare adopts the peer's type"
+            "connecting to the spare adopts the peer's type"
         );
         check(
             graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=42") == 0,
-            "PIN-11: an adopted Generic argument evaluates its peer"
+            "an adopted Generic argument evaluates its peer"
         );
         /* A second driver re-adopts (PIN-6 replacement on a wildcard). */
         node *rval = graph_add_node(&gp, registry_node_by_name("Real"));
@@ -5276,12 +5286,12 @@ int main(int argc, char **argv)
             &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.5 }
         );
         graph_connect(&gp, rval, 0, fmt, 1);
-        check(fmt->input_pins[1].type == PIN_F64, "PIN-11: replacing the driver re-adopts the new type");
+        check(fmt->input_pins[1].type == PIN_F64, "replacing the driver re-adopts the new type");
         eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=3.5") == 0,
-            "PIN-11: the re-adopted argument evaluates the new peer"
+            "the re-adopted argument evaluates the new peer"
         );
         graph_remove_edge(&gp, rval, 0, fmt, 1);
         int reverted = fmt->input_pins[1].type == PIN_FLOW &&
@@ -5293,14 +5303,14 @@ int main(int argc, char **argv)
         check(
             reverted && fmt->input_pins[1].type == PIN_FLOW &&
                 (fmt->input_pins[1].flags & PIN_FLAG_WILDCARD),
-            "PIN-11: removing the edge or its driver reverts the Generic pin"
+            "removing the edge or its driver reverts the Generic pin"
         );
         /* An unconnected spare renders as an empty argument. */
         eval_context_reset_runtime(&eval_ctx);
         check(
             graph_eval_output(&gp, fmt, 0, &ap, &out, &eval_ctx) == 0 &&
                 strcmp(out.str, "n=") == 0,
-            "PIN-11: an unconnected Generic argument renders empty"
+            "an unconnected Generic argument renders empty"
         );
         /* Adopted types survive a save/load round trip. The editor appends
          * the next spare when the last pin is taken, so mirror that and
@@ -5317,7 +5327,7 @@ int main(int argc, char **argv)
                 (gp2->nodes[0]->input_pins[1].flags & PIN_FLAG_WILDCARD) &&
                 gp2->nodes[0]->input_pins[2].type == PIN_FLOW &&
                 (gp2->nodes[0]->input_pins[2].flags & PIN_FLAG_WILDCARD),
-            "PIN-11: adopted types and the spare survive save/load"
+            "adopted types and the spare survive save/load"
         );
         if (gp2) {
             arena ap2;
@@ -5326,7 +5336,7 @@ int main(int argc, char **argv)
             check(
                 graph_eval_output(gp2, gp2->nodes[0], 0, &ap2, &out, &eval_ctx) == 0 &&
                     strcmp(out.str, "n=3.5") == 0,
-                "PIN-11: a loaded Generic argument still evaluates"
+                "a loaded Generic argument still evaluates"
             );
             arena_free(&ap2);
             graph_free(gp2);
@@ -5338,10 +5348,10 @@ int main(int argc, char **argv)
     /* Phase 3 editor/model surfaces: authored values have corresponding core
      * editing APIs, diagnostics, and persistent-instance identity. */
     {
-        blueprint *bp = blueprint_new("EditorSurface");
+        behavior_asset *bp = behavior_asset_new("EditorSurface");
         node *event = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, event, "Surface");
-        blueprint_variable *value = blueprint_add_variable(
+        behavior_variable *value = behavior_asset_add_variable(
             bp,
             "Value",
             PIN_I32,
@@ -5351,57 +5361,57 @@ int main(int argc, char **argv)
             "Editor"
         );
         node *literal = graph_add_node(bp->graph, registry_node_by_name("Integer"));
-        char *json = blueprint_save_json(bp);
+        char *json = behavior_asset_save_json(bp);
         check(
             json && strstr(json, "variables") && strstr(json, "graphs"),
-            "UI-1: every Blueprint document value has an authored model surface"
+            "every Behavior Asset document value has an authored model surface"
         );
-        check(event && registry_node_count() > 0, "UI-2: canvas, tree, and catalog surfaces have model data");
-        check(graph_set_node_disabled(bp->graph, literal, true) == 0, "UI-5: node execution state has one graph mutation API");
+        check(event && registry_node_count() > 0, "canvas, tree, and catalog surfaces have model data");
+        check(graph_set_node_disabled(bp->graph, literal, true) == 0, "node execution state has one graph mutation API");
         compile_report surface_report;
         compile_report_init(&surface_report);
-        blueprint_compile(bp, &surface_report);
-        check(
-            surface_report.items != NULL || surface_report.error_count == 0,
-            "UI-9: compiler results expose structured diagnostics"
-        );
+        behavior_asset_compile(bp, &surface_report);
+        check(surface_report.items != NULL || surface_report.error_count == 0, "compiler results expose structured diagnostics");
         check(
             json && strstr(json, "breakpoints_enabled") && strstr(json, "comment_boxes"),
-            "UI-17: authored operations have serializable undo snapshots"
+            "authored operations have serializable undo snapshots"
         );
-        check(event->output_count > 0, "UI-23: required event pins remain visible in the model");
-        check(registry_node_by_name("Format Text")->keywords != NULL, "UI-29: catalog search fields cover authored literal values by node type");
-        check(json && strstr(json, "graphs"), "UI-42: dockable editor layout has graph persistence data");
-        check(json && strstr(json, "comment_boxes"), "UI-43: output and details panels retain authored graph state");
-        blueprint_set_owner_type(bp, "EditorOwner");
-        check(bp->owner_type_name && PIN_FLAG_SERVICE != 0, "UI-53: owner and service-backed pin metadata are inspectable");
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
-        check(bi && bi->bp == bp, "UI-54: preview identity is separate from an activation");
-        check(bi && bi->bp == bp, "UI-55: runtime instance state is separate from an activation");
-        blueprint_instance_destroy(bi);
-        check(bp->graph->flow_pause_count == 0, "UI-57: the replacement choke point releases the applied definition");
+        check(event->output_count > 0, "required event pins remain visible in the model");
+        check(
+            registry_node_by_name("Format Text")->keywords != NULL,
+            "catalog search fields cover authored literal values by node type"
+        );
+        check(json && strstr(json, "graphs"), "dockable editor layout has graph persistence data");
+        check(json && strstr(json, "comment_boxes"), "output and details panels retain authored graph state");
+        behavior_asset_set_owner_type(bp, "EditorOwner");
+        check(bp->owner_type_name && PIN_FLAG_SERVICE != 0, "owner and service-backed pin metadata are inspectable");
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        check(bi && bi->bp == bp, "preview identity is separate from an activation");
+        check(bi && bi->bp == bp, "runtime instance state is separate from an activation");
+        behavior_instance_destroy(bi);
+        check(bp->graph->flow_pause_count == 0, "the replacement choke point releases the applied definition");
         check(
             value && literal &&
-                blueprint_promote_pin_to_variable(bp, literal, 0, 0, "Promoted"),
-            "VAR-10: the editor can promote a pin into a typed variable"
+                behavior_asset_promote_pin_to_variable(bp, literal, 0, 0, "Promoted"),
+            "the editor can promote a pin into a typed variable"
         );
-        check(registry_node_count() > 0, "CAT-29: the maintained parity surface is registry-extensible");
-        check(registry_operator_count() >= 0, "CAT-33: operator signatures are consumer-extensible");
-        check(CMPL_MESSAGE_MAX > 0, "CMPL-17: diagnostics carry navigable stable message data");
+        check(registry_node_count() > 0, "the maintained parity surface is registry-extensible");
+        check(registry_operator_count() >= 0, "operator signatures are consumer-extensible");
+        check(CMPL_MESSAGE_MAX > 0, "diagnostics carry navigable stable message data");
         compile_report_free(&surface_report);
         free(json);
-        blueprint_free(bp);
+        behavior_asset_free(bp);
     }
 
     /* Phase 4: function graphs and pure/executable call nodes. */
     {
-        blueprint *bp = blueprint_new("Functions");
+        behavior_asset *bp = behavior_asset_new("Functions");
         check(
             bp->graph == bp->graphs[0] && bp->graph->kind == GRAPH_EVENT,
-            "BP-8: a Blueprint owns one non-deletable default event graph"
+            "a Behavior Asset owns one non-deletable default event graph"
         );
-        graph *fn = blueprint_add_function(bp, "Identity", 0);
-        check(fn && fn->kind == GRAPH_FUNCTION, "BP-2: a graph declares its function kind");
+        graph *fn = behavior_asset_add_function(bp, "Identity", 0);
+        check(fn && fn->kind == GRAPH_FUNCTION, "a graph declares its function kind");
         node *entry = graph_node_by_id(fn, fn->entry_id);
         node *ret = graph_node_by_id(fn, fn->return_id);
         pin_spec arg = { "Value", PIN_I32, "int", PIN_DATA };
@@ -5409,26 +5419,26 @@ int main(int argc, char **argv)
         graph_add_pin(fn, ret, 0, &arg);
         graph_connect_exec(fn, entry, 0, ret, 0, 0);
         graph_connect_data(fn, entry, 1, ret, 1);
-        check(fn->owner == bp && acount(bp->graphs) == 2, "BP-4: graph ownership keeps edges inside one graph");
-        check(fn->entry_id && fn->return_id, "BP-5: event and function graph relationships remain explicit");
-        check(graph_exec_input_count(fn, ret, 0) == 1, "BP-6: a function has one executable entry path and a return");
-        check(entry->output_count == 2 && ret->input_count == 2, "FN-1: function signatures use instance pins");
+        check(fn->owner == bp && acount(bp->graphs) == 2, "graph ownership keeps edges inside one graph");
+        check(fn->entry_id && fn->return_id, "event and function graph relationships remain explicit");
+        check(graph_exec_input_count(fn, ret, 0) == 1, "a function has one executable entry path and a return");
+        check(entry->output_count == 2 && ret->input_count == 2, "function signatures use instance pins");
         node *event = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, event, "CallIdentity");
-        node *call = blueprint_add_function_call_node(bp, fn);
+        node *call = behavior_asset_add_function_call_node(bp, fn);
         graph_set_pin_default(bp->graph, call, 0, 1, &(pin_value){ .type = PIN_I32, .i = 42 });
         graph_connect_exec(bp->graph, event, 0, call, 0, 0);
         check(
             call->reference_id == fn->graph_id && call->input_count == 2 &&
                 call->output_count == 2,
-            "FN-2: function calls mirror entry and return pins"
+            "function calls mirror entry and return pins"
         );
-        check(fn->call_depth_limit > 0, "FN-6: function recursion has a configured depth limit");
-        check(fn->call_depth_limit > 0, "EXEC-7: function calls enforce a call-depth limit");
-        check(fn->call_depth_limit > 0, "VAR-13: function call frames have an explicit local-state boundary");
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        check(fn->call_depth_limit > 0, "function recursion has a configured depth limit");
+        check(fn->call_depth_limit > 0, "function calls enforce a call-depth limit");
+        check(fn->call_depth_limit > 0, "function call frames have an explicit local-state boundary");
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error function_error = { 0 };
-        flow_run *function_run = blueprint_instance_dispatch(
+        flow_run *function_run = behavior_instance_dispatch(
             bi,
             "CallIdentity",
             (flow_inputs){ 0 },
@@ -5439,37 +5449,37 @@ int main(int argc, char **argv)
             function_run && flow_run_status(function_run) == FLOW_COMPLETED &&
                 flow_run_watch_output(function_run, call, 1, &function_output) == 0 &&
                 function_output.i == 42,
-            "FN-3: executable function returns before its caller continues"
+            "executable function returns before its caller continues"
         );
         int function_step_over = flow_run_step_over(function_run) != FLOW_ERR_ARGUMENT;
         unsigned function_call_depth = flow_run_call_depth(function_run);
-        blueprint_instance_destroy(bi);
+        behavior_instance_destroy(bi);
         compile_report function_report;
         compile_report_init(&function_report);
-        check(blueprint_compile(bp, &function_report) == 0, "CMPL-10: a valid function graph has the required shape");
+        check(behavior_asset_compile(bp, &function_report) == 0, "a valid function graph has the required shape");
         compile_report_free(&function_report);
         node *latent = graph_add_node(fn, &NODE_Delay);
         compile_report_init(&function_report);
-        blueprint_compile(bp, &function_report);
+        behavior_asset_compile(bp, &function_report);
         int saw_latent_rule = 0;
         for (int i = 0; i < acount(function_report.items); i++) {
             saw_latent_rule |= function_report.items[i].rule == CMPL_RULE_FUNCTION_LATENT;
         }
-        check(latent && saw_latent_rule, "CMPL-9: a latent node in a function graph is rejected");
-        check(NODE_Delay.latent != 0, "NODE-7: latent descriptors declare suspension explicitly");
+        check(latent && saw_latent_rule, "a latent node in a function graph is rejected");
+        check(NODE_Delay.latent != 0, "latent descriptors declare suspension explicitly");
         compile_report_free(&function_report);
         if (latent) {
             graph_remove_node(fn, latent);
         }
-        graph *pure = blueprint_add_function(bp, "PureIdentity", 1);
+        graph *pure = behavior_asset_add_function(bp, "PureIdentity", 1);
         node *pure_entry = graph_node_by_id(pure, pure->entry_id);
         node *pure_ret = graph_node_by_id(pure, pure->return_id);
         graph_add_pin(pure, pure_entry, 1, &arg);
         graph_add_pin(pure, pure_ret, 0, &arg);
         graph_connect_data(pure, pure_entry, 0, pure_ret, 0);
-        node *pure_call = blueprint_add_function_call_node(bp, pure);
+        node *pure_call = behavior_asset_add_function_call_node(bp, pure);
         graph_set_pin_default(bp->graph, pure_call, 0, 0, &(pin_value){ .type = PIN_I32, .i = 9 });
-        bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        bi = behavior_instance_create(bp, NULL, NULL, NULL);
         arena function_arena;
         arena_init(&function_arena, 4096);
         eval_context function_eval;
@@ -5480,41 +5490,41 @@ int main(int argc, char **argv)
             graph_eval_output(bp->graph, pure_call, 0, &function_arena, &function_value, &function_eval) ==
                     0 &&
                 function_value.i == 9,
-            "FN-5: pure function participates in pull evaluation"
+            "pure function participates in pull evaluation"
         );
-        check(function_step_over, "RUN-5: Step Over is an activation-scoped operation");
-        check(function_call_depth == 0, "RUN-9: run inspection exposes call depth and current state");
-        check(acount(bp->graphs) >= 3, "UI-21: multiple graphs have independent authored tabs");
-        check(call->reference_id == fn->graph_id, "UI-30: a function reference is navigable by graph ID");
+        check(function_step_over, "Step Over is an activation-scoped operation");
+        check(function_call_depth == 0, "run inspection exposes call depth and current state");
+        check(acount(bp->graphs) >= 3, "multiple graphs have independent authored tabs");
+        check(call->reference_id == fn->graph_id, "a function reference is navigable by graph ID");
         check(
             registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
-            "UI-31: reroute targets are available for wire navigation"
+            "reroute targets are available for wire navigation"
         );
         eval_context_free(&function_eval);
         arena_free(&function_arena);
-        char *function_json = blueprint_save_json(bp);
-        blueprint *function_loaded = function_json
-                                       ? blueprint_load_json(function_json)
-                                       : NULL;
+        char *function_json = behavior_asset_save_json(bp);
+        behavior_asset *function_loaded = function_json
+                                            ? behavior_asset_load_json(function_json)
+                                            : NULL;
         check(
             function_loaded && acount(function_loaded->graphs) == 3 &&
-                blueprint_find_graph_by_name(function_loaded, "PureIdentity") != NULL,
-            "BP-3: multiple graph definitions round-trip"
+                behavior_asset_find_graph_by_name(function_loaded, "PureIdentity") != NULL,
+            "multiple graph definitions round-trip"
         );
-        check(fn->owner == bp, "FN-4: function execution has an explicit local-state boundary");
-        check(acount(bp->graphs) >= 3, "UI-3: the Blueprint model lists event and function graphs");
-        check(call->input_count == 2 && call->output_count == 2, "UI-4: function call details expose its authored signature pins");
+        check(fn->owner == bp, "function execution has an explicit local-state boundary");
+        check(acount(bp->graphs) >= 3, "the Behavior Asset model lists event and function graphs");
+        check(call->input_count == 2 && call->output_count == 2, "function call details expose its authored signature pins");
         free(function_json);
-        blueprint_free(function_loaded);
-        blueprint_free(bp);
+        behavior_asset_free(function_loaded);
+        behavior_asset_free(bp);
     }
 
     /* DBG-5: executable function returns remain usable by the caller after
      * the nested run completes. The caller's next activation consumes the
      * string returned from the callee's arena. */
     {
-        blueprint *bp = blueprint_new("FunctionStringLifetime");
-        graph *fn = blueprint_add_function(bp, "Text", 0);
+        behavior_asset *bp = behavior_asset_new("FunctionStringLifetime");
+        graph *fn = behavior_asset_add_function(bp, "Text", 0);
         node *entry = fn ? graph_node_by_id(fn, fn->entry_id) : NULL;
         node *ret = fn ? graph_node_by_id(fn, fn->return_id) : NULL;
         node *format = fn ? graph_add_node(fn, registry_node_by_name("Format Text"))
@@ -5531,10 +5541,10 @@ int main(int argc, char **argv)
                     &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "callee" }
                 ) == 0 &&
                 graph_connect_data(fn, format, 0, ret, 1) == 0,
-            "DBG-5: string function graph is authored"
+            "string function graph is authored"
         );
         node *event = graph_add_node(bp->graph, &NODE_Event);
-        node *call = fn ? blueprint_add_function_call_node(bp, fn) : NULL;
+        node *call = fn ? behavior_asset_add_function_call_node(bp, fn) : NULL;
         node *capture = graph_add_node(bp->graph, &g_str_capture_desc);
         graph_set_event_name(bp->graph, event, "Text");
         check(
@@ -5542,18 +5552,18 @@ int main(int argc, char **argv)
                 graph_connect_exec(bp->graph, event, 0, call, 0, 0) == 0 &&
                 graph_connect_exec(bp->graph, call, 0, capture, 0, 0) == 0 &&
                 graph_connect_data(bp->graph, call, 1, capture, 1) == 0,
-            "DBG-5: string function return is connected to the next activation"
+            "string function return is connected to the next activation"
         );
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error error = { 0 };
-        flow_run *run = blueprint_instance_dispatch(bi, "Text", (flow_inputs){ 0 }, &error);
+        flow_run *run = behavior_instance_dispatch(bi, "Text", (flow_inputs){ 0 }, &error);
         check(
             run && flow_run_status(run) == FLOW_COMPLETED &&
                 strcmp(g_captured_str, "callee") == 0,
-            "DBG-5: string function return survives nested-run teardown"
+            "string function return survives nested-run teardown"
         );
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
     }
 
     /* Phase 5: typed arrays and deterministic ForEach iteration. */
@@ -5579,7 +5589,7 @@ int main(int argc, char **argv)
                 array_value.container == PIN_CONTAINER_ARRAY &&
                 ((pin_array *)array_value.ptr)->count == 5 &&
                 ((pin_array *)array_value.ptr)->items[4].i == 5,
-            "TYPE-8: typed array values copy five elements"
+            "typed array values copy five elements"
         );
         node *length = graph_add_node(&g_array, registry_node_by_name("Length"));
         graph_connect_data(&g_array, make, 0, length, 0);
@@ -5589,33 +5599,36 @@ int main(int argc, char **argv)
             graph_eval_output(&g_array, length, 0, &array_arena, &length_value, &array_eval) ==
                     0 &&
                 length_value.i == 5,
-            "VAR-12: Length observes the deterministic array operation"
+            "Length observes the deterministic array operation"
         );
-        check(registry_node_by_name("ForLoopWithBreak") != NULL, "CAT-5: ForLoopWithBreak is registered");
-        check(registry_node_by_name("WhileLoop") != NULL, "CAT-6: WhileLoop is registered");
+        check(registry_node_by_name("ForLoopWithBreak") != NULL, "ForLoopWithBreak is registered");
+        check(registry_node_by_name("WhileLoop") != NULL, "WhileLoop is registered");
         check(
             registry_node_by_name("ForEach") && registry_node_by_name("ForEachWithBreak"),
-            "CAT-7: ForEach and its break variant are registered"
+            "ForEach and its break variant are registered"
         );
         check(
             registry_node_by_name("Make Array") && registry_node_by_name("Set Array Elem"),
-            "CAT-34: the complete array operation family is registered"
+            "the complete array operation family is registered"
         );
         check(
             pin_array_equal(
                 (pin_array *)array_value.ptr,
                 (pin_array *)array_value.ptr
             ),
-            "TYPE-9: array equality is deterministic and copy-safe"
+            "array equality is deterministic and copy-safe"
         );
-        check(registry_node_by_name("Make Array")->category != NULL, "UI-13: array nodes expose a category for context-sensitive spawn filtering");
-        check(registry_node_by_name("Get")->keywords != NULL, "UI-14: array connection targets expose compatible spawn keywords");
+        check(registry_node_by_name("Make Array")->category != NULL, "array nodes expose a category for context-sensitive spawn filtering");
+        check(registry_node_by_name("Get")->keywords != NULL, "array connection targets expose compatible spawn keywords");
         check(
             strcmp(cmpl_rule_name(CMPL_RULE_UNREACHABLE), "CMPL-13") == 0,
-            "CMPL-13: unreachable-node diagnostics have a stable warning rule"
+            "unreachable-node diagnostics have a stable warning rule"
         );
-        check(strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_DATA), "CMPL-14") == 0, "CMPL-14: unconnected impure data diagnostics have a stable warning rule");
-        check(array_value.container == PIN_CONTAINER_ARRAY && array_value.ptr != NULL, "DATA-8: invalid and unresolved container values remain explicit errors, not silent nodes");
+        check(
+            strcmp(cmpl_rule_name(CMPL_RULE_UNCONNECTED_DATA), "CMPL-14") == 0,
+            "unconnected impure data diagnostics have a stable warning rule"
+        );
+        check(array_value.container == PIN_CONTAINER_ARRAY && array_value.ptr != NULL, "invalid and unresolved container values remain explicit errors, not silent nodes");
 
         /* DBG-5: struct array copies borrow their elements consistently. The
          * clone and its destruction must not free host or arena storage. */
@@ -5636,10 +5649,16 @@ int main(int argc, char **argv)
             .ptr = borrowed_array,
         };
         pin_value borrowed_copy = { 0 };
-        check(pin_value_copy(&borrowed_copy, &borrowed_value) == 0, "TYPE-9: struct array watch copy succeeds without taking element ownership");
+        check(
+            pin_value_copy(&borrowed_copy, &borrowed_value) == 0,
+            "struct array watch copy succeeds without taking element ownership"
+        );
         pin_value_destroy(&borrowed_copy);
         pin_array_free(borrowed_array);
-        check(borrowed_values[0].x == 1.0f && borrowed_values[1].z == 6.0f, "TYPE-9: struct array clone destruction leaves borrowed elements intact");
+        check(
+            borrowed_values[0].x == 1.0f && borrowed_values[1].z == 6.0f,
+            "struct array clone destruction leaves borrowed elements intact"
+        );
 
         arena_free(&array_arena);
         graph_free(&g_array);
@@ -5692,13 +5711,13 @@ int main(int argc, char **argv)
             g_foreach_count = 0;
             flow_error error = { 0 };
             flow_run *run = flow_run_start(&g_foreach, event, (flow_inputs){ 0 }, NULL, &error);
-            check(run && flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED, "CAT-7: ForEach completes for empty, one-element, and multi-element arrays");
+            check(run && flow_run_resume(run) == FLOW_OK && flow_run_status(run) == FLOW_COMPLETED, "ForEach completes for empty, one-element, and multi-element arrays");
             check(
                 g_foreach_count == cases[c][0] &&
                     (c == 0 || (g_foreach_values[0] == cases[c][1] &&
                                 (c == 1 || (g_foreach_values[1] == cases[c][2] &&
                                             g_foreach_values[2] == cases[c][3])))),
-                "CAT-7: ForEach emits the expected elements exactly once"
+                "ForEach emits the expected elements exactly once"
             );
             flow_run_free(run);
             graph_free(&g_foreach);
@@ -5707,7 +5726,7 @@ int main(int argc, char **argv)
 
     /* Phase 6: weak delegate bindings. */
     {
-        blueprint *bp = blueprint_new("Delegates");
+        behavior_asset *bp = behavior_asset_new("Delegates");
         node *event = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, event, "Changed");
         pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
@@ -5715,19 +5734,19 @@ int main(int argc, char **argv)
         node *sink = graph_add_node(bp->graph, &g_capture_desc);
         graph_connect_exec(bp->graph, event, 0, sink, 0, 0);
         graph_connect_data(bp->graph, event, 1, sink, 1);
-        blueprint_instance *source = blueprint_instance_create(bp, NULL, NULL, NULL);
-        blueprint_instance *target = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *source = behavior_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *target = behavior_instance_create(bp, NULL, NULL, NULL);
         int service_token = 7;
         check(
-            blueprint_instance_bind_service(target, "SelfCheckService", &service_token) == 0 &&
-                blueprint_instance_service(target, "SelfCheckService") == &service_token,
-            "PIN-17: service bindings are stable instance data"
+            behavior_instance_bind_service(target, "SelfCheckService", &service_token) == 0 &&
+                behavior_instance_service(target, "SelfCheckService") == &service_token,
+            "service bindings are stable instance data"
         );
-        uint64_t binding = blueprint_instance_bind_event(source, target, event->id);
-        uint64_t duplicate = blueprint_instance_bind_event(source, target, event->id);
+        uint64_t binding = behavior_instance_bind_event(source, target, event->id);
+        uint64_t duplicate = behavior_instance_bind_event(source, target, event->id);
         g_captured_int = -1;
         flow_error delegate_error = { 0 };
-        flow_run *delegate_run = blueprint_instance_dispatch_delegate(
+        flow_run *delegate_run = behavior_instance_dispatch_delegate(
             source,
             binding,
             (flow_inputs){ &(pin_value){ .type = PIN_I32, .i = 77 }, 1, NULL },
@@ -5735,51 +5754,51 @@ int main(int argc, char **argv)
         );
         check(
             binding != 0 && binding == duplicate && delegate_run && g_captured_int == 77,
-            "EVT-13: duplicate delegate registration returns one binding ID"
+            "duplicate delegate registration returns one binding ID"
         );
         check(
-            blueprint_instance_broadcast_event(
+            behavior_instance_broadcast_event(
                 source,
                 event->id,
                 (flow_inputs){ &(pin_value){ .type = PIN_I32, .i = 78 }, 1, NULL },
                 &delegate_error
             ) == 1,
-            "EVT-15: delegate dispatch follows a stable registration snapshot"
+            "delegate dispatch follows a stable registration snapshot"
         );
-        check(blueprint_instance_unbind_event(source, binding) == 0, "EVT-16: unbinding removes exactly one binding");
-        binding = blueprint_instance_bind_event(source, target, event->id);
-        char *delegate_json = blueprint_save_json(bp);
-        check(delegate_json && !strstr(delegate_json, "delegates"), "EVT-18: delegate runtime state is absent from authored JSON");
+        check(behavior_instance_unbind_event(source, binding) == 0, "unbinding removes exactly one binding");
+        binding = behavior_instance_bind_event(source, target, event->id);
+        char *delegate_json = behavior_asset_save_json(bp);
+        check(delegate_json && !strstr(delegate_json, "delegates"), "delegate runtime state is absent from authored JSON");
         free(delegate_json);
-        check(binding != 0, "EVT-12: typed delegate communication has an instance-owned binding");
-        blueprint_instance_destroy(target);
+        check(binding != 0, "typed delegate communication has an instance-owned binding");
+        behavior_instance_destroy(target);
         check(
-            blueprint_instance_dispatch_delegate(source, binding, (flow_inputs){ 0 }, &delegate_error) ==
+            behavior_instance_dispatch_delegate(source, binding, (flow_inputs){ 0 }, &delegate_error) ==
                 NULL,
-            "EVT-14: destroying a weak delegate target prevents dispatch"
+            "destroying a weak delegate target prevents dispatch"
         );
-        check(delegate_error.code == FLOW_ERR_INVALID_GRAPH, "EVT-17: a broken delegate produces one structured diagnostic");
-        blueprint_instance_destroy(source);
-        blueprint_free(bp);
+        check(delegate_error.code == FLOW_ERR_INVALID_GRAPH, "a broken delegate produces one structured diagnostic");
+        behavior_instance_destroy(source);
+        behavior_asset_free(bp);
     }
 
     /* Phase 7/8: stateful flow, catalog families, and breakpoints. */
     {
-        blueprint *bp = blueprint_new("Stateful");
+        behavior_asset *bp = behavior_asset_new("Stateful");
         node *event = graph_add_node(bp->graph, &NODE_Event);
         graph_set_event_name(bp->graph, event, "Go");
         node *once = graph_add_node(bp->graph, registry_node_by_name("DoOnce"));
         node *sink = graph_add_node(bp->graph, &g_sink_a_desc);
         graph_connect_exec(bp->graph, event, 0, once, 0, 0);
         graph_connect_exec(bp->graph, once, 0, sink, 0, 0);
-        blueprint_instance *bi = blueprint_instance_create(bp, NULL, NULL, NULL);
+        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
         flow_error state_error = { 0 };
         flow_log_reset();
-        blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
-        blueprint_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
-        check(strcmp(g_flow_log, "A") == 0, "CAT-35: DoOnce state persists on one instance");
-        blueprint_instance_destroy(bi);
-        blueprint_free(bp);
+        behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
+        behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
+        check(strcmp(g_flow_log, "A") == 0, "DoOnce state persists on one instance");
+        behavior_instance_destroy(bi);
+        behavior_asset_free(bp);
         graph g_break;
         graph_init(&g_break);
         node *break_event = graph_add_node(&g_break, &NODE_Event);
@@ -5788,31 +5807,31 @@ int main(int argc, char **argv)
         graph_connect_exec(&g_break, break_event, 0, break_sink, 0, 0);
         graph_set_breakpoint(&g_break, break_sink, 1);
         graph_set_pin_watch(&g_break, break_sink, 0, 1, 1);
-        check(break_sink->breakpoint && g_break.breakpoints_enabled, "DBG-3: breakpoints have per-node and global enable state");
-        check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "DBG-4: watches are keyed by stable pin flags");
+        check(break_sink->breakpoint && g_break.breakpoints_enabled, "breakpoints have per-node and global enable state");
+        check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "watches are keyed by stable pin flags");
         flow_error breakpoint_error = { 0 };
         flow_run *break_run = graph_run_event(&g_break, "BreakPoint", (flow_inputs){ 0 }, &breakpoint_error);
         check(
             break_run && flow_run_status(break_run) == FLOW_PAUSED &&
                 flow_run_current_node(break_run) == break_sink,
-            "DBG-1: breakpoint pauses before the node activation"
+            "breakpoint pauses before the node activation"
         );
         int stack_count = 0;
         check(
             flow_run_call_stack(break_run, &stack_count) != NULL || stack_count == 0,
-            "DBG-8: call-stack frames are available for navigation"
+            "call-stack frames are available for navigation"
         );
         flow_run_resume(break_run);
-        check(flow_run_status(break_run) == FLOW_COMPLETED, "DBG-2: resuming a breakpoint continues execution");
+        check(flow_run_status(break_run) == FLOW_COMPLETED, "resuming a breakpoint continues execution");
         pin_value watched;
         check(
             flow_run_watch_input(break_run, break_sink, 1, &watched) == 0,
-            "DBG-11: pure/data pin watches remain readable after execution"
+            "pure/data pin watches remain readable after execution"
         );
-        check(flow_run_error(break_run)->code == 0, "DBG-13: successful nodes retain a non-failed render state");
+        check(flow_run_error(break_run)->code == 0, "successful nodes retain a non-failed render state");
         char *break_json = graph_save_json(&g_break);
         graph *break_loaded = break_json ? graph_load_json(break_json) : NULL;
-        check(break_json && strstr(break_json, "\"flags\": 16"), "DBG-12: breakpoint and watch identity round-trip without position reuse");
+        check(break_json && strstr(break_json, "\"flags\": 16"), "breakpoint and watch identity round-trip without position reuse");
         free(break_json);
         if (break_loaded) {
             graph_free(break_loaded);
@@ -5821,119 +5840,110 @@ int main(int argc, char **argv)
         flow_run_free(break_run);
         graph_set_all_breakpoints(&g_break, 0);
         flow_run *free_run = graph_run_event(&g_break, "BreakPoint", (flow_inputs){ 0 }, &breakpoint_error);
-        check(
-            free_run && flow_run_status(free_run) == FLOW_COMPLETED,
-            "DBG-3: disabling all breakpoints preserves the authored nodes"
-        );
+        check(free_run && flow_run_status(free_run) == FLOW_COMPLETED, "disabling all breakpoints preserves the authored nodes");
         flow_run_free(free_run);
         check(
             registry_node_by_name("Switch on Int") && registry_node_by_name("Select") &&
                 registry_node_by_name("Retriggerable Delay"),
-            "CAT-9: common language node families are registered"
+            "common language node families are registered"
         );
         check(
             operator_register(
                 &(operator_signature){ "SelfCheckAdd", PIN_I64, PIN_I64, PIN_I64, 0 }
             ) == 0 &&
                 operator_resolve("SelfCheckAdd", PIN_I32, PIN_I32) != NULL,
-            "CMPL-19: operator signatures resolve through the widening ladder"
+            "operator signatures resolve through the widening ladder"
         );
         check(
             registry_node_by_name("FlipFlop") && registry_node_by_name("Gate") &&
                 registry_node_by_name("MultiGate"),
-            "CAT-10: stateful alternating and gate families are registered"
+            "stateful alternating and gate families are registered"
         );
-        check(registry_node_by_name("Gate") != NULL, "CAT-11: Gate is registered with control inputs");
-        check(registry_node_by_name("MultiGate") != NULL, "CAT-12: MultiGate is registered with ordered outputs");
+        check(registry_node_by_name("Gate") != NULL, "Gate is registered with control inputs");
+        check(registry_node_by_name("MultiGate") != NULL, "MultiGate is registered with ordered outputs");
         check(
             registry_node_by_name("Switch on String") &&
                 registry_node_by_name("Switch on Enum"),
-            "CAT-13: switch families expose authored selection pins"
+            "switch families expose authored selection pins"
         );
-        check(registry_node_by_name("Switch on String") != NULL, "CAT-14: Switch on String is registered");
-        check(registry_node_by_name("Switch on Enum") != NULL, "CAT-15: Switch on Enum is registered");
-        check(registry_node_by_name("Select") != NULL, "CAT-16: Select is registered as a pure choice node");
-        check(registry_node_by_name("Switch on Name") != NULL, "CAT-31: Switch on Name is registered");
-        check(registry_node_by_name("Retriggerable Delay") != NULL, "CAT-19: Retriggerable Delay is registered as a latent node");
+        check(registry_node_by_name("Switch on String") != NULL, "Switch on String is registered");
+        check(registry_node_by_name("Switch on Enum") != NULL, "Switch on Enum is registered");
+        check(registry_node_by_name("Select") != NULL, "Select is registered as a pure choice node");
+        check(registry_node_by_name("Switch on Name") != NULL, "Switch on Name is registered");
+        check(registry_node_by_name("Retriggerable Delay") != NULL, "Retriggerable Delay is registered as a latent node");
+        check(strcmp(cmpl_rule_name(CMPL_RULE_UNUSED_VARIABLE), "CMPL-15") == 0, "unused-variable diagnostics have a stable rule");
         check(
-            strcmp(cmpl_rule_name(CMPL_RULE_UNUSED_VARIABLE), "CMPL-15") == 0,
-            "CMPL-15: unused-variable diagnostics have a stable rule"
+            registry_node_by_name("Make Set") && registry_node_by_name("Set Contains"),
+            "Set and Map decision-gate families expose a typed core entry"
         );
-        check(registry_node_by_name("Make Set") && registry_node_by_name("Set Contains"), "CAT-36: Set and Map decision-gate families expose a typed core entry");
         check(
             registry_node_by_name("Make_Vec3") && registry_node_by_name("Break_Vec3"),
-            "CAT-22: reflected structs have Make and Break nodes"
+            "reflected structs have Make and Break nodes"
         );
-        check(
-            registry_node_by_name("Set Members in Struct") != NULL,
-            "CAT-37: Set Members in Struct exposes a pass-by-reference entry"
-        );
+        check(registry_node_by_name("Set Members in Struct") != NULL, "Set Members in Struct exposes a pass-by-reference entry");
         check(
             (registry_node_by_name("Set Members in Struct")->inputs[1].flags &
              PIN_FLAG_REFERENCE) != 0,
-            "PIN-15: struct member mutation marks its storage reference"
+            "struct member mutation marks its storage reference"
         );
         check(
             strcmp(cmpl_rule_name(CMPL_RULE_MACRO_RECURSION), "CMPL-11") == 0,
-            "CMPL-11: recursive macro expansion has a stable diagnostic rule"
+            "recursive macro expansion has a stable diagnostic rule"
         );
-        blueprint *macro_bp = blueprint_new("Macros");
-        graph *macro = blueprint_add_macro(macro_bp, "Macro");
-        check(macro && macro->kind == GRAPH_MACRO, "BP-7: macro graphs have an explicit exec shape");
-        check(blueprint_add_macro_call_node(macro_bp, macro) != NULL, "FN-7: macro calls carry a graph reference for expansion");
-        check(macro->kind == GRAPH_MACRO, "FN-9: macro recursion is checked at the graph boundary");
-        check(macro->kind == GRAPH_MACRO, "FN-10: macro wildcard resolution is per call graph");
-        check(
-            blueprint_add_function(macro_bp, "Collapsed", 0) != NULL,
-            "FN-11: the editor has a collapse target for selected nodes"
-        );
-        graph *caller = blueprint_add_function(macro_bp, "Caller", 0);
+        behavior_asset *macro_bp = behavior_asset_new("Macros");
+        graph *macro = behavior_asset_add_macro(macro_bp, "Macro");
+        check(macro && macro->kind == GRAPH_MACRO, "macro graphs have an explicit exec shape");
+        check(behavior_asset_add_macro_call_node(macro_bp, macro) != NULL, "macro calls carry a graph reference for expansion");
+        check(macro->kind == GRAPH_MACRO, "macro recursion is checked at the graph boundary");
+        check(macro->kind == GRAPH_MACRO, "macro wildcard resolution is per call graph");
+        check(behavior_asset_add_function(macro_bp, "Collapsed", 0) != NULL, "the editor has a collapse target for selected nodes");
+        graph *caller = behavior_asset_add_function(macro_bp, "Caller", 0);
         node *caller_macro = caller
-                               ? blueprint_add_macro_call_node_to_graph(macro_bp, caller, macro)
+                               ? behavior_asset_add_macro_call_node_to_graph(macro_bp, caller, macro)
                                : NULL;
         uint64_t macro_id = macro ? macro->graph_id : 0;
-        check(caller_macro && caller_macro->reference_id == macro_id, "FN-7: a reusable call can be placed in a non-default graph");
+        check(caller_macro && caller_macro->reference_id == macro_id, "a reusable call can be placed in a non-default graph");
         check(
-            blueprint_rename_graph(macro_bp, macro_id, "RenamedMacro") == 0 &&
+            behavior_asset_rename_graph(macro_bp, macro_id, "RenamedMacro") == 0 &&
                 strcmp(macro->name, "RenamedMacro") == 0 && caller_macro->reference_name &&
                 strcmp(caller_macro->reference_name, "RenamedMacro") == 0,
-            "UI-3: renaming a graph refreshes its call labels"
+            "renaming a graph refreshes its call labels"
         );
-        check(macro->kind == GRAPH_MACRO, "FN-12: macro products remain behind an explicit decision boundary");
-        check(PIN_ENUM != PIN_I32, "TYPE-4: enum values retain a nominal enum type");
-        check(registry_type_count() >= 0, "REFL-5: enum reflection shares the generated type registry");
-        check(registry_node_count() >= 0, "REFL-8: unsupported reflection declarations fail before registry emission");
-        check(PIN_FLAG_ADVANCED != 0, "PIN-13: advanced pin visibility is an authored flag");
-        check(PIN_ENUM != PIN_FLOW, "UI-27: enum values have a distinct editor type");
+        check(macro->kind == GRAPH_MACRO, "macro products remain behind an explicit decision boundary");
+        check(PIN_ENUM != PIN_I32, "enum values retain a nominal enum type");
+        check(registry_type_count() >= 0, "enum reflection shares the generated type registry");
+        check(registry_node_count() >= 0, "unsupported reflection declarations fail before registry emission");
+        check(PIN_FLAG_ADVANCED != 0, "advanced pin visibility is an authored flag");
+        check(PIN_ENUM != PIN_FLOW, "enum values have a distinct editor type");
         check(
             registry_node_by_name("Switch on Int") && registry_node_by_name("Select"),
-            "UI-28: switch and select case surfaces have catalog entries"
+            "switch and select case surfaces have catalog entries"
         );
-        check(registry_node_by_name("Set Members in Struct") != NULL, "UI-25: struct split/set-member surfaces are available from the pin model");
-        check(PIN_FLAG_ADVANCED != 0, "UI-26: advanced pins have an expander flag");
-        check(acount(macro_bp->graphs) >= 3, "UI-33: graph-level authored entities have detail surfaces");
         check(
-            blueprint_delete_graph(macro_bp, macro_id) == 0 &&
-                blueprint_find_graph(macro_bp, macro_id) == NULL,
-            "BP-8: a user-created macro can be removed without deleting "
+            registry_node_by_name("Set Members in Struct") != NULL,
+            "struct split/set-member surfaces are available from the pin model"
+        );
+        check(PIN_FLAG_ADVANCED != 0, "advanced pins have an expander flag");
+        check(acount(macro_bp->graphs) >= 3, "graph-level authored entities have detail surfaces");
+        check(
+            behavior_asset_delete_graph(macro_bp, macro_id) == 0 &&
+                behavior_asset_find_graph(macro_bp, macro_id) == NULL,
+            "a user-created macro can be removed without deleting "
             "EventGraph"
         );
         uint64_t caller_id = caller ? caller->graph_id : 0;
         check(
-            blueprint_delete_graph(macro_bp, caller_id) == 0 &&
-                blueprint_find_graph(macro_bp, caller_id) == NULL,
-            "BP-8: a user-created function graph can be removed"
+            behavior_asset_delete_graph(macro_bp, caller_id) == 0 &&
+                behavior_asset_find_graph(macro_bp, caller_id) == NULL,
+            "a user-created function graph can be removed"
         );
-        blueprint_free(macro_bp);
+        behavior_asset_free(macro_bp);
         graph comment_graph;
         graph_init(&comment_graph);
         graph_comment_box *box = graph_add_comment_box(&comment_graph, "Notes", 1, 2, 100, 80);
         char *comment_json = graph_save_json(&comment_graph);
         graph *comment_loaded = comment_json ? graph_load_json(comment_json) : NULL;
-        check(
-            box && comment_loaded && acount(comment_loaded->comment_boxes) == 1,
-            "NODE-9: comment boxes are authored graph entities"
-        );
+        check(box && comment_loaded && acount(comment_loaded->comment_boxes) == 1, "comment boxes are authored graph entities");
         free(comment_json);
         if (comment_loaded) {
             graph_free(comment_loaded);
@@ -5947,20 +5957,20 @@ int main(int argc, char **argv)
         int recombine = split >= 0
                           ? graph_recombine_pin(&split_graph, transform, 0, split)
                           : -1;
-        check(split >= 0 && recombine >= 0, "PIN-12: struct pins split and recombine by stable parent ID");
+        check(split >= 0 && recombine >= 0, "struct pins split and recombine by stable parent ID");
         graph_free(&split_graph);
-        check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "UI-11: watched pin state is available for inline display");
-        check(break_sink->breakpoint_enabled != 0, "UI-12: breakpoint state is available to node rendering");
-        check(graph_node_by_id(&g_break, 0) == NULL, "UI-15: canvas entities are addressed by stable IDs");
-        check(graph_topology_revision(&g_break) > 0, "UI-16: authored canvas operations have deterministic bindings");
-        check(acount(comment_graph.comment_boxes) == 1 || 1, "UI-20: graph overview data is bounded and inspectable");
-        check(g_break.breakpoints_enabled == 0, "UI-34: breakpoint list has a global toggle");
-        check(graph_topology_revision(&g_break) > 0, "UI-37: auto arrange operates on authored positions");
-        check(registry_node_by_name("Reroute Data") != NULL, "UI-38: direct node spawning has a catalog target");
-        check(flow_run_traversals(NULL, NULL) == NULL, "UI-44: flow markers consume traversal records");
-        check(editor_preview_allowed(FLOW_COMPLETED) == 0, "UI-45: flow heat settles after execution");
-        check(editor_preview_allowed(FLOW_IDLE) == 1, "UI-46: node activation highlights are idle-safe");
-        check(editor_preview_allowed(FLOW_RUNNING) == 0, "UI-47: data flashes are tied to a live run");
+        check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "watched pin state is available for inline display");
+        check(break_sink->breakpoint_enabled != 0, "breakpoint state is available to node rendering");
+        check(graph_node_by_id(&g_break, 0) == NULL, "canvas entities are addressed by stable IDs");
+        check(graph_topology_revision(&g_break) > 0, "authored canvas operations have deterministic bindings");
+        check(acount(comment_graph.comment_boxes) == 1 || 1, "graph overview data is bounded and inspectable");
+        check(g_break.breakpoints_enabled == 0, "breakpoint list has a global toggle");
+        check(graph_topology_revision(&g_break) > 0, "auto arrange operates on authored positions");
+        check(registry_node_by_name("Reroute Data") != NULL, "direct node spawning has a catalog target");
+        check(flow_run_traversals(NULL, NULL) == NULL, "flow markers consume traversal records");
+        check(editor_preview_allowed(FLOW_COMPLETED) == 0, "flow heat settles after execution");
+        check(editor_preview_allowed(FLOW_IDLE) == 1, "node activation highlights are idle-safe");
+        check(editor_preview_allowed(FLOW_RUNNING) == 0, "data flashes are tied to a live run");
         double sample_30 = 0.0;
         double sample_60 = 0.0;
         double sample_144 = 0.0;
@@ -5976,18 +5986,15 @@ int main(int argc, char **argv)
         check(
             fabs(flow_visual_heat(sample_30) - flow_visual_heat(sample_60)) < 0.001 &&
                 fabs(flow_visual_heat(sample_60) - flow_visual_heat(sample_144)) < 0.001,
-            "UI-48: flow animation is time-constant across 30, 60, and 144 FPS"
+            "flow animation is time-constant across 30, 60, and 144 FPS"
         );
-        check(
-            flow_visual_settled(3.0) && flow_visual_marker(0.5, 64.0) >= 0.0,
-            "UI-50: stopped flow settles and markers remain bounded"
-        );
-        check(flow_run_traversals(NULL, NULL) == NULL, "UI-49: visualisation reads records, not evaluator callbacks");
-        check(editor_preview_allowed(FLOW_IDLE) == 1, "UI-52: text focus does not change preview shortcut state");
+        check(flow_visual_settled(3.0) && flow_visual_marker(0.5, 64.0) >= 0.0, "stopped flow settles and markers remain bounded");
+        check(flow_run_traversals(NULL, NULL) == NULL, "visualisation reads records, not evaluator callbacks");
+        check(editor_preview_allowed(FLOW_IDLE) == 1, "text focus does not change preview shortcut state");
         graph_free(&g_break);
         check(
             registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
-            "NODE-10: data and exec reroutes are transparent catalog nodes"
+            "data and exec reroutes are transparent catalog nodes"
         );
     }
 
@@ -6050,5 +6057,12 @@ int main(int argc, char **argv)
     eval_context_free(&independent_b);
     graph_free(&g);
     arena_free(&a);
-    return fails ? 1 : 0;
+    return fails == 0;
+}
+
+int main(int argc, char **argv)
+{
+    program_name = argc ? argv[0] : "test_suite";
+    pu_run_test("all_checks", all_checks);
+    return pu_test_failed() ? 1 : 0;
 }

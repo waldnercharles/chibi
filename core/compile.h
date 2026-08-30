@@ -1,18 +1,18 @@
 #ifndef CBLUEPRINT_COMPILE_H
 #define CBLUEPRINT_COMPILE_H
 
-#include "blueprint.h"
+#include "behavior_asset.h"
 
 #include <stdint.h>
 
-/* CMPL: the compile and validation pass over one authored blueprint. The
+/* CMPL: the compile and validation pass over one authored behavior_asset. The
  * pass is explicit and read-only (CMPL-1): it never rewires, retypes, or
  * deletes. CMPL-17 (editor navigation) and CMPL-19 (operator ambiguity) are
  * deferred: navigation is editor surface, and operator signatures arrive
  * with the reflection v2 widening ladder. */
 
 /* CMPL-16: the default event graph is the only graph today, with a stable
- * id of 1. Multi-graph blueprints (Phase 4) assign further ids here. */
+ * id of 1. Multi-graph behavior_assets (Phase 4) assign further ids here. */
 #define CMPL_GRAPH_DEFAULT 1u
 
 enum
@@ -84,11 +84,11 @@ void compile_report_free(compile_report *out);
 int compile_report_blocked(const compile_report *out);
 const compile_diagnostic *compile_report_first_error(const compile_report *out);
 
-/* CMPL-1: an explicit, deterministic, read-only pass over one blueprint.
+/* CMPL-1: an explicit, deterministic, read-only pass over one behavior_asset.
  * Diagnostics are ordered by graph id, then node position (canvas y, then
  * x, then node id), then rule code, then pin id (CMPL-16). Returns the
  * error count. */
-int blueprint_compile(const blueprint *bp, compile_report *out);
+int behavior_asset_compile(const behavior_asset *bp, compile_report *out);
 
 /* Stable rule code spelling, e.g. "CMPL-4". */
 const char *cmpl_rule_name(int rule);

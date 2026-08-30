@@ -12,9 +12,9 @@
  * source of truth; the reusable instance is only an execution scratchpad. */
 typedef struct game_system game_system;
 
-game_system *game_system_new(ecs_world *world, blueprint *definition);
+game_system *game_system_new(ecs_world *world, behavior_asset *definition);
 void game_system_free(game_system *system);
-int game_system_replace(game_system *system, blueprint *definition);
+int game_system_replace(game_system *system, behavior_asset *definition);
 /* The authored filter is combined with the graph's inferred component access
  * terms. The expression is copied and may be freed by the caller. */
 int game_system_set_query(game_system *system, const ecs_query_expr *expression);
@@ -38,7 +38,7 @@ int game_system_tick_mode(
 );
 int game_system_tick(game_system *system, double monotonic_time, double delta_seconds, flow_error *error);
 
-const blueprint *game_system_blueprint(const game_system *system);
+const behavior_asset *game_system_behavior_asset(const game_system *system);
 const compile_report *game_system_compile(const game_system *system);
 int game_system_query_count(const game_system *system);
 ecs_component_id game_system_query_at(const game_system *system, int index);

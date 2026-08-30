@@ -150,8 +150,8 @@ void movement_authoring_sync(movement_authoring *authoring)
     if (revision == authoring->synced_revision) {
         return;
     }
-    char *json = blueprint_save_json(editor_blueprint(authoring->editor));
-    blueprint *definition = json ? blueprint_load_json(json) : NULL;
+    char *json = behavior_asset_save_json(editor_behavior_asset(authoring->editor));
+    behavior_asset *definition = json ? behavior_asset_load_json(json) : NULL;
     if (!definition) {
         free(json);
         set_status(authoring, graph_last_error());
@@ -167,11 +167,11 @@ void movement_authoring_sync(movement_authoring *authoring)
             set_status(authoring, "System graph could not compile");
         }
     } else {
-        blueprint *document_definition = blueprint_load_json(json);
+        behavior_asset *document_definition = behavior_asset_load_json(json);
         if (!document_definition ||
-            game_system_document_replace_blueprint(authoring->document, document_definition) !=
+            game_system_document_replace_behavior_asset(authoring->document, document_definition) !=
                 0) {
-            blueprint_free(document_definition);
+            behavior_asset_free(document_definition);
             set_status(authoring, "System document could not be updated");
         } else {
             set_status(authoring, "System graph compiled");
@@ -559,12 +559,14 @@ void movement_authoring_system(ecs_world *, double monotonic_time, void *user)
 int movement_authoring_save(editor *editor, void *user)
 {
     movement_authoring *authoring = (movement_authoring *)user;
-    char *blueprint_json = blueprint_save_json(editor_blueprint(editor));
-    blueprint *definition = blueprint_json ? blueprint_load_json(blueprint_json) : NULL;
-    free(blueprint_json);
+    char *behavior_asset_json = behavior_asset_save_json(editor_behavior_asset(editor));
+    behavior_asset *definition = behavior_asset_json
+                                   ? behavior_asset_load_json(behavior_asset_json)
+                                   : NULL;
+    free(behavior_asset_json);
     if (!definition ||
-        game_system_document_replace_blueprint(authoring->document, definition) != 0) {
-        blueprint_free(definition);
+        game_system_document_replace_behavior_asset(authoring->document, definition) != 0) {
+        behavior_asset_free(definition);
         return -1;
     }
     if (game_system_document_set_query(

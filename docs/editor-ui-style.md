@@ -66,7 +66,7 @@ Dark surfaces should get slightly lighter as they rise. Selection should use a s
 
 ## ImGui editor references
 
-The requested repositories were cloned locally under `/tmp/cblueprints-ui-references` for study. They remain outside the project and are not compiled or copied into the application.
+The requested repositories were cloned locally under `/tmp/cbehavior_assets-ui-references` for study. They remain outside the project and are not compiled or copied into the application.
 
 - `wpsimon09/Vulkan-RTX` at `33bbe86`: `Internal/Editor/UIContext/UIContext.cpp` merges Font Awesome into a 16 px editor font and defines a complete dark palette. `External/ImGuiSpectrum` provides a reusable palette. `Internal/Editor/Views/AssetsBrowser/AssetsBrowserDrawUtils.hpp` uses an `InvisibleButton`, a fixed tile rectangle, and the measured icon size to center custom asset icons.
 - `GloriousPtr/ArcGameEngine` at `4a091e2`: `Arc-Editor/src/Utils/EditorTheme.*` separates regular, small, and bold fonts, merges Material Design icons with explicit glyph metrics, and centralizes spacing, rounding, popup, and semantic colors. `BasePanel.cpp` applies consistent panel padding, while `AssetPanel.cpp` uses icon-led context menus and selected header colors.

@@ -58,23 +58,23 @@ static pin_spec retrigger_outputs[] = {
     { "Completed", PIN_FLOW, NULL, PIN_EXEC },
 };
 
-static blueprint_instance *state_instance(flow_context *ctx)
+static behavior_instance *state_instance(flow_context *ctx)
 {
     return flow_context_instance(ctx);
 }
 
 static int state_fail(flow_context *ctx)
 {
-    return flow_context_fail(ctx, FLOW_ERR_STATE, "stateful flow node requires a Blueprint instance");
+    return flow_context_fail(ctx, FLOW_ERR_STATE, "stateful flow node requires a Behavior Asset instance");
 }
 
 static int flow_do_once(node *n, flow_context *ctx)
 {
-    blueprint_instance *bi = state_instance(ctx);
+    behavior_instance *bi = state_instance(ctx);
     if (!bi) {
         return state_fail(ctx);
     }
-    pin_value *state = blueprint_instance_scratch(bi, n->id);
+    pin_value *state = behavior_instance_scratch(bi, n->id);
     if (flow_context_input_pin(ctx) == 1) {
         state->b = false;
         state->type = PIN_BOOL;
@@ -98,11 +98,11 @@ static int flow_do_once(node *n, flow_context *ctx)
 
 static int flow_do_n(node *n, flow_context *ctx)
 {
-    blueprint_instance *bi = state_instance(ctx);
+    behavior_instance *bi = state_instance(ctx);
     if (!bi) {
         return state_fail(ctx);
     }
-    pin_value *state = blueprint_instance_scratch(bi, n->id);
+    pin_value *state = behavior_instance_scratch(bi, n->id);
     if (flow_context_input_pin(ctx) == 1) {
         state->type = PIN_I32;
         state->i = 0;
@@ -132,11 +132,11 @@ static int flow_do_n(node *n, flow_context *ctx)
 
 static int flow_flip_flop(node *n, flow_context *ctx)
 {
-    blueprint_instance *bi = state_instance(ctx);
+    behavior_instance *bi = state_instance(ctx);
     if (!bi) {
         return state_fail(ctx);
     }
-    pin_value *state = blueprint_instance_scratch(bi, n->id);
+    pin_value *state = behavior_instance_scratch(bi, n->id);
     state->type = PIN_BOOL;
     state->b = !state->b;
     *flow_context_output_value(ctx, 2) = (pin_value){ .type = PIN_BOOL,
@@ -146,11 +146,11 @@ static int flow_flip_flop(node *n, flow_context *ctx)
 
 static int flow_gate(node *n, flow_context *ctx)
 {
-    blueprint_instance *bi = state_instance(ctx);
+    behavior_instance *bi = state_instance(ctx);
     if (!bi) {
         return state_fail(ctx);
     }
-    pin_value *state = blueprint_instance_scratch(bi, n->id);
+    pin_value *state = behavior_instance_scratch(bi, n->id);
     if (state->type != PIN_BOOL) {
         pin_value closed;
         int result = flow_context_eval_data(ctx, 4, &closed);
@@ -170,11 +170,11 @@ static int flow_gate(node *n, flow_context *ctx)
 
 static int flow_multi_gate(node *n, flow_context *ctx)
 {
-    blueprint_instance *bi = state_instance(ctx);
+    behavior_instance *bi = state_instance(ctx);
     if (!bi) {
         return state_fail(ctx);
     }
-    pin_value *state = blueprint_instance_scratch(bi, n->id);
+    pin_value *state = behavior_instance_scratch(bi, n->id);
     if (flow_context_input_pin(ctx) == 1) {
         state->type = PIN_I32;
         state->i = 0;

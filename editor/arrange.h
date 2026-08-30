@@ -5,7 +5,7 @@
 
 #include <stdbool.h>
 
-/* Layered auto-arrange for the node canvas (ADR 0015).
+/* Layered auto-arrange for the node canvas.
  *
  * This is pure geometry: no ImGui, no graph types, no editor state. The caller
  * measures its nodes, describes its wires, and gets one position per node

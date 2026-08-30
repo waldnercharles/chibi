@@ -1,5 +1,5 @@
-#ifndef BLUEPRINT_INTERFACE_H
-#define BLUEPRINT_INTERFACE_H
+#ifndef BEHAVIOR_ASSET_INTERFACE_H
+#define BEHAVIOR_ASSET_INTERFACE_H
 
 #include "core/annotate.h"
 

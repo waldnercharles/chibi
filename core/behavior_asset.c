@@ -1,8 +1,8 @@
-/* core/blueprint.c -- authored Blueprint definitions (BP-1). The definition
+/* core/behavior_asset.c -- authored Behavior Asset definitions (BP-1). The definition
  * owns its default event graph (BP-8), its ID counter, metadata, optional
  * nominal owner handle type (BP-12), and variable list. All strings live in
  * the graph's string table so a single graph_free releases them. */
-#include "blueprint.h"
+#include "behavior_asset.h"
 
 #include "registry.h"
 #include "value_array.h"
@@ -10,7 +10,7 @@
 
 #include <string.h>
 
-static int var_name_unique(const blueprint *bp, const char *name, uint64_t except_id)
+static int var_name_unique(const behavior_asset *bp, const char *name, uint64_t except_id)
 {
     for (int i = 0; i < acount(bp->variables); i++) {
         if (bp->variables[i].id != except_id &&
@@ -21,9 +21,9 @@ static int var_name_unique(const blueprint *bp, const char *name, uint64_t excep
     return 1;
 }
 
-blueprint *blueprint_new(const char *name)
+behavior_asset *behavior_asset_new(const char *name)
 {
-    blueprint *bp = (blueprint *)xcalloc(1, sizeof *bp);
+    behavior_asset *bp = (behavior_asset *)xcalloc(1, sizeof *bp);
     bp->graph = (graph *)xcalloc(1, sizeof *bp->graph);
     graph_init(bp->graph);
     bp->graph->owner = bp;
@@ -35,7 +35,7 @@ blueprint *blueprint_new(const char *name)
     return bp;
 }
 
-void blueprint_free(blueprint *bp)
+void behavior_asset_free(behavior_asset *bp)
 {
     if (!bp) {
         return;
@@ -49,12 +49,12 @@ void blueprint_free(blueprint *bp)
     free(bp);
 }
 
-graph *blueprint_add_graph(blueprint *bp, graph_kind kind, const char *name)
+graph *behavior_asset_add_graph(behavior_asset *bp, graph_kind kind, const char *name)
 {
-    if (!bp || !blueprint_mutable(bp) || !name || !name[0]) {
+    if (!bp || !behavior_asset_mutable(bp) || !name || !name[0]) {
         return NULL;
     }
-    if (blueprint_find_graph_by_name(bp, name)) {
+    if (behavior_asset_find_graph_by_name(bp, name)) {
         return NULL;
     }
     graph *g = (graph *)xcalloc(1, sizeof *g);
@@ -70,7 +70,7 @@ graph *blueprint_add_graph(blueprint *bp, graph_kind kind, const char *name)
     return g;
 }
 
-graph *blueprint_find_graph(const blueprint *bp, uint64_t graph_id)
+graph *behavior_asset_find_graph(const behavior_asset *bp, uint64_t graph_id)
 {
     if (!bp) {
         return NULL;
@@ -86,7 +86,7 @@ graph *blueprint_find_graph(const blueprint *bp, uint64_t graph_id)
     return NULL;
 }
 
-graph *blueprint_find_graph_by_name(const blueprint *bp, const char *name)
+graph *behavior_asset_find_graph_by_name(const behavior_asset *bp, const char *name)
 {
     if (!bp || !name) {
         return NULL;
@@ -99,7 +99,7 @@ graph *blueprint_find_graph_by_name(const blueprint *bp, const char *name)
     return NULL;
 }
 
-static void blueprint_refresh_graph_references(blueprint *bp, uint64_t graph_id, const char *name)
+static void behavior_asset_refresh_graph_references(behavior_asset *bp, uint64_t graph_id, const char *name)
 {
     for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
         graph *g = bp->graphs[graph_index];
@@ -115,26 +115,26 @@ static void blueprint_refresh_graph_references(blueprint *bp, uint64_t graph_id,
     }
 }
 
-int blueprint_rename_graph(blueprint *bp, uint64_t graph_id, const char *name)
+int behavior_asset_rename_graph(behavior_asset *bp, uint64_t graph_id, const char *name)
 {
-    if (!bp || !blueprint_mutable(bp) || graph_id == 0 || !name || !name[0]) {
+    if (!bp || !behavior_asset_mutable(bp) || graph_id == 0 || !name || !name[0]) {
         return -1;
     }
-    graph *g = blueprint_find_graph(bp, graph_id);
-    graph *same = blueprint_find_graph_by_name(bp, name);
+    graph *g = behavior_asset_find_graph(bp, graph_id);
+    graph *same = behavior_asset_find_graph_by_name(bp, name);
     if (!g || (same && same != g)) {
         return -1;
     }
     if (graph_set_metadata(g, name, g->description ? g->description : "") != 0) {
         return -1;
     }
-    blueprint_refresh_graph_references(bp, graph_id, name);
+    behavior_asset_refresh_graph_references(bp, graph_id, name);
     return 0;
 }
 
-int blueprint_delete_graph(blueprint *bp, uint64_t graph_id)
+int behavior_asset_delete_graph(behavior_asset *bp, uint64_t graph_id)
 {
-    if (!bp || !blueprint_mutable(bp) || graph_id == 0) {
+    if (!bp || !behavior_asset_mutable(bp) || graph_id == 0) {
         return -1;
     }
     for (int i = 1; i < acount(bp->graphs); i++) {
@@ -149,14 +149,14 @@ int blueprint_delete_graph(blueprint *bp, uint64_t graph_id)
     return -1;
 }
 
-int blueprint_mutable(const blueprint *bp)
+int behavior_asset_mutable(const behavior_asset *bp)
 {
     return bp && bp->graph && bp->graph->flow_pause_count == 0;
 }
 
-int blueprint_set_name(blueprint *bp, const char *name)
+int behavior_asset_set_name(behavior_asset *bp, const char *name)
 {
-    if (!bp || !blueprint_mutable(bp) || !name) {
+    if (!bp || !behavior_asset_mutable(bp) || !name) {
         return -1;
     }
     char *copy = graph_own_str(bp->graph, name, strlen(name));
@@ -167,7 +167,7 @@ int blueprint_set_name(blueprint *bp, const char *name)
     return 0;
 }
 
-void blueprint_set_description(blueprint *bp, const char *description)
+void behavior_asset_set_description(behavior_asset *bp, const char *description)
 {
     if (!bp) {
         return;
@@ -182,9 +182,9 @@ void blueprint_set_description(blueprint *bp, const char *description)
     }
 }
 
-int blueprint_set_owner_type(blueprint *bp, const char *type_name)
+int behavior_asset_set_owner_type(behavior_asset *bp, const char *type_name)
 {
-    if (!bp || !blueprint_mutable(bp) || !type_name || !type_name[0]) {
+    if (!bp || !behavior_asset_mutable(bp) || !type_name || !type_name[0]) {
         return -1;
     }
     char *copy = graph_own_str(bp->graph, type_name, strlen(type_name));
@@ -195,8 +195,8 @@ int blueprint_set_owner_type(blueprint *bp, const char *type_name)
     return 0;
 }
 
-blueprint_variable *blueprint_add_variable(
-    blueprint *bp,
+behavior_variable *behavior_asset_add_variable(
+    behavior_asset *bp,
     const char *name,
     pin_type type,
     const char *type_name,
@@ -205,13 +205,13 @@ blueprint_variable *blueprint_add_variable(
     const char *category
 )
 {
-    if (!bp || !blueprint_mutable(bp) || !name || !name[0]) {
+    if (!bp || !behavior_asset_mutable(bp) || !name || !name[0]) {
         return NULL;
     }
     if (!var_name_unique(bp, name, 0)) {
         return NULL;
     }
-    blueprint_variable v = { 0 };
+    behavior_variable v = { 0 };
     v.id = graph_alloc_id(bp->graph);
     v.name = graph_own_str(bp->graph, name, strlen(name));
     v.type = type;
@@ -254,7 +254,7 @@ blueprint_variable *blueprint_add_variable(
     return &bp->variables[acount(bp->variables) - 1];
 }
 
-blueprint_variable *blueprint_find_variable_by_name(const blueprint *bp, const char *name)
+behavior_variable *behavior_asset_find_variable_by_name(const behavior_asset *bp, const char *name)
 {
     if (!bp || !name) {
         return NULL;
@@ -267,7 +267,7 @@ blueprint_variable *blueprint_find_variable_by_name(const blueprint *bp, const c
     return NULL;
 }
 
-blueprint_variable *blueprint_find_variable_by_id(const blueprint *bp, uint64_t id)
+behavior_variable *behavior_asset_find_variable_by_id(const behavior_asset *bp, uint64_t id)
 {
     if (!bp) {
         return NULL;
@@ -280,7 +280,7 @@ blueprint_variable *blueprint_find_variable_by_id(const blueprint *bp, uint64_t 
     return NULL;
 }
 
-static void refresh_reference_display(blueprint *bp, uint64_t id, char *display_name)
+static void refresh_reference_display(behavior_asset *bp, uint64_t id, char *display_name)
 {
     for (int g = 0; g < acount(bp->graphs); g++) {
         for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
@@ -295,12 +295,12 @@ static void refresh_reference_display(blueprint *bp, uint64_t id, char *display_
     }
 }
 
-int blueprint_rename_variable(blueprint *bp, uint64_t id, const char *new_name)
+int behavior_asset_rename_variable(behavior_asset *bp, uint64_t id, const char *new_name)
 {
-    if (!bp || !blueprint_mutable(bp) || !new_name || !new_name[0]) {
+    if (!bp || !behavior_asset_mutable(bp) || !new_name || !new_name[0]) {
         return -1;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
     if (!v || !var_name_unique(bp, new_name, id)) {
         return -1;
     }
@@ -314,12 +314,12 @@ int blueprint_rename_variable(blueprint *bp, uint64_t id, const char *new_name)
     return 0;
 }
 
-int blueprint_retype_variable(blueprint *bp, uint64_t id, pin_type type, const char *type_name)
+int behavior_asset_retype_variable(behavior_asset *bp, uint64_t id, pin_type type, const char *type_name)
 {
-    if (!bp || !blueprint_mutable(bp)) {
+    if (!bp || !behavior_asset_mutable(bp)) {
         return -1;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
     if (!v) {
         return -1;
     }
@@ -351,13 +351,13 @@ int blueprint_retype_variable(blueprint *bp, uint64_t id, pin_type type, const c
     return 0;
 }
 
-int blueprint_set_variable_container(blueprint *bp, uint64_t id, pin_container container)
+int behavior_asset_set_variable_container(behavior_asset *bp, uint64_t id, pin_container container)
 {
-    if (!bp || !blueprint_mutable(bp) || container < PIN_CONTAINER_SINGLE ||
-        container > PIN_CONTAINER_MAP) {
+    if (!bp || !behavior_asset_mutable(bp) ||
+        container < PIN_CONTAINER_SINGLE || container > PIN_CONTAINER_MAP) {
         return -1;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
     if (!v) {
         return -1;
     }
@@ -381,12 +381,12 @@ int blueprint_set_variable_container(blueprint *bp, uint64_t id, pin_container c
     return 0;
 }
 
-int blueprint_set_variable_category(blueprint *bp, uint64_t id, const char *category)
+int behavior_asset_set_variable_category(behavior_asset *bp, uint64_t id, const char *category)
 {
-    if (!bp || !blueprint_mutable(bp) || !category) {
+    if (!bp || !behavior_asset_mutable(bp) || !category) {
         return -1;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
     if (!v) {
         return -1;
     }
@@ -394,15 +394,15 @@ int blueprint_set_variable_category(blueprint *bp, uint64_t id, const char *cate
     return v->category ? 0 : -1;
 }
 
-blueprint_variable *blueprint_promote_pin_to_variable(
-    blueprint *bp,
+behavior_variable *behavior_asset_promote_pin_to_variable(
+    behavior_asset *bp,
     node *n,
     int output,
     int index,
     const char *name
 )
 {
-    if (!bp || !n || !blueprint_mutable(bp) || !name || !name[0]) {
+    if (!bp || !n || !behavior_asset_mutable(bp) || !name || !name[0]) {
         return NULL;
     }
     pin_spec *pins = output ? n->output_pins : n->input_pins;
@@ -410,7 +410,7 @@ blueprint_variable *blueprint_promote_pin_to_variable(
     if (index < 0 || index >= count || pins[index].kind != PIN_DATA) {
         return NULL;
     }
-    blueprint_variable *v = blueprint_add_variable(
+    behavior_variable *v = behavior_asset_add_variable(
         bp,
         name,
         pins[index].type,
@@ -422,8 +422,8 @@ blueprint_variable *blueprint_promote_pin_to_variable(
     if (!v) {
         return NULL;
     }
-    node *access = output ? blueprint_add_get_node(bp, v->id)
-                          : blueprint_add_set_node(bp, v->id);
+    node *access = output ? behavior_asset_add_get_node(bp, v->id)
+                          : behavior_asset_add_set_node(bp, v->id);
     if (!access) {
         return v;
     }
@@ -435,9 +435,9 @@ blueprint_variable *blueprint_promote_pin_to_variable(
     return v;
 }
 
-int blueprint_delete_variable(blueprint *bp, uint64_t id)
+int behavior_asset_delete_variable(behavior_asset *bp, uint64_t id)
 {
-    if (!bp || !blueprint_mutable(bp)) {
+    if (!bp || !behavior_asset_mutable(bp)) {
         return -1;
     }
     for (int i = 0; i < acount(bp->variables); i++) {
@@ -451,12 +451,12 @@ int blueprint_delete_variable(blueprint *bp, uint64_t id)
     return -1;
 }
 
-int blueprint_set_variable_default(blueprint *bp, uint64_t id, const pin_value *value)
+int behavior_asset_set_variable_default(behavior_asset *bp, uint64_t id, const pin_value *value)
 {
-    if (!bp || !blueprint_mutable(bp) || !value) {
+    if (!bp || !behavior_asset_mutable(bp) || !value) {
         return -1;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
     if (!v || value->type != v->type) {
         return -1;
     }
@@ -473,12 +473,12 @@ int blueprint_set_variable_default(blueprint *bp, uint64_t id, const pin_value *
     return 0;
 }
 
-node *blueprint_add_get_node(blueprint *bp, uint64_t variable_id)
+node *behavior_asset_add_get_node(behavior_asset *bp, uint64_t variable_id)
 {
-    if (!bp || !blueprint_mutable(bp)) {
+    if (!bp || !behavior_asset_mutable(bp)) {
         return NULL;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, variable_id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, variable_id);
     if (!v) {
         return NULL;
     }
@@ -491,12 +491,12 @@ node *blueprint_add_get_node(blueprint *bp, uint64_t variable_id)
     return n;
 }
 
-node *blueprint_add_set_node(blueprint *bp, uint64_t variable_id)
+node *behavior_asset_add_set_node(behavior_asset *bp, uint64_t variable_id)
 {
-    if (!bp || !blueprint_mutable(bp)) {
+    if (!bp || !behavior_asset_mutable(bp)) {
         return NULL;
     }
-    blueprint_variable *v = blueprint_find_variable_by_id(bp, variable_id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(bp, variable_id);
     if (!v) {
         return NULL;
     }
@@ -510,9 +510,9 @@ node *blueprint_add_set_node(blueprint *bp, uint64_t variable_id)
     return n;
 }
 
-node *blueprint_add_self_node(blueprint *bp)
+node *behavior_asset_add_self_node(behavior_asset *bp)
 {
-    if (!bp || !blueprint_mutable(bp) || !bp->owner_type_name) {
+    if (!bp || !behavior_asset_mutable(bp) || !bp->owner_type_name) {
         return NULL;
     }
     node *n = graph_add_node(bp->graph, &NODE_Self);
@@ -523,7 +523,7 @@ node *blueprint_add_self_node(blueprint *bp)
     return n;
 }
 
-static int blueprint_add_call_pin(graph *caller, node *call, int output, const pin_spec *source)
+static int behavior_asset_add_call_pin(graph *caller, node *call, int output, const pin_spec *source)
 {
     pin_spec pin = *source;
     pin.id = 0;
@@ -547,9 +547,9 @@ static int blueprint_add_call_pin(graph *caller, node *call, int output, const p
     return graph_add_pin(caller, call, output, &pin) < 0 ? -1 : 0;
 }
 
-static node *blueprint_add_call_node(blueprint *bp, graph *caller, graph *target, graph_kind kind)
+static node *behavior_asset_add_call_node(behavior_asset *bp, graph *caller, graph *target, graph_kind kind)
 {
-    if (!bp || !blueprint_mutable(bp) || !caller || caller->owner != bp ||
+    if (!bp || !behavior_asset_mutable(bp) || !caller || caller->owner != bp ||
         !target || target->owner != bp || target->kind != kind) {
         return NULL;
     }
@@ -578,14 +578,14 @@ static node *blueprint_add_call_node(blueprint *bp, graph *caller, graph *target
     }
     for (int i = 0; i < entry->output_count; i++) {
         if (entry->output_pins[i].kind == PIN_DATA &&
-            blueprint_add_call_pin(caller, call, 0, &entry->output_pins[i]) != 0) {
+            behavior_asset_add_call_pin(caller, call, 0, &entry->output_pins[i]) != 0) {
             graph_remove_node(caller, call);
             return NULL;
         }
     }
     for (int i = 0; i < ret->input_count; i++) {
         if (ret->input_pins[i].kind == PIN_DATA &&
-            blueprint_add_call_pin(caller, call, 1, &ret->input_pins[i]) != 0) {
+            behavior_asset_add_call_pin(caller, call, 1, &ret->input_pins[i]) != 0) {
             graph_remove_node(caller, call);
             return NULL;
         }
@@ -593,29 +593,29 @@ static node *blueprint_add_call_node(blueprint *bp, graph *caller, graph *target
     return call;
 }
 
-node *blueprint_add_function_call_node_to_graph(blueprint *bp, graph *caller, graph *function_graph)
+node *behavior_asset_add_function_call_node_to_graph(behavior_asset *bp, graph *caller, graph *function_graph)
 {
-    return blueprint_add_call_node(bp, caller, function_graph, GRAPH_FUNCTION);
+    return behavior_asset_add_call_node(bp, caller, function_graph, GRAPH_FUNCTION);
 }
 
-node *blueprint_add_macro_call_node_to_graph(blueprint *bp, graph *caller, graph *macro_graph)
+node *behavior_asset_add_macro_call_node_to_graph(behavior_asset *bp, graph *caller, graph *macro_graph)
 {
-    return blueprint_add_call_node(bp, caller, macro_graph, GRAPH_MACRO);
+    return behavior_asset_add_call_node(bp, caller, macro_graph, GRAPH_MACRO);
 }
 
-node *blueprint_add_function_call_node(blueprint *bp, graph *function_graph)
+node *behavior_asset_add_function_call_node(behavior_asset *bp, graph *function_graph)
 {
-    return blueprint_add_function_call_node_to_graph(bp, bp ? bp->graph : NULL, function_graph);
+    return behavior_asset_add_function_call_node_to_graph(bp, bp ? bp->graph : NULL, function_graph);
 }
 
-node *blueprint_add_macro_call_node(blueprint *bp, graph *macro_graph)
+node *behavior_asset_add_macro_call_node(behavior_asset *bp, graph *macro_graph)
 {
-    return blueprint_add_macro_call_node_to_graph(bp, bp ? bp->graph : NULL, macro_graph);
+    return behavior_asset_add_macro_call_node_to_graph(bp, bp ? bp->graph : NULL, macro_graph);
 }
 
-graph *blueprint_add_function(blueprint *bp, const char *name, int pure)
+graph *behavior_asset_add_function(behavior_asset *bp, const char *name, int pure)
 {
-    graph *g = blueprint_add_graph(bp, GRAPH_FUNCTION, name);
+    graph *g = behavior_asset_add_graph(bp, GRAPH_FUNCTION, name);
     if (!g) {
         return NULL;
     }
@@ -635,9 +635,9 @@ graph *blueprint_add_function(blueprint *bp, const char *name, int pure)
     return g;
 }
 
-graph *blueprint_add_macro(blueprint *bp, const char *name)
+graph *behavior_asset_add_macro(behavior_asset *bp, const char *name)
 {
-    graph *g = blueprint_add_graph(bp, GRAPH_MACRO, name);
+    graph *g = behavior_asset_add_graph(bp, GRAPH_MACRO, name);
     if (!g) {
         return NULL;
     }

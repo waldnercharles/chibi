@@ -55,7 +55,7 @@ Each step must build the native app and pass the existing test suite before movi
 6. **Web persistence and export**
    - Decide whether saves use IndexedDB, downloads, or the File System Access API.
    - Replace native temporary-file/rename assumptions in the web path.
-   - Add import/export of blueprint JSON as an explicit browser feature.
+   - Add import/export of behavior_asset JSON as an explicit browser feature.
 
 7. **Performance and release hardening**
    - Measure typed/generic bytecode against native SLJIT.

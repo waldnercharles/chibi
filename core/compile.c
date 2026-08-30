@@ -1,5 +1,5 @@
 /* core/compile.c -- the CMPL compile and validation pass. One explicit,
- * deterministic, read-only pass over a blueprint's default event graph and
+ * deterministic, read-only pass over a behavior_asset's default event graph and
  * variable list (CMPL-1). CMPL-17 (editor navigation) and CMPL-19 (operator
  * ambiguity) are deferred: navigation is editor surface, and operator
  * signatures arrive with the reflection v2 widening ladder. */
@@ -66,7 +66,7 @@ static void effect_add(uint64_t **values, uint64_t id)
     apush(*values, id);
 }
 
-static void build_effects(compile_report *out, const blueprint *bp)
+static void build_effects(compile_report *out, const behavior_asset *bp)
 {
     compile_effects *effects = &out->effects;
     effects->parallel_eligible = 1;
@@ -377,7 +377,7 @@ static void pass_data_cycles(compile_report *out, const graph *g, arena *tmp)
 
 /* CMPL-7: a reference to a retired or missing variable, function, or macro.
  * Get/Set reference variables; Function and macro references use graph IDs. */
-static void pass_references(compile_report *out, const blueprint *bp)
+static void pass_references(compile_report *out, const behavior_asset *bp)
 {
     for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
         const graph *g = bp->graphs[graph_index];
@@ -387,7 +387,7 @@ static void pass_references(compile_report *out, const blueprint *bp)
                 continue;
             }
             if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
-                if (!blueprint_find_variable_by_id(bp, n->reference_id)) {
+                if (!behavior_asset_find_variable_by_id(bp, n->reference_id)) {
                     emit(
                         out,
                         CMPL_ERROR,
@@ -399,7 +399,7 @@ static void pass_references(compile_report *out, const blueprint *bp)
                     );
                 }
             } else if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallMacro) {
-                const graph *target = blueprint_find_graph(bp, n->reference_id);
+                const graph *target = behavior_asset_find_graph(bp, n->reference_id);
                 int valid = target && ((n->desc == &NODE_CallMacro &&
                                         target->kind == GRAPH_MACRO) ||
                                        (n->desc != &NODE_CallMacro &&
@@ -423,7 +423,7 @@ static void pass_references(compile_report *out, const blueprint *bp)
 /* CMPL-8: a duplicate event name, a duplicate name within one parameter
  * list, or a duplicate variable name in one scope. Each duplicate pair
  * reports once, on the later element. */
-static void pass_duplicates(compile_report *out, const blueprint *bp)
+static void pass_duplicates(compile_report *out, const behavior_asset *bp)
 {
     const graph *g = bp->graph;
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -784,7 +784,7 @@ static void sort_diagnostics(compile_report *out, const graph *g)
     }
 }
 
-int blueprint_compile(const blueprint *bp, compile_report *out)
+int behavior_asset_compile(const behavior_asset *bp, compile_report *out)
 {
     assert(bp && bp->graph && out);
     compile_report_free(out);

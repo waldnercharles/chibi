@@ -155,7 +155,7 @@ static const flow_traversal *ed_latest_flow_record(const editor *e, const edge *
 
 struct editor
 {
-    blueprint *bp;
+    behavior_asset *bp;
     editor_ui_context ui_context;
     int graph_visible;
     editor_save_handler save_handler;
@@ -164,15 +164,15 @@ struct editor
     ed_graph_view *graph_views;
     eval_view *ev;
     ImFont *icon_font;
-    blueprint *preview_blueprint;
-    blueprint_instance *instance; /* preview instance, or NULL after an explicit reset */
-    const blueprint_instance *inspection_instance; /* borrowed runtime target */
+    behavior_asset *preview_behavior_asset;
+    behavior_instance *instance; /* preview instance, or NULL after an explicit reset */
+    const behavior_instance *inspection_instance; /* borrowed runtime target */
     const flow_run *inspection_run; /* borrowed runtime activation */
-    const blueprint_instance_trace_entry *inspection_trace;
+    const behavior_instance_trace_entry *inspection_trace;
     int inspection_trace_count;
     unsigned instance_generation;
     unsigned edit_revision;
-    const blueprint *edit_revision_bp;
+    const behavior_asset *edit_revision_bp;
     char *edit_revision_snapshot;
     int edit_revision_initialized;
     int edit_pending;
@@ -228,7 +228,7 @@ struct editor
     int edit_text_index;
     char *clipboard;
     char search[64];
-    char blueprint_search[128];
+    char behavior_asset_search[128];
     int search_selected;
     float popup_x;
     float popup_y;
@@ -247,7 +247,7 @@ struct editor
     char connect_error[ED_LOG_MESSAGE];
     ImVec2 connect_error_pos;
     double connect_error_until;
-    blueprint_variable *selected_variable;
+    behavior_variable *selected_variable;
     int details_history_open;
     char details_title[256];
     char details_comment[512];
@@ -609,7 +609,7 @@ static void ed_select_node(editor *e, node *n, int append)
     }
 }
 
-static void ed_select_variable(editor *e, blueprint_variable *v)
+static void ed_select_variable(editor *e, behavior_variable *v)
 {
     ed_clear_selection(e);
     e->selected_variable = v;
@@ -1791,7 +1791,7 @@ static const char *ed_unique_variable_name(const editor *e)
     static char buf[64];
     for (int i = 1; i < 10000; i++) {
         snprintf(buf, sizeof buf, "NewVariable%d", i);
-        if (!blueprint_find_variable_by_name(e->bp, buf)) {
+        if (!behavior_asset_find_variable_by_name(e->bp, buf)) {
             return buf;
         }
     }
@@ -1812,7 +1812,7 @@ static void ed_show_error(editor *e, const char *message)
     e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
 }
 
-static int ed_draw_variable_default(editor *e, blueprint_variable *v)
+static int ed_draw_variable_default(editor *e, behavior_variable *v)
 {
     pin_value value = v->default_value;
     int changed = 0;
@@ -1879,7 +1879,7 @@ static int ed_draw_variable_default(editor *e, blueprint_variable *v)
     }
     if (changed) {
         ed_details_begin_mutation(e);
-        if (blueprint_set_variable_default(e->bp, v->id, &value) == 0) {
+        if (behavior_asset_set_variable_default(e->bp, v->id, &value) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1887,14 +1887,14 @@ static int ed_draw_variable_default(editor *e, blueprint_variable *v)
     return changed;
 }
 
-static void ed_draw_details_variable(editor *e, blueprint_variable *v)
+static void ed_draw_details_variable(editor *e, behavior_variable *v)
 {
     ImGui_Text("Variable: %s", v->name ? v->name : "?");
     ImGui_Separator();
     snprintf(e->details_title, sizeof e->details_title, "%s", v->name ? v->name : "");
     if (ImGui_InputText("Name", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
-        if (blueprint_rename_variable(e->bp, v->id, e->details_title) == 0) {
+        if (behavior_asset_rename_variable(e->bp, v->id, e->details_title) == 0) {
             e->edit_changed = 1;
         } else if (e->details_title[0]) {
             ed_show_error(e, "Variable name is empty or already in use");
@@ -1904,7 +1904,7 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
     pin_type type = v->type;
     if (ed_pin_type_combo("Type", &type)) {
         ed_details_begin_mutation(e);
-        if (blueprint_retype_variable(e->bp, v->id, type, pin_type_name(type)) == 0) {
+        if (behavior_asset_retype_variable(e->bp, v->id, type, pin_type_name(type)) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1912,7 +1912,7 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
     pin_container container = v->container;
     if (ed_pin_container_combo("Container", &container)) {
         ed_details_begin_mutation(e);
-        if (blueprint_set_variable_container(e->bp, v->id, container) == 0) {
+        if (behavior_asset_set_variable_container(e->bp, v->id, container) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1920,7 +1920,7 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
     snprintf(e->details_comment, sizeof e->details_comment, "%s", v->category ? v->category : "");
     if (ImGui_InputText("Category", e->details_comment, sizeof e->details_comment, 0)) {
         ed_details_begin_mutation(e);
-        if (blueprint_set_variable_category(e->bp, v->id, e->details_comment) == 0) {
+        if (behavior_asset_set_variable_category(e->bp, v->id, e->details_comment) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -1929,7 +1929,7 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
     ImGui_Separator();
     if (ImGui_Button("Add Get node")) {
         ed_snapshot_before(e);
-        node *n = blueprint_add_get_node(e->bp, v->id);
+        node *n = behavior_asset_add_get_node(e->bp, v->id);
         if (n) {
             ImVec2 world = ed_view_center_world(e);
             n->x = world.x - 160.0f;
@@ -1940,7 +1940,7 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
     ImGui_SameLine();
     if (ImGui_Button("Add Set node")) {
         ed_snapshot_before(e);
-        node *n = blueprint_add_set_node(e->bp, v->id);
+        node *n = behavior_asset_add_set_node(e->bp, v->id);
         if (n) {
             ImVec2 world = ed_view_center_world(e);
             n->x = world.x + 160.0f;
@@ -1951,15 +1951,15 @@ static void ed_draw_details_variable(editor *e, blueprint_variable *v)
     ImGui_Separator();
     if (ImGui_Button("Delete variable")) {
         ed_snapshot_before(e);
-        if (blueprint_delete_variable(e->bp, v->id) == 0) {
+        if (behavior_asset_delete_variable(e->bp, v->id) == 0) {
             e->selected_variable = NULL;
         }
     }
 }
 
-static void ed_draw_details_blueprint(editor *e)
+static void ed_draw_details_behavior_asset(editor *e)
 {
-    ImGui_Text("Blueprint: %s", e->bp->name && e->bp->name[0] ? e->bp->name : "Unnamed");
+    ImGui_Text("Behavior Asset: %s", e->bp->name && e->bp->name[0] ? e->bp->name : "Unnamed");
     ImGui_Separator();
     snprintf(
         e->details_title,
@@ -1969,7 +1969,7 @@ static void ed_draw_details_blueprint(editor *e)
     );
     if (ImGui_InputText("Name", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
-        if (blueprint_set_name(e->bp, e->details_title) == 0) {
+        if (behavior_asset_set_name(e->bp, e->details_title) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -2006,12 +2006,12 @@ static const char *ed_graph_display_name(const graph *g)
     return g->name && g->name[0] ? g->name : "Unnamed";
 }
 
-static const char *ed_variable_category(const blueprint_variable *v)
+static const char *ed_variable_category(const behavior_variable *v)
 {
     return v->category && v->category[0] ? v->category : "Default";
 }
 
-static int ed_variable_category_seen(const blueprint *bp, int index)
+static int ed_variable_category_seen(const behavior_asset *bp, int index)
 {
     const char *category = ed_variable_category(&bp->variables[index]);
     for (int i = 0; i < index; i++) {
@@ -2022,7 +2022,7 @@ static int ed_variable_category_seen(const blueprint *bp, int index)
     return 0;
 }
 
-static int ed_variable_category_matches(const blueprint *bp, int index, const char *filter)
+static int ed_variable_category_matches(const behavior_asset *bp, int index, const char *filter)
 {
     const char *category = ed_variable_category(&bp->variables[index]);
     if (ed_text_matches(category, filter)) {
@@ -2052,14 +2052,14 @@ static graph *ed_create_graph(editor *e, graph_kind kind, int pure)
     int first = kind == GRAPH_EVENT;
     for (int i = first; i < 10000; i++) {
         snprintf(name, sizeof name, i ? "%s_%d" : "%s", base, i);
-        if (blueprint_find_graph_by_name(e->bp, name) == NULL) {
+        if (behavior_asset_find_graph_by_name(e->bp, name) == NULL) {
             break;
         }
     }
     ed_snapshot_before(e);
-    graph *g = kind == GRAPH_MACRO ? blueprint_add_macro(e->bp, name)
-             : kind == GRAPH_EVENT ? blueprint_add_graph(e->bp, kind, name)
-                                   : blueprint_add_function(e->bp, name, pure);
+    graph *g = kind == GRAPH_MACRO ? behavior_asset_add_macro(e->bp, name)
+             : kind == GRAPH_EVENT ? behavior_asset_add_graph(e->bp, kind, name)
+                                   : behavior_asset_add_function(e->bp, name, pure);
     if (g) {
         editor_open_graph(e, g->graph_id);
     }
@@ -2073,8 +2073,8 @@ static node *ed_place_graph_call_at(editor *e, graph *target, ImVec2 world)
     }
     ed_snapshot_before(e);
     node *call = target->kind == GRAPH_MACRO
-                   ? blueprint_add_macro_call_node_to_graph(e->bp, e->active_graph, target)
-                   : blueprint_add_function_call_node_to_graph(e->bp, e->active_graph, target);
+                   ? behavior_asset_add_macro_call_node_to_graph(e->bp, e->active_graph, target)
+                   : behavior_asset_add_function_call_node_to_graph(e->bp, e->active_graph, target);
     if (!call) {
         return NULL;
     }
@@ -2092,14 +2092,14 @@ static node *ed_place_graph_call(editor *e, graph *target)
 static int ed_delete_graph(editor *e, graph *target)
 {
     if (!target || target == e->bp->graph || target->owner != e->bp ||
-        !blueprint_mutable(e->bp)) {
+        !behavior_asset_mutable(e->bp)) {
         return -1;
     }
     ed_snapshot_before(e);
     if (target == e->active_graph && ed_switch_graph(e, e->bp->graph) != 0) {
         return -1;
     }
-    return blueprint_delete_graph(e->bp, target->graph_id);
+    return behavior_asset_delete_graph(e->bp, target->graph_id);
 }
 
 static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filter)
@@ -2284,7 +2284,7 @@ static int ed_draw_event_graph(editor *e, graph *g, int index, const char *filte
     return delete_requested && ed_delete_graph(e, g) == 0;
 }
 
-static int ed_draw_variable_member(editor *e, blueprint_variable *v, int index)
+static int ed_draw_variable_member(editor *e, behavior_variable *v, int index)
 {
     ed_tree_member_icon(ED_ICON_VARIABLE, (ImVec4){ 0.80f, 0.55f, 0.35f, 1.0f });
     char label[192];
@@ -2316,7 +2316,7 @@ static int ed_draw_variable_member(editor *e, blueprint_variable *v, int index)
         return 0;
     }
     ed_snapshot_before(e);
-    if (blueprint_delete_variable(e->bp, v->id) != 0) {
+    if (behavior_asset_delete_variable(e->bp, v->id) != 0) {
         return 0;
     }
     e->selected_variable = NULL;
@@ -2335,7 +2335,7 @@ static void ed_draw_graph_rename_popup(editor *e)
     ImGui_InputText("Name", e->graph_rename, sizeof e->graph_rename, 0);
     if (ImGui_Button("Rename") && e->context_graph && e->graph_rename[0]) {
         ed_snapshot_before(e);
-        if (blueprint_rename_graph(e->bp, e->context_graph->graph_id, e->graph_rename) ==
+        if (behavior_asset_rename_graph(e->bp, e->context_graph->graph_id, e->graph_rename) ==
             0) {
             e->context_graph = NULL;
             ImGui_CloseCurrentPopup();
@@ -2353,7 +2353,7 @@ static void ed_draw_graph_rename_popup(editor *e)
 
 static void ed_draw_add_popup(editor *e)
 {
-    if (!ImGui_BeginPopup("my_blueprint_add", 0)) {
+    if (!ImGui_BeginPopup("my_behavior_asset_add", 0)) {
         return;
     }
     if (ImGui_MenuItem("Event Graph")) {
@@ -2374,7 +2374,7 @@ static void ed_draw_add_popup(editor *e)
     }
     if (ImGui_MenuItem("Variable")) {
         ed_snapshot_before(e);
-        blueprint_variable *v = blueprint_add_variable(
+        behavior_variable *v = behavior_asset_add_variable(
             e->bp,
             ed_unique_variable_name(e),
             PIN_I32,
@@ -2394,16 +2394,16 @@ static void ed_draw_add_popup(editor *e)
 static void ed_draw_tree(editor *e)
 {
     ImGui_SetNextWindowSize((ImVec2){ 260.0f, 600.0f }, ImGuiCond_FirstUseEver);
-    if (editor_ui_take_focus(EDITOR_UI_FOCUS_MY_BLUEPRINT)) {
+    if (editor_ui_take_focus(EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("My Blueprint", NULL, 0)) {
+    if (!ImGui_Begin("My Behavior Asset", NULL, 0)) {
         ImGui_End();
         return;
     }
 
     if (ImGui_Button("+ Add")) {
-        ImGui_OpenPopup("my_blueprint_add", 0);
+        ImGui_OpenPopup("my_behavior_asset_add", 0);
     }
     ed_draw_add_popup(e);
     ImGui_SameLine();
@@ -2412,18 +2412,23 @@ static void ed_draw_tree(editor *e)
         search_width = 40.0f;
     }
     ImGui_SetNextItemWidth(search_width);
-    editor_ui_search_field("my_blueprint_search", e->blueprint_search, sizeof e->blueprint_search, "Search");
+    editor_ui_search_field(
+        "my_behavior_asset_search",
+        e->behavior_asset_search,
+        sizeof e->behavior_asset_search,
+        "Search"
+    );
     ImGui_SameLine();
-    if (editor_ui_icon_button("my_blueprint_settings", ED_ICON_SETTINGS, true)) {
+    if (editor_ui_icon_button("my_behavior_asset_settings", ED_ICON_SETTINGS, true)) {
         ed_clear_selection(e);
         e->selected_variable = NULL;
         editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
     }
     if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
-        ImGui_SetTooltip("Blueprint settings");
+        ImGui_SetTooltip("Behavior Asset settings");
     }
 
-    const char *filter = e->blueprint_search;
+    const char *filter = e->behavior_asset_search;
     if (filter[0]) {
         ImGui_SetNextItemOpen(true, ImGuiCond_Always);
     }
@@ -2496,7 +2501,7 @@ static void ed_draw_tree(editor *e)
     bool variables_open = ImGui_CollapsingHeader(section, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
     if (editor_ui_right_icon_button("member_variables_add", ED_ICON_ADD)) {
         ed_snapshot_before(e);
-        blueprint_variable *v = blueprint_add_variable(
+        behavior_variable *v = behavior_asset_add_variable(
             e->bp,
             ed_unique_variable_name(e),
             PIN_I32,
@@ -2511,7 +2516,7 @@ static void ed_draw_tree(editor *e)
     }
     if (variables_open) {
         for (int i = 0; i < acount(e->bp->variables); i++) {
-            blueprint_variable *v = &e->bp->variables[i];
+            behavior_variable *v = &e->bp->variables[i];
             const char *category = ed_variable_category(v);
             if (ed_variable_category_seen(e->bp, i) ||
                 !ed_variable_category_matches(e->bp, i, filter)) {
@@ -2530,7 +2535,7 @@ static void ed_draw_tree(editor *e)
             );
             if (category_open) {
                 for (int j = i; j < acount(e->bp->variables); j++) {
-                    blueprint_variable *member = &e->bp->variables[j];
+                    behavior_variable *member = &e->bp->variables[j];
                     if (strcmp(category, ed_variable_category(member)) != 0 ||
                         (!category_match && !ed_text_matches(member->name, filter))) {
                         continue;
@@ -2680,7 +2685,7 @@ static void ed_draw_details(editor *e)
         return;
     }
     if (acount(e->selected) == 0) {
-        ed_draw_details_blueprint(e);
+        ed_draw_details_behavior_asset(e);
         ImGui_End();
         return;
     }
@@ -3312,7 +3317,7 @@ static void ed_draw_selection_overlay(const editor *e)
 
 static char *ed_snapshot(const editor *e)
 {
-    return blueprint_save_json(e->bp);
+    return behavior_asset_save_json(e->bp);
 }
 
 static void ed_commit_snapshot(editor *e)
@@ -3355,7 +3360,7 @@ static void ed_accept_graph_call_drop(editor *e)
     if (payload && payload->Delivery && payload->DataSize == sizeof(uint64_t)) {
         uint64_t graph_id;
         memcpy(&graph_id, payload->Data, sizeof graph_id);
-        graph *target = blueprint_find_graph(e->bp, graph_id);
+        graph *target = behavior_asset_find_graph(e->bp, graph_id);
         if (target && (target->kind == GRAPH_FUNCTION || target->kind == GRAPH_MACRO)) {
             (void)ed_place_graph_call_at(e, target, ed_screen_to_world(e, ImGui_GetMousePos()));
         }
@@ -3366,29 +3371,29 @@ static void ed_accept_graph_call_drop(editor *e)
 static void ed_destroy_preview(editor *e)
 {
     if (e->instance) {
-        blueprint_instance_destroy(e->instance);
+        behavior_instance_destroy(e->instance);
         e->instance = NULL;
     }
     e->activation = NULL;
-    blueprint_free(e->preview_blueprint);
-    e->preview_blueprint = NULL;
+    behavior_asset_free(e->preview_behavior_asset);
+    e->preview_behavior_asset = NULL;
     e->instance_destroyed = 1;
     eval_view_set_run(e->ev, NULL);
 }
 
-/* Every blueprint swap must release the preview copy and its activations. */
-static int ed_adopt_blueprint(editor *e, const char *json)
+/* Every behavior_asset swap must release the preview copy and its activations. */
+static int ed_adopt_behavior_asset(editor *e, const char *json)
 {
     ed_destroy_preview(e);
     uint64_t active_graph_id = e->active_graph ? e->active_graph->graph_id : 0;
     ed_save_graph_view(e);
-    blueprint *fresh = blueprint_load_json(json);
+    behavior_asset *fresh = behavior_asset_load_json(json);
     if (!fresh) {
         return -1;
     }
-    blueprint_free(e->bp);
+    behavior_asset_free(e->bp);
     e->bp = fresh;
-    e->active_graph = blueprint_find_graph(e->bp, active_graph_id);
+    e->active_graph = behavior_asset_find_graph(e->bp, active_graph_id);
     if (!e->active_graph) {
         e->active_graph = e->bp->graph;
     }
@@ -3397,7 +3402,7 @@ static int ed_adopt_blueprint(editor *e, const char *json)
     compile_report_init(&e->compile);
     ed_clear_selection(e);
     e->selected_variable = NULL;
-    e->blueprint_search[0] = '\0';
+    e->behavior_asset_search[0] = '\0';
     e->dragging = 0;
     e->linking = 0;
     e->reveal_target = NULL;
@@ -3421,11 +3426,11 @@ static void ed_undo(editor *e)
         return;
     }
     char *target = apop(e->undo);
-    char *current = blueprint_save_json(e->bp);
+    char *current = behavior_asset_save_json(e->bp);
     if (current) {
         ed_push_string(&e->redo, current);
     }
-    ed_adopt_blueprint(e, target);
+    ed_adopt_behavior_asset(e, target);
     free(target);
 }
 
@@ -3436,11 +3441,11 @@ static void ed_redo(editor *e)
         return;
     }
     char *target = apop(e->redo);
-    char *current = blueprint_save_json(e->bp);
+    char *current = behavior_asset_save_json(e->bp);
     if (current) {
         ed_push_string(&e->undo, current);
     }
-    ed_adopt_blueprint(e, target);
+    ed_adopt_behavior_asset(e, target);
     free(target);
 }
 
@@ -4265,7 +4270,7 @@ static int ed_activation_live(const editor *e)
            !editor_preview_allowed(flow_run_status(e->activation));
 }
 
-/* Authoring edits mutate the working Blueprint, not the preview snapshot. */
+/* Authoring edits mutate the working Behavior Asset, not the preview snapshot. */
 static void ed_begin_authoring_edit(editor *) {}
 
 static const char *ed_flow_state_name(flow_state state)
@@ -4341,7 +4346,7 @@ static void ed_compile(editor *e)
 {
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
-    blueprint_compile(e->bp, &e->compile);
+    behavior_asset_compile(e->bp, &e->compile);
 }
 
 static void ed_zoom_fit(editor *e);
@@ -4497,13 +4502,13 @@ static void ed_run_step_over(editor *e)
 }
 static void ed_run_stop(editor *e)
 {
-    blueprint_instance *target = e->inspection_instance
-                                   ? (blueprint_instance *)e->inspection_instance
-                                   : e->instance;
+    behavior_instance *target = e->inspection_instance
+                                  ? (behavior_instance *)e->inspection_instance
+                                  : e->instance;
     if (!target || !e->activation) {
         return;
     }
-    (void)blueprint_instance_stop_activation(target, e->activation);
+    (void)behavior_instance_stop_activation(target, e->activation);
     eval_view_set_run(e->ev, NULL);
 }
 
@@ -4577,9 +4582,9 @@ static void ed_draw_toolbar(editor *e)
     ed_toolbar_action(e, "Undo", acount(e->undo) > 0, "No undo entry is available", ed_undo);
     ed_toolbar_action(e, "Redo", acount(e->redo) > 0, "No redo entry is available", ed_redo);
 
-    const blueprint_instance *target_instance = e->inspection_instance
-                                                  ? e->inspection_instance
-                                                  : e->instance;
+    const behavior_instance *target_instance = e->inspection_instance
+                                                 ? e->inspection_instance
+                                                 : e->instance;
     int attached = target_instance != NULL;
     int can_dispatch = e->active_graph == e->bp->graph && entry && entry->reference_name;
     ed_toolbar_action(
@@ -5034,14 +5039,14 @@ static void ed_handle_shortcuts(editor *e)
         if (e->save_handler) {
             e->save_handler(e, e->save_user);
         } else {
-            editor_save(e, "blueprint.json");
+            editor_save(e, "behavior_asset.json");
         }
     } else if (ImGui_IsKeyPressed(ImGuiKey_Delete) || ImGui_IsKeyPressed(ImGuiKey_Backspace)) {
         ed_delete_selected(e);
     }
 }
 
-editor *editor_new(blueprint *bp)
+editor *editor_new(behavior_asset *bp)
 {
     registry_validate();
     editor *e = (editor *)calloc(1, sizeof *e);
@@ -5060,7 +5065,7 @@ editor *editor_new(blueprint *bp)
     return e;
 }
 
-blueprint_instance *editor_preview_instance(const editor *e)
+behavior_instance *editor_preview_instance(const editor *e)
 {
     return e ? e->instance : NULL;
 }
@@ -5094,16 +5099,16 @@ void editor_preview_create(editor *e)
     if (!e || e->instance || e->inspection_instance) {
         return;
     }
-    char *json = blueprint_save_json(e->bp);
-    e->preview_blueprint = json ? blueprint_load_json(json) : NULL;
+    char *json = behavior_asset_save_json(e->bp);
+    e->preview_behavior_asset = json ? behavior_asset_load_json(json) : NULL;
     free(json);
-    if (!e->preview_blueprint) {
+    if (!e->preview_behavior_asset) {
         return;
     }
-    e->instance = blueprint_instance_create(e->preview_blueprint, NULL, NULL, NULL);
+    e->instance = behavior_instance_create(e->preview_behavior_asset, NULL, NULL, NULL);
     if (!e->instance) {
-        blueprint_free(e->preview_blueprint);
-        e->preview_blueprint = NULL;
+        behavior_asset_free(e->preview_behavior_asset);
+        e->preview_behavior_asset = NULL;
         return;
     }
     e->instance->sink = ed_log_sink;
@@ -5122,7 +5127,7 @@ void editor_preview_reset(editor *e)
 
 static flow_run *editor_dispatch_instance(
     editor *e,
-    blueprint_instance *target,
+    behavior_instance *target,
     const char *name,
     flow_inputs inputs,
     flow_error *error
@@ -5131,7 +5136,7 @@ static flow_run *editor_dispatch_instance(
     if (!target) {
         return NULL;
     }
-    flow_run *act = blueprint_instance_dispatch(target, name, inputs, error);
+    flow_run *act = behavior_instance_dispatch(target, name, inputs, error);
     if (!act) {
         return NULL;
     }
@@ -5157,7 +5162,7 @@ flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_
         return NULL;
     }
     if (e->inspection_instance) {
-        return editor_dispatch_instance(e, (blueprint_instance *)e->inspection_instance, name, inputs, error);
+        return editor_dispatch_instance(e, (behavior_instance *)e->inspection_instance, name, inputs, error);
     }
     return editor_dispatch_preview(e, name, inputs, error);
 }
@@ -5167,7 +5172,7 @@ static void ed_refresh_edit_revision(editor *e)
     if (e->edit_revision_initialized && !e->edit_pending) {
         return;
     }
-    char *json = blueprint_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->bp);
     if (!json) {
         return;
     }
@@ -5196,26 +5201,26 @@ void editor_tick(editor *e, double monotonic_time)
         ed_clear_connect_error(e);
     }
     if (e->instance) {
-        (void)blueprint_instance_tick(e->instance, monotonic_time);
+        (void)behavior_instance_tick(e->instance, monotonic_time);
     }
 }
 
-const blueprint *editor_blueprint(const editor *e)
+const behavior_asset *editor_behavior_asset(const editor *e)
 {
     return e ? e->bp : NULL;
 }
 
-int editor_open_blueprint(editor *e, const blueprint *source, uint64_t graph_id)
+int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id)
 {
-    if (!e || !source || !blueprint_find_graph(source, graph_id)) {
+    if (!e || !source || !behavior_asset_find_graph(source, graph_id)) {
         return -1;
     }
     ed_begin_authoring_edit(e);
-    char *json = blueprint_save_json(source);
+    char *json = behavior_asset_save_json(source);
     if (!json) {
         return -1;
     }
-    int result = ed_adopt_blueprint(e, json);
+    int result = ed_adopt_behavior_asset(e, json);
     free(json);
     if (result != 0) {
         return -1;
@@ -5232,7 +5237,7 @@ int editor_open_graph(editor *e, uint64_t graph_id)
     if (!e || !e->bp) {
         return -1;
     }
-    return ed_switch_graph(e, blueprint_find_graph(e->bp, graph_id));
+    return ed_switch_graph(e, behavior_asset_find_graph(e->bp, graph_id));
 }
 
 const graph *editor_active_graph(const editor *e)
@@ -5240,7 +5245,7 @@ const graph *editor_active_graph(const editor *e)
     return e ? e->active_graph : NULL;
 }
 
-void editor_set_inspection_instance(editor *e, const blueprint_instance *instance)
+void editor_set_inspection_instance(editor *e, const behavior_instance *instance)
 {
     if (!e) {
         return;
@@ -5267,7 +5272,7 @@ void editor_set_inspection_run(editor *e, const flow_run *run)
     }
 }
 
-void editor_set_inspection_trace(editor *e, const blueprint_instance_trace_entry *trace, int count)
+void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count)
 {
     if (!e) {
         return;
@@ -5298,7 +5303,7 @@ void editor_free(editor *e)
     free(e->edit_revision_snapshot);
     ed_destroy_preview(e);
     compile_report_free(&e->compile);
-    blueprint_free(e->bp);
+    behavior_asset_free(e->bp);
     afree(e->graph_views);
     afree(e->views);
     afree(e->pins);
@@ -5331,7 +5336,7 @@ int editor_save(const editor *e, const char *path)
     if (!e) {
         return -1;
     }
-    char *json = blueprint_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->bp);
     if (!json) {
         return -1;
     }
@@ -5384,7 +5389,7 @@ int editor_load(editor *e, const char *path)
         return -1;
     }
     ed_snapshot_before(e);
-    int result = ed_adopt_blueprint(e, json);
+    int result = ed_adopt_behavior_asset(e, json);
     free(json);
     return result;
 }
@@ -5448,9 +5453,9 @@ void editor_draw(editor *e)
     }
     ImGuiIO *io = ImGui_GetIO();
     flow_state preview_state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
-    const blueprint_instance *display_instance = e->inspection_instance
-                                                   ? e->inspection_instance
-                                                   : e->instance;
+    const behavior_instance *display_instance = e->inspection_instance
+                                                  ? e->inspection_instance
+                                                  : e->instance;
     const flow_run *display_run = e->inspection_run
                                     ? e->inspection_run
                                     : (e->inspection_instance
@@ -5528,7 +5533,7 @@ void editor_draw(editor *e)
         ed_draw_tree(e);
         ed_draw_details(e);
     } else if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
-        /* Systems do not have the Blueprint tree, but their graph still needs
+        /* Systems do not have the Behavior Asset tree, but their graph still needs
          * the same UE-style Details panel for node and wire inspection. */
         ed_draw_details(e);
     }

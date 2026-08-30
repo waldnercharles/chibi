@@ -27,13 +27,13 @@ app_scene_authoring *app_scene_authoring_new(
     ecs_world *world,
     game_live_world *live,
     game_live_definition *definition,
-    const blueprint *editor_working,
+    const behavior_asset *editor_working,
     editor *graph_editor,
     app_scene_prototype_resolve_fn resolve_prototype,
     void *resolve_user,
     engine *runtime
 );
-void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const blueprint *editor_working);
+void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const behavior_asset *editor_working);
 int app_scene_authoring_apply_pending(app_scene_authoring *scene);
 int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char *path);
 void app_scene_authoring_refresh_content(app_scene_authoring *scene);

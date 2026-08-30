@@ -1399,9 +1399,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
     const char *name = s->name;
     fprintf(out, "static int __flow_%s_get_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Get requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(out, "    const %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
     fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
@@ -1412,9 +1412,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_set_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n    pin_value __input;\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n    pin_value __input;\n", out);
     fputs("    if (!__world || !__instance || flow_context_eval_data(ctx, 1, &__input) != FLOW_OK || !__input.ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set requires a value\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(out, "    %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
     fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    memcpy(__value, __input.ptr, sizeof(%s));\n", name);
@@ -1426,9 +1426,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_has_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Has requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(
         out,
         "    pin_value *__out = flow_context_output_value(ctx, 1);\n    "
@@ -1441,9 +1441,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_add_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(out, "    int __added = 0;\n    if (!%s_%s_get(__world, __entity)) {\n", g_prefix, name);
     fprintf(out, "        __added = %s_%s_add(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
     fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __added };\n", out);
@@ -1451,9 +1451,9 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_remove_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    blueprint_instance *__instance = flow_context_instance(ctx);\n", out);
+    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
     fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(blueprint_instance_owner(__instance).u64);\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
     fprintf(out, "    int __removed = 0;\n    if (%s_%s_get(__world, __entity)) {\n", g_prefix, name);
     fprintf(out, "        __removed = %s_%s_remove(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
     fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __removed };\n", out);

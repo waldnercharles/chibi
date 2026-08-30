@@ -19,7 +19,7 @@ typedef struct
     const char *message;
 } eval_status;
 
-typedef struct blueprint_instance blueprint_instance;
+typedef struct behavior_instance behavior_instance;
 
 typedef void (*eval_data_edge_fn)(
     const node *source,
@@ -32,7 +32,7 @@ typedef void (*eval_data_edge_fn)(
 typedef struct eval_context
 {
     eval_status status;
-    blueprint_instance *instance; /* optional: variable/owner reads for Get/Self */
+    behavior_instance *instance; /* optional: variable/owner reads for Get/Self */
     eval_data_edge_fn on_data_edge; /* optional pull-evaluation edge observer */
     void *on_data_edge_user;
     runtime_store *runtime; /* borrowed when attached by a flow run */

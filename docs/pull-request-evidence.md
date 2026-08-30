@@ -19,11 +19,15 @@ satisfy visual evidence by itself.
 
 ## Attaching visual evidence
 
-Attach captures to the PR description or a PR comment using GitHub's upload
-control. GitHub-hosted attachment URLs are preferred because disposable captures
-do not belong in the repository. A durable screenshot that is part of the product
-documentation may be committed and linked instead. Do not claim visual evidence
-for an artifact that only shows an idle shell or an unrelated screen.
+Use GitHub's PR description or comment editor: drag the PNG/JPG/MP4 into the
+editor, wait for the upload to finish, and copy the resulting direct URL. The
+validator accepts only URLs in this form:
+`https://github.com/user-attachments/assets/<uuid>`
+Do not paste a release page, a local path, an external hosting URL, a URL with
+query parameters, or a link to an artifact that is not yet uploaded. GitHub-hosted
+attachments are preferred because disposable captures do not belong in the
+repository. Do not claim visual evidence for an artifact that only shows an idle
+shell or an unrelated screen.
 
 The `Evidence contract` check verifies that every PR records its category, feature
 proof, automated tests, and, for visual changes, an artifact URL and interaction

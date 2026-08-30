@@ -4,7 +4,8 @@
 
 ## Evidence
 
-- Category: `automated` <!-- use `visual` when the changed behavior can be verified in the running app -->
+<!-- Use `visual` when the changed behavior can be verified in the running app. -->
+- Category: `automated`
 - Feature proof: <!-- what observable behavior does the evidence prove? -->
 - Tests: <!-- focused unit/integration test names or CI job; include the outcome -->
 - Visual evidence: Not applicable — non-visual change

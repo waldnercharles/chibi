@@ -138,6 +138,7 @@ extern "C"
     int flow_run_reset(flow_run *run);
 
     flow_state flow_run_status(const flow_run *run);
+    double flow_run_wake_time(const flow_run *run);
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
     flow_inputs flow_run_inputs(const flow_run *run);

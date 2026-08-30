@@ -1237,6 +1237,13 @@ static void run_behavior_checks(void)
             game_behavior_dispatch(world, e2, "Tick", (flow_inputs){ 0 }, NULL) == 2,
         "BEH-11: latent behavior runs as a continuation on each owning entity"
     );
+    game_behavior_entity_state entity_state;
+    check(
+        game_behavior_entity_state_at(world, e1, "windup", &entity_state) == 0 &&
+            entity_state.active && entity_state.suspended &&
+            entity_state.entity.slot == e1.slot,
+        "BEH-11: continuation state is explicit and scoped to its entity"
+    );
     blueprint_instance *e1_windup = game_behavior_instance(world, e1, "windup");
     blueprint_instance *e2_windup = game_behavior_instance(world, e2, "windup");
     check(
@@ -1252,6 +1259,11 @@ static void run_behavior_checks(void)
         "entity asset"
     );
     game_behavior_pump(world, 2.0);
+    check(
+        game_behavior_entity_state_at(world, e1, "windup", &entity_state) == 0 &&
+            !entity_state.active && !entity_state.suspended,
+        "BEH-11: entity continuation state becomes inspectable when resumed"
+    );
     check(
         acount(e1_windup->activations) == 1 &&
             flow_run_status(e1_windup->activations[0]) == FLOW_COMPLETED &&

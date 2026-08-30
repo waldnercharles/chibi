@@ -6,6 +6,7 @@
 #include "../core/graph_jit_sljit.h"
 #include "../core/instance.h"
 #include "../core/pin_conv.h"
+#include "../core/program.h"
 #include "../core/registry.h"
 #include "../core/xalloc.h"
 #include "generated.h"
@@ -68,14 +69,21 @@ typedef struct
     int *aliases;
     int value_count;
     int event_delta;
-    graph_ir ir;
+    union
+    {
+        graph_program shared;
+        struct
+        {
+            graph_ir ir;
+            graph_sljit_program *sljit;
+        };
+    };
     system_instruction *instructions;
     pin_value *values;
     system_slot *slots;
     unsigned char *storage;
     size_t storage_size;
     int typed;
-    graph_sljit_program *sljit;
     graph_jit_column *sljit_columns;
     void **sljit_bases;
     int sljit_column_count;
@@ -997,7 +1005,7 @@ static void program_build_ir(system_program *program)
 static system_program *program_new(const blueprint *definition, const node *tick)
 {
     system_program *program = (system_program *)xcalloc(1, sizeof *program);
-    graph_ir_init(&program->ir);
+    graph_program_init(&program->shared);
     program->graph = definition->graph;
     program->event_delta = 0;
     int output_total = 0;
@@ -1058,7 +1066,7 @@ static system_program *program_new(const blueprint *definition, const node *tick
     program->typed = program_can_run_typed(program);
     if (program->typed) {
         program_prepare_storage(program);
-        program->sljit = graph_sljit_compile(&program->ir, NULL);
+        graph_program_compile_backend(&program->shared, NULL);
     }
     arena_init(&program->arena, 4096);
     return program;
@@ -1070,10 +1078,9 @@ static void program_free(system_program *program)
         return;
     }
     arena_free(&program->arena);
-    graph_sljit_free(program->sljit);
+    graph_program_free(&program->shared);
     free(program->sljit_columns);
     free(program->sljit_bases);
-    graph_ir_free(&program->ir);
     free(program->storage);
     free(program->aliases);
     free(program->slots);
@@ -1829,4 +1836,9 @@ int game_system_uses_sljit_simd(const game_system *system)
 const graph_ir *game_system_graph_ir(const game_system *system)
 {
     return system && system->program ? &system->program->ir : NULL;
+}
+
+const graph_program *game_system_program(const game_system *system)
+{
+    return system && system->program ? &system->program->shared : NULL;
 }

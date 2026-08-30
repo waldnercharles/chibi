@@ -4,6 +4,7 @@
 #include "../core/compile.h"
 #include "../core/flow.h"
 #include "../core/graph_ir.h"
+#include "../core/program.h"
 #include "../ecs/ecs.h"
 
 /* A System owns one graph definition and applies its Tick event to each Entity
@@ -49,5 +50,6 @@ int game_system_uses_sljit_batch(const game_system *system);
 int game_system_uses_sljit_registers(const game_system *system);
 int game_system_uses_sljit_simd(const game_system *system);
 const graph_ir *game_system_graph_ir(const game_system *system);
+const graph_program *game_system_program(const game_system *system);
 
 #endif

@@ -1046,6 +1046,11 @@ flow_state flow_run_status(const flow_run *run)
     return run ? run->state : FLOW_IDLE;
 }
 
+double flow_run_wake_time(const flow_run *run)
+{
+    return run ? run->wake_time : 0.0;
+}
+
 const flow_error *flow_run_error(const flow_run *run)
 {
     return run ? &run->error : NULL;

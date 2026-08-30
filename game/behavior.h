@@ -89,12 +89,26 @@ typedef struct
     int debug_hold;
 } game_behavior_attachment_info;
 
+typedef struct
+{
+    ecs_entity entity;
+    int active;
+    int suspended;
+    double wake_time;
+} game_behavior_entity_state;
+
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity);
 int game_behavior_attachment_info_at(
     game_behavior_world *world,
     ecs_entity entity,
     int index,
     game_behavior_attachment_info *out
+);
+int game_behavior_entity_state_at(
+    const game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name,
+    game_behavior_entity_state *out
 );
 int game_behavior_asset_registered(const game_behavior_world *world, const char *asset_name);
 int game_behavior_asset_count(const game_behavior_world *world);

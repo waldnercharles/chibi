@@ -100,10 +100,15 @@ int main(void)
         "reflection carries the SLJIT lowering metadata"
     );
     const graph_ir *ir = system ? game_system_graph_ir(system) : NULL;
+    const graph_program *program = system ? game_system_program(system) : NULL;
     const char *ir_reason = NULL;
     failures += check(
         ir && graph_ir_validate(ir, &ir_reason) == 0,
         ir_reason ? ir_reason : "the movement graph lowers to valid graph IR"
+    );
+    failures += check(
+        program && graph_program_ir(program) == ir && graph_program_sljit(program) != NULL,
+        "System and backend share one graph program storage"
     );
     uint64_t ir_hash = ir ? graph_ir_hash(ir) : 0;
     failures += check(ir_hash != 0 && ir_hash == graph_ir_hash(ir), "the graph IR has a stable cache key");

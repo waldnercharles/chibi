@@ -673,6 +673,36 @@ int game_behavior_attachment_info_at(
     return -1;
 }
 
+int game_behavior_entity_state_at(
+    const game_behavior_world *world,
+    ecs_entity entity,
+    const char *asset_name,
+    game_behavior_entity_state *out
+)
+{
+    behavior_attachment *attachment = world && asset_name
+                                        ? find_attachment((game_behavior_world *)world, entity, asset_name)
+                                        : NULL;
+    if (!attachment || !out) {
+        return -1;
+    }
+    *out = (game_behavior_entity_state){ .entity = entity };
+    for (int i = 0; i < acount(attachment->instance->activations); i++) {
+        const flow_run *run = attachment->instance->activations[i];
+        flow_state state = flow_run_status(run);
+        if (state == FLOW_COMPLETED || state == FLOW_FAILED || state == FLOW_IDLE) {
+            continue;
+        }
+        out->active = 1;
+        out->suspended = state == FLOW_SUSPENDED;
+        if (out->suspended) {
+            out->wake_time = flow_run_wake_time(run);
+        }
+        return 0;
+    }
+    return 0;
+}
+
 int game_behavior_asset_registered(const game_behavior_world *world, const char *asset_name)
 {
     return world && asset_name &&

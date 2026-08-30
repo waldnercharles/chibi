@@ -7,10 +7,12 @@
 #include "../game/live.h"
 #include "../game/prototype.h"
 #include "cute_host.h"
+#include "recording.h"
 #include "scene_authoring.h"
 #include "stacktrace.h"
 #include "web_loop.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +21,8 @@
 #define APP_WINDOW_HEIGHT 1080
 #define APP_DEFAULT_SCREENSHOT_PATH "/tmp/c-blueprints-screenshot.png"
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
+#define APP_DEFAULT_RECORDING_PATH "/tmp/c-blueprints-recording.mp4"
+#define APP_RECORDING_FPS 30
 
 static int save_screenshot(const char *path)
 {
@@ -73,6 +77,28 @@ static int save_screenshot(const char *path)
     return 0;
 }
 
+static int configure_recording_path(
+    const char *path,
+    char *virtual_path,
+    size_t virtual_path_size,
+    char *write_directory,
+    size_t write_directory_size
+)
+{
+    const char *slash = strrchr(path, '/');
+    const char *name = slash ? slash + 1 : path;
+    const char *directory = slash ? path : cf_fs_get_working_directory();
+    size_t directory_length = slash ? (size_t)(slash - path) : strlen(directory);
+    if (!name[0] || directory_length == 0 || directory_length >= write_directory_size ||
+        strlen(name) >= virtual_path_size) {
+        return -1;
+    }
+    memcpy(write_directory, directory, directory_length);
+    write_directory[directory_length] = '\0';
+    snprintf(virtual_path, virtual_path_size, "%s", name);
+    return cf_is_error(cf_fs_set_write_directory(write_directory)) ? -1 : 0;
+}
+
 static const editor_event_param APP_TICK_PARAMS[] = {
     { "DeltaSeconds", PIN_F32, "float" },
 };
@@ -93,10 +119,16 @@ typedef struct
     int frame;
     const char *screenshot_path;
     int capture_error;
+    app_recording recording;
 } app_loop;
 
 static void app_cleanup(app_loop *loop)
 {
+    if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&
+        app_recording_stop(&loop->recording) != 0) {
+        loop->capture_error = 1;
+        fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop->recording));
+    }
     app_scene_authoring_free(loop->authoring);
     engine_free(loop->runtime);
     game_live_world_free(loop->live);
@@ -112,7 +144,7 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     cf_app_update(NULL);
-    double seconds = CF_SECONDS;
+    double seconds = CF_DELTA_TIME;
     editor_tick(loop->graph_editor, seconds);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
@@ -131,6 +163,17 @@ static int app_frame(app_loop *loop)
     app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
+
+    if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&
+        app_recording_capture(
+            &loop->recording,
+            (CF_Canvas){ engine_viewport_canvas_id(loop->viewport) },
+            (float)seconds
+        ) != 0) {
+        loop->capture_error = 1;
+        fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop->recording));
+        return 1;
+    }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
     if (finished && loop->screenshot_path) {
@@ -162,6 +205,7 @@ int main(int argc, char **argv)
     int fps = 0;
     int headless = 0;
     const char *screenshot_path = NULL;
+    const char *recording_path = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[++i]);
@@ -174,6 +218,11 @@ int main(int argc, char **argv)
             }
         } else if (strcmp(argv[i], "--headless") == 0) {
             headless = 1;
+        } else if (strcmp(argv[i], "--record") == 0) {
+            recording_path = APP_DEFAULT_RECORDING_PATH;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                recording_path = argv[++i];
+            }
         }
     }
     if (screenshot_path && frames == 0) {
@@ -204,12 +253,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "screenshots are unavailable on web builds\n");
         cf_destroy_app();
         return 1;
-#else
-        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
-            fprintf(stderr, "could not set the screenshot render target\n");
-            cf_destroy_app();
-            return 1;
-        }
 #endif
     }
 
@@ -297,6 +340,31 @@ int main(int argc, char **argv)
         .screenshot_path = screenshot_path,
         .capture_error = 0,
     };
+    char recording_virtual_path[PATH_MAX];
+    char recording_write_directory[PATH_MAX];
+    if (recording_path && configure_recording_path(
+                              recording_path,
+                              recording_virtual_path,
+                              sizeof recording_virtual_path,
+                              recording_write_directory,
+                              sizeof recording_write_directory
+                          ) != 0) {
+        fprintf(stderr, "recording failed: output path is not writable: %s\n", recording_path);
+        app_cleanup(&loop);
+        return 1;
+    }
+    if (recording_path && app_recording_start(
+                              &loop.recording,
+                              recording_virtual_path,
+                              engine_viewport_width(viewport),
+                              engine_viewport_height(viewport),
+                              APP_RECORDING_FPS
+                          ) != 0) {
+        fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop.recording));
+        app_cleanup(&loop);
+        return 1;
+    }
+    engine_viewport_set_resize_locked(viewport, recording_path != NULL);
 #ifdef __EMSCRIPTEN__
     /* Browser event processing must return to the browser between frames. */
     APP_LOOP_STATE = loop;

@@ -77,6 +77,7 @@ struct engine_viewport
     int resize_pending;
     int stable_resize_frames;
     int focused;
+    int resize_locked;
     uint32_t recreate_count;
     engine_viewport_render_fn render;
     void *render_user;
@@ -156,6 +157,23 @@ int engine_viewport_focused(const engine_viewport *viewport)
     return viewport ? viewport->focused : 0;
 }
 
+void engine_viewport_set_resize_locked(engine_viewport *viewport, bool locked)
+{
+    if (viewport) {
+        viewport->resize_locked = locked ? 1 : 0;
+    }
+}
+
+int engine_viewport_width(const engine_viewport *viewport)
+{
+    return viewport ? viewport->width : 0;
+}
+
+int engine_viewport_height(const engine_viewport *viewport)
+{
+    return viewport ? viewport->height : 0;
+}
+
 void engine_viewport_release_focus(void)
 {
     ImGui_SetWindowFocusStr(NULL);
@@ -205,7 +223,7 @@ int engine_viewport_draw(engine_viewport *viewport)
     ImVec2 size = ImGui_GetContentRegionAvail();
     int width = (int)size.x;
     int height = (int)size.y;
-    if (width > 0 && height > 0) {
+    if (!viewport->resize_locked && width > 0 && height > 0) {
         engine_viewport_request_resize(viewport, width, height);
         if (viewport->stable_resize_frames >= 2) {
             int resized = viewport->resize_pending;
@@ -234,6 +252,11 @@ uint64_t engine_viewport_binding(const engine_viewport *viewport)
         return 0;
     }
     return cf_texture_binding_handle(cf_canvas_get_target(viewport->canvas));
+}
+
+uint64_t engine_viewport_canvas_id(const engine_viewport *viewport)
+{
+    return viewport ? viewport->canvas.id : 0;
 }
 
 uint32_t engine_viewport_recreate_count(const engine_viewport *viewport)

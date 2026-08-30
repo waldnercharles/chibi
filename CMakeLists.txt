@@ -20,7 +20,7 @@ set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-    GIT_TAG        ad13c5ea7262fdede97a3a39c77eef3da286ebcf
+    GIT_TAG        a13f4661f5ba27e8d45027b52f121c1704786425
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)
@@ -299,7 +299,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 
 # --- test suite: consolidated headless regression checks --------------------
-add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
+add_executable(test_suite test/test_suite.c app/demo_graph.c app/recording.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_suite PRIVATE engine game ecs demo)
 

@@ -5,6 +5,7 @@
  * and arena-backed struct values.
  */
 #include "../app/demo_graph.h"
+#include "../app/recording.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
 #include "../core/behavior_asset.h"
@@ -55,6 +56,22 @@ static void check(int ok, const char *msg)
     if (!ok) {
         fails++;
     }
+}
+
+static void run_recording_checks(void)
+{
+    app_recording recording = { 0 };
+    check(
+        app_recording_start(&recording, "/tmp/recording.mp4", 641, 360, 30) != 0 &&
+            app_recording_get_state(&recording) == APP_RECORDING_FAILED,
+        "recording rejects odd canvas dimensions"
+    );
+    check(
+        strcmp(app_recording_error(&recording), "recording dimensions must be positive and even") ==
+            0,
+        "recording reports validation errors"
+    );
+    check(app_recording_stop(&recording) != 0, "recording cannot stop an inactive lifecycle");
 }
 
 /* Vendor test helper: render one fmt format into a stream and compare. The
@@ -6049,6 +6066,7 @@ TEST_CASE(all_checks)
     run_parallel_checks();
     run_hot_reload_checks();
     run_scene_checks();
+    run_recording_checks();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

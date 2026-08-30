@@ -51,6 +51,10 @@ void engine_viewport_free(engine_viewport *viewport);
 int engine_viewport_request_resize(engine_viewport *viewport, int width, int height);
 int engine_viewport_commit_resize(engine_viewport *viewport);
 int engine_viewport_draw(engine_viewport *viewport);
+void engine_viewport_set_resize_locked(engine_viewport *viewport, bool locked);
+int engine_viewport_width(const engine_viewport *viewport);
+int engine_viewport_height(const engine_viewport *viewport);
+uint64_t engine_viewport_canvas_id(const engine_viewport *viewport);
 /* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
  * way to hand focus back so Escape can release the viewport. */
 int engine_viewport_focused(const engine_viewport *viewport);

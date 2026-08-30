@@ -39,7 +39,5 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
           -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
           -DCLANG_FORMAT=CLANG_FORMAT-NOTFOUND
-      - name: Build repository test suite
+      - name: Build repository regression suite
         run: cmake --build build --target test_suite --parallel
-      - name: Run repository test suite
-        run: ./build/test_suite

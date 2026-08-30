@@ -17,6 +17,7 @@ typedef struct
     int width;
     int height;
     int frames;
+    float click_timer;
     app_recording_state state;
     char error[256];
 } app_recording;

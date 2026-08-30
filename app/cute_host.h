@@ -51,6 +51,7 @@ typedef struct CF_Image
 } CF_Image;
 
 typedef int CF_KeyButton;
+typedef int CF_MouseButton;
 enum
 {
     CF_KEY_SPACE = ' ',
@@ -63,10 +64,15 @@ enum
     CF_KEY_LEFT = 146,
     CF_KEY_DOWN = 147,
     CF_KEY_UP = 148,
+    CF_MOUSE_BUTTON_LEFT = 0,
 };
 bool cf_key_down(CF_KeyButton key);
 bool cf_key_just_pressed(CF_KeyButton key);
 bool cf_key_just_released(CF_KeyButton key);
+float cf_mouse_x(void);
+float cf_mouse_y(void);
+bool cf_mouse_just_pressed(CF_MouseButton button);
+bool cf_mouse_down(CF_MouseButton button);
 
 CF_Result cf_make_app(
     const char *window_title,
@@ -97,6 +103,21 @@ bool cf_readback_ready(CF_Readback readback);
 int cf_readback_size(CF_Readback readback);
 int cf_readback_data(CF_Readback readback, void *data, int size);
 void cf_destroy_readback(CF_Readback readback);
+typedef struct
+{
+    float x, y;
+} app_cf_v2;
+typedef struct
+{
+    app_cf_v2 min, max;
+} app_cf_aabb;
+typedef struct
+{
+    float r, g, b, a;
+} app_cf_color;
+void cf_draw_push_color(app_cf_color color);
+app_cf_color cf_draw_pop_color(void);
+void cf_draw_quad_fill(app_cf_aabb bounds, float chubbiness);
 CF_Result cf_image_save_png_to_memory(CF_Image *image, void **data, int *size);
 void cf_free(void *ptr);
 const char *cf_fs_get_working_directory(void);

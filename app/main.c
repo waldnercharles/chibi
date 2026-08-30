@@ -122,6 +122,30 @@ typedef struct
     app_recording recording;
 } app_loop;
 
+static void draw_recording_cursor(app_loop *loop, float seconds)
+{
+    if (app_recording_get_state(&loop->recording) != APP_RECORDING_ACTIVE) {
+        return;
+    }
+    if (cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT)) {
+        loop->recording.click_timer = 0.35f;
+    }
+    loop->recording.click_timer -= seconds;
+    float x = cf_mouse_x() - (float)cf_app_get_canvas_width() * 0.5f;
+    float y = (float)cf_app_get_canvas_height() * 0.5f - cf_mouse_y();
+    float size = loop->recording.click_timer > 0.0f ? 28.0f : 18.0f;
+    cf_draw_push_color((app_cf_color){ 1.0f, 0.75f, 0.1f, 1.0f });
+    cf_draw_quad_fill(
+        (app_cf_aabb){ { x - size * 0.5f, y - 1.5f }, { x + size * 0.5f, y + 1.5f } },
+        0.0f
+    );
+    cf_draw_quad_fill(
+        (app_cf_aabb){ { x - 1.5f, y - size * 0.5f }, { x + 1.5f, y + size * 0.5f } },
+        0.0f
+    );
+    cf_draw_pop_color();
+}
+
 static void app_cleanup(app_loop *loop)
 {
     if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&
@@ -162,6 +186,7 @@ static int app_frame(app_loop *loop)
     engine_viewport_draw(loop->viewport);
     app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
+    draw_recording_cursor(loop, seconds);
     cf_app_draw_onto_screen(true);
 
     if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&

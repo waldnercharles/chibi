@@ -4,6 +4,7 @@
  * hand-written constant escape hatch, per-run memoization, the cycle guard,
  * and arena-backed struct values.
  */
+#include "../app/authoring_session.h"
 #include "../app/demo_graph.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
@@ -1707,6 +1708,46 @@ static behavior_asset *make_live_behavior_asset(void)
         return NULL;
     }
     return bp;
+}
+
+static void run_authoring_session_checks(void)
+{
+    app_authoring_session *session = app_authoring_session_new("content");
+    check(
+        session && app_authoring_session_load_fixtures(session) > 0,
+        "headless authoring sessions load the canonical behavior fixtures"
+    );
+    check(app_authoring_session_asset_name(session, 0) != NULL, "fixture asset queries are deterministic and name-addressable");
+    check(
+        app_authoring_session_create_behavior(session, "IntegrationBehavior") == 0 &&
+            app_authoring_session_dirty(session),
+        "the public seam creates and observes a dirty Behavior Asset"
+    );
+    graph *graph = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "Compute");
+    check(
+        graph && app_authoring_session_active_graph(session) == graph &&
+            app_authoring_session_rename_graph(session, graph->graph_id, "ComputeRenamed") ==
+                0 &&
+            behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed") ==
+                graph,
+        "commands add, select, and rename graphs through the headless seam"
+    );
+    const char path[] = "/tmp/c-blueprints-integration-behavior.json";
+    check(
+        app_authoring_session_save(session, path) == 0 &&
+            !app_authoring_session_dirty(session),
+        "saving the active authored asset clears its observable dirty state"
+    );
+    check(
+        app_authoring_session_rename_graph(session, graph->graph_id, "Unsaved") == 0 &&
+            app_authoring_session_dirty(session) &&
+            app_authoring_session_reload(session, path) == 0 &&
+            !app_authoring_session_dirty(session) &&
+            behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed"),
+        "reload restores the saved authored graph and dirty state"
+    );
+    remove(path);
+    app_authoring_session_free(session);
 }
 
 static void run_live_checks(void)
@@ -6413,6 +6454,7 @@ TEST_CASE(all_checks)
     run_prototype_preview_checks();
     run_scene_document_checks();
     run_behavior_checks();
+    run_authoring_session_checks();
     run_live_checks();
     run_engine_checks();
     run_parallel_checks();

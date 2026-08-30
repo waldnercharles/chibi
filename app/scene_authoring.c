@@ -11,6 +11,7 @@
 #include "../game/prototype.h"
 #include "../game/prototype_preview.h"
 #include "../game/scene_document.h"
+#include "behavior_fixtures.h"
 #include "scene_draw.h"
 #include "scene_imgui.h"
 
@@ -1329,12 +1330,9 @@ int app_scene_authoring_load_content(app_scene_authoring *scene)
         return -1;
     }
     content_refresh(scene);
-    int loaded = 0;
-    for (int i = 0; i < acount(scene->content); i++) {
-        if (!scene->content[i].directory &&
-            content_path_in_folder(scene, scene->content[i].path, "behaviors")) {
-            loaded += load_content_behavior(scene, scene->content[i].path);
-        }
+    int loaded = app_behavior_fixtures_load(scene->live, scene->content_root);
+    if (loaded < 0) {
+        loaded = 0;
     }
     for (int i = 0; i < acount(scene->content); i++) {
         if (!scene->content[i].directory &&

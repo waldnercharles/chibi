@@ -300,8 +300,32 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     )
 endif()
 
+# --- test registry: core, game, and demo packs for the consolidated suite ---
+set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
+add_custom_command(
+    OUTPUT ${TEST_REGISTRY}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+            ${TEST_REGISTRY}
+            DEMO_REGISTRY_PACK
+            CORE_EXTRA_PACK
+            CORE_FLOW_PACK
+            CORE_ARRAY_PACK
+            CORE_STATE_PACK
+            CORE_SWITCH_PACK
+            CORE_REROUTE_PACK
+            CORE_SET_MAP_PACK
+            CORE_STRUCT_PACK
+            GAME_REGISTRY_PACK
+    DEPENDS ${GAME_REGISTRY}
+            ${GEN_REGISTRY}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+    COMMENT "Composing the test registry pack list"
+    VERBATIM
+)
+
 # --- test suite: consolidated headless regression checks --------------------
-add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c
+add_executable(test_suite test/test_suite.c app/authoring_session.c app/behavior_fixtures.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c
     demo/vec3.c demo/math.c ${BASE_REGISTRY})
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_suite PRIVATE engine game ecs demo editor)

@@ -57,6 +57,16 @@ struct ecs_world
     void *destroy_observer_user;
 };
 
+typedef struct
+{
+    uint32_t *slots;
+} query_candidate;
+
+typedef struct
+{
+    uint32_t *slots;
+} query_expression_plan;
+
 ecs_query_expr *ecs_query_expr_new(ecs_query_expr_kind kind)
 {
     assert(kind == ECS_QUERY_ALL || kind == ECS_QUERY_ANY || kind == ECS_QUERY_NOT);
@@ -883,6 +893,82 @@ static int query_expression_valid(const ecs_world *world, const ecs_query_expr *
     return 1;
 }
 
+static int compare_slots(const void *left_ptr, const void *right_ptr)
+{
+    uint32_t left = *(const uint32_t *)left_ptr;
+    uint32_t right = *(const uint32_t *)right_ptr;
+    return left < right ? -1 : left != right;
+}
+
+static void candidate_union(uint32_t **slots, const uint32_t *other)
+{
+    for (int i = 0; i < acount(other); i++) {
+        apush(*slots, other[i]);
+    }
+}
+
+static int query_expression_candidate(
+    const ecs_world *world,
+    const ecs_query_expr *expr,
+    query_candidate *candidate
+)
+{
+    candidate->slots = NULL;
+    if (expr->kind == ECS_QUERY_HAS) {
+        const ecs_component *component = find_component_const(world, expr->component);
+        if (component->desc.index != ECS_INDEX_DENSE) {
+            return 0;
+        }
+        for (int i = 0; i < acount(component->dense); i++) {
+            apush(candidate->slots, component->dense[i]);
+        }
+        return 1;
+    }
+    if (expr->kind == ECS_QUERY_NOT) {
+        return 0;
+    }
+    if (expr->kind == ECS_QUERY_ANY) {
+        for (int i = 0; i < acount(expr->children); i++) {
+            query_candidate child;
+            if (!query_expression_candidate(world, expr->children[i], &child)) {
+                afree(candidate->slots);
+                return 0;
+            }
+            candidate_union(&candidate->slots, child.slots);
+            afree(child.slots);
+        }
+        qsort(
+            candidate->slots,
+            (size_t)acount(candidate->slots),
+            sizeof *candidate->slots,
+            compare_slots
+        );
+        int write = 0;
+        for (int i = 0; i < acount(candidate->slots); i++) {
+            if (!write || candidate->slots[i] != candidate->slots[write - 1]) {
+                candidate->slots[write++] = candidate->slots[i];
+            }
+        }
+        asetlen(candidate->slots, write);
+        return 1;
+    }
+    int found = 0;
+    for (int i = 0; i < acount(expr->children); i++) {
+        query_candidate child;
+        if (!query_expression_candidate(world, expr->children[i], &child)) {
+            continue;
+        }
+        if (!found || acount(child.slots) < acount(candidate->slots)) {
+            afree(candidate->slots);
+            candidate->slots = child.slots;
+            found = 1;
+        } else {
+            afree(child.slots);
+        }
+    }
+    return found;
+}
+
 int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_query_expr *expression)
 {
     if (!world || !query || world->iteration_depth ||
@@ -895,6 +981,15 @@ int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_que
     query->dense_count = -1;
     query->dense_index = -1;
     query->limit = world->high_water;
+    query_expression_plan *plan = (query_expression_plan *)xcalloc(1, sizeof *plan);
+    query_candidate candidate;
+    if (query_expression_candidate(world, expression, &candidate)) {
+        plan->slots = candidate.slots;
+        query->dense = plan->slots;
+        query->dense_count = acount(plan->slots);
+        query->dense_cursor = -1;
+    }
+    query->expression_plan = plan;
     world->iteration_depth++;
     return ECS_OK;
 }
@@ -965,6 +1060,11 @@ void ecs_query_end(ecs_query *query)
     query->world->iteration_depth--;
     free(query->component_refs);
     free(query->components);
+    query_expression_plan *plan = (query_expression_plan *)query->expression_plan;
+    if (plan) {
+        afree(plan->slots);
+        free(plan);
+    }
     memset(query, 0, sizeof *query);
 }
 

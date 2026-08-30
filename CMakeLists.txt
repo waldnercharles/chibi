@@ -347,6 +347,11 @@ target_include_directories(query_expression_check PRIVATE ${CMAKE_CURRENT_SOURCE
 target_link_libraries(query_expression_check PRIVATE game ecs)
 set_target_properties(query_expression_check PROPERTIES LINKER_LANGUAGE CXX)
 
+add_executable(query_benchmark test/query_benchmark.c ${APP_REGISTRY})
+target_include_directories(query_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(query_benchmark PRIVATE game ecs)
+set_target_properties(query_benchmark PROPERTIES LINKER_LANGUAGE CXX)
+
 add_executable(integration test/integration.c app/demo_graph.c editor/arrange.c ${BASE_REGISTRY})
 target_include_directories(integration PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -430,6 +435,7 @@ if(CLANG_FORMAT)
   add_dependencies(input_behavior_check format)
   add_dependencies(movement_system_check format)
   add_dependencies(query_expression_check format)
+  add_dependencies(query_benchmark format)
   add_dependencies(registry_consumer format)
   if(TARGET reflect)
     add_dependencies(reflect format)

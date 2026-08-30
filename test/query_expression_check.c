@@ -22,6 +22,27 @@ static int add(ecs_world *world, ecs_entity entity, ecs_component_id component)
     return ecs_world_record_add(world, entity, component, NULL, 0) == ECS_OK;
 }
 
+static int check_slots(ecs_world *world, const ecs_query_expr *expression, const uint32_t *expected, int expected_count)
+{
+    ecs_query query;
+    if (ecs_query_begin_expression(world, &query, expression) != ECS_OK) {
+        return 1;
+    }
+    int failures = 0;
+    int count = 0;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity) > 0) {
+        failures += check(
+            count < expected_count && entity.slot == expected[count],
+            "planned expression query preserves ascending slot order"
+        );
+        count++;
+    }
+    failures += check(count == expected_count, "planned expression query has the expected count");
+    ecs_query_end(&query);
+    return failures;
+}
+
 static const ecs_component_desc *resolve_component(const char *name, void *)
 {
     if (!strcmp(name, GAME_COMPONENT_GameTransform.name)) {
@@ -109,6 +130,22 @@ int main(void)
     failures += check(result == 0 && count == 1, "boolean query returns one entity");
     ecs_query_end(&query);
 
+    ecs_query_expr *overlap = ecs_query_expr_new(ECS_QUERY_ANY);
+    ecs_query_expr_add(overlap, ecs_query_expr_has(GAME_COMPONENT_GameTransform.id));
+    ecs_query_expr_add(overlap, ecs_query_expr_has(GAME_COMPONENT_GameMovement.id));
+    uint32_t expected_slots[] = { transform_only.slot, movement_input.slot };
+    failures += check_slots(world, overlap, expected_slots, 2);
+    ecs_query_expr *nested = ecs_query_expr_new(ECS_QUERY_ANY);
+    ecs_query_expr_add(nested, overlap);
+    ecs_query_expr *nested_any = ecs_query_expr_new(ECS_QUERY_ANY);
+    ecs_query_expr_add(
+        nested_any,
+        ecs_query_expr_has(GAME_COMPONENT_GameTransform.id)
+    );
+    ecs_query_expr_add(nested_any, ecs_query_expr_has(GAME_COMPONENT_GameInput.id));
+    ecs_query_expr_add(nested, nested_any);
+    failures += check_slots(world, nested, expected_slots, 2);
+
     char *json = game_query_save(root, resolve_component, component_name, NULL);
     char error[128] = { 0 };
     ecs_query_expr *roundtrip = game_query_load(json, resolve_component, NULL, error, sizeof error);
@@ -137,6 +174,7 @@ int main(void)
     free(blueprint_json);
 
     ecs_query_expr_free(root);
+    ecs_query_expr_free(nested);
     ecs_query_expr *unknown = ecs_query_expr_has(UINT64_C(0xffff));
     failures += check(
         ecs_query_begin_expression(world, &query, unknown) == ECS_ERR_ARGUMENT,

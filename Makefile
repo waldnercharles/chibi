@@ -14,10 +14,11 @@ run: build
 
 benchmark:
 	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(BENCHMARK_BUILD_DIR) --target bench_activation scene_benchmark system_benchmark
+	cmake --build $(BENCHMARK_BUILD_DIR) --target bench_activation scene_benchmark system_benchmark query_benchmark
 	$(BENCHMARK_BUILD_DIR)/bench_activation $(ARGS)
 	$(BENCHMARK_BUILD_DIR)/scene_benchmark
 	$(BENCHMARK_BUILD_DIR)/system_benchmark $(ARGS)
+	$(BENCHMARK_BUILD_DIR)/query_benchmark
 
 web:
 	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR) --target reflect

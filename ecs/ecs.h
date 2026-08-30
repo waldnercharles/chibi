@@ -100,7 +100,8 @@ struct ecs_query
     int dense_cursor;
     int dense_index;
     const ecs_query_expr *expression;
-    void *component_refs; /* private query plan */
+    void *component_refs;  /* private query plan */
+    void *expression_plan; /* private expression candidate plan */
 };
 
 /* A world owns fixed-size entity slots and the registered component columns. */

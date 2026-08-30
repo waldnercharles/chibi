@@ -174,6 +174,7 @@ struct editor
     unsigned edit_revision;
     const behavior_asset *edit_revision_bp;
     char *edit_revision_snapshot;
+    char *saved_snapshot;
     int edit_revision_initialized;
     int edit_pending;
     flow_run *activation; /* selected activation the toolbar controls */
@@ -2334,9 +2335,11 @@ static void ed_draw_graph_rename_popup(editor *e)
     }
     ImGui_InputText("Name", e->graph_rename, sizeof e->graph_rename, 0);
     if (ImGui_Button("Rename") && e->context_graph && e->graph_rename[0]) {
-        ed_snapshot_before(e);
-        if (behavior_asset_rename_graph(e->bp, e->context_graph->graph_id, e->graph_rename) ==
-            0) {
+        editor_command rename = {
+            .kind = EDITOR_COMMAND_RENAME_GRAPH,
+            .data.rename_graph = { e->context_graph->graph_id, e->graph_rename },
+        };
+        if (editor_command_apply(e, rename) == 0) {
             e->context_graph = NULL;
             ImGui_CloseCurrentPopup();
         } else {
@@ -5058,6 +5061,7 @@ editor *editor_new(behavior_asset *bp)
     e->graph_visible = 1;
     e->active_graph = bp ? bp->graph : NULL;
     e->edit_revision_bp = bp;
+    e->saved_snapshot = bp ? behavior_asset_save_json(bp) : NULL;
     compile_report_init(&e->compile);
     e->ev = eval_view_new();
     e->icon_font = ed_load_icon_font();
@@ -5245,6 +5249,113 @@ const graph *editor_active_graph(const editor *e)
     return e ? e->active_graph : NULL;
 }
 
+int editor_command_apply(editor *e, editor_command command)
+{
+    if (!e || !e->bp) {
+        return -1;
+    }
+    switch (command.kind) {
+        case EDITOR_COMMAND_CREATE_GRAPH: {
+            if (!command.data.create_graph.name) {
+                return -1;
+            }
+            ed_snapshot_before(e);
+            return behavior_asset_add_graph(
+                       e->bp,
+                       command.data.create_graph.graph_kind,
+                       command.data.create_graph.name
+                   )
+                     ? 0
+                     : -1;
+        }
+        case EDITOR_COMMAND_RENAME_GRAPH:
+            if (!command.data.rename_graph.name) {
+                return -1;
+            }
+            ed_snapshot_before(e);
+            return behavior_asset_rename_graph(
+                e->bp,
+                command.data.rename_graph.graph_id,
+                command.data.rename_graph.name
+            );
+        case EDITOR_COMMAND_OPEN_GRAPH:
+            return editor_open_graph(e, command.data.open_graph.graph_id);
+        case EDITOR_COMMAND_SPAWN_NODE:
+            return editor_spawn(
+                       e,
+                       command.data.spawn_node.desc,
+                       command.data.spawn_node.x,
+                       command.data.spawn_node.y
+                   )
+                     ? 0
+                     : -1;
+        case EDITOR_COMMAND_SET_PIN_DEFAULT: {
+            node *n = graph_node_by_id(
+                e->active_graph,
+                command.data.set_pin_default.node_id
+            );
+            if (!n || !command.data.set_pin_default.value) {
+                return -1;
+            }
+            ed_snapshot_before(e);
+            return graph_set_pin_default(
+                e->active_graph,
+                n,
+                command.data.set_pin_default.output,
+                command.data.set_pin_default.pin_index,
+                command.data.set_pin_default.value
+            );
+        }
+        case EDITOR_COMMAND_CONNECT_DATA:
+        case EDITOR_COMMAND_CONNECT_EXEC: {
+            node *from = graph_node_by_id(e->active_graph, command.data.connect.from_node);
+            node *to = graph_node_by_id(e->active_graph, command.data.connect.to_node);
+            if (!from || !to) {
+                return -1;
+            }
+            ed_snapshot_before(e);
+            if (command.kind == EDITOR_COMMAND_CONNECT_DATA) {
+                return graph_connect_data(
+                    e->active_graph,
+                    from,
+                    command.data.connect.from_pin,
+                    to,
+                    command.data.connect.to_pin
+                );
+            }
+            return graph_connect_exec(
+                e->active_graph,
+                from,
+                command.data.connect.from_pin,
+                to,
+                command.data.connect.to_pin,
+                0
+            );
+        }
+        case EDITOR_COMMAND_COMPILE:
+            ed_compile(e);
+            return compile_report_blocked(&e->compile) ? -1 : 0;
+        case EDITOR_COMMAND_SAVE: return editor_save(e, command.data.file.path);
+        case EDITOR_COMMAND_LOAD: return editor_load(e, command.data.file.path);
+    }
+    return -1;
+}
+
+void editor_query_state(const editor *e, editor_query *out)
+{
+    assert(out);
+    *out = (editor_query){ 0 };
+    if (!e || !e->bp) {
+        return;
+    }
+    out->active_graph = e->active_graph;
+    out->graph_count = acount(e->bp->graphs);
+    out->compile = &e->compile;
+    char *json = behavior_asset_save_json(e->bp);
+    out->dirty = !json || !e->saved_snapshot || strcmp(json, e->saved_snapshot) != 0;
+    free(json);
+}
+
 void editor_set_inspection_instance(editor *e, const behavior_instance *instance)
 {
     if (!e) {
@@ -5301,6 +5412,7 @@ void editor_free(editor *e)
     free(e->pending_snapshot);
     free(e->clipboard);
     free(e->edit_revision_snapshot);
+    free(e->saved_snapshot);
     ed_destroy_preview(e);
     compile_report_free(&e->compile);
     behavior_asset_free(e->bp);
@@ -5331,7 +5443,7 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
     return n;
 }
 
-int editor_save(const editor *e, const char *path)
+int editor_save(editor *e, const char *path)
 {
     if (!e) {
         return -1;
@@ -5347,6 +5459,10 @@ int editor_save(const editor *e, const char *path)
     }
     int ok = fputs(json, f) >= 0;
     fclose(f);
+    if (ok) {
+        free(e->saved_snapshot);
+        e->saved_snapshot = behavior_asset_save_json(e->bp);
+    }
     free(json);
     return ok ? 0 : -1;
 }
@@ -5390,6 +5506,10 @@ int editor_load(editor *e, const char *path)
     }
     ed_snapshot_before(e);
     int result = ed_adopt_behavior_asset(e, json);
+    if (result == 0) {
+        free(e->saved_snapshot);
+        e->saved_snapshot = behavior_asset_save_json(e->bp);
+    }
     free(json);
     return result;
 }

@@ -9,6 +9,7 @@
 #include "../editor/ui_shell.h"
 #include "../game/generated.h"
 #include "../game/prototype.h"
+#include "../game/prototype_preview.h"
 #include "../game/scene_document.h"
 #include "scene_draw.h"
 #include "scene_imgui.h"
@@ -123,6 +124,7 @@ struct app_scene_authoring
     game_system_document *system_document;
     char *system_path;
     engine *runtime;
+    game_prototype_preview *prototype_preview;
     scene_actor *actors;
     scene_prototype_asset *prototypes;
     scene_content_entry *content;
@@ -800,6 +802,11 @@ app_scene_authoring *app_scene_authoring_new(
     scene->resolve_user = resolve_user;
     scene->registry = app_component_registry();
     scene->runtime = runtime;
+    scene->prototype_preview = game_prototype_preview_new(&scene->registry);
+    if (!scene->prototype_preview) {
+        free(scene);
+        return NULL;
+    }
     scene->content_root = xstrdup("content");
     scene->content_dir = xstrdup(scene->content_root);
     scene->content_show_thumbnails = true;
@@ -1096,6 +1103,32 @@ int app_scene_authoring_attach_prototype_behavior(
     return 0;
 }
 
+int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char *prototype_name)
+{
+    scene_prototype_asset *asset = find_prototype(scene, prototype_name);
+    if (!scene || !asset || !asset->prototype) {
+        return -1;
+    }
+    char error[256];
+    int result = game_prototype_preview_launch(scene->prototype_preview, asset->prototype, error, sizeof error);
+    snprintf(
+        scene->prototype_message,
+        sizeof scene->prototype_message,
+        result == ECS_OK ? "Previewing %s." : "Could not preview %s: %s.",
+        prototype_name,
+        result == ECS_OK ? "" : error
+    );
+    return result;
+}
+
+void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene)
+{
+    if (scene) {
+        game_prototype_preview_stop(scene->prototype_preview);
+        snprintf(scene->prototype_message, sizeof scene->prototype_message, "Prototype preview stopped.");
+    }
+}
+
 int app_scene_authoring_detach_prototype_behavior(
     app_scene_authoring *scene,
     const char *prototype_name,
@@ -1261,7 +1294,12 @@ static int load_content_behavior(app_scene_authoring *scene, const char *path)
         game_live_definition_free(definition);
         return 0;
     }
-    if (game_live_add_definition(scene->live, definition) != 0) {
+    if (game_prototype_preview_register_behavior(
+            scene->prototype_preview,
+            working->name,
+            working
+        ) != 0 ||
+        game_live_add_definition(scene->live, definition) != 0) {
         game_live_definition_free(definition);
         return 0;
     }
@@ -1431,6 +1469,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     }
     afree(scene->prototypes);
     clear_prototype_history(scene);
+    game_prototype_preview_free(scene->prototype_preview);
     for (int i = 0; i < acount(scene->content); i++) {
         free(scene->content[i].path);
     }
@@ -2760,6 +2799,13 @@ static void draw_components(app_scene_authoring *scene)
     }
     ImGui_TextDisabled("Identity: %s", game_prototype_identity(asset->prototype));
     ImGui_TextDisabled("Tag: %s", game_prototype_tag_desc(asset->prototype)->name);
+    if (ImGui_Button("Preview Prototype")) {
+        app_scene_authoring_preview_prototype(scene, asset->prototype->name);
+    }
+    ImGui_SameLine();
+    if (ImGui_Button("Stop Preview")) {
+        app_scene_authoring_stop_prototype_preview(scene);
+    }
     ImGui_SeparatorText("Components");
     if (!acount(asset->prototype->components)) {
         ImGui_TextUnformatted("No components.");
@@ -3701,11 +3747,16 @@ void app_scene_authoring_render(void *user)
     if (!scene) {
         return;
     }
-    for (int i = 0; i < acount(scene->actors); i++) {
-        scene_actor *actor = &scene->actors[i];
-        const GameTransform
-            *transform = GAME_GameTransform_get_const(scene->world, actor->entity);
-        const GameHealth *health = GAME_GameHealth_get_const(scene->world, actor->entity);
+    ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
+    for (int i = -1; i < acount(scene->actors); i++) {
+        ecs_world *world = i < 0 ? game_prototype_preview_world(scene->prototype_preview)
+                                 : scene->world;
+        ecs_entity entity = i < 0 ? preview_entity : scene->actors[i].entity;
+        if (i < 0 && !entity.slot) {
+            continue;
+        }
+        const GameTransform *transform = GAME_GameTransform_get_const(world, entity);
+        const GameHealth *health = GAME_GameHealth_get_const(world, entity);
         if (!transform || !health) {
             continue;
         }
@@ -3738,6 +3789,10 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
 {
     if (!scene) {
         return FLOW_ERR_ARGUMENT;
+    }
+    ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
+    if (preview_entity.slot) {
+        game_prototype_preview_tick(scene->prototype_preview, monotonic_time);
     }
     if (scene->runtime_playing || scene->runtime_step) {
         for (int i = 0; i < acount(scene->actors); i++) {

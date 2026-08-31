@@ -80,6 +80,8 @@ int app_scene_authoring_detach_prototype_behavior(
     const char *prototype_name,
     const char *asset_name
 );
+int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char *prototype_name);
+void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene);
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);

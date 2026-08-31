@@ -31,6 +31,7 @@
 #include "../game/hot_reload.h"
 #include "../game/live.h"
 #include "../game/prototype.h"
+#include "../game/prototype_preview.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
 #define PICO_UNIT_IMPLEMENTATION
@@ -964,6 +965,57 @@ static void run_prototype_checks(void)
     );
     ecs_world_free(world);
     check(health != NULL, "descriptor lookup is independent of component C types");
+}
+
+static void run_prototype_preview_checks(void)
+{
+    const game_prototype_registry registry = {
+        GAME_REGISTRY_COMPONENTS,
+        GAME_REGISTRY_COMPONENT_COUNT,
+        NULL,
+        NULL,
+    };
+    char error[256];
+    game_prototype *prototype = game_prototype_load(
+        "{\"name\":\"PreviewTarget\",\"components\":{\"GameHealth\":{"
+        "\"current\":42,\"maximum\":50}},\"behaviors\":[\"PreviewBehavior\"]}",
+        &registry,
+        error,
+        sizeof error
+    );
+    behavior_asset *behavior = behavior_asset_new("PreviewBehavior");
+    game_prototype_preview *preview = game_prototype_preview_new(&registry);
+    ecs_world *scene_world = ecs_world_new();
+    ecs_entity scene_entity = { 0 };
+    check(
+        prototype && behavior && preview && scene_world &&
+            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) ==
+                0 &&
+            game_prototype_spawn(prototype, scene_world, NULL, &scene_entity, error, sizeof error) ==
+                ECS_ERR_ARGUMENT &&
+            game_prototype_preview_launch(preview, prototype, error, sizeof error) == ECS_OK,
+        "prototype preview launches authored components and attached behavior"
+    );
+    ecs_entity preview_entity = game_prototype_preview_entity(preview);
+    check(
+        preview_entity.slot &&
+            ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity) &&
+            ecs_world_live_count(scene_world) == 0 &&
+            game_prototype_preview_world(preview) != scene_world &&
+            GAME_GameHealth_get(game_prototype_preview_world(preview), preview_entity)
+                    ->current == 42 &&
+            game_prototype_preview_instance(preview, "PreviewBehavior") != NULL,
+        "prototype preview owns an isolated runtime world and behavior instance"
+    );
+    game_prototype_preview_stop(preview);
+    check(
+        !ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity),
+        "stopping prototype preview destroys only its runtime entity"
+    );
+    ecs_world_free(scene_world);
+    game_prototype_preview_free(preview);
+    behavior_asset_free(behavior);
+    game_prototype_free(prototype);
 }
 
 static behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
@@ -6042,6 +6094,7 @@ TEST_CASE(all_checks)
 
     run_ecs_checks();
     run_prototype_checks();
+    run_prototype_preview_checks();
     run_scene_document_checks();
     run_behavior_checks();
     run_live_checks();

@@ -39,8 +39,11 @@ int app_recording_start(app_recording *recording, const char *path, int width, i
 
 int app_recording_capture(app_recording *recording, CF_Canvas canvas, float dt)
 {
-    if (!recording || recording->state != APP_RECORDING_ACTIVE || !canvas.id) {
+    if (!recording || recording->state != APP_RECORDING_ACTIVE) {
         return -1;
+    }
+    if (!canvas.id) {
+        return recording_fail(recording, "recording canvas is invalid");
     }
     int captured = cf_video_encoder_update(recording->encoder, canvas, dt);
     if (captured < 0) {

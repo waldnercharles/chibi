@@ -63,7 +63,7 @@ diff --git a/src/cute_imgui.cpp b/src/cute_imgui.cpp
 index 807ed855..503aa296 100644
 --- a/src/cute_imgui.cpp
 +++ b/src/cute_imgui.cpp
-@@ -49,7 +49,7 @@ void cf_imgui_shutdown()
+@@ -49,7 +49,8 @@ void cf_imgui_shutdown()
  	ImGui::DestroyContext();
  }
  
@@ -71,6 +71,7 @@ index 807ed855..503aa296 100644
 +void cf_imgui_draw(CF_Canvas target)
  {
  	if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
++		(void)target;
  		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 @@ -59,7 +59,9 @@ void cf_imgui_draw()
  		ImDrawData* draw_data = ImGui::GetDrawData();

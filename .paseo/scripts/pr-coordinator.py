@@ -54,7 +54,7 @@ def active_repair_agents() -> list[dict]:
     return [
         agent for agent in agents
         if agent.get("status") in {"running", "starting", "waiting"}
-        and re.search(r"(?:repair|implement|review)\s+pr\s*#?\s*\d+", agent.get("name", ""), re.I)
+        and re.search(r"(?:repair\s+pr|review\s+pr|implement\s+(?:pr|issue))\s*#?\s*\d+", agent.get("name", ""), re.I)
     ]
 
 
@@ -107,11 +107,13 @@ def main() -> int:
             STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             prompt = f"""Implement issue {issue['url']} in the repository.
 
-Read the complete issue, repository instructions, and applicable skills. Use /implement,
-/tdd, and /code-review as applicable. Implement only this issue, verify its acceptance
-criteria, run focused and required local checks, create a descriptive agent branch, and
-open a pull request linked to the issue. Do not merge. Do not poll remote CI. Do not post
-pickup or completion comments; report the result only through the agent session."""
+Read the complete issue, repository instructions, and the `/implement` skill. Follow its
+exact procedure: use `/tdd` at agreed seams; run typechecking and focused tests regularly;
+run the full test suite at the end; use `/code-review` once the implementation is done;
+and commit the work to the current branch. Implement only this issue, verify its acceptance
+criteria, create a descriptive agent branch, and open a pull request linked to the issue.
+Do not merge. Do not poll remote CI. Do not post pickup or completion comments; report the
+result only through the agent session."""
             result = subprocess.run(
                 ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
                  "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",
@@ -189,8 +191,9 @@ comment. Do not post pickup or completion comments."""
 
 Reason for dispatch: {reason}.{issue_text}
 Read the originating issue acceptance criteria, repository instructions, current Copilot
-findings/inline threads, merge-conflict details if applicable, and the failed-check details if applicable. Use /implement,
-/tdd, and /code-review as applicable. Fix actionable findings, resolve merge conflicts against the base branch when applicable, add or update tests, and
+findings/inline threads, merge-conflict details if applicable, and failed-check details if applicable. Read and follow the
+`/implement` skill when changing code: use `/tdd`, run focused checks and the full suite,
+and use `/code-review` before completion. Fix actionable findings, resolve merge conflicts against the base branch when applicable, add or update tests, and
 push only the PR branch. Do not poll, wait for, or repeatedly query remote CI; run local
 checks and stop. Resolve only review threads whose findings you directly addressed via
 GitHub GraphQL resolveReviewThread; leave disputed or unfixed threads open. If you push changes, stop after local verification; the deterministic coordinator will

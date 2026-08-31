@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+ROOT=/Users/cwaldner/Personal/c-blueprints
+TOKEN=$(python3 "$ROOT/.paseo/scripts/github-app-token.py")
+export GH_TOKEN="$TOKEN"
+exec python3 "$ROOT/.paseo/scripts/pr-coordinator.py"

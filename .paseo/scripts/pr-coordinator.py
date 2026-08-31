@@ -35,6 +35,13 @@ def copilot(item: dict) -> bool:
     return "copilot" in name
 
 
+def review_sha(review: dict) -> str | None:
+    commit = review.get("commit")
+    if isinstance(commit, dict):
+        return commit.get("oid")
+    return review.get("commit_id") or review.get("commitment")
+
+
 def active_repair_agent(number: str) -> bool:
     """Avoid dispatching while a Paseo agent already owns this PR."""
     try:
@@ -58,7 +65,7 @@ def main() -> int:
         for listed in sorted(prs, key=lambda p: p["number"]):
             pr = gh_json(
                 "pr", "view", str(listed["number"]), "--json",
-                "number,headRefOid,url,statusCheckRollup,reviews,comments,closingIssuesReferences",
+                "number,headRefOid,url,mergeStateStatus,statusCheckRollup,reviews,comments,closingIssuesReferences",
             )
             number = str(pr["number"])
             head = pr["headRefOid"]
@@ -77,22 +84,20 @@ def main() -> int:
                 copilot(c) and c.get("commit_id") == head
                 for c in inline
             ) or any(
-                copilot(r) and r.get("commitment", r.get("commit_id")) == head
+                copilot(r) and review_sha(r) == head
                 for r in (pr.get("reviews") or [])
             )
-            # gh pr view calls the review SHA commit_id in current versions; retain
-            # the alternate key above for compatibility with older gh versions.
-            review_event = review_event or any(
-                copilot(r) and r.get("commit_id") == head
-                for r in (pr.get("reviews") or [])
-            )
+            conflict = str(pr.get("mergeStateStatus", "")).upper() == "DIRTY"
             failed = any(
                 str(check.get("conclusion", "")).upper() in {"FAILURE", "TIMED_OUT", "CANCELLED"}
                 or str(check.get("state", "")).upper() in {"FAILURE", "ERROR"}
                 for check in (pr.get("statusCheckRollup") or [])
             )
 
-            if review_event and f"<!-- paseo-copilot-review: {head} -->" not in bodies:
+            if conflict and f"<!-- paseo-merge-conflict: {head} -->" not in bodies:
+                reason = "merge conflict"
+                marker = f"<!-- paseo-merge-conflict: {head} -->"
+            elif review_event and f"<!-- paseo-copilot-review: {head} -->" not in bodies:
                 reason = "current-head Copilot review feedback"
                 marker = f"<!-- paseo-copilot-review: {head} -->"
             elif failed and f"<!-- paseo-ci-failure: {head} -->" not in bodies:
@@ -113,8 +118,8 @@ def main() -> int:
 
 Reason for dispatch: {reason}.{issue_text}
 Read the originating issue acceptance criteria, repository instructions, current Copilot
-findings/inline threads, and the failed-check details if applicable. Use /implement,
-/tdd, and /code-review as applicable. Fix actionable findings, add or update tests, and
+findings/inline threads, merge-conflict details if applicable, and the failed-check details if applicable. Use /implement,
+/tdd, and /code-review as applicable. Fix actionable findings, resolve merge conflicts against the base branch when applicable, add or update tests, and
 push only the PR branch. Do not poll, wait for, or repeatedly query remote CI; run local
 checks and stop. Resolve only review threads whose findings you directly addressed via
 GitHub GraphQL resolveReviewThread; leave disputed or unfixed threads open. If you push

@@ -34,6 +34,13 @@
 #include "../game/prototype.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
+
+/* game/components.h owns the compatible CF_V2 declaration used by this test;
+ * avoid redeclaring it through cute_math while importing ImGui's API. */
+#include <cute_defines.h>
+#define CF_MATH_H
+#include <imgui/dcimgui.h>
+#undef CF_MATH_H
 #define PICO_UNIT_IMPLEMENTATION
 #include "../third_party/fmt/fmt.h"
 #include "../third_party/pico_headers/pico_unit.h"
@@ -42,10 +49,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-typedef struct ImGuiContext ImGuiContext;
-extern ImGuiContext *ImGui_CreateContext(void *shared_font_atlas);
-extern void ImGui_DestroyContext(ImGuiContext *context);
 
 static const node_desc *find_node(const char *name)
 {
@@ -114,6 +117,17 @@ static void run_editor_command_checks(void)
     editor_undo(e);
     editor_tick(e, 1.0);
     check(editor_edit_revision(e) == revision, "a rejected connection does not add an undo revision");
+    pin_value float_value = { .type = PIN_F32, .f = 1.0f };
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { source->id, 2, 0, &float_value },
+            }
+        ) == -1,
+        "a pin default command rejects a non-boolean output selector"
+    );
     editor_command valid_connect = {
         .kind = EDITOR_COMMAND_CONNECT_DATA,
         .data.connect = { source->id, 0, float_sink->id, 0 },

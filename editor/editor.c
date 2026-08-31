@@ -5294,7 +5294,9 @@ int editor_command_apply(editor *e, editor_command command)
                 e->active_graph,
                 command.data.set_pin_default.node_id
             );
-            if (!n || !command.data.set_pin_default.value) {
+            if (!n || !command.data.set_pin_default.value ||
+                (command.data.set_pin_default.output != 0 &&
+                 command.data.set_pin_default.output != 1)) {
                 return -1;
             }
             ed_snapshot_before(e);

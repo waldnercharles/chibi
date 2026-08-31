@@ -8,7 +8,9 @@ import sys
 
 def field(body: str, name: str) -> str:
     match = re.search(rf"^- {re.escape(name)}:\s*(.*)$", body, re.MULTILINE)
-    return match.group(1).strip() if match else ""
+    if not match:
+        return ""
+    return re.sub(r"<!--.*?-->", "", match.group(1)).strip()
 
 
 def main() -> int:
@@ -21,7 +23,8 @@ def main() -> int:
         print("PR body must contain an Evidence section")
         return 1
 
-    category = field(body, "Category").strip("`").lower()
+    category_value = field(body, "Category").split(maxsplit=1)
+    category = category_value[0].strip("`").lower() if category_value else ""
     if category not in {"automated", "visual"}:
         print("Evidence Category must be `automated` or `visual`")
         return 1

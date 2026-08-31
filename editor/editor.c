@@ -5303,9 +5303,21 @@ int editor_command_apply(editor *e, editor_command command)
                 e->active_graph,
                 command.data.set_pin_default.node_id
             );
-            if (!n || !command.data.set_pin_default.value ||
+            const pin_value *value = command.data.set_pin_default.value;
+            if (!n || !value ||
                 (command.data.set_pin_default.output != 0 &&
                  command.data.set_pin_default.output != 1)) {
+                return -1;
+            }
+            const pin_spec *pins = command.data.set_pin_default.output
+                                     ? n->output_pins
+                                     : n->input_pins;
+            int pin_count = command.data.set_pin_default.output ? n->output_count
+                                                                : n->input_count;
+            int pin_index = command.data.set_pin_default.pin_index;
+            if (pin_index < 0 || pin_index >= pin_count ||
+                pins[pin_index].kind != PIN_DATA ||
+                value->type != pins[pin_index].type) {
                 return -1;
             }
             ed_snapshot_before(e);
@@ -5313,8 +5325,8 @@ int editor_command_apply(editor *e, editor_command command)
                 e->active_graph,
                 n,
                 command.data.set_pin_default.output,
-                command.data.set_pin_default.pin_index,
-                command.data.set_pin_default.value
+                pin_index,
+                value
             );
         }
         case EDITOR_COMMAND_CONNECT_DATA:

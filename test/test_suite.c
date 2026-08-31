@@ -65,7 +65,7 @@ static void check(int ok, const char *msg)
     }
 }
 
-static pin_spec g_editor_float_outputs[] = {
+static pin_spec g_editor_float_pins[] = {
     { "Value", PIN_F32, "float", PIN_DATA },
 };
 static pin_spec g_editor_int_inputs[] = {
@@ -74,12 +74,12 @@ static pin_spec g_editor_int_inputs[] = {
 static node_desc g_editor_float_sink_desc = {
     .name = "editor_float_sink",
     .input_count = 1,
-    .inputs = g_editor_float_outputs,
+    .inputs = g_editor_float_pins,
 };
 static node_desc g_editor_float_desc = {
     .name = "editor_float_source",
     .output_count = 1,
-    .outputs = g_editor_float_outputs,
+    .outputs = g_editor_float_pins,
 };
 static node_desc g_editor_int_desc = {
     .name = "editor_int_sink",
@@ -118,6 +118,9 @@ static void run_editor_command_checks(void)
     editor_tick(e, 1.0);
     check(editor_edit_revision(e) == revision, "a rejected connection does not add an undo revision");
     pin_value float_value = { .type = PIN_F32, .f = 1.0f };
+    editor_query_state(e, &state);
+    int dirty_before_invalid_pin = state.dirty;
+    unsigned revision_before_invalid_pin = editor_edit_revision(e);
     check(
         editor_command_apply(
             e,
@@ -127,6 +130,32 @@ static void run_editor_command_checks(void)
             }
         ) == -1,
         "a pin default command rejects a non-boolean output selector"
+    );
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { source->id, 0, 1, &float_value },
+            }
+        ) == -1,
+        "a pin default command rejects an out-of-range pin"
+    );
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { sink->id, 0, 0, &float_value },
+            }
+        ) == -1,
+        "a pin default command rejects a mismatched value type"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.dirty == dirty_before_invalid_pin &&
+            editor_edit_revision(e) == revision_before_invalid_pin,
+        "rejected pin defaults leave no dirty or history edit"
     );
     editor_command valid_connect = {
         .kind = EDITOR_COMMAND_CONNECT_DATA,

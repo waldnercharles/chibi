@@ -105,13 +105,6 @@ def main() -> int:
                 print(f"PR #{number}: repair agent already active; skipping")
                 continue
 
-            review_event = any(
-                copilot(c) and c.get("commit_id") == head
-                for c in inline
-            ) or any(
-                copilot(r) and review_sha(r) == head
-                for r in (pr.get("reviews") or [])
-            )
             conflict = str(pr.get("mergeStateStatus", "")).upper() == "DIRTY"
             failed = any(
                 str(check.get("conclusion", "")).upper() in {"FAILURE", "TIMED_OUT", "CANCELLED"}
@@ -121,8 +114,6 @@ def main() -> int:
 
             if conflict:
                 reason = "merge conflict"
-            elif review_event:
-                reason = "current-head Copilot review feedback"
             elif failed:
                 reason = "failed required/current-head CI check"
             elif f"{number}:{head}:local code review" not in state:
@@ -158,10 +149,9 @@ findings/inline threads, merge-conflict details if applicable, and the failed-ch
 /tdd, and /code-review as applicable. Fix actionable findings, resolve merge conflicts against the base branch when applicable, add or update tests, and
 push only the PR branch. Do not poll, wait for, or repeatedly query remote CI; run local
 checks and stop. Resolve only review threads whose findings you directly addressed via
-GitHub GraphQL resolveReviewThread; leave disputed or unfixed threads open. If you push
-changes, request a fresh Copilot review using requestReviewsByLogin with
-botLogins=[copilot-pull-request-reviewer]. Do not approve or merge. Do not post pickup
-or completion comments; report the result only through the agent session."""
+GitHub GraphQL resolveReviewThread; leave disputed or unfixed threads open. If you push changes, stop after local verification; the deterministic coordinator will
+run the local code-review agent on the new head. Do not approve or merge. Do not post
+pickup or completion comments; report the result only through the agent session."""
             result = subprocess.run(
                 ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
                  "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",

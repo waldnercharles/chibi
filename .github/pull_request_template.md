@@ -14,6 +14,6 @@
 <!--
 For visual changes, the following two lines are optional. Describe a local
 capture or manual interaction when it helps a reviewer reproduce the result;
-no upload is required.
+media may remain local.
 Visual changes still require automated tests.
 -->

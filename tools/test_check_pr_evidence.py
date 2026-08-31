@@ -19,7 +19,7 @@ VALID_VISUAL = """## Evidence
 - Category: `visual`
 - Feature proof: The editor renders the changed panel after interaction.
 - Tests: Integration test passes.
-- Visual evidence: Local capture inspected; no upload required.
+- Visual evidence: Local capture inspected; media remains local.
 - Interaction trace: Opened the editor, selected the panel, and captured the result.
 """
 
@@ -39,7 +39,7 @@ class EvidenceValidatorTests(unittest.TestCase):
 
     def test_visual_details_are_optional(self):
         body = VALID_VISUAL.replace(
-            "- Visual evidence: Local capture inspected; no upload required.\n",
+            "- Visual evidence: Local capture inspected; media remains local.\n",
             "",
         ).replace(
             "- Interaction trace: Opened the editor, selected the panel, and captured the result.\n",

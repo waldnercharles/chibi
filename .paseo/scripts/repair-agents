@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+ROOT=/Users/cwaldner/Personal/c-blueprints
+PAUSE="$ROOT/.paseo/REPAIR_AGENTS_PAUSED"
+PLIST="$HOME/Library/LaunchAgents/com.cblueprints.pr-coordinator.plist"
+LABEL=com.cblueprints.pr-coordinator
+
+case "${1:-status}" in
+  pause)
+    touch "$PAUSE"
+    echo "Repair-agent dispatch paused. Existing agents were not stopped."
+    ;;
+  resume)
+    rm -f "$PAUSE"
+    launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || true
+    echo "Repair-agent dispatch resumed."
+    ;;
+  stop)
+    touch "$PAUSE"
+    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+    echo "Dispatch paused and coordinator unloaded. Existing agents were not stopped."
+    ;;
+  status)
+    if [ -e "$PAUSE" ]; then echo "paused"; else echo "active"; fi
+    ;;
+  *)
+    echo "usage: $0 {pause|resume|stop|status}" >&2
+    exit 2
+    ;;
+esac

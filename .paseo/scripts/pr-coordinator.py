@@ -13,6 +13,7 @@ from pathlib import Path
 REPO = "waldnercharles/c-blueprints"
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = Path.home() / ".cache" / "c-blueprints-pr-coordinator.lock"
+PAUSE_FILE = ROOT / ".paseo" / "REPAIR_AGENTS_PAUSED"
 MODEL = os.environ.get("PASEO_REPAIR_MODEL", "openai-codex/gpt-5.6-luna")
 PROVIDER = os.environ.get("PASEO_REPAIR_PROVIDER", "pi")
 
@@ -68,6 +69,9 @@ def main() -> int:
     LOCK.parent.mkdir(parents=True, exist_ok=True)
     with LOCK.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if PAUSE_FILE.exists():
+            print(f"Repair dispatch paused by {PAUSE_FILE}")
+            return 0
         prs = gh_json("pr", "list", "--state", "open", "--json", "number")
         active = active_repair_agents()
         if active and active[0].get("status") == "unknown":

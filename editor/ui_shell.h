@@ -73,6 +73,7 @@ void editor_ui_set_framebuffer_size(int width, int height);
 /* Input coordinates are framebuffer pixels. They are normalized to ImGui's
  * logical coordinates before the next editor frame consumes them. */
 void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool primary_down);
+/* Pane geometry is reported in framebuffer pixels. */
 float editor_ui_left_pane_width(void);
 float editor_ui_left_pane_splitter_x(void);
 float editor_ui_left_pane_center_y(void);

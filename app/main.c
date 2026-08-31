@@ -12,7 +12,6 @@
 #include "stacktrace.h"
 #include "web_loop.h"
 
-#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +27,7 @@
 #define APP_RESIZE_PANE_PRESS_FRAME 12
 #define APP_RESIZE_PANE_RELEASE_FRAME 36
 #define APP_RESIZE_PANE_DELTA 240.0f
+#define APP_RECORDING_PATH_SIZE 4096
 
 typedef enum
 {
@@ -494,6 +494,8 @@ int main(int argc, char **argv)
         cf_destroy_app();
         return 1;
     }
+    /* Start from a known dock tree so scripted scenarios do not depend on a
+     * restored or previously resized layout. */
     editor_ui_reset_layout();
     editor_set_event_catalog(
         graph_editor,
@@ -518,8 +520,8 @@ int main(int argc, char **argv)
         .headless = headless,
         .scenario = scenario,
     };
-    char recording_virtual_path[PATH_MAX];
-    char recording_write_directory[PATH_MAX];
+    char recording_virtual_path[APP_RECORDING_PATH_SIZE];
+    char recording_write_directory[APP_RECORDING_PATH_SIZE];
     if (recording_path && configure_recording_path(
                               recording_path,
                               recording_virtual_path,

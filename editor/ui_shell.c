@@ -78,6 +78,7 @@ static const float UI_ASSET_ICON_SIZE = 14.0f;
 static const float UI_ASSET_TEXT_X = 45.0f;
 static const float UI_ASSET_TEXT_TOP = 7.0f;
 static const float UI_ASSET_DETAIL_OFFSET = 19.0f;
+static const int UI_PRIMARY_MOUSE_BUTTON = 0;
 static const float UI_ASSET_TEXT_RIGHT = 24.0f;
 static const float UI_ASSET_CARD_PREVIEW_HEIGHT = 86.0f;
 static const float UI_ASSET_CARD_ICON_BACKGROUND_SIZE = 54.0f;
@@ -597,7 +598,12 @@ static void ui_apply_theme(void)
 }
 
 static bool ui_framebuffer_target;
-static bool ui_injected_mouse_down;
+
+static float ui_framebuffer_scale_x(void)
+{
+    float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
+    return scale > 0.0f ? scale : 1.0f;
+}
 
 static ImGuiViewport ui_layout_viewport(void)
 {
@@ -706,29 +712,8 @@ void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool pr
                       ? io->DisplayFramebufferScale.y
                       : 1.0f;
     ImVec2 position = { framebuffer_x / scale_x, framebuffer_y / scale_y };
-    io->MousePos = position;
-    io->MouseClicked[0] = primary_down && !ui_injected_mouse_down;
-    io->MouseReleased[0] = !primary_down && ui_injected_mouse_down;
-    io->MouseDownDurationPrev[0] = io->MouseDownDuration[0];
-    io->MouseDownDuration[0] = primary_down
-                                 ? (ui_injected_mouse_down
-                                        ? io->MouseDownDuration[0] + io->DeltaTime
-                                        : 0.0f)
-                                 : -1.0f;
-    if (io->MouseClicked[0]) {
-        io->MouseClickedPos[0] = position;
-        io->MouseDragMaxDistanceSqr[0] = 0.0f;
-    } else if (primary_down) {
-        ImVec2 delta = { position.x - io->MouseClickedPos[0].x,
-                         position.y - io->MouseClickedPos[0].y };
-        float distance = delta.x * delta.x + delta.y * delta.y;
-        if (distance > io->MouseDragMaxDistanceSqr[0]) {
-            io->MouseDragMaxDistanceSqr[0] = distance;
-        }
-    }
-    io->MouseDown[0] = primary_down;
-    ui_injected_mouse_down = primary_down;
-    ImGui_UpdateHoveredWindowAndCaptureFlags(position);
+    ImGuiIO_AddMousePosEvent(io, position.x, position.y);
+    ImGuiIO_AddMouseButtonEvent(io, UI_PRIMARY_MOUSE_BUTTON, primary_down);
 }
 
 static ImGuiDockNode *ui_left_pane(void)
@@ -739,7 +724,7 @@ static ImGuiDockNode *ui_left_pane(void)
 float editor_ui_left_pane_width(void)
 {
     ImGuiDockNode *pane = ui_left_pane();
-    return pane ? pane->Size.x : 0.0f;
+    return pane ? pane->Size.x * ui_framebuffer_scale_x() : 0.0f;
 }
 
 float editor_ui_left_pane_splitter_x(void)
@@ -748,11 +733,7 @@ float editor_ui_left_pane_splitter_x(void)
     if (!pane) {
         return 0.0f;
     }
-    float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
-    if (scale <= 0.0f) {
-        scale = 1.0f;
-    }
-    return (pane->Pos.x + pane->Size.x) * scale;
+    return (pane->Pos.x + pane->Size.x) * ui_framebuffer_scale_x();
 }
 
 float editor_ui_left_pane_center_y(void)
@@ -790,20 +771,21 @@ void editor_ui_draw_recording_cursor(
                       : 1.0f;
     ImVec2 cursor = { framebuffer_cursor_x / scale_x, framebuffer_cursor_y / scale_y };
     ImVec2 click = { framebuffer_click_x / scale_x, framebuffer_click_y / scale_y };
-    float cursor_size = 18.0f / scale_x;
+    float cursor_width = 18.0f / scale_x;
+    float cursor_height = 18.0f / scale_y;
     ImDrawList *draw = ImGui_GetForegroundDrawList();
     ImU32 color = IM_COL32(255, 190, 25, 255);
     ImDrawList_AddLineEx(
         draw,
-        (ImVec2){ cursor.x - cursor_size * 0.5f, cursor.y },
-        (ImVec2){ cursor.x + cursor_size * 0.5f, cursor.y },
+        (ImVec2){ cursor.x - cursor_width * 0.5f, cursor.y },
+        (ImVec2){ cursor.x + cursor_width * 0.5f, cursor.y },
         color,
         3.0f / scale_x
     );
     ImDrawList_AddLineEx(
         draw,
-        (ImVec2){ cursor.x, cursor.y - cursor_size * 0.5f },
-        (ImVec2){ cursor.x, cursor.y + cursor_size * 0.5f },
+        (ImVec2){ cursor.x, cursor.y - cursor_height * 0.5f },
+        (ImVec2){ cursor.x, cursor.y + cursor_height * 0.5f },
         color,
         3.0f / scale_y
     );

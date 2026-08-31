@@ -50,7 +50,7 @@
 #include <stdlib.h>
 #include <string.h>
 #ifdef _WIN32
-#include <io.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -98,8 +98,10 @@ static node_desc g_editor_int_desc = {
 static int make_editor_save_path(char *path, size_t path_size)
 {
 #ifdef _WIN32
-    if (path_size < sizeof "cblueprints-editor-XXXXXX" ||
-        _mktemp_s(path, path_size, "cblueprints-editor-XXXXXX") != 0) {
+    char directory[MAX_PATH];
+    DWORD directory_size = GetTempPathA(sizeof directory, directory);
+    if (!directory_size || directory_size >= sizeof directory ||
+        path_size < MAX_PATH || !GetTempFileNameA(directory, "cbp", 0, path)) {
         return -1;
     }
     return 0;
@@ -121,7 +123,7 @@ static int make_editor_save_path(char *path, size_t path_size)
 static void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
-    char save_path[sizeof "cblueprints-editor-XXXXXX"];
+    char save_path[512];
     if (make_editor_save_path(save_path, sizeof save_path) != 0) {
         check(0, "a temporary path can be generated for editor persistence");
         ImGui_DestroyContext(context);

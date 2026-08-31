@@ -24,9 +24,12 @@ VALID_VISUAL = """## Evidence
 """
 
 
-def run(body: str) -> subprocess.CompletedProcess[str]:
+def run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), body], capture_output=True, text=True, check=False
+        [sys.executable, str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 
@@ -62,6 +65,11 @@ class EvidenceValidatorTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("interaction trace", result.stdout)
+
+    def test_rejects_multiple_body_arguments_as_usage_error(self):
+        result = run("body", "extra")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr)
 
 
 if __name__ == "__main__":

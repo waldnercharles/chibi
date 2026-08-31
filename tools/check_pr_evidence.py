@@ -63,11 +63,12 @@ def error(body: str) -> str | None:
 
 
 def main() -> int:
+    if len(sys.argv) > 2:
+        print(f"usage: {sys.argv[0]} [PR_BODY]", file=sys.stderr)
+        return 2
     body = os.environ.get("PR_BODY", "")
     if len(sys.argv) == 2:
         body = sys.argv[1]
-    elif len(sys.argv) > 2:
-        body = ""
     message = error(body)
     if message:
         print(message)

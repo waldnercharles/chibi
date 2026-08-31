@@ -24,6 +24,9 @@ jobs:
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev
 
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+
       - name: Read the declared scenario
         id: evidence
         run: |

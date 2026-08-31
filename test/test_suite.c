@@ -276,6 +276,11 @@ static void run_editor_command_checks(void)
         .data.rename_graph = { worker->graph_id, "Renamed" },
     };
     check(editor_command_apply(e, rename_graph) == 0, "the command seam renames a graph");
+    /* The local seam fixtures are not registry descriptors, so remove them
+     * before exercising the file round trip. */
+    graph_remove_node(bp->graph, source);
+    graph_remove_node(bp->graph, sink);
+    graph_remove_node(bp->graph, float_sink);
     editor_query_state(e, &state);
     check(state.dirty, "authored graph changes are observable as dirty");
     check(
@@ -287,6 +292,19 @@ static void run_editor_command_checks(void)
     );
     editor_query_state(e, &state);
     check(!state.dirty, "saving establishes the clean dirty baseline");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { save_path } }
+        ) == 0,
+        "the command seam reloads the saved asset"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.graph_count == 2 && state.active_graph &&
+            strcmp(state.active_graph->name, "Renamed") == 0 && !state.dirty,
+        "reload preserves authored graphs and the clean dirty baseline"
+    );
     check(
         editor_command_apply(
             e,

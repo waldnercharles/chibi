@@ -26,9 +26,10 @@ steps:
 
           Read the complete issue from the event context below and confirm its
           repository, number, and title before editing. Follow the repository's
-          instructions and Matt Pocock's skills workflow. Invoke /implement
-          against the full issue URL. Implement one issue only, use TDD at the
-          agreed seams, run focused checks and the full required suite, and
+          instructions and the appropriate repository skills: invoke
+          /implement against the full issue URL, using /tdd at agreed seams and
+          /code-review before completion. Implement one issue only, run focused
+          checks and the full required suite, and
           verify every acceptance criterion before declaring completion.
 
           Work only in the isolated worktree. Create a descriptive branch, push

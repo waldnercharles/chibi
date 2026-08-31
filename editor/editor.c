@@ -5383,7 +5383,9 @@ int editor_command_apply(editor *e, editor_command command)
             int result = ed_connect(e, &output, &input) ? 0 : -1;
             if (result == 0) {
                 e->edit_pending = 1;
-                ed_push_string(&e->undo, snapshot);
+                if (snapshot) {
+                    ed_push_string(&e->undo, snapshot);
+                }
                 ed_free_string_stack(&e->redo);
                 return 0;
             }

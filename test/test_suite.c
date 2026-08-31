@@ -70,7 +70,10 @@ static void check(int ok, const char *msg)
     }
 }
 
-static pin_spec g_editor_float_pins[] = {
+static pin_spec g_editor_float_outputs[] = {
+    { "Value", PIN_F32, "float", PIN_DATA },
+};
+static pin_spec g_editor_float_inputs[] = {
     { "Value", PIN_F32, "float", PIN_DATA },
 };
 static pin_spec g_editor_int_inputs[] = {
@@ -79,12 +82,12 @@ static pin_spec g_editor_int_inputs[] = {
 static node_desc g_editor_float_sink_desc = {
     .name = "editor_float_sink",
     .input_count = 1,
-    .inputs = g_editor_float_pins,
+    .inputs = g_editor_float_inputs,
 };
 static node_desc g_editor_float_desc = {
     .name = "editor_float_source",
     .output_count = 1,
-    .outputs = g_editor_float_pins,
+    .outputs = g_editor_float_outputs,
 };
 static node_desc g_editor_int_desc = {
     .name = "editor_int_sink",
@@ -95,7 +98,8 @@ static node_desc g_editor_int_desc = {
 static int make_editor_save_path(char *path, size_t path_size)
 {
 #ifdef _WIN32
-    if (path_size < L_tmpnam || tmpnam_s(path, path_size) != 0) {
+    if (path_size < sizeof "cblueprints-editor-XXXXXX" ||
+        _mktemp_s(path, path_size, "cblueprints-editor-XXXXXX") != 0) {
         return -1;
     }
     return 0;

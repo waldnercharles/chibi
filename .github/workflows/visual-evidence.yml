@@ -1,0 +1,45 @@
+name: Visual evidence
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  record-resize-pane:
+    name: Record resize-pane evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build and recording dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ffmpeg libclang-dev llvm-dev python3
+
+      - name: Build and record the interaction
+        run: |
+          make record-resize-pane \
+            RECORD_PATH="$RUNNER_TEMP/c-blueprints-resize-pane.mp4" \
+            FRAMES=48
+
+      - name: Upload recording artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-blueprints-resize-pane-${{ github.sha }}
+          path: ${{ runner.temp }}/c-blueprints-resize-pane.mp4
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish artifact link
+        run: |
+          {
+            echo '### Visual evidence'
+            echo
+            echo "The resize-pane recording was uploaded as a CI artifact:"
+            echo
+            echo "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"

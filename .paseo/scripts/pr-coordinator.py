@@ -91,7 +91,7 @@ def main() -> int:
         # Initial issue implementation uses this same serialized dispatcher; the
         # separate event-driven Paseo workflow must not create a second worker.
         issues = json.loads(run("gh", "issue", "list", "--state", "open",
-                                "--label", "ready-for-agent", "--json", "number,title,url"))
+                                "--label", "ready-for-agent", "--json", "number,title,url", "--repo", REPO))
         for issue in sorted(issues, key=lambda item: item["number"]):
             number = str(issue["number"])
             issue_key = f"issue:{number}:implementation"

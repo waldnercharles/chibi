@@ -106,6 +106,10 @@ def main() -> int:
                 continue
 
             conflict = str(pr.get("mergeStateStatus", "")).upper() == "DIRTY"
+            requested_changes = any(
+                review_sha(r) == head and str(r.get("state", "")).upper() == "CHANGES_REQUESTED"
+                for r in (pr.get("reviews") or [])
+            )
             failed = any(
                 str(check.get("conclusion", "")).upper() in {"FAILURE", "TIMED_OUT", "CANCELLED"}
                 or str(check.get("state", "")).upper() in {"FAILURE", "ERROR"}
@@ -114,6 +118,8 @@ def main() -> int:
 
             if conflict:
                 reason = "merge conflict"
+            elif requested_changes:
+                reason = "local review findings"
             elif failed:
                 reason = "failed required/current-head CI check"
             elif f"{number}:{head}:local code review" not in state:
@@ -137,9 +143,12 @@ def main() -> int:
 Read and follow `.github/skills/code-review/SKILL.md`, the originating issue acceptance criteria,
 and repository instructions. Review the complete diff and relevant surrounding code. Run
 focused local checks when practical, but do not poll or wait for remote CI. Report only
-specific, actionable findings as an inline GitHub pull-request review; do not edit files,
-push commits, approve, or merge. Add the `agent-reviewed` label. If there are no actionable
-findings, do not post a summary comment. Do not post pickup or completion comments."""
+specific, actionable findings as an inline GitHub pull-request review. Use CHANGES_REQUESTED
+when actionable findings exist. If the acceptance criteria are fully met, the changes are
+safe, and the authenticated GitHub identity is allowed to approve this PR, approve it with
+GitHub; otherwise do not approve. Never bypass GitHub's self-approval or permission rules.
+Do not edit files or push commits. If there are no actionable findings, do not post a summary
+comment. Do not post pickup or completion comments."""
             else:
                 prompt = f"""Repair PR {pr['url']} at current head {head}.
 

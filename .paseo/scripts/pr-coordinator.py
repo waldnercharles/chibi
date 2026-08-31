@@ -17,6 +17,21 @@ PAUSE_FILE = ROOT / ".paseo" / "REPAIR_AGENTS_PAUSED"
 STATE_FILE = Path.home() / ".cache" / "c-blueprints-pr-coordinator-state.json"
 MODEL = os.environ.get("PASEO_REPAIR_MODEL", "openai-codex/gpt-5.6-luna")
 PROVIDER = os.environ.get("PASEO_REPAIR_PROVIDER", "pi")
+IMPLEMENT_SKILL = """---
+name: implement
+description: Implement a piece of work based on a spec or set of tickets.
+disable-model-invocation: true
+---
+
+Implement the work described by the user in the spec or tickets.
+
+Use /tdd where possible, at pre-agreed seams.
+
+Run typechecking regularly, single test files regularly, and the full test suite once at the end.
+
+Once done, use /code-review to review the work.
+
+Commit your work to the current branch."""
 
 
 def run(*args: str) -> str:
@@ -45,17 +60,27 @@ def review_sha(review: dict) -> str | None:
     return review.get("commit_id") or review.get("commitment")
 
 
-def active_repair_agents() -> list[dict]:
-    """Return active worktree agents; fail closed if Paseo cannot be queried."""
-    try:
-        agents = json.loads(run("paseo", "agent", "ls", "--json"))
-    except (subprocess.CalledProcessError, json.JSONDecodeError):
-        return [{"status": "unknown", "name": "Paseo status unavailable"}]
-    return [
-        agent for agent in agents
-        if agent.get("status") in {"running", "starting", "waiting"}
-        and "/.paseo/worktrees/" in str(agent.get("cwd", ""))
-    ]
+def active_spawned_agents(state: dict) -> list[dict]:
+    """Check only agents recorded by this coordinator, never arbitrary worktrees."""
+    active = []
+    for event in state.values():
+        agent_id = event.get("agent_id") if isinstance(event, dict) else None
+        if not agent_id:
+            continue
+        try:
+            agent = json.loads(run("paseo", "agent", "inspect", agent_id, "--json"))
+        except (subprocess.CalledProcessError, json.JSONDecodeError):
+            return [{"status": "unknown", "name": "Paseo status unavailable"}]
+        if agent.get("status") in {"running", "starting", "waiting"}:
+            active.append(agent)
+    return active
+
+
+def parse_agent_id(output: str) -> str:
+    data = json.loads(output)
+    if isinstance(data, list):
+        data = data[0]
+    return data["id"]
 
 
 def main() -> int:
@@ -70,7 +95,7 @@ def main() -> int:
             state = json.loads(STATE_FILE.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
             state = {}
-        active = active_repair_agents()
+        active = active_spawned_agents(state)
         if active and active[0].get("status") == "unknown":
             print("Paseo status unavailable; refusing to dispatch")
             return 1
@@ -95,24 +120,24 @@ def main() -> int:
                 for p in prs
             ):
                 continue
-            state[issue_key] = {"dispatched": True}
-            STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             prompt = f"""Implement issue {issue['url']} in the repository.
 
-Read the complete issue, repository instructions, and the `/implement` skill. Follow its
-exact procedure: use `/tdd` at agreed seams; run typechecking and focused tests regularly;
-run the full test suite at the end; use `/code-review` once the implementation is done;
-and commit the work to the current branch. Implement only this issue, verify its acceptance
-criteria, create a descriptive agent branch, and open a pull request linked to the issue.
-Do not merge. Do not poll remote CI. Do not post pickup or completion comments; report the
-result only through the agent session."""
+The exact `/implement` skill contents are:
+{IMPLEMENT_SKILL}
+
+Read the complete issue and repository instructions. Implement only this issue, verify its
+acceptance criteria, create a descriptive agent branch, and open a pull request linked to
+the issue. Do not merge. Do not poll remote CI. Do not post pickup or completion comments;
+report the result only through the agent session."""
             result = subprocess.run(
                 ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
                  "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",
                  "--worktree-mode", "branch-off", "--new-branch", f"agent/issue-{number}",
                  "--base", "origin/main", "--title", f"Implement issue #{number}",
-                 "--label", f"issue={number}"], check=True, text=True, capture_output=True,
+                 "--label", f"issue={number}", "--json"], check=True, text=True, capture_output=True,
             )
+            state[issue_key] = {"dispatched": True, "agent_id": parse_agent_id(result.stdout)}
+            STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             print(json.dumps({"issue": number, "reason": "implementation", "agent": result.stdout.strip()}))
             return 0
 
@@ -178,10 +203,11 @@ comment. Do not post pickup or completion comments."""
                 prompt = f"""Repair PR {pr['url']} at current head {head}.
 
 Reason for dispatch: {reason}.{issue_text}
-Read the originating issue acceptance criteria, repository instructions, current Copilot
-findings/inline threads, merge-conflict details if applicable, and failed-check details if applicable. Read and follow the
-`/implement` skill when changing code: use `/tdd`, run focused checks and the full suite,
-and use `/code-review` before completion. Fix actionable findings, resolve merge conflicts against the base branch when applicable, add or update tests, and
+Read the originating issue acceptance criteria, repository instructions, current review
+findings/inline threads, merge-conflict details if applicable, and failed-check details if applicable.
+The exact `/implement` skill contents are:
+{IMPLEMENT_SKILL}
+Follow it when changing code. Fix actionable findings, resolve merge conflicts against the base branch when applicable, add or update tests, and
 push only the PR branch. Do not poll, wait for, or repeatedly query remote CI; run local
 checks and stop. Resolve only review threads whose findings you directly addressed via
 GitHub GraphQL resolveReviewThread; leave disputed or unfixed threads open. If you push changes, stop after local verification; the deterministic coordinator will
@@ -192,9 +218,11 @@ pickup or completion comments; report the result only through the agent session.
                  "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",
                  "--worktree-mode", "checkout-pr", "--pr-number", number, "--forge", "github",
                  "--title", f"{'Review' if reason == 'local code review' else 'Repair'} PR #{number} ({reason})", "--label", f"pr={number}",
-                 "--label", f"head={head}"],
+                 "--label", f"head={head}", "--json"],
                 check=True, text=True, capture_output=True,
             )
+            state[event_key]["agent_id"] = parse_agent_id(result.stdout)
+            STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             print(json.dumps({"pr": number, "head": head, "reason": reason, "agent": result.stdout.strip()}))
             return 0
         print("No PR requires dispatch")

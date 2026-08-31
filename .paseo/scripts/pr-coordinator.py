@@ -13,7 +13,8 @@ from pathlib import Path
 REPO = "waldnercharles/c-blueprints"
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = Path.home() / ".cache" / "c-blueprints-pr-coordinator.lock"
-MODEL = "openai-codex/gpt-5.6-luna"
+MODEL = os.environ.get("PASEO_REPAIR_MODEL", "openai-codex/gpt-5.6-luna")
+PROVIDER = os.environ.get("PASEO_REPAIR_PROVIDER", "pi")
 
 
 def run(*args: str) -> str:
@@ -42,18 +43,24 @@ def review_sha(review: dict) -> str | None:
     return review.get("commit_id") or review.get("commitment")
 
 
-def active_repair_agent(number: str) -> bool:
-    """Avoid dispatching while a Paseo agent already owns this PR."""
+def active_repair_agents() -> list[dict]:
+    """Return active repair agents; fail closed if Paseo cannot be queried."""
     try:
         agents = json.loads(run("paseo", "agent", "ls", "--json"))
-    except subprocess.CalledProcessError:
-        # A failed status query is fail-closed: do not risk duplicate work.
-        return True
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        return [{"status": "unknown", "name": "Paseo status unavailable"}]
+    return [
+        agent for agent in agents
+        if agent.get("status") in {"running", "starting", "waiting"}
+        and re.search(r"(?:repair|implement)\s+pr\s*#?\s*\d+", agent.get("name", ""), re.I)
+    ]
+
+
+def active_repair_agent(number: str) -> bool:
     pattern = re.compile(rf"(?:pr\s*#?\s*{re.escape(number)}\b|pr-{re.escape(number)}(?:\b|-))", re.I)
     return any(
-        agent.get("status") in {"running", "starting", "waiting"}
-        and pattern.search(f"{agent.get('name', '')} {agent.get('cwd', '')}")
-        for agent in agents
+        pattern.search(f"{agent.get('name', '')} {agent.get('cwd', '')}")
+        for agent in active_repair_agents()
     )
 
 
@@ -62,6 +69,15 @@ def main() -> int:
     with LOCK.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         prs = gh_json("pr", "list", "--state", "open", "--json", "number")
+        active = active_repair_agents()
+        if active and active[0].get("status") == "unknown":
+            print("Paseo status unavailable; refusing to dispatch")
+            return 1
+        # Serialize repair work globally so switching to a local-only machine
+        # cannot accidentally create parallel implementation agents.
+        if active:
+            print(f"Repair agent already active ({active[0].get('name')}); skipping dispatch")
+            return 0
         for listed in sorted(prs, key=lambda p: p["number"]):
             pr = gh_json(
                 "pr", "view", str(listed["number"]), "--json",
@@ -128,7 +144,7 @@ botLogins=[copilot-pull-request-reviewer]. Do not approve or merge. Leave a conc
 comment summarizing the work and local verification."""
             result = subprocess.run(
                 ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
-                 "--provider", "pi", "--model", MODEL, "--new-workspace", "worktree",
+                 "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",
                  "--worktree-mode", "checkout-pr", "--pr-number", number, "--forge", "github",
                  "--title", f"Repair PR #{number} ({reason})", "--label", f"pr={number}",
                  "--label", f"head={head}"],

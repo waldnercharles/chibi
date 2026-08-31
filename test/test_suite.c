@@ -166,6 +166,26 @@ static void run_editor_command_checks(void)
         "the command seam can open the created graph"
     );
 
+    editor_query_state(e, &state);
+    int dirty_before_rename = state.dirty;
+    unsigned revision_before_rename = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_RENAME_GRAPH,
+                .data.rename_graph = { worker->graph_id, "" },
+            }
+        ) == -1,
+        "graph renaming rejects an empty name"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.dirty == dirty_before_rename &&
+            editor_edit_revision(e) == revision_before_rename,
+        "a rejected graph rename leaves no dirty or history edit"
+    );
+
     editor_command rename_graph = {
         .kind = EDITOR_COMMAND_RENAME_GRAPH,
         .data.rename_graph = { worker->graph_id, "Renamed" },

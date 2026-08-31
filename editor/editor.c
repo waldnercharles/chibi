@@ -5273,16 +5273,20 @@ int editor_command_apply(editor *e, editor_command command)
                      ? 0
                      : -1;
         }
-        case EDITOR_COMMAND_RENAME_GRAPH:
-            if (!command.data.rename_graph.name) {
+        case EDITOR_COMMAND_RENAME_GRAPH: {
+            const char *name = command.data.rename_graph.name;
+            graph *target = behavior_asset_find_graph(
+                e->bp,
+                command.data.rename_graph.graph_id
+            );
+            graph *same = behavior_asset_find_graph_by_name(e->bp, name);
+            if (!name || !name[0] || !behavior_asset_mutable(e->bp) || !target ||
+                command.data.rename_graph.graph_id == 0 || (same && same != target)) {
                 return -1;
             }
             ed_snapshot_before(e);
-            return behavior_asset_rename_graph(
-                e->bp,
-                command.data.rename_graph.graph_id,
-                command.data.rename_graph.name
-            );
+            return behavior_asset_rename_graph(e->bp, command.data.rename_graph.graph_id, name);
+        }
         case EDITOR_COMMAND_OPEN_GRAPH:
             return editor_open_graph(e, command.data.open_graph.graph_id);
         case EDITOR_COMMAND_SPAWN_NODE:

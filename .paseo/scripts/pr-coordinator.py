@@ -63,8 +63,11 @@ def main() -> int:
             number = str(pr["number"])
             head = pr["headRefOid"]
             comments = pr.get("comments") or []
+            # `gh pr view --json comments` is not reliable across gh versions;
+            # fetch issue comments directly because dispatch markers live there.
+            issue_comments = gh_json_from_api(f"repos/{REPO}/issues/{number}/comments")
             inline = gh_json_from_api(f"repos/{REPO}/pulls/{number}/comments")
-            all_comments = comments + inline
+            all_comments = comments + issue_comments + inline
             bodies = [str(c.get("body", "")) for c in all_comments]
             if active_repair_agent(number):
                 print(f"PR #{number}: repair agent already active; skipping")

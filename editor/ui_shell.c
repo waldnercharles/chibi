@@ -605,6 +605,12 @@ static float ui_framebuffer_scale_x(void)
     return scale > 0.0f ? scale : 1.0f;
 }
 
+static float ui_framebuffer_scale_y(void)
+{
+    float scale = ImGui_GetIO()->DisplayFramebufferScale.y;
+    return scale > 0.0f ? scale : 1.0f;
+}
+
 static ImGuiViewport ui_layout_viewport(void)
 {
     ImGuiViewport view = *ImGui_GetMainViewport();
@@ -617,17 +623,16 @@ static ImGuiViewport ui_layout_viewport(void)
     if (ui_framebuffer_target) {
         /* cute_framework reports an offscreen target's pixel size as
          * DisplaySize while retaining the window's framebuffer scale. */
-        float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
-        if (scale > 1.0f) {
-            view.Pos.x /= scale;
-            view.Pos.y /= scale;
-            view.Size.x /= scale;
-            view.Size.y /= scale;
-            view.WorkPos.x /= scale;
-            view.WorkPos.y /= scale;
-            view.WorkSize.x /= scale;
-            view.WorkSize.y /= scale;
-        }
+        float scale_x = ui_framebuffer_scale_x();
+        float scale_y = ui_framebuffer_scale_y();
+        view.Pos.x /= scale_x;
+        view.Pos.y /= scale_y;
+        view.Size.x /= scale_x;
+        view.Size.y /= scale_y;
+        view.WorkPos.x /= scale_x;
+        view.WorkPos.y /= scale_y;
+        view.WorkSize.x /= scale_x;
+        view.WorkSize.y /= scale_y;
     }
     return view;
 }
@@ -742,11 +747,7 @@ float editor_ui_left_pane_center_y(void)
     if (!pane) {
         return 0.0f;
     }
-    float scale = ImGui_GetIO()->DisplayFramebufferScale.y;
-    if (scale <= 0.0f) {
-        scale = 1.0f;
-    }
-    return (pane->Pos.y + pane->Size.y * 0.5f) * scale;
+    return (pane->Pos.y + pane->Size.y * 0.5f) * ui_framebuffer_scale_y();
 }
 
 void editor_ui_draw_recording_cursor(

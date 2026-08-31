@@ -29,6 +29,9 @@
 #define APP_RESIZE_PANE_DELTA 240.0f
 #define APP_RECORDING_PATH_SIZE 4096
 
+static char app_recording_virtual_path[APP_RECORDING_PATH_SIZE];
+static char app_recording_write_directory[APP_RECORDING_PATH_SIZE];
+
 typedef enum
 {
     APP_SCENARIO_NONE,
@@ -108,6 +111,9 @@ static int configure_recording_path(
     const char *name = slash ? slash + 1 : path;
     const char *directory = slash ? path : cf_fs_get_working_directory();
     size_t directory_length = slash ? (size_t)(slash - path) : strlen(directory);
+    if (slash == path) {
+        directory_length = 1;
+    }
     if (!name[0] || directory_length == 0 || directory_length >= write_directory_size ||
         strlen(name) >= virtual_path_size) {
         return -1;
@@ -520,14 +526,12 @@ int main(int argc, char **argv)
         .headless = headless,
         .scenario = scenario,
     };
-    char recording_virtual_path[APP_RECORDING_PATH_SIZE];
-    char recording_write_directory[APP_RECORDING_PATH_SIZE];
     if (recording_path && configure_recording_path(
                               recording_path,
-                              recording_virtual_path,
-                              sizeof recording_virtual_path,
-                              recording_write_directory,
-                              sizeof recording_write_directory
+                              app_recording_virtual_path,
+                              sizeof app_recording_virtual_path,
+                              app_recording_write_directory,
+                              sizeof app_recording_write_directory
                           ) != 0) {
         fprintf(stderr, "recording failed: output path is not writable: %s\n", recording_path);
         app_cleanup(&loop);
@@ -535,7 +539,7 @@ int main(int argc, char **argv)
     }
     if (recording_path && app_recording_start(
                               &loop.recording,
-                              recording_virtual_path,
+                              app_recording_virtual_path,
                               cf_app_get_canvas_width(),
                               cf_app_get_canvas_height(),
                               APP_RECORDING_FPS

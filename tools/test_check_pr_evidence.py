@@ -47,6 +47,14 @@ class EvidenceValidatorTests(unittest.TestCase):
         )
         self.assertEqual(run(body).returncode, 0)
 
+    def test_automated_details_are_optional(self):
+        body = VALID_AUTOMATED.replace(
+            "- Visual evidence: Not applicable — non-visual change\n", ""
+        ).replace(
+            "- Interaction trace: Not applicable — non-visual change\n", ""
+        )
+        self.assertEqual(run(body).returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

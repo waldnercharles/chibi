@@ -710,12 +710,8 @@ void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool pr
         return;
     }
     ImGuiIO *io = ImGui_GetIO();
-    float scale_x = io->DisplayFramebufferScale.x > 0.0f
-                      ? io->DisplayFramebufferScale.x
-                      : 1.0f;
-    float scale_y = io->DisplayFramebufferScale.y > 0.0f
-                      ? io->DisplayFramebufferScale.y
-                      : 1.0f;
+    float scale_x = ui_framebuffer_scale_x();
+    float scale_y = ui_framebuffer_scale_y();
     ImVec2 position = { framebuffer_x / scale_x, framebuffer_y / scale_y };
     ImGuiIO_AddMousePosEvent(io, position.x, position.y);
     ImGuiIO_AddMouseButtonEvent(io, UI_PRIMARY_MOUSE_BUTTON, primary_down);
@@ -763,19 +759,15 @@ void editor_ui_draw_recording_cursor(
     if (!context) {
         return;
     }
-    ImGuiIO *io = ImGui_GetIO();
-    float scale_x = io->DisplayFramebufferScale.x > 0.0f
-                      ? io->DisplayFramebufferScale.x
-                      : 1.0f;
-    float scale_y = io->DisplayFramebufferScale.y > 0.0f
-                      ? io->DisplayFramebufferScale.y
-                      : 1.0f;
+    float scale_x = ui_framebuffer_scale_x();
+    float scale_y = ui_framebuffer_scale_y();
     ImVec2 cursor = { framebuffer_cursor_x / scale_x, framebuffer_cursor_y / scale_y };
     ImVec2 click = { framebuffer_click_x / scale_x, framebuffer_click_y / scale_y };
     float cursor_width = 18.0f / scale_x;
     float cursor_height = 18.0f / scale_y;
     ImDrawList *draw = ImGui_GetForegroundDrawList();
     ImU32 color = IM_COL32(255, 190, 25, 255);
+    float ring_scale = scale_x < scale_y ? scale_x : scale_y;
     ImDrawList_AddLineEx(
         draw,
         (ImVec2){ cursor.x - cursor_width * 0.5f, cursor.y },
@@ -791,7 +783,7 @@ void editor_ui_draw_recording_cursor(
         3.0f / scale_y
     );
     if (click_active) {
-        ImDrawList_AddCircleEx(draw, click, click_radius / scale_x, color, 0, 3.0f / scale_x);
+        ImDrawList_AddCircleEx(draw, click, click_radius / ring_scale, color, 0, 3.0f / ring_scale);
     }
 }
 

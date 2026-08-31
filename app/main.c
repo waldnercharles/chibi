@@ -213,6 +213,7 @@ static void app_check_resize_pane(app_loop *loop)
         loop->frame != APP_RESIZE_PANE_RELEASE_FRAME) {
         return;
     }
+    loop->scenario_checked = 1;
     loop->scenario_after_width = editor_ui_left_pane_width();
     float delta = loop->scenario_after_width - loop->scenario_before_width;
     if (delta < APP_RESIZE_PANE_DELTA * 0.5f) {
@@ -232,7 +233,6 @@ static void app_check_resize_pane(app_loop *loop)
         loop->scenario_after_width,
         delta
     );
-    loop->scenario_checked = 1;
 }
 
 static void draw_recording_cursor(app_loop *loop, float seconds)

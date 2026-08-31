@@ -5371,9 +5371,6 @@ int editor_command_apply(editor *e, editor_command command)
                 return -1;
             }
             char *snapshot = ed_snapshot(e);
-            if (!snapshot) {
-                return -1;
-            }
             int pending = e->edit_pending;
             ed_pin_view output = {
                 from,
@@ -5395,7 +5392,7 @@ int editor_command_apply(editor *e, editor_command command)
                 return 0;
             }
             char *current = ed_snapshot(e);
-            if (current && strcmp(current, snapshot) != 0) {
+            if (snapshot && current && strcmp(current, snapshot) != 0) {
                 if (ed_adopt_behavior_asset(e, snapshot) != 0) {
                     abort();
                 }

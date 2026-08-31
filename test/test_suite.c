@@ -90,6 +90,12 @@ static node_desc g_editor_int_desc = {
 static void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
+    char save_path[L_tmpnam];
+    if (!tmpnam(save_path)) {
+        check(0, "a temporary path can be generated for editor persistence");
+        ImGui_DestroyContext(context);
+        return;
+    }
     behavior_asset *bp = behavior_asset_new("Editor command test");
     node *source = graph_add_node(bp->graph, &g_editor_float_desc);
     node *sink = graph_add_node(bp->graph, &g_editor_int_desc);
@@ -241,7 +247,7 @@ static void run_editor_command_checks(void)
     check(
         editor_command_apply(
             e,
-            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { "/tmp/cblueprints-editor-test.json" } }
+            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { save_path } }
         ) == 0,
         "the command seam saves the authored asset"
     );
@@ -261,7 +267,7 @@ static void run_editor_command_checks(void)
         ) == -1,
         "a load command rejects a null path"
     );
-    remove("/tmp/cblueprints-editor-test.json");
+    remove(save_path);
     editor_free(e);
     ImGui_DestroyContext(context);
 }

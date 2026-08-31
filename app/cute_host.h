@@ -89,7 +89,6 @@ void cf_set_target_framerate(int frames_per_second);
 CF_Canvas cf_app_get_canvas(void);
 int cf_app_get_canvas_width(void);
 int cf_app_get_canvas_height(void);
-bool cf_app_set_imgui_render_target(CF_Canvas target);
 int cf_app_draw_onto_screen(bool clear);
 CF_Readback cf_canvas_readback(CF_Canvas canvas);
 bool cf_readback_ready(CF_Readback readback);

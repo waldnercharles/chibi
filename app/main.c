@@ -204,12 +204,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "screenshots are unavailable on web builds\n");
         cf_destroy_app();
         return 1;
-#else
-        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
-            fprintf(stderr, "could not set the screenshot render target\n");
-            cf_destroy_app();
-            return 1;
-        }
 #endif
     }
 

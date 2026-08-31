@@ -134,7 +134,7 @@ def main() -> int:
             if reason == "local code review":
                 prompt = f"""Review PR {pr['url']} at current head {head}.
 
-Read and follow `.github/skills/code-review.md`, the originating issue acceptance criteria,
+Read and follow `.github/skills/code-review/SKILL.md`, the originating issue acceptance criteria,
 and repository instructions. Review the complete diff and relevant surrounding code. Run
 focused local checks when practical, but do not poll or wait for remote CI. Report only
 specific, actionable findings as an inline GitHub pull-request review; do not edit files,

@@ -39,6 +39,8 @@ jobs:
           echo "scenario=$scenario" >> "$GITHUB_OUTPUT"
 
       - name: Build and record the interaction
+        env:
+          LIBCLANG_ROOT: /usr/lib/llvm-18
         run: |
           make record-evidence \
             SCENARIO="${{ steps.evidence.outputs.scenario }}" \

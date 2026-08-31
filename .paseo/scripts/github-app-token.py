@@ -30,11 +30,21 @@ def main() -> None:
     jwt = f"{header}.{payload}.{b64(signature)}"
     request = urllib.request.Request(
         f"https://api.github.com/app/installations/{INSTALLATION_ID}/access_tokens",
+        data=json.dumps({
+            "repositories": ["c-blueprints"],
+            "permissions": {
+                "contents": "write",
+                "issues": "write",
+                "metadata": "read",
+                "pull_requests": "write",
+            },
+        }).encode(),
         method="POST",
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {jwt}",
             "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
         },
     )
     with urllib.request.urlopen(request) as response:

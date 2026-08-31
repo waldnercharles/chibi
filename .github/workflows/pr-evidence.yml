@@ -18,3 +18,26 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: python3 tools/check_pr_evidence.py
+
+  repository-tests:
+    name: Repository tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native build dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libclang-18-dev libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev
+          libxi-dev libxrandr-dev libxss-dev libxtst-dev libwayland-dev
+          libxkbcommon-dev
+      - name: Run evidence validator tests
+        run: python3 tools/test_check_pr_evidence.py
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+      - name: Configure native test build
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
+          -DCLANG_FORMAT=CLANG_FORMAT-NOTFOUND
+      - name: Build repository regression suite
+        run: cmake --build build --target test_suite --parallel

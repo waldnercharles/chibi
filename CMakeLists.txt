@@ -299,7 +299,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 
 # --- test suite: consolidated headless regression checks --------------------
-add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
+add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c
+    demo/vec3.c demo/math.c ${BASE_REGISTRY})
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_suite PRIVATE engine game ecs demo editor)
 

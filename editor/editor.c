@@ -5354,7 +5354,9 @@ int editor_command_apply(editor *e, editor_command command)
             }
             char *current = ed_snapshot(e);
             if (current && strcmp(current, snapshot) != 0) {
-                assert(ed_adopt_behavior_asset(e, snapshot) == 0);
+                if (ed_adopt_behavior_asset(e, snapshot) != 0) {
+                    abort();
+                }
                 free(e->edit_revision_snapshot);
                 e->edit_revision_snapshot = ed_snapshot(e);
                 e->edit_revision_bp = e->bp;
@@ -5501,7 +5503,9 @@ int editor_save(editor *e, const char *path)
         return -1;
     }
     int ok = fputs(json, f) >= 0;
-    fclose(f);
+    if (fclose(f) != 0) {
+        ok = 0;
+    }
     if (!ok) {
         free(json);
         return -1;

@@ -3709,6 +3709,18 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     return ok;
 }
 
+static int ed_command_connection_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind)
+{
+    if (output->kind != expected_kind || input->kind != expected_kind) {
+        return 0;
+    }
+    if (expected_kind != PIN_DATA || (input->flags & PIN_FLAG_WILDCARD) ||
+        pin_types_compatible(output, input)) {
+        return 1;
+    }
+    return conversion_for_pins(output, input) != NULL;
+}
+
 #define ED_SEARCH_MAX 128
 
 typedef struct ed_search_match
@@ -5290,6 +5302,10 @@ int editor_command_apply(editor *e, editor_command command)
         case EDITOR_COMMAND_OPEN_GRAPH:
             return editor_open_graph(e, command.data.open_graph.graph_id);
         case EDITOR_COMMAND_SPAWN_NODE:
+            if (!command.data.spawn_node.desc || !e->active_graph ||
+                !behavior_asset_mutable(e->bp)) {
+                return -1;
+            }
             return editor_spawn(
                        e,
                        command.data.spawn_node.desc,
@@ -5306,7 +5322,8 @@ int editor_command_apply(editor *e, editor_command command)
             const pin_value *value = command.data.set_pin_default.value;
             if (!n || !value ||
                 (command.data.set_pin_default.output != 0 &&
-                 command.data.set_pin_default.output != 1)) {
+                 command.data.set_pin_default.output != 1) ||
+                !behavior_asset_mutable(e->bp)) {
                 return -1;
             }
             const pin_spec *pins = command.data.set_pin_default.output
@@ -5345,8 +5362,12 @@ int editor_command_apply(editor *e, editor_command command)
             pin_kind expected_kind = command.kind == EDITOR_COMMAND_CONNECT_DATA
                                        ? PIN_DATA
                                        : PIN_EXEC;
-            if (from->output_pins[command.data.connect.from_pin].kind != expected_kind ||
-                to->input_pins[command.data.connect.to_pin].kind != expected_kind) {
+            if (!behavior_asset_mutable(e->bp) ||
+                !ed_command_connection_valid(
+                    &from->output_pins[command.data.connect.from_pin],
+                    &to->input_pins[command.data.connect.to_pin],
+                    expected_kind
+                )) {
                 return -1;
             }
             char *snapshot = ed_snapshot(e);

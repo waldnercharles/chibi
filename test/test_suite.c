@@ -117,6 +117,22 @@ static void run_editor_command_checks(void)
     editor_undo(e);
     editor_tick(e, 1.0);
     check(editor_edit_revision(e) == revision, "a rejected connection does not add an undo revision");
+    unsigned revision_before_invalid_spawn = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SPAWN_NODE,
+                .data.spawn_node = { NULL, 0.0f, 0.0f },
+            }
+        ) == -1,
+        "a spawn command rejects a missing node description"
+    );
+    check(
+        editor_edit_revision(e) == revision_before_invalid_spawn &&
+            acount(bp->graph->nodes) == 3,
+        "a rejected spawn leaves no undo revision or node"
+    );
     pin_value float_value = { .type = PIN_F32, .f = 1.0f };
     editor_query_state(e, &state);
     int dirty_before_invalid_pin = state.dirty;

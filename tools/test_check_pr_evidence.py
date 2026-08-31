@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Executable CLI tests for the pull-request evidence validator."""
 
+import os
 import subprocess
 import sys
 import unittest
@@ -24,12 +25,16 @@ VALID_VISUAL = """## Evidence
 """
 
 
-def run(*args: str) -> subprocess.CompletedProcess[str]:
+def run(*args: str, body: str | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if body is not None:
+        env["PR_BODY"] = body
     return subprocess.run(
         [sys.executable, str(SCRIPT), *args],
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
 
 
@@ -65,6 +70,9 @@ class EvidenceValidatorTests(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("interaction trace", result.stdout)
+
+    def test_reads_body_from_environment_without_arguments(self):
+        self.assertEqual(run(body=VALID_AUTOMATED).returncode, 0)
 
     def test_rejects_multiple_body_arguments_as_usage_error(self):
         result = run("body", "extra")

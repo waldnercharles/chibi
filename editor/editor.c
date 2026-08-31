@@ -3645,6 +3645,18 @@ static void ed_format_text_ensure_spare(editor *e, node *n)
     ed_append_generic_arg(e, n);
 }
 
+static int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind)
+{
+    if (output->kind != expected_kind || input->kind != expected_kind) {
+        return 0;
+    }
+    if (expected_kind != PIN_DATA || (input->flags & PIN_FLAG_WILDCARD) ||
+        pin_types_compatible(output, input)) {
+        return 1;
+    }
+    return conversion_for_pins(output, input) != NULL;
+}
+
 static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
     ed_begin_authoring_edit(e);
@@ -3658,7 +3670,7 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     const pin_spec *in_spec = &input->n->input_pins[input->index];
     const char *out_name = ed_pin_type_name(out_spec);
     const char *in_name = ed_pin_type_name(in_spec);
-    if (out_spec->kind != in_spec->kind) {
+    if (!ed_connection_specs_valid(out_spec, in_spec, out_spec->kind)) {
         snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
         e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
         return 0;
@@ -3670,19 +3682,15 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     if (out_spec->kind == PIN_DATA && !generic_target &&
         !pin_types_compatible(out_spec, in_spec)) {
         const node_desc *conv = conversion_for_pins(out_spec, in_spec);
-        if (conv) {
-            return graph_connect_data_conversion(
-                       e->active_graph,
-                       output->n,
-                       output->index,
-                       input->n,
-                       input->index,
-                       conv
-                   ) == 0;
-        }
-        snprintf(e->connect_error, sizeof e->connect_error, "Cannot connect %s output to %s input", out_name, in_name);
-        e->connect_error_until = e->monotonic_time + ED_TOAST_DURATION;
-        return 0;
+        assert(conv);
+        return graph_connect_data_conversion(
+                   e->active_graph,
+                   output->n,
+                   output->index,
+                   input->n,
+                   input->index,
+                   conv
+               ) == 0;
     }
     if (out_spec->kind == PIN_EXEC) {
         int order = output->n->desc->flow_kind == NODE_FLOW_SEQUENCE ? output->index
@@ -3707,18 +3715,6 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
         ed_format_text_ensure_spare(e, input->n);
     }
     return ok;
-}
-
-static int ed_command_connection_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind)
-{
-    if (output->kind != expected_kind || input->kind != expected_kind) {
-        return 0;
-    }
-    if (expected_kind != PIN_DATA || (input->flags & PIN_FLAG_WILDCARD) ||
-        pin_types_compatible(output, input)) {
-        return 1;
-    }
-    return conversion_for_pins(output, input) != NULL;
 }
 
 #define ED_SEARCH_MAX 128
@@ -5363,7 +5359,7 @@ int editor_command_apply(editor *e, editor_command command)
                                        ? PIN_DATA
                                        : PIN_EXEC;
             if (!behavior_asset_mutable(e->bp) ||
-                !ed_command_connection_valid(
+                !ed_connection_specs_valid(
                     &from->output_pins[command.data.connect.from_pin],
                     &to->input_pins[command.data.connect.to_pin],
                     expected_kind

@@ -49,6 +49,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 static const node_desc *find_node(const char *name)
 {
@@ -87,11 +92,33 @@ static node_desc g_editor_int_desc = {
     .inputs = g_editor_int_inputs,
 };
 
+static int make_editor_save_path(char *path, size_t path_size)
+{
+#ifdef _WIN32
+    if (path_size < L_tmpnam || tmpnam_s(path, path_size) != 0) {
+        return -1;
+    }
+    return 0;
+#else
+    static const char template[] = "cblueprints-editor-XXXXXX";
+    if (path_size < sizeof template) {
+        return -1;
+    }
+    memcpy(path, template, sizeof template);
+    int fd = mkstemp(path);
+    if (fd < 0) {
+        return -1;
+    }
+    close(fd);
+    return 0;
+#endif
+}
+
 static void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
-    char save_path[L_tmpnam];
-    if (!tmpnam(save_path)) {
+    char save_path[sizeof "cblueprints-editor-XXXXXX"];
+    if (make_editor_save_path(save_path, sizeof save_path) != 0) {
         check(0, "a temporary path can be generated for editor persistence");
         ImGui_DestroyContext(context);
         return;
@@ -104,6 +131,7 @@ static void run_editor_command_checks(void)
     check(e != NULL, "editor command seam constructs a headless editor");
     if (!e) {
         behavior_asset_free(bp);
+        remove(save_path);
         ImGui_DestroyContext(context);
         return;
     }

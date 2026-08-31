@@ -46,7 +46,7 @@ def review_sha(review: dict) -> str | None:
 
 
 def active_repair_agents() -> list[dict]:
-    """Return active repair agents; fail closed if Paseo cannot be queried."""
+    """Return active worktree agents; fail closed if Paseo cannot be queried."""
     try:
         agents = json.loads(run("paseo", "agent", "ls", "--json"))
     except (subprocess.CalledProcessError, json.JSONDecodeError):
@@ -54,16 +54,8 @@ def active_repair_agents() -> list[dict]:
     return [
         agent for agent in agents
         if agent.get("status") in {"running", "starting", "waiting"}
-        and re.search(r"(?:repair\s+pr|review\s+pr|implement\s+(?:pr|issue))\s*#?\s*\d+", agent.get("name", ""), re.I)
+        and "/.paseo/worktrees/" in str(agent.get("cwd", ""))
     ]
-
-
-def active_repair_agent(number: str) -> bool:
-    pattern = re.compile(rf"(?:pr\s*#?\s*{re.escape(number)}\b|pr-{re.escape(number)}(?:\b|-))", re.I)
-    return any(
-        pattern.search(f"{agent.get('name', '')} {agent.get('cwd', '')}")
-        for agent in active_repair_agents()
-    )
 
 
 def main() -> int:
@@ -138,10 +130,6 @@ result only through the agent session."""
             inline = gh_json_from_api(f"repos/{REPO}/pulls/{number}/comments")
             all_comments = comments + issue_comments + inline
             bodies = [str(c.get("body", "")) for c in all_comments]
-            if active_repair_agent(number):
-                print(f"PR #{number}: repair agent already active; skipping")
-                continue
-
             conflict = str(pr.get("mergeStateStatus", "")).upper() == "DIRTY"
             requested_changes = any(
                 review_sha(r) == head and str(r.get("state", "")).upper() == "CHANGES_REQUESTED"

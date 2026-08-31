@@ -17,6 +17,7 @@ PAUSE_FILE = ROOT / ".paseo" / "REPAIR_AGENTS_PAUSED"
 STATE_FILE = Path.home() / ".cache" / "c-blueprints-pr-coordinator-state.json"
 MODEL = os.environ.get("PASEO_REPAIR_MODEL", "openai-codex/gpt-5.6-luna")
 PROVIDER = os.environ.get("PASEO_REPAIR_PROVIDER", "pi")
+BOT_LOGIN = os.environ.get("PASEO_GITHUB_REVIEWER_LOGIN", "cute-engine")
 IMPLEMENT_SKILL = """---
 name: implement
 description: Implement a piece of work based on a spec or set of tickets.
@@ -165,6 +166,31 @@ report the result only through the agent session."""
                 or str(check.get("state", "")).upper() in {"FAILURE", "ERROR"}
                 for check in (pr.get("statusCheckRollup") or [])
             )
+            checks = pr.get("statusCheckRollup") or []
+            checks_green = bool(checks) and all(
+                str(check.get("status", "")).upper() in {"COMPLETED", "SUCCESS"}
+                and str(check.get("conclusion", "")).upper() in {"SUCCESS", "SKIPPED", "NEUTRAL"}
+                for check in checks
+            )
+            approved_by_bot = any(
+                review_sha(r) == head
+                and str(r.get("state", "")).upper() == "APPROVED"
+                and BOT_LOGIN.lower() in login(r)
+                for r in (pr.get("reviews") or [])
+            )
+            if (approved_by_bot and checks_green and not conflict and not requested_changes
+                    and str(pr.get("mergeStateStatus", "")).upper() == "CLEAN"):
+                merge_key = f"merge:{number}:{head}"
+                if merge_key not in state:
+                    subprocess.run(
+                        ["gh", "pr", "merge", number, "--repo", REPO, "--squash", "--delete-branch"],
+                        check=True, text=True, capture_output=True,
+                    )
+                    state[merge_key] = {"merged": True}
+                    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+                    print(json.dumps({"pr": number, "head": head, "reason": "approved and checks green", "merged": True}))
+                    return 0
+                continue
 
             if conflict:
                 reason = "merge conflict"
@@ -185,8 +211,6 @@ report the result only through the agent session."""
             issue_text = f" Issue: https://github.com/{REPO}/issues/{issue}." if issue else ""
             # Keep orchestration silent on GitHub. State is local and comments are
             # deliberately avoided so repair agents do not add pickup/completion noise.
-            state[event_key] = {"dispatched": True}
-            STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             if reason == "local code review":
                 prompt = f"""Review PR {pr['url']} at current head {head}.
 
@@ -221,7 +245,7 @@ pickup or completion comments; report the result only through the agent session.
                  "--label", f"head={head}", "--json"],
                 check=True, text=True, capture_output=True,
             )
-            state[event_key]["agent_id"] = parse_agent_id(result.stdout)
+            state[event_key] = {"dispatched": True, "agent_id": parse_agent_id(result.stdout)}
             STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             print(json.dumps({"pr": number, "head": head, "reason": reason, "agent": result.stdout.strip()}))
             return 0

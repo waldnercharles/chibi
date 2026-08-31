@@ -87,6 +87,38 @@ def main() -> int:
         if active:
             print(f"Repair agent already active ({active[0].get('name')}); skipping dispatch")
             return 0
+
+        # Initial issue implementation uses this same serialized dispatcher; the
+        # separate event-driven Paseo workflow must not create a second worker.
+        issues = json.loads(run("gh", "issue", "list", "--state", "open",
+                                "--label", "ready-for-agent", "--json", "number,title,url"))
+        for issue in sorted(issues, key=lambda item: item["number"]):
+            number = str(issue["number"])
+            issue_key = f"issue:{number}:implementation"
+            if issue_key in state:
+                continue
+            linked = gh_json("issue", "view", number, "--json", "pullRequests")
+            if any(str(p.get("state", "")).upper() == "OPEN" for p in (linked.get("pullRequests") or [])):
+                continue
+            state[issue_key] = {"dispatched": True}
+            STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+            prompt = f"""Implement issue {issue['url']} in the repository.
+
+Read the complete issue, repository instructions, and applicable skills. Use /implement,
+/tdd, and /code-review as applicable. Implement only this issue, verify its acceptance
+criteria, run focused and required local checks, create a descriptive agent branch, and
+open a pull request linked to the issue. Do not merge. Do not poll remote CI. Do not post
+pickup or completion comments; report the result only through the agent session."""
+            result = subprocess.run(
+                ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
+                 "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",
+                 "--worktree-mode", "branch-off", "--new-branch", f"agent/issue-{number}",
+                 "--base", "origin/main", "--title", f"Implement issue #{number}",
+                 "--label", f"issue={number}"], check=True, text=True, capture_output=True,
+            )
+            print(json.dumps({"issue": number, "reason": "implementation", "agent": result.stdout.strip()}))
+            return 0
+
         for listed in sorted(prs, key=lambda p: p["number"]):
             pr = gh_json(
                 "pr", "view", str(listed["number"]), "--json",

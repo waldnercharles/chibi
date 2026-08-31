@@ -1,0 +1,7 @@
+{
+  "name": "Projectile",
+  "components": {
+    "GameTransform": { "x": 0, "y": 0 },
+    "GameProjectile": { "speed": 420, "lifetime": 2, "damage": 10 }
+  }
+}

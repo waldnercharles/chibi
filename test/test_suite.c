@@ -710,7 +710,7 @@ static void run_ecs_checks(void)
 
     ecs_world *generated_world = ecs_world_new();
     check(
-        GAME_REGISTRY_COMPONENT_COUNT == 4 &&
+        GAME_REGISTRY_COMPONENT_COUNT == 6 &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameTransform, NULL) ==
                 ECS_OK &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameHealth, NULL) ==
@@ -718,6 +718,10 @@ static void run_ecs_checks(void)
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameMovement, NULL) ==
                 ECS_OK &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameInput, NULL) ==
+                ECS_OK &&
+            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameWeapon, NULL) ==
+                ECS_OK &&
+            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameProjectile, NULL) ==
                 ECS_OK &&
             GAME_COMPONENT_GameHealth.index == ECS_INDEX_DENSE &&
             GAME_COMPONENT_GameHealth.layout_hash ==
@@ -1853,6 +1857,10 @@ TEST_CASE(all_checks)
         "build-time registry exposes reflected types"
     );
     check(make && make->inputs && make->outputs, "annotations emit descriptor pin metadata");
+    const type_desc *weapon = registry_type_by_name("GameWeapon");
+    const type_desc *projectile = registry_type_by_name("GameProjectile");
+    check(weapon && weapon->field_count == 3, "GameWeapon is reflected for prototype authoring");
+    check(projectile && projectile->field_count == 3, "GameProjectile is reflected for prototype authoring");
     check(add && add->fn, "annotated function emits a call adapter");
     check(
         make && make->type->fields[0].offset == 0 && make->type->size >= sizeof(float),

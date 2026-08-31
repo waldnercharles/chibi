@@ -139,6 +139,7 @@ set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
     DEMO_REGISTRY_PACK
+    GAME_REGISTRY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
     CORE_ARRAY_PACK

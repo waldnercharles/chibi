@@ -30,4 +30,20 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameInput)
 }
 GameInput;
 
+typedef NODE_COMPONENT_TYPE_DENSE(GameWeapon)
+{
+    int damage;
+    float cooldown;
+    int projectile_count;
+}
+GameWeapon;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
+{
+    float speed;
+    float lifetime;
+    int damage;
+}
+GameProjectile;
+
 #endif

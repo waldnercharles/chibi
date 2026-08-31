@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +35,21 @@ def copilot(item: dict) -> bool:
     return "copilot" in name
 
 
+def active_repair_agent(number: str) -> bool:
+    """Avoid dispatching while a Paseo agent already owns this PR."""
+    try:
+        agents = json.loads(run("paseo", "agent", "ls", "--json"))
+    except subprocess.CalledProcessError:
+        # A failed status query is fail-closed: do not risk duplicate work.
+        return True
+    pattern = re.compile(rf"(?:pr\\s*#?\\s*{re.escape(number)}\\b|pr-{re.escape(number)}(?:\\b|-))", re.I)
+    return any(
+        agent.get("status") in {"running", "starting", "waiting"}
+        and pattern.search(f"{agent.get('name', '')} {agent.get('cwd', '')}")
+        for agent in agents
+    )
+
+
 def main() -> int:
     LOCK.parent.mkdir(parents=True, exist_ok=True)
     with LOCK.open("w") as lock:
@@ -50,6 +66,9 @@ def main() -> int:
             inline = gh_json_from_api(f"repos/{REPO}/pulls/{number}/comments")
             all_comments = comments + inline
             bodies = [str(c.get("body", "")) for c in all_comments]
+            if active_repair_agent(number):
+                print(f"PR #{number}: repair agent already active; skipping")
+                continue
 
             review_event = any(
                 copilot(c) and c.get("commit_id") == head

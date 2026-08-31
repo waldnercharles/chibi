@@ -5313,30 +5313,65 @@ int editor_command_apply(editor *e, editor_command command)
             if (!from || !to) {
                 return -1;
             }
-            ed_snapshot_before(e);
-            if (command.kind == EDITOR_COMMAND_CONNECT_DATA) {
-                return graph_connect_data(
-                    e->active_graph,
-                    from,
-                    command.data.connect.from_pin,
-                    to,
-                    command.data.connect.to_pin
-                );
+            if (command.data.connect.from_pin < 0 ||
+                command.data.connect.from_pin >= from->output_count ||
+                command.data.connect.to_pin < 0 ||
+                command.data.connect.to_pin >= to->input_count) {
+                return -1;
             }
-            return graph_connect_exec(
-                e->active_graph,
+            pin_kind expected_kind = command.kind == EDITOR_COMMAND_CONNECT_DATA
+                                       ? PIN_DATA
+                                       : PIN_EXEC;
+            if (from->output_pins[command.data.connect.from_pin].kind != expected_kind ||
+                to->input_pins[command.data.connect.to_pin].kind != expected_kind) {
+                return -1;
+            }
+            char *snapshot = ed_snapshot(e);
+            if (!snapshot) {
+                return -1;
+            }
+            int pending = e->edit_pending;
+            ed_pin_view output = {
                 from,
+                ED_PIN_OUTPUT,
                 command.data.connect.from_pin,
+                { 0.0f, 0.0f },
+            };
+            ed_pin_view input = {
                 to,
+                ED_PIN_INPUT,
                 command.data.connect.to_pin,
-                0
-            );
+                { 0.0f, 0.0f },
+            };
+            int result = ed_connect(e, &output, &input) ? 0 : -1;
+            if (result == 0) {
+                e->edit_pending = 1;
+                ed_push_string(&e->undo, snapshot);
+                ed_free_string_stack(&e->redo);
+                return 0;
+            }
+            char *current = ed_snapshot(e);
+            if (current && strcmp(current, snapshot) != 0) {
+                assert(ed_adopt_behavior_asset(e, snapshot) == 0);
+                free(e->edit_revision_snapshot);
+                e->edit_revision_snapshot = ed_snapshot(e);
+                e->edit_revision_bp = e->bp;
+                e->edit_revision_initialized = 1;
+            }
+            free(current);
+            free(snapshot);
+            e->edit_pending = pending;
+            return result;
         }
         case EDITOR_COMMAND_COMPILE:
             ed_compile(e);
             return compile_report_blocked(&e->compile) ? -1 : 0;
-        case EDITOR_COMMAND_SAVE: return editor_save(e, command.data.file.path);
-        case EDITOR_COMMAND_LOAD: return editor_load(e, command.data.file.path);
+        case EDITOR_COMMAND_SAVE:
+            return command.data.file.path ? editor_save(e, command.data.file.path)
+                                          : -1;
+        case EDITOR_COMMAND_LOAD:
+            return command.data.file.path ? editor_load(e, command.data.file.path)
+                                          : -1;
     }
     return -1;
 }
@@ -5351,6 +5386,12 @@ void editor_query_state(const editor *e, editor_query *out)
     out->active_graph = e->active_graph;
     out->graph_count = acount(e->bp->graphs);
     out->compile = &e->compile;
+    if (e->edit_revision_initialized && !e->edit_pending &&
+        e->edit_revision_bp == e->bp && e->edit_revision_snapshot) {
+        out->dirty = !e->saved_snapshot ||
+                     strcmp(e->edit_revision_snapshot, e->saved_snapshot) != 0;
+        return;
+    }
     char *json = behavior_asset_save_json(e->bp);
     out->dirty = !json || !e->saved_snapshot || strcmp(json, e->saved_snapshot) != 0;
     free(json);
@@ -5445,7 +5486,7 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
 
 int editor_save(editor *e, const char *path)
 {
-    if (!e) {
+    if (!e || !path) {
         return -1;
     }
     char *json = behavior_asset_save_json(e->bp);
@@ -5459,12 +5500,14 @@ int editor_save(editor *e, const char *path)
     }
     int ok = fputs(json, f) >= 0;
     fclose(f);
-    if (ok) {
-        free(e->saved_snapshot);
-        e->saved_snapshot = behavior_asset_save_json(e->bp);
+    if (!ok) {
+        free(json);
+        return -1;
     }
-    free(json);
-    return ok ? 0 : -1;
+    free(e->saved_snapshot);
+    e->saved_snapshot = json;
+    e->edit_revision_initialized = 0;
+    return 0;
 }
 
 static int ed_read_file(const char *path, char **out)
@@ -5496,7 +5539,7 @@ static int ed_read_file(const char *path, char **out)
 
 int editor_load(editor *e, const char *path)
 {
-    if (!e) {
+    if (!e || !path) {
         return -1;
     }
     ed_begin_authoring_edit(e);
@@ -5509,6 +5552,7 @@ int editor_load(editor *e, const char *path)
     if (result == 0) {
         free(e->saved_snapshot);
         e->saved_snapshot = behavior_asset_save_json(e->bp);
+        e->edit_revision_initialized = 0;
     }
     free(json);
     return result;

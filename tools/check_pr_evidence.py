@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate the small, reviewable evidence contract in a pull request body."""
 
+import os
 import re
 import sys
 
@@ -11,7 +12,11 @@ def field(body: str, name: str) -> str:
 
 
 def main() -> int:
-    body = sys.argv[1] if len(sys.argv) == 2 else ""
+    body = os.environ.get("PR_BODY", "")
+    if len(sys.argv) == 2:
+        body = sys.argv[1]
+    elif len(sys.argv) > 2:
+        body = ""
     if "## Evidence" not in body:
         print("PR body must contain an Evidence section")
         return 1

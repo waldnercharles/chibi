@@ -24,6 +24,7 @@
 #include "../core/value_array.h"
 #include "../demo/vec3.h"
 #include "../ecs/ecs.h"
+#include "../editor/editor.h"
 #include "../editor/preview_gate.h"
 #include "../engine/engine.h"
 #include "../game/behavior.h"
@@ -42,6 +43,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct ImGuiContext ImGuiContext;
+extern ImGuiContext *ImGui_CreateContext(void *shared_font_atlas);
+extern void ImGui_DestroyContext(ImGuiContext *context);
+
 static const node_desc *find_node(const char *name)
 {
     return registry_node_by_name(name);
@@ -55,6 +60,112 @@ static void check(int ok, const char *msg)
     if (!ok) {
         fails++;
     }
+}
+
+static pin_spec g_editor_float_outputs[] = {
+    { "Value", PIN_F32, "float", PIN_DATA },
+};
+static pin_spec g_editor_int_inputs[] = {
+    { "Value", PIN_I32, "int", PIN_DATA },
+};
+static node_desc g_editor_float_sink_desc = {
+    .name = "editor_float_sink",
+    .input_count = 1,
+    .inputs = g_editor_float_outputs,
+};
+static node_desc g_editor_float_desc = {
+    .name = "editor_float_source",
+    .output_count = 1,
+    .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_int_desc = {
+    .name = "editor_int_sink",
+    .input_count = 1,
+    .inputs = g_editor_int_inputs,
+};
+
+static void run_editor_command_checks(void)
+{
+    ImGuiContext *context = ImGui_CreateContext(NULL);
+    behavior_asset *bp = behavior_asset_new("Editor command test");
+    node *source = graph_add_node(bp->graph, &g_editor_float_desc);
+    node *sink = graph_add_node(bp->graph, &g_editor_int_desc);
+    node *float_sink = graph_add_node(bp->graph, &g_editor_float_sink_desc);
+    editor *e = editor_new(bp);
+    check(e != NULL, "editor command seam constructs a headless editor");
+    if (!e) {
+        behavior_asset_free(bp);
+        ImGui_DestroyContext(context);
+        return;
+    }
+
+    editor_query state;
+    editor_query_state(e, &state);
+    check(!state.dirty, "a new editor starts with a clean saved baseline");
+    editor_tick(e, 0.0);
+    editor_command invalid_connect = {
+        .kind = EDITOR_COMMAND_CONNECT_DATA,
+        .data.connect = { source->id, 0, sink->id, 0 },
+    };
+    check(editor_command_apply(e, invalid_connect) == -1, "an invalid connection is rejected by the command seam");
+    editor_query_state(e, &state);
+    check(!state.dirty && acount(bp->graph->edges) == 0, "a rejected connection leaves no dirty or history edit");
+    unsigned revision = editor_edit_revision(e);
+    editor_undo(e);
+    editor_tick(e, 1.0);
+    check(editor_edit_revision(e) == revision, "a rejected connection does not add an undo revision");
+    editor_command valid_connect = {
+        .kind = EDITOR_COMMAND_CONNECT_DATA,
+        .data.connect = { source->id, 0, float_sink->id, 0 },
+    };
+    check(editor_command_apply(e, valid_connect) == 0, "a valid typed connection uses the editor mutation path");
+    check(acount(bp->graph->edges) == 1, "valid command connections update graph topology");
+
+    editor_command create_graph = {
+        .kind = EDITOR_COMMAND_CREATE_GRAPH,
+        .data.create_graph = { GRAPH_FUNCTION, "Worker" },
+    };
+    check(editor_command_apply(e, create_graph) == 0, "the command seam creates a graph");
+    graph *worker = behavior_asset_find_graph_by_name(bp, "Worker");
+    check(worker != NULL, "created graphs remain discoverable by name");
+    check(
+        editor_open_graph(e, worker->graph_id) == 0 && editor_active_graph(e) == worker,
+        "the command seam can open the created graph"
+    );
+
+    editor_command rename_graph = {
+        .kind = EDITOR_COMMAND_RENAME_GRAPH,
+        .data.rename_graph = { worker->graph_id, "Renamed" },
+    };
+    check(editor_command_apply(e, rename_graph) == 0, "the command seam renames a graph");
+    editor_query_state(e, &state);
+    check(state.dirty, "authored graph changes are observable as dirty");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { "/tmp/cblueprints-editor-test.json" } }
+        ) == 0,
+        "the command seam saves the authored asset"
+    );
+    editor_query_state(e, &state);
+    check(!state.dirty, "saving establishes the clean dirty baseline");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { NULL } }
+        ) == -1,
+        "a save command rejects a null path"
+    );
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { NULL } }
+        ) == -1,
+        "a load command rejects a null path"
+    );
+    remove("/tmp/cblueprints-editor-test.json");
+    editor_free(e);
+    ImGui_DestroyContext(context);
 }
 
 /* Vendor test helper: render one fmt format into a stream and compare. The
@@ -6049,6 +6160,7 @@ TEST_CASE(all_checks)
     run_parallel_checks();
     run_hot_reload_checks();
     run_scene_checks();
+    run_editor_command_checks();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

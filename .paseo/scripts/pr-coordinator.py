@@ -14,6 +14,7 @@ REPO = "waldnercharles/c-blueprints"
 ROOT = Path(__file__).resolve().parents[2]
 LOCK = Path.home() / ".cache" / "c-blueprints-pr-coordinator.lock"
 PAUSE_FILE = ROOT / ".paseo" / "REPAIR_AGENTS_PAUSED"
+STATE_FILE = Path.home() / ".cache" / "c-blueprints-pr-coordinator-state.json"
 MODEL = os.environ.get("PASEO_REPAIR_MODEL", "openai-codex/gpt-5.6-luna")
 PROVIDER = os.environ.get("PASEO_REPAIR_PROVIDER", "pi")
 
@@ -73,6 +74,10 @@ def main() -> int:
             print(f"Repair dispatch paused by {PAUSE_FILE}")
             return 0
         prs = gh_json("pr", "list", "--state", "open", "--json", "number")
+        try:
+            state = json.loads(STATE_FILE.read_text())
+        except (FileNotFoundError, json.JSONDecodeError):
+            state = {}
         active = active_repair_agents()
         if active and active[0].get("status") == "unknown":
             print("Paseo status unavailable; refusing to dispatch")
@@ -114,26 +119,27 @@ def main() -> int:
                 for check in (pr.get("statusCheckRollup") or [])
             )
 
-            if conflict and f"<!-- paseo-merge-conflict: {head} -->" not in bodies:
+            if conflict:
                 reason = "merge conflict"
-                marker = f"<!-- paseo-merge-conflict: {head} -->"
-            elif review_event and f"<!-- paseo-copilot-review: {head} -->" not in bodies:
+            elif review_event:
                 reason = "current-head Copilot review feedback"
-                marker = f"<!-- paseo-copilot-review: {head} -->"
-            elif failed and f"<!-- paseo-ci-failure: {head} -->" not in bodies:
+            elif failed:
                 reason = "failed required/current-head CI check"
-                marker = f"<!-- paseo-ci-failure: {head} -->"
+            else:
+                continue
+            event_key = f"{number}:{head}:{reason}"
+            if event_key in state:
+                continue
             else:
                 continue
 
             issue_refs = pr.get("closingIssuesReferences") or []
             issue = issue_refs[0].get("number") if issue_refs else None
             issue_text = f" Issue: https://github.com/{REPO}/issues/{issue}." if issue else ""
-            body = (
-                f"{marker}\n\nPaseo is dispatching a repair agent for {reason}."
-                f"{issue_text}"
-            )
-            run("gh", "pr", "comment", number, "--repo", REPO, "--body", body)
+            # Keep orchestration silent on GitHub. State is local and comments are
+            # deliberately avoided so repair agents do not add pickup/completion noise.
+            state[event_key] = {"dispatched": True}
+            STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
             prompt = f"""Repair PR {pr['url']} at current head {head}.
 
 Reason for dispatch: {reason}.{issue_text}
@@ -144,8 +150,8 @@ push only the PR branch. Do not poll, wait for, or repeatedly query remote CI; r
 checks and stop. Resolve only review threads whose findings you directly addressed via
 GitHub GraphQL resolveReviewThread; leave disputed or unfixed threads open. If you push
 changes, request a fresh Copilot review using requestReviewsByLogin with
-botLogins=[copilot-pull-request-reviewer]. Do not approve or merge. Leave a concise PR
-comment summarizing the work and local verification."""
+botLogins=[copilot-pull-request-reviewer]. Do not approve or merge. Do not post pickup
+or completion comments; report the result only through the agent session."""
             result = subprocess.run(
                 ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
                  "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",

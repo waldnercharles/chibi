@@ -1,0 +1,44 @@
+name: implement-ready-issue
+on: github.issue_label_added
+max_runtime: 2h
+filters:
+  repo: waldnercharles/c-blueprints
+  label: ready-for-agent
+  from_users:
+    - waldnercharles
+steps:
+  - id: implement
+    environment: c-blueprints-daemon
+    max_runtime: 90m
+    idle_timeout: 10m
+    agent: implementer
+    github:
+      connection: waldnercharles-github
+      repositories:
+        - waldnercharles/c-blueprints
+      permissions:
+        contents: write
+        issues: write
+        pull_requests: write
+    prompt:
+      - text: |
+          You are an implementation worker in a guarded GitHub workflow.
+
+          Read the complete issue from the event context below and confirm its
+          repository, number, and title before editing. Follow the repository's
+          instructions and the appropriate repository skills: invoke
+          /implement against the full issue URL, using /tdd at agreed seams and
+          /code-review before completion. Implement one issue only, run focused
+          checks and the full required suite, and
+          verify every acceptance criterion before declaring completion.
+
+          Work only in the isolated worktree. Create a descriptive branch, push
+          it, and open a pull request with gh. Link the originating issue in the
+          PR body. Do not merge the pull request. If the issue is ambiguous,
+          blocked, or lacks actionable acceptance criteria, do not guess; stop
+          without posting pickup or completion comments.
+
+          Event context:
+          ${{ paseo.context }}
+
+          Call hub.finish_execution when done.

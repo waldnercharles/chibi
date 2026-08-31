@@ -42,7 +42,7 @@ def active_repair_agent(number: str) -> bool:
     except subprocess.CalledProcessError:
         # A failed status query is fail-closed: do not risk duplicate work.
         return True
-    pattern = re.compile(rf"(?:pr\\s*#?\\s*{re.escape(number)}\\b|pr-{re.escape(number)}(?:\\b|-))", re.I)
+    pattern = re.compile(rf"(?:pr\s*#?\s*{re.escape(number)}\b|pr-{re.escape(number)}(?:\b|-))", re.I)
     return any(
         agent.get("status") in {"running", "starting", "waiting"}
         and pattern.search(f"{agent.get('name', '')} {agent.get('cwd', '')}")

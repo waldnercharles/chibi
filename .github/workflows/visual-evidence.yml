@@ -10,7 +10,6 @@ permissions:
 jobs:
   record-evidence:
     name: Record declared visual evidence
-    if: hashFiles('.github/visual-evidence.yml') != ''
     runs-on: ubuntu-latest
     steps:
       - name: Check out source

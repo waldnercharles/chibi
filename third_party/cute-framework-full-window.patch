@@ -2,7 +2,7 @@ diff --git a/src/cute_app.cpp b/src/cute_app.cpp
 index fe7a0784..e78aa0df 100644
 --- a/src/cute_app.cpp
 +++ b/src/cute_app.cpp
-@@ -554,7 +554,15 @@ int cf_app_draw_onto_screen(bool clear)
+@@ -554,7 +554,24 @@ int cf_app_draw_onto_screen(bool clear)
  	// Render any remaining geometry in the draw API.
  	cf_render_to(app->offscreen_canvas, clear);
  
@@ -12,6 +12,15 @@ index fe7a0784..e78aa0df 100644
 +	if (app->using_imgui) {
 +		ImGui::EndFrame();
 +		ImGui::Render();
++		// Close the game pass, then reopen the canvas for ImGui's render pass.
++		if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
++			cf_gles_blit_canvas(app->offscreen_canvas);
++		} else {
++#ifndef CF_EMSCRIPTEN
++			cf_sdlgpu_blit_canvas(app->offscreen_canvas);
++#endif
++		}
++		cf_render_to(app->offscreen_canvas, false);
 +		cf_imgui_draw(app->offscreen_canvas);
 +	}
 +

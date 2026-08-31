@@ -89,6 +89,7 @@ static const ImWchar UI_SEARCH_GLYPH = 0xf002;
 static ImGuiContext *ui_context;
 static int ui_reset_layout;
 static bool ui_content_drawer_open;
+static ImGuiID ui_left_pane_id;
 static editor_ui_focus_target ui_focus_request;
 static editor_ui_command_handler ui_command_handler;
 static void *ui_command_user;
@@ -596,10 +597,17 @@ static void ui_apply_theme(void)
 }
 
 static bool ui_framebuffer_target;
+static bool ui_injected_mouse_down;
 
 static ImGuiViewport ui_layout_viewport(void)
 {
     ImGuiViewport view = *ImGui_GetMainViewport();
+    if (view.Size.x <= 0.0f || view.Size.y <= 0.0f) {
+        view.Pos = (ImVec2){ 0.0f, 0.0f };
+        view.Size = ImGui_GetIO()->DisplaySize;
+        view.WorkPos = view.Pos;
+        view.WorkSize = view.Size;
+    }
     if (ui_framebuffer_target) {
         /* cute_framework reports an offscreen target's pixel size as
          * DisplaySize while retaining the window's framebuffer scale. */
@@ -635,6 +643,7 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderSetNodePos(UI_DOCKSPACE_ID, layout.WorkPos);
     ImGui_DockBuilderSetNodeSize(UI_DOCKSPACE_ID, layout.WorkSize);
     ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_LEFT_RATIO, &left, &rest);
+    ui_left_pane_id = left;
     ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_RIGHT_RATIO, &right, &center);
     ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &canvas);
     ImGui_DockBuilderDockWindow("World Outliner", left);
@@ -666,6 +675,141 @@ void editor_ui_reset_layout(void)
 void editor_ui_set_framebuffer_target(bool target)
 {
     ui_framebuffer_target = target;
+}
+
+void editor_ui_set_framebuffer_size(int width, int height)
+{
+    assert(width > 0 && height > 0);
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    if (context) {
+        ImVec2 size = { (float)width, (float)height };
+        ImGui_GetIO()->DisplaySize = size;
+        ImGuiViewport *view = ImGui_GetMainViewport();
+        view->Pos = (ImVec2){ 0.0f, 0.0f };
+        view->Size = size;
+        view->WorkPos = view->Pos;
+        view->WorkSize = size;
+    }
+}
+
+void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool primary_down)
+{
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    if (!context) {
+        return;
+    }
+    ImGuiIO *io = ImGui_GetIO();
+    float scale_x = io->DisplayFramebufferScale.x > 0.0f
+                      ? io->DisplayFramebufferScale.x
+                      : 1.0f;
+    float scale_y = io->DisplayFramebufferScale.y > 0.0f
+                      ? io->DisplayFramebufferScale.y
+                      : 1.0f;
+    ImVec2 position = { framebuffer_x / scale_x, framebuffer_y / scale_y };
+    io->MousePos = position;
+    io->MouseClicked[0] = primary_down && !ui_injected_mouse_down;
+    io->MouseReleased[0] = !primary_down && ui_injected_mouse_down;
+    io->MouseDownDurationPrev[0] = io->MouseDownDuration[0];
+    io->MouseDownDuration[0] = primary_down
+                                 ? (ui_injected_mouse_down
+                                        ? io->MouseDownDuration[0] + io->DeltaTime
+                                        : 0.0f)
+                                 : -1.0f;
+    if (io->MouseClicked[0]) {
+        io->MouseClickedPos[0] = position;
+        io->MouseDragMaxDistanceSqr[0] = 0.0f;
+    } else if (primary_down) {
+        ImVec2 delta = { position.x - io->MouseClickedPos[0].x,
+                         position.y - io->MouseClickedPos[0].y };
+        float distance = delta.x * delta.x + delta.y * delta.y;
+        if (distance > io->MouseDragMaxDistanceSqr[0]) {
+            io->MouseDragMaxDistanceSqr[0] = distance;
+        }
+    }
+    io->MouseDown[0] = primary_down;
+    ui_injected_mouse_down = primary_down;
+    ImGui_UpdateHoveredWindowAndCaptureFlags(position);
+}
+
+static ImGuiDockNode *ui_left_pane(void)
+{
+    return ui_left_pane_id ? ImGui_DockBuilderGetNode(ui_left_pane_id) : NULL;
+}
+
+float editor_ui_left_pane_width(void)
+{
+    ImGuiDockNode *pane = ui_left_pane();
+    return pane ? pane->Size.x : 0.0f;
+}
+
+float editor_ui_left_pane_splitter_x(void)
+{
+    ImGuiDockNode *pane = ui_left_pane();
+    if (!pane) {
+        return 0.0f;
+    }
+    float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
+    if (scale <= 0.0f) {
+        scale = 1.0f;
+    }
+    return (pane->Pos.x + pane->Size.x) * scale;
+}
+
+float editor_ui_left_pane_center_y(void)
+{
+    ImGuiDockNode *pane = ui_left_pane();
+    if (!pane) {
+        return 0.0f;
+    }
+    float scale = ImGui_GetIO()->DisplayFramebufferScale.y;
+    if (scale <= 0.0f) {
+        scale = 1.0f;
+    }
+    return (pane->Pos.y + pane->Size.y * 0.5f) * scale;
+}
+
+void editor_ui_draw_recording_cursor(
+    float framebuffer_cursor_x,
+    float framebuffer_cursor_y,
+    float framebuffer_click_x,
+    float framebuffer_click_y,
+    bool click_active,
+    float click_radius
+)
+{
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    if (!context) {
+        return;
+    }
+    ImGuiIO *io = ImGui_GetIO();
+    float scale_x = io->DisplayFramebufferScale.x > 0.0f
+                      ? io->DisplayFramebufferScale.x
+                      : 1.0f;
+    float scale_y = io->DisplayFramebufferScale.y > 0.0f
+                      ? io->DisplayFramebufferScale.y
+                      : 1.0f;
+    ImVec2 cursor = { framebuffer_cursor_x / scale_x, framebuffer_cursor_y / scale_y };
+    ImVec2 click = { framebuffer_click_x / scale_x, framebuffer_click_y / scale_y };
+    float cursor_size = 18.0f / scale_x;
+    ImDrawList *draw = ImGui_GetForegroundDrawList();
+    ImU32 color = IM_COL32(255, 190, 25, 255);
+    ImDrawList_AddLineEx(
+        draw,
+        (ImVec2){ cursor.x - cursor_size * 0.5f, cursor.y },
+        (ImVec2){ cursor.x + cursor_size * 0.5f, cursor.y },
+        color,
+        3.0f / scale_x
+    );
+    ImDrawList_AddLineEx(
+        draw,
+        (ImVec2){ cursor.x, cursor.y - cursor_size * 0.5f },
+        (ImVec2){ cursor.x, cursor.y + cursor_size * 0.5f },
+        color,
+        3.0f / scale_y
+    );
+    if (click_active) {
+        ImDrawList_AddCircleEx(draw, click, click_radius / scale_x, color, 0, 3.0f / scale_x);
+    }
 }
 
 void editor_ui_prepare(void)

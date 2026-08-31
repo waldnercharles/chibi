@@ -1,8 +1,10 @@
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR := build
 BENCHMARK_BUILD_DIR ?= build-release
+RECORD_PATH ?= /tmp/c-blueprints-resize-pane.mp4
+FRAMES ?= 48
 
-.PHONY: all build run benchmark web web-serve format check-format test clean
+.PHONY: all build run record-resize-pane benchmark web web-serve format check-format test clean
 
 all: build
 
@@ -11,6 +13,9 @@ build:
 
 run: build
 	$(BUILD_DIR)/app $(ARGS)
+
+record-resize-pane: build
+	$(BUILD_DIR)/app --headless --record $(RECORD_PATH) --scenario resize-pane --frames $(FRAMES)
 
 benchmark:
 	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release

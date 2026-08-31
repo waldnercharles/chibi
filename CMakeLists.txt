@@ -60,7 +60,7 @@ set(LIBCLANG_ROOT "" CACHE PATH "LLVM installation prefix")
 find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES include)
-find_library(LIBCLANG_LIBRARY NAMES clang
+find_library(LIBCLANG_LIBRARY NAMES clang libclang clang-18 libclang-18
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES lib)
 file(GLOB LIBCLANG_RESOURCE_INCLUDE_DIRS

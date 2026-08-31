@@ -5256,7 +5256,12 @@ int editor_command_apply(editor *e, editor_command command)
     }
     switch (command.kind) {
         case EDITOR_COMMAND_CREATE_GRAPH: {
-            if (!command.data.create_graph.name) {
+            if (!command.data.create_graph.name ||
+                !command.data.create_graph.name[0] || !behavior_asset_mutable(e->bp) ||
+                behavior_asset_find_graph_by_name(
+                    e->bp,
+                    command.data.create_graph.name
+                )) {
                 return -1;
             }
             ed_snapshot_before(e);

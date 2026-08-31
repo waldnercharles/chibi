@@ -139,6 +139,25 @@ static void run_editor_command_checks(void)
         .kind = EDITOR_COMMAND_CREATE_GRAPH,
         .data.create_graph = { GRAPH_FUNCTION, "Worker" },
     };
+    editor_query_state(e, &state);
+    int dirty_before_create = state.dirty;
+    unsigned revision_before_create = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                .data.create_graph = { GRAPH_FUNCTION, "" },
+            }
+        ) == -1,
+        "graph creation rejects an empty name"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.dirty == dirty_before_create &&
+            editor_edit_revision(e) == revision_before_create,
+        "a rejected graph creation leaves no dirty or history edit"
+    );
     check(editor_command_apply(e, create_graph) == 0, "the command seam creates a graph");
     graph *worker = behavior_asset_find_graph_by_name(bp, "Worker");
     check(worker != NULL, "created graphs remain discoverable by name");

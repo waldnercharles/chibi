@@ -73,7 +73,7 @@ def main() -> int:
         if PAUSE_FILE.exists():
             print(f"Repair dispatch paused by {PAUSE_FILE}")
             return 0
-        prs = gh_json("pr", "list", "--state", "open", "--json", "number")
+        prs = gh_json("pr", "list", "--state", "open", "--json", "number,body,headRefName")
         try:
             state = json.loads(STATE_FILE.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
@@ -97,8 +97,11 @@ def main() -> int:
             issue_key = f"issue:{number}:implementation"
             if issue_key in state:
                 continue
-            linked = gh_json("issue", "view", number, "--json", "pullRequests")
-            if any(str(p.get("state", "")).upper() == "OPEN" for p in (linked.get("pullRequests") or [])):
+            issue_ref = re.compile(rf"(?:issues/|(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*#)" + re.escape(number) + r"\b", re.I)
+            if any(
+                issue_ref.search(f"{p.get('body', '')} {p.get('headRefName', '')}")
+                for p in prs
+            ):
                 continue
             state[issue_key] = {"dispatched": True}
             STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")

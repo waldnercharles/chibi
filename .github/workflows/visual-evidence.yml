@@ -8,8 +8,9 @@ permissions:
   contents: read
 
 jobs:
-  record-resize-pane:
-    name: Record resize-pane evidence
+  record-evidence:
+    name: Record declared visual evidence
+    if: hashFiles('.github/visual-evidence.yml') != ''
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -20,17 +21,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes cmake ffmpeg libclang-dev llvm-dev python3
 
+      - name: Read the declared scenario
+        id: evidence
+        run: |
+          scenario=$(sed -n 's/^scenario:[[:space:]]*//p' .github/visual-evidence.yml | head -1)
+          test -n "$scenario"
+          case "$scenario" in
+            resize-pane) ;;
+            *) echo "Unsupported visual evidence scenario: $scenario" >&2; exit 2 ;;
+          esac
+          echo "scenario=$scenario" >> "$GITHUB_OUTPUT"
+
       - name: Build and record the interaction
         run: |
-          make record-resize-pane \
-            RECORD_PATH="$RUNNER_TEMP/c-blueprints-resize-pane.mp4" \
+          make record-evidence \
+            SCENARIO="${{ steps.evidence.outputs.scenario }}" \
+            RECORD_PATH="$RUNNER_TEMP/c-blueprints-${{ steps.evidence.outputs.scenario }}.mp4" \
             FRAMES=48
 
       - name: Upload recording artifact
         uses: actions/upload-artifact@v4
         with:
-          name: c-blueprints-resize-pane-${{ github.sha }}
-          path: ${{ runner.temp }}/c-blueprints-resize-pane.mp4
+          name: c-blueprints-${{ steps.evidence.outputs.scenario }}-${{ github.sha }}
+          path: ${{ runner.temp }}/c-blueprints-${{ steps.evidence.outputs.scenario }}.mp4
           if-no-files-found: error
           retention-days: 14
 
@@ -39,7 +52,7 @@ jobs:
           {
             echo '### Visual evidence'
             echo
-            echo "The resize-pane recording was uploaded as a CI artifact:"
+            echo "The ${{ steps.evidence.outputs.scenario }} recording was uploaded as a CI artifact:"
             echo
             echo "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           } >> "$GITHUB_STEP_SUMMARY"

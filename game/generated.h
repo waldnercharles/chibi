@@ -9,6 +9,8 @@ extern const ecs_component_desc GAME_COMPONENT_GameTransform;
 extern const ecs_component_desc GAME_COMPONENT_GameHealth;
 extern const ecs_component_desc GAME_COMPONENT_GameMovement;
 extern const ecs_component_desc GAME_COMPONENT_GameInput;
+extern const ecs_component_desc GAME_COMPONENT_GameWeapon;
+extern const ecs_component_desc GAME_COMPONENT_GameProjectile;
 extern const ecs_component_desc *const GAME_REGISTRY_COMPONENTS[];
 extern const int GAME_REGISTRY_COMPONENT_COUNT;
 
@@ -32,6 +34,16 @@ extern const GameInput *GAME_GameInput_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameInput_has(const ecs_world *, ecs_entity);
 extern int GAME_GameInput_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameInput_remove(ecs_world *, ecs_entity, uint64_t);
+extern GameWeapon *GAME_GameWeapon_get(ecs_world *, ecs_entity);
+extern const GameWeapon *GAME_GameWeapon_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameWeapon_has(const ecs_world *, ecs_entity);
+extern int GAME_GameWeapon_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameWeapon_remove(ecs_world *, ecs_entity, uint64_t);
+extern GameProjectile *GAME_GameProjectile_get(ecs_world *, ecs_entity);
+extern const GameProjectile *GAME_GameProjectile_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameProjectile_has(const ecs_world *, ecs_entity);
+extern int GAME_GameProjectile_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameProjectile_remove(ecs_world *, ecs_entity, uint64_t);
 
 extern node_desc GAME_NODE_Get_GameTransform;
 extern node_desc GAME_NODE_Set_GameTransform;
@@ -53,6 +65,16 @@ extern node_desc GAME_NODE_Set_GameInput;
 extern node_desc GAME_NODE_Has_GameInput;
 extern node_desc GAME_NODE_Add_GameInput;
 extern node_desc GAME_NODE_Remove_GameInput;
+extern node_desc GAME_NODE_Get_GameWeapon;
+extern node_desc GAME_NODE_Set_GameWeapon;
+extern node_desc GAME_NODE_Has_GameWeapon;
+extern node_desc GAME_NODE_Add_GameWeapon;
+extern node_desc GAME_NODE_Remove_GameWeapon;
+extern node_desc GAME_NODE_Get_GameProjectile;
+extern node_desc GAME_NODE_Set_GameProjectile;
+extern node_desc GAME_NODE_Has_GameProjectile;
+extern node_desc GAME_NODE_Add_GameProjectile;
+extern node_desc GAME_NODE_Remove_GameProjectile;
 extern node_desc GAME_NODE_game_component_probe;
 
 #endif

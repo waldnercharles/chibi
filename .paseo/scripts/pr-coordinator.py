@@ -54,7 +54,7 @@ def active_repair_agents() -> list[dict]:
     return [
         agent for agent in agents
         if agent.get("status") in {"running", "starting", "waiting"}
-        and re.search(r"(?:repair|implement)\s+pr\s*#?\s*\d+", agent.get("name", ""), re.I)
+        and re.search(r"(?:repair|implement|review)\s+pr\s*#?\s*\d+", agent.get("name", ""), re.I)
     ]
 
 
@@ -125,12 +125,12 @@ def main() -> int:
                 reason = "current-head Copilot review feedback"
             elif failed:
                 reason = "failed required/current-head CI check"
+            elif f"{number}:{head}:local code review" not in state:
+                reason = "local code review"
             else:
                 continue
             event_key = f"{number}:{head}:{reason}"
             if event_key in state:
-                continue
-            else:
                 continue
 
             issue_refs = pr.get("closingIssuesReferences") or []
@@ -140,7 +140,17 @@ def main() -> int:
             # deliberately avoided so repair agents do not add pickup/completion noise.
             state[event_key] = {"dispatched": True}
             STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
-            prompt = f"""Repair PR {pr['url']} at current head {head}.
+            if reason == "local code review":
+                prompt = f"""Review PR {pr['url']} at current head {head}.
+
+Read and follow `.github/skills/code-review.md`, the originating issue acceptance criteria,
+and repository instructions. Review the complete diff and relevant surrounding code. Run
+focused local checks when practical, but do not poll or wait for remote CI. Report only
+specific, actionable findings as an inline GitHub pull-request review; do not edit files,
+push commits, approve, or merge. Add the `agent-reviewed` label. If there are no actionable
+findings, do not post a summary comment. Do not post pickup or completion comments."""
+            else:
+                prompt = f"""Repair PR {pr['url']} at current head {head}.
 
 Reason for dispatch: {reason}.{issue_text}
 Read the originating issue acceptance criteria, repository instructions, current Copilot
@@ -156,7 +166,7 @@ or completion comments; report the result only through the agent session."""
                 ["paseo", "agent", "run", prompt, "--background", "--cwd", str(ROOT),
                  "--provider", PROVIDER, "--model", MODEL, "--new-workspace", "worktree",
                  "--worktree-mode", "checkout-pr", "--pr-number", number, "--forge", "github",
-                 "--title", f"Repair PR #{number} ({reason})", "--label", f"pr={number}",
+                 "--title", f"{'Review' if reason == 'local code review' else 'Repair'} PR #{number} ({reason})", "--label", f"pr={number}",
                  "--label", f"head={head}"],
                 check=True, text=True, capture_output=True,
             )

@@ -82,10 +82,12 @@ int app_behavior_fixtures_load(game_live_world *world, const char *content_root)
         free(json);
         if (asset && asset->name && !game_live_find_definition(world, asset->name)) {
             game_live_definition *definition = game_live_definition_new(asset->name, asset);
+            if (definition) {
+                asset = NULL;
+            }
             if (definition && game_live_definition_set_path(definition, paths[i]) == 0 &&
                 game_live_add_definition(world, definition) == 0) {
                 loaded++;
-                asset = NULL;
             } else {
                 game_live_definition_free(definition);
             }

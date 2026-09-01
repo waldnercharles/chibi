@@ -9,7 +9,7 @@ FRAMES ?= 48
 all: build
 
 build:
-	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR)
+	cmake -S . -B $(BUILD_DIR) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
 
 run: build
 	$(BUILD_DIR)/app $(ARGS)
@@ -17,6 +17,7 @@ run: build
 record-evidence: build
 	case "$(SCENARIO)" in \
 		resize-pane) $(BUILD_DIR)/app --headless --record $(RECORD_PATH) --scenario resize-pane --frames $(FRAMES) ;; \
+		authoring) $(BUILD_DIR)/app --headless --record $(RECORD_PATH) --scenario authoring --frames $(FRAMES) ;; \
 		*) echo "Unsupported evidence scenario: $(SCENARIO)" >&2; exit 2 ;; \
 	esac
 

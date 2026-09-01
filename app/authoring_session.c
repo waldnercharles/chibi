@@ -1,5 +1,7 @@
 #include "authoring_session.h"
 
+#include "../core/conv_nodes.h"
+#include "../core/registry.h"
 #include "../core/serialize.h"
 #include "../core/xalloc.h"
 #include "../ecs/ecs.h"
@@ -130,12 +132,112 @@ graph *app_authoring_session_add_graph(app_authoring_session *session, graph_kin
     if (!session || !session->active) {
         return NULL;
     }
-    graph *graph = behavior_asset_add_graph(session->active->working, kind, name);
+    graph *graph = kind == GRAPH_FUNCTION
+                     ? behavior_asset_add_function(session->active->working, name, 0)
+                 : kind == GRAPH_MACRO
+                     ? behavior_asset_add_macro(session->active->working, name)
+                     : behavior_asset_add_graph(session->active->working, kind, name);
     if (graph) {
         game_live_mark_dirty(session->active);
         session->active_graph = graph;
     }
     return graph;
+}
+
+uint64_t app_authoring_session_add_node(app_authoring_session *session, const char *name)
+{
+    if (!session || !session->active_graph || !name) {
+        return 0;
+    }
+    const node_desc *desc = registry_node_by_name(name);
+    node *node = desc ? graph_add_node(session->active_graph, desc) : NULL;
+    if (!node) {
+        return 0;
+    }
+    game_live_mark_dirty(session->active);
+    return node->id;
+}
+
+int app_authoring_session_set_pin_default(
+    app_authoring_session *session,
+    uint64_t node_id,
+    int output,
+    int index,
+    const pin_value *value
+)
+{
+    if (!session || !session->active_graph || !value) {
+        return -1;
+    }
+    node *node = graph_node_by_id(session->active_graph, node_id);
+    if (!node ||
+        graph_set_pin_default(session->active_graph, node, output, index, value) != 0) {
+        return -1;
+    }
+    game_live_mark_dirty(session->active);
+    return 0;
+}
+
+int app_authoring_session_connect_data(
+    app_authoring_session *session,
+    uint64_t from_node,
+    int from_pin,
+    uint64_t to_node,
+    int to_pin
+)
+{
+    if (!session || !session->active_graph || from_pin < 0 || to_pin < 0) {
+        return -1;
+    }
+    node *from = graph_node_by_id(session->active_graph, from_node);
+    node *to = graph_node_by_id(session->active_graph, to_node);
+    if (!from || !to || from_pin >= from->output_count || to_pin >= to->input_count) {
+        return -1;
+    }
+    const pin_spec *output = &from->output_pins[from_pin];
+    const pin_spec *input = &to->input_pins[to_pin];
+    const node_desc *conversion = output->kind == PIN_DATA && input->kind == PIN_DATA
+                                    ? conversion_for_pins(output, input)
+                                    : NULL;
+    int connected = conversion
+                      ? graph_connect_data_conversion(session->active_graph, from, from_pin, to, to_pin, conversion)
+                      : graph_connect_data(session->active_graph, from, from_pin, to, to_pin);
+    if (connected != 0) {
+        return -1;
+    }
+    game_live_mark_dirty(session->active);
+    return 0;
+}
+
+int app_authoring_session_connect_exec(
+    app_authoring_session *session,
+    uint64_t from_node,
+    int from_pin,
+    uint64_t to_node,
+    int to_pin,
+    int exec_order
+)
+{
+    if (!session || !session->active_graph || from_pin < 0 || to_pin < 0) {
+        return -1;
+    }
+    node *from = graph_node_by_id(session->active_graph, from_node);
+    node *to = graph_node_by_id(session->active_graph, to_node);
+    if (!from || !to ||
+        graph_connect_exec(session->active_graph, from, from_pin, to, to_pin, exec_order) !=
+            0) {
+        return -1;
+    }
+    game_live_mark_dirty(session->active);
+    return 0;
+}
+
+int app_authoring_session_compile(app_authoring_session *session)
+{
+    if (!session || !session->active) {
+        return -1;
+    }
+    return behavior_asset_compile(session->active->working, &session->active->diagnostics);
 }
 
 int app_authoring_session_rename_graph(app_authoring_session *session, uint64_t graph_id, const char *name)

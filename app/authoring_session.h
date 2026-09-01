@@ -37,6 +37,14 @@ int app_authoring_session_connect_data(
     uint64_t to_node,
     int to_pin
 );
+int app_authoring_session_connect_exec(
+    app_authoring_session *session,
+    uint64_t from_node,
+    int from_pin,
+    uint64_t to_node,
+    int to_pin,
+    int exec_order
+);
 int app_authoring_session_compile(app_authoring_session *session);
 int app_authoring_session_rename_graph(
     app_authoring_session *session,

@@ -1752,13 +1752,27 @@ static void run_authoring_session_checks(void)
             app_authoring_session_dirty(session),
         "the public seam creates and observes a dirty Behavior Asset"
     );
-    graph *graph = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "Compute");
+    graph *function_graph = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "Compute");
     check(
-        graph && app_authoring_session_active_graph(session) == graph &&
-            app_authoring_session_rename_graph(session, graph->graph_id, "ComputeRenamed") ==
+        function_graph && app_authoring_session_connect_exec(
+                              session,
+                              function_graph->entry_id,
+                              0,
+                              function_graph->return_id,
+                              0,
+                              0
+                          ) == 0,
+        "the public seam connects execution edges by node id"
+    );
+    graph *macro_graph = app_authoring_session_add_graph(session, GRAPH_MACRO, "Macro");
+    check(macro_graph && macro_graph->entry_id != 0 && macro_graph->return_id != 0, "macro graphs created through the public seam have entry and return nodes");
+    check(app_authoring_session_select_graph(session, function_graph->graph_id) == 0, "the function graph can be selected again");
+    check(
+        function_graph && app_authoring_session_active_graph(session) == function_graph &&
+            app_authoring_session_rename_graph(session, function_graph->graph_id, "ComputeRenamed") ==
                 0 &&
             behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed") ==
-                graph,
+                function_graph,
         "commands add, select, and rename graphs through the headless seam"
     );
     const char path[] = "/tmp/c-blueprints-integration-behavior.json";
@@ -1768,7 +1782,7 @@ static void run_authoring_session_checks(void)
         "saving the active authored asset clears its observable dirty state"
     );
     check(
-        app_authoring_session_rename_graph(session, graph->graph_id, "Unsaved") == 0 &&
+        app_authoring_session_rename_graph(session, function_graph->graph_id, "Unsaved") == 0 &&
             app_authoring_session_dirty(session) &&
             app_authoring_session_reload(session, path) == 0 &&
             !app_authoring_session_dirty(session) &&

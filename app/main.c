@@ -179,7 +179,7 @@ static int app_run_authoring_workflow(void)
     node *entry = function ? graph_node_by_id(function, function->entry_id) : NULL;
     node *ret = function ? graph_node_by_id(function, function->return_id) : NULL;
     if (!function || !entry || !ret ||
-        graph_connect_exec(function, entry, 0, ret, 0, 0) != 0 ||
+        app_authoring_session_connect_exec(session, entry->id, 0, ret->id, 0, 0) != 0 ||
         app_authoring_session_rename_graph(session, graph_id, "ScenarioGraphRenamed") != 0 ||
         app_authoring_session_select_graph(session, graph_id) != 0) {
         fprintf(stderr, "authoring scenario could not author a graph\n");

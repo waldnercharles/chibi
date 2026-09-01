@@ -1,5 +1,6 @@
 #include "authoring_session.h"
 
+#include "../core/conv_nodes.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
 #include "../core/xalloc.h"
@@ -190,8 +191,18 @@ int app_authoring_session_connect_data(
     }
     node *from = graph_node_by_id(session->active_graph, from_node);
     node *to = graph_node_by_id(session->active_graph, to_node);
-    if (!from || !to ||
-        graph_connect_data(session->active_graph, from, from_pin, to, to_pin) != 0) {
+    if (!from || !to || from_pin >= from->output_count || to_pin >= to->input_count) {
+        return -1;
+    }
+    const pin_spec *output = &from->output_pins[from_pin];
+    const pin_spec *input = &to->input_pins[to_pin];
+    const node_desc *conversion = output->kind == PIN_DATA && input->kind == PIN_DATA
+                                    ? conversion_for_pins(output, input)
+                                    : NULL;
+    int connected = conversion
+                      ? graph_connect_data_conversion(session->active_graph, from, from_pin, to, to_pin, conversion)
+                      : graph_connect_data(session->active_graph, from, from_pin, to, to_pin);
+    if (connected != 0) {
         return -1;
     }
     game_live_mark_dirty(session->active);

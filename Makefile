@@ -9,7 +9,7 @@ FRAMES ?= 48
 all: build
 
 build:
-	cmake -S . -B $(BUILD_DIR) -DLIBCLANG_ROOT="$(LIBCLANG_ROOT)" && cmake --build $(BUILD_DIR)
+	cmake -S . -B $(BUILD_DIR) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
 
 run: build
 	$(BUILD_DIR)/app $(ARGS)

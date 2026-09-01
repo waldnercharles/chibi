@@ -1767,6 +1767,13 @@ static void run_authoring_session_checks(void)
     graph *macro_graph = app_authoring_session_add_graph(session, GRAPH_MACRO, "Macro");
     check(macro_graph && macro_graph->entry_id != 0 && macro_graph->return_id != 0, "macro graphs created through the public seam have entry and return nodes");
     check(app_authoring_session_select_graph(session, function_graph->graph_id) == 0, "the function graph can be selected again");
+    uint64_t integer_id = app_authoring_session_add_node(session, "Integer");
+    uint64_t real_id = app_authoring_session_add_node(session, "add_floats");
+    check(
+        integer_id && real_id &&
+            app_authoring_session_connect_data(session, integer_id, 0, real_id, 0) == 0,
+        "the public seam inserts an explicit numeric conversion edge"
+    );
     check(
         function_graph && app_authoring_session_active_graph(session) == function_graph &&
             app_authoring_session_rename_graph(session, function_graph->graph_id, "ComputeRenamed") ==
@@ -1775,6 +1782,15 @@ static void run_authoring_session_checks(void)
                 function_graph,
         "commands add, select, and rename graphs through the headless seam"
     );
+    const edge *conversion_edge = NULL;
+    for (int i = 0; i < acount(function_graph->edges); i++) {
+        if (function_graph->edges[i].from_id == integer_id &&
+            function_graph->edges[i].to_id == real_id) {
+            conversion_edge = &function_graph->edges[i];
+            break;
+        }
+    }
+    check(conversion_edge && conversion_edge->conversion, "conversion edges retain their conversion node");
     const char path[] = "/tmp/c-blueprints-integration-behavior.json";
     check(
         app_authoring_session_save(session, path) == 0 &&
@@ -1789,6 +1805,16 @@ static void run_authoring_session_checks(void)
             behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed"),
         "reload restores the saved authored graph and dirty state"
     );
+    function_graph = behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed");
+    conversion_edge = NULL;
+    for (int i = 0; function_graph && i < acount(function_graph->edges); i++) {
+        if (function_graph->edges[i].from_id == integer_id &&
+            function_graph->edges[i].to_id == real_id) {
+            conversion_edge = &function_graph->edges[i];
+            break;
+        }
+    }
+    check(conversion_edge && conversion_edge->conversion, "reload preserves explicit conversion edges");
     remove(path);
     app_authoring_session_free(session);
 }

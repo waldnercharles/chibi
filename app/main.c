@@ -170,8 +170,10 @@ static int app_run_authoring_workflow(void)
     int error_count;
     int warning_count;
     int result = -1;
-    if (snprintf(path, sizeof path, "/tmp/c-blueprints-authoring-%ld.json", (long)getpid()) <
-            0 ||
+    int temp_ready = 0;
+    int fd = -1;
+    if (snprintf(path, sizeof path, "/tmp/c-blueprints-authoring-XXXXXX") < 0 ||
+        (fd = mkstemp(path)) < 0 || close(fd) != 0 || !(temp_ready = 1) ||
         !session || app_authoring_session_load_fixtures(session) <= 0 ||
         app_authoring_session_create_behavior(session, "ScenarioBehavior") != 0) {
         fprintf(stderr, "authoring scenario could not create a Behavior Asset\n");
@@ -268,7 +270,9 @@ static int app_run_authoring_workflow(void)
     );
     result = 0;
 cleanup:
-    remove(path);
+    if (temp_ready) {
+        remove(path);
+    }
     app_authoring_session_free(session);
     return result;
 }

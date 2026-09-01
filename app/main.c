@@ -221,9 +221,9 @@ static int app_run_authoring_workflow(void)
         "authoring scenario passed: reflected=%d diagnostics=%d errors=%d "
         "warnings=%d\n",
         reflected,
-        report.error_count + report.warning_count,
-        report.error_count,
-        report.warning_count
+        report->error_count + report->warning_count,
+        report->error_count,
+        report->warning_count
     );
     result = 0;
 cleanup:

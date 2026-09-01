@@ -54,7 +54,7 @@ IncludeBlocks: Regroup
 IndentCaseLabels: true
 IndentWidth: 4
 InsertBraces: true
-Language: C
+Language: Cpp
 PenaltyBreakAssignment: 1000
 PenaltyBreakBeforeFirstCallParameter: 156
 PenaltyBreakComment: 250

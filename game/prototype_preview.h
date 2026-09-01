@@ -22,6 +22,7 @@ int game_prototype_preview_launch(
 void game_prototype_preview_stop(game_prototype_preview *preview);
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time);
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview);
+game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview);
 behavior_instance *game_prototype_preview_instance(game_prototype_preview *preview, const char *asset_name);
 

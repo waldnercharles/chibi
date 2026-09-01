@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define APP_WINDOW_WIDTH 1920
 #define APP_WINDOW_HEIGHT 1080
@@ -163,13 +164,15 @@ typedef struct
 static int app_run_authoring_workflow(void)
 {
     app_authoring_session *session = app_authoring_session_new("content");
-    const char path[] = "/tmp/c-blueprints-authoring-scenario.json";
+    char path[128];
     const compile_report *report;
     int diagnostic_count;
     int error_count;
     int warning_count;
     int result = -1;
-    if (!session || app_authoring_session_load_fixtures(session) <= 0 ||
+    if (snprintf(path, sizeof path, "/tmp/c-blueprints-authoring-%ld.json", (long)getpid()) <
+            0 ||
+        !session || app_authoring_session_load_fixtures(session) <= 0 ||
         app_authoring_session_create_behavior(session, "ScenarioBehavior") != 0) {
         fprintf(stderr, "authoring scenario could not create a Behavior Asset\n");
         goto cleanup;

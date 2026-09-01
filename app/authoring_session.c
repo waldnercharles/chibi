@@ -131,7 +131,9 @@ graph *app_authoring_session_add_graph(app_authoring_session *session, graph_kin
     if (!session || !session->active) {
         return NULL;
     }
-    graph *graph = behavior_asset_add_graph(session->active->working, kind, name);
+    graph *graph = kind == GRAPH_FUNCTION
+                     ? behavior_asset_add_function(session->active->working, name, 0)
+                     : behavior_asset_add_graph(session->active->working, kind, name);
     if (graph) {
         game_live_mark_dirty(session->active);
         session->active_graph = graph;
@@ -181,9 +183,13 @@ int app_authoring_session_connect_data(
     int to_pin
 )
 {
-    if (!session || !session->active_graph ||
-        graph_connect_data_ids(session->active_graph, from_node, (uint64_t)from_pin, to_node, (uint64_t)to_pin) !=
-            0) {
+    if (!session || !session->active_graph || from_pin < 0 || to_pin < 0) {
+        return -1;
+    }
+    node *from = graph_node_by_id(session->active_graph, from_node);
+    node *to = graph_node_by_id(session->active_graph, to_node);
+    if (!from || !to ||
+        graph_connect_data(session->active_graph, from, from_pin, to, to_pin) != 0) {
         return -1;
     }
     game_live_mark_dirty(session->active);

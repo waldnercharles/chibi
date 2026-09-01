@@ -1,5 +1,6 @@
 #include "authoring_session.h"
 
+#include "../core/registry.h"
 #include "../core/serialize.h"
 #include "../core/xalloc.h"
 #include "../ecs/ecs.h"
@@ -136,6 +137,65 @@ graph *app_authoring_session_add_graph(app_authoring_session *session, graph_kin
         session->active_graph = graph;
     }
     return graph;
+}
+
+uint64_t app_authoring_session_add_node(app_authoring_session *session, const char *name)
+{
+    if (!session || !session->active_graph || !name) {
+        return 0;
+    }
+    const node_desc *desc = registry_node_by_name(name);
+    node *node = desc ? graph_add_node(session->active_graph, desc) : NULL;
+    if (!node) {
+        return 0;
+    }
+    game_live_mark_dirty(session->active);
+    return node->id;
+}
+
+int app_authoring_session_set_pin_default(
+    app_authoring_session *session,
+    uint64_t node_id,
+    int output,
+    int index,
+    const pin_value *value
+)
+{
+    if (!session || !session->active_graph || !value) {
+        return -1;
+    }
+    node *node = graph_node_by_id(session->active_graph, node_id);
+    if (!node ||
+        graph_set_pin_default(session->active_graph, node, output, index, value) != 0) {
+        return -1;
+    }
+    game_live_mark_dirty(session->active);
+    return 0;
+}
+
+int app_authoring_session_connect_data(
+    app_authoring_session *session,
+    uint64_t from_node,
+    int from_pin,
+    uint64_t to_node,
+    int to_pin
+)
+{
+    if (!session || !session->active_graph ||
+        graph_connect_data_ids(session->active_graph, from_node, (uint64_t)from_pin, to_node, (uint64_t)to_pin) !=
+            0) {
+        return -1;
+    }
+    game_live_mark_dirty(session->active);
+    return 0;
+}
+
+int app_authoring_session_compile(app_authoring_session *session)
+{
+    if (!session || !session->active) {
+        return -1;
+    }
+    return behavior_asset_compile(session->active->working, &session->active->diagnostics);
 }
 
 int app_authoring_session_rename_graph(app_authoring_session *session, uint64_t graph_id, const char *name)

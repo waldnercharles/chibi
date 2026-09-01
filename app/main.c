@@ -164,8 +164,7 @@ static int app_run_authoring_workflow(void)
 {
     app_authoring_session *session = app_authoring_session_new("content");
     const char path[] = "/tmp/c-blueprints-authoring-scenario.json";
-    compile_report report;
-    compile_report_init(&report);
+    const compile_report *report;
     int result = -1;
     if (!session || app_authoring_session_load_fixtures(session) <= 0 ||
         app_authoring_session_create_behavior(session, "ScenarioBehavior") != 0) {
@@ -173,19 +172,16 @@ static int app_run_authoring_workflow(void)
         goto cleanup;
     }
     graph *function = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "ScenarioGraph");
+    uint64_t graph_id = function ? function->graph_id : 0;
     if (!function ||
-        app_authoring_session_rename_graph(session, function->graph_id, "ScenarioGraphRenamed") !=
-            0 ||
-        app_authoring_session_select_graph(session, function->graph_id) != 0) {
+        app_authoring_session_rename_graph(session, graph_id, "ScenarioGraphRenamed") != 0 ||
+        app_authoring_session_select_graph(session, graph_id) != 0) {
         fprintf(stderr, "authoring scenario could not author a graph\n");
         goto cleanup;
     }
-    const node_desc *real_desc = registry_node_by_name("Real");
-    const node_desc *add_desc = registry_node_by_name("Add");
-    const node_desc *branch_desc = registry_node_by_name("Branch");
-    node *literal = real_desc ? graph_add_node(function, real_desc) : NULL;
-    node *add = add_desc ? graph_add_node(function, add_desc) : NULL;
-    node *branch = branch_desc ? graph_add_node(function, branch_desc) : NULL;
+    uint64_t literal_id = app_authoring_session_add_node(session, "Real");
+    uint64_t add_id = app_authoring_session_add_node(session, "Add");
+    uint64_t branch_id = app_authoring_session_add_node(session, "Branch");
     pin_value value = { .type = PIN_F64, .d = 2.5 };
     int reflected = 0;
     for (int i = 0; i < registry_node_count(); i++) {
@@ -195,15 +191,19 @@ static int app_run_authoring_workflow(void)
             reflected++;
         }
     }
-    if (!literal || !add || !branch || reflected <= 0 ||
-        graph_set_pin_default(function, literal, 0, 0, &value) != 0 ||
-        graph_connect_data(function, literal, 0, add, 0) != 0 ||
-        graph_connect_data(function, literal, 0, branch, 1) == 0) {
+    if (!literal_id || !add_id || !branch_id || reflected <= 0 ||
+        app_authoring_session_set_pin_default(session, literal_id, 0, 0, &value) != 0 ||
+        app_authoring_session_connect_data(session, literal_id, 0, add_id, 0) != 0 ||
+        app_authoring_session_connect_data(session, literal_id, 0, branch_id, 1) == 0) {
         fprintf(stderr, "authoring scenario node, literal, search, or typed-edge check failed\n");
         goto cleanup;
     }
-    behavior_asset_compile(app_authoring_session_behavior(session), &report);
-    const compile_diagnostic *diagnostic = compile_report_first_error(&report);
+    if (app_authoring_session_compile(session) != 0) {
+        fprintf(stderr, "authoring scenario compile failed\n");
+        goto cleanup;
+    }
+    report = app_authoring_session_diagnostics(session);
+    const compile_diagnostic *diagnostic = compile_report_first_error(report);
     if (!diagnostic || !diagnostic->graph_id ||
         app_authoring_session_save(session, path) != 0 ||
         app_authoring_session_dirty(session) ||
@@ -224,7 +224,6 @@ static int app_run_authoring_workflow(void)
     );
     result = 0;
 cleanup:
-    compile_report_free(&report);
     remove(path);
     app_authoring_session_free(session);
     return result;

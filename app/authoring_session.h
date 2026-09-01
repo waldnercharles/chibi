@@ -22,6 +22,22 @@ const behavior_asset *app_authoring_session_behavior(const app_authoring_session
 const graph *app_authoring_session_active_graph(const app_authoring_session *session);
 int app_authoring_session_select_graph(app_authoring_session *session, uint64_t graph_id);
 graph *app_authoring_session_add_graph(app_authoring_session *session, graph_kind kind, const char *name);
+uint64_t app_authoring_session_add_node(app_authoring_session *session, const char *name);
+int app_authoring_session_set_pin_default(
+    app_authoring_session *session,
+    uint64_t node_id,
+    int output,
+    int index,
+    const pin_value *value
+);
+int app_authoring_session_connect_data(
+    app_authoring_session *session,
+    uint64_t from_node,
+    int from_pin,
+    uint64_t to_node,
+    int to_pin
+);
+int app_authoring_session_compile(app_authoring_session *session);
 int app_authoring_session_rename_graph(
     app_authoring_session *session,
     uint64_t graph_id,

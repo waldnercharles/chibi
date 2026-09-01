@@ -4,6 +4,8 @@
  * hand-written constant escape hatch, per-run memoization, the cycle guard,
  * and arena-backed struct values.
  */
+#include "../app/authoring_session.h"
+#include "../app/behavior_fixtures.h"
 #include "../app/demo_graph.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
@@ -1303,24 +1305,51 @@ static void run_prototype_preview_checks(void)
         !ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity),
         "stopping prototype preview destroys only its runtime entity"
     );
+    ecs_world *fixture_ecs = ecs_world_new();
+    game_live_world *fixture_live = fixture_ecs ? game_live_world_new(fixture_ecs)
+                                                : NULL;
+    game_prototype_preview *fixture_preview = game_prototype_preview_new(&registry);
+    game_prototype *fixture_prototype = game_prototype_load(
+        "{\"name\":\"FixturePreview\",\"behaviors\":[\"InputBehavior\"]}",
+        &registry,
+        error,
+        sizeof error
+    );
+    check(
+        fixture_live && fixture_preview && fixture_prototype &&
+            app_behavior_fixtures_load(fixture_live, fixture_preview, "content") > 0 &&
+            game_prototype_preview_launch(fixture_preview, fixture_prototype, error, sizeof error) ==
+                ECS_OK &&
+            game_prototype_preview_instance(fixture_preview, "InputBehavior") != NULL,
+        "content fixture behavior is registered in prototype preview"
+    );
+    game_prototype_free(fixture_prototype);
+    game_prototype_preview_free(fixture_preview);
+    game_live_world_free(fixture_live);
+    ecs_world_free(fixture_ecs);
     ecs_world *live_ecs = ecs_world_new();
     game_live_world *live = live_ecs ? game_live_world_new(live_ecs) : NULL;
     behavior_asset *unrelated = behavior_asset_new("UnrelatedBehavior");
-    ecs_entity live_entity = live_ecs ? ecs_world_create_entity(live_ecs) : (ecs_entity){ 0 };
+    ecs_entity live_entity = live_ecs ? ecs_world_create_entity(live_ecs)
+                                      : (ecs_entity){ 0 };
     behavior_asset *rollback_working = behavior_asset_new("PreviewBehavior");
-    game_live_definition *rollback_definition =
-        rollback_working ? game_live_definition_new("PreviewBehavior", rollback_working) : NULL;
+    game_live_definition *rollback_definition = rollback_working
+                                                  ? game_live_definition_new("PreviewBehavior", rollback_working)
+                                                  : NULL;
     check(
         live && unrelated && live_entity.slot &&
             game_behavior_register_asset(live->behaviors, "UnrelatedBehavior", unrelated) == 0 &&
             game_behavior_attach(live->behaviors, live_entity, "UnrelatedBehavior") == 0 &&
-            rollback_definition && game_live_add_definition(live, rollback_definition) == 0 &&
-            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) != 0 &&
+            rollback_definition &&
+            game_live_add_definition(live, rollback_definition) == 0 &&
+            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) !=
+                0 &&
             game_live_remove_definition(live, "PreviewBehavior") == 0 &&
             game_live_find_definition(live, "PreviewBehavior") == NULL &&
             game_behavior_attachment_count(live->behaviors) == 1 &&
             game_behavior_asset_registered(live->behaviors, "UnrelatedBehavior"),
-        "preview registration failure rolls back live behavior definition without disturbing unrelated attachments"
+        "preview registration failure rolls back live behavior definition "
+        "without disturbing unrelated attachments"
     );
     game_live_world_free(live);
     ecs_world_free(live_ecs);
@@ -1707,6 +1736,46 @@ static behavior_asset *make_live_behavior_asset(void)
         return NULL;
     }
     return bp;
+}
+
+static void run_authoring_session_checks(void)
+{
+    app_authoring_session *session = app_authoring_session_new("content");
+    check(
+        session && app_authoring_session_load_fixtures(session) > 0,
+        "headless authoring sessions load the canonical behavior fixtures"
+    );
+    check(app_authoring_session_asset_name(session, 0) != NULL, "fixture asset queries are deterministic and name-addressable");
+    check(
+        app_authoring_session_create_behavior(session, "IntegrationBehavior") == 0 &&
+            app_authoring_session_dirty(session),
+        "the public seam creates and observes a dirty Behavior Asset"
+    );
+    graph *graph = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "Compute");
+    check(
+        graph && app_authoring_session_active_graph(session) == graph &&
+            app_authoring_session_rename_graph(session, graph->graph_id, "ComputeRenamed") ==
+                0 &&
+            behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed") ==
+                graph,
+        "commands add, select, and rename graphs through the headless seam"
+    );
+    const char path[] = "/tmp/c-blueprints-integration-behavior.json";
+    check(
+        app_authoring_session_save(session, path) == 0 &&
+            !app_authoring_session_dirty(session),
+        "saving the active authored asset clears its observable dirty state"
+    );
+    check(
+        app_authoring_session_rename_graph(session, graph->graph_id, "Unsaved") == 0 &&
+            app_authoring_session_dirty(session) &&
+            app_authoring_session_reload(session, path) == 0 &&
+            !app_authoring_session_dirty(session) &&
+            behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed"),
+        "reload restores the saved authored graph and dirty state"
+    );
+    remove(path);
+    app_authoring_session_free(session);
 }
 
 static void run_live_checks(void)
@@ -6413,6 +6482,7 @@ TEST_CASE(all_checks)
     run_prototype_preview_checks();
     run_scene_document_checks();
     run_behavior_checks();
+    run_authoring_session_checks();
     run_live_checks();
     run_engine_checks();
     run_parallel_checks();

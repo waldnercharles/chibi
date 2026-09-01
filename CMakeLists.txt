@@ -303,7 +303,7 @@ endif()
 add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c
     demo/vec3.c demo/math.c ${BASE_REGISTRY})
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(test_suite PRIVATE engine game ecs demo)
+target_link_libraries(test_suite PRIVATE engine game ecs demo editor)
 
 # --- activation benchmark: headless per-instance event dispatch -------------
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})

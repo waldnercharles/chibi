@@ -1105,8 +1105,11 @@ int app_scene_authoring_attach_prototype_behavior(
 
 int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char *prototype_name)
 {
+    if (!scene) {
+        return -1;
+    }
     scene_prototype_asset *asset = find_prototype(scene, prototype_name);
-    if (!scene || !asset || !asset->prototype) {
+    if (!asset || !asset->prototype) {
         return -1;
     }
     char error[256];

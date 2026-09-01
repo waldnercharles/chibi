@@ -21,12 +21,13 @@ enum
     CF_APP_OPTIONS_NO_AUDIO_BIT = 1 << 6,
 };
 
-extern double CF_SECONDS;
+extern float CF_DELTA_TIME;
 typedef void CF_OnUpdateFn(void *user);
 typedef struct CF_Canvas
 {
     uint64_t id;
 } CF_Canvas;
+typedef struct CF_VideoEncoder CF_VideoEncoder;
 typedef struct CF_Readback
 {
     uint64_t id;
@@ -50,6 +51,7 @@ typedef struct CF_Image
 } CF_Image;
 
 typedef int CF_KeyButton;
+typedef int CF_MouseButton;
 enum
 {
     CF_KEY_SPACE = ' ',
@@ -62,10 +64,15 @@ enum
     CF_KEY_LEFT = 146,
     CF_KEY_DOWN = 147,
     CF_KEY_UP = 148,
+    CF_MOUSE_BUTTON_LEFT = 0,
 };
 bool cf_key_down(CF_KeyButton key);
 bool cf_key_just_pressed(CF_KeyButton key);
 bool cf_key_just_released(CF_KeyButton key);
+float cf_mouse_x(void);
+float cf_mouse_y(void);
+bool cf_mouse_just_pressed(CF_MouseButton button);
+bool cf_mouse_down(CF_MouseButton button);
 
 CF_Result cf_make_app(
     const char *window_title,
@@ -98,6 +105,12 @@ int cf_readback_data(CF_Readback readback, void *data, int size);
 void cf_destroy_readback(CF_Readback readback);
 CF_Result cf_image_save_png_to_memory(CF_Image *image, void **data, int *size);
 void cf_free(void *ptr);
+const char *cf_fs_get_working_directory(void);
+CF_Result cf_fs_set_write_directory(const char *platform_dependent_directory);
+CF_VideoEncoder *cf_make_video_encoder(int w, int h, int fps);
+void cf_destroy_video_encoder(CF_VideoEncoder *encoder);
+int cf_video_encoder_update(CF_VideoEncoder *encoder, CF_Canvas canvas, float dt);
+CF_Result cf_video_encoder_save(CF_VideoEncoder *encoder, const char *virtual_path);
 
 typedef void cf_assert_fn(bool expr, const char *message, const char *file, int line);
 void cf_set_assert_handler(cf_assert_fn *assert_fn);

@@ -78,6 +78,7 @@ static const float UI_ASSET_ICON_SIZE = 14.0f;
 static const float UI_ASSET_TEXT_X = 45.0f;
 static const float UI_ASSET_TEXT_TOP = 7.0f;
 static const float UI_ASSET_DETAIL_OFFSET = 19.0f;
+static const int UI_PRIMARY_MOUSE_BUTTON = 0;
 static const float UI_ASSET_TEXT_RIGHT = 24.0f;
 static const float UI_ASSET_CARD_PREVIEW_HEIGHT = 86.0f;
 static const float UI_ASSET_CARD_ICON_BACKGROUND_SIZE = 54.0f;
@@ -89,6 +90,7 @@ static const ImWchar UI_SEARCH_GLYPH = 0xf002;
 static ImGuiContext *ui_context;
 static int ui_reset_layout;
 static bool ui_content_drawer_open;
+static ImGuiID ui_left_pane_id;
 static editor_ui_focus_target ui_focus_request;
 static editor_ui_command_handler ui_command_handler;
 static void *ui_command_user;
@@ -597,23 +599,40 @@ static void ui_apply_theme(void)
 
 static bool ui_framebuffer_target;
 
+static float ui_framebuffer_scale_x(void)
+{
+    float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
+    return scale > 0.0f ? scale : 1.0f;
+}
+
+static float ui_framebuffer_scale_y(void)
+{
+    float scale = ImGui_GetIO()->DisplayFramebufferScale.y;
+    return scale > 0.0f ? scale : 1.0f;
+}
+
 static ImGuiViewport ui_layout_viewport(void)
 {
     ImGuiViewport view = *ImGui_GetMainViewport();
+    if (view.Size.x <= 0.0f || view.Size.y <= 0.0f) {
+        view.Pos = (ImVec2){ 0.0f, 0.0f };
+        view.Size = ImGui_GetIO()->DisplaySize;
+        view.WorkPos = view.Pos;
+        view.WorkSize = view.Size;
+    }
     if (ui_framebuffer_target) {
         /* cute_framework reports an offscreen target's pixel size as
          * DisplaySize while retaining the window's framebuffer scale. */
-        float scale = ImGui_GetIO()->DisplayFramebufferScale.x;
-        if (scale > 1.0f) {
-            view.Pos.x /= scale;
-            view.Pos.y /= scale;
-            view.Size.x /= scale;
-            view.Size.y /= scale;
-            view.WorkPos.x /= scale;
-            view.WorkPos.y /= scale;
-            view.WorkSize.x /= scale;
-            view.WorkSize.y /= scale;
-        }
+        float scale_x = ui_framebuffer_scale_x();
+        float scale_y = ui_framebuffer_scale_y();
+        view.Pos.x /= scale_x;
+        view.Pos.y /= scale_y;
+        view.Size.x /= scale_x;
+        view.Size.y /= scale_y;
+        view.WorkPos.x /= scale_x;
+        view.WorkPos.y /= scale_y;
+        view.WorkSize.x /= scale_x;
+        view.WorkSize.y /= scale_y;
     }
     return view;
 }
@@ -635,6 +654,7 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderSetNodePos(UI_DOCKSPACE_ID, layout.WorkPos);
     ImGui_DockBuilderSetNodeSize(UI_DOCKSPACE_ID, layout.WorkSize);
     ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_LEFT_RATIO, &left, &rest);
+    ui_left_pane_id = left;
     ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_RIGHT_RATIO, &right, &center);
     ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &canvas);
     ImGui_DockBuilderDockWindow("World Outliner", left);
@@ -666,6 +686,105 @@ void editor_ui_reset_layout(void)
 void editor_ui_set_framebuffer_target(bool target)
 {
     ui_framebuffer_target = target;
+}
+
+void editor_ui_set_framebuffer_size(int width, int height)
+{
+    assert(width > 0 && height > 0);
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    if (context) {
+        ImVec2 size = { (float)width, (float)height };
+        ImGui_GetIO()->DisplaySize = size;
+        ImGuiViewport *view = ImGui_GetMainViewport();
+        view->Pos = (ImVec2){ 0.0f, 0.0f };
+        view->Size = size;
+        view->WorkPos = view->Pos;
+        view->WorkSize = size;
+    }
+}
+
+void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool primary_down)
+{
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    if (!context) {
+        return;
+    }
+    ImGuiIO *io = ImGui_GetIO();
+    float scale_x = ui_framebuffer_scale_x();
+    float scale_y = ui_framebuffer_scale_y();
+    ImVec2 position = { framebuffer_x / scale_x, framebuffer_y / scale_y };
+    ImGuiIO_AddMousePosEvent(io, position.x, position.y);
+    ImGuiIO_AddMouseButtonEvent(io, UI_PRIMARY_MOUSE_BUTTON, primary_down);
+}
+
+static ImGuiDockNode *ui_left_pane(void)
+{
+    return ui_left_pane_id ? ImGui_DockBuilderGetNode(ui_left_pane_id) : NULL;
+}
+
+float editor_ui_left_pane_width(void)
+{
+    ImGuiDockNode *pane = ui_left_pane();
+    return pane ? pane->Size.x * ui_framebuffer_scale_x() : 0.0f;
+}
+
+float editor_ui_left_pane_splitter_x(void)
+{
+    ImGuiDockNode *pane = ui_left_pane();
+    if (!pane) {
+        return 0.0f;
+    }
+    return (pane->Pos.x + pane->Size.x) * ui_framebuffer_scale_x();
+}
+
+float editor_ui_left_pane_center_y(void)
+{
+    ImGuiDockNode *pane = ui_left_pane();
+    if (!pane) {
+        return 0.0f;
+    }
+    return (pane->Pos.y + pane->Size.y * 0.5f) * ui_framebuffer_scale_y();
+}
+
+void editor_ui_draw_recording_cursor(
+    float framebuffer_cursor_x,
+    float framebuffer_cursor_y,
+    float framebuffer_click_x,
+    float framebuffer_click_y,
+    bool click_active,
+    float click_radius
+)
+{
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    if (!context) {
+        return;
+    }
+    float scale_x = ui_framebuffer_scale_x();
+    float scale_y = ui_framebuffer_scale_y();
+    ImVec2 cursor = { framebuffer_cursor_x / scale_x, framebuffer_cursor_y / scale_y };
+    ImVec2 click = { framebuffer_click_x / scale_x, framebuffer_click_y / scale_y };
+    float cursor_width = 18.0f / scale_x;
+    float cursor_height = 18.0f / scale_y;
+    ImDrawList *draw = ImGui_GetForegroundDrawList();
+    ImU32 color = IM_COL32(255, 190, 25, 255);
+    float ring_scale = scale_x < scale_y ? scale_x : scale_y;
+    ImDrawList_AddLineEx(
+        draw,
+        (ImVec2){ cursor.x - cursor_width * 0.5f, cursor.y },
+        (ImVec2){ cursor.x + cursor_width * 0.5f, cursor.y },
+        color,
+        3.0f / scale_x
+    );
+    ImDrawList_AddLineEx(
+        draw,
+        (ImVec2){ cursor.x, cursor.y - cursor_height * 0.5f },
+        (ImVec2){ cursor.x, cursor.y + cursor_height * 0.5f },
+        color,
+        3.0f / scale_y
+    );
+    if (click_active) {
+        ImDrawList_AddCircleEx(draw, click, click_radius / ring_scale, color, 0, 3.0f / ring_scale);
+    }
 }
 
 void editor_ui_prepare(void)

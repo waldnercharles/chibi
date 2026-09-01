@@ -19,7 +19,7 @@ VALID_VISUAL = """## Evidence
 - Category: `visual`
 - Feature proof: The editor renders the changed panel after interaction.
 - Tests: Integration test passes.
-- Visual evidence: https://github.com/user-attachments/assets/123e4567-e89b-12d3-a456-426614174000
+- Visual evidence: Local capture inspected; media remains local.
 - Interaction trace: Opened the editor, selected the panel, and captured the result.
 """
 
@@ -34,34 +34,32 @@ class EvidenceValidatorTests(unittest.TestCase):
     def test_accepts_automated_evidence(self):
         self.assertEqual(run(VALID_AUTOMATED).returncode, 0)
 
-    def test_accepts_github_user_attachment_for_visual_evidence(self):
+    def test_accepts_visual_evidence_without_an_attachment(self):
         self.assertEqual(run(VALID_VISUAL).returncode, 0)
 
-    def test_rejects_external_artifact_url(self):
-        result = run(
-            VALID_VISUAL.replace(
-                "https://github.com/user-attachments/assets/123e4567-e89b-12d3-a456-426614174000",
-                "https://example.com/capture.mp4",
-            )
+    def test_visual_details_are_optional(self):
+        body = VALID_VISUAL.replace(
+            "- Visual evidence: Local capture inspected; media remains local.\n",
+            "",
+        ).replace(
+            "- Interaction trace: Opened the editor, selected the panel, and captured the result.\n",
+            "",
         )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("GitHub user-attachment", result.stdout)
+        self.assertEqual(run(body).returncode, 0)
 
-    def test_rejects_attachment_url_with_query_or_trailing_text(self):
-        result = run(
-            VALID_VISUAL.replace("426614174000", "426614174000?download=1")
+    def test_automated_details_are_optional(self):
+        body = VALID_AUTOMATED.replace(
+            "- Visual evidence: Not applicable — non-visual change\n", ""
+        ).replace(
+            "- Interaction trace: Not applicable — non-visual change\n", ""
         )
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(run(body).returncode, 0)
 
-    def test_requires_interaction_trace_for_visual_evidence(self):
-        result = run(
-            VALID_VISUAL.replace(
-                "Opened the editor, selected the panel, and captured the result.",
-                "Not applicable — headless render only",
-            )
+    def test_rejects_placeholder_proof(self):
+        body = VALID_AUTOMATED.replace(
+            "The validator checks evidence metadata.", "TBD"
         )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("interaction trace", result.stdout)
+        self.assertNotEqual(run(body).returncode, 0)
 
 
 if __name__ == "__main__":

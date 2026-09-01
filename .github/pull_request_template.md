@@ -12,8 +12,8 @@
 - Interaction trace: Not applicable — non-visual change
 
 <!--
-For visual changes, replace the last two lines with:
-- Visual evidence: <attached PNG/JPG/MP4 URL>
-- Interaction trace: <short sequence of computer-use actions and expected result>
+For visual changes, the following two lines are optional. Describe a local
+capture or manual interaction when it helps a reviewer reproduce the result;
+media may remain local.
 Visual changes still require automated tests.
 -->

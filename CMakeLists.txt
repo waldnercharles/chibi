@@ -20,7 +20,8 @@ set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-    GIT_TAG        ad13c5ea7262fdede97a3a39c77eef3da286ebcf
+    GIT_TAG        a13f4661f5ba27e8d45027b52f121c1704786425
+    PATCH_COMMAND   git apply --whitespace=nowarn ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cute-framework-full-window.patch
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)
@@ -59,7 +60,7 @@ set(LIBCLANG_ROOT "" CACHE PATH "LLVM installation prefix")
 find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES include)
-find_library(LIBCLANG_LIBRARY NAMES clang
+find_library(LIBCLANG_LIBRARY NAMES clang libclang clang-18 libclang-18
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES lib)
 file(GLOB LIBCLANG_RESOURCE_INCLUDE_DIRS

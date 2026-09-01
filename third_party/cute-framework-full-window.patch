@@ -1,0 +1,110 @@
+diff --git a/src/cute_app.cpp b/src/cute_app.cpp
+index fe7a0784..e78aa0df 100644
+--- a/src/cute_app.cpp
++++ b/src/cute_app.cpp
+@@ -554,7 +554,24 @@ int cf_app_draw_onto_screen(bool clear)
+ 	// Render any remaining geometry in the draw API.
+ 	cf_render_to(app->offscreen_canvas, clear);
+ 
+-	// Draw the app canvas
++	// Dear ImGui draw. Render into the app canvas so canvas readback and video
++	// capture contain the same complete frame that will be presented.
++	if (app->using_imgui) {
++		ImGui::EndFrame();
++		ImGui::Render();
++		// Close the game pass, then reopen the canvas for ImGui's render pass.
++		if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
++			cf_gles_blit_canvas(app->offscreen_canvas);
++		} else {
++#ifndef CF_EMSCRIPTEN
++			cf_sdlgpu_blit_canvas(app->offscreen_canvas);
++#endif
++		}
++		cf_render_to(app->offscreen_canvas, false);
++		cf_imgui_draw(app->offscreen_canvas);
++	}
++
++	// Draw the complete app canvas.
+ 	if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
+ 		cf_gles_blit_canvas(app->offscreen_canvas);
+ 	} else {
+@@ -563,13 +571,6 @@ int cf_app_draw_onto_screen(bool clear)
+ #endif
+ 	}
+ 
+-	// Dear ImGui draw.
+-	if (app->using_imgui) {
+-		ImGui::EndFrame();
+-		ImGui::Render();
+-		cf_imgui_draw();
+-	}
+-
+ 	// Do defrag down here after rendering ImGui to avoid thrashing any texture IDs. Generally we want to defrag
+ 	// before doing final rendering to reduce draw call count, but in the case where ImGui is rendered it's acceptable
+ 	// to have the perf-hit and delay until next frame.
+diff --git a/src/cute_graphics_sdlgpu.cpp b/src/cute_graphics_sdlgpu.cpp
+index 3ea8eec5..09219836 100644
+--- a/src/cute_graphics_sdlgpu.cpp
++++ b/src/cute_graphics_sdlgpu.cpp
+@@ -1592,6 +1592,12 @@ void cf_sdlgpu_destroy_canvas(CF_Canvas canvas_handle)
+ 	CF_FREE(canvas);
+ }
+ 
++SDL_GPUTexture* cf_sdlgpu_canvas_get_target_texture(CF_Canvas canvas_handle)
++{
++	CF_CanvasInternal* canvas = (CF_CanvasInternal*)canvas_handle.id;
++	return canvas->resolve_texture ? canvas->resolve_texture : canvas->texture;
++}
++
+ CF_Texture cf_sdlgpu_canvas_get_target(CF_Canvas canvas_handle)
+ {
+ 	CF_CanvasInternal* canvas = (CF_CanvasInternal*)canvas_handle.id;
+diff --git a/src/cute_imgui.cpp b/src/cute_imgui.cpp
+index 807ed855..503aa296 100644
+--- a/src/cute_imgui.cpp
++++ b/src/cute_imgui.cpp
+@@ -49,7 +49,8 @@ void cf_imgui_shutdown()
+ 	ImGui::DestroyContext();
+ }
+ 
+-void cf_imgui_draw()
++void cf_imgui_draw(CF_Canvas target)
+ {
+ 	if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
++		(void)target;
+ 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+@@ -59,7 +59,9 @@ void cf_imgui_draw()
+ 		ImDrawData* draw_data = ImGui::GetDrawData();
+ 		const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
+ 
+-		SDL_GPUTexture* swapchain_tex = cf_sdlgpu_get_swapchain_texture();
++		SDL_GPUTexture* swapchain_tex = target.id
++			? cf_sdlgpu_canvas_get_target_texture(target)
++			: cf_sdlgpu_get_swapchain_texture();
+ 		if (swapchain_tex != nullptr && !is_minimized) {
+ 			// This is mandatory: call ImGui_ImplSDLGPU3_PrepareDrawData() to upload the vertex/index buffer!
+ 			SDL_GPUCommandBuffer* cmd = cf_sdlgpu_get_command_buffer();
+diff --git a/src/internal/cute_graphics_internal.h b/src/internal/cute_graphics_internal.h
+index 19315465..cc579a96 100644
+--- a/src/internal/cute_graphics_internal.h
++++ b/src/internal/cute_graphics_internal.h
+@@ -256,6 +256,7 @@ bool cf_sdlgpu_wants_hlsl();
+ bool cf_sdlgpu_wants_msl();
+ SDL_GPUDevice* cf_sdlgpu_get_device();
+ SDL_GPUTexture* cf_sdlgpu_get_swapchain_texture();
++SDL_GPUTexture* cf_sdlgpu_canvas_get_target_texture(CF_Canvas canvas);
+ SDL_GPUCommandBuffer* cf_sdlgpu_get_command_buffer();
+ void cf_sdlgpu_attach(SDL_Window* window);
+ bool cf_sdlgpu_supports_msaa(int sample_count);
+diff --git a/src/internal/cute_imgui_internal.h b/src/internal/cute_imgui_internal.h
+index 5198426e..80c151de 100644
+--- a/src/internal/cute_imgui_internal.h
++++ b/src/internal/cute_imgui_internal.h
+@@ -17,6 +17,6 @@
+ 
+ void cf_imgui_init();
+ void cf_imgui_shutdown();
+-void cf_imgui_draw();
++void cf_imgui_draw(CF_Canvas target);
+ 
+ #endif // CF_IMGUI_INTERNAL_H

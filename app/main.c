@@ -185,6 +185,7 @@ static int app_run_authoring_workflow(void)
     uint64_t literal_id = app_authoring_session_add_node(session, "Real");
     uint64_t add_id = app_authoring_session_add_node(session, "Add");
     uint64_t branch_id = app_authoring_session_add_node(session, "Branch");
+    uint64_t latent_id = app_authoring_session_add_node(session, "Delay");
     pin_value value = { .type = PIN_F64, .d = 2.5 };
     int reflected = 0;
     for (int i = 0; i < registry_node_count(); i++) {
@@ -194,15 +195,15 @@ static int app_run_authoring_workflow(void)
             reflected++;
         }
     }
-    if (!literal_id || !add_id || !branch_id || reflected <= 0 ||
+    if (!literal_id || !add_id || !branch_id || !latent_id || reflected <= 0 ||
         app_authoring_session_set_pin_default(session, literal_id, 0, 0, &value) != 0 ||
         app_authoring_session_connect_data(session, literal_id, 0, add_id, 0) != 0 ||
         app_authoring_session_connect_data(session, literal_id, 0, branch_id, 1) == 0) {
         fprintf(stderr, "authoring scenario node, literal, search, or typed-edge check failed\n");
         goto cleanup;
     }
-    if (app_authoring_session_compile(session) != 0) {
-        fprintf(stderr, "authoring scenario compile failed\n");
+    if (app_authoring_session_compile(session) == 0) {
+        fprintf(stderr, "authoring scenario did not report the intentional latent-node diagnostic\n");
         goto cleanup;
     }
     report = app_authoring_session_diagnostics(session);

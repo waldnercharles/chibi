@@ -1307,21 +1307,26 @@ static void run_prototype_preview_checks(void)
     ecs_world *live_ecs = ecs_world_new();
     game_live_world *live = live_ecs ? game_live_world_new(live_ecs) : NULL;
     behavior_asset *unrelated = behavior_asset_new("UnrelatedBehavior");
-    ecs_entity live_entity = live_ecs ? ecs_world_create_entity(live_ecs) : (ecs_entity){ 0 };
+    ecs_entity live_entity = live_ecs ? ecs_world_create_entity(live_ecs)
+                                      : (ecs_entity){ 0 };
     behavior_asset *rollback_working = behavior_asset_new("PreviewBehavior");
-    game_live_definition *rollback_definition =
-        rollback_working ? game_live_definition_new("PreviewBehavior", rollback_working) : NULL;
+    game_live_definition *rollback_definition = rollback_working
+                                                  ? game_live_definition_new("PreviewBehavior", rollback_working)
+                                                  : NULL;
     check(
         live && unrelated && live_entity.slot &&
             game_behavior_register_asset(live->behaviors, "UnrelatedBehavior", unrelated) == 0 &&
             game_behavior_attach(live->behaviors, live_entity, "UnrelatedBehavior") == 0 &&
-            rollback_definition && game_live_add_definition(live, rollback_definition) == 0 &&
-            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) != 0 &&
+            rollback_definition &&
+            game_live_add_definition(live, rollback_definition) == 0 &&
+            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) !=
+                0 &&
             game_live_remove_definition(live, "PreviewBehavior") == 0 &&
             game_live_find_definition(live, "PreviewBehavior") == NULL &&
             game_behavior_attachment_count(live->behaviors) == 1 &&
             game_behavior_asset_registered(live->behaviors, "UnrelatedBehavior"),
-        "preview registration failure rolls back live behavior definition without disturbing unrelated attachments"
+        "preview registration failure rolls back live behavior definition "
+        "without disturbing unrelated attachments"
     );
     game_live_world_free(live);
     ecs_world_free(live_ecs);

@@ -21,6 +21,11 @@ typedef struct
 game_behavior_world *game_behavior_world_new(ecs_world *world);
 void game_behavior_world_free(game_behavior_world *world);
 int game_behavior_register_asset(game_behavior_world *world, const char *asset_name, behavior_asset *definition);
+int game_behavior_unregister_asset(
+    game_behavior_world *world,
+    const char *asset_name,
+    behavior_asset **definition
+);
 int game_behavior_replace_asset(
     game_behavior_world *world,
     const char *asset_name,

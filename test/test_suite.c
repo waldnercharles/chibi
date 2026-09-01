@@ -1012,6 +1012,20 @@ static void run_prototype_preview_checks(void)
         !ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity),
         "stopping prototype preview destroys only its runtime entity"
     );
+    ecs_world *live_ecs = ecs_world_new();
+    game_live_world *live = live_ecs ? game_live_world_new(live_ecs) : NULL;
+    behavior_asset *rollback_working = behavior_asset_new("PreviewBehavior");
+    game_live_definition *rollback_definition =
+        rollback_working ? game_live_definition_new("PreviewBehavior", rollback_working) : NULL;
+    check(
+        live && rollback_definition && game_live_add_definition(live, rollback_definition) == 0 &&
+            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) != 0 &&
+            game_live_remove_definition(live, "PreviewBehavior") == 0 &&
+            game_live_find_definition(live, "PreviewBehavior") == NULL,
+        "preview registration failure rolls back live behavior definition"
+    );
+    game_live_world_free(live);
+    ecs_world_free(live_ecs);
     ecs_world_free(scene_world);
     game_prototype_preview_free(preview);
     behavior_asset_free(behavior);

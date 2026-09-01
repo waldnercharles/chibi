@@ -90,6 +90,20 @@ int game_prototype_preview_register_behavior(
     return 0;
 }
 
+int game_prototype_preview_unregister_behavior(
+    game_prototype_preview *preview,
+    const char *asset_name
+)
+{
+    behavior_asset *definition = NULL;
+    if (game_behavior_unregister_asset(preview ? preview->behaviors : NULL, asset_name, &definition) !=
+        0) {
+        return -1;
+    }
+    behavior_asset_free(definition);
+    return 0;
+}
+
 int game_prototype_preview_launch(
     game_prototype_preview *preview,
     const game_prototype *prototype,

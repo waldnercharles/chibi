@@ -1294,13 +1294,16 @@ static int load_content_behavior(app_scene_authoring *scene, const char *path)
         game_live_definition_free(definition);
         return 0;
     }
+    if (game_live_add_definition(scene->live, definition) != 0) {
+        game_live_definition_free(definition);
+        return 0;
+    }
     if (game_prototype_preview_register_behavior(
             scene->prototype_preview,
             working->name,
             working
-        ) != 0 ||
-        game_live_add_definition(scene->live, definition) != 0) {
-        game_live_definition_free(definition);
+        ) != 0) {
+        game_live_remove_definition(scene->live, working->name);
         return 0;
     }
     return 1;

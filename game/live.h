@@ -39,6 +39,7 @@ int game_live_mark_dirty(game_live_definition *definition);
 game_live_world *game_live_world_new(ecs_world *ecs);
 void game_live_world_free(game_live_world *world);
 int game_live_add_definition(game_live_world *world, game_live_definition *definition);
+int game_live_remove_definition(game_live_world *world, const char *asset_name);
 int game_live_duplicate_definition(
     game_live_world *world,
     const char *asset_name,

@@ -48,6 +48,8 @@ struct game_behavior_world
     uint64_t next_sequence;
 };
 
+static void destroy_asset_pool(behavior_asset_record *asset);
+
 static behavior_asset_record *find_asset(game_behavior_world *world, const char *name)
 {
     for (int i = 0; i < acount(world->assets); i++) {
@@ -193,7 +195,7 @@ void game_behavior_world_free(game_behavior_world *world)
 int game_behavior_register_asset(game_behavior_world *world, const char *asset_name, behavior_asset *definition)
 {
     if (!world || !asset_name || !asset_name[0] || !definition ||
-        find_asset(world, asset_name) || acount(world->attachments)) {
+        find_asset(world, asset_name)) {
         return -1;
     }
     apush(
@@ -204,6 +206,34 @@ int game_behavior_register_asset(game_behavior_world *world, const char *asset_n
         }
     );
     return 0;
+}
+
+int game_behavior_unregister_asset(
+    game_behavior_world *world,
+    const char *asset_name,
+    behavior_asset **definition
+)
+{
+    if (!world || !asset_name || !asset_name[0] || !definition) {
+        return -1;
+    }
+    for (int i = 0; i < acount(world->assets); i++) {
+        behavior_asset_record *asset = &world->assets[i];
+        if (strcmp(asset->name, asset_name) != 0) {
+            continue;
+        }
+        for (int j = 0; j < acount(world->attachments); j++) {
+            if (world->attachments[j].asset == asset) {
+                return -1;
+            }
+        }
+        *definition = asset->definition;
+        free(asset->name);
+        destroy_asset_pool(asset);
+        adel(world->assets, i);
+        return 0;
+    }
+    return -1;
 }
 
 static int detach_asset_entity(game_behavior_world *world, behavior_asset_record *asset, ecs_entity entity);

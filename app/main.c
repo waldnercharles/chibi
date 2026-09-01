@@ -165,6 +165,9 @@ static int app_run_authoring_workflow(void)
     app_authoring_session *session = app_authoring_session_new("content");
     const char path[] = "/tmp/c-blueprints-authoring-scenario.json";
     const compile_report *report;
+    int diagnostic_count;
+    int error_count;
+    int warning_count;
     int result = -1;
     if (!session || app_authoring_session_load_fixtures(session) <= 0 ||
         app_authoring_session_create_behavior(session, "ScenarioBehavior") != 0) {
@@ -207,24 +210,58 @@ static int app_run_authoring_workflow(void)
         goto cleanup;
     }
     report = app_authoring_session_diagnostics(session);
-    const compile_diagnostic *diagnostic = compile_report_first_error(report);
-    if (!diagnostic || !diagnostic->graph_id ||
+    const compile_diagnostic *diagnostic = NULL;
+    for (int i = 0; i < report->error_count + report->warning_count; i++) {
+        if (report->items[i].rule == CMPL_RULE_FUNCTION_LATENT &&
+            report->items[i].node_id == latent_id) {
+            diagnostic = &report->items[i];
+            break;
+        }
+    }
+    diagnostic_count = report->error_count + report->warning_count;
+    error_count = report->error_count;
+    warning_count = report->warning_count;
+    const graph *authored = app_authoring_session_active_graph(session);
+    if (!diagnostic || diagnostic->graph_id != authored->graph_id ||
         app_authoring_session_save(session, path) != 0 ||
         app_authoring_session_dirty(session) ||
         app_authoring_session_reload(session, path) != 0 ||
-        app_authoring_session_dirty(session) ||
-        behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ScenarioGraphRenamed") ==
-            NULL) {
+        app_authoring_session_dirty(session)) {
         fprintf(stderr, "authoring scenario persistence or diagnostics check failed\n");
+        goto cleanup;
+    }
+    authored = behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ScenarioGraphRenamed");
+    if (!authored) {
+        fprintf(stderr, "authoring scenario reload lost authored graph\n");
+        goto cleanup;
+    }
+    const node *reloaded_literal = graph_node_by_id(authored, literal_id);
+    const node *reloaded_add = graph_node_by_id(authored, add_id);
+    const node *reloaded_branch = graph_node_by_id(authored, branch_id);
+    const node *reloaded_latent = graph_node_by_id(authored, latent_id);
+    int has_valid_edge = 0;
+    for (int i = 0; i < acount(authored->edges); i++) {
+        const edge *edge = &authored->edges[i];
+        if (edge->from_id == literal_id && edge->to_id == add_id &&
+            edge->kind == GRAPH_EDGE_DATA) {
+            has_valid_edge = 1;
+            break;
+        }
+    }
+    if (!reloaded_literal || !reloaded_add || !reloaded_branch ||
+        !reloaded_latent || !has_valid_edge || reloaded_literal->input_count <= 0 ||
+        reloaded_literal->input_pins[0].default_value.type != PIN_F64 ||
+        reloaded_literal->input_pins[0].default_value.d != 2.5) {
+        fprintf(stderr, "authoring scenario reload lost authored graph state\n");
         goto cleanup;
     }
     printf(
         "authoring scenario passed: reflected=%d diagnostics=%d errors=%d "
         "warnings=%d\n",
         reflected,
-        report->error_count + report->warning_count,
-        report->error_count,
-        report->warning_count
+        diagnostic_count,
+        error_count,
+        warning_count
     );
     result = 0;
 cleanup:

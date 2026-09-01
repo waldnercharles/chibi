@@ -34,7 +34,7 @@ jobs:
           scenario=$(sed -n 's/^scenario:[[:space:]]*//p' .github/visual-evidence.yml | head -1)
           test -n "$scenario"
           case "$scenario" in
-            resize-pane) ;;
+            resize-pane|authoring) ;;
             *) echo "Unsupported visual evidence scenario: $scenario" >&2; exit 2 ;;
           esac
           echo "scenario=$scenario" >> "$GITHUB_OUTPUT"

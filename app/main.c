@@ -6,12 +6,14 @@
 #include "../game/generated.h"
 #include "../game/live.h"
 #include "../game/prototype.h"
+#include "authoring_session.h"
 #include "cute_host.h"
 #include "recording.h"
 #include "scene_authoring.h"
 #include "stacktrace.h"
 #include "web_loop.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +40,7 @@ typedef enum
 {
     APP_SCENARIO_NONE,
     APP_SCENARIO_RESIZE_PANE,
+    APP_SCENARIO_AUTHORING,
 } app_scenario;
 
 typedef struct
@@ -157,9 +160,79 @@ typedef struct
     int scenario_checked;
 } app_loop;
 
+static int app_run_authoring_workflow(void)
+{
+    app_authoring_session *session = app_authoring_session_new("content");
+    const char path[] = "/tmp/c-blueprints-authoring-scenario.json";
+    compile_report report;
+    compile_report_init(&report);
+    int result = -1;
+    if (!session || app_authoring_session_load_fixtures(session) <= 0 ||
+        app_authoring_session_create_behavior(session, "ScenarioBehavior") != 0) {
+        fprintf(stderr, "authoring scenario could not create a Behavior Asset\n");
+        goto cleanup;
+    }
+    graph *function = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "ScenarioGraph");
+    if (!function ||
+        app_authoring_session_rename_graph(session, function->graph_id, "ScenarioGraphRenamed") !=
+            0 ||
+        app_authoring_session_select_graph(session, function->graph_id) != 0) {
+        fprintf(stderr, "authoring scenario could not author a graph\n");
+        goto cleanup;
+    }
+    const node_desc *real_desc = registry_node_by_name("Real");
+    const node_desc *add_desc = registry_node_by_name("Add");
+    const node_desc *branch_desc = registry_node_by_name("Branch");
+    node *literal = real_desc ? graph_add_node(function, real_desc) : NULL;
+    node *add = add_desc ? graph_add_node(function, add_desc) : NULL;
+    node *branch = branch_desc ? graph_add_node(function, branch_desc) : NULL;
+    pin_value value = { .type = PIN_F64, .d = 2.5 };
+    int reflected = 0;
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *desc = registry_node(i);
+        const char *name = desc ? desc->name : NULL;
+        if (name && strstr(name, "Add")) {
+            reflected++;
+        }
+    }
+    if (!literal || !add || !branch || reflected <= 0 ||
+        graph_set_pin_default(function, literal, 0, 0, &value) != 0 ||
+        graph_connect_data(function, literal, 0, add, 0) != 0 ||
+        graph_connect_data(function, literal, 0, branch, 1) == 0) {
+        fprintf(stderr, "authoring scenario node, literal, search, or typed-edge check failed\n");
+        goto cleanup;
+    }
+    behavior_asset_compile(app_authoring_session_behavior(session), &report);
+    const compile_diagnostic *diagnostic = compile_report_first_error(&report);
+    if (!diagnostic || !diagnostic->graph_id ||
+        app_authoring_session_save(session, path) != 0 ||
+        app_authoring_session_dirty(session) ||
+        app_authoring_session_reload(session, path) != 0 ||
+        app_authoring_session_dirty(session) ||
+        behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ScenarioGraphRenamed") ==
+            NULL) {
+        fprintf(stderr, "authoring scenario persistence or diagnostics check failed\n");
+        goto cleanup;
+    }
+    printf(
+        "authoring scenario passed: reflected=%d diagnostics=%d errors=%d "
+        "warnings=%d\n",
+        reflected,
+        report.error_count + report.warning_count,
+        report.error_count,
+        report.warning_count
+    );
+    result = 0;
+cleanup:
+    compile_report_free(&report);
+    remove(path);
+    app_authoring_session_free(session);
+    return result;
+}
+
 static int app_prepare_input(app_loop *loop)
 {
-    if (loop->scenario == APP_SCENARIO_NONE) {
+    if (loop->scenario == APP_SCENARIO_NONE || loop->scenario == APP_SCENARIO_AUTHORING) {
         loop->input = (app_mouse_input){
             .framebuffer_x = cf_mouse_x(),
             .framebuffer_y = cf_mouse_y(),
@@ -342,7 +415,8 @@ static int app_frame(app_loop *loop)
     }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
-    if (finished && loop->scenario != APP_SCENARIO_NONE && !loop->scenario_checked) {
+    if (finished && loop->scenario == APP_SCENARIO_RESIZE_PANE &&
+        !loop->scenario_checked) {
         fprintf(stderr, "resize-pane assertion did not run; increase --frames\n");
         loop->capture_error = 1;
     }
@@ -395,11 +469,14 @@ int main(int argc, char **argv)
                 recording_path = argv[++i];
             }
         } else if (strcmp(argv[i], "--scenario") == 0 && i + 1 < argc) {
-            if (strcmp(argv[++i], "resize-pane") != 0) {
+            if (strcmp(argv[++i], "resize-pane") == 0) {
+                scenario = APP_SCENARIO_RESIZE_PANE;
+            } else if (strcmp(argv[i], "authoring") == 0) {
+                scenario = APP_SCENARIO_AUTHORING;
+            } else {
                 fprintf(stderr, "unknown scenario: %s\n", argv[i]);
                 return 2;
             }
-            scenario = APP_SCENARIO_RESIZE_PANE;
         }
     }
     if (scenario != APP_SCENARIO_NONE && (!headless || !recording_path)) {
@@ -408,6 +485,9 @@ int main(int argc, char **argv)
     }
     if (scenario != APP_SCENARIO_NONE && frames == 0) {
         frames = APP_RESIZE_PANE_FRAMES;
+    }
+    if (scenario == APP_SCENARIO_AUTHORING && app_run_authoring_workflow() != 0) {
+        return 1;
     }
     if (screenshot_path && frames == 0) {
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;

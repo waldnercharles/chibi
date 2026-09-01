@@ -17,6 +17,7 @@ run: build
 record-evidence: build
 	case "$(SCENARIO)" in \
 		resize-pane) $(BUILD_DIR)/app --headless --record $(RECORD_PATH) --scenario resize-pane --frames $(FRAMES) ;; \
+		authoring) $(BUILD_DIR)/app --headless --record $(RECORD_PATH) --scenario authoring --frames $(FRAMES) ;; \
 		*) echo "Unsupported evidence scenario: $(SCENARIO)" >&2; exit 2 ;; \
 	esac
 

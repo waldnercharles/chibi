@@ -5237,6 +5237,8 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
     if (result != 0) {
         return -1;
     }
+    free(e->saved_snapshot);
+    e->saved_snapshot = behavior_asset_save_json(e->bp);
     ed_free_string_stack(&e->undo);
     ed_free_string_stack(&e->redo);
     e->inspection_instance = NULL;

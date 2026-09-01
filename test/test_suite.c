@@ -305,6 +305,26 @@ static void run_editor_command_checks(void)
             strcmp(state.active_graph->name, "Renamed") == 0 && !state.dirty,
         "reload preserves authored graphs and the clean dirty baseline"
     );
+    behavior_asset *other = behavior_asset_new("Other asset");
+    check(
+        other && editor_open_behavior_asset(e, other, other->graph->graph_id) == 0,
+        "opening a different behavior asset succeeds"
+    );
+    editor_query_state(e, &state);
+    check(state.graph_count == 1 && !state.dirty, "opening a different clean behavior asset resets the dirty baseline");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                .data.create_graph = { GRAPH_FUNCTION, "OtherWorker" },
+            }
+        ) == 0,
+        "the newly opened behavior asset remains editable"
+    );
+    editor_query_state(e, &state);
+    check(state.dirty, "edits after opening a different asset are observable as dirty");
+    behavior_asset_free(other);
     check(
         editor_command_apply(
             e,

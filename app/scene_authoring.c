@@ -143,6 +143,9 @@ struct app_scene_authoring
     char **prototype_redo;
     bool runtime_playing;
     bool runtime_step;
+    bool preview_playing;
+    bool preview_step;
+    app_runtime_target active_runtime_target;
     char asset_search[128];
     app_editor_document_context document;
     char *scene_path;
@@ -824,6 +827,9 @@ app_scene_authoring *app_scene_authoring_new(
     engine_set_playing(runtime, false);
     scene->runtime_playing = false;
     scene->runtime_step = false;
+    scene->preview_playing = false;
+    scene->preview_step = false;
+    scene->active_runtime_target = APP_RUNTIME_SCENE;
     scene->scene_dirty = false;
     snprintf(scene->message, sizeof scene->message, "No scene entities yet.");
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "Select a prototype in Content Drawer.");
@@ -1115,6 +1121,11 @@ int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char
     }
     char error[256];
     int result = game_prototype_preview_launch(scene->prototype_preview, asset->prototype, error, sizeof error);
+    if (result == ECS_OK) {
+        scene->active_runtime_target = APP_RUNTIME_PREVIEW;
+    }
+    scene->preview_playing = result == ECS_OK;
+    scene->preview_step = false;
     snprintf(
         scene->prototype_message,
         sizeof scene->prototype_message,
@@ -1129,8 +1140,107 @@ void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene)
 {
     if (scene) {
         game_prototype_preview_stop(scene->prototype_preview);
+        scene->preview_playing = false;
+        scene->preview_step = false;
+        scene->active_runtime_target = APP_RUNTIME_SCENE;
         snprintf(scene->prototype_message, sizeof scene->prototype_message, "Prototype preview stopped.");
     }
+}
+
+int app_scene_authoring_runtime_command(
+    app_scene_authoring *scene,
+    app_runtime_target target,
+    app_runtime_command command
+)
+{
+    if (!scene || target < APP_RUNTIME_PREVIEW || target > APP_RUNTIME_SCENE ||
+        command < APP_RUNTIME_PLAY || command > APP_RUNTIME_STOP) {
+        return -1;
+    }
+    bool *playing = target == APP_RUNTIME_PREVIEW ? &scene->preview_playing
+                                                  : &scene->runtime_playing;
+    bool *step = target == APP_RUNTIME_PREVIEW ? &scene->preview_step
+                                               : &scene->runtime_step;
+    if (target == APP_RUNTIME_SCENE) {
+        scene->active_runtime_target = APP_RUNTIME_SCENE;
+        if (command == APP_RUNTIME_PLAY || command == APP_RUNTIME_PAUSE) {
+            *playing = command == APP_RUNTIME_PLAY;
+            *step = false;
+            return engine_set_playing(scene->runtime, *playing);
+        }
+        if (command == APP_RUNTIME_STEP) {
+            *playing = false;
+            *step = true;
+            return engine_set_playing(scene->runtime, false) == 0
+                     ? engine_step(scene->runtime)
+                     : -1;
+        }
+        *playing = false;
+        *step = false;
+        if (engine_set_playing(scene->runtime, false) != 0) {
+            return -1;
+        }
+        return restart_runtime(scene);
+    }
+    if (command == APP_RUNTIME_PLAY || command == APP_RUNTIME_PAUSE) {
+        scene->active_runtime_target = APP_RUNTIME_PREVIEW;
+        *playing = command == APP_RUNTIME_PLAY;
+        *step = false;
+        return 0;
+    }
+    if (command == APP_RUNTIME_STEP) {
+        scene->active_runtime_target = APP_RUNTIME_PREVIEW;
+        *playing = false;
+        *step = true;
+        return 0;
+    }
+    if (command == APP_RUNTIME_STOP) {
+        app_scene_authoring_stop_prototype_preview(scene);
+        return 0;
+    }
+    scene_prototype_asset *asset = selected_prototype(scene);
+    return asset ? app_scene_authoring_preview_prototype(scene, asset->prototype->name)
+                 : -1;
+}
+
+app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene)
+{
+    app_runtime_state state = { 0 };
+    if (!scene) {
+        return state;
+    }
+    state.target = scene->active_runtime_target;
+    state.playing = state.target == APP_RUNTIME_PREVIEW ? scene->preview_playing
+                                                        : scene->runtime_playing;
+    ecs_world *world = NULL;
+    game_behavior_world *behaviors = NULL;
+    if (state.target == APP_RUNTIME_PREVIEW) {
+        world = game_prototype_preview_world(scene->prototype_preview);
+        behaviors = game_prototype_preview_behaviors(scene->prototype_preview);
+        state.selected_entity = game_prototype_preview_entity(scene->prototype_preview);
+        state.message = scene->prototype_message;
+    } else {
+        scene_actor *actor = selected_actor(scene);
+        world = scene->world;
+        behaviors = scene->live ? scene->live->behaviors : NULL;
+        state.selected_entity = actor ? actor->entity : (ecs_entity){ 0 };
+        state.message = scene->message;
+    }
+    if (world && state.selected_entity.slot) {
+        for (int i = 0; i < ecs_world_component_count(world); i++) {
+            const ecs_component_desc *desc = ecs_world_component_at(world, i);
+            if (desc && ecs_component_has(world, state.selected_entity, desc->id)) {
+                state.component_count++;
+            }
+        }
+    }
+    if (behaviors && state.selected_entity.slot) {
+        state.behavior_count = game_behavior_attachment_count_for_entity(
+            behaviors,
+            state.selected_entity
+        );
+    }
+    return state;
 }
 
 int app_scene_authoring_detach_prototype_behavior(
@@ -2814,6 +2924,28 @@ static void draw_components(app_scene_authoring *scene)
     if (ImGui_Button("Stop Preview")) {
         app_scene_authoring_stop_prototype_preview(scene);
     }
+    if (scene->active_runtime_target == APP_RUNTIME_PREVIEW) {
+        ImGui_SeparatorText("Prototype Preview Runtime");
+        if (ImGui_Button(scene->preview_playing ? "Pause" : "Play")) {
+            app_scene_authoring_runtime_command(
+                scene,
+                APP_RUNTIME_PREVIEW,
+                scene->preview_playing ? APP_RUNTIME_PAUSE : APP_RUNTIME_PLAY
+            );
+        }
+        ImGui_SameLine();
+        if (ImGui_Button("Step")) {
+            app_scene_authoring_runtime_command(scene, APP_RUNTIME_PREVIEW, APP_RUNTIME_STEP);
+        }
+        ImGui_SameLine();
+        if (ImGui_Button("Restart")) {
+            app_scene_authoring_runtime_command(scene, APP_RUNTIME_PREVIEW, APP_RUNTIME_RESTART);
+        }
+        ImGui_SameLine();
+        if (ImGui_Button("Stop")) {
+            app_scene_authoring_runtime_command(scene, APP_RUNTIME_PREVIEW, APP_RUNTIME_STOP);
+        }
+    }
     ImGui_SeparatorText("Components");
     if (!acount(asset->prototype->components)) {
         ImGui_TextUnformatted("No components.");
@@ -3273,30 +3405,23 @@ static void draw_scene_inspector(app_scene_authoring *scene, const char *window_
 
     ImGui_SeparatorText("Scene Runtime");
     if (ImGui_Button(scene->runtime_playing ? "Pause" : "Play")) {
-        scene->runtime_playing = !scene->runtime_playing;
-        scene->runtime_step = false;
-        engine_set_playing(scene->runtime, scene->runtime_playing);
+        app_scene_authoring_runtime_command(
+            scene,
+            APP_RUNTIME_SCENE,
+            scene->runtime_playing ? APP_RUNTIME_PAUSE : APP_RUNTIME_PLAY
+        );
     }
     ImGui_SameLine();
     if (ImGui_Button("Step")) {
-        scene->runtime_playing = false;
-        scene->runtime_step = true;
-        engine_set_playing(scene->runtime, false);
-        engine_step(scene->runtime);
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STEP);
     }
     ImGui_SameLine();
     if (ImGui_Button("Restart")) {
-        scene->runtime_playing = false;
-        scene->runtime_step = false;
-        engine_set_playing(scene->runtime, false);
-        restart_runtime(scene);
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART);
     }
     ImGui_SameLine();
     if (ImGui_Button("Stop")) {
-        scene->runtime_playing = false;
-        scene->runtime_step = false;
-        engine_set_playing(scene->runtime, false);
-        restart_runtime(scene);
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP);
     }
     scene_actor *actor = selected_actor(scene);
     if (!actor) {
@@ -3799,23 +3924,40 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
         return FLOW_ERR_ARGUMENT;
     }
     ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
-    if (preview_entity.slot) {
-        game_prototype_preview_tick(scene->prototype_preview, monotonic_time);
+    int result = FLOW_OK;
+    if (preview_entity.slot && (scene->preview_playing || scene->preview_step)) {
+        result = game_prototype_preview_tick(scene->prototype_preview, monotonic_time);
+        if (result < 0) {
+            snprintf(
+                scene->prototype_message,
+                sizeof scene->prototype_message,
+                "Prototype preview Tick failed (%d).",
+                result
+            );
+        }
     }
     if (scene->runtime_playing || scene->runtime_step) {
         for (int i = 0; i < acount(scene->actors); i++) {
             flow_error error = { 0 };
-            (void)game_behavior_dispatch(
+            int dispatch_result = game_behavior_dispatch(
                 scene->live->behaviors,
                 scene->actors[i].entity,
                 "Tick",
                 (flow_inputs){ 0 },
                 &error
             );
+            if (dispatch_result < 0 && result == FLOW_OK) {
+                result = dispatch_result;
+                snprintf(scene->message, sizeof scene->message, "Scene Runtime Tick failed (%d).", dispatch_result);
+            }
         }
     }
-    int result = engine_frame(scene->runtime, monotonic_time);
+    int frame_result = engine_frame(scene->runtime, monotonic_time);
+    if (frame_result < 0 && result == FLOW_OK) {
+        result = frame_result;
+    }
     scene->runtime_step = false;
+    scene->preview_step = false;
     return result;
 }
 

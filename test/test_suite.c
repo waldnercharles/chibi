@@ -1295,6 +1295,7 @@ static void run_prototype_preview_checks(void)
             ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity) &&
             ecs_world_live_count(scene_world) == 0 &&
             game_prototype_preview_world(preview) != scene_world &&
+            game_prototype_preview_behaviors(preview) != NULL &&
             GAME_GameHealth_get(game_prototype_preview_world(preview), preview_entity)
                     ->current == 42 &&
             game_prototype_preview_instance(preview, "PreviewBehavior") != NULL,

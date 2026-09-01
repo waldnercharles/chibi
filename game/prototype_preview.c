@@ -90,10 +90,7 @@ int game_prototype_preview_register_behavior(
     return 0;
 }
 
-int game_prototype_preview_unregister_behavior(
-    game_prototype_preview *preview,
-    const char *asset_name
-)
+int game_prototype_preview_unregister_behavior(game_prototype_preview *preview, const char *asset_name)
 {
     behavior_asset *definition = NULL;
     if (game_behavior_unregister_asset(preview ? preview->behaviors : NULL, asset_name, &definition) !=
@@ -134,8 +131,19 @@ void game_prototype_preview_stop(game_prototype_preview *preview)
 
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)
 {
-    if (!preview) {
+    if (!preview || !preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
+    }
+    flow_error error = { 0 };
+    int result = game_behavior_dispatch(
+        preview->behaviors,
+        preview->entity,
+        "Tick",
+        (flow_inputs){ 0 },
+        &error
+    );
+    if (result < 0) {
+        return result;
     }
     return game_behavior_pump(preview->behaviors, monotonic_time);
 }
@@ -143,6 +151,11 @@ int game_prototype_preview_tick(game_prototype_preview *preview, double monotoni
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview)
 {
     return preview ? preview->world : NULL;
+}
+
+game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview)
+{
+    return preview ? preview->behaviors : NULL;
 }
 
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview)

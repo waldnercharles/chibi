@@ -13,6 +13,7 @@ int game_prototype_preview_register_behavior(
     const char *asset_name,
     const behavior_asset *source
 );
+int game_prototype_preview_unregister_behavior(game_prototype_preview *preview, const char *asset_name);
 int game_prototype_preview_launch(
     game_prototype_preview *preview,
     const game_prototype *prototype,

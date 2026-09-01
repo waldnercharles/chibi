@@ -55,6 +55,12 @@ class EvidenceValidatorTests(unittest.TestCase):
         )
         self.assertEqual(run(body).returncode, 0)
 
+    def test_rejects_placeholder_proof(self):
+        body = VALID_AUTOMATED.replace(
+            "The validator checks evidence metadata.", "TBD"
+        )
+        self.assertNotEqual(run(body).returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

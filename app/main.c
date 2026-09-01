@@ -147,6 +147,7 @@ typedef struct
     app_recording recording;
     int headless;
     app_scenario scenario;
+    double monotonic_time;
     app_mouse_input input;
     float scenario_before_width;
     float scenario_after_width;
@@ -307,7 +308,8 @@ static int app_frame(app_loop *loop)
         loop->capture_error = 1;
         return 1;
     }
-    editor_tick(loop->graph_editor, seconds);
+    loop->monotonic_time += seconds;
+    editor_tick(loop->graph_editor, loop->monotonic_time);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
         engine_viewport_release_focus();
@@ -316,7 +318,7 @@ static int app_frame(app_loop *loop)
     }
     engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
     app_scene_authoring_input(loop->authoring, "viewport", 0.0, viewport_focused != 0);
-    if (app_scene_authoring_frame(loop->authoring, seconds) != FLOW_OK) {
+    if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
         fprintf(stderr, "runtime frame failed\n");
     }
 

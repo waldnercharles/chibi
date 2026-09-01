@@ -120,8 +120,19 @@ void game_prototype_preview_stop(game_prototype_preview *preview)
 
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)
 {
-    if (!preview) {
+    if (!preview || !preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
+    }
+    flow_error error = { 0 };
+    int result = game_behavior_dispatch(
+        preview->behaviors,
+        preview->entity,
+        "Tick",
+        (flow_inputs){ 0 },
+        &error
+    );
+    if (result < 0) {
+        return result;
     }
     return game_behavior_pump(preview->behaviors, monotonic_time);
 }

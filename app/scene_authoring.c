@@ -3924,22 +3924,38 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
         return FLOW_ERR_ARGUMENT;
     }
     ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
+    int result = FLOW_OK;
     if (preview_entity.slot && (scene->preview_playing || scene->preview_step)) {
-        game_prototype_preview_tick(scene->prototype_preview, monotonic_time);
+        result = game_prototype_preview_tick(scene->prototype_preview, monotonic_time);
+        if (result < 0) {
+            snprintf(
+                scene->prototype_message,
+                sizeof scene->prototype_message,
+                "Prototype preview Tick failed (%d).",
+                result
+            );
+        }
     }
     if (scene->runtime_playing || scene->runtime_step) {
         for (int i = 0; i < acount(scene->actors); i++) {
             flow_error error = { 0 };
-            (void)game_behavior_dispatch(
+            int dispatch_result = game_behavior_dispatch(
                 scene->live->behaviors,
                 scene->actors[i].entity,
                 "Tick",
                 (flow_inputs){ 0 },
                 &error
             );
+            if (dispatch_result < 0 && result == FLOW_OK) {
+                result = dispatch_result;
+                snprintf(scene->message, sizeof scene->message, "Scene Runtime Tick failed (%d).", dispatch_result);
+            }
         }
     }
-    int result = engine_frame(scene->runtime, monotonic_time);
+    int frame_result = engine_frame(scene->runtime, monotonic_time);
+    if (frame_result < 0 && result == FLOW_OK) {
+        result = frame_result;
+    }
     scene->runtime_step = false;
     scene->preview_step = false;
     return result;

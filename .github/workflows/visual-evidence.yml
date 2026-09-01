@@ -1,6 +1,7 @@
 name: Visual evidence
 
 on:
+  push:
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -10,7 +11,7 @@ permissions:
 jobs:
   record-evidence:
     name: Record declared visual evidence
-    if: contains(github.event.pull_request.body, 'Category: `visual`')
+    if: github.event_name == 'push' || contains(github.event.pull_request.body, 'Category: `visual`')
     runs-on: ubuntu-latest
     steps:
       - name: Check out source

@@ -27,6 +27,8 @@
 #define APP_RESIZE_PANE_PRESS_FRAME 12
 #define APP_RESIZE_PANE_RELEASE_FRAME 36
 #define APP_RESIZE_PANE_DELTA 240.0f
+/* Pane widths are quantized to framebuffer pixels during the drag. */
+#define APP_RESIZE_PANE_DELTA_TOLERANCE 1.0f
 #define APP_RECORDING_PATH_SIZE 4096
 
 static char app_recording_virtual_path[APP_RECORDING_PATH_SIZE];
@@ -217,9 +219,9 @@ static void app_check_resize_pane(app_loop *loop)
     loop->scenario_checked = 1;
     loop->scenario_after_width = editor_ui_left_pane_width();
     float delta = loop->scenario_after_width - loop->scenario_before_width;
-    const float minimum_delta = APP_RESIZE_PANE_DELTA * 0.5f;
-    const float maximum_delta = APP_RESIZE_PANE_DELTA * 1.5f;
-    if (delta < minimum_delta || delta > maximum_delta) {
+    const float expected_delta = APP_RESIZE_PANE_DELTA;
+    const float delta_error = fabsf(delta - expected_delta);
+    if (delta_error > APP_RESIZE_PANE_DELTA_TOLERANCE) {
         fprintf(
             stderr,
             "resize-pane assertion failed: width %.1f -> %.1f (delta %.1f)\n",

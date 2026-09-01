@@ -28,6 +28,7 @@ make record-resize-pane RECORD_PATH=/tmp/c-blueprints-resize-pane.mp4 FRAMES=48
 
 The command injects a press-drag-release at the left dock splitter, draws the
 recording cursor and click ring, and fails unless the exposed left pane width
-increases by at least half the requested 240-pixel drag. The output is an MP4
-created directly by Cute Framework. Inspect decoded frames locally and report the assertion line
-(`resize-pane assertion passed: ...`); sharing the capture is optional.
+changes by exactly the requested 240-pixel drag (within one pixel for framebuffer
+quantization). The output is an MP4 created directly by Cute Framework. Inspect
+decoded frames locally and report the assertion line (`resize-pane assertion
+passed: ...`); this repository does not claim that visual evidence is CI-attested.

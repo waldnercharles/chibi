@@ -5,6 +5,7 @@
  * and arena-backed struct values.
  */
 #include "../app/authoring_session.h"
+#include "../app/behavior_fixtures.h"
 #include "../app/demo_graph.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
@@ -1304,6 +1305,28 @@ static void run_prototype_preview_checks(void)
         !ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity),
         "stopping prototype preview destroys only its runtime entity"
     );
+    ecs_world *fixture_ecs = ecs_world_new();
+    game_live_world *fixture_live = fixture_ecs ? game_live_world_new(fixture_ecs)
+                                                : NULL;
+    game_prototype_preview *fixture_preview = game_prototype_preview_new(&registry);
+    game_prototype *fixture_prototype = game_prototype_load(
+        "{\"name\":\"FixturePreview\",\"behaviors\":[\"InputBehavior\"]}",
+        &registry,
+        error,
+        sizeof error
+    );
+    check(
+        fixture_live && fixture_preview && fixture_prototype &&
+            app_behavior_fixtures_load(fixture_live, fixture_preview, "content") > 0 &&
+            game_prototype_preview_launch(fixture_preview, fixture_prototype, error, sizeof error) ==
+                ECS_OK &&
+            game_prototype_preview_instance(fixture_preview, "InputBehavior") != NULL,
+        "content fixture behavior is registered in prototype preview"
+    );
+    game_prototype_free(fixture_prototype);
+    game_prototype_preview_free(fixture_preview);
+    game_live_world_free(fixture_live);
+    ecs_world_free(fixture_ecs);
     ecs_world *live_ecs = ecs_world_new();
     game_live_world *live = live_ecs ? game_live_world_new(live_ecs) : NULL;
     behavior_asset *unrelated = behavior_asset_new("UnrelatedBehavior");

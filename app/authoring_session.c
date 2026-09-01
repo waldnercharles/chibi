@@ -48,8 +48,9 @@ void app_authoring_session_free(app_authoring_session *session)
 
 int app_authoring_session_load_fixtures(app_authoring_session *session)
 {
-    return session ? app_behavior_fixtures_load(session->live, session->content_root)
-                   : -1;
+    return session
+             ? app_behavior_fixtures_load(session->live, NULL, session->content_root)
+             : -1;
 }
 
 int app_authoring_session_asset_count(const app_authoring_session *session)

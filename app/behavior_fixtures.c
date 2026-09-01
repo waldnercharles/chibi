@@ -42,7 +42,7 @@ static int path_compare(const void *left, const void *right)
     return strcmp(*a, *b);
 }
 
-int app_behavior_fixtures_load(game_live_world *world, const char *content_root)
+int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *preview, const char *content_root)
 {
     if (!world || !content_root || !content_root[0]) {
         return -1;
@@ -84,13 +84,21 @@ int app_behavior_fixtures_load(game_live_world *world, const char *content_root)
             game_live_definition *definition = game_live_definition_new(asset->name, asset);
             if (definition) {
                 asset = NULL;
+                if (game_live_definition_set_path(definition, paths[i]) == 0 &&
+                    game_live_add_definition(world, definition) == 0) {
+                    if (preview && game_prototype_preview_register_behavior(
+                                       preview,
+                                       definition->name,
+                                       definition->working
+                                   ) != 0) {
+                        game_live_remove_definition(world, definition->name);
+                    } else {
+                        loaded++;
+                    }
+                    definition = NULL;
+                }
             }
-            if (definition && game_live_definition_set_path(definition, paths[i]) == 0 &&
-                game_live_add_definition(world, definition) == 0) {
-                loaded++;
-            } else {
-                game_live_definition_free(definition);
-            }
+            game_live_definition_free(definition);
         }
         behavior_asset_free(asset);
         free(paths[i]);

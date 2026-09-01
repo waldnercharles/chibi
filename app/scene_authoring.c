@@ -1330,7 +1330,11 @@ int app_scene_authoring_load_content(app_scene_authoring *scene)
         return -1;
     }
     content_refresh(scene);
-    int loaded = app_behavior_fixtures_load(scene->live, scene->content_root);
+    int loaded = app_behavior_fixtures_load(
+        scene->live,
+        scene->prototype_preview,
+        scene->content_root
+    );
     if (loaded < 0) {
         loaded = 0;
     }

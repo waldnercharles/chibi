@@ -156,7 +156,8 @@ int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id);
  * node for wiring, or NULL on allocation failure. */
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y);
 
-/* Save the behavior_asset to `path` as JSON. Returns 0 on success, -1 on error. */
+/* Save the behavior_asset to `path` as JSON and update the editor's saved
+ * baseline used by dirty queries. Returns 0 on success, -1 on error. */
 int editor_save(editor *e, const char *path);
 
 /* Replace the editor's behavior_asset with the JSON at `path`. Returns 0 on

@@ -24,6 +24,7 @@
 #include "../core/value_array.h"
 #include "../demo/vec3.h"
 #include "../ecs/ecs.h"
+#include "../editor/editor.h"
 #include "../editor/preview_gate.h"
 #include "../engine/engine.h"
 #include "../game/behavior.h"
@@ -33,6 +34,13 @@
 #include "../game/prototype.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
+
+/* game/components.h owns the compatible CF_V2 declaration used by this test;
+ * avoid redeclaring it through cute_math while importing ImGui's API. */
+#include <cute_defines.h>
+#define CF_MATH_H
+#include <imgui/dcimgui.h>
+#undef CF_MATH_H
 #define PICO_UNIT_IMPLEMENTATION
 #include "../third_party/fmt/fmt.h"
 #include "../third_party/pico_headers/pico_unit.h"
@@ -41,6 +49,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 static const node_desc *find_node(const char *name)
 {
@@ -55,6 +68,280 @@ static void check(int ok, const char *msg)
     if (!ok) {
         fails++;
     }
+}
+
+static pin_spec g_editor_float_outputs[] = {
+    { "Value", PIN_F32, "float", PIN_DATA },
+};
+static pin_spec g_editor_float_inputs[] = {
+    { "Value", PIN_F32, "float", PIN_DATA },
+};
+static pin_spec g_editor_int_inputs[] = {
+    { "Value", PIN_I32, "int", PIN_DATA },
+};
+static node_desc g_editor_float_sink_desc = {
+    .name = "editor_float_sink",
+    .input_count = 1,
+    .inputs = g_editor_float_inputs,
+};
+static node_desc g_editor_float_desc = {
+    .name = "editor_float_source",
+    .output_count = 1,
+    .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_int_desc = {
+    .name = "editor_int_sink",
+    .input_count = 1,
+    .inputs = g_editor_int_inputs,
+};
+
+static int make_editor_save_path(char *path, size_t path_size)
+{
+#ifdef _WIN32
+    char directory[MAX_PATH];
+    DWORD directory_size = GetTempPathA(sizeof directory, directory);
+    if (!directory_size || directory_size >= sizeof directory ||
+        path_size < MAX_PATH || !GetTempFileNameA(directory, "cbp", 0, path)) {
+        return -1;
+    }
+    return 0;
+#else
+    static const char template[] = "cblueprints-editor-XXXXXX";
+    if (path_size < sizeof template) {
+        return -1;
+    }
+    memcpy(path, template, sizeof template);
+    int fd = mkstemp(path);
+    if (fd < 0) {
+        return -1;
+    }
+    close(fd);
+    return 0;
+#endif
+}
+
+static void run_editor_command_checks(void)
+{
+    ImGuiContext *context = ImGui_CreateContext(NULL);
+    char save_path[512];
+    if (make_editor_save_path(save_path, sizeof save_path) != 0) {
+        check(0, "a temporary path can be generated for editor persistence");
+        ImGui_DestroyContext(context);
+        return;
+    }
+    behavior_asset *bp = behavior_asset_new("Editor command test");
+    node *source = graph_add_node(bp->graph, &g_editor_float_desc);
+    node *sink = graph_add_node(bp->graph, &g_editor_int_desc);
+    node *float_sink = graph_add_node(bp->graph, &g_editor_float_sink_desc);
+    editor *e = editor_new(bp);
+    check(e != NULL, "editor command seam constructs a headless editor");
+    if (!e) {
+        behavior_asset_free(bp);
+        remove(save_path);
+        ImGui_DestroyContext(context);
+        return;
+    }
+
+    editor_query state;
+    editor_query_state(e, &state);
+    check(!state.dirty, "a new editor starts with a clean saved baseline");
+    editor_tick(e, 0.0);
+    editor_command invalid_connect = {
+        .kind = EDITOR_COMMAND_CONNECT_DATA,
+        .data.connect = { source->id, 0, sink->id, 0 },
+    };
+    check(editor_command_apply(e, invalid_connect) == -1, "an invalid connection is rejected by the command seam");
+    editor_query_state(e, &state);
+    check(!state.dirty && acount(bp->graph->edges) == 0, "a rejected connection leaves no dirty or history edit");
+    unsigned revision = editor_edit_revision(e);
+    editor_undo(e);
+    editor_tick(e, 1.0);
+    check(editor_edit_revision(e) == revision, "a rejected connection does not add an undo revision");
+    unsigned revision_before_invalid_spawn = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SPAWN_NODE,
+                .data.spawn_node = { NULL, 0.0f, 0.0f },
+            }
+        ) == -1,
+        "a spawn command rejects a missing node description"
+    );
+    check(
+        editor_edit_revision(e) == revision_before_invalid_spawn &&
+            acount(bp->graph->nodes) == 3,
+        "a rejected spawn leaves no undo revision or node"
+    );
+    pin_value float_value = { .type = PIN_F32, .f = 1.0f };
+    editor_query_state(e, &state);
+    int dirty_before_invalid_pin = state.dirty;
+    unsigned revision_before_invalid_pin = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { source->id, 2, 0, &float_value },
+            }
+        ) == -1,
+        "a pin default command rejects a non-boolean output selector"
+    );
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { source->id, 0, 1, &float_value },
+            }
+        ) == -1,
+        "a pin default command rejects an out-of-range pin"
+    );
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { sink->id, 0, 0, &float_value },
+            }
+        ) == -1,
+        "a pin default command rejects a mismatched value type"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.dirty == dirty_before_invalid_pin &&
+            editor_edit_revision(e) == revision_before_invalid_pin,
+        "rejected pin defaults leave no dirty or history edit"
+    );
+    editor_command valid_connect = {
+        .kind = EDITOR_COMMAND_CONNECT_DATA,
+        .data.connect = { source->id, 0, float_sink->id, 0 },
+    };
+    check(editor_command_apply(e, valid_connect) == 0, "a valid typed connection uses the editor mutation path");
+    check(acount(bp->graph->edges) == 1, "valid command connections update graph topology");
+
+    editor_command create_graph = {
+        .kind = EDITOR_COMMAND_CREATE_GRAPH,
+        .data.create_graph = { GRAPH_FUNCTION, "Worker" },
+    };
+    editor_query_state(e, &state);
+    int dirty_before_create = state.dirty;
+    unsigned revision_before_create = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                .data.create_graph = { GRAPH_FUNCTION, "" },
+            }
+        ) == -1,
+        "graph creation rejects an empty name"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.dirty == dirty_before_create &&
+            editor_edit_revision(e) == revision_before_create,
+        "a rejected graph creation leaves no dirty or history edit"
+    );
+    check(editor_command_apply(e, create_graph) == 0, "the command seam creates a graph");
+    graph *worker = behavior_asset_find_graph_by_name(bp, "Worker");
+    check(worker != NULL, "created graphs remain discoverable by name");
+    check(
+        editor_open_graph(e, worker->graph_id) == 0 && editor_active_graph(e) == worker,
+        "the command seam can open the created graph"
+    );
+
+    editor_query_state(e, &state);
+    int dirty_before_rename = state.dirty;
+    unsigned revision_before_rename = editor_edit_revision(e);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_RENAME_GRAPH,
+                .data.rename_graph = { worker->graph_id, "" },
+            }
+        ) == -1,
+        "graph renaming rejects an empty name"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.dirty == dirty_before_rename &&
+            editor_edit_revision(e) == revision_before_rename,
+        "a rejected graph rename leaves no dirty or history edit"
+    );
+
+    editor_command rename_graph = {
+        .kind = EDITOR_COMMAND_RENAME_GRAPH,
+        .data.rename_graph = { worker->graph_id, "Renamed" },
+    };
+    check(editor_command_apply(e, rename_graph) == 0, "the command seam renames a graph");
+    /* The local seam fixtures are not registry descriptors, so remove them
+     * before exercising the file round trip. */
+    graph_remove_node(bp->graph, source);
+    graph_remove_node(bp->graph, sink);
+    graph_remove_node(bp->graph, float_sink);
+    editor_query_state(e, &state);
+    check(state.dirty, "authored graph changes are observable as dirty");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { save_path } }
+        ) == 0,
+        "the command seam saves the authored asset"
+    );
+    editor_query_state(e, &state);
+    check(!state.dirty, "saving establishes the clean dirty baseline");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { save_path } }
+        ) == 0,
+        "the command seam reloads the saved asset"
+    );
+    editor_query_state(e, &state);
+    check(
+        state.graph_count == 2 && state.active_graph &&
+            strcmp(state.active_graph->name, "Renamed") == 0 && !state.dirty,
+        "reload preserves authored graphs and the clean dirty baseline"
+    );
+    behavior_asset *other = behavior_asset_new("Other asset");
+    check(
+        other && editor_open_behavior_asset(e, other, other->graph->graph_id) == 0,
+        "opening a different behavior asset succeeds"
+    );
+    editor_query_state(e, &state);
+    check(state.graph_count == 1 && !state.dirty, "opening a different clean behavior asset resets the dirty baseline");
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                .data.create_graph = { GRAPH_FUNCTION, "OtherWorker" },
+            }
+        ) == 0,
+        "the newly opened behavior asset remains editable"
+    );
+    editor_query_state(e, &state);
+    check(state.dirty, "edits after opening a different asset are observable as dirty");
+    behavior_asset_free(other);
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SAVE, .data.file = { NULL } }
+        ) == -1,
+        "a save command rejects a null path"
+    );
+    check(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_LOAD, .data.file = { NULL } }
+        ) == -1,
+        "a load command rejects a null path"
+    );
+    remove(save_path);
+    editor_free(e);
+    ImGui_DestroyContext(context);
 }
 
 /* Vendor test helper: render one fmt format into a stream and compare. The
@@ -6049,6 +6336,7 @@ TEST_CASE(all_checks)
     run_parallel_checks();
     run_hot_reload_checks();
     run_scene_checks();
+    run_editor_command_checks();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

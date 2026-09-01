@@ -217,7 +217,9 @@ static void app_check_resize_pane(app_loop *loop)
     loop->scenario_checked = 1;
     loop->scenario_after_width = editor_ui_left_pane_width();
     float delta = loop->scenario_after_width - loop->scenario_before_width;
-    if (delta < APP_RESIZE_PANE_DELTA * 0.5f) {
+    const float minimum_delta = APP_RESIZE_PANE_DELTA * 0.5f;
+    const float maximum_delta = APP_RESIZE_PANE_DELTA * 1.5f;
+    if (delta < minimum_delta || delta > maximum_delta) {
         fprintf(
             stderr,
             "resize-pane assertion failed: width %.1f -> %.1f (delta %.1f)\n",

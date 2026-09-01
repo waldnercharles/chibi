@@ -62,7 +62,7 @@ PenaltyBreakString: 500
 PenaltyExcessCharacter: 2
 PenaltyReturnTypeOnItsOwnLine: 1000000
 PointerAlignment: Right
-ReflowComments: Always
+ReflowComments: true
 SpaceAfterCStyleCast: false
 SpaceBeforeParens: ControlStatementsExceptControlMacros
 SpaceInEmptyParentheses: false

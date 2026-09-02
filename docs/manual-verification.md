@@ -1,5 +1,21 @@
 # Manual editor verification
 
+## Application flags
+
+The native app accepts these command-line flags:
+
+- `--help` prints the available flags and exits.
+- `--headless` runs without showing a window.
+- `--frames <count>` exits after rendering the requested number of frames.
+- `--fps <rate>` sets the target frame rate.
+- `--screenshot [path]` runs headlessly, renders three frames, saves a PNG, and exits. The path defaults to `/tmp/c-blueprints-screenshot.png`; use `--frames` to choose a different capture frame.
+
+For example:
+
+```sh
+build/app --screenshot /tmp/c-blueprints-screenshot.png
+```
+
 Use computer-use against the real native editor. This is the acceptance path for
 editor usability and must not be replaced by headless tests. Record the command,
 what was authored, the runtime action, and the screenshot dimensions.

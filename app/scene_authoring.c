@@ -2278,15 +2278,16 @@ static bool draw_content_item(app_scene_authoring *scene, int index)
     bool pressed = scene->content_show_thumbnails
                      ? editor_ui_asset_card(entry->path, name, kind, selection)
                      : editor_ui_asset_row(entry->path, name, entry->path, kind, selection);
+    bool double_clicked = ImGui_IsItemHovered(0) && ImGui_IsMouseDoubleClicked(0);
     if (pressed) {
         select_content_entry(scene, entry);
         if (entry->directory) {
             open_content_entry(scene, entry);
             return true;
         }
-        if (ImGui_IsMouseDoubleClicked(0)) {
-            open_content_entry(scene, entry);
-        }
+    }
+    if (double_clicked) {
+        open_content_entry(scene, entry);
     }
     if (ImGui_IsItemHovered(0) && ImGui_IsMouseReleased(1)) {
         select_content_entry(scene, entry);

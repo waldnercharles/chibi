@@ -1405,6 +1405,11 @@ const char *app_scene_authoring_message(const app_scene_authoring *scene)
     return scene ? scene->message : NULL;
 }
 
+const char *app_scene_authoring_selected_content(const app_scene_authoring *scene)
+{
+    return scene ? scene->content_selected_path : NULL;
+}
+
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene)
 {
     return scene ? scene->document
@@ -2278,7 +2283,8 @@ static bool draw_content_item(app_scene_authoring *scene, int index)
     bool pressed = scene->content_show_thumbnails
                      ? editor_ui_asset_card(entry->path, name, kind, selection)
                      : editor_ui_asset_row(entry->path, name, entry->path, kind, selection);
-    bool double_clicked = ImGui_IsItemHovered(0) && ImGui_IsMouseDoubleClicked(0);
+    bool double_clicked = (ImGui_IsItemHovered(0) && ImGui_IsMouseDoubleClicked(0)) ||
+                          editor_ui_item_double_clicked();
     if (pressed) {
         select_content_entry(scene, entry);
         if (entry->directory) {

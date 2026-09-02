@@ -19,6 +19,7 @@
 #define APP_WINDOW_HEIGHT 1080
 #define APP_DEFAULT_SCREENSHOT_PATH "/tmp/c-blueprints-screenshot.png"
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
+#define APP_INTEGRATION_ARTIFACTS "build/ui-integration-artifacts"
 
 static void print_usage(const char *program)
 {
@@ -104,7 +105,66 @@ typedef struct
     int frame;
     const char *screenshot_path;
     int capture_error;
+    int integration;
+    int integration_failed;
 } app_loop;
+
+static int app_integration_check(app_loop *loop)
+{
+    app_editor_document_context document = app_scene_authoring_document(loop->authoring);
+    editor_query query;
+    editor_query_state(loop->graph_editor, &query);
+    int nodes = query.active_graph ? acount(query.active_graph->nodes) : 0;
+    const node *first_node = nodes > 0 ? query.active_graph->nodes[0] : NULL;
+    const char *selected = app_scene_authoring_selected_content(loop->authoring);
+    int expected_node = first_node && first_node->desc && first_node->desc->name &&
+                        strcmp(first_node->desc->name, "Event") == 0 &&
+                        first_node->reference_name &&
+                        strcmp(first_node->reference_name, "Input") == 0;
+    int ok = editor_ui_content_drawer_open() && selected &&
+             strcmp(selected, "content/behaviors/InputBehavior.json") == 0 &&
+             document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
+             strcmp(document.id, "InputBehavior") == 0 && query.graph_visible &&
+             expected_node && app_scene_authoring_message(loop->authoring) &&
+             strstr(app_scene_authoring_message(loop->authoring), "Editing behavior asset") !=
+                 NULL;
+    const char *result = ok ? "PASS" : "FAIL";
+    printf(
+        "ui-integration %s: selected=%s document=%s:%s node_canvas=%d "
+        "nodes=%d event_node=%d message=%s\n",
+        result,
+        selected ? selected : "(none)",
+        document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR ? "behavior" : "other",
+        document.id ? document.id : "(none)",
+        query.graph_visible,
+        nodes,
+        expected_node,
+        app_scene_authoring_message(loop->authoring)
+            ? app_scene_authoring_message(loop->authoring)
+            : "(none)"
+    );
+    if (loop->integration) {
+        char path[512];
+        snprintf(path, sizeof path, "%s/interaction-trace.txt", APP_INTEGRATION_ARTIFACTS);
+        FILE *trace = fopen(path, "ab");
+        if (trace) {
+            fprintf(
+                trace,
+                "frame=%d %s selected=%s document=%s node_canvas=%d nodes=%d "
+                "event_node=%d\n",
+                loop->frame,
+                result,
+                selected ? selected : "(none)",
+                document.id ? document.id : "(none)",
+                query.graph_visible,
+                nodes,
+                expected_node
+            );
+            fclose(trace);
+        }
+    }
+    return ok ? 0 : -1;
+}
 
 static void app_cleanup(app_loop *loop)
 {
@@ -123,7 +183,12 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     cf_app_update(NULL);
-    double seconds = CF_SECONDS;
+    if (loop->integration && loop->frame == 1) {
+        editor_ui_test_click("content/behaviors", false);
+    } else if (loop->integration && loop->frame == 2) {
+        editor_ui_test_click("content/behaviors/InputBehavior.json", true);
+    }
+    double seconds = loop->integration ? (double)(loop->frame + 1) / 60.0 : CF_SECONDS;
     editor_tick(loop->graph_editor, seconds);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
@@ -142,6 +207,10 @@ static int app_frame(app_loop *loop)
     app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
+
+    if (loop->integration && loop->frame >= 3 && app_integration_check(loop) != 0) {
+        loop->integration_failed = 1;
+    }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
     if (finished && loop->screenshot_path) {
@@ -173,6 +242,7 @@ int main(int argc, char **argv)
     int fps = 0;
     int headless = 0;
     const char *screenshot_path = NULL;
+    int integration = getenv("CBLUEPRINT_UI_INTEGRATION") != NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
@@ -191,6 +261,13 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--headless") == 0) {
             headless = 1;
         }
+    }
+    if (integration) {
+        headless = 1;
+        frames = 5;
+        static char integration_screenshot[256];
+        snprintf(integration_screenshot, sizeof integration_screenshot, "%s/screenshot.png", APP_INTEGRATION_ARTIFACTS);
+        screenshot_path = integration_screenshot;
     }
     if (screenshot_path && frames == 0) {
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
@@ -312,6 +389,7 @@ int main(int argc, char **argv)
         .frames = frames,
         .screenshot_path = screenshot_path,
         .capture_error = 0,
+        .integration = integration,
     };
 #ifdef __EMSCRIPTEN__
     /* Browser event processing must return to the browser between frames. */
@@ -327,5 +405,5 @@ int main(int argc, char **argv)
     }
     app_cleanup(&loop);
 #endif
-    return loop.capture_error;
+    return loop.capture_error || loop.integration_failed;
 }

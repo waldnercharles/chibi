@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 // pi-lens-ignore: fatal error
 #include <imgui/dcimgui.h>
 
@@ -92,6 +93,37 @@ static bool ui_content_drawer_open;
 static editor_ui_focus_target ui_focus_request;
 static editor_ui_command_handler ui_command_handler;
 static void *ui_command_user;
+static char ui_test_click_id[256];
+static bool ui_test_click_pending;
+static bool ui_test_double_clicked;
+static bool ui_test_double_click_ready;
+
+void editor_ui_test_click(const char *id, bool double_click)
+{
+    assert(id);
+    snprintf(ui_test_click_id, sizeof ui_test_click_id, "%s", id);
+    ui_test_click_pending = true;
+    ui_test_double_clicked = double_click;
+}
+
+bool editor_ui_item_double_clicked(void)
+{
+    if (!ui_test_double_click_ready) {
+        return false;
+    }
+    ui_test_double_click_ready = false;
+    return ui_test_double_clicked;
+}
+
+static bool ui_test_item_pressed(const char *id)
+{
+    if (!ui_test_click_pending || strcmp(ui_test_click_id, id) != 0) {
+        return false;
+    }
+    ui_test_click_pending = false;
+    ui_test_double_click_ready = true;
+    return true;
+}
 
 void editor_ui_request_focus(editor_ui_focus_target target)
 {
@@ -411,7 +443,8 @@ bool editor_ui_asset_row(
     }
     ImVec2 min = ImGui_GetCursorScreenPos();
     ImVec2 max = { min.x + width, min.y + UI_ASSET_ROW_HEIGHT };
-    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, UI_ASSET_ROW_HEIGHT }, ImGuiButtonFlags_None);
+    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, UI_ASSET_ROW_HEIGHT }, ImGuiButtonFlags_None) ||
+                   ui_test_item_pressed(id);
     bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
     if (hovered) {
         ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -473,7 +506,8 @@ bool editor_ui_asset_card(const char *id, const char *name, editor_ui_asset_kind
     const float height = EDITOR_UI_ASSET_CARD_HEIGHT;
     ImVec2 min = ImGui_GetCursorScreenPos();
     ImVec2 max = { min.x + width, min.y + height };
-    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, height }, ImGuiButtonFlags_None);
+    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, height }, ImGuiButtonFlags_None) ||
+                   ui_test_item_pressed(id);
     bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
     if (hovered) {
         ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);

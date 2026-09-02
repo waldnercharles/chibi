@@ -3,7 +3,7 @@ BUILD_DIR := build
 BENCHMARK_BUILD_DIR ?= build-release
 LOCAL_CMAKE_FLAGS ?= -DCBLUEPRINT_ENABLE_SANITIZERS=ON
 
-.PHONY: all build run benchmark web web-serve format check-format test clean
+.PHONY: all build run benchmark web web-serve format check-format test ui-integration clean
 
 all: build
 
@@ -37,6 +37,15 @@ check-format:
 
 test: build
 	$(BUILD_DIR)/test_suite
+
+ui-integration: build
+	@rm -rf $(BUILD_DIR)/ui-integration-artifacts
+	@mkdir -p $(BUILD_DIR)/ui-integration-artifacts
+	@CBLUEPRINT_UI_INTEGRATION=1 $(BUILD_DIR)/app --headless --frames 5 \
+		--screenshot $(BUILD_DIR)/ui-integration-artifacts/screenshot.png \
+		>$(BUILD_DIR)/ui-integration-artifacts/command-output.txt 2>&1 || \
+		{ cat $(BUILD_DIR)/ui-integration-artifacts/command-output.txt; exit 1; }
+	@cat $(BUILD_DIR)/ui-integration-artifacts/command-output.txt
 
 clean:
 	rm -rf $(BUILD_DIR) $(BENCHMARK_BUILD_DIR)

@@ -85,6 +85,7 @@ int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_reload(app_scene_authoring *scene);
 const char *app_scene_authoring_message(const app_scene_authoring *scene);
+const char *app_scene_authoring_selected_content(const app_scene_authoring *scene);
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene);
 void app_scene_authoring_draw(app_scene_authoring *scene);
 void app_scene_authoring_render(void *user);

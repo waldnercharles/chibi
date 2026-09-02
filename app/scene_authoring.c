@@ -423,7 +423,7 @@ static void set_document(app_scene_authoring *scene, app_editor_document_kind ki
         case APP_EDITOR_DOCUMENT_BEHAVIOR:
             editor_set_ui_context(scene->graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
             editor_set_graph_visible(scene->graph_editor, 1);
-            editor_ui_request_focus(EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET);
+            editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
             return;
         case APP_EDITOR_DOCUMENT_PROTOTYPE:
             editor_set_ui_context(scene->graph_editor, EDITOR_UI_CONTEXT_PROTOTYPE);

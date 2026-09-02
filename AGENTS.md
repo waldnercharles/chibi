@@ -1,6 +1,7 @@
 ### Coding Guidelines
 
 - Use the standard build directory with sanitizers, warnings, and ccache enabled.
+- UI changes require a deterministic automated harness that drives the real UI and asserts visible behavior; screenshots alone are insufficient.
 
 - Less code is a feature: delete dead code and unused abstraction.
 - Flatten: guard clauses and early returns; no `else` after `return`/`break`.

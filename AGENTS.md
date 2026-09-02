@@ -1,5 +1,7 @@
 ### Coding Guidelines
 
+- Use the standard build directory with sanitizers, warnings, and ccache enabled.
+
 - Less code is a feature: delete dead code and unused abstraction.
 - Flatten: guard clauses and early returns; no `else` after `return`/`break`.
 - Small single-purpose functions; minimal public surface and parameter count.

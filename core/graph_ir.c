@@ -5,11 +5,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-enum
-{
-    GRAPH_IR_HASH_OFFSET = UINT64_C(1469598103934665603),
-    GRAPH_IR_HASH_PRIME = UINT64_C(1099511628211),
-};
+static const uint64_t GRAPH_IR_HASH_OFFSET = UINT64_C(1469598103934665603);
+static const uint64_t GRAPH_IR_HASH_PRIME = UINT64_C(1099511628211);
 
 void graph_ir_init(graph_ir *ir)
 {

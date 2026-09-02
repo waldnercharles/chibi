@@ -8,7 +8,14 @@ build-reflect/
 generated/
 .pi-lens/
 .cache/
-.pi/
+.pi/*
+!.pi/settings.json
+!.pi/agents/
+!.pi/agents/*.md
+!.pi/workflows/
+!.pi/workflows/issue-to-merge.js
+!.pi/prompts/
+!.pi/prompts/issue-to-merge.md
 imgui.ini
 NodeEditor.json
 compile_commands.json

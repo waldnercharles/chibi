@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 project(c-blueprints LANGUAGES C CXX)
 
+option(CBLUEPRINT_ENABLE_PERFORMANCE_TESTS
+       "Run timing-sensitive performance checks in the test suite" OFF)
+
 if(APPLE)
     execute_process(
         COMMAND xcrun --show-sdk-path
@@ -74,6 +77,44 @@ endif()
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
    (NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY))
   message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
+endif()
+
+option(CBLUEPRINT_ENABLE_WARNINGS
+       "Enable strict compiler warnings for project targets" ON)
+option(CBLUEPRINT_ENABLE_SANITIZERS
+       "Enable AddressSanitizer and UndefinedBehaviorSanitizer" ON)
+option(CBLUEPRINT_ENABLE_CCACHE "Use ccache when it is available" ON)
+
+if(CBLUEPRINT_ENABLE_WARNINGS AND
+   (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
+    CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
+    add_compile_options(
+        -Wall -Wextra -Wpedantic -Werror
+        -Wno-missing-field-initializers
+        -Wno-unused-parameter
+        -Wno-unused-function
+        -Wno-unused-variable
+        -Wno-zero-length-array
+        -Wno-string-concatenation
+    )
+endif()
+
+if(CBLUEPRINT_ENABLE_SANITIZERS AND
+   NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+   (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
+    CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(CBLUEPRINT_ENABLE_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
+            "C compiler launcher")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
+            "CXX compiler launcher")
+    endif()
 endif()
 
 # --- embedded editor icon font ---
@@ -176,6 +217,8 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
+set_source_files_properties(third_party/fmt/fmt.c PROPERTIES
+    COMPILE_OPTIONS "-Wno-deprecated-declarations")
 if(CBLUEPRINT_ENABLE_SJLIT)
     target_compile_definitions(core PRIVATE CBLUEPRINT_HAVE_SJLIT=1)
     target_link_libraries(core PRIVATE cblueprint_sljit)
@@ -302,6 +345,9 @@ endif()
 add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_suite PRIVATE engine game ecs demo editor)
+if(NOT CBLUEPRINT_ENABLE_PERFORMANCE_TESTS)
+    target_compile_definitions(test_suite PRIVATE CBLUEPRINT_SKIP_PERFORMANCE_TESTS=1)
+endif()
 
 # --- activation benchmark: headless per-instance event dispatch -------------
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})

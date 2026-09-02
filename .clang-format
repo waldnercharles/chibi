@@ -54,7 +54,6 @@ IncludeBlocks: Regroup
 IndentCaseLabels: true
 IndentWidth: 4
 InsertBraces: true
-Language: C
 PenaltyBreakAssignment: 1000
 PenaltyBreakBeforeFirstCallParameter: 156
 PenaltyBreakComment: 250
@@ -72,6 +71,7 @@ SpacesInCStyleCastParentheses: false
 SpacesInContainerLiterals: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
+Language: C
 Standard: Latest
 TabWidth: 4
 UseTab: Never

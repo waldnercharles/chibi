@@ -247,6 +247,12 @@ static void run_editor_command_checks(void)
     graph *worker = behavior_asset_find_graph_by_name(bp, "Worker");
     check(worker != NULL, "created graphs remain discoverable by name");
     check(
+        worker && acount(worker->nodes) == 2 &&
+            worker->nodes[0]->desc == &NODE_FunctionEntry &&
+            worker->nodes[1]->desc == &NODE_Return,
+        "command-created functions receive entry and return nodes"
+    );
+    check(
         editor_open_graph(e, worker->graph_id) == 0 && editor_active_graph(e) == worker,
         "the command seam can open the created graph"
     );
@@ -2069,6 +2075,7 @@ static void run_scene_checks(void)
     game_scene_free(one);
     game_scene_free(many);
 
+#ifndef CBLUEPRINT_SKIP_PERFORMANCE_TESTS
     game_scene *budget = game_scene_new(2000, 500, UINT64_C(0xdecafbad));
     double total_behavior_ms = 0.0;
     int budget_ok = budget != NULL;
@@ -2084,6 +2091,7 @@ static void run_scene_checks(void)
         "ms average behavior time"
     );
     game_scene_free(budget);
+#endif
 }
 
 static char *program_name;
@@ -4546,7 +4554,7 @@ TEST_CASE(all_checks)
         check(behavior_instance_scratch(bi, delay->id)->i == 42, "stopping an activation preserves per-node scratch");
         int guard_before = bp->graph->flow_pause_count;
         behavior_instance_destroy(bi);
-        check(bp->graph->flow_pause_count == guard_before - 1, "destroying the instance releases the mutation guard");
+        check((int)bp->graph->flow_pause_count == guard_before - 1, "destroying the instance releases the mutation guard");
         node *probe = graph_add_node(bp->graph, &g_sink_b_desc);
         check(probe != NULL, "the definition becomes mutable after its last instance is destroyed");
         /* The probe node's exec input is unconnected, which is a blocking

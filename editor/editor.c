@@ -5275,13 +5275,23 @@ int editor_command_apply(editor *e, editor_command command)
                 return -1;
             }
             ed_snapshot_before(e);
-            return behavior_asset_add_graph(
-                       e->bp,
-                       command.data.create_graph.graph_kind,
-                       command.data.create_graph.name
-                   )
-                     ? 0
-                     : -1;
+            graph *created = command.data.create_graph.graph_kind == GRAPH_FUNCTION
+                               ? behavior_asset_add_function(
+                                     e->bp,
+                                     command.data.create_graph.name,
+                                     0
+                                 )
+                           : command.data.create_graph.graph_kind == GRAPH_MACRO
+                               ? behavior_asset_add_macro(
+                                     e->bp,
+                                     command.data.create_graph.name
+                                 )
+                               : behavior_asset_add_graph(
+                                     e->bp,
+                                     command.data.create_graph.graph_kind,
+                                     command.data.create_graph.name
+                                 );
+            return created ? 0 : -1;
         }
         case EDITOR_COMMAND_RENAME_GRAPH: {
             const char *name = command.data.rename_graph.name;

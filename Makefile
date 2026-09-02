@@ -1,19 +1,20 @@
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR := build
 BENCHMARK_BUILD_DIR ?= build-release
+LOCAL_CMAKE_FLAGS ?= -DCBLUEPRINT_ENABLE_SANITIZERS=ON
 
 .PHONY: all build run benchmark web web-serve format check-format test clean
 
 all: build
 
 build:
-	cmake -S . -B $(BUILD_DIR) && cmake --build $(BUILD_DIR)
+	cmake -S . -B $(BUILD_DIR) $(LOCAL_CMAKE_FLAGS) && cmake --build $(BUILD_DIR)
 
 run: build
 	$(BUILD_DIR)/app $(ARGS)
 
 benchmark:
-	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BENCHMARK_BUILD_DIR) --target bench_activation scene_benchmark system_benchmark query_benchmark
 	$(BENCHMARK_BUILD_DIR)/bench_activation $(ARGS)
 	$(BENCHMARK_BUILD_DIR)/scene_benchmark

@@ -643,7 +643,7 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderDockWindow("Compiler Results", bottom);
     ImGui_DockBuilderDockWindow("Node Canvas", canvas);
     ImGui_DockBuilderDockWindow("Scene", canvas);
-    editor_ui_set_content_drawer_open(false);
+    editor_ui_set_content_drawer_open(true);
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
 

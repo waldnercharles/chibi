@@ -40,9 +40,10 @@ test: build
 	$(MAKE) ui-integration
 
 ui-integration: build
+	@cmake --build $(BUILD_DIR) --target ui_integration --parallel
 	@rm -rf $(BUILD_DIR)/ui-integration-artifacts
 	@mkdir -p $(BUILD_DIR)/ui-integration-artifacts
-	@CBLUEPRINT_UI_INTEGRATION=1 $(BUILD_DIR)/app --headless --frames 5 \
+	@$(BUILD_DIR)/ui_integration \
 		--screenshot $(BUILD_DIR)/ui-integration-artifacts/screenshot.png \
 		>$(BUILD_DIR)/ui-integration-artifacts/command-output.txt 2>&1 || \
 		{ cat $(BUILD_DIR)/ui-integration-artifacts/command-output.txt; exit 1; }

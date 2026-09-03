@@ -334,6 +334,20 @@ list(REMOVE_ITEM APP_SOURCES
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine game cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
+
+# Native UI integration harness. This is deliberately a test executable rather
+# than part of the shipped host; it owns the deterministic input script and
+# assertions while using the same authoring/editor implementation as app.
+add_executable(ui_integration
+    test/ui_integration.c
+    app/scene_authoring.c
+    app/stacktrace.c
+    app/web_loop.c
+    ${APP_REGISTRY}
+)
+target_include_directories(ui_integration PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(ui_integration PRIVATE engine game ecs editor cute)
+set_target_properties(ui_integration PROPERTIES LINKER_LANGUAGE CXX)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")
     target_link_options(app PRIVATE
@@ -410,6 +424,7 @@ if(CLANG_FORMAT)
   add_dependencies(demo format)
   add_dependencies(editor format)
   add_dependencies(app format)
+  add_dependencies(ui_integration format)
   add_dependencies(test_suite format)
   add_dependencies(bench_activation format)
   add_dependencies(scene_benchmark format)

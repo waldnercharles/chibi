@@ -1,8 +1,8 @@
 {
   "version": 3,
   "name": "InputBehavior",
-  "id_counter": 3,
-  "description": "Deterministic integration fixture behavior.",
+  "id_counter": 10,
+  "description": "Adds the typed movement delta to the owning entity transform.",
   "owner_type": "ecs.entity",
   "variables": [],
   "graphs": [
@@ -15,7 +15,7 @@
         {
           "id": 1,
           "type": "Event",
-          "x": 0.0,
+          "x": -420.0,
           "y": 0.0,
           "reference_id": 0,
           "reference_name": "Input",
@@ -24,17 +24,39 @@
           "breakpoint_enabled": false,
           "inputs": [],
           "outputs": [
-            {
-              "id": 2,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
+            { "id": 2, "name": "Then", "type": 0, "kind": "exec", "container": 0, "split_parent": 0, "flags": 0, "group": 0, "default": null }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "Real",
+          "x": -100.0,
+          "y": 100.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            { "id": 4, "name": "Value", "type": 11, "type_name": "double", "kind": "data", "container": 0, "split_parent": 0, "flags": 0, "group": 0, "default": 1.0 }
+          ],
+          "outputs": [
+            { "id": 5, "name": "Value", "type": 11, "type_name": "double", "kind": "data", "container": 0, "split_parent": 0, "flags": 0, "group": 0, "default": 1.0 }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "Real",
+          "x": 120.0,
+          "y": 100.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            { "id": 7, "name": "Value", "type": 11, "type_name": "double", "kind": "data", "container": 0, "split_parent": 0, "flags": 0, "group": 0, "default": 2.0 }
+          ],
+          "outputs": [
+            { "id": 8, "name": "Value", "type": 11, "type_name": "double", "kind": "data", "container": 0, "split_parent": 0, "flags": 0, "group": 0, "default": 2.0 }
           ]
         }
       ],

@@ -37,6 +37,7 @@ check-format:
 
 test: build
 	$(BUILD_DIR)/test_suite
+	$(MAKE) ui-integration
 
 ui-integration: build
 	@rm -rf $(BUILD_DIR)/ui-integration-artifacts

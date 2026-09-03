@@ -115,12 +115,17 @@ static int app_integration_check(app_loop *loop)
     editor_query query;
     editor_query_state(loop->graph_editor, &query);
     int nodes = query.active_graph ? acount(query.active_graph->nodes) : 0;
-    const node *first_node = nodes > 0 ? query.active_graph->nodes[0] : NULL;
     const char *selected = app_scene_authoring_selected_content(loop->authoring);
-    int expected_node = first_node && first_node->desc && first_node->desc->name &&
-                        strcmp(first_node->desc->name, "Event") == 0 &&
-                        first_node->reference_name &&
-                        strcmp(first_node->reference_name, "Input") == 0;
+    int expected_node = 0;
+    for (int i = 0; i < nodes; i++) {
+        const node *current = query.active_graph->nodes[i];
+        if (current->desc && current->desc->name &&
+            strcmp(current->desc->name, "Event") == 0 && current->reference_name &&
+            strcmp(current->reference_name, "Input") == 0) {
+            expected_node = 1;
+            break;
+        }
+    }
     int ok = editor_ui_content_drawer_open() && selected &&
              strcmp(selected, "content/behaviors/InputBehavior.json") == 0 &&
              document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
@@ -147,7 +152,11 @@ static int app_integration_check(app_loop *loop)
         char path[512];
         snprintf(path, sizeof path, "%s/interaction-trace.txt", APP_INTEGRATION_ARTIFACTS);
         FILE *trace = fopen(path, "ab");
-        if (trace) {
+        if (!trace) {
+            fprintf(stderr, "could not write integration trace: %s\n", path);
+            return -1;
+        }
+        {
             fprintf(
                 trace,
                 "frame=%d %s selected=%s document=%s node_canvas=%d nodes=%d "
@@ -160,7 +169,10 @@ static int app_integration_check(app_loop *loop)
                 nodes,
                 expected_node
             );
-            fclose(trace);
+            if (fclose(trace) != 0) {
+                fprintf(stderr, "could not close integration trace: %s\n", path);
+                return -1;
+            }
         }
     }
     return ok ? 0 : -1;

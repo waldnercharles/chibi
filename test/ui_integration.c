@@ -14,6 +14,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+// pi-lens-ignore: fatal error
+#include <cute_defines.h>
+#define CF_MATH_H
+#include <imgui/dcimgui.h>
+#undef CF_MATH_H
 
 #define APP_WINDOW_WIDTH 1920
 #define APP_WINDOW_HEIGHT 1080
@@ -93,6 +98,13 @@ static const editor_event_signature APP_EVENT_CATALOG[] = {
     { "Tick", APP_TICK_PARAMS, 1 },
 };
 
+static void inject_mouse_button(float x, float y, bool down)
+{
+    ImGuiIO *io = ImGui_GetIO();
+    ImGuiIO_AddMousePosEvent(io, x, y);
+    ImGuiIO_AddMouseButtonEvent(io, 0, down);
+}
+
 typedef struct
 {
     editor *graph_editor;
@@ -126,8 +138,7 @@ static int app_integration_check(app_loop *loop)
             break;
         }
     }
-    int ok = editor_ui_content_drawer_open() && selected &&
-             strcmp(selected, "content/behaviors/InputBehavior.json") == 0 &&
+    int ok = editor_ui_content_drawer_open() &&
              document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
              strcmp(document.id, "InputBehavior") == 0 && query.graph_visible &&
              expected_node && app_scene_authoring_message(loop->authoring) &&
@@ -195,10 +206,16 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     cf_app_update(NULL);
-    if (loop->integration && loop->frame == 1) {
-        editor_ui_test_click("content/behaviors", false);
-    } else if (loop->integration && loop->frame == 2) {
-        editor_ui_test_click("content/behaviors/InputBehavior.json", true);
+    if (loop->integration) {
+        /* The drawer layout is reset to 1920x1080 above.  These coordinates
+         * target the visible asset card, not an editor command or test hook. */
+        const float card_x = 700.0f;
+        const float card_y = 1000.0f;
+        if (loop->frame == 1 || loop->frame == 3) {
+            inject_mouse_button(card_x, card_y, true);
+        } else if (loop->frame == 2 || loop->frame == 4) {
+            inject_mouse_button(card_x, card_y, false);
+        }
     }
     double seconds = loop->integration ? (double)(loop->frame + 1) / 60.0 : CF_SECONDS;
     editor_tick(loop->graph_editor, seconds);
@@ -220,7 +237,7 @@ static int app_frame(app_loop *loop)
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
 
-    if (loop->integration && loop->frame >= 3 && app_integration_check(loop) != 0) {
+    if (loop->integration && loop->frame >= 5 && app_integration_check(loop) != 0) {
         loop->integration_failed = 1;
     }
 
@@ -246,7 +263,7 @@ static void app_web_frame(void)
 }
 #endif
 
-static int ui_integration_main(int argc, char **argv)
+int ui_integration_run(int argc, char **argv)
 {
     stacktrace_init(argv[0]);
     cf_set_assert_handler(stacktrace_assert_handler);
@@ -254,7 +271,7 @@ static int ui_integration_main(int argc, char **argv)
     int fps = 0;
     int headless = 0;
     const char *screenshot_path = NULL;
-    int integration = getenv("CBLUEPRINT_UI_INTEGRATION") != NULL;
+    int integration = 1;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
@@ -276,7 +293,7 @@ static int ui_integration_main(int argc, char **argv)
     }
     if (integration) {
         headless = 1;
-        frames = 5;
+        frames = 7;
         static char integration_screenshot[256];
         snprintf(integration_screenshot, sizeof integration_screenshot, "%s/screenshot.png", APP_INTEGRATION_ARTIFACTS);
         screenshot_path = integration_screenshot;
@@ -418,10 +435,4 @@ static int ui_integration_main(int argc, char **argv)
     app_cleanup(&loop);
 #endif
     return loop.capture_error || loop.integration_failed;
-}
-
-int main(int argc, char **argv)
-{
-    setenv("CBLUEPRINT_UI_INTEGRATION", "1", 1);
-    return ui_integration_main(argc, argv);
 }

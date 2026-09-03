@@ -37,13 +37,12 @@ check-format:
 
 test: build
 	$(BUILD_DIR)/test_suite
-	$(MAKE) ui-integration
 
 ui-integration: build
-	@cmake --build $(BUILD_DIR) --target ui_integration --parallel
+	@cmake --build $(BUILD_DIR) --target test_suite --parallel
 	@rm -rf $(BUILD_DIR)/ui-integration-artifacts
 	@mkdir -p $(BUILD_DIR)/ui-integration-artifacts
-	@$(BUILD_DIR)/ui_integration \
+	@$(BUILD_DIR)/test_suite \
 		--screenshot $(BUILD_DIR)/ui-integration-artifacts/screenshot.png \
 		>$(BUILD_DIR)/ui-integration-artifacts/command-output.txt 2>&1 || \
 		{ cat $(BUILD_DIR)/ui-integration-artifacts/command-output.txt; exit 1; }

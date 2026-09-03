@@ -34,6 +34,7 @@
 #include "../game/prototype.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
+#include "ui_integration.h"
 
 /* game/components.h owns the compatible CF_V2 declaration used by this test;
  * avoid redeclaring it through cute_math while importing ImGui's API. */
@@ -6345,6 +6346,11 @@ TEST_CASE(all_checks)
     run_hot_reload_checks();
     run_scene_checks();
     run_editor_command_checks();
+
+    if (!fails) {
+        char *ui_args[] = { "test_suite", "--headless", NULL };
+        fails += ui_integration_run(2, ui_args) != 0;
+    }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

@@ -34,11 +34,7 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
           -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Build and run tests
-        run: |
-          cmake --build build --target test_suite app --parallel
-          build/test_suite
-      - name: Run deterministic native UI integration
-        run: xvfb-run -a make ui-integration
+        run: xvfb-run -a make test
 
   format:
     name: clang-format

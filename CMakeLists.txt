@@ -201,6 +201,21 @@ add_custom_command(
     VERBATIM
 )
 
+set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
+add_custom_command(
+    OUTPUT ${TEST_REGISTRY}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+            ${TEST_REGISTRY}
+            ${BASE_REGISTRY_PACKS}
+            GAME_REGISTRY_PACK
+    DEPENDS ${BASE_REGISTRY}
+            ${GAME_REGISTRY}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+    COMMENT "Composing the test registry pack list"
+    VERBATIM
+)
+
 # --- core static lib (compiles the generated reflection pack into it) ---
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c
@@ -335,19 +350,6 @@ add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_link_libraries(app PRIVATE editor engine game cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
-# Native UI integration harness. This is deliberately a test executable rather
-# than part of the shipped host; it owns the deterministic input script and
-# assertions while using the same authoring/editor implementation as app.
-add_executable(ui_integration
-    test/ui_integration.c
-    app/scene_authoring.c
-    app/stacktrace.c
-    app/web_loop.c
-    ${APP_REGISTRY}
-)
-target_include_directories(ui_integration PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ui_integration PRIVATE engine game ecs editor cute)
-set_target_properties(ui_integration PROPERTIES LINKER_LANGUAGE CXX)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")
     target_link_options(app PRIVATE
@@ -356,7 +358,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 
 # --- test suite: consolidated headless regression checks --------------------
-add_executable(test_suite test/test_suite.c app/demo_graph.c app/stacktrace.c editor/preview_gate.c ${BASE_REGISTRY})
+add_executable(test_suite
+    test/test_suite.c
+    test/ui_integration.c
+    app/demo_graph.c
+    app/scene_authoring.c
+    app/stacktrace.c
+    app/web_loop.c
+    editor/preview_gate.c
+    ${TEST_REGISTRY}
+)
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_suite PRIVATE engine game ecs demo editor)
 if(NOT CBLUEPRINT_ENABLE_PERFORMANCE_TESTS)
@@ -424,7 +435,6 @@ if(CLANG_FORMAT)
   add_dependencies(demo format)
   add_dependencies(editor format)
   add_dependencies(app format)
-  add_dependencies(ui_integration format)
   add_dependencies(test_suite format)
   add_dependencies(bench_activation format)
   add_dependencies(scene_benchmark format)

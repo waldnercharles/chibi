@@ -1004,7 +1004,7 @@ static void run_ecs_checks(void)
 
     ecs_world *generated_world = ecs_world_new();
     check(
-        GAME_REGISTRY_COMPONENT_COUNT == 4 &&
+        GAME_REGISTRY_COMPONENT_COUNT == 6 &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameTransform, NULL) ==
                 ECS_OK &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameHealth, NULL) ==

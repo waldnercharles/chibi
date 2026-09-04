@@ -217,7 +217,7 @@ static int app_frame(app_loop *loop)
             inject_mouse_button(card_x, card_y, false);
         }
     }
-    double seconds = loop->integration ? (double)(loop->frame + 1) / 60.0 : CF_SECONDS;
+    double seconds = loop->integration ? (double)(loop->frame + 1) / 60.0 : CF_DELTA_TIME;
     editor_tick(loop->graph_editor, seconds);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {

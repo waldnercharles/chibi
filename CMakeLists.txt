@@ -202,21 +202,6 @@ add_custom_command(
     VERBATIM
 )
 
-set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-add_custom_command(
-    OUTPUT ${TEST_REGISTRY}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-            ${TEST_REGISTRY}
-            ${BASE_REGISTRY_PACKS}
-            GAME_REGISTRY_PACK
-    DEPENDS ${BASE_REGISTRY}
-            ${GAME_REGISTRY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-    COMMENT "Composing the test registry pack list"
-    VERBATIM
-)
-
 # --- core static lib (compiles the generated reflection pack into it) ---
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c

@@ -38,7 +38,9 @@ computer-use may be useful for exploration, but is not UI evidence.
 5. Reload the authored data and verify the edits persist.
 
 The first gameplay slice adds movement, one weapon/projectile, and one enemy to
-this walkthrough. Capture `/tmp/c-blueprints-screenshot.png` with
+this walkthrough. Pressing `Fire` on the focused runtime spawns deterministic
+projectiles; they move, apply damage on contact, and expire at their authored
+lifetime. Capture `/tmp/c-blueprints-screenshot.png` with
 `build/app --headless --screenshot`; report its dimensions with the result.
 
 ## Resize-pane recording evidence

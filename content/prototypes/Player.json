@@ -6,5 +6,6 @@
     "GameInput": { "move": { "x": 0, "y": 0 } },
     "GameHealth": { "current": 100, "maximum": 100 },
     "GameWeapon": { "damage": 10, "cooldown": 0.25, "projectile_count": 1 }
-  }
+  },
+  "behaviors": [ "InputBehavior" ]
 }

@@ -452,7 +452,36 @@ static int app_frame(app_loop *loop)
         viewport_focused = 0;
     }
     engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
-    app_scene_authoring_input(loop->authoring, "viewport", 0.0, viewport_focused != 0);
+    if (viewport_focused && !editor_host_captures_keyboard()) {
+        float distance = 180.0f * (float)seconds;
+        app_scene_authoring_input(
+            loop->authoring,
+            "MoveLeft",
+            distance,
+            cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT)
+        );
+        app_scene_authoring_input(
+            loop->authoring,
+            "MoveRight",
+            distance,
+            cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT)
+        );
+        app_scene_authoring_input(
+            loop->authoring,
+            "MoveUp",
+            distance,
+            cf_key_down(CF_KEY_W) || cf_key_down(CF_KEY_UP)
+        );
+        app_scene_authoring_input(
+            loop->authoring,
+            "MoveDown",
+            distance,
+            cf_key_down(CF_KEY_S) || cf_key_down(CF_KEY_DOWN)
+        );
+        if (cf_key_just_pressed(CF_KEY_SPACE)) {
+            app_scene_authoring_input(loop->authoring, "Fire", 1.0, 1);
+        }
+    }
     if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
         fprintf(stderr, "runtime frame failed\n");
     }
@@ -612,6 +641,10 @@ int main(int argc, char **argv)
                         ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) ==
                             ECS_OK &&
                         ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameWeapon, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameProjectile, NULL) ==
                             ECS_OK;
     if (!world || !components_ok || !viewport || !graph_editor || !live ||
         !definition || !runtime || game_live_add_definition(live, definition) != 0) {
@@ -648,6 +681,13 @@ int main(int argc, char **argv)
         engine_viewport_free(viewport);
         cf_destroy_app();
         return 1;
+    }
+    /* Put the shipped movement graph on screen on first launch. The graph is
+     * still reachable through the Content Drawer after switching documents. */
+    if (authoring && game_live_find_definition(live, "InputBehavior")) {
+        (void)app_scene_authoring_open_behavior(authoring, "InputBehavior");
+        editor_set_graph_visible(graph_editor, 1);
+        editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     }
     /* Start from a known dock tree so scripted scenarios do not depend on a
      * restored or previously resized layout. */

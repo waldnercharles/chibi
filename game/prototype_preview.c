@@ -1,16 +1,22 @@
 #include "prototype_preview.h"
 
 #include "../core/array.h"
+#include "../core/registry.h"
 #include "../core/serialize.h"
 #include "../core/xalloc.h"
+#include "components.h"
+#include "gameplay.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 struct game_prototype_preview
 {
     ecs_world *world;
     game_behavior_world *behaviors;
     ecs_entity entity;
+    double last_time;
+    int has_time;
 };
 
 static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user)
@@ -112,6 +118,7 @@ int game_prototype_preview_launch(
         return ECS_ERR_ARGUMENT;
     }
     clear_entity(preview);
+    preview->has_time = 0;
     return game_prototype_spawn(
         prototype,
         preview->world,
@@ -129,11 +136,61 @@ void game_prototype_preview_stop(game_prototype_preview *preview)
     }
 }
 
+static void preview_input_delta(const char *action, double value, double *x, double *y)
+{
+    *x = 0.0;
+    *y = 0.0;
+    if (strcmp(action, "MoveLeft") == 0 || strcmp(action, "MoveRight") == 0) {
+        *x = value;
+    }
+    if (strcmp(action, "MoveUp") == 0 || strcmp(action, "MoveDown") == 0) {
+        *y = value;
+    }
+}
+
+int game_prototype_preview_input(
+    game_prototype_preview *preview,
+    const char *action,
+    double value,
+    int pressed,
+    flow_error *error
+)
+{
+    if (!preview || !preview->entity.slot || !action) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    double x;
+    double y;
+    preview_input_delta(action, pressed ? value : 0.0, &x, &y);
+    CF_V2 delta = { (float)x, (float)y };
+    pin_value input = {
+        .type = PIN_STRUCT,
+        .type_name = "CF_V2",
+        .ptr = &delta,
+    };
+    if (!registry_type_by_name("CF_V2")) {
+        return FLOW_ERR_STATE;
+    }
+    return game_behavior_dispatch(
+        preview->behaviors,
+        preview->entity,
+        "Input",
+        (flow_inputs){ &input, 1, NULL },
+        error
+    );
+}
+
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)
 {
     if (!preview || !preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
     }
+    double delta = preview->has_time ? monotonic_time - preview->last_time : 0.0;
+    if (delta < 0.0) {
+        delta = 0.0;
+    }
+    preview->last_time = monotonic_time;
+    preview->has_time = 1;
     flow_error error = { 0 };
     int result = game_behavior_dispatch(
         preview->behaviors,
@@ -145,7 +202,11 @@ int game_prototype_preview_tick(game_prototype_preview *preview, double monotoni
     if (result < 0) {
         return result;
     }
-    return game_behavior_pump(preview->behaviors, monotonic_time);
+    result = game_behavior_pump(preview->behaviors, monotonic_time);
+    if (result < 0) {
+        return result;
+    }
+    return game_gameplay_tick(preview->world, delta);
 }
 
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview)

@@ -3588,6 +3588,8 @@ static void draw_content_drawer(app_scene_authoring *scene)
     }
     ImGui_PushFontFloat(NULL, CONTENT_DRAWER_FONT_SIZE);
     draw_content_toolbar(scene);
+    ImGui_TextUnformatted("Double-click a Behavior Asset to open its node graph. Focus the viewport and use WASD or arrow keys to move; Space fires.");
+    ImGui_Separator();
     ImVec2 available = ImGui_GetContentRegionAvail();
     float source_width = available.x < 720.0f ? CONTENT_DRAWER_SOURCE_WIDTH_NARROW
                                               : CONTENT_DRAWER_SOURCE_WIDTH;
@@ -3977,6 +3979,11 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
 
 int app_scene_authoring_input(app_scene_authoring *scene, const char *action, double value, int pressed)
 {
-    return scene ? engine_dispatch_input(scene->runtime, action, value, pressed, NULL)
-                 : FLOW_ERR_ARGUMENT;
+    if (!scene) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (scene->active_runtime_target == APP_RUNTIME_PREVIEW) {
+        return game_prototype_preview_input(scene->prototype_preview, action, value, pressed, NULL);
+    }
+    return engine_dispatch_input(scene->runtime, action, value, pressed, NULL);
 }

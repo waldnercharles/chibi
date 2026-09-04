@@ -22,6 +22,14 @@ int game_prototype_preview_launch(
 );
 void game_prototype_preview_stop(game_prototype_preview *preview);
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time);
+/* Sends a typed input event to the preview entity without touching the Scene Runtime. */
+int game_prototype_preview_input(
+    game_prototype_preview *preview,
+    const char *action,
+    double value,
+    int pressed,
+    flow_error *error
+);
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview);
 game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview);

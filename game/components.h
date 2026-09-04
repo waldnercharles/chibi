@@ -43,6 +43,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
     float speed;
     float lifetime;
     int damage;
+    float direction_x;
+    float direction_y;
+    float age;
 }
 GameProjectile;
 

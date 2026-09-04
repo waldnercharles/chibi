@@ -4,6 +4,7 @@
 #include "../core/registry.h"
 #include "../core/xalloc.h"
 #include "../game/components.h" /* IWYU pragma: keep */
+#include "../game/gameplay.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -161,6 +162,21 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
     if (!engine->live) {
         return FLOW_ERR_STATE;
     }
+    if (strcmp(action, "Fire") == 0 && pressed) {
+        ecs_component_id weapon_id = GAME_COMPONENT_GameWeapon.id;
+        ecs_query query;
+        if (ecs_query_begin(engine->world, &query, &weapon_id, 1) != ECS_OK) {
+            return FLOW_ERR_STATE;
+        }
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (game_gameplay_fire(engine->world, entity) < 0) {
+                ecs_query_end(&query);
+                return FLOW_ERR_STATE;
+            }
+        }
+        ecs_query_end(&query);
+    }
     return game_behavior_dispatch_all(engine->live->behaviors, "Input", dispatch, error);
 }
 
@@ -186,6 +202,9 @@ int engine_frame(engine *engine, double monotonic_time)
     if (simulate && engine->live) {
         game_behavior_set_delta_seconds(engine->live->behaviors, delta_seconds);
         result = game_behavior_pump(engine->live->behaviors, monotonic_time);
+        if (result >= 0 && game_gameplay_tick(engine->world, delta_seconds) < 0) {
+            result = FLOW_ERR_STATE;
+        }
     }
     engine->step_requested = false;
     if (clock_now(&end) != 0) {

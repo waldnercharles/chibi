@@ -13,4 +13,4 @@ authored_data_types.h 50 3646085371478531492 GAME.GameProgressionData GameProgre
 authored_data_types.h 57 14466805393366402340 GAME.GameSupportData GameSupportData 3962219828511936245 -
 authored_data_types.h 64 9916895415638772812 GAME.GameMaterialData GameMaterialData 11762114818479096631 -
 components.h 33 6573267426768237093 GAME.GameWeapon GameWeapon 15435633578784137516 -
-components.h 41 5701897700160923974 GAME.GameProjectile GameProjectile 4039529808810232401 -
+components.h 41 5701897700160923974 GAME.GameProjectile GameProjectile 7429962282553095239 -

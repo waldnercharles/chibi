@@ -1,5 +1,7 @@
 #include "ui_shell.h"
 
+#include "../core/array.h"
+
 #include <assert.h>
 #include <stdio.h>
 // pi-lens-ignore: fatal error
@@ -466,6 +468,27 @@ bool editor_ui_asset_row(
     return pressed;
 }
 
+typedef struct
+{
+    ImGuiID id;
+    ImVec2 center;
+} ui_asset_hit;
+
+static ui_asset_hit *ui_asset_hits;
+
+bool editor_ui_asset_center(const char *id, float *x, float *y)
+{
+    ImGuiID hash = cImHashStr(id);
+    for (int i = 0; i < acount(ui_asset_hits); i++) {
+        if (ui_asset_hits[i].id == hash) {
+            *x = ui_asset_hits[i].center.x;
+            *y = ui_asset_hits[i].center.y;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool editor_ui_asset_card(const char *id, const char *name, editor_ui_asset_kind kind, editor_ui_asset_selection selection)
 {
     assert((unsigned)kind < sizeof UI_ASSET_STYLE / sizeof UI_ASSET_STYLE[0]);
@@ -475,6 +498,13 @@ bool editor_ui_asset_card(const char *id, const char *name, editor_ui_asset_kind
     ImVec2 min = ImGui_GetCursorScreenPos();
     ImVec2 max = { min.x + width, min.y + height };
     bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, height }, ImGuiButtonFlags_None);
+    if (ImGui_IsItemVisible()) {
+        apush(
+            ui_asset_hits,
+            ((ui_asset_hit){ cImHashStr(id),
+                             { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f } })
+        );
+    }
     bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
     if (hovered) {
         ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -745,49 +775,9 @@ float editor_ui_left_pane_center_y(void)
     return (pane->Pos.y + pane->Size.y * 0.5f) * ui_framebuffer_scale_y();
 }
 
-void editor_ui_draw_recording_cursor(
-    float framebuffer_cursor_x,
-    float framebuffer_cursor_y,
-    float framebuffer_click_x,
-    float framebuffer_click_y,
-    bool click_active,
-    float click_radius
-)
-{
-    ImGuiContext *context = ImGui_GetCurrentContext();
-    if (!context) {
-        return;
-    }
-    float scale_x = ui_framebuffer_scale_x();
-    float scale_y = ui_framebuffer_scale_y();
-    ImVec2 cursor = { framebuffer_cursor_x / scale_x, framebuffer_cursor_y / scale_y };
-    ImVec2 click = { framebuffer_click_x / scale_x, framebuffer_click_y / scale_y };
-    float cursor_width = 18.0f / scale_x;
-    float cursor_height = 18.0f / scale_y;
-    ImDrawList *draw = ImGui_GetForegroundDrawList();
-    ImU32 color = IM_COL32(255, 190, 25, 255);
-    float ring_scale = scale_x < scale_y ? scale_x : scale_y;
-    ImDrawList_AddLineEx(
-        draw,
-        (ImVec2){ cursor.x - cursor_width * 0.5f, cursor.y },
-        (ImVec2){ cursor.x + cursor_width * 0.5f, cursor.y },
-        color,
-        3.0f / scale_x
-    );
-    ImDrawList_AddLineEx(
-        draw,
-        (ImVec2){ cursor.x, cursor.y - cursor_height * 0.5f },
-        (ImVec2){ cursor.x, cursor.y + cursor_height * 0.5f },
-        color,
-        3.0f / scale_y
-    );
-    if (click_active) {
-        ImDrawList_AddCircleEx(draw, click, click_radius / ring_scale, color, 0, 3.0f / ring_scale);
-    }
-}
-
 void editor_ui_prepare(void)
 {
+    afree(ui_asset_hits);
     ImGuiContext *context = ImGui_GetCurrentContext();
     if (!context) {
         return;

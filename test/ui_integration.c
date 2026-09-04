@@ -1,7 +1,6 @@
 #include "../app/cute_host.h"
 #include "../app/scene_authoring.h"
 #include "../app/stacktrace.h"
-#include "../app/web_loop.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
 #include "../editor/editor.h"
@@ -22,74 +21,6 @@
 
 #define APP_WINDOW_WIDTH 1920
 #define APP_WINDOW_HEIGHT 1080
-#define APP_DEFAULT_SCREENSHOT_PATH "/tmp/c-blueprints-screenshot.png"
-#define APP_DEFAULT_SCREENSHOT_FRAMES 3
-#define APP_INTEGRATION_ARTIFACTS "build/ui-integration-artifacts"
-
-static void print_usage(const char *program)
-{
-    printf("Usage: %s [options]\n", program);
-    printf("\nOptions:\n");
-    printf("  --help                 Show this help text\n");
-    printf("  --headless             Run without showing a window\n");
-    printf("  --frames <count>       Exit after count rendered frames\n");
-    printf("  --fps <rate>           Set the target frame rate\n");
-    printf("  --screenshot [path]    Capture a PNG after %d frames and exit\n", APP_DEFAULT_SCREENSHOT_FRAMES);
-}
-
-static int save_screenshot(const char *path)
-{
-    CF_Canvas canvas = cf_app_get_canvas();
-    int width = cf_app_get_canvas_width();
-    int height = cf_app_get_canvas_height();
-    CF_Readback readback = cf_canvas_readback(canvas);
-    if (!readback.id) {
-        fprintf(stderr, "screenshot readback could not be started\n");
-        return 1;
-    }
-    int size = cf_readback_size(readback);
-    size_t expected = (size_t)width * (size_t)height * sizeof(CF_Pixel);
-    if (size <= 0 || width <= 0 || height <= 0 || (size_t)size != expected) {
-        fprintf(stderr, "screenshot readback has invalid dimensions\n");
-        cf_destroy_readback(readback);
-        return 1;
-    }
-    CF_Pixel *pixels = (CF_Pixel *)malloc((size_t)size);
-    if (!pixels) {
-        fprintf(stderr, "screenshot allocation failed\n");
-        cf_destroy_readback(readback);
-        return 1;
-    }
-    while (!cf_readback_ready(readback)) {
-    }
-    int copied = cf_readback_data(readback, pixels, size);
-    int result = 1;
-    if (copied == size) {
-        CF_Image image = { width, height, pixels };
-        void *png_data = NULL;
-        int png_size = 0;
-        if (!cf_is_error(cf_image_save_png_to_memory(&image, &png_data, &png_size)) &&
-            png_data && png_size > 0) {
-            FILE *file = fopen(path, "wb");
-            if (file && fwrite(png_data, 1, (size_t)png_size, file) == (size_t)png_size) {
-                result = 0;
-            }
-            if (file) {
-                fclose(file);
-            }
-        }
-        cf_free(png_data);
-    }
-    free(pixels);
-    cf_destroy_readback(readback);
-    if (result != 0) {
-        fprintf(stderr, "could not save screenshot: %s\n", path);
-        return 1;
-    }
-    printf("screenshot saved: %s (%dx%d)\n", path, width, height);
-    return 0;
-}
-
 static const editor_event_param APP_TICK_PARAMS[] = {
     { "DeltaSeconds", PIN_F32, "float" },
 };
@@ -115,9 +46,6 @@ typedef struct
     app_scene_authoring *authoring;
     int frames;
     int frame;
-    const char *screenshot_path;
-    int capture_error;
-    int integration;
     int integration_failed;
 } app_loop;
 
@@ -159,33 +87,6 @@ static int app_integration_check(app_loop *loop)
             ? app_scene_authoring_message(loop->authoring)
             : "(none)"
     );
-    if (loop->integration) {
-        char path[512];
-        snprintf(path, sizeof path, "%s/interaction-trace.txt", APP_INTEGRATION_ARTIFACTS);
-        FILE *trace = fopen(path, "ab");
-        if (!trace) {
-            fprintf(stderr, "could not write integration trace: %s\n", path);
-            return -1;
-        }
-        {
-            fprintf(
-                trace,
-                "frame=%d %s selected=%s document=%s node_canvas=%d nodes=%d "
-                "event_node=%d\n",
-                loop->frame,
-                result,
-                selected ? selected : "(none)",
-                document.id ? document.id : "(none)",
-                query.graph_visible,
-                nodes,
-                expected_node
-            );
-            if (fclose(trace) != 0) {
-                fprintf(stderr, "could not close integration trace: %s\n", path);
-                return -1;
-            }
-        }
-    }
     return ok ? 0 : -1;
 }
 
@@ -205,19 +106,30 @@ static int app_frame(app_loop *loop)
     if (!cf_app_is_running()) {
         return 1;
     }
-    cf_app_update(NULL);
-    if (loop->integration) {
-        /* The drawer layout is reset to 1920x1080 above.  These coordinates
-         * target the visible asset card, not an editor command or test hook. */
-        const float card_x = 700.0f;
-        const float card_y = 1000.0f;
-        if (loop->frame == 1 || loop->frame == 3) {
+    ImGui_GetIO()->DeltaTime = 1.0f / 60.0f;
+    {
+        float card_x = 0.0f;
+        float card_y = 0.0f;
+        const char *path = loop->frame <= 2
+                             ? "content/behaviors"
+                             : "content/behaviors/InputBehavior.json";
+        int click_frame = loop->frame <= 2 ? loop->frame : loop->frame - 3;
+        if (click_frame >= 1 && click_frame <= 4 &&
+            !editor_ui_asset_center(path, &card_x, &card_y)) {
+            fprintf(stderr, "ui-integration: card is not visible: %s\n", path);
+            loop->integration_failed = 1;
+            return 1;
+        }
+        if (click_frame == 1 || click_frame == 3) {
+            printf("ui-input frame=%d press %s\n", loop->frame, path);
             inject_mouse_button(card_x, card_y, true);
-        } else if (loop->frame == 2 || loop->frame == 4) {
+        } else if (click_frame == 2 || click_frame == 4) {
+            printf("ui-input frame=%d release %s\n", loop->frame, path);
             inject_mouse_button(card_x, card_y, false);
         }
     }
-    double seconds = loop->integration ? (double)(loop->frame + 1) / 60.0 : CF_DELTA_TIME;
+    cf_app_update(NULL);
+    double seconds = (double)(loop->frame + 1) / 60.0;
     editor_tick(loop->graph_editor, seconds);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
@@ -237,71 +149,17 @@ static int app_frame(app_loop *loop)
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
 
-    if (loop->integration && loop->frame >= 5 && app_integration_check(loop) != 0) {
+    if (loop->frame >= 10 && app_integration_check(loop) != 0) {
         loop->integration_failed = 1;
     }
 
-    int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
-    if (finished && loop->screenshot_path) {
-        loop->capture_error = save_screenshot(loop->screenshot_path);
-        return 1;
-    }
-    return finished;
+    return ++loop->frame >= loop->frames;
 }
 
-#ifdef __EMSCRIPTEN__
-static app_loop APP_LOOP_STATE;
-static app_loop *APP_LOOP;
-
-static void app_web_frame(void)
+int ui_integration_run(const char *program)
 {
-    if (!app_frame(APP_LOOP)) {
-        return;
-    }
-    app_cleanup(APP_LOOP);
-    app_web_cancel_main_loop();
-}
-#endif
-
-int ui_integration_run(int argc, char **argv)
-{
-    stacktrace_init(argv[0]);
     cf_set_assert_handler(stacktrace_assert_handler);
-    int frames = 0;
-    int fps = 0;
-    int headless = 0;
-    const char *screenshot_path = NULL;
-    int integration = 1;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--help") == 0) {
-            print_usage(argv[0]);
-            return 0;
-        }
-        if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
-            frames = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--fps") == 0 && i + 1 < argc) {
-            fps = atoi(argv[++i]);
-        } else if (strcmp(argv[i], "--screenshot") == 0) {
-            screenshot_path = APP_DEFAULT_SCREENSHOT_PATH;
-            headless = 1;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-                screenshot_path = argv[++i];
-            }
-        } else if (strcmp(argv[i], "--headless") == 0) {
-            headless = 1;
-        }
-    }
-    if (integration) {
-        headless = 1;
-        frames = 7;
-        static char integration_screenshot[256];
-        snprintf(integration_screenshot, sizeof integration_screenshot, "%s/screenshot.png", APP_INTEGRATION_ARTIFACTS);
-        screenshot_path = integration_screenshot;
-    }
-    if (screenshot_path && frames == 0) {
-        frames = APP_DEFAULT_SCREENSHOT_FRAMES;
-    }
-
+    const int frames = 12;
     CF_Result result = cf_make_app(
         "c-blueprints",
         0,
@@ -310,31 +168,22 @@ int ui_integration_run(int argc, char **argv)
         APP_WINDOW_WIDTH,
         APP_WINDOW_HEIGHT,
         CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
-            CF_APP_OPTIONS_NO_AUDIO_BIT | (headless ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
-        argv[0]
+            CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        program
     );
     if (cf_is_error(result)) {
         fprintf(stderr, "cf_make_app failed: %s\n", result.details ? result.details : "unknown error");
         return 1;
     }
-    if (fps > 0) {
-        cf_set_target_framerate(fps);
-    }
     cf_app_init_imgui();
-    if (screenshot_path) {
-#ifdef __EMSCRIPTEN__
-        fprintf(stderr, "screenshots are unavailable on web builds\n");
+    ImGui_GetIO()->IniFilename = NULL;
+    editor_ui_set_framebuffer_target(true);
+    editor_ui_set_framebuffer_size(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT);
+    if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
+        fprintf(stderr, "could not set the UI render target\n");
         cf_destroy_app();
         return 1;
-#else
-        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
-            fprintf(stderr, "could not set the screenshot render target\n");
-            cf_destroy_app();
-            return 1;
-        }
-#endif
     }
-
     registry_validate();
     behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
     ecs_world *world = ecs_world_new();
@@ -360,6 +209,10 @@ int ui_integration_run(int argc, char **argv)
                         ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) ==
                             ECS_OK &&
                         ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameWeapon, NULL) ==
+                            ECS_OK &&
+                        ecs_world_register_component(world, &GAME_COMPONENT_GameProjectile, NULL) ==
                             ECS_OK;
     if (!world || !components_ok || !viewport || !graph_editor || !live ||
         !definition || !runtime || game_live_add_definition(live, definition) != 0) {
@@ -416,23 +269,12 @@ int ui_integration_run(int argc, char **argv)
         .viewport = viewport,
         .authoring = authoring,
         .frames = frames,
-        .screenshot_path = screenshot_path,
-        .capture_error = 0,
-        .integration = integration,
     };
-#ifdef __EMSCRIPTEN__
-    /* Browser event processing must return to the browser between frames. */
-    APP_LOOP_STATE = loop;
-    APP_LOOP = &APP_LOOP_STATE;
-    app_web_set_main_loop(app_web_frame);
-#else
-    while ((headless && (frames == 0 || loop.frame < frames)) ||
-           (!headless && cf_app_is_running())) {
-        if (app_frame(&loop)) {
-            break;
-        }
+    while (!app_frame(&loop)) {
+    }
+    if (loop.frame < frames) {
+        loop.integration_failed = 1;
     }
     app_cleanup(&loop);
-#endif
-    return loop.capture_error || loop.integration_failed;
+    return loop.integration_failed;
 }

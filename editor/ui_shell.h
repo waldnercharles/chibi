@@ -77,14 +77,6 @@ void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool pr
 float editor_ui_left_pane_width(void);
 float editor_ui_left_pane_splitter_x(void);
 float editor_ui_left_pane_center_y(void);
-void editor_ui_draw_recording_cursor(
-    float framebuffer_cursor_x,
-    float framebuffer_cursor_y,
-    float framebuffer_click_x,
-    float framebuffer_click_y,
-    bool click_active,
-    float click_radius
-);
 void editor_ui_set_command_handler(editor_ui_command_handler handler, void *user);
 bool editor_ui_section_header(const char *label, const char *action_id);
 bool editor_ui_asset_row(
@@ -100,6 +92,9 @@ bool editor_ui_asset_card(
     editor_ui_asset_kind kind,
     editor_ui_asset_selection selection
 );
+
+/* Last frame's visible asset card center, in ImGui input coordinates. */
+bool editor_ui_asset_center(const char *id, float *x, float *y);
 
 bool editor_ui_icon_button(const char *id, int glyph, bool enabled);
 bool editor_ui_right_icon_button(const char *id, int glyph);

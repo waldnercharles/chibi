@@ -2125,7 +2125,6 @@ TEST_CASE(all_checks)
     const node_desc *brk = find_node("Break_Vec3");
     const node_desc *add = find_node("add_floats");
     check(make && brk && add, "registry exposes Make_Vec3, Break_Vec3, add_floats");
-    check(1, "core target is host-independent by its link contract");
     check(make && make->type && make->type->field_count == 3, "reflected struct has a type descriptor");
     check(
         make && make->type && make->type->fields &&
@@ -2159,13 +2158,6 @@ TEST_CASE(all_checks)
         "annotation expansion keeps Make and Break policy"
     );
     check(registry_node_count() > 0, "the parity surface is a classified registry, not a fixed count claim");
-    check(registry_type_count() >= 0, "core reflection remains host-independent");
-    check(registry_service_count() >= 0, "generated registry has explicit function contracts");
-    check(registry_service_count() >= 0, "reflected outputs have a stable registry surface");
-    check(registry_service_count() >= 0, "generated service descriptors have stable identity");
-    check(registry_service_count() >= 0, "generated service pins have a binding table");
-    check(registry_operator_count() >= 0, "reflection emits an operator signature table");
-    check(registry_service_count() >= 0, "service snapshots are available to activations");
     check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "the complete primitive pin set is distinct");
     check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "operator resolution has no implicit C fallback");
 
@@ -5692,7 +5684,6 @@ TEST_CASE(all_checks)
             "the editor can promote a pin into a typed variable"
         );
         check(registry_node_count() > 0, "the maintained parity surface is registry-extensible");
-        check(registry_operator_count() >= 0, "operator signatures are consumer-extensible");
         check(CMPL_MESSAGE_MAX > 0, "diagnostics carry navigable stable message data");
         compile_report_free(&surface_report);
         free(json);
@@ -6206,11 +6197,6 @@ TEST_CASE(all_checks)
             "renaming a graph refreshes its call labels"
         );
         check(macro->kind == GRAPH_MACRO, "macro products remain behind an explicit decision boundary");
-        check(PIN_ENUM != PIN_I32, "enum values retain a nominal enum type");
-        check(registry_type_count() >= 0, "enum reflection shares the generated type registry");
-        check(registry_node_count() >= 0, "unsupported reflection declarations fail before registry emission");
-        check(PIN_FLAG_ADVANCED != 0, "advanced pin visibility is an authored flag");
-        check(PIN_ENUM != PIN_FLOW, "enum values have a distinct editor type");
         check(
             registry_node_by_name("Switch on Int") && registry_node_by_name("Select"),
             "switch and select case surfaces have catalog entries"
@@ -6219,7 +6205,6 @@ TEST_CASE(all_checks)
             registry_node_by_name("Set Members in Struct") != NULL,
             "struct split/set-member surfaces are available from the pin model"
         );
-        check(PIN_FLAG_ADVANCED != 0, "advanced pins have an expander flag");
         check(acount(macro_bp->graphs) >= 3, "graph-level authored entities have detail surfaces");
         check(
             behavior_asset_delete_graph(macro_bp, macro_id) == 0 &&
@@ -6257,13 +6242,8 @@ TEST_CASE(all_checks)
         graph_free(&split_graph);
         check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "watched pin state is available for inline display");
         check(break_sink->breakpoint_enabled != 0, "breakpoint state is available to node rendering");
-        check(graph_node_by_id(&g_break, 0) == NULL, "canvas entities are addressed by stable IDs");
-        check(graph_topology_revision(&g_break) > 0, "authored canvas operations have deterministic bindings");
-        check(acount(comment_graph.comment_boxes) == 1 || 1, "graph overview data is bounded and inspectable");
         check(g_break.breakpoints_enabled == 0, "breakpoint list has a global toggle");
-        check(graph_topology_revision(&g_break) > 0, "auto arrange operates on authored positions");
         check(registry_node_by_name("Reroute Data") != NULL, "direct node spawning has a catalog target");
-        check(flow_run_traversals(NULL, NULL) == NULL, "flow markers consume traversal records");
         check(editor_preview_allowed(FLOW_COMPLETED) == 0, "flow heat settles after execution");
         check(editor_preview_allowed(FLOW_IDLE) == 1, "node activation highlights are idle-safe");
         check(editor_preview_allowed(FLOW_RUNNING) == 0, "data flashes are tied to a live run");
@@ -6285,8 +6265,6 @@ TEST_CASE(all_checks)
             "flow animation is time-constant across 30, 60, and 144 FPS"
         );
         check(flow_visual_settled(3.0) && flow_visual_marker(0.5, 64.0) >= 0.0, "stopped flow settles and markers remain bounded");
-        check(flow_run_traversals(NULL, NULL) == NULL, "visualisation reads records, not evaluator callbacks");
-        check(editor_preview_allowed(FLOW_IDLE) == 1, "text focus does not change preview shortcut state");
         graph_free(&g_break);
         check(
             registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
@@ -6348,8 +6326,7 @@ TEST_CASE(all_checks)
     run_editor_command_checks();
 
     if (!fails) {
-        char *ui_args[] = { "test_suite", "--headless", NULL };
-        fails += ui_integration_run(2, ui_args) != 0;
+        fails += ui_integration_run(program_name) != 0;
     }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");

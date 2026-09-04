@@ -105,6 +105,7 @@ static const float SCENE_CONTEXT_WIDTH = 270.0f;
 
 #define CONTENT_DRAWER_FONT_SIZE 14.0f
 #define CONTENT_DRAWER_SOURCE_WIDTH 250.0f
+#define CONTENT_DRAWER_DEFAULT_WIDTH 960.0f
 #define CONTENT_DRAWER_SOURCE_WIDTH_NARROW 205.0f
 
 struct app_scene_authoring
@@ -3573,7 +3574,8 @@ static void draw_content_drawer(app_scene_authoring *scene)
     if (!editor_ui_content_drawer_open()) {
         return;
     }
-    ImGui_SetNextWindowSize((ImVec2){ SCENE_CONTEXT_WIDTH, 520.0f }, ImGuiCond_FirstUseEver);
+    /* Leave room for the source tree and discoverable asset cards. */
+    ImGui_SetNextWindowSize((ImVec2){ CONTENT_DRAWER_DEFAULT_WIDTH, 520.0f }, ImGuiCond_FirstUseEver);
     static bool first_frame = true;
     if (first_frame || editor_ui_take_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER)) {
         ImGui_SetNextWindowFocus();

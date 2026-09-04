@@ -24,7 +24,6 @@ FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
     GIT_TAG        a13f4661f5ba27e8d45027b52f121c1704786425
-    PATCH_COMMAND   git apply --whitespace=nowarn ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cute-framework-full-window.patch
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)

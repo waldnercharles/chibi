@@ -1,0 +1,7 @@
+{
+  "name": "Enemy",
+  "components": {
+    "GameTransform": { "x": 640, "y": 180 },
+    "GameHealth": { "current": 50, "maximum": 50 }
+  }
+}

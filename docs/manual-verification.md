@@ -40,3 +40,20 @@ computer-use may be useful for exploration, but is not UI evidence.
 The first gameplay slice adds movement, one weapon/projectile, and one enemy to
 this walkthrough. Capture `/tmp/c-blueprints-screenshot.png` with
 `build/app --headless --screenshot`; report its dimensions with the result.
+
+## Resize-pane recording evidence
+
+The canonical evidence path is deterministic and uses the native app's input
+seam. It records only the app canvas; no desktop capture, browser footage, or
+ffmpeg conversion is involved:
+
+```sh
+make record-resize-pane RECORD_PATH=/tmp/c-blueprints-resize-pane.mp4 FRAMES=48
+```
+
+The command injects a press-drag-release at the left dock splitter, draws the
+recording cursor and click ring, and fails unless the exposed left pane width
+changes by exactly the requested 240-pixel drag (within one pixel for framebuffer
+quantization). The output is an MP4 created directly by Cute Framework. Inspect
+decoded frames locally and report the assertion line (`resize-pane assertion
+passed: ...`); this repository does not claim that visual evidence is CI-attested.

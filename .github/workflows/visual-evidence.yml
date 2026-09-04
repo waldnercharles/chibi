@@ -1,0 +1,66 @@
+name: Visual evidence
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  record-evidence:
+    name: Record declared visual evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build and recording dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            cmake ffmpeg python3 \
+            libclang-18-dev libgl1-mesa-dev libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev
+
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Read the declared scenario
+        id: evidence
+        run: |
+          scenario=$(sed -n 's/^scenario:[[:space:]]*//p' .github/visual-evidence.yml | head -1)
+          test -n "$scenario"
+          case "$scenario" in
+            resize-pane|authoring) ;;
+            *) echo "Unsupported visual evidence scenario: $scenario" >&2; exit 2 ;;
+          esac
+          echo "scenario=$scenario" >> "$GITHUB_OUTPUT"
+
+      - name: Build and record the interaction
+        env:
+          LIBCLANG_ROOT: /usr/lib/llvm-18
+        run: |
+          make record-evidence \
+            SCENARIO="${{ steps.evidence.outputs.scenario }}" \
+            RECORD_PATH="$RUNNER_TEMP/c-blueprints-${{ steps.evidence.outputs.scenario }}.mp4" \
+            FRAMES=48
+
+      - name: Upload recording artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-blueprints-${{ steps.evidence.outputs.scenario }}-${{ github.sha }}
+          path: ${{ runner.temp }}/c-blueprints-${{ steps.evidence.outputs.scenario }}.mp4
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish artifact link
+        run: |
+          {
+            echo '### Visual evidence'
+            echo
+            echo "The ${{ steps.evidence.outputs.scenario }} recording was uploaded as a CI artifact:"
+            echo
+            echo "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } >> "$GITHUB_STEP_SUMMARY"

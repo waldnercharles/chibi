@@ -11,6 +11,31 @@ typedef const char *(*app_scene_prototype_resolve_fn)(const char *name, void *us
 
 typedef enum
 {
+    APP_RUNTIME_PREVIEW,
+    APP_RUNTIME_SCENE,
+} app_runtime_target;
+
+typedef enum
+{
+    APP_RUNTIME_PLAY,
+    APP_RUNTIME_PAUSE,
+    APP_RUNTIME_STEP,
+    APP_RUNTIME_RESTART,
+    APP_RUNTIME_STOP,
+} app_runtime_command;
+
+typedef struct
+{
+    app_runtime_target target;
+    bool playing;
+    ecs_entity selected_entity;
+    int component_count;
+    int behavior_count;
+    const char *message;
+} app_runtime_state;
+
+typedef enum
+{
     APP_EDITOR_DOCUMENT_SCENE,
     APP_EDITOR_DOCUMENT_PROTOTYPE,
     APP_EDITOR_DOCUMENT_BEHAVIOR,
@@ -80,6 +105,14 @@ int app_scene_authoring_detach_prototype_behavior(
     const char *prototype_name,
     const char *asset_name
 );
+int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char *prototype_name);
+void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene);
+int app_scene_authoring_runtime_command(
+    app_scene_authoring *scene,
+    app_runtime_target target,
+    app_runtime_command command
+);
+app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);

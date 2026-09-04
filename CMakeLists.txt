@@ -23,7 +23,8 @@ set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-    GIT_TAG        ad13c5ea7262fdede97a3a39c77eef3da286ebcf
+    GIT_TAG        a13f4661f5ba27e8d45027b52f121c1704786425
+    PATCH_COMMAND   git apply --whitespace=nowarn ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cute-framework-full-window.patch
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)
@@ -62,7 +63,7 @@ set(LIBCLANG_ROOT "" CACHE PATH "LLVM installation prefix")
 find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES include)
-find_library(LIBCLANG_LIBRARY NAMES clang
+find_library(LIBCLANG_LIBRARY NAMES clang libclang clang-18 libclang-18
     HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
     PATH_SUFFIXES lib)
 file(GLOB LIBCLANG_RESOURCE_INCLUDE_DIRS
@@ -180,6 +181,7 @@ set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
     DEMO_REGISTRY_PACK
+    GAME_REGISTRY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
     CORE_ARRAY_PACK
@@ -276,7 +278,7 @@ add_custom_command(
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c ${GAME_REGISTRY})
+add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/prototype_preview.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
@@ -357,15 +359,43 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     )
 endif()
 
+# --- test registry: core, game, and demo packs for the consolidated suite ---
+set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
+add_custom_command(
+    OUTPUT ${TEST_REGISTRY}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+            ${TEST_REGISTRY}
+            DEMO_REGISTRY_PACK
+            CORE_EXTRA_PACK
+            CORE_FLOW_PACK
+            CORE_ARRAY_PACK
+            CORE_STATE_PACK
+            CORE_SWITCH_PACK
+            CORE_REROUTE_PACK
+            CORE_SET_MAP_PACK
+            CORE_STRUCT_PACK
+            GAME_REGISTRY_PACK
+    DEPENDS ${GAME_REGISTRY}
+            ${GEN_REGISTRY}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
+    COMMENT "Composing the test registry pack list"
+    VERBATIM
+)
+
 # --- test suite: consolidated headless regression checks --------------------
 add_executable(test_suite
     test/test_suite.c
     test/ui_integration.c
+    app/authoring_session.c
+    app/behavior_fixtures.c
     app/demo_graph.c
     app/scene_authoring.c
     app/stacktrace.c
     app/web_loop.c
     editor/preview_gate.c
+    demo/vec3.c
+    demo/math.c
     ${TEST_REGISTRY}
 )
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

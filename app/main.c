@@ -6,19 +6,51 @@
 #include "../game/generated.h"
 #include "../game/live.h"
 #include "../game/prototype.h"
+#include "authoring_session.h"
 #include "cute_host.h"
+#include "recording.h"
 #include "scene_authoring.h"
 #include "stacktrace.h"
 #include "web_loop.h"
 
+#include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define APP_WINDOW_WIDTH 1920
 #define APP_WINDOW_HEIGHT 1080
 #define APP_DEFAULT_SCREENSHOT_PATH "/tmp/c-blueprints-screenshot.png"
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
+#define APP_DEFAULT_RECORDING_PATH "/tmp/c-blueprints-recording.mp4"
+#define APP_RECORDING_FPS 30
+#define APP_RESIZE_PANE_FRAMES 48
+#define APP_RESIZE_PANE_PRESS_FRAME 12
+#define APP_RESIZE_PANE_RELEASE_FRAME 36
+#define APP_RESIZE_PANE_DELTA 240.0f
+/* Pane widths are quantized to framebuffer pixels during the drag. */
+#define APP_RESIZE_PANE_DELTA_TOLERANCE 1.0f
+#define APP_RECORDING_PATH_SIZE 4096
+
+static char app_recording_virtual_path[APP_RECORDING_PATH_SIZE];
+static char app_recording_write_directory[APP_RECORDING_PATH_SIZE];
+
+typedef enum
+{
+    APP_SCENARIO_NONE,
+    APP_SCENARIO_RESIZE_PANE,
+    APP_SCENARIO_AUTHORING,
+} app_scenario;
+
+typedef struct
+{
+    float framebuffer_x;
+    float framebuffer_y;
+    bool primary_down;
+    bool primary_pressed;
+} app_mouse_input;
 
 static void print_usage(const char *program)
 {
@@ -84,6 +116,31 @@ static int save_screenshot(const char *path)
     return 0;
 }
 
+static int configure_recording_path(
+    const char *path,
+    char *virtual_path,
+    size_t virtual_path_size,
+    char *write_directory,
+    size_t write_directory_size
+)
+{
+    const char *slash = strrchr(path, '/');
+    const char *name = slash ? slash + 1 : path;
+    const char *directory = slash ? path : cf_fs_get_working_directory();
+    size_t directory_length = slash ? (size_t)(slash - path) : strlen(directory);
+    if (slash == path) {
+        directory_length = 1;
+    }
+    if (!name[0] || directory_length == 0 || directory_length >= write_directory_size ||
+        strlen(name) >= virtual_path_size) {
+        return -1;
+    }
+    memcpy(write_directory, directory, directory_length);
+    write_directory[directory_length] = '\0';
+    snprintf(virtual_path, virtual_path_size, "%s", name);
+    return cf_is_error(cf_fs_set_write_directory(write_directory)) ? -1 : 0;
+}
+
 static const editor_event_param APP_TICK_PARAMS[] = {
     { "DeltaSeconds", PIN_F32, "float" },
 };
@@ -104,10 +161,263 @@ typedef struct
     int frame;
     const char *screenshot_path;
     int capture_error;
+    app_recording recording;
+    int headless;
+    app_scenario scenario;
+    double monotonic_time;
+    app_mouse_input input;
+    float scenario_before_width;
+    float scenario_after_width;
+    float scenario_drag_x;
+    int scenario_checked;
 } app_loop;
+
+static int app_run_authoring_workflow(void)
+{
+    app_authoring_session *session = app_authoring_session_new("content");
+    char path[128];
+    const compile_report *report;
+    int diagnostic_count;
+    int error_count;
+    int warning_count;
+    int result = -1;
+    int temp_ready = 0;
+    int fd = -1;
+    if (snprintf(path, sizeof path, "/tmp/c-blueprints-authoring-XXXXXX") < 0 ||
+        (fd = mkstemp(path)) < 0 || close(fd) != 0 || !(temp_ready = 1) ||
+        !session || app_authoring_session_load_fixtures(session) <= 0 ||
+        app_authoring_session_create_behavior(session, "ScenarioBehavior") != 0) {
+        fprintf(stderr, "authoring scenario could not create a Behavior Asset\n");
+        goto cleanup;
+    }
+    graph *function = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "ScenarioGraph");
+    uint64_t graph_id = function ? function->graph_id : 0;
+    node *entry = function ? graph_node_by_id(function, function->entry_id) : NULL;
+    node *ret = function ? graph_node_by_id(function, function->return_id) : NULL;
+    if (!function || !entry || !ret ||
+        app_authoring_session_connect_exec(session, entry->id, 0, ret->id, 0, 0) != 0 ||
+        app_authoring_session_rename_graph(session, graph_id, "ScenarioGraphRenamed") != 0 ||
+        app_authoring_session_select_graph(session, graph_id) != 0) {
+        fprintf(stderr, "authoring scenario could not author a graph\n");
+        goto cleanup;
+    }
+    uint64_t literal_id = app_authoring_session_add_node(session, "Real");
+    uint64_t add_id = app_authoring_session_add_node(session, "Add");
+    uint64_t branch_id = app_authoring_session_add_node(session, "Branch");
+    uint64_t latent_id = app_authoring_session_add_node(session, "Delay");
+    pin_value value = { .type = PIN_F64, .d = 2.5 };
+    int reflected = 0;
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *desc = registry_node(i);
+        const char *name = desc ? desc->name : NULL;
+        if (name && strstr(name, "Add")) {
+            reflected++;
+        }
+    }
+    if (!literal_id || !add_id || !branch_id || !latent_id || reflected <= 0 ||
+        app_authoring_session_set_pin_default(session, literal_id, 0, 0, &value) != 0 ||
+        app_authoring_session_connect_data(session, literal_id, 0, add_id, 0) != 0 ||
+        app_authoring_session_connect_data(session, literal_id, 0, branch_id, 1) == 0) {
+        fprintf(stderr, "authoring scenario node, literal, search, or typed-edge check failed\n");
+        goto cleanup;
+    }
+    if (app_authoring_session_compile(session) == 0) {
+        fprintf(stderr, "authoring scenario did not report the intentional latent-node diagnostic\n");
+        goto cleanup;
+    }
+    report = app_authoring_session_diagnostics(session);
+    const compile_diagnostic *diagnostic = NULL;
+    for (int i = 0; i < report->error_count + report->warning_count; i++) {
+        if (report->items[i].rule == CMPL_RULE_FUNCTION_LATENT &&
+            report->items[i].node_id == latent_id) {
+            diagnostic = &report->items[i];
+            break;
+        }
+    }
+    diagnostic_count = report->error_count + report->warning_count;
+    error_count = report->error_count;
+    warning_count = report->warning_count;
+    const graph *authored = app_authoring_session_active_graph(session);
+    if (!diagnostic || diagnostic->graph_id != authored->graph_id ||
+        app_authoring_session_save(session, path) != 0 ||
+        app_authoring_session_dirty(session) ||
+        app_authoring_session_reload(session, path) != 0 ||
+        app_authoring_session_dirty(session)) {
+        fprintf(stderr, "authoring scenario persistence or diagnostics check failed\n");
+        goto cleanup;
+    }
+    authored = behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ScenarioGraphRenamed");
+    if (!authored) {
+        fprintf(stderr, "authoring scenario reload lost authored graph\n");
+        goto cleanup;
+    }
+    const node *reloaded_literal = graph_node_by_id(authored, literal_id);
+    const node *reloaded_add = graph_node_by_id(authored, add_id);
+    const node *reloaded_branch = graph_node_by_id(authored, branch_id);
+    const node *reloaded_latent = graph_node_by_id(authored, latent_id);
+    int has_valid_edge = 0;
+    for (int i = 0; i < acount(authored->edges); i++) {
+        const edge *edge = &authored->edges[i];
+        if (edge->from_id == literal_id && edge->to_id == add_id &&
+            edge->kind == GRAPH_EDGE_DATA) {
+            has_valid_edge = 1;
+            break;
+        }
+    }
+    if (!reloaded_literal || !reloaded_add || !reloaded_branch ||
+        !reloaded_latent || !has_valid_edge || reloaded_literal->input_count <= 0 ||
+        reloaded_literal->input_pins[0].default_value.type != PIN_F64 ||
+        reloaded_literal->input_pins[0].default_value.d != 2.5) {
+        fprintf(stderr, "authoring scenario reload lost authored graph state\n");
+        goto cleanup;
+    }
+    printf(
+        "authoring scenario passed: reflected=%d diagnostics=%d errors=%d "
+        "warnings=%d\n",
+        reflected,
+        diagnostic_count,
+        error_count,
+        warning_count
+    );
+    result = 0;
+cleanup:
+    if (temp_ready) {
+        remove(path);
+    }
+    app_authoring_session_free(session);
+    return result;
+}
+
+static int app_prepare_input(app_loop *loop)
+{
+    if (loop->scenario == APP_SCENARIO_NONE || loop->scenario == APP_SCENARIO_AUTHORING) {
+        loop->input = (app_mouse_input){
+            .framebuffer_x = cf_mouse_x(),
+            .framebuffer_y = cf_mouse_y(),
+            .primary_down = cf_mouse_down(CF_MOUSE_BUTTON_LEFT),
+            .primary_pressed = cf_mouse_just_pressed(CF_MOUSE_BUTTON_LEFT),
+        };
+        return 0;
+    }
+
+    if (loop->frame == 0) {
+        loop->input = (app_mouse_input){
+            .framebuffer_x = 120.0f,
+            .framebuffer_y = 120.0f,
+        };
+        editor_ui_set_mouse_input(120.0f, 120.0f, false);
+        return 0;
+    }
+    float splitter_x = editor_ui_left_pane_splitter_x();
+    float center_y = editor_ui_left_pane_center_y();
+    if (!splitter_x || !center_y) {
+        fprintf(stderr, "resize-pane scenario could not find the left dock pane\n");
+        return -1;
+    }
+    int frame = loop->frame;
+    loop->input = (app_mouse_input){
+        .framebuffer_x = splitter_x,
+        .framebuffer_y = center_y,
+    };
+    if (frame == APP_RESIZE_PANE_PRESS_FRAME) {
+        loop->input.framebuffer_x = splitter_x;
+        loop->input.primary_down = true;
+        loop->input.primary_pressed = true;
+        loop->scenario_before_width = editor_ui_left_pane_width();
+        loop->scenario_drag_x = splitter_x + APP_RESIZE_PANE_DELTA;
+    } else if (frame > APP_RESIZE_PANE_PRESS_FRAME && frame < APP_RESIZE_PANE_RELEASE_FRAME) {
+        loop->input.framebuffer_x = loop->scenario_drag_x;
+        loop->input.primary_down = true;
+    }
+    if (frame == APP_RESIZE_PANE_RELEASE_FRAME) {
+        loop->input.framebuffer_x = loop->scenario_drag_x;
+        loop->input.primary_down = false;
+    }
+    editor_ui_set_mouse_input(
+        loop->input.framebuffer_x,
+        loop->input.framebuffer_y,
+        loop->input.primary_down
+    );
+    return 0;
+}
+
+static void app_check_resize_pane(app_loop *loop)
+{
+    if (loop->scenario != APP_SCENARIO_RESIZE_PANE ||
+        loop->frame != APP_RESIZE_PANE_RELEASE_FRAME) {
+        return;
+    }
+    loop->scenario_checked = 1;
+    loop->scenario_after_width = editor_ui_left_pane_width();
+    float delta = loop->scenario_after_width - loop->scenario_before_width;
+    const float expected_delta = APP_RESIZE_PANE_DELTA;
+    const float delta_error = fabsf(delta - expected_delta);
+    if (delta_error > APP_RESIZE_PANE_DELTA_TOLERANCE) {
+        fprintf(
+            stderr,
+            "resize-pane assertion failed: width %.1f -> %.1f (delta %.1f)\n",
+            loop->scenario_before_width,
+            loop->scenario_after_width,
+            delta
+        );
+        loop->capture_error = 1;
+        return;
+    }
+    printf(
+        "resize-pane assertion passed: width %.1f -> %.1f (delta %.1f)\n",
+        loop->scenario_before_width,
+        loop->scenario_after_width,
+        delta
+    );
+}
+
+static void draw_recording_cursor(app_loop *loop, float seconds)
+{
+    if (app_recording_get_state(&loop->recording) != APP_RECORDING_ACTIVE) {
+        return;
+    }
+    if (loop->input.primary_pressed) {
+        loop->recording.click_timer = 0.35f;
+        loop->recording.click_x = loop->input.framebuffer_x -
+                                  (float)cf_app_get_canvas_width() * 0.5f;
+        loop->recording.click_y = (float)cf_app_get_canvas_height() * 0.5f -
+                                  loop->input.framebuffer_y;
+    }
+    loop->recording.click_timer -= seconds;
+    float target_x = loop->input.framebuffer_x - (float)cf_app_get_canvas_width() * 0.5f;
+    float target_y = (float)cf_app_get_canvas_height() * 0.5f - loop->input.framebuffer_y;
+    if (!loop->recording.cursor_initialized) {
+        loop->recording.cursor_x = target_x;
+        loop->recording.cursor_y = target_y;
+        loop->recording.cursor_initialized = true;
+    }
+    float follow = 1.0f - expf(-12.0f * seconds);
+    loop->recording.cursor_x += (target_x - loop->recording.cursor_x) * follow;
+    loop->recording.cursor_y += (target_y - loop->recording.cursor_y) * follow;
+    float x = loop->recording.cursor_x;
+    float y = loop->recording.cursor_y;
+    float cursor_x = x + (float)cf_app_get_canvas_width() * 0.5f;
+    float cursor_y = (float)cf_app_get_canvas_height() * 0.5f - y;
+    float click_x = loop->recording.click_x + (float)cf_app_get_canvas_width() * 0.5f;
+    float click_y = (float)cf_app_get_canvas_height() * 0.5f - loop->recording.click_y;
+    float ring = 24.0f + (0.35f - loop->recording.click_timer) * 28.0f;
+    editor_ui_draw_recording_cursor(
+        cursor_x,
+        cursor_y,
+        click_x,
+        click_y,
+        loop->recording.click_timer > 0.0f,
+        ring
+    );
+}
 
 static void app_cleanup(app_loop *loop)
 {
+    if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&
+        app_recording_stop(&loop->recording) != 0) {
+        loop->capture_error = 1;
+        fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop->recording));
+    }
     app_scene_authoring_free(loop->authoring);
     engine_free(loop->runtime);
     game_live_world_free(loop->live);
@@ -123,8 +433,18 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     cf_app_update(NULL);
-    double seconds = CF_SECONDS;
-    editor_tick(loop->graph_editor, seconds);
+    if (loop->headless) {
+        editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
+    }
+    double seconds = app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE
+                       ? 1.0 / APP_RECORDING_FPS
+                       : CF_DELTA_TIME;
+    if (app_prepare_input(loop) != 0) {
+        loop->capture_error = 1;
+        return 1;
+    }
+    loop->monotonic_time += seconds;
+    editor_tick(loop->graph_editor, loop->monotonic_time);
     int viewport_focused = engine_viewport_focused(loop->viewport);
     if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
         engine_viewport_release_focus();
@@ -133,7 +453,7 @@ static int app_frame(app_loop *loop)
     }
     engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
     app_scene_authoring_input(loop->authoring, "viewport", 0.0, viewport_focused != 0);
-    if (app_scene_authoring_frame(loop->authoring, seconds) != FLOW_OK) {
+    if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
         fprintf(stderr, "runtime frame failed\n");
     }
 
@@ -141,9 +461,23 @@ static int app_frame(app_loop *loop)
     engine_viewport_draw(loop->viewport);
     app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
+    draw_recording_cursor(loop, seconds);
     cf_app_draw_onto_screen(true);
+    app_check_resize_pane(loop);
+
+    if (app_recording_get_state(&loop->recording) == APP_RECORDING_ACTIVE &&
+        app_recording_capture(&loop->recording, cf_app_get_canvas(), (float)seconds) != 0) {
+        loop->capture_error = 1;
+        fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop->recording));
+        return 1;
+    }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
+    if (finished && loop->scenario == APP_SCENARIO_RESIZE_PANE &&
+        !loop->scenario_checked) {
+        fprintf(stderr, "resize-pane assertion did not run; increase --frames\n");
+        loop->capture_error = 1;
+    }
     if (finished && loop->screenshot_path) {
         loop->capture_error = save_screenshot(loop->screenshot_path);
         return 1;
@@ -173,6 +507,8 @@ int main(int argc, char **argv)
     int fps = 0;
     int headless = 0;
     const char *screenshot_path = NULL;
+    const char *recording_path = NULL;
+    app_scenario scenario = APP_SCENARIO_NONE;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0) {
             print_usage(argv[0]);
@@ -190,7 +526,31 @@ int main(int argc, char **argv)
             }
         } else if (strcmp(argv[i], "--headless") == 0) {
             headless = 1;
+        } else if (strcmp(argv[i], "--record") == 0) {
+            recording_path = APP_DEFAULT_RECORDING_PATH;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                recording_path = argv[++i];
+            }
+        } else if (strcmp(argv[i], "--scenario") == 0 && i + 1 < argc) {
+            if (strcmp(argv[++i], "resize-pane") == 0) {
+                scenario = APP_SCENARIO_RESIZE_PANE;
+            } else if (strcmp(argv[i], "authoring") == 0) {
+                scenario = APP_SCENARIO_AUTHORING;
+            } else {
+                fprintf(stderr, "unknown scenario: %s\n", argv[i]);
+                return 2;
+            }
         }
+    }
+    if (scenario != APP_SCENARIO_NONE && (!headless || !recording_path)) {
+        fprintf(stderr, "--scenario requires --headless and --record\n");
+        return 2;
+    }
+    if (scenario != APP_SCENARIO_NONE && frames == 0) {
+        frames = APP_RESIZE_PANE_FRAMES;
+    }
+    if (scenario == APP_SCENARIO_AUTHORING && app_run_authoring_workflow() != 0) {
+        return 1;
     }
     if (screenshot_path && frames == 0) {
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
@@ -215,17 +575,15 @@ int main(int argc, char **argv)
         cf_set_target_framerate(fps);
     }
     cf_app_init_imgui();
+    editor_ui_set_framebuffer_target(screenshot_path || recording_path);
+    if (headless) {
+        editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
+    }
     if (screenshot_path) {
 #ifdef __EMSCRIPTEN__
         fprintf(stderr, "screenshots are unavailable on web builds\n");
         cf_destroy_app();
         return 1;
-#else
-        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
-            fprintf(stderr, "could not set the screenshot render target\n");
-            cf_destroy_app();
-            return 1;
-        }
 #endif
     }
 
@@ -291,6 +649,8 @@ int main(int argc, char **argv)
         cf_destroy_app();
         return 1;
     }
+    /* Start from a known dock tree so scripted scenarios do not depend on a
+     * restored or previously resized layout. */
     editor_ui_reset_layout();
     editor_set_event_catalog(
         graph_editor,
@@ -312,7 +672,31 @@ int main(int argc, char **argv)
         .frames = frames,
         .screenshot_path = screenshot_path,
         .capture_error = 0,
+        .headless = headless,
+        .scenario = scenario,
     };
+    if (recording_path && configure_recording_path(
+                              recording_path,
+                              app_recording_virtual_path,
+                              sizeof app_recording_virtual_path,
+                              app_recording_write_directory,
+                              sizeof app_recording_write_directory
+                          ) != 0) {
+        fprintf(stderr, "recording failed: output path is not writable: %s\n", recording_path);
+        app_cleanup(&loop);
+        return 1;
+    }
+    if (recording_path && app_recording_start(
+                              &loop.recording,
+                              app_recording_virtual_path,
+                              cf_app_get_canvas_width(),
+                              cf_app_get_canvas_height(),
+                              APP_RECORDING_FPS
+                          ) != 0) {
+        fprintf(stderr, "recording failed: %s\n", app_recording_error(&loop.recording));
+        app_cleanup(&loop);
+        return 1;
+    }
 #ifdef __EMSCRIPTEN__
     /* Browser event processing must return to the browser between frames. */
     APP_LOOP_STATE = loop;

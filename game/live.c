@@ -170,6 +170,29 @@ int game_live_add_definition(game_live_world *world, game_live_definition *defin
     return 0;
 }
 
+int game_live_remove_definition(game_live_world *world, const char *asset_name)
+{
+    if (!world || !asset_name) {
+        return -1;
+    }
+    for (int i = 0; i < acount(world->definitions); i++) {
+        game_live_definition *definition = world->definitions[i];
+        if (strcmp(definition->name, asset_name) != 0 || game_behavior_unregister_asset(
+                                                             world->behaviors,
+                                                             asset_name,
+                                                             &definition->applied
+                                                         ) != 0) {
+            continue;
+        }
+        definition->world = NULL;
+        definition->registered = 0;
+        adel(world->definitions, i);
+        game_live_definition_free(definition);
+        return 0;
+    }
+    return -1;
+}
+
 int game_live_duplicate_definition(game_live_world *world, const char *asset_name, const behavior_asset *source)
 {
     if (!world || !asset_name || !asset_name[0] || !source ||

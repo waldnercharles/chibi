@@ -69,6 +69,22 @@ void editor_ui_set_content_drawer_open(bool open);
 void editor_ui_prepare(void);
 void editor_ui_reset_layout(void);
 void editor_ui_set_framebuffer_target(bool target);
+void editor_ui_set_framebuffer_size(int width, int height);
+/* Input coordinates are framebuffer pixels. They are normalized to ImGui's
+ * logical coordinates before the next editor frame consumes them. */
+void editor_ui_set_mouse_input(float framebuffer_x, float framebuffer_y, bool primary_down);
+/* Pane geometry is reported in framebuffer pixels. */
+float editor_ui_left_pane_width(void);
+float editor_ui_left_pane_splitter_x(void);
+float editor_ui_left_pane_center_y(void);
+void editor_ui_draw_recording_cursor(
+    float framebuffer_cursor_x,
+    float framebuffer_cursor_y,
+    float framebuffer_click_x,
+    float framebuffer_click_y,
+    bool click_active,
+    float click_radius
+);
 void editor_ui_set_command_handler(editor_ui_command_handler handler, void *user);
 bool editor_ui_section_header(const char *label, const char *action_id);
 bool editor_ui_asset_row(

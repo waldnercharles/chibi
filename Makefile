@@ -1,15 +1,16 @@
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR := build
 BENCHMARK_BUILD_DIR ?= build-release
+LOCAL_CMAKE_FLAGS ?= -DCBLUEPRINT_ENABLE_SANITIZERS=ON
 RECORD_PATH ?= /tmp/c-blueprints-resize-pane.mp4
 FRAMES ?= 48
 
-.PHONY: all build run record-evidence record-resize-pane benchmark web web-serve format check-format test clean
+.PHONY: all build run record-evidence record-resize-pane benchmark web web-serve format check-format test ui-integration clean
 
 all: build
 
 build:
-	cmake -S . -B $(BUILD_DIR) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
+	cmake -S . -B $(BUILD_DIR) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
 
 run: build
 	$(BUILD_DIR)/app $(ARGS)
@@ -25,7 +26,7 @@ record-resize-pane: SCENARIO=resize-pane
 record-resize-pane: record-evidence
 
 benchmark:
-	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake -S . -B $(BENCHMARK_BUILD_DIR) -DCMAKE_BUILD_TYPE=Release $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BENCHMARK_BUILD_DIR) --target bench_activation scene_benchmark system_benchmark query_benchmark
 	$(BENCHMARK_BUILD_DIR)/bench_activation $(ARGS)
 	$(BENCHMARK_BUILD_DIR)/scene_benchmark
@@ -50,6 +51,16 @@ test:
 	cmake -S . -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR) --target test_suite
 	$(BUILD_DIR)/test_suite
+
+ui-integration: build
+	@cmake --build $(BUILD_DIR) --target test_suite --parallel
+	@rm -rf $(BUILD_DIR)/ui-integration-artifacts
+	@mkdir -p $(BUILD_DIR)/ui-integration-artifacts
+	@$(BUILD_DIR)/test_suite \
+		--screenshot $(BUILD_DIR)/ui-integration-artifacts/screenshot.png \
+		>$(BUILD_DIR)/ui-integration-artifacts/command-output.txt 2>&1 || \
+		{ cat $(BUILD_DIR)/ui-integration-artifacts/command-output.txt; exit 1; }
+	@cat $(BUILD_DIR)/ui-integration-artifacts/command-output.txt
 
 clean:
 	rm -rf $(BUILD_DIR) $(BENCHMARK_BUILD_DIR)

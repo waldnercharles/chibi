@@ -53,6 +53,8 @@ this loop is usable and verified.
 
 - `test_suite` is a consolidated pico_unit regression executable.
 - Benchmarks remain separate and report performance explicitly.
-- Computer-use drives the real editor for authoring and runtime acceptance.
+- `make ui-integration` drives the real native editor deterministically and
+  asserts the visible document, Node Canvas, and graph state. Screenshots and
+  computer-use walkthroughs are diagnostic only, not UI evidence.
 - A future JSON adapter may expose the typed C command/query API to an isolated
   external agent; it is not a second authoring model.

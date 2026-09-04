@@ -368,6 +368,14 @@ static scene_actor *selected_actor(app_scene_authoring *scene)
     return &scene->actors[scene->selected];
 }
 
+static const scene_actor *selected_actor_const(const app_scene_authoring *scene)
+{
+    if (!scene || scene->selected < 0 || scene->selected >= acount(scene->actors)) {
+        return NULL;
+    }
+    return &scene->actors[scene->selected];
+}
+
 static scene_prototype_asset *prototype_at(app_scene_authoring *scene, int index)
 {
     return scene && index >= 0 && index < acount(scene->prototypes)
@@ -429,7 +437,7 @@ static void set_document(app_scene_authoring *scene, app_editor_document_kind ki
         case APP_EDITOR_DOCUMENT_BEHAVIOR:
             editor_set_ui_context(scene->graph_editor, EDITOR_UI_CONTEXT_BEHAVIOR);
             editor_set_graph_visible(scene->graph_editor, 1);
-            editor_ui_request_focus(EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET);
+            editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
             return;
         case APP_EDITOR_DOCUMENT_PROTOTYPE:
             editor_set_ui_context(scene->graph_editor, EDITOR_UI_CONTEXT_PROTOTYPE);
@@ -1220,7 +1228,7 @@ app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *s
         state.selected_entity = game_prototype_preview_entity(scene->prototype_preview);
         state.message = scene->prototype_message;
     } else {
-        scene_actor *actor = selected_actor(scene);
+        const scene_actor *actor = selected_actor_const(scene);
         world = scene->world;
         behaviors = scene->live ? scene->live->behaviors : NULL;
         state.selected_entity = actor ? actor->entity : (ecs_entity){ 0 };
@@ -1559,6 +1567,11 @@ int app_scene_authoring_load(app_scene_authoring *scene, const char *path)
 const char *app_scene_authoring_message(const app_scene_authoring *scene)
 {
     return scene ? scene->message : NULL;
+}
+
+const char *app_scene_authoring_selected_content(const app_scene_authoring *scene)
+{
+    return scene ? scene->content_selected_path : NULL;
 }
 
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene)
@@ -2435,15 +2448,16 @@ static bool draw_content_item(app_scene_authoring *scene, int index)
     bool pressed = scene->content_show_thumbnails
                      ? editor_ui_asset_card(entry->path, name, kind, selection)
                      : editor_ui_asset_row(entry->path, name, entry->path, kind, selection);
+    bool double_clicked = ImGui_IsItemHovered(0) && ImGui_IsMouseDoubleClicked(0);
     if (pressed) {
         select_content_entry(scene, entry);
         if (entry->directory) {
             open_content_entry(scene, entry);
             return true;
         }
-        if (ImGui_IsMouseDoubleClicked(0)) {
-            open_content_entry(scene, entry);
-        }
+    }
+    if (double_clicked) {
+        open_content_entry(scene, entry);
     }
     if (ImGui_IsItemHovered(0) && ImGui_IsMouseReleased(1)) {
         select_content_entry(scene, entry);

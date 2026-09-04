@@ -92,7 +92,7 @@ uint64_t graph_alloc_id(graph *g)
 static void graph_index_node(graph *g, node *n)
 {
     size_t want = (size_t)n->id + 1;
-    while (acount(g->id_table) < want) {
+    while ((size_t)acount(g->id_table) < want) {
         apush(g->id_table, NULL);
     }
     g->id_table[n->id] = n;
@@ -1037,6 +1037,7 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
         first--;
     }
     for (int i = count - 1; i >= 0; i--) {
+        pins = output ? n->output_pins : n->input_pins;
         if (pins[i].split_parent == parent_id && graph_remove_pin(g, n, output, i)) {
             return -1;
         }

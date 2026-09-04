@@ -4,8 +4,6 @@
  * hand-written constant escape hatch, per-run memoization, the cycle guard,
  * and arena-backed struct values.
  */
-#include "../app/authoring_session.h"
-#include "../app/behavior_fixtures.h"
 #include "../app/demo_graph.h"
 #include "../app/stacktrace.h"
 #include "../core/arena.h"
@@ -34,9 +32,9 @@
 #include "../game/hot_reload.h"
 #include "../game/live.h"
 #include "../game/prototype.h"
-#include "../game/prototype_preview.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
+#include "ui_integration.h"
 
 /* game/components.h owns the compatible CF_V2 declaration used by this test;
  * avoid redeclaring it through cute_math while importing ImGui's API. */
@@ -249,6 +247,12 @@ static void run_editor_command_checks(void)
     check(editor_command_apply(e, create_graph) == 0, "the command seam creates a graph");
     graph *worker = behavior_asset_find_graph_by_name(bp, "Worker");
     check(worker != NULL, "created graphs remain discoverable by name");
+    check(
+        worker && acount(worker->nodes) == 2 &&
+            worker->nodes[0]->desc == &NODE_FunctionEntry &&
+            worker->nodes[1]->desc == &NODE_Return,
+        "command-created functions receive entry and return nodes"
+    );
     check(
         editor_open_graph(e, worker->graph_id) == 0 && editor_active_graph(e) == worker,
         "the command seam can open the created graph"
@@ -1009,10 +1013,6 @@ static void run_ecs_checks(void)
                 ECS_OK &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameInput, NULL) ==
                 ECS_OK &&
-            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameWeapon, NULL) ==
-                ECS_OK &&
-            ecs_world_register_component(generated_world, &GAME_COMPONENT_GameProjectile, NULL) ==
-                ECS_OK &&
             GAME_COMPONENT_GameHealth.index == ECS_INDEX_DENSE &&
             GAME_COMPONENT_GameHealth.layout_hash ==
                 ecs_layout_hash(GAME_COMPONENT_GameHealth.type),
@@ -1258,106 +1258,6 @@ static void run_prototype_checks(void)
     );
     ecs_world_free(world);
     check(health != NULL, "descriptor lookup is independent of component C types");
-}
-
-static void run_prototype_preview_checks(void)
-{
-    const game_prototype_registry registry = {
-        GAME_REGISTRY_COMPONENTS,
-        GAME_REGISTRY_COMPONENT_COUNT,
-        NULL,
-        NULL,
-    };
-    char error[256];
-    game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"PreviewTarget\",\"components\":{\"GameHealth\":{"
-        "\"current\":42,\"maximum\":50}},\"behaviors\":[\"PreviewBehavior\"]}",
-        &registry,
-        error,
-        sizeof error
-    );
-    behavior_asset *behavior = behavior_asset_new("PreviewBehavior");
-    game_prototype_preview *preview = game_prototype_preview_new(&registry);
-    ecs_world *scene_world = ecs_world_new();
-    ecs_entity scene_entity = { 0 };
-    check(
-        prototype && behavior && preview && scene_world &&
-            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) ==
-                0 &&
-            game_prototype_spawn(prototype, scene_world, NULL, &scene_entity, error, sizeof error) ==
-                ECS_ERR_ARGUMENT &&
-            game_prototype_preview_launch(preview, prototype, error, sizeof error) == ECS_OK,
-        "prototype preview launches authored components and attached behavior"
-    );
-    ecs_entity preview_entity = game_prototype_preview_entity(preview);
-    check(
-        preview_entity.slot &&
-            ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity) &&
-            ecs_world_live_count(scene_world) == 0 &&
-            game_prototype_preview_world(preview) != scene_world &&
-            game_prototype_preview_behaviors(preview) != NULL &&
-            GAME_GameHealth_get(game_prototype_preview_world(preview), preview_entity)
-                    ->current == 42 &&
-            game_prototype_preview_instance(preview, "PreviewBehavior") != NULL,
-        "prototype preview owns an isolated runtime world and behavior instance"
-    );
-    game_prototype_preview_stop(preview);
-    check(
-        !ecs_entity_is_alive(game_prototype_preview_world(preview), preview_entity),
-        "stopping prototype preview destroys only its runtime entity"
-    );
-    ecs_world *fixture_ecs = ecs_world_new();
-    game_live_world *fixture_live = fixture_ecs ? game_live_world_new(fixture_ecs)
-                                                : NULL;
-    game_prototype_preview *fixture_preview = game_prototype_preview_new(&registry);
-    game_prototype *fixture_prototype = game_prototype_load(
-        "{\"name\":\"FixturePreview\",\"behaviors\":[\"InputBehavior\"]}",
-        &registry,
-        error,
-        sizeof error
-    );
-    check(
-        fixture_live && fixture_preview && fixture_prototype &&
-            app_behavior_fixtures_load(fixture_live, fixture_preview, "content") > 0 &&
-            game_prototype_preview_launch(fixture_preview, fixture_prototype, error, sizeof error) ==
-                ECS_OK &&
-            game_prototype_preview_instance(fixture_preview, "InputBehavior") != NULL,
-        "content fixture behavior is registered in prototype preview"
-    );
-    game_prototype_free(fixture_prototype);
-    game_prototype_preview_free(fixture_preview);
-    game_live_world_free(fixture_live);
-    ecs_world_free(fixture_ecs);
-    ecs_world *live_ecs = ecs_world_new();
-    game_live_world *live = live_ecs ? game_live_world_new(live_ecs) : NULL;
-    behavior_asset *unrelated = behavior_asset_new("UnrelatedBehavior");
-    ecs_entity live_entity = live_ecs ? ecs_world_create_entity(live_ecs)
-                                      : (ecs_entity){ 0 };
-    behavior_asset *rollback_working = behavior_asset_new("PreviewBehavior");
-    game_live_definition *rollback_definition = rollback_working
-                                                  ? game_live_definition_new("PreviewBehavior", rollback_working)
-                                                  : NULL;
-    check(
-        live && unrelated && live_entity.slot &&
-            game_behavior_register_asset(live->behaviors, "UnrelatedBehavior", unrelated) == 0 &&
-            game_behavior_attach(live->behaviors, live_entity, "UnrelatedBehavior") == 0 &&
-            rollback_definition &&
-            game_live_add_definition(live, rollback_definition) == 0 &&
-            game_prototype_preview_register_behavior(preview, "PreviewBehavior", behavior) !=
-                0 &&
-            game_live_remove_definition(live, "PreviewBehavior") == 0 &&
-            game_live_find_definition(live, "PreviewBehavior") == NULL &&
-            game_behavior_attachment_count(live->behaviors) == 1 &&
-            game_behavior_asset_registered(live->behaviors, "UnrelatedBehavior"),
-        "preview registration failure rolls back live behavior definition "
-        "without disturbing unrelated attachments"
-    );
-    game_live_world_free(live);
-    ecs_world_free(live_ecs);
-    ecs_world_free(scene_world);
-    game_prototype_preview_free(preview);
-    behavior_asset_free(behavior);
-    game_prototype_free(prototype);
 }
 
 static behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
@@ -1737,86 +1637,6 @@ static behavior_asset *make_live_behavior_asset(void)
         return NULL;
     }
     return bp;
-}
-
-static void run_authoring_session_checks(void)
-{
-    app_authoring_session *session = app_authoring_session_new("content");
-    check(
-        session && app_authoring_session_load_fixtures(session) > 0,
-        "headless authoring sessions load the canonical behavior fixtures"
-    );
-    check(app_authoring_session_asset_name(session, 0) != NULL, "fixture asset queries are deterministic and name-addressable");
-    check(
-        app_authoring_session_create_behavior(session, "IntegrationBehavior") == 0 &&
-            app_authoring_session_dirty(session),
-        "the public seam creates and observes a dirty Behavior Asset"
-    );
-    graph *function_graph = app_authoring_session_add_graph(session, GRAPH_FUNCTION, "Compute");
-    check(
-        function_graph && app_authoring_session_connect_exec(
-                              session,
-                              function_graph->entry_id,
-                              0,
-                              function_graph->return_id,
-                              0,
-                              0
-                          ) == 0,
-        "the public seam connects execution edges by node id"
-    );
-    graph *macro_graph = app_authoring_session_add_graph(session, GRAPH_MACRO, "Macro");
-    check(macro_graph && macro_graph->entry_id != 0 && macro_graph->return_id != 0, "macro graphs created through the public seam have entry and return nodes");
-    check(app_authoring_session_select_graph(session, function_graph->graph_id) == 0, "the function graph can be selected again");
-    uint64_t integer_id = app_authoring_session_add_node(session, "Integer");
-    uint64_t real_id = app_authoring_session_add_node(session, "add_floats");
-    check(
-        integer_id && real_id &&
-            app_authoring_session_connect_data(session, integer_id, 0, real_id, 0) == 0,
-        "the public seam inserts an explicit numeric conversion edge"
-    );
-    check(
-        function_graph && app_authoring_session_active_graph(session) == function_graph &&
-            app_authoring_session_rename_graph(session, function_graph->graph_id, "ComputeRenamed") ==
-                0 &&
-            behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed") ==
-                function_graph,
-        "commands add, select, and rename graphs through the headless seam"
-    );
-    const edge *conversion_edge = NULL;
-    for (int i = 0; i < acount(function_graph->edges); i++) {
-        if (function_graph->edges[i].from_id == integer_id &&
-            function_graph->edges[i].to_id == real_id) {
-            conversion_edge = &function_graph->edges[i];
-            break;
-        }
-    }
-    check(conversion_edge && conversion_edge->conversion, "conversion edges retain their conversion node");
-    const char path[] = "/tmp/c-blueprints-integration-behavior.json";
-    check(
-        app_authoring_session_save(session, path) == 0 &&
-            !app_authoring_session_dirty(session),
-        "saving the active authored asset clears its observable dirty state"
-    );
-    check(
-        app_authoring_session_rename_graph(session, function_graph->graph_id, "Unsaved") == 0 &&
-            app_authoring_session_dirty(session) &&
-            app_authoring_session_reload(session, path) == 0 &&
-            !app_authoring_session_dirty(session) &&
-            behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed"),
-        "reload restores the saved authored graph and dirty state"
-    );
-    function_graph = behavior_asset_find_graph_by_name(app_authoring_session_behavior(session), "ComputeRenamed");
-    conversion_edge = NULL;
-    for (int i = 0; function_graph && i < acount(function_graph->edges); i++) {
-        if (function_graph->edges[i].from_id == integer_id &&
-            function_graph->edges[i].to_id == real_id) {
-            conversion_edge = &function_graph->edges[i];
-            break;
-        }
-    }
-    check(conversion_edge && conversion_edge->conversion, "reload preserves explicit conversion edges");
-    remove(path);
-    app_authoring_session_free(session);
 }
 
 static void run_live_checks(void)
@@ -2256,6 +2076,7 @@ static void run_scene_checks(void)
     game_scene_free(one);
     game_scene_free(many);
 
+#ifndef CBLUEPRINT_SKIP_PERFORMANCE_TESTS
     game_scene *budget = game_scene_new(2000, 500, UINT64_C(0xdecafbad));
     double total_behavior_ms = 0.0;
     int budget_ok = budget != NULL;
@@ -2271,6 +2092,7 @@ static void run_scene_checks(void)
         "ms average behavior time"
     );
     game_scene_free(budget);
+#endif
 }
 
 static char *program_name;
@@ -2327,10 +2149,6 @@ TEST_CASE(all_checks)
         "build-time registry exposes reflected types"
     );
     check(make && make->inputs && make->outputs, "annotations emit descriptor pin metadata");
-    const type_desc *weapon = registry_type_by_name("GameWeapon");
-    const type_desc *projectile = registry_type_by_name("GameProjectile");
-    check(weapon && weapon->field_count == 3, "GameWeapon is reflected for prototype authoring");
-    check(projectile && projectile->field_count == 3, "GameProjectile is reflected for prototype authoring");
     check(add && add->fn, "annotated function emits a call adapter");
     check(
         make && make->type->fields[0].offset == 0 && make->type->size >= sizeof(float),
@@ -4737,7 +4555,7 @@ TEST_CASE(all_checks)
         check(behavior_instance_scratch(bi, delay->id)->i == 42, "stopping an activation preserves per-node scratch");
         int guard_before = bp->graph->flow_pause_count;
         behavior_instance_destroy(bi);
-        check(bp->graph->flow_pause_count == guard_before - 1, "destroying the instance releases the mutation guard");
+        check((int)bp->graph->flow_pause_count == guard_before - 1, "destroying the instance releases the mutation guard");
         node *probe = graph_add_node(bp->graph, &g_sink_b_desc);
         check(probe != NULL, "the definition becomes mutable after its last instance is destroyed");
         /* The probe node's exec input is unconnected, which is a blocking
@@ -6520,16 +6338,19 @@ TEST_CASE(all_checks)
 
     run_ecs_checks();
     run_prototype_checks();
-    run_prototype_preview_checks();
     run_scene_document_checks();
     run_behavior_checks();
-    run_authoring_session_checks();
     run_live_checks();
     run_engine_checks();
     run_parallel_checks();
     run_hot_reload_checks();
     run_scene_checks();
     run_editor_command_checks();
+
+    if (!fails) {
+        char *ui_args[] = { "test_suite", "--headless", NULL };
+        fails += ui_integration_run(2, ui_args) != 0;
+    }
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 

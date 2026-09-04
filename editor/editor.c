@@ -5275,13 +5275,23 @@ int editor_command_apply(editor *e, editor_command command)
                 return -1;
             }
             ed_snapshot_before(e);
-            return behavior_asset_add_graph(
-                       e->bp,
-                       command.data.create_graph.graph_kind,
-                       command.data.create_graph.name
-                   )
-                     ? 0
-                     : -1;
+            graph *created = command.data.create_graph.graph_kind == GRAPH_FUNCTION
+                               ? behavior_asset_add_function(
+                                     e->bp,
+                                     command.data.create_graph.name,
+                                     0
+                                 )
+                           : command.data.create_graph.graph_kind == GRAPH_MACRO
+                               ? behavior_asset_add_macro(
+                                     e->bp,
+                                     command.data.create_graph.name
+                                 )
+                               : behavior_asset_add_graph(
+                                     e->bp,
+                                     command.data.create_graph.graph_kind,
+                                     command.data.create_graph.name
+                                 );
+            return created ? 0 : -1;
         }
         case EDITOR_COMMAND_RENAME_GRAPH: {
             const char *name = command.data.rename_graph.name;
@@ -5428,6 +5438,7 @@ void editor_query_state(const editor *e, editor_query *out)
     }
     out->active_graph = e->active_graph;
     out->graph_count = acount(e->bp->graphs);
+    out->graph_visible = e->graph_visible && e->ui_context != EDITOR_UI_CONTEXT_SCENE;
     out->compile = &e->compile;
     if (e->edit_revision_initialized && !e->edit_pending &&
         e->edit_revision_bp == e->bp && e->edit_revision_snapshot) {

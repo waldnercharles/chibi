@@ -80,6 +80,7 @@ typedef struct
 {
     const graph *active_graph;
     int graph_count;
+    int graph_visible;
     int dirty;
     const compile_report *compile;
 } editor_query;

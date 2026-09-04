@@ -52,6 +52,17 @@ typedef struct
     bool primary_pressed;
 } app_mouse_input;
 
+static void print_usage(const char *program)
+{
+    printf("Usage: %s [options]\n", program);
+    printf("\nOptions:\n");
+    printf("  --help                 Show this help text\n");
+    printf("  --headless             Run without showing a window\n");
+    printf("  --frames <count>       Exit after count rendered frames\n");
+    printf("  --fps <rate>           Set the target frame rate\n");
+    printf("  --screenshot [path]    Capture a PNG after %d frames and exit\n", APP_DEFAULT_SCREENSHOT_FRAMES);
+}
+
 static int save_screenshot(const char *path)
 {
     CF_Canvas canvas = cf_app_get_canvas();
@@ -499,12 +510,17 @@ int main(int argc, char **argv)
     const char *recording_path = NULL;
     app_scenario scenario = APP_SCENARIO_NONE;
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--help") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        }
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--fps") == 0 && i + 1 < argc) {
             fps = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--screenshot") == 0) {
             screenshot_path = APP_DEFAULT_SCREENSHOT_PATH;
+            headless = 1;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 screenshot_path = argv[++i];
             }

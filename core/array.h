@@ -5,6 +5,7 @@
  * Backed by the abort-on-OOM allocator in xalloc.h. */
 #include "xalloc.h"
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,11 @@
 typedef struct
 {
     int len, cap;
-    union { uint32_t cookie; char dbg[4]; };
+    union {
+        uint32_t cookie;
+        char dbg[4];
+        max_align_t alignment;
+    };
 } dyna_hdr;
 
 #define DYNA_HDR(a) ((dyna_hdr *)(a) - 1)

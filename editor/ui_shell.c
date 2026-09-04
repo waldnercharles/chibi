@@ -94,7 +94,6 @@ static ImGuiID ui_left_pane_id;
 static editor_ui_focus_target ui_focus_request;
 static editor_ui_command_handler ui_command_handler;
 static void *ui_command_user;
-
 void editor_ui_request_focus(editor_ui_focus_target target)
 {
     assert(
@@ -663,7 +662,7 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderDockWindow("Compiler Results", bottom);
     ImGui_DockBuilderDockWindow("Node Canvas", canvas);
     ImGui_DockBuilderDockWindow("Scene", canvas);
-    editor_ui_set_content_drawer_open(false);
+    editor_ui_set_content_drawer_open(true);
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
 

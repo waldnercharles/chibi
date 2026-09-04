@@ -34,7 +34,12 @@ static char *new_identity(void)
 static void setup_tag(game_prototype *prototype)
 {
     prototype->tag.name = xmalloc(strlen(prototype->identity) + 16);
-    sprintf(prototype->tag.name, "PrototypeTag:%s", prototype->identity);
+    snprintf(
+        prototype->tag.name,
+        strlen(prototype->identity) + 16,
+        "PrototypeTag:%s",
+        prototype->identity
+    );
     prototype->tag.desc = (ecs_component_desc){
         .id = identity_id(prototype->identity),
         .key = prototype->identity,

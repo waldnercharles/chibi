@@ -1,5 +1,8 @@
 ### Coding Guidelines
 
+- Use the standard build directory with sanitizers, warnings, and ccache enabled.
+- UI changes require a deterministic automated harness that drives the real UI and asserts visible behavior; screenshots alone are insufficient. Run `make test` (or `make ui-integration`) for the native Content Drawer/Behavior Editor scenario. This is the required evidence path; computer-use walkthroughs and screenshots are diagnostic only.
+
 - Less code is a feature: delete dead code and unused abstraction.
 - Flatten: guard clauses and early returns; no `else` after `return`/`break`.
 - Small single-purpose functions; minimal public surface and parameter count.

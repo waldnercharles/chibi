@@ -1463,26 +1463,34 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     asetcap(g->edges, ne);
     asetcap(g->strings, ns);
     asetcap(g->blocks, nb);
-    memcpy(
-        g->nodes + acount(g->nodes),
-        tmp->nodes,
-        (size_t)acount(tmp->nodes) * sizeof *tmp->nodes
-    );
-    memcpy(
-        g->edges + acount(g->edges),
-        tmp->edges,
-        (size_t)acount(tmp->edges) * sizeof *tmp->edges
-    );
-    memcpy(
-        g->strings + acount(g->strings),
-        tmp->strings,
-        (size_t)acount(tmp->strings) * sizeof *tmp->strings
-    );
-    memcpy(
-        g->blocks + acount(g->blocks),
-        tmp->blocks,
-        (size_t)acount(tmp->blocks) * sizeof *tmp->blocks
-    );
+    if (acount(tmp->nodes)) {
+        memcpy(
+            g->nodes + acount(g->nodes),
+            tmp->nodes,
+            (size_t)acount(tmp->nodes) * sizeof *tmp->nodes
+        );
+    }
+    if (acount(tmp->edges)) {
+        memcpy(
+            g->edges + acount(g->edges),
+            tmp->edges,
+            (size_t)acount(tmp->edges) * sizeof *tmp->edges
+        );
+    }
+    if (acount(tmp->strings)) {
+        memcpy(
+            g->strings + acount(g->strings),
+            tmp->strings,
+            (size_t)acount(tmp->strings) * sizeof *tmp->strings
+        );
+    }
+    if (acount(tmp->blocks)) {
+        memcpy(
+            g->blocks + acount(g->blocks),
+            tmp->blocks,
+            (size_t)acount(tmp->blocks) * sizeof *tmp->blocks
+        );
+    }
     asetlen(g->nodes, nn);
     asetlen(g->edges, ne);
     asetlen(g->strings, ns);

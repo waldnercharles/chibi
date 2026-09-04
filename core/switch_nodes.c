@@ -5,9 +5,6 @@
 
 #include <string.h>
 
-static pin_spec switch_exec_input[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-};
 static pin_spec switch_int_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
     { "Selection", PIN_I32, "int", PIN_DATA },

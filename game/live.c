@@ -177,9 +177,11 @@ int game_live_remove_definition(game_live_world *world, const char *asset_name)
     }
     for (int i = 0; i < acount(world->definitions); i++) {
         game_live_definition *definition = world->definitions[i];
-        if (strcmp(definition->name, asset_name) != 0 ||
-            game_behavior_unregister_asset(world->behaviors, asset_name, &definition->applied) !=
-                0) {
+        if (strcmp(definition->name, asset_name) != 0 || game_behavior_unregister_asset(
+                                                             world->behaviors,
+                                                             asset_name,
+                                                             &definition->applied
+                                                         ) != 0) {
             continue;
         }
         definition->world = NULL;

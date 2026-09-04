@@ -27,6 +27,7 @@ typedef struct CF_Canvas
 {
     uint64_t id;
 } CF_Canvas;
+bool cf_app_set_imgui_render_target(CF_Canvas target);
 typedef struct CF_VideoEncoder CF_VideoEncoder;
 typedef struct CF_Readback
 {

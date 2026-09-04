@@ -368,6 +368,14 @@ static scene_actor *selected_actor(app_scene_authoring *scene)
     return &scene->actors[scene->selected];
 }
 
+static const scene_actor *selected_actor_const(const app_scene_authoring *scene)
+{
+    if (!scene || scene->selected < 0 || scene->selected >= acount(scene->actors)) {
+        return NULL;
+    }
+    return &scene->actors[scene->selected];
+}
+
 static scene_prototype_asset *prototype_at(app_scene_authoring *scene, int index)
 {
     return scene && index >= 0 && index < acount(scene->prototypes)
@@ -1220,7 +1228,7 @@ app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *s
         state.selected_entity = game_prototype_preview_entity(scene->prototype_preview);
         state.message = scene->prototype_message;
     } else {
-        scene_actor *actor = selected_actor(scene);
+        const scene_actor *actor = selected_actor_const(scene);
         world = scene->world;
         behaviors = scene->live ? scene->live->behaviors : NULL;
         state.selected_entity = actor ? actor->entity : (ecs_entity){ 0 };

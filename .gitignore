@@ -19,3 +19,4 @@ generated/
 imgui.ini
 NodeEditor.json
 compile_commands.json
+.DS_STORE

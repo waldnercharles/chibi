@@ -30,6 +30,7 @@ enum
     ImGuiCond_Once = 1 << 1,
     ImGuiCond_FirstUseEver = 1 << 2,
     ImGuiTreeNodeFlags_Selected = 1 << 0,
+    ImGuiTreeNodeFlags_NoTreePushOnOpen = 1 << 3,
     ImGuiTreeNodeFlags_Leaf = 1 << 8,
     ImGuiTreeNodeFlags_SpanAvailWidth = 1 << 11,
     ImGuiMouseCursor_Hand = 7,
@@ -50,6 +51,7 @@ enum
 
 void ImGui_PushFontFloat(ImFont *font, float font_size_base_unscaled);
 void ImGui_PopFont(void);
+void ImGui_PushID(const char *id);
 void ImGui_SetNextWindowSize(ImVec2 size, ImGuiCond condition);
 void ImGui_SetNextWindowFocus(void);
 void ImGui_SetWindowFocusStr(const char *name);

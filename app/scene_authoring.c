@@ -25,19 +25,11 @@
 #include <sys/stat.h>
 
 static const char APP_SCENE_DOCUMENT_ID[] = "Scene";
-static const char CONTENT_FOLDER_ICON[] = "\xef\x81\xbb";
-static const char CONTENT_FOLDER_OPEN_ICON[] = "\xef\x81\xbc";
 static const mode_t DOCUMENT_DIRECTORY_MODE = 511;
 
 enum
 {
     CONTENT_PATH_CAP = 512,
-    CONTENT_HISTORY_LIMIT = 20,
-    CONTENT_POPUP_NO_OPEN_OVER_ITEMS = 1 << 8,
-    CONTENT_ICON_BACK = 0xf060,
-    CONTENT_ICON_FORWARD = 0xf061,
-    CONTENT_ICON_CHEVRON_RIGHT = 0xf054,
-    CONTENT_ICON_SETTINGS = 0xf013,
 };
 
 static int save_active_document(app_scene_authoring *scene);
@@ -103,11 +95,6 @@ typedef struct
 
 static const float SCENE_CONTEXT_WIDTH = 270.0f;
 
-#define CONTENT_DRAWER_FONT_SIZE 14.0f
-#define CONTENT_DRAWER_SOURCE_WIDTH 250.0f
-#define CONTENT_DRAWER_DEFAULT_WIDTH 960.0f
-#define CONTENT_DRAWER_SOURCE_WIDTH_NARROW 205.0f
-
 struct app_scene_authoring
 {
     ecs_world *world;
@@ -131,11 +118,7 @@ struct app_scene_authoring
     scene_prototype_asset *prototypes;
     scene_content_entry *content;
     char *content_root;
-    char *content_dir;
     char *content_selected_path;
-    char **content_history;
-    int content_history_index;
-    bool content_show_thumbnails;
     int selected;
     int selected_prototype;
     int selected_component;
@@ -149,6 +132,7 @@ struct app_scene_authoring
     app_runtime_target active_runtime_target;
     char asset_search[128];
     app_editor_document_context document;
+    char *document_id;
     char *scene_path;
     bool scene_dirty;
     char message[256];
@@ -240,11 +224,6 @@ static const char *content_basename(const char *path)
     return slash ? slash + 1 : path;
 }
 
-static bool content_path_is_root(const app_scene_authoring *scene, const char *path)
-{
-    return strcmp(scene->content_root, path) == 0;
-}
-
 static bool content_path_is_child(const char *parent, const char *path)
 {
     size_t parent_size = strlen(parent);
@@ -263,23 +242,6 @@ static bool content_path_is_descendant(const char *parent, const char *path)
            strncmp(parent, path, parent_size) == 0 && path[parent_size] == '/';
 }
 
-static bool content_path_is_breadcrumb(const app_scene_authoring *scene, const char *path)
-{
-    return strcmp(scene->content_dir, path) == 0 ||
-           content_path_is_descendant(path, scene->content_dir);
-}
-
-static bool content_folder_has_children(const app_scene_authoring *scene, const char *path)
-{
-    for (int i = 0; i < acount(scene->content); i++) {
-        const scene_content_entry *entry = &scene->content[i];
-        if (entry->directory && content_path_is_child(path, entry->path)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool content_path_in_folder(const app_scene_authoring *scene, const char *path, const char *folder)
 {
     char directory[CONTENT_PATH_CAP];
@@ -292,73 +254,6 @@ static void content_select_path(app_scene_authoring *scene, const char *path)
 {
     free(scene->content_selected_path);
     scene->content_selected_path = xstrdup(path);
-}
-
-static void content_history_reset(app_scene_authoring *scene)
-{
-    for (int i = 0; i < acount(scene->content_history); i++) {
-        free(scene->content_history[i]);
-    }
-    asetlen(scene->content_history, 0);
-    scene->content_history_index = -1;
-}
-
-static void content_history_push(app_scene_authoring *scene, const char *path)
-{
-    if (scene->content_history_index >= 0 &&
-        strcmp(scene->content_history[scene->content_history_index], path) == 0) {
-        return;
-    }
-    while (scene->content_history_index + 1 < acount(scene->content_history)) {
-        free(scene->content_history[acount(scene->content_history) - 1]);
-        asetlen(scene->content_history, acount(scene->content_history) - 1);
-    }
-    apush(scene->content_history, xstrdup(path));
-    scene->content_history_index = acount(scene->content_history) - 1;
-    if (acount(scene->content_history) > CONTENT_HISTORY_LIMIT) {
-        free(scene->content_history[0]);
-        memmove(
-            scene->content_history,
-            scene->content_history + 1,
-            (size_t)(acount(scene->content_history) - 1) * sizeof *scene->content_history
-        );
-        asetlen(scene->content_history, acount(scene->content_history) - 1);
-        scene->content_history_index--;
-    }
-}
-
-static void content_change_dir(app_scene_authoring *scene, const char *path, bool push_history)
-{
-    if (!path || !path[0] ||
-        (!content_path_is_root(scene, path) &&
-         !content_path_is_descendant(scene->content_root, path))) {
-        return;
-    }
-    free(scene->content_dir);
-    scene->content_dir = xstrdup(path);
-    free(scene->content_selected_path);
-    scene->content_selected_path = NULL;
-    if (push_history) {
-        content_history_push(scene, path);
-    }
-}
-
-static void content_go_back(app_scene_authoring *scene)
-{
-    if (scene->content_history_index < 1) {
-        return;
-    }
-    scene->content_history_index--;
-    content_change_dir(scene, scene->content_history[scene->content_history_index], false);
-}
-
-static void content_go_forward(app_scene_authoring *scene)
-{
-    if (scene->content_history_index + 1 >= acount(scene->content_history)) {
-        return;
-    }
-    scene->content_history_index++;
-    content_change_dir(scene, scene->content_history[scene->content_history_index], false);
 }
 
 static scene_actor *selected_actor(app_scene_authoring *scene)
@@ -428,7 +323,10 @@ static void prototype_history_before(app_scene_authoring *scene, game_prototype 
 
 static void set_document(app_scene_authoring *scene, app_editor_document_kind kind, const char *id)
 {
-    scene->document = (app_editor_document_context){ kind, id };
+    char *copy = xstrdup(id);
+    free(scene->document_id);
+    scene->document_id = copy;
+    scene->document = (app_editor_document_context){ kind, copy };
     switch (kind) {
         case APP_EDITOR_DOCUMENT_SCENE:
             editor_set_ui_context(scene->graph_editor, EDITOR_UI_CONTEXT_SCENE);
@@ -821,10 +719,6 @@ app_scene_authoring *app_scene_authoring_new(
         return NULL;
     }
     scene->content_root = xstrdup("content");
-    scene->content_dir = xstrdup(scene->content_root);
-    scene->content_show_thumbnails = true;
-    scene->content_history_index = -1;
-    content_history_push(scene, scene->content_dir);
     content_refresh(scene);
     scene->selected = -1;
     scene->selected_prototype = -1;
@@ -918,8 +812,9 @@ int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char 
     char *copy = xstrdup(path);
     free(scene->content_root);
     scene->content_root = copy;
-    content_history_reset(scene);
-    content_change_dir(scene, scene->content_root, true);
+    free(scene->content_selected_path);
+    scene->content_selected_path = NULL;
+    scene->asset_search[0] = '\0';
     content_refresh(scene);
     return 0;
 }
@@ -977,9 +872,11 @@ int app_scene_authoring_save_prototype(
     int result = write_text_file_atomic(path, json);
     free(json);
     if (result == 0) {
+        char *saved_path = xstrdup(path);
         free(asset->path);
-        asset->path = xstrdup(path);
+        asset->path = saved_path;
         asset->dirty = 0;
+        content_refresh(scene);
     }
     return result;
 }
@@ -1607,15 +1504,11 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     }
     afree(scene->content);
     free(scene->content_root);
-    free(scene->content_dir);
     free(scene->scene_path);
     game_system_document_free(scene->system_document);
     free(scene->system_path);
     free(scene->content_selected_path);
-    for (int i = 0; i < acount(scene->content_history); i++) {
-        free(scene->content_history[i]);
-    }
-    afree(scene->content_history);
+    free(scene->document_id);
     free(scene);
 }
 
@@ -1660,7 +1553,7 @@ static int create_new_prototype(app_scene_authoring *scene)
         if (app_scene_authoring_register_prototype(scene, json, NULL) != 0) {
             break;
         }
-        select_prototype(scene, acount(scene->prototypes) - 1);
+        open_prototype(scene, acount(scene->prototypes) - 1);
         snprintf(scene->message, sizeof scene->message, "Created %s.", name);
         return 0;
     }
@@ -2095,245 +1988,6 @@ static int reload_active_document(app_scene_authoring *scene)
     return app_scene_authoring_load(scene, scene->scene_path);
 }
 
-static void draw_content_breadcrumbs(app_scene_authoring *scene)
-{
-    if (scene->asset_search[0]) {
-        ImGui_TextUnformatted("Search results");
-        return;
-    }
-
-    if (editor_ui_link("content_breadcrumb_all", "All")) {
-        content_change_dir(scene, scene->content_root, true);
-    }
-    ImGui_SameLine();
-    editor_ui_breadcrumb_separator(CONTENT_ICON_CHEVRON_RIGHT);
-    ImGui_SameLine();
-    if (editor_ui_link("content_breadcrumb_content", "Content")) {
-        content_change_dir(scene, scene->content_root, true);
-    }
-
-    if (content_path_is_root(scene, scene->content_dir)) {
-        return;
-    }
-
-    size_t root_size = strlen(scene->content_root);
-    const char *cursor = scene->content_dir + root_size;
-    if (*cursor == '/') {
-        cursor++;
-    }
-    char prefix[CONTENT_PATH_CAP];
-    snprintf(prefix, sizeof prefix, "%s", scene->content_root);
-    int breadcrumb = 1;
-    while (*cursor) {
-        const char *slash = strchr(cursor, '/');
-        size_t component_size = slash ? (size_t)(slash - cursor) : strlen(cursor);
-        size_t prefix_size = strlen(prefix);
-        if (prefix_size + component_size + 2 >= sizeof prefix) {
-            return;
-        }
-        prefix[prefix_size++] = '/';
-        memcpy(prefix + prefix_size, cursor, component_size);
-        prefix[prefix_size + component_size] = '\0';
-
-        ImGui_SameLine();
-        editor_ui_breadcrumb_separator(CONTENT_ICON_CHEVRON_RIGHT);
-        ImGui_SameLine();
-        char component[CONTENT_PATH_CAP];
-        memcpy(component, cursor, component_size);
-        component[component_size] = '\0';
-        char link_id[32];
-        snprintf(link_id, sizeof link_id, "content_breadcrumb_%d", breadcrumb++);
-        if (editor_ui_link(link_id, component)) {
-            content_change_dir(scene, prefix, true);
-        }
-        if (!slash) {
-            return;
-        }
-        cursor = slash + 1;
-    }
-}
-
-static void draw_source_children(app_scene_authoring *scene, const char *parent)
-{
-    for (int i = 0; i < acount(scene->content); i++) {
-        scene_content_entry *entry = &scene->content[i];
-        if (!entry->directory || !content_path_is_child(parent, entry->path)) {
-            continue;
-        }
-        bool breadcrumb = content_path_is_breadcrumb(scene, entry->path);
-        bool has_children = content_folder_has_children(scene, entry->path);
-        char label[CONTENT_PATH_CAP];
-        snprintf(
-            label,
-            sizeof label,
-            "%s %s",
-            breadcrumb ? CONTENT_FOLDER_OPEN_ICON : CONTENT_FOLDER_ICON,
-            content_basename(entry->path)
-        );
-        ImGui_PushIDInt(i);
-        if (breadcrumb) {
-            ImGui_SetNextItemOpen(true, ImGuiCond_Always);
-        }
-        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (strcmp(scene->content_dir, entry->path) == 0) {
-            flags |= ImGuiTreeNodeFlags_Selected;
-        }
-        if (!has_children) {
-            flags |= ImGuiTreeNodeFlags_Leaf;
-        }
-        bool open = ImGui_TreeNodeEx(label, flags);
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-        }
-        if (ImGui_IsItemClicked()) {
-            content_change_dir(scene, entry->path, true);
-        }
-        if (open) {
-            if (has_children) {
-                draw_source_children(scene, entry->path);
-            }
-            ImGui_TreePop();
-        }
-        ImGui_PopID();
-    }
-}
-
-static void draw_content_sources(app_scene_authoring *scene)
-{
-    ImGui_TextUnformatted("TestProject");
-    ImGui_SetNextItemOpen(true, ImGuiCond_Always);
-    bool all_open = ImGui_TreeNodeEx("\xef\x81\xbc All", ImGuiTreeNodeFlags_SpanAvailWidth);
-    if (ImGui_IsItemHovered(0)) {
-        ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    if (!all_open) {
-        return;
-    }
-    ImGui_PushIDInt(1);
-    bool content_breadcrumb = content_path_is_breadcrumb(scene, scene->content_root);
-    bool has_children = content_folder_has_children(scene, scene->content_root);
-    char label[CONTENT_PATH_CAP];
-    snprintf(label, sizeof label, "%s Content", content_breadcrumb ? CONTENT_FOLDER_OPEN_ICON : CONTENT_FOLDER_ICON);
-    ImGui_SetNextItemOpen(content_breadcrumb, ImGuiCond_Always);
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (strcmp(scene->content_dir, scene->content_root) == 0) {
-        flags |= ImGuiTreeNodeFlags_Selected;
-    }
-    if (!has_children) {
-        flags |= ImGuiTreeNodeFlags_Leaf;
-    }
-    bool content_open = ImGui_TreeNodeEx(label, flags);
-    if (ImGui_IsItemHovered(0)) {
-        ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    if (ImGui_IsItemClicked()) {
-        content_change_dir(scene, scene->content_root, true);
-    }
-    if (content_open) {
-        if (has_children) {
-            draw_source_children(scene, scene->content_root);
-        }
-        ImGui_TreePop();
-    }
-    ImGui_PopID();
-    ImGui_TreePop();
-}
-
-static void draw_content_settings(app_scene_authoring *scene)
-{
-    if (editor_ui_right_icon_button("content_settings", CONTENT_ICON_SETTINGS)) {
-        ImGui_OpenPopup("content_settings_popup", 0);
-    }
-    if (!ImGui_BeginPopup("content_settings_popup", 0)) {
-        return;
-    }
-    ImGui_TextUnformatted("Asset View");
-    ImGui_Separator();
-    if (ImGui_MenuItemEx("Thumbnails", NULL, scene->content_show_thumbnails, true)) {
-        scene->content_show_thumbnails = true;
-    }
-    if (ImGui_MenuItemEx("List", NULL, !scene->content_show_thumbnails, true)) {
-        scene->content_show_thumbnails = false;
-    }
-    if (ImGui_MenuItem("Refresh content")) {
-        app_scene_authoring_refresh_content(scene);
-        ImGui_CloseCurrentPopup();
-    }
-    ImGui_EndPopup();
-}
-
-static void draw_content_toolbar(app_scene_authoring *scene)
-{
-    bool can_back = scene->content_history_index > 0;
-    bool can_forward = scene->content_history_index + 1 <
-                       acount(scene->content_history);
-    if (editor_ui_icon_button("content_back", CONTENT_ICON_BACK, can_back)) {
-        content_go_back(scene);
-    }
-    ImGui_SameLine();
-    if (editor_ui_icon_button("content_forward", CONTENT_ICON_FORWARD, can_forward)) {
-        content_go_forward(scene);
-    }
-    ImGui_SameLine();
-    draw_content_breadcrumbs(scene);
-    draw_content_settings(scene);
-    ImGui_Separator();
-}
-
-static editor_ui_asset_kind content_entry_kind(
-    const app_scene_authoring *scene,
-    const char *path,
-    int *prototype_index,
-    int *behavior_index
-)
-{
-    *prototype_index = content_prototype_index(scene, path);
-    *behavior_index = *prototype_index >= 0 ? -1 : content_behavior_index(scene, path);
-    if (*prototype_index >= 0) {
-        return EDITOR_UI_ASSET_PROTOTYPE;
-    }
-    if (*behavior_index >= 0) {
-        return EDITOR_UI_ASSET_BEHAVIOR;
-    }
-    if (content_path_in_folder(scene, path, "systems")) {
-        return EDITOR_UI_ASSET_SYSTEM;
-    }
-    return EDITOR_UI_ASSET_FILE;
-}
-
-static editor_ui_asset_selection content_entry_selection(
-    const app_scene_authoring *scene,
-    const char *path,
-    editor_ui_asset_kind kind,
-    int prototype_index,
-    int behavior_index
-)
-{
-    if (!scene->content_selected_path ||
-        strcmp(scene->content_selected_path, path) != 0) {
-        return EDITOR_UI_ASSET_NOT_SELECTED;
-    }
-    if (kind == EDITOR_UI_ASSET_PROTOTYPE &&
-        document_asset_active(
-            scene,
-            APP_EDITOR_DOCUMENT_PROTOTYPE,
-            scene->prototypes[prototype_index].prototype->name
-        )) {
-        return EDITOR_UI_ASSET_ACTIVE;
-    }
-    if (kind == EDITOR_UI_ASSET_BEHAVIOR) {
-        game_behavior_world *behaviors = scene->live->behaviors;
-        if (document_asset_active(
-                scene,
-                APP_EDITOR_DOCUMENT_BEHAVIOR,
-                game_behavior_asset_name_at(behaviors, behavior_index)
-            )) {
-            return EDITOR_UI_ASSET_ACTIVE;
-        }
-    }
-    return EDITOR_UI_ASSET_SELECTED;
-}
-
 static void select_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
 {
     content_select_path(scene, entry->path);
@@ -2395,7 +2049,6 @@ int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path
 static void open_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
 {
     if (entry->directory) {
-        content_change_dir(scene, entry->path, true);
         return;
     }
     int prototype_index = content_prototype_index(scene, entry->path);
@@ -2417,186 +2070,6 @@ static void open_content_entry(app_scene_authoring *scene, const scene_content_e
             snprintf(scene->message, sizeof scene->message, "Could not open System asset.");
         }
     }
-}
-
-static int content_entry_at(const app_scene_authoring *scene, const char *path)
-{
-    for (int i = 0; i < acount(scene->content); i++) {
-        if (strcmp(scene->content[i].path, path) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static bool draw_content_item(app_scene_authoring *scene, int index)
-{
-    scene_content_entry *entry = &scene->content[index];
-    int prototype_index = -1;
-    int behavior_index = -1;
-    editor_ui_asset_kind kind = entry->directory
-                                  ? EDITOR_UI_ASSET_FOLDER
-                                  : content_entry_kind(scene, entry->path, &prototype_index, &behavior_index);
-    const char *name = content_basename(entry->path);
-    if (prototype_index >= 0) {
-        name = scene->prototypes[prototype_index].prototype->name;
-    } else if (behavior_index >= 0) {
-        game_behavior_world *behaviors = scene->live->behaviors;
-        name = game_behavior_asset_name_at(behaviors, behavior_index);
-    }
-    editor_ui_asset_selection
-        selection = content_entry_selection(scene, entry->path, kind, prototype_index, behavior_index);
-    bool pressed = scene->content_show_thumbnails
-                     ? editor_ui_asset_card(entry->path, name, kind, selection)
-                     : editor_ui_asset_row(entry->path, name, entry->path, kind, selection);
-    bool double_clicked = ImGui_IsItemHovered(0) && ImGui_IsMouseDoubleClicked(0);
-    if (pressed) {
-        select_content_entry(scene, entry);
-        if (entry->directory) {
-            open_content_entry(scene, entry);
-            return true;
-        }
-    }
-    if (double_clicked) {
-        open_content_entry(scene, entry);
-    }
-    if (ImGui_IsItemHovered(0) && ImGui_IsMouseReleased(1)) {
-        select_content_entry(scene, entry);
-        ImGui_OpenPopup("content_item_context", 0);
-    }
-    return false;
-}
-
-static int *content_visible_entries(const app_scene_authoring *scene)
-{
-    int *visible = NULL;
-    bool searching = scene->asset_search[0] != '\0';
-    if (searching) {
-        for (int i = 0; i < acount(scene->content); i++) {
-            const scene_content_entry *entry = &scene->content[i];
-            if (!entry->directory && asset_search_score(scene, entry->path) >= 0) {
-                apush(visible, i);
-                for (int j = acount(visible) - 1; j > 0; j--) {
-                    int current = visible[j];
-                    int previous = visible[j - 1];
-                    int current_score = asset_search_score(
-                        scene,
-                        scene->content[current].path
-                    );
-                    int previous_score = asset_search_score(
-                        scene,
-                        scene->content[previous].path
-                    );
-                    if (current_score < previous_score ||
-                        (current_score == previous_score &&
-                         strcmp(
-                             scene->content[current].path,
-                             scene->content[previous].path
-                         ) >= 0)) {
-                        break;
-                    }
-                    visible[j] = previous;
-                    visible[j - 1] = current;
-                }
-            }
-        }
-        return visible;
-    }
-    for (int directory = 1; directory >= 0; directory--) {
-        for (int i = 0; i < acount(scene->content); i++) {
-            const scene_content_entry *entry = &scene->content[i];
-            if ((int)entry->directory == directory &&
-                content_path_is_child(scene->content_dir, entry->path)) {
-                apush(visible, i);
-            }
-        }
-    }
-    return visible;
-}
-
-static void draw_content_item_popup(app_scene_authoring *scene)
-{
-    if (!ImGui_BeginPopup("content_item_context", 0)) {
-        return;
-    }
-    int index = scene->content_selected_path
-                  ? content_entry_at(scene, scene->content_selected_path)
-                  : -1;
-    if (index >= 0) {
-        scene_content_entry *entry = &scene->content[index];
-        ImGui_TextUnformatted(content_basename(entry->path));
-        ImGui_Separator();
-        if (ImGui_MenuItem("Open")) {
-            open_content_entry(scene, entry);
-            ImGui_CloseCurrentPopup();
-        }
-        if (ImGui_MenuItem("Refresh")) {
-            app_scene_authoring_refresh_content(scene);
-            ImGui_CloseCurrentPopup();
-        }
-    }
-    ImGui_EndPopup();
-}
-
-static void draw_content_background_popup(app_scene_authoring *scene)
-{
-    if (!ImGui_BeginPopupContextWindowEx("content_background_context", CONTENT_POPUP_NO_OPEN_OVER_ITEMS)) {
-        return;
-    }
-    if (ImGui_MenuItem("Refresh")) {
-        app_scene_authoring_refresh_content(scene);
-        ImGui_CloseCurrentPopup();
-    }
-    if (ImGui_MenuItem("Back")) {
-        content_go_back(scene);
-        ImGui_CloseCurrentPopup();
-    }
-    if (ImGui_MenuItem("Forward")) {
-        content_go_forward(scene);
-        ImGui_CloseCurrentPopup();
-    }
-    ImGui_EndPopup();
-}
-
-static void draw_content_items(app_scene_authoring *scene)
-{
-    int *visible = content_visible_entries(scene);
-    if (!ImGui_BeginChild("content_items", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
-        ImGui_EndChild();
-        afree(visible);
-        return;
-    }
-    if (!acount(visible)) {
-        ImGui_TextUnformatted(
-            scene->asset_search[0] ? "No matching assets." : "This folder is empty."
-        );
-    }
-    float width = ImGui_GetContentRegionAvail().x;
-    int columns = (int)(width / (EDITOR_UI_ASSET_CARD_WIDTH + 12.0f));
-    if (columns < 1) {
-        columns = 1;
-    }
-    int column = 0;
-    for (int i = 0; i < acount(visible); i++) {
-        ImGui_PushIDInt(visible[i]);
-        bool changed_directory = draw_content_item(scene, visible[i]);
-        ImGui_PopID();
-        if (changed_directory) {
-            break;
-        }
-        if (scene->content_show_thumbnails) {
-            column++;
-            if (column < columns) {
-                ImGui_SameLine();
-            } else {
-                column = 0;
-            }
-        }
-    }
-    draw_content_item_popup(scene);
-    draw_content_background_popup(scene);
-    ImGui_EndChild();
-    afree(visible);
 }
 
 static int prototype_has_component_id(const game_prototype *prototype, ecs_component_id id)
@@ -3569,49 +3042,92 @@ static void draw_scene_inspector(app_scene_authoring *scene, const char *window_
     ImGui_End();
 }
 
+static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
+{
+    bool searching = scene->asset_search[0] != '\0';
+    bool any = false;
+    for (int i = 0; i < acount(scene->content); i++) {
+        scene_content_entry *entry = &scene->content[i];
+        if (searching) {
+            if (entry->directory || asset_search_score(scene, entry->path) < 0) {
+                continue;
+            }
+        } else if (!content_path_is_child(parent, entry->path)) {
+            continue;
+        }
+        any = true;
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
+        if (!entry->directory) {
+            flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+        }
+        if (scene->content_selected_path &&
+            strcmp(scene->content_selected_path, entry->path) == 0) {
+            flags |= ImGuiTreeNodeFlags_Selected;
+        }
+        ImGui_PushID(entry->path);
+        bool open = ImGui_TreeNodeEx(
+            searching ? entry->path : content_basename(entry->path),
+            flags
+        );
+        editor_ui_track_item(entry->path);
+        if (ImGui_IsItemClicked()) {
+            select_content_entry(scene, entry);
+        }
+        if (!entry->directory && ImGui_IsItemHovered(0) &&
+            ImGui_IsMouseDoubleClicked(0)) {
+            open_content_entry(scene, entry);
+        }
+        if (entry->directory && open) {
+            draw_content_tree(scene, entry->path);
+            ImGui_TreePop();
+        }
+        ImGui_PopID();
+    }
+    return any;
+}
+
 static void draw_content_drawer(app_scene_authoring *scene)
 {
     if (!editor_ui_content_drawer_open()) {
         return;
     }
-    /* Leave room for the source tree and discoverable asset cards. */
-    ImGui_SetNextWindowSize((ImVec2){ CONTENT_DRAWER_DEFAULT_WIDTH, 520.0f }, ImGuiCond_FirstUseEver);
-    static bool first_frame = true;
-    if (first_frame || editor_ui_take_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER)) {
+    ImGui_SetNextWindowSize((ImVec2){ 420.0f, 520.0f }, ImGuiCond_FirstUseEver);
+    if (editor_ui_take_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER)) {
         ImGui_SetNextWindowFocus();
-        ImGui_SetWindowFocusStr("Content Drawer");
-        first_frame = false;
     }
-    bool open = editor_ui_content_drawer_open();
-    if (!ImGui_Begin("Content Drawer", &open, 0)) {
-        ImGui_End();
-        editor_ui_set_content_drawer_open(open);
-        return;
-    }
-    ImGui_PushFontFloat(NULL, CONTENT_DRAWER_FONT_SIZE);
-    draw_content_toolbar(scene);
-    ImGui_TextUnformatted("Double-click a Behavior Asset to open its node graph. Focus the viewport and use WASD or arrow keys to move; Space fires.");
-    ImGui_Separator();
-    ImVec2 available = ImGui_GetContentRegionAvail();
-    float source_width = available.x < 720.0f ? CONTENT_DRAWER_SOURCE_WIDTH_NARROW
-                                              : CONTENT_DRAWER_SOURCE_WIDTH;
-    if (ImGui_BeginChild("content_sources", (ImVec2){ source_width, 0.0f }, 0, 0)) {
-        draw_content_sources(scene);
-    }
-    ImGui_EndChild();
-    ImGui_SameLine();
-    if (ImGui_BeginChild("content_browser", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
+    bool open = true;
+    if (ImGui_Begin("Content", &open, 0)) {
+        if (ImGui_Button("New Behavior")) {
+            create_behavior_asset(scene);
+        }
+        editor_ui_track_item("content.new_behavior");
+        ImGui_SameLine();
+        if (ImGui_Button("New Prototype")) {
+            create_new_prototype(scene);
+        }
+        editor_ui_track_item("content.new_prototype");
+        if (ImGui_Button("Refresh")) {
+            app_scene_authoring_refresh_content(scene);
+        }
+        editor_ui_track_item("content.refresh");
         editor_ui_search_field(
             "content_search",
             scene->asset_search,
             sizeof scene->asset_search,
-            "Search..."
+            "Search files..."
         );
+        editor_ui_track_item("content.search");
         ImGui_Separator();
-        draw_content_items(scene);
+        if (ImGui_BeginChild("content_tree", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
+            if (!draw_content_tree(scene, scene->content_root)) {
+                ImGui_TextUnformatted(
+                    scene->asset_search[0] ? "No matching files." : "No content yet."
+                );
+                editor_ui_track_item("content.empty");
+            }
+        }
+        ImGui_EndChild();
     }
-    ImGui_EndChild();
-    ImGui_PopFont();
     ImGui_End();
     editor_ui_set_content_drawer_open(open);
 }

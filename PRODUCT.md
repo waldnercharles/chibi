@@ -33,8 +33,9 @@ checks, and make the current source of truth easy to find.
   bytecode from the shared graph semantics.
 - Keep the smallest model that supports the gameplay slice. Delete dead or
   duplicate abstractions instead of preserving them for history.
-- Correctness tests are mandatory regression gates. Computer-use verification is
-  mandatory for editor usability.
+- Correctness tests are mandatory regression gates. Real native UI interaction
+  tests are mandatory for editor usability, including content navigation and
+  asset creation/editing.
 
 ## First gameplay slice after cleanup
 
@@ -56,5 +57,5 @@ this loop is usable and verified.
 - `make ui-integration` drives the real native editor deterministically and
   asserts the visible document, Node Canvas, and graph state. Screenshots and
   computer-use walkthroughs are diagnostic only, not UI evidence.
-- A future JSON adapter may expose the typed C command/query API to an isolated
-  external agent; it is not a second authoring model.
+- Content uses one docked file tree with search, not parallel thumbnail/list
+  browsers. UI actions reuse the authoring commands tested by the suite.

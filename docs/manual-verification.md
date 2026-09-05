@@ -10,9 +10,13 @@ make ui-integration
 
 This builds in `build/` with sanitizers, warnings and ccache enabled. The suite
 runs model/command checks and real native ImGui interactions in a hidden window.
-The UI smoke test opens the behaviors folder and InputBehavior using rendered
-asset-card centers, then asserts the active Behavior Asset, Node Canvas state and
-expected event node. It ignores personal ImGui layout settings. The app's
+The UI test locates rendered controls by semantic IDs, not fixed coordinates. It
+opens InputBehavior, asserts the active Behavior Asset and Node Canvas, collapses
+and expands folders, opens Player, and creates a Behavior Asset and Prototype.
+It edits the Prototype through the shared field command, drives Save As/reload
+through the Document menu, checks the saved values and file-tree discovery, tests
+unmatched search, and closes/reopens Content. Saves use a temporary directory,
+not repository content. It ignores personal ImGui layout settings. The app's
 resize scenario injects a press/drag/release and asserts a 240-pixel pane change.
 A working native graphics backend is still required; hidden-window is not
 GPU-free execution.
@@ -44,6 +48,11 @@ The surviving assertion scenarios run without recording. `--record` and the
 `record-evidence` / `record-resize-pane` make targets have been removed.
 
 ## Next gameplay acceptance path
+
+Content is now a docked file tree with search and New Behavior/New Prototype
+buttons. Double-click a file to open it. Document exposes Save, Save As, Reload,
+Undo and Redo; the Content menu item hides/reopens the tree. Thumbnail/list modes,
+breadcrumbs, back/forward history and the second folder browser were removed.
 
 Create/open a Prototype and Behavior Asset; edit reflected fields and graph
 literals; save/compile; run, inspect, stop and reload. Then extend to graph-authored

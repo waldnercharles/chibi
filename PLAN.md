@@ -26,7 +26,11 @@ Build an Unreal-style visual event graph capable of authoring a small Neon-Swarm
 
 First cleanup removes video machinery and false assertions, fixes the Content Drawer default size, and locates rendered asset cards by path. The harness ignores personal ImGui settings and drives real clicks to open the behaviors folder and InputBehavior.
 
-Remaining: share native/test startup to prevent component-registration drift; test opening the drawer through its actual command; add a real graph edit/save/reload interaction and assert rendered graph/node visibility, not just model presence. Move the surviving app-side authoring/resize scenarios into the same harness when touching their startup. Verify failure sensitivity and repeatability. Do not close #25 on the existing smoke test alone.
+The next cleanup replaces the thumbnail/list drawer, breadcrumbs, folder history and duplicate source browser with one docked Content file tree. The native test now covers folder collapse/expand, opening Behavior Assets and Prototypes, creating both asset kinds, Prototype Save As/reload through the Document menu, discovery of the saved file, unmatched search, and closing/reopening Content. Prototype edits in this scenario use the shared field-edit command; saves use an isolated temporary directory. Creating a Behavior Asset after navigating through another asset exposed a stale graph-preview cache and a borrowed temporary document name; both ownership errors are fixed.
+
+Remaining: share native/test startup to prevent component-registration drift; drive reflected field edits and graph edit/save/reload through widgets as well as commands; cover entity creation, selection, editing and deletion; assert rendered graph/node visibility, not just model presence. Move the surviving app-side authoring/resize scenarios into the same harness when touching their startup. Do not close #25 on the current scenarios alone.
+
+Next graph slice: remove Exec pins from read-only component Get/Has operations while preserving ordered mutation nodes. Test reads before/after writes so demand evaluation cannot silently return stale component values, migrate persisted graphs, and verify search/spawn/editing in the real editor. Then replace C movement/firing policy with the authored gameplay slices below; particles follow movement and shooting.
 
 ### 2. Finish one editing transaction (#2/#9)
 

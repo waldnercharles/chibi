@@ -3394,6 +3394,9 @@ static int ed_adopt_behavior_asset(editor *e, const char *json)
     if (!fresh) {
         return -1;
     }
+    /* The value preview borrows nodes from the old asset. */
+    eval_view_free(e->ev);
+    e->ev = eval_view_new();
     behavior_asset_free(e->bp);
     e->bp = fresh;
     e->active_graph = behavior_asset_find_graph(e->bp, active_graph_id);

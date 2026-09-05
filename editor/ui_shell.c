@@ -16,14 +16,7 @@
 #define UI_LEFT_RATIO 0.18f
 #define UI_RIGHT_RATIO 0.20f
 #define UI_BOTTOM_RATIO 0.25f
-
-enum
-{
-    UI_ASSET_GLYPH_PROTOTYPE = 0xf1b2,
-    UI_ASSET_GLYPH_BEHAVIOR = 0xf126,
-    UI_ASSET_GLYPH_FOLDER = 0xf07b,
-    UI_ASSET_GLYPH_FILE = 0xf15b,
-};
+#define UI_CONTENT_RATIO 0.55f
 
 static const ImVec4 UI_TEXT = { 0.90f, 0.93f, 0.97f, 1.0f };
 static const ImVec4 UI_TEXT_MUTED = { 0.52f, 0.58f, 0.67f, 1.0f };
@@ -48,45 +41,11 @@ static const ImVec4 UI_TAB_HOVER = { 0.18f, 0.30f, 0.43f, 1.0f };
 static const ImVec4 UI_ACCENT = { 0.45f, 0.67f, 1.0f, 1.0f };
 static const ImVec4 UI_DOCK_PREVIEW = { 0.36f, 0.60f, 0.92f, 0.55f };
 static const ImVec4 UI_DOCK_EMPTY = { 0.045f, 0.059f, 0.082f, 1.0f };
-static const ImVec4 UI_ROW_HOVER = { 0.13f, 0.19f, 0.27f, 1.0f };
-static const ImVec4 UI_ROW_SELECTED = { 0.14f, 0.23f, 0.34f, 1.0f };
-static const ImVec4 UI_ROW_SECONDARY = { 0.08f, 0.11f, 0.16f, 1.0f };
-static const ImVec4 UI_ICON_PURPLE = { 0.72f, 0.60f, 1.0f, 1.0f };
-static const ImVec4 UI_ICON_PURPLE_BG = { 0.20f, 0.16f, 0.32f, 1.0f };
-static const ImVec4 UI_ICON_BLUE = { 0.44f, 0.67f, 1.0f, 1.0f };
-static const ImVec4 UI_ICON_BLUE_BG = { 0.11f, 0.21f, 0.36f, 1.0f };
-static const ImVec4 UI_ICON_FOLDER = { 0.95f, 0.74f, 0.39f, 1.0f };
-static const struct
-{
-    ImWchar glyph;
-    ImVec4 color;
-    ImVec4 background;
-} UI_ASSET_STYLE[] = {
-    [EDITOR_UI_ASSET_PROTOTYPE] = { UI_ASSET_GLYPH_PROTOTYPE, UI_ICON_PURPLE, UI_ICON_PURPLE_BG },
-    [EDITOR_UI_ASSET_BEHAVIOR] = { UI_ASSET_GLYPH_BEHAVIOR, UI_ICON_BLUE, UI_ICON_BLUE_BG },
-    [EDITOR_UI_ASSET_FOLDER] = { UI_ASSET_GLYPH_FOLDER, UI_ICON_FOLDER, UI_ICON_PURPLE_BG },
-    [EDITOR_UI_ASSET_FILE] = { UI_ASSET_GLYPH_FILE, UI_TEXT_MUTED, UI_FRAME },
-    [EDITOR_UI_ASSET_SYSTEM] = { UI_ASSET_GLYPH_FILE, UI_ACCENT, UI_ICON_BLUE_BG },
-};
 static const float UI_SECTION_HEIGHT = 28.0f;
 static const float UI_SECTION_ACTION_SIZE = 22.0f;
 static const float UI_SECTION_FONT_OFFSET = 1.0f;
 static const float UI_SECTION_LABEL_OFFSET = 1.0f;
-static const float UI_ASSET_ROW_HEIGHT = 44.0f;
-static const float UI_ASSET_ICON_X = 8.0f;
-static const float UI_ASSET_ICON_BACKGROUND_SIZE = 30.0f;
-static const float UI_ASSET_ICON_BACKGROUND_ROUNDING = 6.0f;
-static const float UI_ASSET_ICON_SIZE = 14.0f;
-static const float UI_ASSET_TEXT_X = 45.0f;
-static const float UI_ASSET_TEXT_TOP = 7.0f;
-static const float UI_ASSET_DETAIL_OFFSET = 19.0f;
 static const int UI_PRIMARY_MOUSE_BUTTON = 0;
-static const float UI_ASSET_TEXT_RIGHT = 24.0f;
-static const float UI_ASSET_CARD_PREVIEW_HEIGHT = 86.0f;
-static const float UI_ASSET_CARD_ICON_BACKGROUND_SIZE = 54.0f;
-static const float UI_ASSET_CARD_ICON_BACKGROUND_ROUNDING = 8.0f;
-static const float UI_ASSET_CARD_ICON_SIZE = 30.0f;
-static const float UI_ASSET_CARD_TEXT_INSET = 8.0f;
 static const ImWchar UI_SEARCH_GLYPH = 0xf002;
 
 static ImGuiContext *ui_context;
@@ -153,36 +112,6 @@ static ImU32 ui_color(ImVec4 color)
 static ImVec2 ui_pixel_pos(ImVec2 pos)
 {
     return (ImVec2){ (float)(int)(pos.x + 0.5f), (float)(int)(pos.y + 0.5f) };
-}
-
-static void ui_draw_selection(
-    ImDrawList *draw,
-    ImVec2 min,
-    ImVec2 max,
-    float rounding,
-    editor_ui_asset_selection selection,
-    bool hovered
-)
-{
-    bool selected = selection != EDITOR_UI_ASSET_NOT_SELECTED;
-    bool active = selection == EDITOR_UI_ASSET_ACTIVE;
-    if (selected || hovered) {
-        ImVec4 color = active   ? UI_ROW_SELECTED
-                     : selected ? UI_ROW_SECONDARY
-                                : UI_ROW_HOVER;
-        ImDrawList_AddRectFilledEx(draw, min, max, ui_color(color), rounding, ImDrawFlags_RoundCornersAll);
-    }
-    if (active || selected) {
-        ImDrawList_AddRectEx(
-            draw,
-            min,
-            max,
-            ui_color(active ? UI_ACCENT : UI_BORDER),
-            rounding,
-            ImDrawFlags_RoundCornersAll,
-            1.0f
-        );
-    }
 }
 
 static void ui_draw_centered_icon(
@@ -257,48 +186,6 @@ bool editor_ui_right_icon_button(const char *id, int glyph)
     ImGui_SameLine();
     ImGui_SetCursorPosX(ImGui_GetCursorPosX() + ImGui_GetContentRegionAvail().x - width);
     return editor_ui_icon_button(id, glyph, true);
-}
-
-void editor_ui_breadcrumb_separator(int glyph)
-{
-    const float height = ImGui_GetFrameHeight();
-    const ImVec2 min = ImGui_GetCursorScreenPos();
-    ImGui_Dummy((ImVec2){ 16.0f, height });
-    ui_draw_centered_icon(
-        ImGui_GetWindowDrawList(),
-        ImGui_GetFont(),
-        ImGui_GetFontSize() - 2.0f,
-        min,
-        (ImVec2){ min.x + 16.0f, min.y + height },
-        ui_color(UI_TEXT_MUTED),
-        (ImWchar)glyph
-    );
-}
-
-bool editor_ui_link(const char *id, const char *label)
-{
-    ImVec2 min = ImGui_GetCursorScreenPos();
-    ImVec2 text_size = ImGui_CalcTextSize(label);
-    const float height = ImGui_GetFrameHeight();
-    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ text_size.x, height }, ImGuiButtonFlags_None);
-    bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
-    if (hovered) {
-        ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    min.y += (height - text_size.y) * 0.5f;
-    min = ui_pixel_pos(min);
-    ImDrawList *draw = ImGui_GetWindowDrawList();
-    ImVec4 color = UI_TEXT;
-    ImDrawList_AddTextImFontPtr(draw, ImGui_GetFont(), ImGui_GetFontSize(), min, ui_color(color), label);
-    if (hovered) {
-        ImDrawList_AddLine(
-            draw,
-            (ImVec2){ min.x, min.y + text_size.y + 1.0f },
-            (ImVec2){ min.x + text_size.x, min.y + text_size.y + 1.0f },
-            ui_color(UI_TEXT)
-        );
-    }
-    return pressed;
 }
 
 bool editor_ui_search_field(const char *id, char *buffer, size_t buffer_size, const char *hint)
@@ -398,167 +285,38 @@ bool editor_ui_section_header(const char *label, const char *action_id)
     return pressed;
 }
 
-bool editor_ui_asset_row(
-    const char *id,
-    const char *name,
-    const char *detail,
-    editor_ui_asset_kind kind,
-    editor_ui_asset_selection selection
-)
-{
-    assert((unsigned)kind < sizeof UI_ASSET_STYLE / sizeof UI_ASSET_STYLE[0]);
-    const ImGuiStyle *style = ImGui_GetStyle();
-    float width = ImGui_GetContentRegionAvail().x;
-    if (width < 1.0f) {
-        width = 1.0f;
-    }
-    ImVec2 min = ImGui_GetCursorScreenPos();
-    ImVec2 max = { min.x + width, min.y + UI_ASSET_ROW_HEIGHT };
-    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, UI_ASSET_ROW_HEIGHT }, ImGuiButtonFlags_None);
-    bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
-    if (hovered) {
-        ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    ImDrawList *draw = ImGui_GetWindowDrawList();
-    ui_draw_selection(draw, min, max, style->FrameRounding, selection, hovered);
-
-    ImVec2 icon_min = { min.x + UI_ASSET_ICON_X,
-                        min.y + (UI_ASSET_ROW_HEIGHT - UI_ASSET_ICON_BACKGROUND_SIZE) *
-                                    0.5f };
-    ImVec2 icon_max = { icon_min.x + UI_ASSET_ICON_BACKGROUND_SIZE,
-                        icon_min.y + UI_ASSET_ICON_BACKGROUND_SIZE };
-    ImDrawList_AddRectFilledEx(
-        draw,
-        icon_min,
-        icon_max,
-        ui_color(UI_ASSET_STYLE[kind].background),
-        UI_ASSET_ICON_BACKGROUND_ROUNDING,
-        ImDrawFlags_RoundCornersAll
-    );
-    ui_draw_centered_icon(
-        draw,
-        ImGui_GetFont(),
-        UI_ASSET_ICON_SIZE,
-        icon_min,
-        icon_max,
-        ui_color(UI_ASSET_STYLE[kind].color),
-        UI_ASSET_STYLE[kind].glyph
-    );
-
-    float name_size = ImGui_GetFontSize() + UI_SECTION_FONT_OFFSET;
-    bool has_detail = detail && detail[0];
-    ImVec2 text_min = ui_pixel_pos((ImVec2){
-        min.x + UI_ASSET_TEXT_X,
-        min.y + (has_detail ? UI_ASSET_TEXT_TOP : (UI_ASSET_ROW_HEIGHT - name_size) * 0.5f),
-    });
-    ImVec2 text_max = { max.x - UI_ASSET_TEXT_RIGHT, max.y };
-    ImDrawList_PushClipRect(draw, text_min, text_max, true);
-    ImDrawList_AddTextImFontPtr(draw, ImGui_GetFont(), name_size, text_min, ui_color(UI_TEXT), name);
-    if (has_detail) {
-        ImDrawList_AddTextImFontPtr(
-            draw,
-            ImGui_GetFont(),
-            ImGui_GetFontSize() - 3.0f,
-            ui_pixel_pos((ImVec2){ text_min.x, text_min.y + UI_ASSET_DETAIL_OFFSET }),
-            ui_color(UI_TEXT_MUTED),
-            detail
-        );
-    }
-    ImDrawList_PopClipRect(draw);
-    return pressed;
-}
-
 typedef struct
 {
     ImGuiID id;
     ImVec2 center;
-} ui_asset_hit;
+} ui_item_hit;
 
-static ui_asset_hit *ui_asset_hits;
+static ui_item_hit *ui_item_hits;
 
-bool editor_ui_asset_center(const char *id, float *x, float *y)
+bool editor_ui_item_center(const char *id, float *x, float *y)
 {
     ImGuiID hash = cImHashStr(id);
-    for (int i = 0; i < acount(ui_asset_hits); i++) {
-        if (ui_asset_hits[i].id == hash) {
-            *x = ui_asset_hits[i].center.x;
-            *y = ui_asset_hits[i].center.y;
+    for (int i = 0; i < acount(ui_item_hits); i++) {
+        if (ui_item_hits[i].id == hash) {
+            *x = ui_item_hits[i].center.x;
+            *y = ui_item_hits[i].center.y;
             return true;
         }
     }
     return false;
 }
 
-bool editor_ui_asset_card(const char *id, const char *name, editor_ui_asset_kind kind, editor_ui_asset_selection selection)
+void editor_ui_track_item(const char *id)
 {
-    assert((unsigned)kind < sizeof UI_ASSET_STYLE / sizeof UI_ASSET_STYLE[0]);
-    const ImGuiStyle *style = ImGui_GetStyle();
-    const float width = EDITOR_UI_ASSET_CARD_WIDTH;
-    const float height = EDITOR_UI_ASSET_CARD_HEIGHT;
-    ImVec2 min = ImGui_GetCursorScreenPos();
-    ImVec2 max = { min.x + width, min.y + height };
-    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ width, height }, ImGuiButtonFlags_None);
-    if (ImGui_IsItemVisible()) {
-        apush(
-            ui_asset_hits,
-            ((ui_asset_hit){ cImHashStr(id),
-                             { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f } })
-        );
+    if (!ImGui_IsItemVisible()) {
+        return;
     }
-    bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_None);
-    if (hovered) {
-        ImGui_SetMouseCursor(ImGuiMouseCursor_Hand);
-    }
-    ImDrawList *draw = ImGui_GetWindowDrawList();
-    ui_draw_selection(draw, min, max, style->FrameRounding, selection, hovered);
-
-    ImVec2 preview_min = { min.x + 6.0f, min.y + 6.0f };
-    ImVec2 preview_max = { max.x - 6.0f, preview_min.y + UI_ASSET_CARD_PREVIEW_HEIGHT };
-    ImDrawList_AddRectFilledEx(
-        draw,
-        preview_min,
-        preview_max,
-        ui_color(UI_FRAME),
-        UI_ASSET_CARD_ICON_BACKGROUND_ROUNDING,
-        ImDrawFlags_RoundCornersAll
+    ImVec2 min = ImGui_GetItemRectMin();
+    ImVec2 max = ImGui_GetItemRectMax();
+    apush(
+        ui_item_hits,
+        ((ui_item_hit){ cImHashStr(id), { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f } })
     );
-    ImVec2 icon_min = {
-        min.x + (width - UI_ASSET_CARD_ICON_BACKGROUND_SIZE) * 0.5f,
-        preview_min.y +
-            (UI_ASSET_CARD_PREVIEW_HEIGHT - UI_ASSET_CARD_ICON_BACKGROUND_SIZE) * 0.5f,
-    };
-    ImVec2 icon_max = {
-        icon_min.x + UI_ASSET_CARD_ICON_BACKGROUND_SIZE,
-        icon_min.y + UI_ASSET_CARD_ICON_BACKGROUND_SIZE,
-    };
-    ImDrawList_AddRectFilledEx(
-        draw,
-        icon_min,
-        icon_max,
-        ui_color(UI_ASSET_STYLE[kind].background),
-        UI_ASSET_CARD_ICON_BACKGROUND_ROUNDING,
-        ImDrawFlags_RoundCornersAll
-    );
-    ui_draw_centered_icon(
-        draw,
-        ImGui_GetFont(),
-        UI_ASSET_CARD_ICON_SIZE,
-        icon_min,
-        icon_max,
-        ui_color(UI_ASSET_STYLE[kind].color),
-        UI_ASSET_STYLE[kind].glyph
-    );
-
-    float name_size = ImGui_GetFontSize() + UI_SECTION_FONT_OFFSET;
-    ImVec2 text_min = ui_pixel_pos((ImVec2){
-        min.x + UI_ASSET_CARD_TEXT_INSET,
-        preview_max.y + 8.0f,
-    });
-    ImVec2 text_max = { max.x - UI_ASSET_CARD_TEXT_INSET, max.y };
-    ImDrawList_PushClipRect(draw, text_min, text_max, true);
-    ImDrawList_AddTextImFontPtr(draw, ImGui_GetFont(), name_size, text_min, ui_color(UI_TEXT), name);
-    ImDrawList_PopClipRect(draw);
-    return pressed;
 }
 
 static void ui_apply_theme(void)
@@ -675,6 +433,8 @@ static void ui_build_default_layout(void)
     ImGuiID center;
     ImGuiID bottom;
     ImGuiID canvas;
+    ImGuiID content;
+    ImGuiID outliner;
 
     if (ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID)) {
         ImGui_DockBuilderRemoveNode(UI_DOCKSPACE_ID);
@@ -686,8 +446,13 @@ static void ui_build_default_layout(void)
     ui_left_pane_id = left;
     ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_RIGHT_RATIO, &right, &center);
     ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &canvas);
-    ImGui_DockBuilderDockWindow("World Outliner", left);
+    ImGui_DockBuilderSplitNode(left, ImGuiDir_Down, UI_CONTENT_RATIO, &content, &outliner);
+    ImGui_DockBuilderDockWindow("Content", content);
+    ImGui_DockBuilderDockWindow("World Outliner", outliner);
+    ImGui_DockBuilderDockWindow("Components", outliner);
+    ImGui_DockBuilderDockWindow("My Behavior Asset", outliner);
     ImGui_DockBuilderDockWindow("Inspector", right);
+    ImGui_DockBuilderDockWindow("Scene Runtime", right);
     ImGui_DockBuilderDockWindow("Output Log", bottom);
     ImGui_DockBuilderDockWindow("Compiler Results", bottom);
     ImGui_DockBuilderDockWindow("Node Canvas", canvas);
@@ -696,14 +461,35 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
 
+static void ui_document_action(const char *label, const char *id, editor_ui_command command)
+{
+    if (ImGui_MenuItemEx(label, NULL, false, ui_command_handler != NULL)) {
+        ui_command_handler(command, ui_command_user);
+    }
+    editor_ui_track_item(id);
+}
+
 static void ui_draw_menu(void)
 {
     if (!ImGui_BeginMainMenuBar()) {
         return;
     }
     ImGui_TextColoredUnformatted(UI_ACCENT, "C Behavior Assets");
-    ImGui_SameLine();
-    ImGui_TextDisabledUnformatted("Document Workspace");
+    bool open = ImGui_BeginMenu("Document");
+    editor_ui_track_item("document.menu");
+    if (open) {
+        ui_document_action("Save", "document.save", EDITOR_UI_COMMAND_SAVE);
+        ui_document_action("Save As", "document.save_as", EDITOR_UI_COMMAND_SAVE_AS);
+        ui_document_action("Reload", "document.reload", EDITOR_UI_COMMAND_RELOAD);
+        ImGui_Separator();
+        ui_document_action("Undo", "document.undo", EDITOR_UI_COMMAND_UNDO);
+        ui_document_action("Redo", "document.redo", EDITOR_UI_COMMAND_REDO);
+        ImGui_EndMenu();
+    }
+    if (ImGui_MenuItemEx("Content", NULL, ui_content_drawer_open, true)) {
+        editor_ui_set_content_drawer_open(!ui_content_drawer_open);
+    }
+    editor_ui_track_item("content.toggle");
     ImGui_EndMainMenuBar();
 }
 
@@ -777,7 +563,7 @@ float editor_ui_left_pane_center_y(void)
 
 void editor_ui_prepare(void)
 {
-    afree(ui_asset_hits);
+    afree(ui_item_hits);
     ImGuiContext *context = ImGui_GetCurrentContext();
     if (!context) {
         return;

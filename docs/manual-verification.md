@@ -16,8 +16,11 @@ and expands folders, opens Player, and creates a Behavior Asset and Prototype.
 It edits the Prototype through the shared field command, drives Save As/reload
 through the Document menu, checks the saved values and file-tree discovery, tests
 unmatched search, and closes/reopens Content. Saves use a temporary directory,
-not repository content. It ignores personal ImGui layout settings. The app's
-resize scenario injects a press/drag/release and asserts a 240-pixel pane change.
+not repository content. It ignores personal ImGui layout settings. Graph checks
+also place a Has node through the shared authoring command, reveal
+the component reader, and assert that Get/Has actually draw one data pin and no
+Exec pins. The ImGui clock is fixed independently of the host's frame timing.
+The app's resize scenario injects a press/drag/release and asserts a 240-pixel pane change.
 A working native graphics backend is still required; hidden-window is not
 GPU-free execution.
 

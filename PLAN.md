@@ -30,7 +30,9 @@ The next cleanup replaces the thumbnail/list drawer, breadcrumbs, folder history
 
 Remaining: share native/test startup to prevent component-registration drift; drive reflected field edits and graph edit/save/reload through widgets as well as commands; cover entity creation, selection, editing and deletion; assert rendered graph/node visibility, not just model presence. Move the surviving app-side authoring/resize scenarios into the same harness when touching their startup. Do not close #25 on the current scenarios alone.
 
-Next graph slice: remove Exec pins from read-only component Get/Has operations while preserving ordered mutation nodes. Test reads before/after writes so demand evaluation cannot silently return stale component values, migrate persisted graphs, and verify search/spawn/editing in the real editor. Then replace C movement/firing policy with the authored gameplay slices below; particles follow movement and shooting.
+Component Get/Has nodes now have data outputs only. Contextual reads use the activation's service snapshot, copy component values into activation storage, and re-evaluate for each consuming execution step. Regression tests cover a read before/after a write, Has with/without the component, missing-Get diagnostics, and migration of legacy execution chains. The loader preserves data pin IDs and bypasses the old execution pins; invalid cyclic reader wiring is rejected rather than silently erased. Bundled InputBehavior uses the new layout. The native harness opens it, places Has through the shared authoring command, reveals the reader and asserts the pins actually drawn in the canvas. Reveal now focuses the canvas tab.
+
+Next: replace C movement/firing policy with the authored gameplay slices below; particles follow movement and shooting. Expand actual spawn-menu and widget-edit interaction coverage alongside those assets.
 
 ### 2. Finish one editing transaction (#2/#9)
 

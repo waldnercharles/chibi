@@ -99,19 +99,35 @@ static int app_integration_check(app_loop *loop)
     int nodes = query.active_graph ? acount(query.active_graph->nodes) : 0;
     const char *selected = app_scene_authoring_selected_content(loop->authoring);
     int expected_node = 0;
+    int pure_reads = 0;
     for (int i = 0; i < nodes; i++) {
         const node *current = query.active_graph->nodes[i];
         if (current->desc && current->desc->name &&
             strcmp(current->desc->name, "Event") == 0 && current->reference_name &&
             strcmp(current->reference_name, "Input") == 0) {
             expected_node = 1;
-            break;
+        }
+        if (current->desc == &GAME_NODE_Get_GameTransform ||
+            current->desc == &GAME_NODE_Has_GameHealth) {
+            editor_node_ui visible;
+            bool drawn = editor_query_node_ui(loop->graph_editor, current->id, &visible);
+            printf(
+                "ui-node %s drawn=%d data=%d exec=%d\n",
+                current->desc->name,
+                drawn,
+                visible.data_pins,
+                visible.exec_pins
+            );
+            if (drawn && visible.exec_pins == 0 && visible.data_pins == 1) {
+                pure_reads++;
+            }
         }
     }
     int ok = editor_ui_content_drawer_open() &&
              document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
              strcmp(document.id, "InputBehavior") == 0 && query.graph_visible &&
-             expected_node && app_scene_authoring_message(loop->authoring) &&
+             expected_node && pure_reads == 2 &&
+             app_scene_authoring_message(loop->authoring) &&
              strstr(app_scene_authoring_message(loop->authoring), "Editing behavior asset") !=
                  NULL;
     const char *result = ok ? "PASS" : "FAIL";
@@ -128,6 +144,10 @@ static int app_integration_check(app_loop *loop)
         app_scene_authoring_message(loop->authoring)
             ? app_scene_authoring_message(loop->authoring)
             : "(none)"
+    );
+    printf(
+        "ui-pure-nodes %s: Get/Has each draw one data pin and no Exec pins\n",
+        pure_reads == 2 ? "PASS" : "FAIL"
     );
     return ok ? 0 : -1;
 }
@@ -157,6 +177,29 @@ static int app_frame(app_loop *loop)
         return 1;
     }
     int step = loop->frame - 3;
+    if (step == 8) {
+        editor_query query;
+        editor_query_state(loop->graph_editor, &query);
+        for (int i = 0; query.active_graph && i < acount(query.active_graph->nodes);
+             i++) {
+            const node *n = query.active_graph->nodes[i];
+            if (n->desc != &GAME_NODE_Get_GameTransform) {
+                continue;
+            }
+            editor_command command = {
+                .kind = EDITOR_COMMAND_SPAWN_NODE,
+                .data.spawn_node = { &GAME_NODE_Has_GameHealth, n->x, n->y + 120.0f },
+            };
+            loop->integration_failed |= editor_command_apply(loop->graph_editor, command) !=
+                                        0;
+            loop->integration_failed |= editor_reveal_node_by_id(
+                                            loop->graph_editor,
+                                            query.active_graph->graph_id,
+                                            n->id
+                                        ) != 0;
+            break;
+        }
+    }
     if (step == 40) {
         strcpy(loop->content_root, "/tmp/c-blueprints-ui-XXXXXX");
         if (!mkdtemp(loop->content_root) ||

@@ -19,6 +19,10 @@ may contain an entry graph and additional function or macro graphs.
 **Component** — Durable, inspectable state owned by an entity. Components are the
 shared boundary between behaviors, systems, rendering, and persistence.
 
+Component Get/Has nodes are read-only data nodes: they have no execution pins.
+Their values are read on demand for the consuming execution step, not frozen for
+an entire event. Set/Add/Remove operations mutate state and retain execution pins.
+
 ## Runtime
 
 **Entity** — A live object in a runtime world. It has a stable identity for its

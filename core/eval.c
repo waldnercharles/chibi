@@ -5,6 +5,18 @@
 #include "pin_conv.h"
 #include "runtime.h"
 
+#include <string.h>
+
+void *eval_context_service(const eval_context *ctx, const char *type_name)
+{
+    for (int i = 0; i < acount(ctx->services); i++) {
+        if (strcmp(ctx->services[i].type_name, type_name) == 0) {
+            return ctx->services[i].value;
+        }
+    }
+    return NULL;
+}
+
 void eval_context_init(eval_context *ctx)
 {
     if (ctx) {
@@ -116,6 +128,8 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
     eval_context nested;
     eval_context_init(&nested);
     nested.instance = ctx->instance;
+    nested.services = ctx->services;
+    nested.delta_seconds = ctx->delta_seconds;
     nested.call_depth = ctx->call_depth + 1;
     nested.on_data_edge = ctx->on_data_edge;
     nested.on_data_edge_user = ctx->on_data_edge_user;
@@ -285,6 +299,13 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             }
             break;
         case NODE_PURE_VOID_CALL: break;
+        case NODE_PURE_READ: {
+            const char *error = n->desc->read(ctx, a, &outputs[0]);
+            if (error) {
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, error);
+            }
+            break;
+        }
     }
     runtime_node_set_computed(state, 1);
     runtime_node_set_visiting(state, 0);

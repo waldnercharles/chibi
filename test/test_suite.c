@@ -1042,16 +1042,150 @@ static void run_ecs_checks(void)
     check(
         GAME_GameTransform_has(generated_world, generated_entity) &&
             GAME_GameHealth_has(generated_world, generated_entity) &&
-            GAME_NODE_Get_GameTransform.flow &&
-            GAME_NODE_Set_GameTransform.flow && GAME_NODE_Has_GameHealth.flow &&
+            node_desc_is_pure(&GAME_NODE_Get_GameTransform) &&
+            GAME_NODE_Set_GameTransform.flow &&
+            node_desc_is_pure(&GAME_NODE_Has_GameHealth) &&
             GAME_NODE_Add_GameHealth.flow && GAME_NODE_Remove_GameHealth.flow,
-        "generated Get, Set, Has, Add, and Remove nodes are emitted"
+        "component reads have no Exec pins; component mutations remain ordered"
     );
     ecs_world_free(generated_world);
 
     ecs_world_free(same);
     ecs_world_free(reverse);
     ecs_world_free(ordered);
+    ecs_world_free(world);
+}
+
+static void run_component_read_checks()
+{
+    ecs_world *world = ecs_world_new();
+    ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_entity entity = ecs_world_create_entity(world);
+    GAME_GameHealth_add(world, entity, 0);
+    ecs_world_apply_commands(world);
+    *GAME_GameHealth_get(world, entity) = (GameHealth){ 12, 100 };
+
+    behavior_asset *asset = behavior_asset_new("ReadAfterWrite");
+    behavior_asset_set_owner_type(asset, "ecs.entity");
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    graph_set_event_name(g, event, "Tick");
+    node *get = graph_add_node(g, &GAME_NODE_Get_GameHealth);
+    node *before = graph_add_node(g, &GAME_NODE_Set_GameHealth);
+    node *write = graph_add_node(g, &GAME_NODE_Set_GameHealth);
+    node *after = graph_add_node(g, &GAME_NODE_Set_GameHealth);
+    node *value = graph_add_node(g, registry_node_by_name("Make_GameHealth"));
+    graph_set_pin_default(g, value, 0, 0, &(pin_value){ .type = PIN_I32, .i = 42 });
+    graph_set_pin_default(g, value, 0, 1, &(pin_value){ .type = PIN_I32, .i = 100 });
+    check(
+        graph_connect_exec(g, event, 0, before, 0, 0) == 0 &&
+            graph_connect_exec(g, before, 0, write, 0, 0) == 0 &&
+            graph_connect_exec(g, write, 0, after, 0, 0) == 0 &&
+            graph_connect_data(g, get, 0, before, 1) == 0 &&
+            graph_connect_data(g, value, 0, write, 1) == 0 &&
+            graph_connect_data(g, get, 0, after, 1) == 0,
+        "component reads connect directly as data, without execution wiring"
+    );
+
+    pin_value owner = { .type = PIN_HANDLE,
+                        .type_name = "ecs.entity",
+                        .u64 = ecs_entity_to_u64(entity) };
+    behavior_instance *instance = behavior_instance_create(asset, &owner, NULL, NULL);
+    behavior_instance_bind_service(instance, "ecs.world", world);
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, &error);
+    if (!run) {
+        fprintf(stderr, "component read dispatch failed: %s\n", error.message);
+    }
+    if (run && flow_run_status(run) != FLOW_COMPLETED) {
+        fprintf(stderr, "component read failed: %s\n", flow_run_error(run)->message);
+    }
+    check(
+        run && flow_run_status(run) == FLOW_COMPLETED &&
+            GAME_GameHealth_get_const(world, entity)->current == 42,
+        "the same pure component read observes a write later in the activation"
+    );
+    behavior_instance_destroy(instance);
+
+    /* Version-3 component readers used to carry Exec/Then pins. */
+    pin_spec exec = { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC };
+    graph_add_pin(g, get, 0, &exec);
+    exec.name = "Then";
+    graph_add_pin(g, get, 1, &exec);
+    graph_move_pin(g, get, 1, 1, 0);
+    graph_remove_edge(g, event, 0, before, 0);
+    graph_connect_exec(g, event, 0, get, 0, 0);
+    graph_connect_exec(g, get, 0, before, 0, 0);
+    char *json = behavior_asset_save_json(asset);
+    behavior_asset *loaded = behavior_asset_load_json(json);
+    node *read = loaded ? graph_node_by_id(loaded->graph, get->id) : NULL;
+    check(
+        read && read->input_count == 0 && read->output_count == 1 &&
+            read->output_pins[0].kind == PIN_DATA,
+        "opening a legacy asset removes Exec/Then pins from component readers"
+    );
+    if (loaded && read && read->input_count == 0) {
+        GAME_GameHealth_get(world, entity)->current = 12;
+        instance = behavior_instance_create(loaded, &owner, NULL, NULL);
+        behavior_instance_bind_service(instance, "ecs.world", world);
+        run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+        check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                GAME_GameHealth_get_const(world, entity)->current == 42,
+            "legacy execution wires bypass the read without losing later writes"
+        );
+        behavior_instance_destroy(instance);
+    }
+    behavior_asset_free(loaded);
+    free(json);
+
+    graph_remove_edge(g, get, 0, before, 0);
+    graph_connect_exec(g, get, 0, get, 0, 0);
+    json = behavior_asset_save_json(asset);
+    loaded = behavior_asset_load_json(json);
+    free(json);
+    check(loaded == NULL, "legacy readers with execution self-loops are rejected, not silently erased");
+    behavior_asset_free(loaded);
+
+    node *has = graph_add_node(g, &GAME_NODE_Has_GameHealth);
+    node *check_event = graph_add_node(g, &NODE_Event);
+    graph_set_event_name(g, check_event, "CheckPresence");
+    node *branch = graph_add_node(g, &NODE_Branch);
+    node *present = graph_add_node(g, &g_capture_desc);
+    node *absent = graph_add_node(g, &g_capture_desc);
+    graph_set_pin_default(g, present, 0, 1, &(pin_value){ .type = PIN_I32, .i = 1 });
+    graph_set_pin_default(g, absent, 0, 1, &(pin_value){ .type = PIN_I32, .i = 0 });
+    graph_connect_exec(g, check_event, 0, branch, 0, 0);
+    graph_connect_data(g, has, 0, branch, 1);
+    graph_connect_exec(g, branch, 0, present, 0, 0);
+    graph_connect_exec(g, branch, 1, absent, 0, 0);
+    /* Remove the synthetic legacy wiring before running this fresh graph. */
+    graph_remove_pin(g, get, 0, 0);
+    graph_remove_pin(g, get, 1, 0);
+    graph_connect_exec(g, event, 0, before, 0, 0);
+    instance = behavior_instance_create(asset, &owner, NULL, NULL);
+    behavior_instance_bind_service(instance, "ecs.world", world);
+    g_captured_int = -1;
+    run = behavior_instance_dispatch(instance, "CheckPresence", (flow_inputs){ 0 }, NULL);
+    check(
+        run && flow_run_status(run) == FLOW_COMPLETED && g_captured_int == 1,
+        "pure Has drives a Branch directly when the component exists"
+    );
+    GAME_GameHealth_remove(world, entity, 0);
+    ecs_world_apply_commands(world);
+    run = behavior_instance_dispatch(instance, "CheckPresence", (flow_inputs){ 0 }, NULL);
+    check(
+        run && flow_run_status(run) == FLOW_COMPLETED && g_captured_int == 0,
+        "pure Has returns false rather than failing for a missing component"
+    );
+    run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+    check(
+        run && flow_run_status(run) == FLOW_FAILED &&
+            strstr(flow_run_error(run)->message, "entity lacks component"),
+        "a missing component Get retains its actionable read diagnostic"
+    );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
     ecs_world_free(world);
 }
 
@@ -6315,6 +6449,7 @@ TEST_CASE(all_checks)
     }
 
     run_ecs_checks();
+    run_component_read_checks();
     run_prototype_checks();
     run_scene_document_checks();
     run_behavior_checks();

@@ -58,31 +58,8 @@
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 6,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
+          "inputs": [],
           "outputs": [
-            {
-              "id": 7,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
             {
               "id": 8,
               "name": "Value",
@@ -216,31 +193,8 @@
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 19,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
+          "inputs": [],
           "outputs": [
-            {
-              "id": 20,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
             {
               "id": 21,
               "name": "Value",
@@ -421,36 +375,12 @@
       ],
       "edges": [
         {
-          "from": 1,
-          "from_pin": 2,
-          "to": 5,
-          "to_pin": 6,
-          "kind": "exec",
-          "order": 0
-        },
-        {
           "from": 9,
           "from_pin": 12,
           "to": 14,
           "to_pin": 16,
           "kind": "data",
           "conversion": "game_transform_from_cf"
-        },
-        {
-          "from": 5,
-          "from_pin": 7,
-          "to": 18,
-          "to_pin": 19,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 18,
-          "from_pin": 20,
-          "to": 14,
-          "to_pin": 15,
-          "kind": "exec",
-          "order": 0
         },
         {
           "from": 1,
@@ -509,6 +439,14 @@
           "to_pin": 16,
           "kind": "data",
           "conversion": "game_transform_from_cf"
+        },
+        {
+          "from": 1,
+          "from_pin": 2,
+          "to": 14,
+          "to_pin": 15,
+          "kind": "exec",
+          "order": 0
         }
       ]
     }

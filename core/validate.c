@@ -59,6 +59,12 @@ static int node_desc_validate(const node_desc *d)
             break;
         case NODE_PURE_FUNCTION:
         case NODE_PURE_VOID_CALL: break;
+        case NODE_PURE_READ:
+            if (!d->read || !node_desc_is_pure(d) || d->input_count != 0 ||
+                d->output_count != 1) {
+                return 0;
+            }
+            break;
         default: return 0;
     }
     return 1;

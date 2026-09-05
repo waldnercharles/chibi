@@ -3,6 +3,7 @@
 
 #include "graph.h"
 #include "pin.h"
+#include "service.h"
 
 /* Runtime state belongs to one pull-eval context or flow activation. */
 typedef struct runtime_store runtime_store;
@@ -33,6 +34,7 @@ typedef struct eval_context
 {
     eval_status status;
     behavior_instance *instance; /* optional: variable/owner reads for Get/Self */
+    const service_binding *services; /* borrowed activation service snapshot */
     eval_data_edge_fn on_data_edge; /* optional pull-evaluation edge observer */
     void *on_data_edge_user;
     runtime_store *runtime; /* borrowed when attached by a flow run */
@@ -49,6 +51,7 @@ void eval_context_reset_runtime(eval_context *ctx);
 void eval_context_attach_runtime(eval_context *ctx, runtime_store *runtime);
 void eval_context_detach_runtime(eval_context *ctx);
 const eval_status *eval_context_status(const eval_context *ctx);
+void *eval_context_service(const eval_context *ctx, const char *type_name);
 int eval_context_input(const eval_context *ctx, const node *n, int pin, pin_value *out);
 int eval_context_output(const eval_context *ctx, const node *n, int pin, pin_value *out);
 

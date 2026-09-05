@@ -954,6 +954,51 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
     return 0;
 }
 
+/* Generated readers formerly had one Exec input and one Then continuation.
+ * Keep data pin IDs and bypass the old execution step when opening an asset. */
+static int migrate_component_reads(graph *g)
+{
+    for (int i = 0; i < acount(g->nodes); i++) {
+        node *n = g->nodes[i];
+        if (n->desc->pure_kind != NODE_PURE_READ ||
+            node_behavior_for(n) == NODE_BEHAVIOR_PURE) {
+            continue;
+        }
+        if (n->input_count != 1 || n->input_pins[0].kind != PIN_EXEC ||
+            n->output_count != 2 || n->output_pins[0].kind != PIN_EXEC ||
+            n->output_pins[1].kind != PIN_DATA) {
+            set_err("component reader has an unsupported legacy pin layout");
+            return -1;
+        }
+        edge *next = NULL;
+        for (int j = 0; j < acount(g->edges); j++) {
+            edge *e = &g->edges[j];
+            if (e->kind != GRAPH_EDGE_EXEC || e->from_id != n->id) {
+                continue;
+            }
+            if (next || e->to_id == n->id) {
+                set_err("legacy component reader has ambiguous or cyclic execution wiring");
+                return -1;
+            }
+            next = e;
+        }
+        if (next) {
+            for (int j = 0; j < acount(g->edges); j++) {
+                edge *e = &g->edges[j];
+                if (e->kind == GRAPH_EDGE_EXEC && e->to_id == n->id) {
+                    e->to_id = next->to_id;
+                    e->to_pin_id = next->to_pin_id;
+                    e->reroute_count = 0;
+                    e->custom_handles = false;
+                }
+            }
+        }
+        graph_remove_pin(g, n, 0, 0);
+        graph_remove_pin(g, n, 1, 0);
+    }
+    return 0;
+}
+
 static int load_edges(graph *g, yyjson_val *edges)
 {
     yyjson_arr_iter eit;
@@ -1081,7 +1126,7 @@ static int load_edges(graph *g, yyjson_val *edges)
             }
         }
     }
-    return 0;
+    return migrate_component_reads(g);
 }
 
 graph *graph_load_json(const char *json)

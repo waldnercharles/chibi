@@ -500,6 +500,7 @@ static int flow_run_activate(flow_run *run)
      * pointer-bearing values can cross activation boundaries safely. */
     runtime_store_reset_memo(run->runtime);
     eval_context_reset(&run->eval);
+    run->eval.services = run->services;
 
     flow_frame frame = apop(run->frames);
     run->steps++;

@@ -90,6 +90,15 @@ typedef struct
 int editor_command_apply(editor *e, editor_command command);
 void editor_query_state(const editor *e, editor_query *out);
 
+typedef struct
+{
+    int exec_pins;
+    int data_pins;
+} editor_node_ui;
+
+/* Pins actually drawn inside the canvas clip rectangle in the current frame. */
+bool editor_query_node_ui(const editor *e, uint64_t node_id, editor_node_ui *out);
+
 /* The editor takes ownership of bp and frees it in editor_free(). */
 editor *editor_new(behavior_asset *bp);
 void editor_free(editor *e);

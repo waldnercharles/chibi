@@ -9,6 +9,7 @@
 typedef struct node node;
 typedef struct arena arena;
 typedef struct flow_context flow_context;
+typedef struct eval_context eval_context;
 
 typedef enum
 {
@@ -59,6 +60,8 @@ enum
 };
 
 typedef pin_value (*node_fn)(const pin_value *inputs, int input_count, arena *a);
+/* Contextual read: returns an error message, or NULL after producing a value. */
+typedef const char *(*node_read_fn)(const eval_context *ctx, arena *a, pin_value *out);
 /* Typed adapters: output and inputs point at storage for the declared pin types. */
 typedef int (*node_fast_fn)(void *output, const void *const *inputs);
 typedef int (*node_fast0_fn)(void *output);
@@ -114,6 +117,7 @@ typedef enum
     NODE_PURE_SELF,  /* owner handle read from the behavior_asset instance */
     NODE_PURE_FUNCTION,  /* pure function graph call */
     NODE_PURE_VOID_CALL, /* reflected pure call with no data result */
+    NODE_PURE_READ,      /* read host state without an execution edge */
 } node_pure_kind;
 
 typedef struct
@@ -128,6 +132,7 @@ typedef struct
     unsigned jit_flags;
     const type_desc *type;
     node_fn fn;
+    node_read_fn read;
     node_fast_fn fast;
     node_fast_direct_fn direct;
     int direct_count; /* arity plus one; zero means no direct adapter */

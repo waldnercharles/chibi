@@ -40,7 +40,8 @@ void eval_view_free(eval_view *v)
 
 static int eval_view_node_safe(const graph *g, const node *n, int depth)
 {
-    if (depth > acount(g->nodes) || n->desc->flow_kind != NODE_FLOW_NONE) {
+    if (depth > acount(g->nodes) || n->desc->flow_kind != NODE_FLOW_NONE ||
+        n->desc->pure_kind == NODE_PURE_READ) {
         return 0;
     }
     for (int i = 0; i < n->input_count; i++) {

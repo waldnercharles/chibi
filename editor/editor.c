@@ -103,11 +103,14 @@ typedef enum ed_pin_kind
 typedef struct ed_node_view
 {
     node *n;
+    uint64_t id;
     ImVec2 min;
     ImVec2 max;
     float title_height;
     int input_first;
     int output_first;
+    int draw_frame;
+    editor_node_ui drawn;
 } ed_node_view;
 
 typedef struct ed_pin_view
@@ -650,6 +653,7 @@ void editor_reveal_node(editor *e, node *n)
     e->pan = ed_sub(ed_scale(e->canvas_size, 0.5f), ed_scale((ImVec2){ n->x, n->y }, e->zoom));
     e->reveal_target = n;
     e->view_initialized = 0;
+    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
 }
 
 int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id)
@@ -994,6 +998,9 @@ static void ed_build_layout(editor *e)
 
         ed_node_view *v = &e->views[i];
         v->n = n;
+        v->id = n->id;
+        v->draw_frame = -1;
+        v->drawn = (editor_node_ui){ 0 };
         v->min = min;
         v->max = max;
         v->title_height = title_height * e->zoom;
@@ -3131,8 +3138,40 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     }
 }
 
-static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
+bool editor_query_node_ui(const editor *e, uint64_t node_id, editor_node_ui *out)
 {
+    *out = (editor_node_ui){ 0 };
+    for (int i = 0; i < acount(e->views); i++) {
+        const ed_node_view *v = &e->views[i];
+        if (v->draw_frame == ImGui_GetFrameCount() && v->id == node_id) {
+            *out = v->drawn;
+            return out->exec_pins + out->data_pins > 0;
+        }
+    }
+    return false;
+}
+
+static void ed_count_drawn_pin(
+    ed_node_view *view,
+    const ed_pin_view *pin,
+    const pin_spec *spec,
+    ImDrawList *dl
+)
+{
+    if (!ed_point_in_rect(pin->pos, ImDrawList_GetClipRectMin(dl), ImDrawList_GetClipRectMax(dl))) {
+        return;
+    }
+    if (spec->kind == PIN_EXEC) {
+        view->drawn.exec_pins++;
+    } else {
+        view->drawn.data_pins++;
+    }
+}
+
+static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
+{
+    v->draw_frame = ImGui_GetFrameCount();
+    v->drawn = (editor_node_ui){ 0 };
     node *n = v->n;
     int selected = ed_node_selected(e, n);
     ImU32 bg = ed_color(ED_NODE_BODY);
@@ -3184,6 +3223,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
         if (row < n->input_count) {
             const pin_spec *spec = &n->input_pins[row];
             ed_pin_view *pin = &e->pins[v->input_first + row];
+            ed_count_drawn_pin(v, pin, spec, dl);
             ImU32 color = ed_color(ed_spec_color(spec));
             ImDrawList_AddCircleFilled(dl, pin->pos, pin_r, color, 0);
             ImDrawList_AddCircle(dl, pin->pos, pin_r, ed_dim_color(color, 0.28f));
@@ -3213,6 +3253,7 @@ static void ed_draw_node(editor *e, ImDrawList *dl, const ed_node_view *v)
         if (row < n->output_count) {
             const pin_spec *spec = &n->output_pins[row];
             ed_pin_view *pin = &e->pins[v->output_first + row];
+            ed_count_drawn_pin(v, pin, spec, dl);
             ImU32 color = ed_color(ed_spec_color(spec));
             ImVec2 label = ed_text_size(e, spec->name);
             ImDrawList_AddCircleFilled(dl, pin->pos, pin_r, color, 0);
@@ -3397,6 +3438,8 @@ static int ed_adopt_behavior_asset(editor *e, const char *json)
     /* The value preview borrows nodes from the old asset. */
     eval_view_free(e->ev);
     e->ev = eval_view_new();
+    asetlen(e->views, 0);
+    asetlen(e->pins, 0);
     behavior_asset_free(e->bp);
     e->bp = fresh;
     e->active_graph = behavior_asset_find_graph(e->bp, active_graph_id);

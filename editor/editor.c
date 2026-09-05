@@ -2403,11 +2403,14 @@ static void ed_draw_add_popup(editor *e)
 
 static void ed_draw_tree(editor *e)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 260.0f, 600.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("My Behavior Asset", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, "My Behavior Asset", 0)) {
         ImGui_End();
         return;
     }
@@ -2670,11 +2673,14 @@ static void ed_details_event_catalog(editor *e, node *n)
 
 static void ed_draw_details(editor *e)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 340.0f, 600.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_INSPECTOR)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("Inspector", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_INSPECTOR, "Inspector", 0)) {
         ImGui_End();
         return;
     }
@@ -4404,6 +4410,9 @@ static void ed_compile(editor *e)
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     behavior_asset_compile(e->bp, &e->compile);
+    if (e->compile.error_count || e->compile.warning_count) {
+        editor_ui_set_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS, true);
+    }
 }
 
 static void ed_zoom_fit(editor *e);
@@ -4718,11 +4727,14 @@ static void ed_draw_log(editor *e)
 
 static void ed_draw_output_log(editor *e)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_OUTPUT_LOG)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 520.0f, 220.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_OUTPUT_LOG)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("Output Log", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_OUTPUT_LOG, "Output Log", 0)) {
         ImGui_End();
         return;
     }
@@ -4732,11 +4744,14 @@ static void ed_draw_output_log(editor *e)
 
 static void ed_draw_compiler_results(editor *e)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 520.0f, 220.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_COMPILER_RESULTS)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("Compiler Results", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_COMPILER_RESULTS, "Compiler Results", 0)) {
         ImGui_End();
         return;
     }
@@ -5484,7 +5499,9 @@ void editor_query_state(const editor *e, editor_query *out)
     }
     out->active_graph = e->active_graph;
     out->graph_count = acount(e->bp->graphs);
-    out->graph_visible = e->graph_visible && e->ui_context != EDITOR_UI_CONTEXT_SCENE;
+    out->graph_visible = e->graph_visible &&
+                         e->ui_context != EDITOR_UI_CONTEXT_SCENE &&
+                         editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
     out->compile = &e->compile;
     if (e->edit_revision_initialized && !e->edit_pending &&
         e->edit_revision_bp == e->bp && e->edit_revision_snapshot) {
@@ -5733,68 +5750,75 @@ void editor_draw(editor *e)
         eval_view_refresh(e->ev, e->active_graph);
     }
     eval_view_set_run(e->ev, display_run);
-    ImGui_SetNextWindowSize((ImVec2){ 960.0f, 640.0f }, ImGuiCond_FirstUseEver);
-    if (editor_ui_take_focus(EDITOR_UI_FOCUS_NODE_CANVAS)) {
-        ImGui_SetNextWindowFocus();
-    }
-    if (!ImGui_Begin("Node Canvas", NULL, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
-        ImGui_End();
-        return;
-    }
-    if (ImGui_BeginTabBar("asset_tabs", 0)) {
-        const char *name = e->bp->name && e->bp->name[0] ? e->bp->name : "Behavior";
-        if (ImGui_BeginTabItem(name, NULL, 0)) {
-            ImGui_EndTabItem();
+    if (editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS)) {
+        ImGui_SetNextWindowSize((ImVec2){ 960.0f, 640.0f }, ImGuiCond_FirstUseEver);
+        if (editor_ui_take_focus(EDITOR_UI_FOCUS_NODE_CANVAS)) {
+            ImGui_SetNextWindowFocus();
         }
-        ImGui_EndTabBar();
-    }
+        if (!editor_ui_begin_pane(
+                EDITOR_UI_PANE_NODE_CANVAS,
+                "Node Canvas",
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+            )) {
+            ImGui_End();
+        } else {
+            if (ImGui_BeginTabBar("asset_tabs", 0)) {
+                const char *name = e->bp->name && e->bp->name[0] ? e->bp->name
+                                                                 : "Behavior";
+                if (ImGui_BeginTabItem(name, NULL, 0)) {
+                    ImGui_EndTabItem();
+                }
+                ImGui_EndTabBar();
+            }
 
-    ed_draw_toolbar(e);
-    /* A Dispatch click selects a fresh activation on the instance. Refresh the
-     * display source before layout can ask for any pin values. */
-    eval_view_set_run(e->ev, display_run);
-    ImVec2 canvas_min = ImGui_GetCursorScreenPos();
-    ImVec2 canvas_size = ImGui_GetContentRegionAvail();
-    int canvas_changed = e->canvas_min.x != canvas_min.x ||
-                         e->canvas_min.y != canvas_min.y ||
-                         e->canvas_size.x != canvas_size.x ||
-                         e->canvas_size.y != canvas_size.y;
-    if (e->view_initialized && canvas_changed) {
-        e->view_initialized = 0;
+            ed_draw_toolbar(e);
+            /* A Dispatch click selects a fresh activation on the instance. Refresh the
+             * display source before layout can ask for any pin values. */
+            eval_view_set_run(e->ev, display_run);
+            ImVec2 canvas_min = ImGui_GetCursorScreenPos();
+            ImVec2 canvas_size = ImGui_GetContentRegionAvail();
+            int canvas_changed = e->canvas_min.x != canvas_min.x ||
+                                 e->canvas_min.y != canvas_min.y ||
+                                 e->canvas_size.x != canvas_size.x ||
+                                 e->canvas_size.y != canvas_size.y;
+            if (e->view_initialized && canvas_changed) {
+                e->view_initialized = 0;
+            }
+            e->canvas_min = canvas_min;
+            e->canvas_size = canvas_size;
+            ed_build_layout(e);
+            if (canvas_changed) {
+                ed_zoom_fit(e);
+            } else {
+                ed_center_initial_view(e);
+            }
+            ImVec2 hover_mouse = io->MousePos;
+            e->hovered_node = NULL;
+            e->has_hovered_link = 0;
+            if (ed_point_in_rect(hover_mouse, e->canvas_min, ed_add(e->canvas_min, e->canvas_size))) {
+                ed_update_hover(e, hover_mouse);
+            }
+            e->controls_hovered = 0;
+            ed_draw_canvas(e);
+            ed_draw_controls(e, 0);
+            ed_draw_front_nodes(e);
+            ed_draw_controls(e, 1);
+            ed_draw_connect_error(e);
+            const char *error = eval_view_error(e->ev);
+            if (error[0]) {
+                ImGui_SetCursorScreenPos(ed_add(e->canvas_min, (ImVec2){ 12.0f, 12.0f }));
+                ImGui_TextColored((ImVec4){ 1.0f, 0.35f, 0.35f, 1.0f }, "Graph error: %s", error);
+            }
+            ed_handle_input(e);
+            ed_draw_selection_overlay(e);
+            ImGui_SetCursorScreenPos(e->canvas_min);
+            ImGui_Dummy(e->canvas_size);
+            ed_accept_graph_call_drop(e);
+            ed_handle_shortcuts(e);
+            ed_handle_popups(e);
+            ImGui_End();
+        }
     }
-    e->canvas_min = canvas_min;
-    e->canvas_size = canvas_size;
-    ed_build_layout(e);
-    if (canvas_changed) {
-        ed_zoom_fit(e);
-    } else {
-        ed_center_initial_view(e);
-    }
-    ImVec2 hover_mouse = io->MousePos;
-    e->hovered_node = NULL;
-    e->has_hovered_link = 0;
-    if (ed_point_in_rect(hover_mouse, e->canvas_min, ed_add(e->canvas_min, e->canvas_size))) {
-        ed_update_hover(e, hover_mouse);
-    }
-    e->controls_hovered = 0;
-    ed_draw_canvas(e);
-    ed_draw_controls(e, 0);
-    ed_draw_front_nodes(e);
-    ed_draw_controls(e, 1);
-    ed_draw_connect_error(e);
-    const char *error = eval_view_error(e->ev);
-    if (error[0]) {
-        ImGui_SetCursorScreenPos(ed_add(e->canvas_min, (ImVec2){ 12.0f, 12.0f }));
-        ImGui_TextColored((ImVec4){ 1.0f, 0.35f, 0.35f, 1.0f }, "Graph error: %s", error);
-    }
-    ed_handle_input(e);
-    ed_draw_selection_overlay(e);
-    ImGui_SetCursorScreenPos(e->canvas_min);
-    ImGui_Dummy(e->canvas_size);
-    ed_accept_graph_call_drop(e);
-    ed_handle_shortcuts(e);
-    ed_handle_popups(e);
-    ImGui_End();
     if (e->ui_context == EDITOR_UI_CONTEXT_BEHAVIOR) {
         ed_draw_tree(e);
         ed_draw_details(e);

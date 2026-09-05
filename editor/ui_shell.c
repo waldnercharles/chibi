@@ -17,6 +17,7 @@
 #define UI_RIGHT_RATIO 0.20f
 #define UI_BOTTOM_RATIO 0.25f
 #define UI_CONTENT_RATIO 0.55f
+#define UI_GRAPH_SCENE_RATIO 0.50f
 
 static const ImVec4 UI_TEXT = { 0.90f, 0.93f, 0.97f, 1.0f };
 static const ImVec4 UI_TEXT_MUTED = { 0.52f, 0.58f, 0.67f, 1.0f };
@@ -50,29 +51,87 @@ static const ImWchar UI_SEARCH_GLYPH = 0xf002;
 
 static ImGuiContext *ui_context;
 static int ui_reset_layout;
-static bool ui_content_drawer_open;
+static bool ui_visibility_initialized;
+static bool ui_layout_built;
+static bool ui_pane_visibility[EDITOR_UI_PANE_COUNT];
+static bool ui_pane_rect_valid[EDITOR_UI_PANE_COUNT];
+static editor_ui_rect ui_pane_rects[EDITOR_UI_PANE_COUNT];
 static ImGuiID ui_left_pane_id;
 static editor_ui_focus_target ui_focus_request;
 static editor_ui_command_handler ui_command_handler;
 static void *ui_command_user;
+
+static float ui_framebuffer_scale_x(void);
+static float ui_framebuffer_scale_y(void);
+
+static void ui_set_default_visibility(void)
+{
+    for (int i = 0; i < EDITOR_UI_PANE_COUNT; i++) {
+        ui_pane_visibility[i] = true;
+    }
+    ui_pane_visibility[EDITOR_UI_PANE_COMPILER_RESULTS] = false;
+    ui_pane_visibility[EDITOR_UI_PANE_OUTPUT_LOG] = false;
+    ui_visibility_initialized = true;
+}
+
+static void ui_ensure_visibility(void)
+{
+    if (!ui_visibility_initialized) {
+        ui_set_default_visibility();
+    }
+}
+
+static void ui_assert_pane(editor_ui_pane pane)
+{
+    assert(pane >= EDITOR_UI_PANE_CONTENT && pane < EDITOR_UI_PANE_COUNT);
+}
+
+static editor_ui_focus_target ui_pane_focus(editor_ui_pane pane)
+{
+    switch (pane) {
+        case EDITOR_UI_PANE_CONTENT: return EDITOR_UI_FOCUS_CONTENT_DRAWER;
+        case EDITOR_UI_PANE_WORLD_OUTLINER:
+            return EDITOR_UI_FOCUS_WORLD_OUTLINER;
+        case EDITOR_UI_PANE_COMPONENTS: return EDITOR_UI_FOCUS_COMPONENTS;
+        case EDITOR_UI_PANE_MY_BEHAVIOR_ASSET:
+            return EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET;
+        case EDITOR_UI_PANE_INSPECTOR: return EDITOR_UI_FOCUS_INSPECTOR;
+        case EDITOR_UI_PANE_SCENE_RUNTIME: return EDITOR_UI_FOCUS_SCENE_RUNTIME;
+        case EDITOR_UI_PANE_NODE_CANVAS: return EDITOR_UI_FOCUS_NODE_CANVAS;
+        case EDITOR_UI_PANE_SCENE: return EDITOR_UI_FOCUS_SCENE;
+        case EDITOR_UI_PANE_COMPILER_RESULTS:
+            return EDITOR_UI_FOCUS_COMPILER_RESULTS;
+        case EDITOR_UI_PANE_OUTPUT_LOG: return EDITOR_UI_FOCUS_OUTPUT_LOG;
+        case EDITOR_UI_PANE_COUNT: break;
+    }
+    return EDITOR_UI_FOCUS_NONE;
+}
+
 void editor_ui_request_focus(editor_ui_focus_target target)
 {
     assert(
         target == EDITOR_UI_FOCUS_NONE || target == EDITOR_UI_FOCUS_SCENE ||
+        target == EDITOR_UI_FOCUS_WORLD_OUTLINER ||
         target == EDITOR_UI_FOCUS_SCENE_RUNTIME || target == EDITOR_UI_FOCUS_NODE_CANVAS ||
         target == EDITOR_UI_FOCUS_CONTENT_DRAWER || target == EDITOR_UI_FOCUS_COMPONENTS ||
         target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
         target == EDITOR_UI_FOCUS_INSPECTOR ||
         target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
     );
+    for (int pane = EDITOR_UI_PANE_CONTENT; pane < EDITOR_UI_PANE_COUNT; pane++) {
+        if (target == ui_pane_focus((editor_ui_pane)pane) &&
+            !editor_ui_pane_visible((editor_ui_pane)pane)) {
+            return;
+        }
+    }
     ui_focus_request = target;
 }
 
 bool editor_ui_take_focus(editor_ui_focus_target target)
 {
     assert(
-        target == EDITOR_UI_FOCUS_SCENE || target == EDITOR_UI_FOCUS_SCENE_RUNTIME ||
-        target == EDITOR_UI_FOCUS_NODE_CANVAS ||
+        target == EDITOR_UI_FOCUS_SCENE || target == EDITOR_UI_FOCUS_WORLD_OUTLINER ||
+        target == EDITOR_UI_FOCUS_SCENE_RUNTIME || target == EDITOR_UI_FOCUS_NODE_CANVAS ||
         target == EDITOR_UI_FOCUS_CONTENT_DRAWER || target == EDITOR_UI_FOCUS_COMPONENTS ||
         target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
         target == EDITOR_UI_FOCUS_INSPECTOR ||
@@ -87,15 +146,81 @@ bool editor_ui_take_focus(editor_ui_focus_target target)
 
 bool editor_ui_content_drawer_open(void)
 {
-    return ui_content_drawer_open;
+    return editor_ui_pane_visible(EDITOR_UI_PANE_CONTENT);
 }
 
 void editor_ui_set_content_drawer_open(bool open)
 {
-    if (open && !ui_content_drawer_open) {
-        editor_ui_request_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, open);
+}
+
+bool editor_ui_pane_visible(editor_ui_pane pane)
+{
+    ui_assert_pane(pane);
+    ui_ensure_visibility();
+    return ui_pane_visibility[pane];
+}
+
+void editor_ui_set_pane_visible(editor_ui_pane pane, bool visible)
+{
+    ui_assert_pane(pane);
+    ui_ensure_visibility();
+    editor_ui_focus_target focus = ui_pane_focus(pane);
+    bool was_visible = ui_pane_visibility[pane];
+    if (!visible && ui_focus_request == focus) {
+        ui_focus_request = EDITOR_UI_FOCUS_NONE;
     }
-    ui_content_drawer_open = open;
+    ui_pane_visibility[pane] = visible;
+    if (visible && !was_visible) {
+        editor_ui_request_focus(focus);
+    }
+}
+
+static void ui_capture_pane_rect(editor_ui_pane pane)
+{
+    ImVec2 pos = ImGui_GetWindowPos();
+    ImVec2 size = ImGui_GetWindowSize();
+    ui_pane_rects[pane] = (editor_ui_rect){
+        pos.x * ui_framebuffer_scale_x(),
+        pos.y * ui_framebuffer_scale_y(),
+        size.x * ui_framebuffer_scale_x(),
+        size.y * ui_framebuffer_scale_y(),
+    };
+    ui_pane_rect_valid[pane] = true;
+}
+
+bool editor_ui_begin_pane(editor_ui_pane pane, const char *name, int flags)
+{
+    ui_assert_pane(pane);
+    ui_ensure_visibility();
+    assert(ui_pane_visibility[pane]);
+    bool open = ui_pane_visibility[pane];
+    bool visible = ImGui_Begin(name, &open, flags);
+    ui_pane_visibility[pane] = open;
+    if (visible && open) {
+        ui_capture_pane_rect(pane);
+    }
+    return visible && open;
+}
+
+bool editor_ui_pane_rect(editor_ui_pane pane, editor_ui_rect *out)
+{
+    ui_assert_pane(pane);
+    assert(out);
+    if (!ui_pane_rect_valid[pane]) {
+        return false;
+    }
+    *out = ui_pane_rects[pane];
+    return true;
+}
+
+void editor_ui_show_graph_scene_side_by_side(void)
+{
+    ui_ensure_visibility();
+    ui_pane_visibility[EDITOR_UI_PANE_NODE_CANVAS] = true;
+    ui_pane_visibility[EDITOR_UI_PANE_SCENE] = true;
+    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    ui_reset_layout = 1;
 }
 
 void editor_ui_set_command_handler(editor_ui_command_handler handler, void *user)
@@ -431,8 +556,10 @@ static void ui_build_default_layout(void)
     ImGuiID rest;
     ImGuiID right;
     ImGuiID center;
+    ImGuiID document;
     ImGuiID bottom;
-    ImGuiID canvas;
+    ImGuiID graph;
+    ImGuiID scene;
     ImGuiID content;
     ImGuiID outliner;
 
@@ -445,7 +572,8 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, UI_LEFT_RATIO, &left, &rest);
     ui_left_pane_id = left;
     ImGui_DockBuilderSplitNode(rest, ImGuiDir_Right, UI_RIGHT_RATIO, &right, &center);
-    ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &canvas);
+    ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &document);
+    ImGui_DockBuilderSplitNode(document, ImGuiDir_Left, UI_GRAPH_SCENE_RATIO, &graph, &scene);
     ImGui_DockBuilderSplitNode(left, ImGuiDir_Down, UI_CONTENT_RATIO, &content, &outliner);
     ImGui_DockBuilderDockWindow("Content", content);
     ImGui_DockBuilderDockWindow("World Outliner", outliner);
@@ -455,10 +583,18 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderDockWindow("Scene Runtime", right);
     ImGui_DockBuilderDockWindow("Output Log", bottom);
     ImGui_DockBuilderDockWindow("Compiler Results", bottom);
-    ImGui_DockBuilderDockWindow("Node Canvas", canvas);
-    ImGui_DockBuilderDockWindow("Scene", canvas);
-    editor_ui_set_content_drawer_open(true);
+    ImGui_DockBuilderDockWindow("Node Canvas", graph);
+    ImGui_DockBuilderDockWindow("Scene", scene);
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
+}
+
+static void ui_pane_menu_item(const char *label, const char *id, editor_ui_pane pane)
+{
+    bool visible = editor_ui_pane_visible(pane);
+    if (ImGui_MenuItemEx(label, NULL, visible, true)) {
+        editor_ui_set_pane_visible(pane, !visible);
+    }
+    editor_ui_track_item(id);
 }
 
 static void ui_document_action(const char *label, const char *id, editor_ui_command command)
@@ -480,14 +616,44 @@ static void ui_draw_menu(void)
     if (open) {
         ui_document_action("Save", "document.save", EDITOR_UI_COMMAND_SAVE);
         ui_document_action("Save As", "document.save_as", EDITOR_UI_COMMAND_SAVE_AS);
+        ui_document_action("Save All", "document.save_all", EDITOR_UI_COMMAND_SAVE_ALL);
         ui_document_action("Reload", "document.reload", EDITOR_UI_COMMAND_RELOAD);
         ImGui_Separator();
         ui_document_action("Undo", "document.undo", EDITOR_UI_COMMAND_UNDO);
         ui_document_action("Redo", "document.redo", EDITOR_UI_COMMAND_REDO);
         ImGui_EndMenu();
     }
-    if (ImGui_MenuItemEx("Content", NULL, ui_content_drawer_open, true)) {
-        editor_ui_set_content_drawer_open(!ui_content_drawer_open);
+    bool view = ImGui_BeginMenu("View");
+    editor_ui_track_item("view.menu");
+    if (view) {
+        if (ImGui_MenuItemEx("Reset Workspace: Graph + Scene Side by Side", NULL, false, true)) {
+            editor_ui_show_graph_scene_side_by_side();
+        }
+        editor_ui_track_item("view.side_by_side");
+        ImGui_Separator();
+        ui_pane_menu_item("Content", "view.content", EDITOR_UI_PANE_CONTENT);
+        ui_pane_menu_item("World Outliner", "view.world_outliner", EDITOR_UI_PANE_WORLD_OUTLINER);
+        ui_pane_menu_item("Components", "view.components", EDITOR_UI_PANE_COMPONENTS);
+        ui_pane_menu_item("My Behavior Asset", "view.my_behavior_asset", EDITOR_UI_PANE_MY_BEHAVIOR_ASSET);
+        ui_pane_menu_item("Inspector", "view.inspector", EDITOR_UI_PANE_INSPECTOR);
+        ui_pane_menu_item("Scene Runtime", "view.scene_runtime", EDITOR_UI_PANE_SCENE_RUNTIME);
+        ui_pane_menu_item("Node Canvas", "view.node_canvas", EDITOR_UI_PANE_NODE_CANVAS);
+        ui_pane_menu_item("Scene", "view.scene", EDITOR_UI_PANE_SCENE);
+        ImGui_Separator();
+        ui_pane_menu_item("Compiler Results", "view.compiler_results", EDITOR_UI_PANE_COMPILER_RESULTS);
+        ui_pane_menu_item("Output Log", "view.output_log", EDITOR_UI_PANE_OUTPUT_LOG);
+        ImGui_Separator();
+        if (ImGui_MenuItemEx("Reset Layout", NULL, false, true)) {
+            editor_ui_reset_layout();
+        }
+        editor_ui_track_item("view.reset_layout");
+        ImGui_EndMenu();
+    }
+    /* Keep Content available as a one-click common action while View exposes
+     * the complete pane catalog. */
+    bool content_open = editor_ui_pane_visible(EDITOR_UI_PANE_CONTENT);
+    if (ImGui_MenuItemEx("Content", NULL, content_open, true)) {
+        editor_ui_set_content_drawer_open(!content_open);
     }
     editor_ui_track_item("content.toggle");
     ImGui_EndMainMenuBar();
@@ -495,6 +661,7 @@ static void ui_draw_menu(void)
 
 void editor_ui_reset_layout(void)
 {
+    ui_set_default_visibility();
     ui_reset_layout = 1;
 }
 
@@ -564,6 +731,9 @@ float editor_ui_left_pane_center_y(void)
 void editor_ui_prepare(void)
 {
     afree(ui_item_hits);
+    for (int i = 0; i < EDITOR_UI_PANE_COUNT; i++) {
+        ui_pane_rect_valid[i] = false;
+    }
     ImGuiContext *context = ImGui_GetCurrentContext();
     if (!context) {
         return;
@@ -571,6 +741,9 @@ void editor_ui_prepare(void)
     if (context != ui_context) {
         ui_apply_theme();
         ui_context = context;
+        ui_ensure_visibility();
+        ui_layout_built = false;
+        ui_left_pane_id = 0;
     }
 
     ui_draw_menu();
@@ -578,13 +751,16 @@ void editor_ui_prepare(void)
     ImGuiViewport layout = ui_layout_viewport();
     io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io->ConfigWindowsMoveFromTitleBarOnly = true;
-    (void)ImGui_DockSpaceOverViewportEx(UI_DOCKSPACE_ID, &layout, ImGuiDockNodeFlags_None, NULL);
     ImGuiDockNode *root = ImGui_DockBuilderGetNode(UI_DOCKSPACE_ID);
-    bool empty = root && !root->ChildNodes[0] && !root->ChildNodes[1] &&
-                 root->Windows.Size == 0;
-    if ((ui_reset_layout || empty) && layout.WorkSize.x > 0.0f &&
-        layout.WorkSize.y > 0.0f) {
+    bool empty = !root || (!root->ChildNodes[0] && !root->ChildNodes[1] &&
+                           root->Windows.Size == 0);
+    if ((ui_reset_layout || (!ui_layout_built && empty)) &&
+        layout.WorkSize.x > 0.0f && layout.WorkSize.y > 0.0f) {
         ui_build_default_layout();
         ui_reset_layout = 0;
+        ui_layout_built = true;
+    } else if (!empty) {
+        ui_layout_built = true;
     }
+    (void)ImGui_DockSpaceOverViewportEx(UI_DOCKSPACE_ID, &layout, ImGuiDockNodeFlags_None, NULL);
 }

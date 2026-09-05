@@ -182,15 +182,20 @@ int engine_viewport_draw(engine_viewport *viewport)
     if (!viewport || !viewport->canvas.id) {
         return -1;
     }
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_SCENE)) {
+        viewport->focused = 0;
+        return 0;
+    }
     /* cf_render_to flushes the queued draw commands into the canvas, so the
      * scene must be queued before it, under a projection sized to this target
      * rather than the app window's. cf_draw_push/pop keep both off the
      * editor's own draw state. */
     draw_viewport_canvas(viewport);
-    if (editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE)) {
+    if (editor_ui_pane_visible(EDITOR_UI_PANE_SCENE) &&
+        editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("Scene", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_SCENE, "Scene", 0)) {
         viewport->focused = 0;
         ImGui_End();
         return 0;

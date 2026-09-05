@@ -26,10 +26,34 @@ typedef enum
 
 typedef int (*editor_ui_command_handler)(editor_ui_command command, void *user);
 
+typedef enum editor_ui_pane
+{
+    EDITOR_UI_PANE_CONTENT,
+    EDITOR_UI_PANE_WORLD_OUTLINER,
+    EDITOR_UI_PANE_COMPONENTS,
+    EDITOR_UI_PANE_MY_BEHAVIOR_ASSET,
+    EDITOR_UI_PANE_INSPECTOR,
+    EDITOR_UI_PANE_SCENE_RUNTIME,
+    EDITOR_UI_PANE_NODE_CANVAS,
+    EDITOR_UI_PANE_SCENE,
+    EDITOR_UI_PANE_COMPILER_RESULTS,
+    EDITOR_UI_PANE_OUTPUT_LOG,
+    EDITOR_UI_PANE_COUNT,
+} editor_ui_pane;
+
+typedef struct
+{
+    float x;
+    float y;
+    float width;
+    float height;
+} editor_ui_rect;
+
 typedef enum editor_ui_focus_target
 {
     EDITOR_UI_FOCUS_NONE,
     EDITOR_UI_FOCUS_SCENE,
+    EDITOR_UI_FOCUS_WORLD_OUTLINER,
     EDITOR_UI_FOCUS_SCENE_RUNTIME,
     EDITOR_UI_FOCUS_NODE_CANVAS,
     EDITOR_UI_FOCUS_CONTENT_DRAWER,
@@ -46,6 +70,14 @@ bool editor_ui_take_focus(editor_ui_focus_target target);
 
 bool editor_ui_content_drawer_open(void);
 void editor_ui_set_content_drawer_open(bool open);
+bool editor_ui_pane_visible(editor_ui_pane pane);
+void editor_ui_set_pane_visible(editor_ui_pane pane, bool visible);
+/* Requires editor_ui_pane_visible() to be true. Always pair this call with
+ * ImGui_End(), including when ImGui returns false. A pane closed through its
+ * title bar updates its View-menu state. */
+bool editor_ui_begin_pane(editor_ui_pane pane, const char *name, int flags);
+bool editor_ui_pane_rect(editor_ui_pane pane, editor_ui_rect *out);
+void editor_ui_show_graph_scene_side_by_side(void);
 
 void editor_ui_prepare(void);
 void editor_ui_reset_layout(void);

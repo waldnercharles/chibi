@@ -85,6 +85,28 @@ static bool saved_prototype_has_x(app_loop *loop, float expected)
     return ok;
 }
 
+static bool ui_rects_side_by_side(editor_ui_rect first, editor_ui_rect second)
+{
+    editor_ui_rect left = first.x < second.x ? first : second;
+    editor_ui_rect right = first.x < second.x ? second : first;
+    float overlap_min = left.y > right.y ? left.y : right.y;
+    float overlap_max = left.y + left.height < right.y + right.height
+                          ? left.y + left.height
+                          : right.y + right.height;
+    return left.width > 200.0f && right.width > 200.0f &&
+           left.x + left.width <= right.x + 2.0f &&
+           overlap_max - overlap_min > 200.0f;
+}
+
+static bool ui_graph_scene_are_side_by_side(void)
+{
+    editor_ui_rect graph;
+    editor_ui_rect scene;
+    return editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &graph) &&
+           editor_ui_pane_rect(EDITOR_UI_PANE_SCENE, &scene) &&
+           ui_rects_side_by_side(graph, scene);
+}
+
 static int app_integration_check(app_loop *loop)
 {
     float x, y;
@@ -98,6 +120,9 @@ static int app_integration_check(app_loop *loop)
     editor_query_state(loop->graph_editor, &query);
     int nodes = query.active_graph ? acount(query.active_graph->nodes) : 0;
     const char *selected = app_scene_authoring_selected_content(loop->authoring);
+    bool quiet_diagnostics = !editor_ui_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS) &&
+                             !editor_ui_pane_visible(EDITOR_UI_PANE_OUTPUT_LOG);
+    bool graph_scene_side_by_side = ui_graph_scene_are_side_by_side();
     int expected_node = 0;
     int pure_reads = 0;
     for (int i = 0; i < nodes; i++) {
@@ -126,8 +151,8 @@ static int app_integration_check(app_loop *loop)
     int ok = editor_ui_content_drawer_open() &&
              document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
              strcmp(document.id, "InputBehavior") == 0 && query.graph_visible &&
-             expected_node && pure_reads == 2 &&
-             app_scene_authoring_message(loop->authoring) &&
+             expected_node && pure_reads == 2 && graph_scene_side_by_side &&
+             quiet_diagnostics && app_scene_authoring_message(loop->authoring) &&
              strstr(app_scene_authoring_message(loop->authoring), "Editing behavior asset") !=
                  NULL;
     const char *result = ok ? "PASS" : "FAIL";
@@ -149,6 +174,11 @@ static int app_integration_check(app_loop *loop)
         "ui-pure-nodes %s: Get/Has each draw one data pin and no Exec pins\n",
         pure_reads == 2 ? "PASS" : "FAIL"
     );
+    printf(
+        "ui-layout %s: graph and scene occupy side-by-side document panes\n",
+        graph_scene_side_by_side ? "PASS" : "FAIL"
+    );
+    printf("ui-quiet %s: diagnostics stay hidden until requested\n", quiet_diagnostics ? "PASS" : "FAIL");
     return ok ? 0 : -1;
 }
 
@@ -310,6 +340,26 @@ static int app_frame(app_loop *loop)
                 path = "content.toggle";
                 click_frame = step < 80 ? step - 76 : step - 81;
                 break;
+            case 88:
+            case 89:
+                path = "view.menu";
+                click_frame = step - 87;
+                break;
+            case 91:
+            case 92:
+                path = "view.content";
+                click_frame = step - 90;
+                break;
+            case 97:
+            case 98:
+                path = "view.menu";
+                click_frame = step - 96;
+                break;
+            case 100:
+            case 101:
+                path = "view.content";
+                click_frame = step - 99;
+                break;
         }
         if (click_frame >= 1 && click_frame <= 4 &&
             !editor_ui_item_center(path, &card_x, &card_y)) {
@@ -329,6 +379,7 @@ static int app_frame(app_loop *loop)
         ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "no-such-asset");
     }
     cf_app_update(NULL);
+    editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     double seconds = (double)(loop->frame + 1) / 60.0;
     editor_tick(loop->graph_editor, seconds);
     int viewport_focused = engine_viewport_focused(loop->viewport);
@@ -432,6 +483,41 @@ static int app_frame(app_loop *loop)
         );
         loop->integration_failed |= !ok;
     }
+    if (step == 95 || step == 104) {
+        bool expected = step == 104;
+        editor_ui_rect content_rect;
+        bool item_visible = editor_ui_item_center("content.search", &x, &y);
+        bool rect_visible = editor_ui_pane_rect(EDITOR_UI_PANE_CONTENT, &content_rect);
+        bool ok = editor_ui_content_drawer_open() == expected &&
+                  item_visible == expected && rect_visible == expected;
+        printf("ui-view %s: View menu %s Content\n", ok ? "PASS" : "FAIL", expected ? "reopens" : "hides");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 90) {
+        bool ok = editor_ui_item_center("view.side_by_side", &x, &y);
+        printf("ui-layout-menu %s: side-by-side action is reachable\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 105 &&
+        app_scene_authoring_open_behavior(loop->authoring, "InputBehavior") != 0) {
+        loop->integration_failed = 1;
+    }
+    if (step == 105) {
+        editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, false);
+        editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+        editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
+        bool focus_pending = editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE);
+        printf("ui-hidden-focus %s: hidden Scene discards focus requests\n", focus_pending ? "FAIL" : "PASS");
+        loop->integration_failed |= focus_pending;
+    }
+    if (step == 106) {
+        editor_ui_show_graph_scene_side_by_side();
+    }
+    if (step == 113) {
+        bool ok = ui_graph_scene_are_side_by_side();
+        printf("ui-layout-action %s: View action restores graph and scene side by side\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
 
     return ++loop->frame >= loop->frames;
 }
@@ -439,7 +525,7 @@ static int app_frame(app_loop *loop)
 int ui_integration_run(const char *program)
 {
     cf_set_assert_handler(stacktrace_assert_handler);
-    const int frames = 89;
+    const int frames = 117;
     CF_Result result = cf_make_app(
         "c-blueprints",
         0,
@@ -462,11 +548,6 @@ int ui_integration_run(const char *program)
     ImGui_GetIO()->IniFilename = NULL;
     editor_ui_set_framebuffer_target(true);
     editor_ui_set_framebuffer_size(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT);
-    if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
-        fprintf(stderr, "could not set the UI render target\n");
-        cf_destroy_app();
-        return 1;
-    }
     registry_validate();
     behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
     ecs_world *world = ecs_world_new();
@@ -533,7 +614,6 @@ int ui_integration_run(const char *program)
         cf_destroy_app();
         return 1;
     }
-    editor_ui_reset_layout();
     editor_set_event_catalog(
         graph_editor,
         APP_EVENT_CATALOG,

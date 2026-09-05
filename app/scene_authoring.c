@@ -2384,11 +2384,14 @@ static bool draw_prototype_field(
 
 static void draw_components(app_scene_authoring *scene)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_COMPONENTS)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 260.0f, 360.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_COMPONENTS)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("Components", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_COMPONENTS, "Components", 0)) {
         ImGui_End();
         return;
     }
@@ -2507,11 +2510,14 @@ static void draw_components(app_scene_authoring *scene)
 
 static void draw_my_behavior_asset(app_scene_authoring *scene)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 260.0f, 420.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("My Behavior Asset", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, "My Behavior Asset", 0)) {
         ImGui_End();
         return;
     }
@@ -2626,11 +2632,14 @@ static void draw_my_behavior_asset(app_scene_authoring *scene)
 
 static void draw_prototype_inspector(app_scene_authoring *scene)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 340.0f, 520.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_INSPECTOR)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("Inspector", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_INSPECTOR, "Inspector", 0)) {
         ImGui_End();
         return;
     }
@@ -2676,11 +2685,14 @@ static void draw_prototype_inspector(app_scene_authoring *scene)
 
 static void draw_world_outliner(app_scene_authoring *scene)
 {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ SCENE_CONTEXT_WIDTH, 360.0f }, ImGuiCond_FirstUseEver);
-    if (editor_ui_take_focus(EDITOR_UI_FOCUS_SCENE)) {
+    if (editor_ui_take_focus(EDITOR_UI_FOCUS_WORLD_OUTLINER)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin("World Outliner", NULL, 0)) {
+    if (!editor_ui_begin_pane(EDITOR_UI_PANE_WORLD_OUTLINER, "World Outliner", 0)) {
         ImGui_End();
         return;
     }
@@ -2880,13 +2892,21 @@ static void draw_instance_components(app_scene_authoring *scene, scene_actor *ac
     }
 }
 
-static void draw_scene_inspector(app_scene_authoring *scene, const char *window_name, editor_ui_focus_target focus)
+static void draw_scene_inspector(
+    app_scene_authoring *scene,
+    const char *window_name,
+    editor_ui_pane pane,
+    editor_ui_focus_target focus
+)
 {
+    if (!editor_ui_pane_visible(pane)) {
+        return;
+    }
     ImGui_SetNextWindowSize((ImVec2){ 360.0f, 600.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(focus)) {
         ImGui_SetNextWindowFocus();
     }
-    if (!ImGui_Begin(window_name, NULL, 0)) {
+    if (!editor_ui_begin_pane(pane, window_name, 0)) {
         ImGui_End();
         return;
     }
@@ -3088,15 +3108,14 @@ static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
 
 static void draw_content_drawer(app_scene_authoring *scene)
 {
-    if (!editor_ui_content_drawer_open()) {
+    if (!editor_ui_pane_visible(EDITOR_UI_PANE_CONTENT)) {
         return;
     }
     ImGui_SetNextWindowSize((ImVec2){ 420.0f, 520.0f }, ImGuiCond_FirstUseEver);
     if (editor_ui_take_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER)) {
         ImGui_SetNextWindowFocus();
     }
-    bool open = true;
-    if (ImGui_Begin("Content", &open, 0)) {
+    if (editor_ui_begin_pane(EDITOR_UI_PANE_CONTENT, "Content", 0)) {
         if (ImGui_Button("New Behavior")) {
             create_behavior_asset(scene);
         }
@@ -3129,7 +3148,6 @@ static void draw_content_drawer(app_scene_authoring *scene)
         ImGui_EndChild();
     }
     ImGui_End();
-    editor_ui_set_content_drawer_open(open);
 }
 
 static int save_system_document(app_scene_authoring *scene, const char *path)
@@ -3386,7 +3404,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
     switch (scene->document.kind) {
         case APP_EDITOR_DOCUMENT_SCENE:
             draw_world_outliner(scene);
-            draw_scene_inspector(scene, "Inspector", EDITOR_UI_FOCUS_INSPECTOR);
+            draw_scene_inspector(scene, "Inspector", EDITOR_UI_PANE_INSPECTOR, EDITOR_UI_FOCUS_INSPECTOR);
             sync_editor_inspection(scene);
             break;
         case APP_EDITOR_DOCUMENT_PROTOTYPE:
@@ -3400,7 +3418,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         case APP_EDITOR_DOCUMENT_BEHAVIOR:
             draw_components(scene);
             draw_world_outliner(scene);
-            draw_scene_inspector(scene, "Scene Runtime", EDITOR_UI_FOCUS_SCENE_RUNTIME);
+            draw_scene_inspector(scene, "Scene Runtime", EDITOR_UI_PANE_SCENE_RUNTIME, EDITOR_UI_FOCUS_SCENE_RUNTIME);
             sync_editor_inspection(scene);
             break;
         case APP_EDITOR_DOCUMENT_SYSTEM: sync_editor_inspection(scene); break;

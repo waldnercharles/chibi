@@ -40,8 +40,7 @@ jobs:
         run: |
           emcmake cmake -S . -B build-web \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS=-Wno-error=experimental \
-            -DCMAKE_CXX_FLAGS=-Wno-error=experimental \
+            -DCBLUEPRINT_ENABLE_WARNINGS=OFF \
             -DCBLUEPRINT_REFLECT_EXECUTABLE=$GITHUB_WORKSPACE/build-reflect/reflect
           cmake --build build-web --target app
 

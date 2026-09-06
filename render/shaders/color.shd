@@ -1,0 +1,19 @@
+// From Neon-Swarm shaders/color.shd.
+// Shared color and blending utilities.
+
+vec4 alpha_over(vec4 front, vec4 back)
+{
+    return front + back * (1.0 - front.a);
+}
+
+vec3 linear_to_srgb(vec3 c)
+{
+    return pow(c, vec3(1.0 / 2.2));
+}
+
+float dither8bit_ign(vec2 pixel, float frame)
+{
+    pixel += frame * 5.588238;
+    float t = fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+    return (t - 0.5) / 255.0;
+}

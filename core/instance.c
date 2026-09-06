@@ -1,3 +1,4 @@
+#include "arena.h"
 /* core/instance.c -- persistent Behavior Asset instances and the activation
  * scheduler. An instance owns variable storage, per-node scratch,
  * an optional owner handle, and the ready/suspended activations that belong
@@ -5,11 +6,12 @@
  * acquire or release the definition's mutation guard, which the instance
  * holds for its whole lifetime (EXEC-19, RUN-20). */
 #include "instance.h"
-
 #include "pin_conv.h"
+#include "registry.h"
 #include "value_array.h"
 #include "xalloc.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,17 +49,92 @@ static char *instance_own_str(behavior_instance *bi, const char *s)
     if (!s) {
         return NULL;
     }
+    for (int i = 0; i < acount(bi->strings); i++) {
+        if (strcmp(bi->strings[i], s) == 0) {
+            return bi->strings[i];
+        }
+    }
     char *copy = xstrdup(s);
     apush(bi->strings, copy);
     return copy;
 }
 
+static void instance_own_type_names(behavior_instance *bi, pin_value *value)
+{
+    value->type_name = instance_own_str(bi, value->type_name);
+    if (value->container < PIN_CONTAINER_ARRAY || !value->ptr) {
+        return;
+    }
+    pin_array *array = value->ptr;
+    array->type_name = instance_own_str(bi, array->type_name);
+    for (int i = 0; i < array->count; i++) {
+        instance_own_type_names(bi, &array->items[i]);
+    }
+}
+
+static int instance_copy_value(arena *storage, pin_value *out, const pin_value *value)
+{
+    if (pin_value_copy_to_arena(storage, out, value)) {
+        return -1;
+    }
+    if (out->container >= PIN_CONTAINER_ARRAY) {
+        pin_array *array = out->ptr;
+        for (int i = 0; array && i < array->count; i++) {
+            pin_value copy;
+            if (instance_copy_value(storage, &copy, &array->items[i])) {
+                return -1;
+            }
+            array->items[i] = copy;
+        }
+        return 0;
+    }
+    if (out->type != PIN_STRUCT || !out->ptr) {
+        return 0;
+    }
+    const type_desc *type = registry_type_by_name(out->type_name);
+    if (!type || !type->size) {
+        return -1;
+    }
+    void *copy = arena_alloc(storage, type->size);
+    memcpy(copy, out->ptr, type->size);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type != PIN_STRUCT && field->type != PIN_STR &&
+            field->type != PIN_NAME) {
+            continue;
+        }
+        pin_value member;
+        pin_value owned;
+        pin_read_field(out->ptr, field, &member);
+        if (instance_copy_value(storage, &owned, &member)) {
+            return -1;
+        }
+        pin_write_field(copy, field, owned);
+    }
+    out->ptr = copy;
+    return 0;
+}
+
+static int instance_store_value(behavior_instance *bi, int index, const pin_value *value)
+{
+    arena storage = { 0 };
+    pin_value owned;
+    if (instance_copy_value(&storage, &owned, value)) {
+        arena_free(&storage);
+        return -1;
+    }
+    instance_own_type_names(bi, &owned);
+    arena_free(&bi->variable_arenas[index]);
+    bi->variable_arenas[index] = storage;
+    bi->variables[index] = owned;
+    return 0;
+}
+
 static void instance_clear_values(behavior_instance *bi)
 {
     for (int i = 0; i < bi->variable_count; i++) {
-        if (bi->variables[i].container >= PIN_CONTAINER_ARRAY) {
-            pin_array_free((pin_array *)bi->variables[i].ptr);
-        }
+        arena_free(&bi->variable_arenas[i]);
+        bi->variables[i] = (pin_value){ 0 };
     }
     for (int i = 0; i < acount(bi->strings); i++) {
         free(bi->strings[i]);
@@ -71,6 +148,9 @@ static void instance_init_values(behavior_instance *bi)
     instance_clear_values(bi);
     if (count != bi->variable_count) {
         free(bi->variables);
+        free(bi->variable_arenas);
+        bi->variable_arenas = count ? xcalloc((size_t)count, sizeof *bi->variable_arenas)
+                                    : NULL;
         bi->variables = count ? (pin_value *)xcalloc((size_t)count, sizeof *bi->variables)
                               : NULL;
         bi->variable_count = count;
@@ -78,18 +158,8 @@ static void instance_init_values(behavior_instance *bi)
         memset(bi->variables, 0, (size_t)count * sizeof *bi->variables);
     }
     for (int i = 0; i < count; i++) {
-        bi->variables[i] = bi->bp->variables[i].default_value;
-        if (bi->variables[i].container >= PIN_CONTAINER_ARRAY &&
-            bi->variables[i].ptr) {
-            bi->variables[i].ptr = pin_array_clone(
-                (const pin_array *)bi->variables[i].ptr
-            );
-        } else if (
-            (bi->variables[i].type == PIN_STR || bi->variables[i].type == PIN_NAME) &&
-            bi->variables[i].str
-        ) {
-            bi->variables[i].str = instance_own_str(bi, bi->variables[i].str);
-        }
+        int result = instance_store_value(bi, i, &bi->bp->variables[i].default_value);
+        assert(result == 0);
     }
 }
 
@@ -420,6 +490,121 @@ behavior_instance *behavior_instance_pool_reuse(
     return bi;
 }
 
+static bool same_type_name(const char *a, const char *b)
+{
+    return strcmp(a ? a : "", b ? b : "") == 0;
+}
+
+static int variable_index(const behavior_asset *bp, uint64_t id)
+{
+    for (int i = 0; i < acount(bp->variables); i++) {
+        if (bp->variables[i].id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static const node *asset_node(const behavior_asset *bp, uint64_t id)
+{
+    for (int i = 0; i < acount(bp->graphs); i++) {
+        const node *n = graph_node_by_id(bp->graphs[i], id);
+        if (n) {
+            return n;
+        }
+    }
+    return NULL;
+}
+
+static bool value_borrows_struct(const pin_value *value)
+{
+    if (value->container < PIN_CONTAINER_ARRAY) {
+        return value->type == PIN_STRUCT && value->ptr;
+    }
+    const pin_array *array = value->ptr;
+    for (int i = 0; array && i < array->count; i++) {
+        if (value_borrows_struct(&array->items[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+instance_update_status behavior_instance_can_update(const behavior_instance *bi, const behavior_asset *next)
+{
+    assert(bi && bi->alive && next);
+    if (!same_type_name(bi->bp->owner_type_name, next->owner_type_name) ||
+        acount(bi->bp->variables) != acount(next->variables) ||
+        acount(bi->delegates) || acount(bi->delegate_incoming)) {
+        return INSTANCE_UPDATE_RESTART;
+    }
+    for (int i = 0; i < acount(next->variables); i++) {
+        const behavior_variable *v = &next->variables[i];
+        int old = variable_index(bi->bp, v->id);
+        if (old < 0) {
+            return INSTANCE_UPDATE_RESTART;
+        }
+        const behavior_variable *previous = &bi->bp->variables[old];
+        if (v->type != previous->type || v->container != previous->container ||
+            !same_type_name(v->type_name, previous->type_name) ||
+            value_borrows_struct(&bi->variables[old])) {
+            return INSTANCE_UPDATE_RESTART;
+        }
+    }
+    for (int i = 0; i < acount(bi->scratch); i++) {
+        const node *old = asset_node(bi->bp, bi->scratch[i].node_id);
+        const node *replacement = asset_node(next, bi->scratch[i].node_id);
+        if (!old || !replacement || old->desc != replacement->desc ||
+            old->reference_id != replacement->reference_id ||
+            old->input_count != replacement->input_count ||
+            old->output_count != replacement->output_count ||
+            value_borrows_struct(&bi->scratch[i].value)) {
+            return INSTANCE_UPDATE_RESTART;
+        }
+    }
+    return acount(bi->activations) ? INSTANCE_UPDATE_BUSY : INSTANCE_UPDATE_READY;
+}
+
+void behavior_instance_update(behavior_instance *bi, behavior_asset *next)
+{
+    assert(behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
+    pin_value *values = bi->variable_count
+                          ? xmalloc((size_t)bi->variable_count * sizeof *values)
+                          : NULL;
+    arena *arenas = bi->variable_count
+                      ? xmalloc((size_t)bi->variable_count * sizeof *arenas)
+                      : NULL;
+    for (int i = 0; i < bi->variable_count; i++) {
+        int old = variable_index(bi->bp, next->variables[i].id);
+        values[i] = bi->variables[old];
+        arenas[i] = bi->variable_arenas[old];
+    }
+    for (int i = 0; i < acount(bi->scratch); i++) {
+        instance_own_type_names(bi, &bi->scratch[i].value);
+        if (bi->scratch[i].value.container == PIN_CONTAINER_SINGLE &&
+            (bi->scratch[i].value.type == PIN_STR ||
+             bi->scratch[i].value.type == PIN_NAME)) {
+            bi->scratch[i].value.str = instance_own_str(bi, bi->scratch[i].value.str);
+        }
+    }
+    free(bi->variables);
+    bi->variables = values;
+    free(bi->variable_arenas);
+    bi->variable_arenas = arenas;
+    for (int i = 0; i < acount(bi->activation_pool); i++) {
+        flow_run_free(bi->activation_pool[i]);
+    }
+    aclear(bi->activation_pool);
+    instance_trace_clear(bi);
+    compile_report_free(&bi->compile);
+    compile_report_init(&bi->compile);
+    bi->compile_revision = 0;
+    graph_flow_resume(bi->bp->graph);
+    bi->bp = next;
+    bi->owner.type_name = next->owner_type_name;
+    graph_flow_pause(next->graph);
+}
+
 void behavior_instance_destroy(behavior_instance *bi)
 {
     if (!bi) {
@@ -433,6 +618,7 @@ void behavior_instance_destroy(behavior_instance *bi)
     instance_trace_clear(bi);
     afree(bi->trace);
     free(bi->variables);
+    free(bi->variable_arenas);
     afree(bi->activations);
     afree(bi->services);
     afree(bi->scratch);
@@ -698,6 +884,15 @@ int behavior_instance_get_variable(behavior_instance *bi, uint64_t id, pin_value
     return -1;
 }
 
+int behavior_instance_copy_variable(behavior_instance *bi, uint64_t id, arena *storage, pin_value *out)
+{
+    pin_value value;
+    if (behavior_instance_get_variable(bi, id, &value)) {
+        return -1;
+    }
+    return instance_copy_value(storage, out, &value);
+}
+
 int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin_value *value)
 {
     if (!bi || !value) {
@@ -705,18 +900,7 @@ int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin
     }
     for (int i = 0; i < acount(bi->bp->variables); i++) {
         if (bi->bp->variables[i].id == id) {
-            if (bi->variables[i].container >= PIN_CONTAINER_ARRAY) {
-                pin_array_free((pin_array *)bi->variables[i].ptr);
-            }
-            bi->variables[i] = *value;
-            if (value->container >= PIN_CONTAINER_ARRAY && value->ptr) {
-                bi->variables[i].ptr = pin_array_clone((const pin_array *)value->ptr);
-            } else if (
-                (value->type == PIN_STR || value->type == PIN_NAME) && value->str
-            ) {
-                bi->variables[i].str = instance_own_str(bi, value->str);
-            }
-            return 0;
+            return instance_store_value(bi, i, value);
         }
     }
     return -1;

@@ -32,6 +32,7 @@
 #include "../game/hot_reload.h"
 #include "../game/live.h"
 #include "../game/prototype.h"
+#include "../game/prototype_preview.h"
 #include "../game/scene.h"
 #include "../game/scene_document.h"
 #include "ui_integration.h"
@@ -1004,7 +1005,7 @@ static void run_ecs_checks(void)
 
     ecs_world *generated_world = ecs_world_new();
     check(
-        GAME_REGISTRY_COMPONENT_COUNT == 6 &&
+        GAME_REGISTRY_COMPONENT_COUNT >= 8 &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameTransform, NULL) ==
                 ECS_OK &&
             ecs_world_register_component(generated_world, &GAME_COMPONENT_GameHealth, NULL) ==
@@ -1771,6 +1772,225 @@ static behavior_asset *make_live_behavior_asset(void)
         return NULL;
     }
     return bp;
+}
+
+static void run_live_preview_checks(void)
+{
+    ecs_world *ecs = ecs_world_new();
+    ecs_entity first = ecs_world_create_entity(ecs);
+    ecs_entity second = ecs_world_create_entity(ecs);
+    game_live_world *world = game_live_world_new(ecs);
+    behavior_asset *source = make_live_behavior_asset();
+    game_live_definition *definition = game_live_definition_new("preview", source);
+    check(
+        game_live_add_definition(world, definition) == 0 &&
+            game_behavior_attach(world->behaviors, first, "preview") == 0 &&
+            game_behavior_attach(world->behaviors, second, "preview") == 0,
+        "preview fixture attaches two independent runtime instances"
+    );
+    behavior_instance *one = game_behavior_instance(world->behaviors, first, "preview");
+    behavior_instance *two = game_behavior_instance(world->behaviors, second, "preview");
+    uint64_t counter = definition->working->variables[0].id;
+    pin_value value = { .type = PIN_I32, .type_name = "int", .i = 37 };
+    behavior_instance_set_variable(one, counter, &value);
+    node *set = definition->working->graph->nodes[3];
+    value.i = 9;
+    graph_set_pin_default(definition->working->graph, set, 0, 1, &value);
+    game_live_mark_dirty(definition);
+    behavior_asset *before = definition->applied;
+    flow_run *pending = behavior_instance_enqueue(two, two->bp->graph->nodes[2], (flow_inputs){ 0 }, NULL);
+    char message[256];
+    check(
+        pending && game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_BUSY &&
+            one->bp == before && two->bp == before,
+        "one queued activation defers preview for every affected instance "
+        "atomically"
+    );
+    game_behavior_pump(world->behaviors, 1.0);
+    check(
+        game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_READY &&
+            one == game_behavior_instance(world->behaviors, first, "preview") &&
+            two == game_behavior_instance(world->behaviors, second, "preview") &&
+            one->bp == definition->applied && two->bp == definition->applied &&
+            behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 37,
+        "preview updates both definitions without recreating instances or "
+        "resetting variables"
+    );
+    check(
+        game_behavior_dispatch(world->behaviors, first, "Tick", (flow_inputs){ 0 }, NULL) == 1 &&
+            behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 9 &&
+            behavior_instance_get_variable(two, counter, &value) == 0 && value.i == 1,
+        "next dispatch uses edited logic while unrelated instance state stays "
+        "intact"
+    );
+    behavior_variable *added = behavior_asset_add_variable(
+        definition->working,
+        "NewState",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        NULL,
+        ""
+    );
+    game_live_mark_dirty(definition);
+    before = definition->applied;
+    check(
+        added && game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_RESTART &&
+            definition->applied == before && one->bp == before,
+        "state schema changes require explicit restart and leave the running "
+        "version intact"
+    );
+    behavior_asset_delete_variable(definition->working, added->id);
+    behavior_asset_delete_variable(definition->working, counter);
+    game_live_mark_dirty(definition);
+    check(
+        game_live_preview(world, definition, message, sizeof message) < 0 &&
+            definition->diagnostics.error_count > 0 && definition->applied == before,
+        "invalid preview retains the running snapshot and reports the graph "
+        "error"
+    );
+    check(
+        game_behavior_dispatch(world->behaviors, first, "Tick", (flow_inputs){ 0 }, NULL) == 1 &&
+            behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 9,
+        "last valid behavior continues executing while the working graph is "
+        "broken"
+    );
+    game_live_sync_working(definition, definition->applied);
+    check(
+        game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_READY &&
+            !definition->dirty && definition->unsaved &&
+            !definition->diagnostics.error_count &&
+            behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 9,
+        "fixing the working graph recovers preview without losing runtime state"
+    );
+    game_live_world_free(world);
+    ecs_world_free(ecs);
+}
+
+extern void test_host_wait();
+extern void test_combat();
+extern void test_targeting();
+extern void test_pursuit();
+extern void test_vector();
+extern void test_arena();
+extern void test_number_serialization();
+extern void test_auto_weapon();
+extern void test_graph_navigation();
+extern void test_extract();
+extern void test_component_conversion();
+extern void test_field_outputs();
+extern void test_function_wait();
+extern void test_function_fields();
+extern void test_flags();
+extern void test_particles();
+extern void test_labels();
+extern void test_appearance();
+extern void test_appearance_geometry();
+extern void test_orientation();
+extern void test_movement_input();
+extern void test_movement_trail();
+extern void test_sdf_motion();
+extern void test_material();
+extern void test_wave();
+extern void test_scene_history();
+extern void test_enemy_attack();
+extern void test_entities();
+extern void test_projectile();
+extern void test_system_host_wait();
+
+static void run_prototype_live_checks()
+{
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    game_prototype_preview *preview = game_prototype_preview_new(&registry);
+    behavior_asset *working = make_live_behavior_asset();
+    char message[256];
+    game_prototype *prototype = game_prototype_load(
+        "{\"name\":\"LivePreview\",\"behaviors\":[\"live\"]}",
+        &registry,
+        message,
+        sizeof message
+    );
+    check(
+        prototype &&
+            game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+                0 &&
+            game_prototype_preview_launch(preview, prototype, message, sizeof message) == 0,
+        "prototype preview can launch a newly authored behavior"
+    );
+    behavior_instance *instance = game_prototype_preview_instance(preview, "live");
+    uint64_t counter = working->variables[0].id;
+    behavior_instance_set_variable(instance, counter, &(pin_value){ .type = PIN_I32, .i = 61 });
+    graph_set_pin_default(
+        working->graph,
+        working->graph->nodes[3],
+        0,
+        1,
+        &(pin_value){ .type = PIN_I32, .i = 7 }
+    );
+    pin_value value;
+    flow_error error = { 0 };
+    behavior_instance_enqueue(instance, instance->bp->graph->nodes[2], (flow_inputs){ 0 }, &error);
+    check(
+        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+            INSTANCE_UPDATE_BUSY,
+        "prototype preview defers edits while an execution is queued"
+    );
+    game_behavior_pump(game_prototype_preview_behaviors(preview), 1.0);
+    check(
+        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+                INSTANCE_UPDATE_READY &&
+            instance == game_prototype_preview_instance(preview, "live") &&
+            behavior_instance_get_variable(instance, counter, &value) == 0 &&
+            value.i == 61,
+        "prototype preview updates without resetting its instance state"
+    );
+    check(
+        game_prototype_preview_tick(preview, 2.0) >= 0 &&
+            behavior_instance_get_variable(instance, counter, &value) == 0 &&
+            value.i == 7,
+        "prototype preview executes the edited graph on its next tick"
+    );
+    behavior_variable *added = behavior_asset_add_variable(
+        working,
+        "NewState",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        NULL,
+        ""
+    );
+    uint64_t added_id = added->id;
+    check(
+        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+                INSTANCE_UPDATE_RESTART &&
+            behavior_instance_get_variable(instance, counter, &value) == 0 &&
+            value.i == 7,
+        "prototype schema changes wait for an explicit restart"
+    );
+    check(
+        game_prototype_preview_update_behavior(preview, "live", working, true, message, sizeof message) ==
+                INSTANCE_UPDATE_READY &&
+            behavior_instance_get_variable(
+                game_prototype_preview_instance(preview, "live"),
+                added_id,
+                &value
+            ) == 0,
+        "explicit prototype restart installs the new state schema"
+    );
+    instance = game_prototype_preview_instance(preview, "live");
+    behavior_asset_delete_variable(working, counter);
+    check(
+        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) <
+                0 &&
+            game_prototype_preview_tick(preview, 3.0) >= 0 &&
+            behavior_instance_get_variable(instance, counter, &value) == 0 &&
+            value.i == 7,
+        "invalid prototype edits leave the last valid graph running"
+    );
+    behavior_asset_free(working);
+    game_prototype_free(prototype);
+    game_prototype_preview_free(preview);
 }
 
 static void run_live_checks(void)
@@ -5886,13 +6106,23 @@ TEST_CASE(all_checks)
         for (int i = 0; i < acount(function_report.items); i++) {
             saw_latent_rule |= function_report.items[i].rule == CMPL_RULE_FUNCTION_LATENT;
         }
-        check(latent && saw_latent_rule, "a latent node in a function graph is rejected");
+        check(latent && !saw_latent_rule, "an executable function may contain latent nodes");
         check(NODE_Delay.latent != 0, "latent descriptors declare suspension explicitly");
         compile_report_free(&function_report);
         if (latent) {
             graph_remove_node(fn, latent);
         }
         graph *pure = behavior_asset_add_function(bp, "PureIdentity", 1);
+        latent = graph_add_node(pure, &NODE_Delay);
+        compile_report_init(&function_report);
+        behavior_asset_compile(bp, &function_report);
+        saw_latent_rule = 0;
+        for (int i = 0; i < acount(function_report.items); i++) {
+            saw_latent_rule |= function_report.items[i].rule == CMPL_RULE_FUNCTION_LATENT;
+        }
+        check(saw_latent_rule, "a pure function cannot contain latent nodes");
+        compile_report_free(&function_report);
+        graph_remove_node(pure, latent);
         node *pure_entry = graph_node_by_id(pure, pure->entry_id);
         node *pure_ret = graph_node_by_id(pure, pure->return_id);
         graph_add_pin(pure, pure_entry, 1, &arg);
@@ -6454,6 +6684,38 @@ TEST_CASE(all_checks)
     run_scene_document_checks();
     run_behavior_checks();
     run_live_checks();
+    run_live_preview_checks();
+    run_prototype_live_checks();
+    test_host_wait();
+    test_entities();
+    test_projectile();
+    test_combat();
+    test_targeting();
+    test_pursuit();
+    test_vector();
+    test_arena();
+    test_number_serialization();
+    test_auto_weapon();
+    test_graph_navigation();
+    test_extract();
+    test_component_conversion();
+    test_field_outputs();
+    test_function_wait();
+    test_function_fields();
+    test_flags();
+    test_particles();
+    test_labels();
+    test_appearance();
+    test_appearance_geometry();
+    test_orientation();
+    test_movement_input();
+    test_movement_trail();
+    test_sdf_motion();
+    test_material();
+    test_wave();
+    test_scene_history();
+    test_enemy_attack();
+    test_system_host_wait();
     run_engine_checks();
     run_parallel_checks();
     run_hot_reload_checks();

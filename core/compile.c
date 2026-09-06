@@ -39,7 +39,7 @@ static void emit(
 {
     compile_diagnostic d = {
         .severity = severity,
-        .graph_id = compile_graph_id ? compile_graph_id : CMPL_GRAPH_DEFAULT,
+        .graph_id = compile_graph_id,
         .node_id = node_id,
         .pin_id = pin_id,
         .rule = rule,
@@ -204,6 +204,9 @@ const char *cmpl_rule_name(int rule)
         case CMPL_RULE_DISABLED: return "CMPL-18";
         case CMPL_RULE_OPERATOR: return "CMPL-19";
         case CMPL_RULE_UNKNOWN_NOMINAL_TYPE: return "CMPL-20";
+        case CMPL_RULE_SYSTEM_HOST_WAIT: return "CMPL-21";
+        case CMPL_RULE_FIELD_PROJECTION: return "CMPL-22";
+        case CMPL_RULE_CALL_SIGNATURE: return "CMPL-23";
         default: return "CMPL-?";
     }
 }
@@ -289,20 +292,11 @@ static void pass_incompatible_edges(compile_report *out, const graph *g)
             to->input_pins[tp].type == PIN_FLOW) {
             continue;
         }
-        int conversion_ok = e->conversion &&
-                            ((from->output_pins[fp].type != PIN_STRUCT ||
-                              to->input_pins[tp].type != PIN_STRUCT)
-                                 ? e->conversion == conversion_for(
-                                                        from->output_pins[fp].type,
-                                                        to->input_pins[tp].type
-                                                    )
-                                 : e->conversion->input_count == 1 &&
-                                       e->conversion->output_count == 1 &&
-                                       pin_compatible(
-                                           &from->output_pins[fp],
-                                           &e->conversion->inputs[0]
-                                       ) &&
-                                       pin_compatible(&e->conversion->outputs[0], &to->input_pins[tp]));
+        int conversion_ok = conversion_matches_pins(
+            &from->output_pins[fp],
+            &to->input_pins[tp],
+            e->conversion
+        );
         if (conversion_ok) {
             continue;
         }
@@ -375,12 +369,65 @@ static void pass_data_cycles(compile_report *out, const graph *g, arena *tmp)
     }
 }
 
+static const pin_spec *next_parameter(const pin_spec *pins, int count, int *index)
+{
+    while (*index < count) {
+        const pin_spec *pin = &pins[(*index)++];
+        if (pin->kind == PIN_DATA && !pin->field_source) {
+            return pin;
+        }
+    }
+    return NULL;
+}
+
+static bool parameters_match(const pin_spec *left, int left_count, const pin_spec *right, int right_count)
+{
+    int l = 0, r = 0;
+    for (;;) {
+        const pin_spec *a = next_parameter(left, left_count, &l);
+        const pin_spec *b = next_parameter(right, right_count, &r);
+        if (!a || !b) {
+            return a == b;
+        }
+        if (!pin_compatible(a, b)) {
+            return false;
+        }
+    }
+}
+
+static bool has_execution(const pin_spec *pins, int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (pins[i].kind == PIN_EXEC) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool call_signature_matches(const node *call, const graph *target)
+{
+    const node *entry = graph_node_by_id(target, target->entry_id);
+    const node *ret = graph_node_by_id(target, target->return_id);
+    if (!entry || !ret) {
+        return false;
+    }
+    bool execution = call->desc != &NODE_CallPureFunction;
+    return has_execution(entry->output_pins, entry->output_count) == execution &&
+           has_execution(ret->input_pins, ret->input_count) == execution &&
+           has_execution(call->input_pins, call->input_count) == execution &&
+           has_execution(call->output_pins, call->output_count) == execution &&
+           parameters_match(entry->output_pins, entry->output_count, call->input_pins, call->input_count) &&
+           parameters_match(ret->input_pins, ret->input_count, call->output_pins, call->output_count);
+}
+
 /* CMPL-7: a reference to a retired or missing variable, function, or macro.
  * Get/Set reference variables; Function and macro references use graph IDs. */
 static void pass_references(compile_report *out, const behavior_asset *bp)
 {
     for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
         const graph *g = bp->graphs[graph_index];
+        compile_graph_id = g->graph_id;
         for (int i = 0; i < acount(g->nodes); i++) {
             const node *n = g->nodes[i];
             if (n->disabled) {
@@ -414,10 +461,21 @@ static void pass_references(compile_report *out, const behavior_asset *bp)
                         "references a missing graph (id %llu)",
                         (unsigned long long)n->reference_id
                     );
+                } else if (!call_signature_matches(n, target)) {
+                    emit(
+                        out,
+                        CMPL_ERROR,
+                        n->id,
+                        0,
+                        CMPL_RULE_CALL_SIGNATURE,
+                        "call parameters do not match the signature of '%s'",
+                        target->name
+                    );
                 }
             }
         }
     }
+    compile_graph_id = bp->graph->graph_id;
 }
 
 /* CMPL-8: a duplicate event name, a duplicate name within one parameter
@@ -704,6 +762,11 @@ static void pass_function_shape(compile_report *out, const graph *g)
     if (g->kind != GRAPH_FUNCTION) {
         return;
     }
+    const node *entry = graph_node_by_id(g, g->entry_id);
+    bool pure = true;
+    for (int i = 0; entry && i < entry->output_count; i++) {
+        pure &= entry->output_pins[i].kind != PIN_EXEC;
+    }
     int entries = 0;
     int returns = 0;
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -717,14 +780,14 @@ static void pass_function_shape(compile_report *out, const graph *g)
         if (n->desc == &NODE_Return) {
             returns++;
         }
-        if (n->desc->latent) {
+        if (pure && n->desc->latent) {
             emit(
                 out,
                 CMPL_ERROR,
                 n->id,
                 0,
                 CMPL_RULE_FUNCTION_LATENT,
-                "latent node '%s' is not allowed in a function graph",
+                "latent node '%s' is not allowed in a pure function graph",
                 node_label(n)
             );
         }
@@ -784,7 +847,60 @@ static void sort_diagnostics(compile_report *out, const graph *g)
     }
 }
 
-int behavior_asset_compile(const behavior_asset *bp, compile_report *out)
+static void pass_system_host_wait(compile_report *out, const graph *g)
+{
+    for (int i = 0; i < acount(g->nodes); i++) {
+        const node *n = g->nodes[i];
+        if (n->disabled || !n->desc || !n->desc->latent || !n->desc->access ||
+            !(n->desc->access->flags & NODE_EFFECT_STRUCTURAL)) {
+            continue;
+        }
+        emit(
+            out,
+            CMPL_ERROR,
+            n->id,
+            0,
+            CMPL_RULE_SYSTEM_HOST_WAIT,
+            "%s waits for entity initialization and cannot run in a System. "
+            "Move it to an entity Behavior.",
+            n->desc->name
+        );
+    }
+}
+
+static void pass_field_projections(compile_report *out, const graph *g)
+{
+    for (int i = 0; i < acount(g->nodes); i++) {
+        const node *n = g->nodes[i];
+        if (n->disabled) {
+            continue;
+        }
+        for (int output = 0; output <= 1; output++) {
+            const pin_spec *pins = output ? n->output_pins : n->input_pins;
+            int count = output ? n->output_count : n->input_count;
+            for (int p = 0; p < count; p++) {
+                if (!pins[p].field_source && !pins[p].field_name) {
+                    continue;
+                }
+                if (output && graph_output_field(n, p, NULL)) {
+                    continue;
+                }
+                emit(
+                    out,
+                    CMPL_ERROR,
+                    n->id,
+                    pins[p].id,
+                    CMPL_RULE_FIELD_PROJECTION,
+                    "field output '%s' has an invalid aggregate source, field, "
+                    "or type",
+                    pin_name(&pins[p])
+                );
+            }
+        }
+    }
+}
+
+static int compile_asset(const behavior_asset *bp, compile_report *out, bool system)
 {
     assert(bp && bp->graph && out);
     compile_report_free(out);
@@ -804,6 +920,10 @@ int behavior_asset_compile(const behavior_asset *bp, compile_report *out)
         pass_macro_recursion(out, g);
         pass_wildcards(out, g);
         pass_nominal_types(out, g);
+        pass_field_projections(out, g);
+        if (system) {
+            pass_system_host_wait(out, g);
+        }
     }
     compile_graph_id = bp->graph->graph_id;
     pass_references(out, bp);
@@ -811,4 +931,14 @@ int behavior_asset_compile(const behavior_asset *bp, compile_report *out)
     sort_diagnostics(out, bp->graph);
     arena_free(&tmp);
     return out->error_count;
+}
+
+int behavior_asset_compile(const behavior_asset *bp, compile_report *out)
+{
+    return compile_asset(bp, out, false);
+}
+
+int behavior_asset_compile_for_system(const behavior_asset *bp, compile_report *out)
+{
+    return compile_asset(bp, out, true);
 }

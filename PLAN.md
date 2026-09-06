@@ -1,5 +1,10 @@
 # Editor-first gameplay: cleanup and next slice
 
+The September 5, 2026 request expands this plan to include editor redesign and
+visual polish now. See `docs/editor-design.md` for current decisions, verified UI
+changes, and remaining work. The historical deferrals below describe the earlier
+gameplay slice; they do not limit the current goal.
+
 ## Goal and architectural rule
 
 Build an Unreal-style visual event graph capable of authoring a small Neon-Swarm-like game. All game rules live in Behavior Assets, composed onto Prototypes through the editor. C provides generic mechanisms (input events, reflected component access, entity creation/destruction, queries, rendering), not a second gameplay controller. A `FireWeapon` node hiding an entire weapon implementation would not satisfy this rule.

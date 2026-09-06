@@ -1,0 +1,110 @@
+diff --git a/include/cute_draw.h b/include/cute_draw.h
+--- a/include/cute_draw.h
++++ b/include/cute_draw.h
+@@ -809,6 +809,20 @@
+  * @related  cf_draw_pop_outline cf_draw_push_glow cf_draw_push_color
+  */
+ CF_API void CF_CALL cf_draw_push_outline(CF_Color color, float width);
++
++/**
++ * @function cf_draw_push_interior_border
++ * @category draw
++ * @brief    Draws a border inside subsequent SDF shapes.
++ * @param    color  Border color, composited over the interior fill.
++ * @param    width  Inward border width in world units. Nonpositive values disable it.
++ * @remarks  The outer silhouette is unchanged. The fill is inset by width and the
++ *           remaining edge coverage receives the border color. Works with filled
++ *           and stroked SDF shapes, and composes with glow. Sprites and text ignore
++ *           it. Shares the outline stack: pair with cf_draw_pop_outline.
++ * @related  cf_draw_pop_outline cf_draw_push_outline cf_draw_push_glow
++ */
++CF_API void CF_CALL cf_draw_push_interior_border(CF_Color color, float width);
+ 
+ /**
+  * @function cf_draw_pop_outline
+@@ -2487,6 +2501,7 @@
+ CF_INLINE void draw_push_dash(float on_length, float off_length, float phase) { cf_draw_push_dash(on_length, off_length, phase); }
+ CF_INLINE void draw_pop_dash() { cf_draw_pop_dash(); }
+ CF_INLINE void draw_push_outline(CF_Color color, float width) { cf_draw_push_outline(color, width); }
++CF_INLINE void draw_push_interior_border(CF_Color color, float width) { cf_draw_push_interior_border(color, width); }
+ CF_INLINE void draw_pop_outline() { cf_draw_pop_outline(); }
+ CF_INLINE void draw_push_glow(CF_Color color, float radius) { cf_draw_push_glow(color, radius); }
+ CF_INLINE void draw_pop_glow() { cf_draw_pop_glow(); }
+diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
+--- a/src/cute_draw.cpp
++++ b/src/cute_draw.cpp
+@@ -708,7 +708,7 @@
+ 		// Shape effects: a trailing payload block (outline rgba, glow rgba, widths) pointed at
+ 		// by tc.fx.x. tc.fx.y is how far past the shape the effects reach, so the coverage quad
+ 		// and the tile cull can pad for a glow rather than clipping it.
+-		if (is_sdf && (geom.fx.outline_width > 0 || geom.fx.glow_radius > 0)) {
++		if (is_sdf && (geom.fx.outline_width != 0 || geom.fx.glow_radius > 0)) {
+ 			uint32_t fx_offset = (uint32_t)pay.count();
+ 			CF_MEMCPY(&tc.fx[0], &fx_offset, sizeof(fx_offset));
+ 			tc.fx[1] = cf_max(geom.fx.outline_width, geom.fx.glow_radius);
+@@ -722,8 +722,9 @@
+ 		// Clipped segments are excluded: their planes can cut mid-tile, so "interior
+ 		// covers the tile" cannot be decided from the SDF alone.
+ 		// Dashed strokes never claim opaque cover: their gaps don't hide what's beneath.
+-		// Neither do effects: an outline or glow extends past the shape's own interior.
+-		if (is_sdf && tc.fill == 1.0f && geom.alpha >= 1.0f && geom.color.a >= 1.0f && geom.type != BATCH_GEOMETRY_TYPE_SEGMENT_CLIPPED && blend == CF_DRAW_BLEND_NORMAL && !(tc.type & 16u) && tc.fx[1] == 0) {
++		// Neither do effects: outer effects extend coverage, and an interior border
++		// can make an otherwise opaque fill translucent near its edge.
++		if (is_sdf && tc.fill == 1.0f && geom.alpha >= 1.0f && geom.color.a >= 1.0f && geom.type != BATCH_GEOMETRY_TYPE_SEGMENT_CLIPPED && blend == CF_DRAW_BLEND_NORMAL && !(tc.type & 16u) && tc.fx[1] == 0 && geom.fx.outline_width >= 0) {
+ 			tc.opaque = 1.0f;
+ 		}
+ 
+@@ -4597,7 +4598,15 @@
+ void cf_draw_push_outline(CF_Color color, float width)
+ {
+ 	s_draw->outlines.add(color);
+-	s_draw->outline_widths.add(width);
++	// Negative widths previously disabled outlines; reserve their encoding for
++	// the explicit interior-border API without changing this API's behavior.
++	s_draw->outline_widths.add(width > 0 ? width : 0);
++}
++
++void cf_draw_push_interior_border(CF_Color color, float width)
++{
++	s_draw->outlines.add(color);
++	s_draw->outline_widths.add(width > 0 ? -width : 0);
+ }
+ 
+ void cf_draw_pop_outline()
+diff --git a/tools/builtin_shaders.h b/tools/builtin_shaders.h
+--- a/tools/builtin_shaders.h
++++ b/tools/builtin_shaders.h
+@@ -449,10 +449,21 @@
+ // surface, a glow a falloff past it. Both are exact and cost one smoothstep each: no second
+ // pass, no blur kernel, no extra geometry. Globals are set per command by the tile walk and from
+ // varyings in the instanced path; a zero width/radius disables that effect.
+-vec4 sdf_effects(vec4 shape_color, float d)
+-{
+-	if (v_outline_width <= 0.0 && v_glow_radius <= 0.0) return shape_color;
++vec4 sdf_effects(vec4 shape_color, float d, vec4 fill_color, float border_d)
++{
++	if (v_outline_width == 0.0 && v_glow_radius <= 0.0) return shape_color;
+ 	float aa = max(v_aa, 1.0e-6);
++	if (v_outline_width < 0.0) {
++		// Interior edge coverage matches Neon-Swarm's entity raster: erode the
++		// fill, assign the remaining shape coverage to the border, then place
++		// premultiplied border over fill. A translucent fill never leaks outside.
++		float width = -v_outline_width;
++		float shape_coverage = 1.0 - smoothstep(0.0, aa, border_d);
++		float fill_coverage = 1.0 - smoothstep(-width, -width + aa, border_d);
++		vec4 fill = fill_color * fill_coverage;
++		vec4 border = v_outline * (shape_coverage - fill_coverage);
++		shape_color = border + fill * (1.0 - border.a);
++	}
+ 	vec4 under = vec4(0.0);
+ 	// Glow first (furthest back): a falloff from the surface outward, squared so it reads like
+ 	// light rather than a flat halo.
+@@ -492,7 +503,7 @@
+ 	vec4 fill = mix(fill_no_aa, fill_aa, v_aa > 0.0 ? 1.0 : 0.0);
+ 
+ 	result = mix(stroke, fill, v_fill);
+-	result = sdf_effects(result, d);
++	result = sdf_effects(result, d, b, mix(wire_d, d, v_fill));
+ 	return result;
+ }
+ )";

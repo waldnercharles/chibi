@@ -7,6 +7,10 @@
 #include <stdint.h>
 
 typedef struct game_behavior_world game_behavior_world;
+struct game_entities;
+void game_behavior_bind_entities(game_behavior_world *world, struct game_entities *entities);
+struct game_particles;
+void game_behavior_bind_particles(game_behavior_world *world, struct game_particles *particles);
 
 #define GAME_BEHAVIOR_LOG_MESSAGE_MAX 256
 
@@ -32,7 +36,27 @@ int game_behavior_replace_asset(
     behavior_asset *definition,
     behavior_asset **old_definition
 );
+/* Editor setup mode: attachment creation/replacement prepares instances without
+ * gameplay effects. Toggling this flag never dispatches or resets anything.
+ * Leave it false during a running session, including Pause. Defaults false. */
+void game_behavior_set_deferred(game_behavior_world *world, bool deferred);
+/* Start prepared attachments once, in attachment order. Requires deferred=false.
+ * Failed Begin remains failed until replacement/reset; retry returns -1. Runtime
+ * attachments created by Begin start normally and are not started a second time. */
+int game_behavior_begin_pending(game_behavior_world *world);
 int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const char *asset_name);
+/* Replace one live entity's ordered attachments, retaining unchanged instances.
+ * Prevalidation/staging failure preserves membership and existing instances.
+ * Newly added behaviors execute Begin as with attach; external Begin effects
+ * (component writes, queued events/spawns, sinks) cannot be rolled back.
+ * Call outside dispatch; callbacks must not remove existing attachments from
+ * this same entity. Names are borrowed only for this call. Returns 0 or -1. */
+int game_behavior_set_attachments(
+    game_behavior_world *world,
+    ecs_entity entity,
+    const char *const *names,
+    int count
+);
 int game_behavior_detach_asset(game_behavior_world *world, ecs_entity entity, const char *asset_name);
 int game_behavior_set_breakpoints_enabled_for_asset(
     game_behavior_world *world,
@@ -53,6 +77,13 @@ int game_behavior_set_debug_hold(
 );
 int game_behavior_detach_entity(game_behavior_world *world, ecs_entity entity);
 int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity);
+/* Returns INSTANCE_UPDATE_*; all instances pass preflight before any change. */
+int game_behavior_preview_asset(
+    game_behavior_world *world,
+    const char *asset_name,
+    behavior_asset *definition,
+    behavior_asset **old_definition
+);
 int game_behavior_dispatch(
     game_behavior_world *world,
     ecs_entity entity,

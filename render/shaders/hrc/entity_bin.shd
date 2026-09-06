@@ -1,0 +1,34 @@
+// Adapted from the user-supplied Neon-Swarm entity binning.
+// One invocation per tile keeps the pre-sorted entity order and cannot overflow:
+// every tile has entity_count slots. No atomics, clearing pass or SDF rejection.
+#include "entity.shd"
+layout(set = 0, binding = 0) readonly buffer EntityBuf { Entity entities[]; };
+layout(set = 1, binding = 0) buffer TileCounts { uint tile_counts[]; };
+layout(set = 1, binding = 1) buffer TileEntities { uint tile_entities[]; };
+layout(set = 2, binding = 0) uniform Params {
+    int u_entity_count;
+    float u_world_min_x;
+    float u_world_max_y;
+    vec2 u_px_per_unit;
+    int u_tiles_x;
+    int u_tiles_y;
+    int u_max_per_tile;
+};
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+void main()
+{
+    uint tile = gl_GlobalInvocationID.x;
+    if (tile >= uint(u_tiles_x * u_tiles_y)) return;
+    vec2 tile_min = vec2(tile % uint(u_tiles_x), tile / uint(u_tiles_x)) * 16.0;
+    vec2 tile_max = tile_min + vec2(16.0);
+    uint count = 0u;
+    for (int i = 0; i < u_entity_count; i++) {
+        Entity e = entities[i];
+        vec2 center = vec2(e.pos.x - u_world_min_x, u_world_max_y - e.pos.y) * u_px_per_unit;
+        vec2 extent = e.extent * u_px_per_unit;
+        if (any(lessThan(center + extent, tile_min)) ||
+            any(greaterThan(center - extent, tile_max))) continue;
+        tile_entities[tile * uint(u_max_per_tile) + count++] = uint(i);
+    }
+    tile_counts[tile] = count;
+}

@@ -8,7 +8,11 @@
 #include "../game/prototype.h"
 #include "authoring_session.h"
 #include "cute_host.h"
+#include "event_catalog.h"
+#include "movement_input.h"
 #include "scene_authoring.h"
+#include "scene_renderer.h"
+#include "screenshot.h"
 #include "stacktrace.h"
 #include "web_loop.h"
 
@@ -54,67 +58,6 @@ static void print_usage(const char *program)
     printf("  --fps <rate>           Set the target frame rate\n");
     printf("  --screenshot [path]    Capture a PNG after %d frames and exit\n", APP_DEFAULT_SCREENSHOT_FRAMES);
 }
-
-static int save_screenshot(const char *path)
-{
-    CF_Canvas canvas = cf_app_get_canvas();
-    int width = cf_app_get_canvas_width();
-    int height = cf_app_get_canvas_height();
-    CF_Readback readback = cf_canvas_readback(canvas);
-    if (!readback.id) {
-        fprintf(stderr, "screenshot readback could not be started\n");
-        return 1;
-    }
-    int size = cf_readback_size(readback);
-    size_t expected = (size_t)width * (size_t)height * sizeof(CF_Pixel);
-    if (size <= 0 || width <= 0 || height <= 0 || (size_t)size != expected) {
-        fprintf(stderr, "screenshot readback has invalid dimensions\n");
-        cf_destroy_readback(readback);
-        return 1;
-    }
-    CF_Pixel *pixels = (CF_Pixel *)malloc((size_t)size);
-    if (!pixels) {
-        fprintf(stderr, "screenshot allocation failed\n");
-        cf_destroy_readback(readback);
-        return 1;
-    }
-    while (!cf_readback_ready(readback)) {
-    }
-    int copied = cf_readback_data(readback, pixels, size);
-    int result = 1;
-    if (copied == size) {
-        CF_Image image = { width, height, pixels };
-        void *png_data = NULL;
-        int png_size = 0;
-        if (!cf_is_error(cf_image_save_png_to_memory(&image, &png_data, &png_size)) &&
-            png_data && png_size > 0) {
-            FILE *file = fopen(path, "wb");
-            if (file && fwrite(png_data, 1, (size_t)png_size, file) == (size_t)png_size) {
-                result = 0;
-            }
-            if (file) {
-                fclose(file);
-            }
-        }
-        cf_free(png_data);
-    }
-    free(pixels);
-    cf_destroy_readback(readback);
-    if (result != 0) {
-        fprintf(stderr, "could not save screenshot: %s\n", path);
-        return 1;
-    }
-    printf("screenshot saved: %s (%dx%d)\n", path, width, height);
-    return 0;
-}
-
-static const editor_event_param APP_TICK_PARAMS[] = {
-    { "DeltaSeconds", PIN_F32, "float" },
-};
-
-static const editor_event_signature APP_EVENT_CATALOG[] = {
-    { "Tick", APP_TICK_PARAMS, 1 },
-};
 
 typedef struct
 {
@@ -370,31 +313,13 @@ static int app_frame(app_loop *loop)
     }
     engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
     if (viewport_focused && !editor_host_captures_keyboard()) {
-        float distance = 180.0f * (float)seconds;
-        app_scene_authoring_input(
-            loop->authoring,
-            "MoveLeft",
-            distance,
-            cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT)
-        );
-        app_scene_authoring_input(
-            loop->authoring,
-            "MoveRight",
-            distance,
-            cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT)
-        );
-        app_scene_authoring_input(
-            loop->authoring,
-            "MoveUp",
-            distance,
-            cf_key_down(CF_KEY_W) || cf_key_down(CF_KEY_UP)
-        );
-        app_scene_authoring_input(
-            loop->authoring,
-            "MoveDown",
-            distance,
+        app_movement_input movement = app_movement_from_keys(
+            cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT),
+            cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT),
+            cf_key_down(CF_KEY_W) || cf_key_down(CF_KEY_UP),
             cf_key_down(CF_KEY_S) || cf_key_down(CF_KEY_DOWN)
         );
+        app_scene_authoring_move(loop->authoring, movement.x, movement.y);
         if (cf_key_just_pressed(CF_KEY_SPACE)) {
             app_scene_authoring_input(loop->authoring, "Fire", 1.0, 1);
         }
@@ -404,7 +329,7 @@ static int app_frame(app_loop *loop)
     }
 
     editor_prepare_docking();
-    engine_viewport_draw(loop->viewport);
+    app_scene_authoring_draw_viewport(loop->authoring, loop->viewport);
     app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
@@ -417,7 +342,7 @@ static int app_frame(app_loop *loop)
         loop->capture_error = 1;
     }
     if (finished && loop->screenshot_path) {
-        loop->capture_error = save_screenshot(loop->screenshot_path);
+        loop->capture_error = app_save_screenshot(loop->screenshot_path);
         return 1;
     }
     return finished;
@@ -503,10 +428,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "cf_make_app failed: %s\n", result.details ? result.details : "unknown error");
         return 1;
     }
+    app_scene_renderer_initialize();
     if (fps > 0) {
         cf_set_target_framerate(fps);
     }
     cf_app_init_imgui();
+    editor_ui_initialize(!headless && !screenshot_path);
     editor_ui_set_framebuffer_target(screenshot_path != NULL);
     if (headless) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
@@ -516,6 +443,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "screenshots are unavailable on web builds\n");
         cf_destroy_app();
         return 1;
+#else
+        if (!cf_app_set_imgui_render_target(cf_app_get_canvas())) {
+            fprintf(stderr, "could not render editor into screenshot canvas\n");
+            cf_destroy_app();
+            return 1;
+        }
 #endif
     }
 
@@ -537,18 +470,11 @@ int main(int argc, char **argv)
                                          : NULL;
     engine *runtime = world ? engine_new(world, live) : NULL;
     app_scene_authoring *authoring = NULL;
-    int components_ok = ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) ==
-                            ECS_OK &&
-                        ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) ==
-                            ECS_OK &&
-                        ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) ==
-                            ECS_OK &&
-                        ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) ==
-                            ECS_OK &&
-                        ecs_world_register_component(world, &GAME_COMPONENT_GameWeapon, NULL) ==
-                            ECS_OK &&
-                        ecs_world_register_component(world, &GAME_COMPONENT_GameProjectile, NULL) ==
-                            ECS_OK;
+    int components_ok = world != NULL;
+    for (int i = 0; components_ok && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        components_ok = ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) ==
+                        ECS_OK;
+    }
     if (!world || !components_ok || !viewport || !graph_editor || !live ||
         !definition || !runtime || game_live_add_definition(live, definition) != 0) {
         app_scene_authoring_free(authoring);
@@ -571,11 +497,15 @@ int main(int argc, char **argv)
         NULL,
         runtime
     );
-    if (authoring) {
-        (void)app_scene_authoring_load_content(authoring);
-        (void)app_scene_authoring_seed_default(authoring);
-    }
-    if (!authoring || app_scene_authoring_apply_pending(authoring) != 0) {
+    bool scene_ready = authoring &&
+                       app_scene_authoring_load_content(authoring) == 0 &&
+                       app_scene_authoring_seed_default(authoring) == 0;
+    if (!scene_ready || app_scene_authoring_apply_pending(authoring) != 0) {
+        fprintf(
+            stderr,
+            "Could not initialize scene: %s\n",
+            authoring ? app_scene_authoring_message(authoring) : "authoring unavailable"
+        );
         app_scene_authoring_free(authoring);
         engine_free(runtime);
         game_live_world_free(live);
@@ -586,7 +516,7 @@ int main(int argc, char **argv)
         return 1;
     }
     /* Put the shipped movement graph on screen on first launch. The graph is
-     * still reachable through the Content Drawer after switching documents. */
+     * still reachable through Files after switching documents. */
     if (authoring && game_live_find_definition(live, "InputBehavior")) {
         (void)app_scene_authoring_open_behavior(authoring, "InputBehavior");
         editor_set_graph_visible(graph_editor, 1);
@@ -594,7 +524,9 @@ int main(int argc, char **argv)
     }
     /* Start from a known dock tree so scripted scenarios do not depend on a
      * restored or previously resized layout. */
-    editor_ui_reset_layout();
+    if (scenario != APP_SCENARIO_NONE || screenshot_path) {
+        editor_ui_reset_layout();
+    }
     editor_set_event_catalog(
         graph_editor,
         APP_EVENT_CATALOG,

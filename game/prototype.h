@@ -73,6 +73,16 @@ game_prototype *game_prototype_capture_entity(
 void game_prototype_free(game_prototype *prototype);
 char *game_prototype_save(const game_prototype *prototype);
 char *game_prototype_components_json(const game_prototype *prototype);
+/* Owned single-component JSON, including reflected nested fields. */
+char *game_prototype_entity_component_json(
+    const ecs_world *world,
+    ecs_entity entity,
+    const ecs_component_desc *desc,
+    const game_prototype_registry *registry
+);
+/* Sparse fields, full added components, and null removed components, using
+ * the same semantics as capturing an entity. Caller owns the returned JSON. */
+char *game_prototype_overrides_json(const game_prototype *base, const game_prototype *current);
 char *game_prototype_capture_overrides_json(
     const game_prototype *base,
     const ecs_world *world,
@@ -83,6 +93,14 @@ int game_prototype_apply_components_json(
     ecs_entity entity,
     const char *components_json,
     const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+);
+/* Allocate authored components without running attached behaviors. */
+int game_prototype_spawn_components(
+    const game_prototype *prototype,
+    ecs_world *world,
+    ecs_entity *entity,
     char *error,
     size_t error_size
 );

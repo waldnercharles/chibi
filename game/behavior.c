@@ -3,6 +3,7 @@
 #include "../core/array.h"
 #include "../core/xalloc.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,11 +31,14 @@ typedef struct
     behavior_instance *instance;
     uint64_t sequence;
     int debug_hold;
+    int begin_state; /* 0 pending, 1 started, -1 failed. */
 } behavior_attachment;
 
 struct game_behavior_world
 {
     ecs_world *ecs;
+    struct game_entities *entities;
+    struct game_particles *particles;
     behavior_asset_record *assets;
     behavior_attachment *attachments;
     game_behavior_log_info *logs;
@@ -42,6 +46,7 @@ struct game_behavior_world
     void *parallel_user;
     flow_sink_fn sink;
     void *sink_user;
+    bool defer_begin;
     int breakpoints_enabled;
     int *pump_results;
     int pump_result_capacity;
@@ -116,11 +121,19 @@ static behavior_instance *acquire_instance(
     } else {
         instance = behavior_instance_create(asset->definition, &owner, NULL, NULL);
     }
-    if (instance &&
-        (behavior_instance_set_activation_pool(instance, 1) != 0 ||
-         behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0)) {
+    if (!instance) {
+        return NULL;
+    }
+    if (behavior_instance_set_activation_pool(instance, 1) != 0 ||
+        behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0) {
         behavior_instance_destroy(instance);
         return NULL;
+    }
+    if (world->entities) {
+        behavior_instance_bind_service(instance, "game.entities", world->entities);
+    }
+    if (world->particles) {
+        behavior_instance_bind_service(instance, "game.particles", world->particles);
     }
     behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
     context->world = world;
@@ -165,6 +178,38 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     result->ecs = world;
     result->next_sequence = 1;
     return result;
+}
+
+void game_behavior_bind_entities(game_behavior_world *world, struct game_entities *entities)
+{
+    world->entities = entities;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_instance_bind_service(world->attachments[i].instance, "game.entities", entities);
+    }
+}
+
+void game_behavior_bind_particles(game_behavior_world *world, struct game_particles *particles)
+{
+    world->particles = particles;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_instance_bind_service(world->attachments[i].instance, "game.particles", particles);
+    }
+}
+
+static bool asset_requires_serial(const behavior_asset *asset)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        for (int j = 0; j < acount(asset->graphs[i]->nodes); j++) {
+            const node_access *access = asset->graphs[i]->nodes[j]->desc->access;
+            if (access &&
+                ((access->flags & (NODE_EFFECT_STRUCTURAL | NODE_EFFECT_WORLD_READ |
+                                   NODE_EFFECT_HOST_SINK)) ||
+                 (access->write_count && !(access->flags & NODE_EFFECT_ENTITY_SCOPED)))) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void game_behavior_world_free(game_behavior_world *world)
@@ -238,13 +283,68 @@ int game_behavior_unregister_asset(
 
 static int detach_asset_entity(game_behavior_world *world, behavior_asset_record *asset, ecs_entity entity);
 
-static int begin_instance(behavior_attachment *attachment)
+static int begin_instance(game_behavior_world *world, behavior_attachment *attachment)
 {
-    flow_error error = { 0 };
-    flow_run *begin = behavior_instance_dispatch(attachment->instance, "Begin", (flow_inputs){ 0 }, &error);
-    if (!begin) {
-        return error.code == FLOW_ERR_UNKNOWN_EVENT ? 0 : -1;
+    if (attachment->begin_state) {
+        return attachment->begin_state < 0 ? -1 : 0;
     }
+    if (world->defer_begin) {
+        return 0;
+    }
+    /* Mark first: Begin may enqueue work or grow the attachment array. */
+    attachment->begin_state = 1;
+    behavior_instance *instance = attachment->instance;
+    uint64_t sequence = attachment->sequence;
+    flow_error error = { 0 };
+    flow_run *begin = behavior_instance_dispatch(instance, "Begin", (flow_inputs){ 0 }, &error);
+    bool failed = begin ? flow_run_status(begin) == FLOW_FAILED
+                        : error.code != FLOW_ERR_UNKNOWN_EVENT;
+    if (!failed) {
+        return 0;
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        if (world->attachments[i].sequence == sequence) {
+            world->attachments[i].begin_state = -1;
+        }
+    }
+    return -1;
+}
+
+void game_behavior_set_deferred(game_behavior_world *world, bool deferred)
+{
+    assert(world);
+    world->defer_begin = deferred;
+}
+
+int game_behavior_begin_pending(game_behavior_world *world)
+{
+    if (!world || world->defer_begin) {
+        return -1;
+    }
+    uint64_t *pending = NULL;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        if (world->attachments[i].begin_state < 0) {
+            return -1;
+        }
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        if (!world->attachments[i].begin_state) {
+            apush(pending, world->attachments[i].sequence);
+        }
+    }
+    for (int i = 0; i < acount(pending); i++) {
+        for (int j = 0; j < acount(world->attachments); j++) {
+            if (world->attachments[j].sequence != pending[i]) {
+                continue;
+            }
+            if (begin_instance(world, &world->attachments[j]) != 0) {
+                afree(pending);
+                return -1;
+            }
+            break;
+        }
+    }
+    afree(pending);
     return 0;
 }
 
@@ -303,6 +403,44 @@ int game_behavior_replace_asset(
     return 0;
 }
 
+int game_behavior_preview_asset(
+    game_behavior_world *world,
+    const char *asset_name,
+    behavior_asset *definition,
+    behavior_asset **old_definition
+)
+{
+    behavior_asset_record *asset = find_asset(world, asset_name);
+    assert(asset && definition && old_definition);
+    if (!definition->owner_type_name) {
+        behavior_asset_set_owner_type(definition, "ecs.entity");
+    }
+    int status = INSTANCE_UPDATE_READY;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        if (attachment->asset != asset) {
+            continue;
+        }
+        int current = behavior_instance_can_update(attachment->instance, definition);
+        if (current > status) {
+            status = current;
+        }
+    }
+    if (status != INSTANCE_UPDATE_READY) {
+        return status;
+    }
+    destroy_asset_pool(asset);
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        if (attachment->asset == asset) {
+            behavior_instance_update(attachment->instance, definition);
+        }
+    }
+    *old_definition = asset->definition;
+    asset->definition = definition;
+    return INSTANCE_UPDATE_READY;
+}
+
 int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const char *asset_name)
 {
     if (!world || !ecs_entity_is_alive(world->ecs, entity) ||
@@ -335,12 +473,142 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
         }
     );
     behavior_attachment *attachment = &alast(world->attachments);
-    if (begin_instance(attachment) != 0) {
+    if (begin_instance(world, attachment) != 0) {
+        for (int i = 0; i < acount(world->attachments); i++) {
+            if (world->attachments[i].instance == instance) {
+                adel(world->attachments, i);
+                break;
+            }
+        }
         release_instance(asset, instance);
-        adel(world->attachments, acount(world->attachments) - 1);
         return -1;
     }
     return 0;
+}
+
+static bool attachment_entity(const behavior_attachment *attachment, ecs_entity entity)
+{
+    return attachment->entity.slot == entity.slot &&
+           attachment->entity.generation == entity.generation;
+}
+
+int game_behavior_set_attachments(
+    game_behavior_world *world,
+    ecs_entity entity,
+    const char *const *names,
+    int count
+)
+{
+    if (!world || count < 0 || (count && !names) ||
+        !ecs_entity_is_alive(world->ecs, entity)) {
+        return -1;
+    }
+    /* Resolve every requested asset before allocating or starting anything. */
+    for (int i = 0; i < count; i++) {
+        if (!names[i] || !names[i][0]) {
+            return -1;
+        }
+        behavior_asset_record *asset = find_asset(world, names[i]);
+        if (!asset || (asset->definition->owner_type_name &&
+                       strcmp(asset->definition->owner_type_name, "ecs.entity") != 0)) {
+            return -1;
+        }
+        for (int j = 0; j < i; j++) {
+            if (strcmp(names[i], names[j]) == 0) {
+                return -1;
+            }
+        }
+    }
+    behavior_attachment *requested = NULL;
+    behavior_attachment *created = NULL;
+    for (int i = 0; i < count; i++) {
+        behavior_attachment *existing = find_attachment(world, entity, names[i]);
+        if (existing) {
+            apush(requested, *existing);
+            continue;
+        }
+        behavior_asset_record *asset = find_asset(world, names[i]);
+        if (!asset->definition->owner_type_name &&
+            behavior_asset_set_owner_type(asset->definition, "ecs.entity") != 0) {
+            goto fail;
+        }
+        behavior_instance *instance = acquire_instance(asset, world, entity);
+        if (!instance) {
+            goto fail;
+        }
+        behavior_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
+        behavior_attachment attachment = {
+            .entity = entity,
+            .asset = asset,
+            .instance = instance,
+            .sequence = world->next_sequence++,
+        };
+        apush(created, attachment);
+        apush(requested, attachment);
+    }
+    /* Publish the new attachments for Begin's ordinary lookup semantics, but
+     * retain every old instance until all Begin dispatches have succeeded. */
+    for (int i = 0; i < acount(created); i++) {
+        apush(world->attachments, created[i]);
+    }
+    for (int i = 0; i < acount(created); i++) {
+        behavior_attachment
+            *published = find_attachment(world, entity, created[i].asset->name);
+        if (begin_instance(world, published) != 0) {
+            for (int j = acount(world->attachments) - 1; j >= 0; j--) {
+                for (int k = 0; k < acount(created); k++) {
+                    if (world->attachments[j].instance == created[k].instance) {
+                        adel(world->attachments, j);
+                        break;
+                    }
+                }
+            }
+            goto fail;
+        }
+        published = find_attachment(world, entity, created[i].asset->name);
+        for (int j = 0; j < acount(requested); j++) {
+            if (requested[j].instance == created[i].instance) {
+                requested[j].begin_state = published->begin_state;
+            }
+        }
+    }
+    behavior_attachment *ordered = NULL;
+    bool inserted = false;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment attachment = world->attachments[i];
+        if (!attachment_entity(&attachment, entity)) {
+            apush(ordered, attachment);
+            continue;
+        }
+        if (!inserted) {
+            for (int j = 0; j < acount(requested); j++) {
+                apush(ordered, requested[j]);
+            }
+            inserted = true;
+        }
+        bool retained = false;
+        for (int j = 0; j < acount(requested); j++) {
+            if (requested[j].instance == attachment.instance) {
+                retained = true;
+                break;
+            }
+        }
+        if (!retained) {
+            release_instance(attachment.asset, attachment.instance);
+        }
+    }
+    afree(world->attachments);
+    world->attachments = ordered;
+    afree(requested);
+    afree(created);
+    return 0;
+fail:
+    for (int i = 0; i < acount(created); i++) {
+        release_instance(created[i].asset, created[i].instance);
+    }
+    afree(created);
+    afree(requested);
+    return -1;
 }
 
 static int detach_asset_entity(game_behavior_world *world, behavior_asset_record *asset, ecs_entity entity)
@@ -570,7 +838,11 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         world->pump_result_capacity = count;
     }
     behavior_pump_context context = { world, monotonic_time };
-    if (world->parallel_for && !breakpoints_enabled) {
+    bool serial = breakpoints_enabled;
+    for (int i = 0; i < count && !serial; i++) {
+        serial = asset_requires_serial(world->attachments[i].asset->definition);
+    }
+    if (world->parallel_for && !serial) {
         world->parallel_for(count, pump_attachment, &context);
     } else {
         for (int i = 0; i < count; i++) {

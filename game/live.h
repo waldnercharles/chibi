@@ -2,6 +2,9 @@
 #define CBLUEPRINT_GAME_LIVE_H
 
 #include "behavior.h"
+#include "entities.h"
+#include "gameplay.h"
+#include "particles.h"
 
 #include <stddef.h>
 
@@ -15,7 +18,8 @@ typedef struct game_live_definition
     behavior_asset *applied;
     game_live_world *world;
     int registered;
-    int dirty;
+    int dirty; /* Working edits not yet running. */
+    bool unsaved;
     compile_report diagnostics;
 } game_live_definition;
 
@@ -23,6 +27,9 @@ struct game_live_world
 {
     ecs_world *ecs;
     game_behavior_world *behaviors;
+    game_entities *entities;
+    game_contacts *contacts;
+    game_particles *particles;
     game_live_definition **definitions;
 };
 
@@ -46,5 +53,8 @@ int game_live_duplicate_definition(
     const behavior_asset *source
 );
 int game_live_apply(game_live_world *world, game_live_definition *definition, char *message, size_t message_size);
+
+/* Returns INSTANCE_UPDATE_* or -1 for invalid edits. Never recreates instances. */
+int game_live_preview(game_live_world *world, game_live_definition *definition, char *message, size_t message_size);
 
 #endif

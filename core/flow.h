@@ -3,6 +3,7 @@
 
 #include "graph.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -11,6 +12,14 @@ extern "C"
 #endif
 
     typedef struct flow_run flow_run;
+    typedef struct flow_host_request flow_host_request;
+    typedef enum
+    {
+        FLOW_HOST_PENDING,
+        FLOW_HOST_READY,
+        FLOW_HOST_FINISHED,
+        FLOW_HOST_CANCELLED,
+    } flow_host_state;
     typedef struct behavior_instance behavior_instance;
 
     typedef struct
@@ -51,7 +60,7 @@ extern "C"
         double delta_seconds;
         flow_sink_fn sink; /* optional host callback for side-effecting nodes */
         void *sink_user;   /* borrowed by the run */
-        const char *event_name; /* borrowed dispatch name for runtime inspection */
+        const char *event_name; /* copied by the run for runtime inspection */
         behavior_instance *instance; /* owning instance, or NULL for a standalone run */
         flow_parallel_for_fn parallel_for; /* host-supplied, never owned */
         void *parallel_user;
@@ -64,7 +73,7 @@ extern "C"
     {
         FLOW_IDLE = 0,
         FLOW_RUNNING,
-        FLOW_SUSPENDED, /* a latent node is waiting for host time */
+        FLOW_SUSPENDED, /* waiting for time or a host operation */
         FLOW_PAUSED,    /* the host/user stopped between activations */
         FLOW_COMPLETED,
         FLOW_FAILED,
@@ -137,7 +146,9 @@ extern "C"
     int flow_run_stop(flow_run *run);
     int flow_run_reset(flow_run *run);
 
+    bool flow_run_waiting_for_host(const flow_run *run);
     flow_state flow_run_status(const flow_run *run);
+    const flow_run *flow_run_active_leaf(const flow_run *run);
     double flow_run_wake_time(const flow_run *run);
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
@@ -187,6 +198,20 @@ extern "C"
     int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *out);
     int flow_context_fail(struct flow_context *ctx, int code, const char *message);
     int flow_context_pause_until(struct flow_context *ctx, double monotonic_time);
+    /* Schedule EXEC with flow_context_continue before requesting a host wait.
+     * The returned reference belongs to the host and must be released. Requests
+     * survive run destruction; completion of a detached request returns false.
+     * All operations are serial on the graph scheduler's thread. */
+    flow_host_request *flow_context_host_wait(struct flow_context *ctx);
+    flow_host_state flow_host_status(const flow_host_request *request);
+    /* output_pin == -1 completes without writing a data output. */
+    bool flow_host_complete(flow_host_request *request, int output_pin, pin_value value);
+    void flow_host_cancel(flow_host_request *request);
+    void flow_host_release(flow_host_request *request);
+    /* Borrowed until run stop/reset/free, including after request completion.
+     * Do not retain across scheduler operations. */
+    flow_run *flow_host_run(const flow_host_request *request);
+    int flow_host_resume(flow_host_request *request);
     int flow_context_continue(struct flow_context *ctx, int output_pin);
     int flow_context_loop(struct flow_context *ctx, int first, int last);
     int flow_context_loop_range(
@@ -211,6 +236,8 @@ extern "C"
     behavior_instance *flow_context_instance(const struct flow_context *ctx);
     /* Retain a completed nested run until this activation is reset/freed. */
     int flow_context_retain_run(struct flow_context *ctx, flow_run *child);
+    int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs inputs);
+    int flow_context_return(struct flow_context *ctx);
     /* Allocate from the run-owned arena (DATA-6). */
     void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size);
 

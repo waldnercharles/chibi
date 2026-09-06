@@ -145,7 +145,7 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
     int result = 0;
     int argument = 0;
     for (int i = 0; i < entry->output_count; i++) {
-        if (entry->output_pins[i].kind != PIN_DATA) {
+        if (entry->output_pins[i].kind != PIN_DATA || entry->output_pins[i].field_source) {
             continue;
         }
         if (argument >= n->input_count) {
@@ -176,9 +176,15 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
             pin_coerce(&value, &ret->input_pins[i]);
         }
         return_inputs[i] = value;
-        if (output < n->output_count) {
-            caller_outputs[output++] = value;
+        while (output < n->output_count && (n->output_pins[output].kind != PIN_DATA ||
+                                            n->output_pins[output].field_source)) {
+            output++;
         }
+        if (output >= n->output_count) {
+            result = fail(ctx, n, i, NODE_EVAL_INVALID, "pure function return count mismatch");
+            goto done;
+        }
+        caller_outputs[output++] = value;
     }
 
 done:
@@ -264,7 +270,7 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, "Break node has invalid struct input");
             }
             node_eval_break(n, state, a);
-            for (int i = 0; i < n->output_count; i++) {
+            for (int i = 0; i < n->desc->type->field_count; i++) {
                 if (outputs[i].type != n->output_pins[i].type) {
                     return fail(ctx, n, i, NODE_EVAL_INVALID, "Break node produced invalid output");
                 }
@@ -281,7 +287,7 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             if (!ctx->instance) {
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, "Get Variable requires an instance");
             }
-            if (behavior_instance_get_variable(ctx->instance, n->reference_id, &outputs[0]) !=
+            if (behavior_instance_copy_variable(ctx->instance, n->reference_id, a, &outputs[0]) !=
                 0) {
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, "Get Variable references a lost variable");
             }
@@ -300,7 +306,9 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             break;
         case NODE_PURE_VOID_CALL: break;
         case NODE_PURE_READ: {
-            const char *error = n->desc->read(ctx, a, &outputs[0]);
+            const char *error = n->desc->read_inputs
+                                  ? n->desc->read_inputs(ctx, inputs, a, &outputs[0])
+                                  : n->desc->read(ctx, a, &outputs[0]);
             if (error) {
                 return fail(ctx, n, 0, NODE_EVAL_INVALID, error);
             }
@@ -309,6 +317,24 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
     }
     runtime_node_set_computed(state, 1);
     runtime_node_set_visiting(state, 0);
+    return 0;
+}
+
+static int projected_output(const node *n, int index, const pin_value *outputs, pin_value *out)
+{
+    const pin_spec *pin = &n->output_pins[index];
+    if (!pin->field_source && !pin->field_name) {
+        *out = outputs[index];
+        return 0;
+    }
+    int source = -1;
+    const type_field *field = graph_output_field(n, index, &source);
+    if (!field || outputs[source].type != PIN_STRUCT ||
+        outputs[source].container != PIN_CONTAINER_SINGLE || !outputs[source].ptr) {
+        return -1;
+    }
+    *out = (pin_value){ 0 };
+    pin_read_field(outputs[source].ptr, field, out);
     return 0;
 }
 
@@ -348,7 +374,9 @@ int graph_eval_output(graph *g, node *n, int out_pin, arena *a, pin_value *out, 
     if (!state) {
         return fail(ctx, n, out_pin, NODE_EVAL_INVALID, "node runtime state is unavailable");
     }
-    *out = runtime_node_outputs_const(state)[out_pin];
+    if (projected_output(n, out_pin, runtime_node_outputs_const(state), out)) {
+        return fail(ctx, n, out_pin, NODE_EVAL_INVALID, "exposed field has invalid metadata or no aggregate value");
+    }
     return 0;
 }
 
@@ -378,8 +406,7 @@ int eval_context_output(const eval_context *ctx, const node *n, int pin, pin_val
     if (!state) {
         return -1;
     }
-    *out = runtime_node_outputs_const(state)[pin];
-    return 0;
+    return projected_output(n, pin, runtime_node_outputs_const(state), out);
 }
 
 /* Deprecated: the graph no longer owns memo state, so only the caller's

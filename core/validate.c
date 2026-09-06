@@ -60,8 +60,9 @@ static int node_desc_validate(const node_desc *d)
         case NODE_PURE_FUNCTION:
         case NODE_PURE_VOID_CALL: break;
         case NODE_PURE_READ:
-            if (!d->read || !node_desc_is_pure(d) || d->input_count != 0 ||
-                d->output_count != 1) {
+            if ((!d->read && !d->read_inputs) || (d->read && d->read_inputs) ||
+                !node_desc_is_pure(d) || (d->read && d->input_count != 0) ||
+                d->output_count < 1 || (d->read && d->output_count != 1)) {
                 return 0;
             }
             break;

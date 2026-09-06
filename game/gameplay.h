@@ -1,11 +1,15 @@
 #ifndef CBLUEPRINT_GAME_GAMEPLAY_H
 #define CBLUEPRINT_GAME_GAMEPLAY_H
 
-#include "generated.h"
+#include "../ecs/ecs.h"
 
-/* Deterministic, ECS-backed first gameplay slice. Structural changes are
- * recorded and applied by the caller's normal sync point. */
-int game_gameplay_fire(ecs_world *world, ecs_entity owner);
-int game_gameplay_tick(ecs_world *world, double delta_seconds);
+struct game_entities;
+typedef struct game_contacts game_contacts;
+
+game_contacts *game_contacts_new(ecs_world *world, struct game_entities *entities);
+void game_contacts_free(game_contacts *contacts);
+void game_contacts_reset(game_contacts *contacts);
+/* Snapshot overlaps, then queue Contact Begin for both participants. */
+int game_contacts_tick(game_contacts *contacts);
 
 #endif

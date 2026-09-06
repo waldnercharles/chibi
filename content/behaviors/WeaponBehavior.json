@@ -1,0 +1,301 @@
+{
+  "version": 3,
+  "name": "WeaponBehavior",
+  "id_counter": 21,
+  "description": "Spawns a projectile beside the owning entity when Fire is dispatched.",
+  "owner_type": "ecs.entity",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Event",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "reference_name": "Fire"
+        },
+        {
+          "id": 3,
+          "type": "Spawn Prototype",
+          "x": 240,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 4,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 5,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "Projectile",
+              "type_name": "name"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 6,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 7,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "Get_GameTransform",
+          "x": 0,
+          "y": 180,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 9,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "game_move_transform",
+          "x": 240,
+          "y": 180,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 11,
+              "name": "transform",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            },
+            {
+              "id": 12,
+              "name": "x",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 32.0,
+              "type_name": "float"
+            },
+            {
+              "id": 13,
+              "name": "y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 14,
+              "name": "return",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "SetEntity_GameTransform",
+          "x": 540,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 16,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 17,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 18,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 19,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 20,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "from_pin": 2,
+          "to": 3,
+          "to_pin": 4,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 3,
+          "from_pin": 6,
+          "to": 15,
+          "to_pin": 16,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 3,
+          "from_pin": 7,
+          "to": 15,
+          "to_pin": 17,
+          "kind": "data"
+        },
+        {
+          "from": 8,
+          "from_pin": 9,
+          "to": 10,
+          "to_pin": 11,
+          "kind": "data"
+        },
+        {
+          "from": 10,
+          "from_pin": 14,
+          "to": 15,
+          "to_pin": 18,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

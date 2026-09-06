@@ -13,6 +13,15 @@ typedef struct ImVec2_t
 } ImVec2;
 
 typedef struct ImFont_t ImFont;
+typedef struct ImDrawList_t ImDrawList;
+typedef struct ImVec4_t
+{
+    float x, y, z, w;
+} ImVec4;
+typedef unsigned int ImU32;
+typedef int ImGuiCol;
+typedef int ImGuiStyleVar;
+typedef int ImDrawFlags;
 
 typedef int ImGuiChildFlags;
 typedef int ImGuiHoveredFlags;
@@ -32,6 +41,14 @@ enum
     ImGuiTreeNodeFlags_Selected = 1 << 0,
     ImGuiTreeNodeFlags_NoTreePushOnOpen = 1 << 3,
     ImGuiTreeNodeFlags_Leaf = 1 << 8,
+    ImGuiTreeNodeFlags_FramePadding = 1 << 10,
+    ImGuiCol_Text = 0,
+    ImGuiCol_TextDisabled = 1,
+    ImGuiCol_Header = 24,
+    ImGuiCol_HeaderHovered = 25,
+    ImGuiCol_HeaderActive = 26,
+    ImGuiStyleVar_FramePadding = 11,
+    ImDrawFlags_RoundCornersAll = 0xF0,
     ImGuiTreeNodeFlags_SpanAvailWidth = 1 << 11,
     ImGuiMouseCursor_Hand = 7,
     ImGuiDataType_S8 = 0,
@@ -49,11 +66,42 @@ enum
     ImGuiDataType_COUNT = 12,
 };
 
+ImDrawList *ImGui_GetWindowDrawList(void);
+ImVec2 ImGui_GetCursorScreenPos(void);
+ImVec2 ImGui_GetItemRectMin(void);
+ImVec2 ImGui_GetItemRectMax(void);
+ImU32 ImGui_GetColorU32(ImGuiCol index);
+void ImGui_PushStyleColorImVec4(ImGuiCol index, ImVec4 color);
+void ImGui_PopStyleColorEx(int count);
+void ImGui_PushStyleVarImVec2(ImGuiStyleVar index, ImVec2 value);
+void ImGui_PopStyleVar(void);
+float ImGui_GetTreeNodeToLabelSpacing(void);
+void ImDrawList_ChannelsSplit(ImDrawList *draw, int count);
+void ImDrawList_ChannelsSetCurrent(ImDrawList *draw, int index);
+void ImDrawList_ChannelsMerge(ImDrawList *draw);
+void ImDrawList_AddRectFilledEx(
+    ImDrawList *draw,
+    ImVec2 min,
+    ImVec2 max,
+    ImU32 color,
+    float rounding,
+    ImDrawFlags flags
+);
+void ImDrawList_AddText(ImDrawList *draw, ImVec2 position, ImU32 color, const char *text);
+void ImDrawList_PushClipRect(ImDrawList *draw, ImVec2 min, ImVec2 max, bool intersect);
+void ImDrawList_PopClipRect(ImDrawList *draw);
+double ImGui_GetTime(void);
+bool ImGui_BeginDragDropSource(int flags);
+bool ImGui_SetDragDropPayload(const char *type, const void *data, size_t size, ImGuiCond condition);
+void ImGui_EndDragDropSource(void);
 void ImGui_PushFontFloat(ImFont *font, float font_size_base_unscaled);
 void ImGui_PopFont(void);
+float ImGui_GetFontSize(void);
+void ImGui_SetTooltip(const char *format, ...);
 void ImGui_PushID(const char *id);
 void ImGui_SetNextWindowSize(ImVec2 size, ImGuiCond condition);
 void ImGui_SetNextWindowFocus(void);
+void ImGui_SetNextItemWidth(float width);
 void ImGui_SetWindowFocusStr(const char *name);
 ImVec2 ImGui_GetContentRegionAvail(void);
 void ImGui_NewLine(void);
@@ -82,10 +130,14 @@ bool ImGui_InputDoubleEx(
 );
 bool ImGui_Button(const char *label);
 void ImGui_SameLine(void);
+void ImGui_SameLineEx(float offset_from_start_x, float spacing);
+void ImGui_AlignTextToFramePadding(void);
+bool ImGui_ButtonEx(const char *label, ImVec2 size);
 void ImGui_IndentEx(float width);
 void ImGui_UnindentEx(float width);
 bool ImGui_BeginPopup(const char *id, ImGuiWindowFlags flags);
 bool ImGui_BeginPopupContextWindowEx(const char *id, ImGuiPopupFlags flags);
+bool ImGui_BeginPopupContextItemEx(const char *id, ImGuiPopupFlags flags);
 void ImGui_EndPopup(void);
 void ImGui_OpenPopup(const char *id, ImGuiPopupFlags flags);
 void ImGui_CloseCurrentPopup(void);
@@ -103,6 +155,9 @@ bool ImGui_TreeNodeEx(const char *label, ImGuiTreeNodeFlags flags);
 void ImGui_TreePop(void);
 void ImGui_SetNextItemOpen(bool open, ImGuiCond condition);
 bool ImGui_IsItemClicked(void);
+bool ImGui_IsItemActive(void);
+void ImGui_BeginDisabled(bool disabled);
+void ImGui_EndDisabled(void);
 bool ImGui_IsItemHovered(ImGuiHoveredFlags flags);
 void ImGui_SetMouseCursor(int cursor);
 bool ImGui_IsMouseReleased(int button);

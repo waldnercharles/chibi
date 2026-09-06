@@ -4,6 +4,7 @@
 #include "../engine/engine.h"
 #include "../game/live.h"
 #include "../game/system_document.h"
+#include "sdf_shapes.h"
 
 typedef struct app_scene_authoring app_scene_authoring;
 typedef struct editor editor;
@@ -118,11 +119,27 @@ int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_reload(app_scene_authoring *scene);
 const char *app_scene_authoring_message(const app_scene_authoring *scene);
+/* Select a live host-spawned entity without adding it to the authored scene. */
+int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity);
 const char *app_scene_authoring_selected_content(const app_scene_authoring *scene);
 app_editor_document_context app_scene_authoring_document(const app_scene_authoring *scene);
 void app_scene_authoring_draw(app_scene_authoring *scene);
+int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewport *viewport);
 void app_scene_authoring_render(void *user);
+app_sdf_shapes app_scene_authoring_shapes(const app_scene_authoring *scene);
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time);
+int app_scene_authoring_move(app_scene_authoring *scene, float x, float y);
 int app_scene_authoring_input(app_scene_authoring *scene, const char *action, double value, int pressed);
+
+/* Authored lifecycle actions, recorded in Scene Undo. */
+int app_scene_authoring_add_instance(app_scene_authoring *scene, const char *prototype_name);
+int app_scene_authoring_set_instance_component(app_scene_authoring *scene, const char *name, bool present);
+int app_scene_authoring_selection_count(const app_scene_authoring *scene);
+int app_scene_authoring_delete_instance(app_scene_authoring *scene);
+int app_scene_authoring_set_instance_behavior(
+    app_scene_authoring *scene,
+    const char *asset_name,
+    bool attached
+);
 
 #endif

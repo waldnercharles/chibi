@@ -27,6 +27,15 @@ FetchContent_Declare(
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)
+set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
+foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage)
+    set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
+    include(cmake/apply_cute_patch.cmake)
+endforeach()
+unset(CUTE_PATCH_NAME)
+unset(CUTE_SOURCE)
+unset(CUTE_PATCH)
 
 # --- SLJIT backend ----------------------------------------------------------
 option(CBLUEPRINT_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
@@ -130,6 +139,18 @@ add_custom_command(
             editor_nerd_symbols_font
     DEPENDS ${NERD_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
     COMMENT "Embedding Nerd Fonts symbols"
+    VERBATIM
+)
+
+set(UI_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf)
+set(GEN_UI_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_font.c)
+add_custom_command(
+    OUTPUT ${GEN_UI_FONT}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
+            ${UI_FONT} ${GEN_UI_FONT} editor_ui_font
+    DEPENDS ${UI_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
+    COMMENT "Embedding editor typeface"
     VERBATIM
 )
 
@@ -261,12 +282,19 @@ add_custom_command(
     COMMENT "Generating the game reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/prototype_preview.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c game/gameplay.c ${GAME_REGISTRY})
+add_library(game STATIC game/material.c game/sdf_motion.c game/appearance_geometry.c game/vector_nodes.c game/particles.c game/particle_nodes.c game/entities.c game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/prototype_preview.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c game/gameplay.c ${GAME_REGISTRY})
 target_include_directories(game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/game
 )
 target_link_libraries(game PUBLIC ecs core cute)
+
+# --- material rasterization and radiance transport --------------------------
+add_library(cblueprint_render STATIC render/material_raster.c render/radiance.c)
+target_include_directories(cblueprint_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(cblueprint_render PUBLIC core cute)
+target_compile_options(cblueprint_render PRIVATE -Wno-macro-redefined)
+set_source_files_properties(app/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
 
 # --- host frame loop and optional viewport surface --------------------------
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
@@ -293,7 +321,7 @@ target_include_directories(demo PUBLIC
 file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
 )
-add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT})
+add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE core cute)
 
@@ -302,6 +330,7 @@ target_link_libraries(editor PRIVATE core cute)
 # shipped app does not compile or expose them.
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
 set(APP_REGISTRY_PACKS
+    GAME_ENTITY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
     CORE_ARRAY_PACK
@@ -332,7 +361,8 @@ list(REMOVE_ITEM APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/app/movement_authoring.c
 )
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
-target_link_libraries(app PRIVATE editor engine game cute)
+target_compile_definitions(app PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/shaders")
+target_link_libraries(app PRIVATE cblueprint_render editor engine game cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -350,6 +380,7 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
             ${TEST_REGISTRY}
             DEMO_REGISTRY_PACK
+            GAME_ENTITY_PACK
             CORE_EXTRA_PACK
             CORE_FLOW_PACK
             CORE_ARRAY_PACK
@@ -368,12 +399,28 @@ add_custom_command(
 
 # --- test suite: consolidated headless regression checks --------------------
 add_executable(test_suite
-    test/test_suite.c
+    test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/ui_integration.c
+    app/screenshot.c
     app/authoring_session.c
     app/behavior_fixtures.c
     app/demo_graph.c
     app/scene_authoring.c
+    app/scene_history.c
+    test/scene_history.c
+    test/appearance_geometry.c
+    test/orientation.c
+    test/movement_input.c
+    test/movement_trail.c
+    test/sdf_motion.c
+    app/sdf_shapes.c
+    app/scene_renderer.c
+    test/material.c
+    test/wave.c
+    test/radiance.c
+    test/interior_border.c
+    test/sdf_coverage.c
+    test/draw_backend.cpp
     app/stacktrace.c
     app/web_loop.c
     editor/preview_gate.c
@@ -382,7 +429,16 @@ add_executable(test_suite
     ${TEST_REGISTRY}
 )
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(test_suite PRIVATE engine game ecs demo editor)
+target_compile_definitions(test_suite PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/shaders")
+target_link_libraries(test_suite PRIVATE engine game ecs demo editor cblueprint_render)
+if(TARGET reflect)
+    add_custom_target(test_reflect_identity
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reflect/test_identity.py $<TARGET_FILE:reflect>
+        DEPENDS reflect
+        VERBATIM
+    )
+    add_dependencies(test_suite test_reflect_identity)
+endif()
 if(NOT CBLUEPRINT_ENABLE_PERFORMANCE_TESTS)
     target_compile_definitions(test_suite PRIVATE CBLUEPRINT_SKIP_PERFORMANCE_TESTS=1)
 endif()
@@ -405,6 +461,10 @@ target_include_directories(query_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(query_benchmark PRIVATE game ecs)
 
 set_target_properties(query_benchmark PROPERTIES LINKER_LANGUAGE CXX)
+
+add_executable(contact_benchmark test/contact_benchmark.c ${APP_REGISTRY})
+target_link_libraries(contact_benchmark PRIVATE game ecs)
+set_target_properties(contact_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- clang-format (format runs before every build target) -------------------
 # The web toolchain's clang-format may not understand the project's native
@@ -432,6 +492,8 @@ if(CLANG_FORMAT)
     ${CMAKE_CURRENT_SOURCE_DIR}/game/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/render/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/render/*.h
   )
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} --style=file -i ${FORMAT_SOURCES}

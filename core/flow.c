@@ -8,7 +8,9 @@
 #include "runtime.h"
 #include "service.h"
 #include "value_array.h"
+#include "xalloc.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,6 +48,14 @@ typedef struct
     size_t owned_size;
 } flow_watch;
 
+struct flow_host_request
+{
+    int references;
+    flow_host_state state;
+    flow_run *run;
+    node *node;
+};
+
 struct flow_run
 {
     graph *graph;
@@ -61,6 +71,8 @@ struct flow_run
     double wake_time;
     int waiting_output;
     node *waiting_node;
+    flow_host_request *host_request;
+    flow_host_request **host_requests;
     int graph_paused;
     int pause_requested;
     int step_mode;
@@ -74,6 +86,12 @@ struct flow_run
     eval_context eval;
     runtime_store *runtime;
     flow_run **children;
+    flow_run *parent;
+    flow_run *active_child;
+    node *call_node;
+    node *invocation;
+    node *returned;
+    int step_over;
     flow_frame *frames;
     flow_call_frame *stack_cache;
     pin_value *inputs;
@@ -82,7 +100,7 @@ struct flow_run
     const void *input_user_data;
     flow_sink_fn sink;
     void *sink_user;
-    const char *event_name;
+    char *event_name;
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
     arena input_arena;
@@ -102,10 +120,23 @@ struct flow_context
     int failed;
 };
 
+static void set_event_name(flow_run *run, const char *name)
+{
+    if (run->event_name == name ||
+        (run->event_name && name && strcmp(run->event_name, name) == 0)) {
+        return;
+    }
+    char *copy = name ? xstrdup(name) : NULL;
+    free(run->event_name);
+    run->event_name = copy;
+}
+
 static runtime_node *flow_runtime_node(flow_run *run, const node *n)
 {
     return runtime_store_node(run->runtime, n);
 }
+
+static int flow_copy_input(arena *a, pin_value *dst, const pin_value *src);
 
 static int flow_copy_nested_structs(arena *a, pin_value *value)
 {
@@ -134,6 +165,20 @@ static int flow_copy_nested_structs(arena *a, pin_value *value)
         return -1;
     }
     memcpy(copy, value->ptr, type->size);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type != PIN_STRUCT && field->type != PIN_STR &&
+            field->type != PIN_NAME) {
+            continue;
+        }
+        pin_value member;
+        pin_value owned;
+        pin_read_field(value->ptr, field, &member);
+        if (flow_copy_input(a, &owned, &member)) {
+            return -1;
+        }
+        pin_write_field(copy, field, owned);
+    }
     value->ptr = copy;
     return 0;
 }
@@ -142,6 +187,15 @@ static int flow_copy_input(arena *a, pin_value *dst, const pin_value *src)
 {
     if (pin_value_copy_to_arena(a, dst, src)) {
         return -1;
+    }
+    if (dst->type_name) {
+        size_t size = strlen(dst->type_name) + 1;
+        char *name = arena_alloc(a, size);
+        if (!name) {
+            return -1;
+        }
+        memcpy(name, dst->type_name, size);
+        dst->type_name = name;
     }
     return flow_copy_nested_structs(a, dst);
 }
@@ -166,8 +220,66 @@ static int graph_has_node(const graph *g, const node *n)
     return 0;
 }
 
+static void host_unref(flow_host_request *request)
+{
+    assert(request && request->references > 0);
+    if (--request->references == 0) {
+        free(request);
+    }
+}
+
+static void host_forget(flow_host_request *request)
+{
+    flow_run *run = request->run;
+    int index = 0;
+    while (index < acount(run->host_requests) && run->host_requests[index] != request) {
+        index++;
+    }
+    assert(index < acount(run->host_requests));
+    adel(run->host_requests, index);
+    request->run = NULL;
+    request->node = NULL;
+    host_unref(request);
+}
+
+void flow_host_release(flow_host_request *request)
+{
+    assert(request && request->references > 0);
+    if (request->run && request->references == 2 &&
+        request->run->host_request != request) {
+        host_forget(request);
+    }
+    host_unref(request);
+}
+
+static void host_finish(flow_run *run, flow_host_state state)
+{
+    flow_host_request *request = run->host_request;
+    request->state = state;
+    run->host_request = NULL;
+    if (request->references == 1) {
+        host_forget(request);
+    }
+}
+
+static void host_detach(flow_run *run)
+{
+    for (int i = 0; i < acount(run->host_requests); i++) {
+        flow_host_request *request = run->host_requests[i];
+        request->state = FLOW_HOST_CANCELLED;
+        request->run = NULL;
+        request->node = NULL;
+        host_unref(request);
+    }
+    afree(run->host_requests);
+    run->host_request = NULL;
+}
+
 static void flow_fail(flow_run *run, int code, node *n, const char *message)
 {
+    if (run->host_request) {
+        host_finish(run, FLOW_HOST_CANCELLED);
+    }
     run->state = FLOW_FAILED;
     run->error = (flow_error){ code, n, -1, message, run->steps };
 }
@@ -308,8 +420,81 @@ static int flow_run_check_topology(flow_run *run)
     return FLOW_ERR_TOPOLOGY;
 }
 
+static int flow_run_continue(flow_run *run, int clear_step_mode);
+static void watch_capture_node(flow_run *run, node *n);
+
+static int flow_run_advance_child(flow_run *run)
+{
+    flow_run *child = run->active_child;
+    child->current_time = run->current_time;
+    flow_run_continue(child, 0);
+    if (child->state == FLOW_FAILED) {
+        run->state = FLOW_FAILED;
+        run->error = child->error;
+        return run->error.code;
+    }
+    if (child->state != FLOW_COMPLETED) {
+        run->state = child->state;
+        return child->state == FLOW_PAUSED ? FLOW_PAUSED_RESULT : FLOW_SUSPENDED_RESULT;
+    }
+    node *ret = child->returned;
+    node *call = run->call_node;
+    if (!ret) {
+        flow_fail(run, FLOW_ERR_INVALID_GRAPH, call, "function completed without Return");
+        return FLOW_ERR_INVALID_GRAPH;
+    }
+    pin_value *outputs = runtime_node_outputs(flow_runtime_node(run, call));
+    int at = 0;
+    for (int i = 0; i < ret->input_count; i++) {
+        if (ret->input_pins[i].kind != PIN_DATA) {
+            continue;
+        }
+        while (at < call->output_count && (call->output_pins[at].kind != PIN_DATA ||
+                                           call->output_pins[at].field_source)) {
+            at++;
+        }
+        if (at >= call->output_count) {
+            flow_fail(run, FLOW_ERR_INVALID_GRAPH, ret, "function return signature does not match call");
+            return FLOW_ERR_INVALID_GRAPH;
+        }
+        if (!pin_compatible(&ret->input_pins[i], &call->output_pins[at])) {
+            flow_fail(run, FLOW_ERR_INVALID_GRAPH, ret, "function return type does not match call");
+            return FLOW_ERR_INVALID_GRAPH;
+        }
+        const pin_value *value = flow_run_input_value(child, ret, i);
+        if (flow_copy_input(&run->scratch, &outputs[at], value)) {
+            flow_fail(run, FLOW_ERR_NODE, ret, "function return copy failed");
+            return FLOW_ERR_NODE;
+        }
+        pin_coerce(&outputs[at], &call->output_pins[at]);
+        at++;
+    }
+    run->active_child = NULL;
+    run->call_node = NULL;
+    watch_capture_node(run, call);
+    return schedule_output_for_node(run, call, 0);
+}
+
 static int flow_run_wait(flow_run *run)
 {
+    if (run->active_child) {
+        int result = flow_run_advance_child(run);
+        if (result) {
+            return result;
+        }
+        if (run->step_mode) {
+            run->activation_budget = 0;
+            run->state = FLOW_PAUSED;
+            return FLOW_PAUSED_RESULT;
+        }
+    }
+    if (run->host_request) {
+        if (run->host_request->state == FLOW_HOST_PENDING) {
+            run->state = FLOW_SUSPENDED;
+            return FLOW_SUSPENDED_RESULT;
+        }
+        host_finish(run, FLOW_HOST_FINISHED);
+    }
     if (!run->waiting_node) {
         return FLOW_OK;
     }
@@ -455,9 +640,21 @@ static void watch_capture_node(flow_run *run, node *n)
         }
     }
     for (int i = 0; i < n->output_count; i++) {
-        if (n->output_pins[i].kind == PIN_DATA) {
-            (void)watch_store(run, n, 1, i, &outputs[i]);
+        if (n->output_pins[i].kind != PIN_DATA) {
+            continue;
         }
+        if (n->output_pins[i].field_source || n->output_pins[i].field_name) {
+            int source = -1;
+            const type_field *field = graph_output_field(n, i, &source);
+            if (!field || outputs[source].type != PIN_STRUCT || !outputs[source].ptr) {
+                continue;
+            }
+            pin_value value = { 0 };
+            pin_read_field(outputs[source].ptr, field, &value);
+            (void)watch_store(run, n, 1, i, &value);
+            continue;
+        }
+        (void)watch_store(run, n, 1, i, &outputs[i]);
     }
 }
 
@@ -484,6 +681,9 @@ static void flow_run_free_children(flow_run *run)
         flow_run_free(run->children[i]);
     }
     afree(run->children);
+    run->active_child = NULL;
+    run->call_node = NULL;
+    run->returned = NULL;
 }
 
 static int flow_run_activate(flow_run *run)
@@ -588,6 +788,13 @@ static int flow_run_activate(flow_run *run)
         return run->error.code;
     }
     watch_capture_node(run, n);
+    if (run->active_child) {
+        return run->state == FLOW_PAUSED ? FLOW_PAUSED_RESULT : FLOW_SUSPENDED_RESULT;
+    }
+    if (run->host_request) {
+        run->state = FLOW_SUSPENDED;
+        return FLOW_SUSPENDED_RESULT;
+    }
     if (ctx.pause_requested) {
         run->waiting_node = n;
         run->waiting_output = ctx.pause_output;
@@ -667,10 +874,12 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->current_time = options ? options->initial_time : 0.0;
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
-    run->event_name = options ? options->event_name : NULL;
+    set_event_name(run, options ? options->event_name : NULL);
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->call_depth = options ? options->call_depth : 0;
+    run->step_over = 0;
+    run->returned = NULL;
     run->breakpoints_enabled = options && options->breakpoints_override
                                  ? options->breakpoints_enabled
                                  : g->breakpoints_enabled != 0;
@@ -698,6 +907,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
             arena_free(&run->scratch);
             eval_context_detach_runtime(&run->eval);
             runtime_store_free(run->runtime);
+            free(run->event_name);
             free(run);
             set_error(error, FLOW_ERR_NODE, entry, "flow input allocation failed");
             return NULL;
@@ -709,6 +919,7 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
                 arena_free(&run->scratch);
                 eval_context_detach_runtime(&run->eval);
                 runtime_store_free(run->runtime);
+                free(run->event_name);
                 free(run);
                 set_error(error, FLOW_ERR_NODE, entry, "flow input copy failed");
                 return NULL;
@@ -759,6 +970,8 @@ flow_run *flow_run_start_reuse(
     run->step_mode = 0;
     run->activation_budget = 0;
     run->call_depth = options ? options->call_depth : 0;
+    run->step_over = 0;
+    run->returned = NULL;
     run->breakpoints_enabled = options && options->breakpoints_override
                                  ? options->breakpoints_enabled
                                  : g->breakpoints_enabled != 0;
@@ -766,7 +979,7 @@ flow_run *flow_run_start_reuse(
     run->breakpoint_skipped = 0;
     run->sink = options ? options->sink : NULL;
     run->sink_user = options ? options->sink_user : NULL;
-    run->event_name = options ? options->event_name : NULL;
+    set_event_name(run, options ? options->event_name : NULL);
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
@@ -886,6 +1099,12 @@ static int flow_run_continue(flow_run *run, int clear_step_mode)
     if (clear_step_mode) {
         run->step_mode = 0;
         run->activation_budget = 0;
+        run->step_over = 0;
+        for (flow_run *child = run->active_child; child; child = child->active_child) {
+            child->step_mode = 0;
+            child->activation_budget = 0;
+            child->step_over = 0;
+        }
     } else if (run->step_mode) {
         if (run->activation_budget == 0) {
             run->activation_budget = 1;
@@ -926,6 +1145,9 @@ int flow_run_pause(flow_run *run)
     if (!run) {
         return FLOW_ERR_ARGUMENT;
     }
+    if (run->active_child) {
+        return flow_run_pause(run->active_child);
+    }
     if (run->state == FLOW_RUNNING) {
         run->pause_requested = 1;
         return FLOW_OK;
@@ -960,14 +1182,22 @@ int flow_run_step(flow_run *run)
     run->pause_requested = 0;
     run->step_mode = 1;
     run->activation_budget = 1;
+    for (flow_run *child = run->active_child; child; child = child->active_child) {
+        child->step_mode = !run->step_over;
+        child->activation_budget = child->step_mode ? 1 : 0;
+    }
     return flow_run_execute(run);
 }
 
 int flow_run_step_over(flow_run *run)
 {
-    /* Function calls are one interpreter activation, so stepping one
-     * activation already returns at the caller's next node. */
-    return flow_run_step(run);
+    if (!run) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    run->step_over = 1;
+    int result = flow_run_step(run);
+    run->step_over = 0;
+    return result;
 }
 
 int flow_run_stop(flow_run *run)
@@ -978,6 +1208,7 @@ int flow_run_stop(flow_run *run)
     if (run->state == FLOW_IDLE) {
         return FLOW_OK;
     }
+    host_detach(run);
     run->state = FLOW_IDLE;
     frame_arrays_free(run);
     aclear(run->frames);
@@ -1033,22 +1264,51 @@ int flow_run_ready(const flow_run *run, double now)
     if (!run) {
         return 0;
     }
+    if (run->state == FLOW_FAILED || run->state == FLOW_IDLE ||
+        run->state == FLOW_COMPLETED) {
+        return 0;
+    }
+    if (run->active_child) {
+        return flow_run_ready(run->active_child, now);
+    }
     if (run->state == FLOW_RUNNING) {
         return 1;
     }
     if (run->state == FLOW_SUSPENDED) {
+        if (run->host_request) {
+            return run->host_request->state == FLOW_HOST_READY;
+        }
         return now >= run->wake_time;
     }
     return 0;
 }
 
+bool flow_run_waiting_for_host(const flow_run *run)
+{
+    return run && (run->host_request != NULL ||
+                   flow_run_waiting_for_host(run->active_child));
+}
+
+const flow_run *flow_run_active_leaf(const flow_run *run)
+{
+    while (run && run->active_child) {
+        run = run->active_child;
+    }
+    return run;
+}
+
 flow_state flow_run_status(const flow_run *run)
 {
+    if (run && (run->state == FLOW_FAILED || run->state == FLOW_IDLE)) {
+        return run->state;
+    }
+    run = flow_run_active_leaf(run);
     return run ? run->state : FLOW_IDLE;
 }
 
 double flow_run_wake_time(const flow_run *run)
 {
+    run = flow_run_active_leaf(run);
     return run ? run->wake_time : 0.0;
 }
 
@@ -1087,6 +1347,7 @@ const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
 
 const node *flow_run_current_node(const flow_run *run)
 {
+    run = flow_run_active_leaf(run);
     if (!run || !acount(run->frames)) {
         return NULL;
     }
@@ -1114,6 +1375,17 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
             mutable_run->stack_cache,
             (flow_call_frame){ run->graph, run->graph->graph_id, n ? n->id : 0 }
         );
+    }
+    if (run->active_child) {
+        apush(
+            mutable_run->stack_cache,
+            (flow_call_frame){ run->graph, run->graph->graph_id, run->call_node->id }
+        );
+        int child_count = 0;
+        const flow_call_frame *children = flow_run_call_stack(run->active_child, &child_count);
+        for (int i = 0; i < child_count; i++) {
+            apush(mutable_run->stack_cache, children[i]);
+        }
     }
     if (count) {
         *count = acount(mutable_run->stack_cache);
@@ -1174,6 +1446,7 @@ void flow_run_free(flow_run *run)
         behavior_instance_remove_activation(run->instance, run);
     }
     flow_run_reset(run);
+    free(run->event_name);
     free(run);
 }
 
@@ -1184,6 +1457,11 @@ static int flow_run_watch_get(const flow_run *run, const node *n, int output, in
     }
     const flow_watch *w = watch_find(run, n, output, pin);
     if (!w) {
+        for (int i = acount(run->children) - 1; i >= 0; i--) {
+            if (flow_run_watch_get(run->children[i], n, output, pin, out) == 0) {
+                return 0;
+            }
+        }
         return -1;
     }
     *out = w->value;
@@ -1297,6 +1575,89 @@ int flow_context_fail(struct flow_context *ctx, int code, const char *message)
     ctx->failed = 1;
     flow_fail(ctx->run, code, ctx->node, message ? message : "flow node failed");
     return code;
+}
+
+flow_host_request *flow_context_host_wait(struct flow_context *ctx)
+{
+    assert(ctx && ctx->run && !ctx->pause_requested && !ctx->run->host_request);
+    flow_host_request *request = xmalloc(sizeof(*request));
+    *request = (flow_host_request){
+        .references = 2,
+        .state = FLOW_HOST_PENDING,
+        .run = ctx->run,
+        .node = ctx->node,
+    };
+    apush(ctx->run->host_requests, request);
+    ctx->run->host_request = request;
+    return request;
+}
+
+flow_host_state flow_host_status(const flow_host_request *request)
+{
+    assert(request);
+    return request->state;
+}
+
+flow_run *flow_host_run(const flow_host_request *request)
+{
+    assert(request);
+    flow_run *root = request->run;
+    while (root && root->parent) {
+        root = root->parent;
+    }
+    return root;
+}
+
+bool flow_host_complete(flow_host_request *request, int output_pin, pin_value value)
+{
+    assert(request);
+    if (request->state != FLOW_HOST_PENDING) {
+        return false;
+    }
+    flow_run *run = request->run;
+    node *n = request->node;
+    if (output_pin != -1) {
+        if (output_pin < 0 || output_pin >= n->output_count ||
+            n->output_pins[output_pin].kind == PIN_EXEC ||
+            n->output_pins[output_pin].type != value.type ||
+            n->output_pins[output_pin].container != value.container ||
+            strcmp(
+                n->output_pins[output_pin].type_name
+                    ? n->output_pins[output_pin].type_name
+                    : "",
+                value.type_name ? value.type_name : ""
+            ) != 0) {
+            return false;
+        }
+        pin_value copy;
+        if (flow_copy_input(&run->scratch, &copy, &value)) {
+            return false;
+        }
+        runtime_node_outputs(flow_runtime_node(run, n))[output_pin] = copy;
+        watch_capture_node(run, n);
+    }
+    request->state = FLOW_HOST_READY;
+    return true;
+}
+
+void flow_host_cancel(flow_host_request *request)
+{
+    assert(request);
+    if (request->run) {
+        flow_run_stop(flow_host_run(request));
+    }
+}
+
+int flow_host_resume(flow_host_request *request)
+{
+    assert(request);
+    if (request->state == FLOW_HOST_PENDING) {
+        return FLOW_SUSPENDED_RESULT;
+    }
+    if (!request->run) {
+        return FLOW_ERR_STATE;
+    }
+    return flow_run_continue(flow_host_run(request), 0);
 }
 
 int flow_context_pause_until(struct flow_context *ctx, double monotonic_time)
@@ -1468,6 +1829,85 @@ flow_inputs flow_context_inputs(const struct flow_context *ctx)
 behavior_instance *flow_context_instance(const struct flow_context *ctx)
 {
     return ctx && ctx->run ? ctx->run->instance : NULL;
+}
+
+static bool flow_run_observed(const flow_run *run)
+{
+    if (acount(run->host_requests)) {
+        return true;
+    }
+    for (int i = 0; i < acount(run->children); i++) {
+        if (flow_run_observed(run->children[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void flow_run_prune_calls(flow_run *run, const node *call)
+{
+    for (int i = acount(run->children) - 1; i >= 0; i--) {
+        flow_run *child = run->children[i];
+        if (child->invocation != call || child->state != FLOW_COMPLETED ||
+            flow_run_observed(child)) {
+            continue;
+        }
+        flow_run_free(child);
+        memmove(
+            run->children + i,
+            run->children + i + 1,
+            (size_t)(acount(run->children) - i - 1) * sizeof *run->children
+        );
+        asetlen(run->children, acount(run->children) - 1);
+    }
+}
+
+int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs inputs)
+{
+    flow_run *parent = ctx->run;
+    assert(!parent->active_child);
+    flow_run_prune_calls(parent, ctx->node);
+    node *entry = graph_node_by_id(target, target->entry_id);
+    flow_options options = {
+        .step_budget = (unsigned)parent->step_budget,
+        .now = parent->now,
+        .now_user = parent->now_user,
+        .initial_time = parent->current_time,
+        .delta_seconds = parent->eval.delta_seconds,
+        .sink = parent->sink,
+        .sink_user = parent->sink_user,
+        .instance = parent->instance,
+        .call_depth = parent->call_depth + 1,
+        .breakpoints_override = 1,
+        .breakpoints_enabled = parent->breakpoints_enabled,
+        .parallel_for = parent->parallel_for,
+        .parallel_user = parent->parallel_user,
+    };
+    flow_error error = { 0 };
+    flow_run *child = flow_run_start(target, entry, inputs, &options, &error);
+    if (!child) {
+        return flow_context_fail(ctx, error.code, error.message);
+    }
+    child->parent = parent;
+    child->invocation = ctx->node;
+    child->step_mode = parent->step_mode && !parent->step_over;
+    child->activation_budget = child->step_mode ? 1 : 0;
+    aclear(child->services);
+    for (int i = 0; i < acount(parent->services); i++) {
+        apush(child->services, parent->services[i]);
+    }
+    apush(parent->children, child);
+    parent->active_child = child;
+    parent->call_node = ctx->node;
+    return flow_run_advance_child(parent);
+}
+
+int flow_context_return(struct flow_context *ctx)
+{
+    ctx->run->returned = ctx->node;
+    frame_arrays_free(ctx->run);
+    aclear(ctx->run->frames);
+    return FLOW_OK;
 }
 
 int flow_context_retain_run(struct flow_context *ctx, flow_run *child)

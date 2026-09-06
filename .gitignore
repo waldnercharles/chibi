@@ -10,6 +10,8 @@ generated/
 .cache/
 .pi/*
 !.pi/settings.json
+!.pi/skills/
+!.pi/skills/**
 !.pi/agents/
 !.pi/agents/*.md
 !.pi/workflows/

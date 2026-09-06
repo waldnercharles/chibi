@@ -102,6 +102,13 @@ int game_live_sync_working(game_live_definition *definition, const behavior_asse
         return -1;
     }
     char *json = behavior_asset_save_json(source);
+    char *previous = behavior_asset_save_json(definition->working);
+    bool unchanged = json && previous && strcmp(json, previous) == 0;
+    free(previous);
+    if (unchanged) {
+        free(json);
+        return 0;
+    }
     behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!copy) {
@@ -110,6 +117,7 @@ int game_live_sync_working(game_live_definition *definition, const behavior_asse
     behavior_asset_free(definition->working);
     definition->working = copy;
     definition->dirty = 1;
+    definition->unsaved = true;
     return 0;
 }
 
@@ -119,6 +127,7 @@ int game_live_mark_dirty(game_live_definition *definition)
         return -1;
     }
     definition->dirty = 1;
+    definition->unsaved = true;
     return 0;
 }
 
@@ -134,6 +143,11 @@ game_live_world *game_live_world_new(ecs_world *ecs)
         free(world);
         return NULL;
     }
+    world->entities = game_entities_new(ecs, world->behaviors);
+    game_behavior_bind_entities(world->behaviors, world->entities);
+    world->contacts = game_contacts_new(ecs, world->entities);
+    world->particles = game_particles_new();
+    game_behavior_bind_particles(world->behaviors, world->particles);
     return world;
 }
 
@@ -142,7 +156,10 @@ void game_live_world_free(game_live_world *world)
     if (!world) {
         return;
     }
+    game_contacts_free(world->contacts);
+    game_entities_free(world->entities);
     game_behavior_world_free(world->behaviors);
+    game_particles_free(world->particles);
     for (int i = 0; i < acount(world->definitions); i++) {
         game_live_definition *definition = world->definitions[i];
         definition->world = NULL;
@@ -216,7 +233,13 @@ int game_live_duplicate_definition(game_live_world *world, const char *asset_nam
     return 0;
 }
 
-int game_live_apply(game_live_world *world, game_live_definition *definition, char *message, size_t message_size)
+static int update_definition(
+    game_live_world *world,
+    game_live_definition *definition,
+    char *message,
+    size_t message_size,
+    bool restart
+)
 {
     if (!world || !definition || definition->world != world || !definition->registered) {
         set_message(message, message_size, "definition is not registered with this world");
@@ -245,8 +268,21 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
         return -1;
     }
     behavior_asset *old = NULL;
-    if (game_behavior_replace_asset(world->behaviors, definition->name, snapshot, &old) !=
-        0) {
+    int result = restart
+                   ? game_behavior_replace_asset(world->behaviors, definition->name, snapshot, &old)
+                   : game_behavior_preview_asset(world->behaviors, definition->name, snapshot, &old);
+    if (!restart && result > 0) {
+        set_message(
+            message,
+            message_size,
+            result == INSTANCE_UPDATE_BUSY
+                ? "Waiting for active behavior executions to finish."
+                : "Restart required to apply changed behavior state."
+        );
+        behavior_asset_free(snapshot);
+        return result;
+    }
+    if (result != 0) {
         set_message(message, message_size, "definition replacement failed");
         behavior_asset_free(snapshot);
         return -1;
@@ -257,8 +293,18 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
     set_message(
         message,
         message_size,
-        "applied %s: destroyed and recreated its instances",
+        restart ? "applied %s: destroyed and recreated its instances" : "Preview updated: %s",
         definition->name
     );
     return 0;
+}
+
+int game_live_apply(game_live_world *world, game_live_definition *definition, char *message, size_t message_size)
+{
+    return update_definition(world, definition, message, message_size, true);
+}
+
+int game_live_preview(game_live_world *world, game_live_definition *definition, char *message, size_t message_size)
+{
+    return update_definition(world, definition, message, message_size, false);
 }

@@ -1,6 +1,7 @@
 #include "graph_jit_sljit.h"
 
 #include "array.h"
+#include "pin_conv.h"
 #include "xalloc.h"
 
 #include <assert.h>
@@ -530,7 +531,10 @@ static int call_kind(const graph_ir_instruction *instruction)
         return 0;
     }
     const node_desc *desc = instruction->node->desc;
-    if (desc->conversion_from && desc->conversion_to) {
+    if (desc->conversion_from && desc->conversion_to && desc->input_count == 1 &&
+        desc->output_count == 1 && desc->inputs[0].type == PIN_STRUCT &&
+        desc->outputs[0].type == PIN_STRUCT &&
+        pin_compatible(&desc->inputs[0], &desc->outputs[0])) {
         return 1;
     }
     switch (desc->jit_kind) {
@@ -1548,8 +1552,7 @@ static int emit_instruction(sljit_builder *builder, const graph_ir_instruction *
             }
             return 0;
         case GRAPH_IR_OP_MAKE_STRUCT:
-            if (instruction->input_count != instruction->output_count ||
-                instruction->output_count < 0 || !instruction->type ||
+            if (instruction->output_count != 0 || !instruction->type ||
                 instruction->output < 0 ||
                 instruction->input_count != instruction->type->field_count ||
                 emit_zero(
@@ -1824,6 +1827,11 @@ static graph_sljit_program *compile_ir(const graph_ir *ir, const char **reason)
 }
 
 #endif
+
+int graph_sljit_available()
+{
+    return CBLUEPRINT_HAVE_SJLIT;
+}
 
 graph_sljit_program *graph_sljit_compile(const graph_ir *ir, const char **reason)
 {

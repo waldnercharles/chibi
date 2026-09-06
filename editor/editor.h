@@ -3,8 +3,14 @@
 
 #include "../core/behavior_asset.h"
 #include "../core/instance.h"
+#include "choices.h"
+#include "eval_view.h"
+#include "flags.h"
 
 typedef struct editor editor;
+
+/* Host identifies packed 0xRRGGBBAA color inputs. */
+typedef bool (*editor_color_resolver)(const node *, int output, int pin, void *user);
 
 typedef enum
 {
@@ -83,6 +89,13 @@ typedef struct
     int graph_visible;
     int dirty;
     const compile_report *compile;
+    const behavior_instance *inspection_instance;
+    const char *preview_error;
+    bool can_go_back;
+    float zoom;
+    float pan_x;
+    float pan_y;
+    bool camera_moving;
 } editor_query;
 
 /* Typed automation seam. UI mutations and these commands use the same editor
@@ -94,10 +107,17 @@ typedef struct
 {
     int exec_pins;
     int data_pins;
+    float title_x;
+    float title_y;
+    float top;
+    float bottom;
+    bool selected;
 } editor_node_ui;
 
 /* Pins actually drawn inside the canvas clip rectangle in the current frame. */
 bool editor_query_node_ui(const editor *e, uint64_t node_id, editor_node_ui *out);
+/* Includes curved return wires and authored reroutes, in the current canvas. */
+bool editor_graph_wires_visible(const editor *e);
 
 /* The editor takes ownership of bp and frees it in editor_free(). */
 editor *editor_new(behavior_asset *bp);
@@ -108,8 +128,20 @@ const behavior_asset *editor_behavior_asset(const editor *e);
 
 /* Replaces the editable Behavior Asset with a copy of source and opens graph_id. */
 int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id);
-/* Opens a graph in the editor without changing Behavior Asset runtime semantics. */
+/* Opens a graph and arranges/frames it on its next visible draw. Position changes
+ * are undoable. Reopening the active graph preserves its current layout/view. */
 int editor_open_graph(editor *e, uint64_t graph_id);
+/* Drill into an authored call; Back restores the caller view and selects the call. */
+int editor_open_graph_call(editor *e, uint64_t node_id);
+int editor_graph_back(editor *e);
+/* Caller history is ordered oldest first. Ancestors restore their call-site view. */
+int editor_graph_history_count(const editor *e);
+uint64_t editor_graph_history_id(const editor *e, int index);
+int editor_graph_ancestor(editor *e, int index);
+void editor_set_value_formatter(editor *e, editor_value_formatter formatter, void *user);
+void editor_set_flags_resolver(editor *e, editor_flags_resolver resolver, void *user);
+void editor_set_choices_resolver(editor *e, editor_choices_resolver resolver, void *user);
+void editor_set_color_resolver(editor *e, editor_color_resolver resolver, void *user);
 const graph *editor_active_graph(const editor *e);
 
 /* Creates the host dockspace before other dockable windows are submitted. */
@@ -117,6 +149,8 @@ void editor_prepare_docking(void);
 
 /* Chooses which editor-owned side panels and canvas are submitted. */
 void editor_set_ui_context(editor *e, editor_ui_context context);
+bool editor_has_inspection_selection(const editor *e);
+void editor_set_inspector_active(editor *e, bool active);
 void editor_set_graph_visible(editor *e, int visible);
 void editor_set_save_handler(editor *e, editor_save_handler handler, void *user);
 
@@ -147,6 +181,8 @@ void editor_set_event_catalog(editor *e, const editor_event_signature *events, i
 /* Renders the canvas and handles input. Call once per frame after
  * editor_prepare_docking(), between cf_app_update() and cf_app_draw_onto_screen(). */
 void editor_draw(editor *e);
+/* Draw behavior members inside the host-owned Navigator Outline tab. */
+void editor_draw_outline(editor *e);
 
 /* Advances the editor-owned preview instance with a host-supplied monotonic
  * timestamp, then advances editor state. Call once per host frame. */

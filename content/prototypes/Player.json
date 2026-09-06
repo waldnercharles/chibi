@@ -1,11 +1,68 @@
 {
   "name": "Player",
   "components": {
-    "GameTransform": { "x": 320, "y": -180 },
-    "GameMovement": { "speed": 180 },
-    "GameInput": { "move": { "x": 0, "y": 0 } },
-    "GameHealth": { "current": 100, "maximum": 100 },
-    "GameWeapon": { "damage": 10, "cooldown": 0.25, "projectile_count": 1 }
+    "GameTransform": {
+      "x": 320,
+      "y": -180
+    },
+    "GameMovement": {
+      "speed": 180
+    },
+    "GameInput": {
+      "move": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "GameHealth": {
+      "current": 100,
+      "maximum": 100
+    },
+    "GameWeapon": {
+      "damage": 10,
+      "cooldown": 0.25,
+      "projectile_count": 1
+    },
+    "GameCollider": {
+      "radius": 12,
+      "category": 1,
+      "mask": 2
+    },
+    "GameAppearance": {
+      "width": 20,
+      "height": 18,
+      "color": 4294967295,
+      "shape": 4,
+      "border_width": 0,
+      "border_color": 0,
+      "glow_radius": 8,
+      "glow_color": 4294967120,
+      "stroke_width": 1,
+      "antialias": 1
+    },
+    "GameOrientation": {
+      "radians": 0.0
+    },
+    "GameMaterial": {
+      "scene": 4294967295,
+      "albedo": 437918234,
+      "filter": 0,
+      "emission_color": 4294967295,
+      "emission_intensity": 0.1,
+      "emission_multiplier": 1,
+      "absorption": 1,
+      "border_scene": 0,
+      "border_emission_color": 0,
+      "border_albedo": 0,
+      "border_filter": 0
+    }
   },
-  "behaviors": [ "InputBehavior" ]
+  "behaviors": [
+    "InputBehavior",
+    "WeaponBehavior",
+    "HealthBehavior",
+    "AutoWeaponBehavior",
+    "PlayerContactBehavior",
+    "MovementTrailBehavior"
+  ]
 }

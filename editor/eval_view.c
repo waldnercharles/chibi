@@ -3,6 +3,7 @@
 #include "../core/arena.h"
 #include "../core/eval.h"
 #include "../core/pin_fmt.h"
+#include "../core/runtime.h"
 
 #include <stdlib.h>
 
@@ -15,6 +16,10 @@ struct eval_view
     const flow_run *run;
     const behavior_instance *instance;
     const char *error;
+    editor_value_formatter formatter;
+    void *formatter_user;
+    char formatted[8][256];
+    unsigned format_slot;
 };
 
 eval_view *eval_view_new(void)
@@ -38,10 +43,15 @@ void eval_view_free(eval_view *v)
     free(v);
 }
 
-static int eval_view_node_safe(const graph *g, const node *n, int depth)
+static int eval_view_node_safe(const eval_view *v, const graph *g, const node *n, int depth)
 {
     if (depth > acount(g->nodes) || n->desc->flow_kind != NODE_FLOW_NONE ||
         n->desc->pure_kind == NODE_PURE_READ) {
+        return 0;
+    }
+    if (!v->instance && (n->desc->pure_kind == NODE_PURE_SELF ||
+                         n->desc->pure_kind == NODE_PURE_GET ||
+                         n->desc->pure_kind == NODE_PURE_FUNCTION)) {
         return 0;
     }
     for (int i = 0; i < n->input_count; i++) {
@@ -51,7 +61,7 @@ static int eval_view_node_safe(const graph *g, const node *n, int depth)
         node *source;
         int source_pin;
         if (graph_input_source(g, n, i, &source, &source_pin) &&
-            !eval_view_node_safe(g, source, depth + 1)) {
+            !eval_view_node_safe(v, g, source, depth + 1)) {
             return 0;
         }
     }
@@ -68,7 +78,7 @@ void eval_view_refresh(eval_view *v, graph *g)
     arena_reset(&v->a);
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
-        if (!eval_view_node_safe(g, n, 0)) {
+        if (!eval_view_node_safe(v, g, n, 0)) {
             continue;
         }
         for (int p = 0; p < n->output_count; p++) {
@@ -99,9 +109,38 @@ void eval_view_set_instance(eval_view *v, const behavior_instance *bi)
     }
 }
 
+void eval_view_set_formatter(eval_view *v, editor_value_formatter formatter, void *user)
+{
+    v->formatter = formatter;
+    v->formatter_user = user;
+}
+
+static const char *eval_view_format(const eval_view *v, const pin_value *value)
+{
+    if (v->formatter) {
+        eval_view *view = (eval_view *)v;
+        char *buf = view->formatted[view->format_slot++ % 8];
+        buf[0] = '\0';
+        if (v->formatter(value, v->instance, buf, sizeof view->formatted[0], v->formatter_user)) {
+            buf[sizeof view->formatted[0] - 1] = '\0';
+            return buf;
+        }
+    }
+    return pin_value_to_string(value);
+}
+
 const char *eval_view_error(const eval_view *v)
 {
     return v && v->error ? v->error : "";
+}
+
+static int has_preview_value(const eval_view *v, const node *n)
+{
+    if (!v || !v->eval.runtime) {
+        return 0;
+    }
+    const runtime_node *state = runtime_store_node_const(v->eval.runtime, n);
+    return state && runtime_node_computed(state);
 }
 
 const char *eval_view_output(const eval_view *v, const node *n, int pin)
@@ -114,13 +153,14 @@ const char *eval_view_output(const eval_view *v, const node *n, int pin)
         if (flow_run_watch_output(v->run, n, pin, &value) != 0) {
             return "";
         }
-        return pin_value_to_string(&value);
+        return eval_view_format(v, &value);
     }
     pin_value value;
-    if (!v || eval_context_output(&v->eval, n, pin, &value) != 0) {
+    if (!v || eval_context_output(&v->eval, n, pin, &value) != 0 ||
+        !has_preview_value(v, n)) {
         return "";
     }
-    return pin_value_to_string(&value);
+    return eval_view_format(v, &value);
 }
 
 const char *eval_view_input(const eval_view *v, const graph *g, const node *n, int pin)
@@ -133,7 +173,7 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
         if (flow_run_watch_input(v->run, n, pin, &value) != 0) {
             return "";
         }
-        return pin_value_to_string(&value);
+        return eval_view_format(v, &value);
     }
     node *src;
     int src_pin;
@@ -141,9 +181,10 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
         return NULL;
     }
     pin_value val;
-    if (!v || eval_context_input(&v->eval, n, pin, &val) != 0) {
+    if (!v || eval_context_input(&v->eval, n, pin, &val) != 0 ||
+        !has_preview_value(v, n)) {
         return "";
     }
     val.type = n->input_pins[pin].type;
-    return pin_value_to_string(&val);
+    return eval_view_format(v, &val);
 }

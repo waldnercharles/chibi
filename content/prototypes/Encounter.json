@@ -1,0 +1,12 @@
+{
+  "name": "Encounter",
+  "components": {
+    "GameTransform": {
+      "x": 320,
+      "y": -180
+    }
+  },
+  "behaviors": [
+    "WaveBehavior"
+  ]
+}

@@ -140,7 +140,7 @@ static int flow_event(node *n, flow_context *ctx)
     pin_value *outputs = flow_context_output_value(ctx, 0);
     int parameter = 0;
     for (int i = 0; i < n->output_count; i++) {
-        if (n->output_pins[i].kind != PIN_DATA) {
+        if (n->output_pins[i].kind != PIN_DATA || n->output_pins[i].field_source) {
             continue;
         }
         if (parameter < inputs.count &&
@@ -325,7 +325,7 @@ static int flow_function_return(node *n, flow_context *ctx)
         }
         *flow_context_input_value(ctx, i) = value;
     }
-    return FLOW_OK;
+    return flow_context_return(ctx);
 }
 
 static int flow_execute_function(node *n, flow_context *ctx, int macro)
@@ -370,55 +370,7 @@ static int flow_execute_function(node *n, flow_context *ctx, int macro)
             return result;
         }
     }
-    flow_options options = {
-        .now = NULL,
-        .initial_time = flow_context_now(ctx),
-        .sink = NULL,
-        .instance = bi,
-        .call_depth = flow_context_call_depth(ctx) + 1,
-    };
-    flow_error error = { 0 };
-    flow_run *callee = flow_run_start(target, entry, (flow_inputs){ params, count, NULL }, &options, &error);
-    if (!callee) {
-        return flow_context_fail(
-            ctx,
-            error.code ? error.code : FLOW_ERR_NODE,
-            error.message
-        );
-    }
-    int result = flow_run_resume(callee);
-    if (result < 0 || flow_run_status(callee) != FLOW_COMPLETED) {
-        const flow_error *failure = flow_run_error(callee);
-        result = failure && failure->code ? failure->code : FLOW_ERR_NODE;
-        const char *message = failure && failure->message
-                                ? failure->message
-                                : "function call failed";
-        flow_run_free(callee);
-        return flow_context_fail(ctx, result, message);
-    }
-    at = 0;
-    for (int i = 0; i < ret->input_count; i++) {
-        if (ret->input_pins[i].kind != PIN_DATA) {
-            continue;
-        }
-        while (at < n->output_count && n->output_pins[at].kind != PIN_DATA) {
-            at++;
-        }
-        if (at >= n->output_count) {
-            break;
-        }
-        const pin_value *value = flow_run_input_value(callee, ret, i);
-        if (!value) {
-            flow_run_free(callee);
-            return flow_context_fail(ctx, FLOW_ERR_NODE, "function return value is unavailable");
-        }
-        *flow_context_output_value(ctx, at++) = *value;
-    }
-    if (flow_context_retain_run(ctx, callee)) {
-        flow_run_free(callee);
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "function return lifetime unavailable");
-    }
-    return flow_context_continue(ctx, 0);
+    return flow_context_call(ctx, target, (flow_inputs){ params, count, NULL });
 }
 
 static int flow_call_function(node *n, flow_context *ctx)

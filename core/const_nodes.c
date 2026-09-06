@@ -1,3 +1,4 @@
+#include "compare_nodes.h"
 /* core/const_nodes.c -- corrected core literal nodes, registered as EXTRA_NODES.
  *
  * CAT-30: the core literals are Bool, Byte, Integer, Integer64, Real, Name,
@@ -83,7 +84,7 @@ static pin_value generic_binary(const pin_value *inputs, int input_count, arena 
         return numeric_op(left, right, operation);
     }
     const type_desc *type = registry_type_by_name(left.type_name);
-    if (!type || !left.ptr || !right.ptr) {
+    if (!type || !left.ptr || (right.type == PIN_STRUCT && !right.ptr)) {
         return (pin_value){ .type = PIN_FLOW };
     }
     void *memory = arena_alloc(a, type->size);
@@ -451,12 +452,31 @@ LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name")
 LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *")
 
 node_desc *const EXTRA_NODES[] = {
-    &NODE_DeltaTime,    &NODE_Bool,        &NODE_Byte,     &NODE_Integer,
-    &NODE_Integer64,    &NODE_Real,        &NODE_Name,     &NODE_String,
-    &NODE_To_String,    &NODE_Add,         &NODE_Multiply, &NODE_Subtract,
-    &NODE_Divide,       &NODE_Min,         &NODE_Max,      &NODE_Clamp,
-    &NODE_Modulo,       &NODE_Negate,      &NODE_Abs,      &NODE_To_Real,
-    &NODE_To_Integer64, &NODE_Format_Text,
+    &NODE_Greater_Or_Equal,
+    &NODE_Integer_Greater_Or_Equal,
+    &NODE_Has_Any_Flags,
+    &NODE_DeltaTime,
+    &NODE_Bool,
+    &NODE_Byte,
+    &NODE_Integer,
+    &NODE_Integer64,
+    &NODE_Real,
+    &NODE_Name,
+    &NODE_String,
+    &NODE_To_String,
+    &NODE_Add,
+    &NODE_Multiply,
+    &NODE_Subtract,
+    &NODE_Divide,
+    &NODE_Min,
+    &NODE_Max,
+    &NODE_Clamp,
+    &NODE_Modulo,
+    &NODE_Negate,
+    &NODE_Abs,
+    &NODE_To_Real,
+    &NODE_To_Integer64,
+    &NODE_Format_Text,
 };
 const int EXTRA_NODE_COUNT = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0];
 

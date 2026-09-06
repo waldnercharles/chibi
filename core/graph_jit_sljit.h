@@ -19,6 +19,8 @@ typedef struct
 
 typedef int (*graph_sljit_batch_entry_fn)(const graph_sljit_batch_context *context);
 
+int graph_sljit_available();
+
 graph_sljit_program *graph_sljit_compile(const graph_ir *ir, const char **reason);
 void graph_sljit_free(graph_sljit_program *program);
 graph_jit_entry_fn graph_sljit_entry(const graph_sljit_program *program);

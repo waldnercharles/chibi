@@ -1,0 +1,95 @@
+// Adapted from Neon-Swarm shaders/hrc/extend.shd; original source comments retained.
+// Builds the ray interval hierarchy T_0 .. T_N (Sec 4.1).
+//
+// Each level doubles ray length by chaining two T_{n-1} intervals end-to-end.
+// Stores τ (optical depth) — merge is additive.
+//
+// Buffer layout:
+//   width  = ceil(world_w / 2^n) * (2^n + 1)
+//   height = world_h
+//   index  = y * width + probe_x * directions + k
+
+layout(std430, set = 0, binding = 0) readonly  buffer PrevBuf { uvec2 data[]; } u_prev;
+layout(std430, set = 1, binding = 0) writeonly buffer CurrBuf { uvec2 data[]; } u_curr;
+
+layout(set = 2, binding = 0) uniform Params
+{
+	int u_cascade;
+	int u_world_w;
+	int u_world_h;
+	int u_prev_w;
+	int u_curr_w;
+};
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#include "hrc_common.shd"
+
+Interval merge(Interval a, Interval b)
+{
+	return Interval(
+		a.rad + exp(-a.tau) * b.rad,
+		a.tau + b.tau
+	);
+}
+
+Interval T_load_prev(int probe_x, int k, int y)
+{
+	int prev_n = u_cascade - 1;
+	int directions = (1 << prev_n) + 1;
+	int num_probes = probe_count(u_world_w, prev_n);
+
+	if (probe_x < 0 || probe_x >= num_probes || k < 0 || k >= directions || y < 0 || y >= u_world_h) {
+		return Interval(vec3(0.0), 0.0);
+	}
+
+	int idx = y * u_prev_w + probe_x * directions + k;
+	vec4 v = f16_load(u_prev.data[idx]);
+	return Interval(v.rgb, v.w);
+}
+
+int far_y_offset(int k)
+{
+	int prev_pow2 = 1 << (u_cascade - 1);
+	return 2 * k - prev_pow2;
+}
+
+Interval extend(int probe_x, int k, int y)
+{
+	int k_lo = k / 2;
+	int k_hi = (k + 1) / 2;
+	int prev_probe_x = probe_x * 2;
+	int mid_probe_x = prev_probe_x + 1;
+
+	// Candidate A: go k_lo then k_hi
+	Interval near_a = T_load_prev(prev_probe_x, k_lo, y);
+	int far_y_a = y + far_y_offset(k_lo);
+	Interval far_a = T_load_prev(mid_probe_x, k_hi, far_y_a);
+	Interval A = merge(near_a, far_a);
+
+	// Candidate B: go k_hi then k_lo
+	Interval near_b = T_load_prev(prev_probe_x, k_hi, y);
+	int far_y_b = y + far_y_offset(k_hi);
+	Interval far_b = T_load_prev(mid_probe_x, k_lo, far_y_b);
+	Interval B = merge(near_b, far_b);
+
+	return Interval(
+		(A.rad + B.rad) * 0.5,
+		(A.tau + B.tau) * 0.5
+	);
+}
+
+void main()
+{
+	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
+	if (gid.x >= u_curr_w || gid.y >= u_world_h) return;
+
+	int directions = (1 << u_cascade) + 1;
+	int probe_x = gid.x / directions;
+	int k = gid.x - probe_x * directions;
+
+	Interval iv = extend(probe_x, k, gid.y);
+
+	int out_idx = gid.y * u_curr_w + gid.x;
+	u_curr.data[out_idx] = f16_store(vec4(iv.rad, iv.tau));
+}

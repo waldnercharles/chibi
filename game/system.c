@@ -404,11 +404,21 @@ static int event_input_index(const node *event, int output)
     return -1;
 }
 
+static int aggregate_output_count(const node *n)
+{
+    int count = 0;
+    for (int i = 0; i < n->output_count; i++) {
+        count += !n->output_pins[i].field_source;
+    }
+    return count;
+}
+
 static int compile_component_get(system_program *program, const node *target)
 {
     int index = program_node_index(program, target);
+    int output_count = aggregate_output_count(target);
     if (index < 0 || !target->desc->access || target->desc->access->read_count != 1 ||
-        target->output_count == 0 || target->output_count > SYSTEM_MAX_PINS) {
+        output_count == 0 || output_count > SYSTEM_MAX_PINS) {
         return -1;
     }
     if (program->node_state[index] == 2) {
@@ -422,19 +432,18 @@ static int compile_component_get(system_program *program, const node *target)
         return -1;
     }
     program->node_state[index] = 1;
-    if (target->output_count == 1 &&
-        pin_matches_component(&target->output_pins[0], component)) {
+    if (output_count == 1 && pin_matches_component(&target->output_pins[0], component)) {
         system_instruction *instruction = add_instruction(program, SYSTEM_OP_GET, target);
         instruction->component = component;
         instruction->output = program_register(program, target, 0);
         program->node_state[index] = 2;
         return 0;
     }
-    if (target->output_count != component->type->field_count) {
+    if (output_count != component->type->field_count) {
         program->node_state[index] = 0;
         return -1;
     }
-    for (int i = 0; i < target->output_count; i++) {
+    for (int i = 0; i < output_count; i++) {
         if (!pin_matches_field(&target->output_pins[i], &component->type->fields[i])) {
             program->node_state[index] = 0;
             return -1;
@@ -453,8 +462,8 @@ static int compile_component_get(system_program *program, const node *target)
     break_op->type = component->type;
     break_op->input_count = 1;
     break_op->inputs[0] = source;
-    break_op->output_count = target->output_count;
-    for (int i = 0; i < target->output_count; i++) {
+    break_op->output_count = output_count;
+    for (int i = 0; i < output_count; i++) {
         break_op->outputs[i] = program_register(program, target, i);
     }
     program->node_state[index] = 2;
@@ -464,9 +473,10 @@ static int compile_component_get(system_program *program, const node *target)
 static int compile_component_set(system_program *program, const node *target)
 {
     int index = program_node_index(program, target);
+    int output_count = aggregate_output_count(target);
     if (index < 0 || !target->desc->access || target->desc->access->write_count != 1 ||
-        (target->output_count != 0 &&
-         (target->output_count != 2 || target->output_pins[1].kind != PIN_DATA)) ||
+        (output_count != 0 &&
+         (output_count != 2 || target->output_pins[1].kind != PIN_DATA)) ||
         node_has_exec_pins(target)) {
         return -1;
     }
@@ -525,7 +535,7 @@ static int compile_component_set(system_program *program, const node *target)
     set->component = component;
     set->input_count = 1;
     set->inputs[0] = input;
-    if (target->output_count > 1 && target->output_pins[1].kind == PIN_DATA) {
+    if (output_count > 1 && target->output_pins[1].kind == PIN_DATA) {
         int output = program_register(program, target, 1);
         if (output < 0) {
             program->node_state[index] = 0;
@@ -560,6 +570,47 @@ static int compile_value(system_program *program, const node *target, int output
     if (index < 0 || result < 0) {
         return -1;
     }
+    if (target->output_pins[output].field_source) {
+        int original = program->node_base[index] + output;
+        if (program->aliases[original] >= 0) {
+            return result;
+        }
+        int source = -1;
+        const type_field *field = graph_output_field(target, output, &source);
+        if (!field) {
+            return -1;
+        }
+        const type_desc *type = registry_type_by_name(
+            target->output_pins[source].type_name
+        );
+        if (type->field_count > SYSTEM_MAX_PINS) {
+            return -1;
+        }
+        int input = compile_value(program, target, source);
+        if (input < 0) {
+            return -1;
+        }
+        system_instruction *projection = add_instruction(program, SYSTEM_OP_BREAK, target);
+        projection->type = type;
+        projection->input_count = 1;
+        projection->inputs[0] = input;
+        projection->output_count = type->field_count;
+        for (int i = 0; i < type->field_count; i++) {
+            const type_field *member = &type->fields[i];
+            pin_spec pin = { .type = member->type,
+                             .type_name = member->type_name,
+                             .kind = PIN_DATA,
+                             .container = PIN_CONTAINER_SINGLE };
+            int value = new_register(program, &pin);
+            projection->outputs[i] = value;
+            if (member == field) {
+                program->aliases[original] = value;
+                result = value;
+            }
+        }
+        return result;
+    }
+    int output_count = aggregate_output_count(target);
     if (program->node_state[index] == 2) {
         return result;
     }
@@ -588,7 +639,7 @@ static int compile_value(system_program *program, const node *target, int output
     int ok = 1;
     switch (desc->pure_kind) {
         case NODE_PURE_DELTA:
-            if (target->output_count != 1) {
+            if (output_count != 1) {
                 ok = 0;
                 break;
             }
@@ -602,7 +653,7 @@ static int compile_value(system_program *program, const node *target, int output
             instruction->values[0] = target->output_pins[output].default_value;
             break;
         case NODE_PURE_COPY: {
-            if (target->input_count != 1 || target->output_count != 1) {
+            if (target->input_count != 1 || output_count != 1) {
                 ok = 0;
                 break;
             }
@@ -617,8 +668,7 @@ static int compile_value(system_program *program, const node *target, int output
         }
         case NODE_PURE_BREAK:
             if (!desc->type || desc->type->field_count > SYSTEM_MAX_PINS ||
-                target->input_count != 1 ||
-                target->output_count != desc->type->field_count) {
+                target->input_count != 1 || output_count != desc->type->field_count) {
                 ok = 0;
                 break;
             }
@@ -627,16 +677,15 @@ static int compile_value(system_program *program, const node *target, int output
             instruction->type = desc->type;
             instruction->input_count = 1;
             instruction->inputs[0] = input;
-            instruction->output_count = target->output_count;
-            for (int i = 0; i < target->output_count; i++) {
+            instruction->output_count = output_count;
+            for (int i = 0; i < output_count; i++) {
                 instruction->outputs[i] = program_register(program, target, i);
             }
             ok = input >= 0;
             break;
         case NODE_PURE_MAKE:
             if (!desc->type || desc->type->field_count > SYSTEM_MAX_PINS ||
-                target->input_count != desc->type->field_count ||
-                target->output_count != 1) {
+                target->input_count != desc->type->field_count || output_count != 1) {
                 ok = 0;
                 break;
             }
@@ -658,7 +707,7 @@ static int compile_value(system_program *program, const node *target, int output
             break;
         case NODE_PURE_CALL:
             if (!desc->fn || target->input_count > SYSTEM_MAX_PINS ||
-                target->output_count != 1) {
+                output_count != 1) {
                 ok = 0;
                 break;
             }
@@ -1411,7 +1460,7 @@ static int rebuild(game_system *system)
 {
     compile_report_free(&system->compile);
     compile_report_init(&system->compile);
-    behavior_asset_compile(system->definition, &system->compile);
+    behavior_asset_compile_for_system(system->definition, &system->compile);
     afree(system->query);
     ecs_query_expr_free(system->compiled_query_expression);
     system->compiled_query_expression = NULL;
@@ -1702,7 +1751,10 @@ int game_system_tick_mode(
             set_error(
                 error,
                 FLOW_ERR_COMPILE,
-                graph_node_by_id(system->definition->graph, diagnostic->node_id),
+                graph_node_by_id(
+                    behavior_asset_find_graph(system->definition, diagnostic->graph_id),
+                    diagnostic->node_id
+                ),
                 diagnostic->message
             );
             return FLOW_ERR_COMPILE;

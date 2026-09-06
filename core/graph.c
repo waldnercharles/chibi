@@ -114,6 +114,9 @@ static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
     *dst = *src;
     dst->id = graph_alloc_id(g);
     dst->name = src->name ? graph_own_str(g, src->name, strlen(src->name)) : NULL;
+    dst->field_name = src->field_name
+                        ? graph_own_str(g, src->field_name, strlen(src->field_name))
+                        : NULL;
     dst->default_value.type = dst->type;
     dst->default_value.container = dst->container;
     dst->default_value.type_name = dst->type_name;
@@ -207,16 +210,29 @@ static edge make_edge(
     return e;
 }
 
-static int conversion_matches(const pin_spec *out, const pin_spec *in, const node_desc *conversion)
+static int graph_numeric_node(const node *n)
 {
-    if (!conversion || conversion->input_count != 1 || conversion->output_count != 1) {
-        return 0;
+    const node_desc *d = n->desc;
+    return d == &NODE_Add || d == &NODE_Subtract || d == &NODE_Multiply ||
+           d == &NODE_Divide || d == &NODE_Min || d == &NODE_Max || d == &NODE_Clamp ||
+           d == &NODE_Modulo || d == &NODE_Negate || d == &NODE_Abs;
+}
+
+static const node_desc *graph_numeric_unwrap(const pin_spec *pin)
+{
+    if (pin->type != PIN_STRUCT || pin->container != PIN_CONTAINER_SINGLE) {
+        return NULL;
     }
-    if (out->type != PIN_STRUCT || in->type != PIN_STRUCT) {
-        return conversion == conversion_for(out->type, in->type);
+    const type_desc *type = registry_type_by_name(pin->type_name);
+    if (!type || type->field_count != 1) {
+        return NULL;
     }
-    return pin_compatible(out, &conversion->inputs[0]) &&
-           pin_compatible(&conversion->outputs[0], in);
+    const type_field *field = &type->fields[0];
+    pin_spec value = { .type = field->type,
+                       .type_name = field->type_name,
+                       .kind = PIN_DATA,
+                       .container = PIN_CONTAINER_SINGLE };
+    return conversion_for_pins(pin, &value);
 }
 
 int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, int to_pin, const node_desc *conversion)
@@ -231,8 +247,16 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
     }
     const pin_spec *out = &from->output_pins[from_pin];
     const pin_spec *in = &to->input_pins[to_pin];
+    int numeric_wildcard = (in->flags & PIN_FLAG_WILDCARD) && graph_numeric_node(to);
+    if (!conversion && numeric_wildcard) {
+        conversion = graph_numeric_unwrap(out);
+    }
+    const pin_spec *target = conversion && numeric_wildcard &&
+                                     conversion->output_count == 1
+                               ? &conversion->outputs[0]
+                               : in;
     if (out->kind != PIN_DATA || in->kind != PIN_DATA ||
-        (conversion && !conversion_matches(out, in, conversion))) {
+        (conversion && !conversion_matches_pins(out, target, conversion))) {
         return -1;
     }
     if (out->flags & PIN_FLAG_WILDCARD && !(in->flags & PIN_FLAG_WILDCARD)) {
@@ -240,23 +264,24 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
         out = &from->output_pins[from_pin];
     }
     if (in->flags & PIN_FLAG_WILDCARD) {
-        if (conversion) {
+        if (conversion && !numeric_wildcard) {
             return -1;
         }
-        char *owned = out->type_name
-                        ? graph_own_str(g, out->type_name, strlen(out->type_name))
+        const pin_spec *value = conversion ? &conversion->outputs[0] : out;
+        char *owned = value->type_name
+                        ? graph_own_str(g, value->type_name, strlen(value->type_name))
                         : NULL;
-        if (out->type_name && !owned) {
+        if (value->type_name && !owned) {
             return -1;
         }
         pin_spec *p = &to->input_pins[to_pin];
-        p->type = out->type;
+        p->type = value->type;
         p->type_name = owned;
-        p->container = out->container;
-        p->default_value = (pin_value){ .type = out->type,
-                                        .container = out->container,
+        p->container = value->container;
+        p->default_value = (pin_value){ .type = value->type,
+                                        .container = value->container,
                                         .type_name = owned };
-        graph_wildcard_resolve_group(g, to, p->group, out->type, out->type_name);
+        graph_wildcard_resolve_group(g, to, p->group, value->type, value->type_name);
         in = &to->input_pins[to_pin];
     }
     if (!conversion && !pin_compatible(out, in)) {
@@ -773,7 +798,13 @@ int graph_set_pin_container(graph *g, node *n, int output, int index, pin_contai
         container > PIN_CONTAINER_MAP) {
         return -1;
     }
+    if (p[index].container == container) {
+        return 0;
+    }
     p[index].container = container;
+    p[index].default_value = (pin_value){ .type = p[index].type,
+                                          .container = container,
+                                          .type_name = p[index].type_name };
     graph_changed(g);
     return 0;
 }
@@ -947,6 +978,122 @@ static const type_desc *graph_find_type(const char *name)
     return registry_type_by_name(name);
 }
 
+const type_desc *graph_output_struct(const node *n, int index)
+{
+    if (!n || index < 0 || index >= n->output_count) {
+        return NULL;
+    }
+    const node_desc *desc = n->desc;
+    bool signature = desc == &NODE_FunctionEntry || desc == &NODE_CallFunction ||
+                     desc == &NODE_CallPureFunction || desc == &NODE_CallMacro;
+    if (!signature && index >= desc->output_count) {
+        return NULL;
+    }
+    const pin_spec *pin = &n->output_pins[index];
+    if (pin->kind != PIN_DATA || pin->type != PIN_STRUCT ||
+        pin->container != PIN_CONTAINER_SINGLE || pin->field_source ||
+        pin->split_parent) {
+        return NULL;
+    }
+    return pin->type_name ? registry_type_by_name(pin->type_name) : NULL;
+}
+
+const type_field *graph_output_field(const node *n, int index, int *source_index)
+{
+    if (!n || index < 0 || index >= n->output_count) {
+        return NULL;
+    }
+    const pin_spec *pin = &n->output_pins[index];
+    if (!pin->field_source || !pin->field_name || !pin->field_name[0] ||
+        pin->kind != PIN_DATA || pin->container != PIN_CONTAINER_SINGLE ||
+        pin->split_parent) {
+        return NULL;
+    }
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].id != pin->field_source) {
+            continue;
+        }
+        const type_desc *type = graph_output_struct(n, i);
+        if (!type) {
+            return NULL;
+        }
+        for (int f = 0; f < type->field_count; f++) {
+            const type_field *field = &type->fields[f];
+            if (strcmp(field->name, pin->field_name) != 0) {
+                continue;
+            }
+            if (pin->type != field->type || strcmp(
+                                                pin->type_name ? pin->type_name : "",
+                                                field->type_name ? field->type_name : ""
+                                            ) != 0) {
+                return NULL;
+            }
+            if (source_index) {
+                *source_index = i;
+            }
+            return field;
+        }
+    }
+    return NULL;
+}
+
+int graph_expose_output_fields(graph *g, node *n, int index)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
+        return -1;
+    }
+    const type_desc *type = graph_output_struct(n, index);
+    if (!type || !type->field_count) {
+        return -1;
+    }
+    uint64_t source = n->output_pins[index].id;
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        bool exists = false;
+        for (int p = 0; p < n->output_count; p++) {
+            const pin_spec *pin = &n->output_pins[p];
+            exists |= pin->field_source == source && pin->field_name &&
+                      strcmp(pin->field_name, field->name) == 0;
+        }
+        if (exists) {
+            continue;
+        }
+        pin_spec pin = { .name = field->name,
+                         .type = field->type,
+                         .type_name = field->type_name,
+                         .kind = PIN_DATA,
+                         .field_source = source,
+                         .field_name = field->name };
+        if (graph_add_pin(g, n, 1, &pin) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int graph_hide_output_fields(graph *g, node *n, int index)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n) ||
+        !graph_output_struct(n, index)) {
+        return -1;
+    }
+    uint64_t source = n->output_pins[index].id;
+    for (int i = n->output_count - 1; i >= 0; i--) {
+        if (n->output_pins[i].field_source != source) {
+            continue;
+        }
+        bool connected = false;
+        for (int e = 0; e < acount(g->edges); e++) {
+            connected |= g->edges[e].from_id == n->id &&
+                         g->edges[e].from_pin_id == n->output_pins[i].id;
+        }
+        if (!connected && graph_remove_pin(g, n, 1, i)) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int graph_split_pin(graph *g, node *n, int output, int index)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
@@ -1069,6 +1216,13 @@ int graph_remove_pin(graph *g, node *n, int output, int index)
         return -1;
     }
     uint64_t pin_id = (*pins)[index].id;
+    if (output) {
+        for (int i = 0; i < n->output_count; i++) {
+            if (n->output_pins[i].field_source == pin_id) {
+                return -1;
+            }
+        }
+    }
     int w = 0;
     for (int i = 0; i < acount(g->edges); i++) {
         edge *e = &g->edges[i];

@@ -13,7 +13,7 @@
 
 /* CMPL-16: the default event graph is the only graph today, with a stable
  * id of 1. Multi-graph behavior_assets (Phase 4) assign further ids here. */
-#define CMPL_GRAPH_DEFAULT 1u
+#define CMPL_GRAPH_DEFAULT 0u
 
 enum
 {
@@ -40,7 +40,10 @@ enum
     CMPL_RULE_MACRO_RECURSION = 11,       /* CMPL-11 */
     CMPL_RULE_DISABLED = 18,              /* CMPL-18 */
     CMPL_RULE_UNKNOWN_NOMINAL_TYPE = 20,  /* CMPL-20 */
-    CMPL_RULE_OPERATOR = 19,              /* CMPL-19 */
+    CMPL_RULE_SYSTEM_HOST_WAIT = 21, /* Structural host waits need per-entity ownership. */
+    CMPL_RULE_OPERATOR = 19,         /* CMPL-19 */
+    CMPL_RULE_FIELD_PROJECTION = 22, /* Output fields retain their aggregate source. */
+    CMPL_RULE_CALL_SIGNATURE = 23, /* Calls match nonprojected signature parameters. */
 };
 
 #define CMPL_MESSAGE_MAX 192
@@ -48,7 +51,7 @@ enum
 typedef struct compile_diagnostic
 {
     int severity;      /* CMPL_ERROR or CMPL_WARNING */
-    uint64_t graph_id; /* CMPL_GRAPH_DEFAULT today */
+    uint64_t graph_id; /* Stable authored graph id; zero is the root graph. */
     uint64_t node_id;  /* 0 when the rule is not node-scoped */
     uint64_t pin_id;   /* 0 when the rule is not pin-scoped */
     int rule;          /* one of the CMPL_RULE_* codes */
@@ -89,6 +92,8 @@ const compile_diagnostic *compile_report_first_error(const compile_report *out);
  * x, then node id), then rule code, then pin id (CMPL-16). Returns the
  * error count. */
 int behavior_asset_compile(const behavior_asset *bp, compile_report *out);
+/* Systems cannot retain per-entity structural host-operation continuations. */
+int behavior_asset_compile_for_system(const behavior_asset *bp, compile_report *out);
 
 /* Stable rule code spelling, e.g. "CMPL-4". */
 const char *cmpl_rule_name(int rule);

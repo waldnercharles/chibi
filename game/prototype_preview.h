@@ -2,6 +2,7 @@
 #define CBLUEPRINT_GAME_PROTOTYPE_PREVIEW_H
 
 #include "behavior.h"
+#include "particles.h"
 #include "prototype.h"
 
 typedef struct game_prototype_preview game_prototype_preview;
@@ -13,6 +14,16 @@ int game_prototype_preview_register_behavior(
     const char *asset_name,
     const behavior_asset *source
 );
+/* Returns INSTANCE_UPDATE_* or a compile error, preserving the last valid
+ * version. Restart explicitly allows behavior state to be recreated. */
+int game_prototype_preview_update_behavior(
+    game_prototype_preview *preview,
+    const char *asset_name,
+    const behavior_asset *source,
+    bool restart,
+    char *message,
+    size_t message_size
+);
 int game_prototype_preview_unregister_behavior(game_prototype_preview *preview, const char *asset_name);
 int game_prototype_preview_launch(
     game_prototype_preview *preview,
@@ -20,8 +31,14 @@ int game_prototype_preview_launch(
     char *error,
     size_t error_size
 );
+int game_prototype_preview_register_prototype(
+    game_prototype_preview *preview,
+    const game_prototype *prototype
+);
 void game_prototype_preview_stop(game_prototype_preview *preview);
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time);
+/* Observe paused frames so the next simulated frame excludes elapsed idle time. */
+int game_prototype_preview_idle(game_prototype_preview *preview, double monotonic_time);
 /* Sends a typed input event to the preview entity without touching the Scene Runtime. */
 int game_prototype_preview_input(
     game_prototype_preview *preview,
@@ -31,6 +48,7 @@ int game_prototype_preview_input(
     flow_error *error
 );
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview);
+game_particles *game_prototype_preview_particles(game_prototype_preview *preview);
 game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview);
 behavior_instance *game_prototype_preview_instance(game_prototype_preview *preview, const char *asset_name);

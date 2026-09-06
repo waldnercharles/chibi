@@ -577,7 +577,7 @@ static node *behavior_asset_add_call_node(behavior_asset *bp, graph *caller, gra
         return NULL;
     }
     for (int i = 0; i < entry->output_count; i++) {
-        if (entry->output_pins[i].kind == PIN_DATA &&
+        if (entry->output_pins[i].kind == PIN_DATA && !entry->output_pins[i].field_source &&
             behavior_asset_add_call_pin(caller, call, 0, &entry->output_pins[i]) != 0) {
             graph_remove_node(caller, call);
             return NULL;

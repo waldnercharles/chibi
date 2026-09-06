@@ -68,13 +68,13 @@ typedef struct
 #define aend(a)       ((a) + alen(a))
 
 // Last element. Array must not be empty.
-#define alast(a)      (a[DYNA_HDR(a)->len - 1])
+#define alast(a)      ((a)[DYNA_HDR(a)->len - 1])
 
 // Set length to 0, but keep allocated memory.
 #define aclear(a)     (DYNA_CANARY(a), (a) ? DYNA_HDR(a)->len = 0 : 0)
 
 // Remove element at index i by swapping with last element. (O(1), unordered).
-#define adel(a, i)    (a[i] = a[--DYNA_HDR(a)->len])
+#define adel(a, i)    ((a)[i] = (a)[--DYNA_HDR(a)->len])
 
 // Copy array b into a.
 #define acopy(a, b)   (a) = dyna_copy((a), (b), sizeof(*(a)))

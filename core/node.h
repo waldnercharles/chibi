@@ -62,6 +62,14 @@ enum
 typedef pin_value (*node_fn)(const pin_value *inputs, int input_count, arena *a);
 /* Contextual read: returns an error message, or NULL after producing a value. */
 typedef const char *(*node_read_fn)(const eval_context *ctx, arena *a, pin_value *out);
+/* Contextual reads with evaluated data inputs; exactly one read callback is
+ * set. out has output_count slots; the callback fills every declared output. */
+typedef const char *(*node_read_inputs_fn)(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *a,
+    pin_value *out
+);
 /* Typed adapters: output and inputs point at storage for the declared pin types. */
 typedef int (*node_fast_fn)(void *output, const void *const *inputs);
 typedef int (*node_fast0_fn)(void *output);
@@ -133,6 +141,7 @@ typedef struct
     const type_desc *type;
     node_fn fn;
     node_read_fn read;
+    node_read_inputs_fn read_inputs;
     node_fast_fn fast;
     node_fast_direct_fn direct;
     int direct_count; /* arity plus one; zero means no direct adapter */

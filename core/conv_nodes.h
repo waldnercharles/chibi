@@ -13,5 +13,6 @@ extern node_desc NODE_To_String, NODE_To_Real, NODE_To_Integer64;
  * NULL when the pair is compatible or no conversion is registered. */
 const node_desc *conversion_for(pin_type from, pin_type to);
 const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to);
+int conversion_matches_pins(const pin_spec *from, const pin_spec *to, const node_desc *conversion);
 
 #endif

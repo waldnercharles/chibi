@@ -13,6 +13,12 @@
  * defaults, per-node scratch keyed by node ID, an optional owner handle, and
  * the ready/suspended event activations that currently belong to it. */
 typedef struct behavior_instance behavior_instance;
+typedef enum
+{
+    INSTANCE_UPDATE_READY,
+    INSTANCE_UPDATE_BUSY,
+    INSTANCE_UPDATE_RESTART,
+} instance_update_status;
 typedef struct instance_scratch_slot
 {
     uint64_t node_id;
@@ -50,6 +56,7 @@ struct behavior_instance
 {
     behavior_asset *bp;   /* borrowed; must outlive the instance */
     pin_value *variables; /* runtime storage, parallel to bp->variables */
+    arena *variable_arenas; /* owned values; replaced atomically with each assignment */
     int variable_count;
     instance_scratch_slot *scratch;
     pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
@@ -97,6 +104,13 @@ behavior_instance *behavior_instance_create(
  * releases instance variables, scratch, and activation storage without
  * executing another node (RUN-15). Releases the mutation guard. */
 void behavior_instance_destroy(behavior_instance *bi);
+/* At a scheduler boundary, update a compiled definition without Begin or state
+ * reset. Check every affected instance before updating any of them. */
+instance_update_status behavior_instance_can_update(
+    const behavior_instance *bi,
+    const behavior_asset *next
+);
+void behavior_instance_update(behavior_instance *bi, behavior_asset *next);
 
 /* Release/reuse instance storage for a per-definition pool. The Behavior Asset must
  * remain the same definition between release and reuse. */
@@ -147,6 +161,7 @@ int behavior_instance_stop_activation(behavior_instance *bi, flow_run *act);
 /* Variable storage accessors. Values are shallow-copied; STR and NAME values
  * are copied into instance-owned storage. */
 int behavior_instance_get_variable(behavior_instance *bi, uint64_t id, pin_value *out);
+int behavior_instance_copy_variable(behavior_instance *bi, uint64_t id, arena *storage, pin_value *out);
 int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin_value *value);
 pin_value behavior_instance_owner(const behavior_instance *bi);
 void behavior_instance_set_parallel_for(

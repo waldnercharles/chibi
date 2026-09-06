@@ -5,6 +5,7 @@
 #include "conv_nodes.h"
 
 #include "arena.h"
+#include "pin_conv.h"
 #include "pin_fmt.h"
 #include "registry.h"
 
@@ -145,26 +146,50 @@ const node_desc *conversion_for(pin_type from, pin_type to)
     return NULL;
 }
 
-const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to)
+static int conversion_scalar_pins(const pin_spec *from, const pin_spec *to)
 {
-    if (!from || !to || from->kind != PIN_DATA || to->kind != PIN_DATA ||
-        from->container != PIN_CONTAINER_SINGLE ||
-        to->container != PIN_CONTAINER_SINGLE) {
-        return NULL;
+    return from && to && from->kind == PIN_DATA && to->kind == PIN_DATA &&
+           from->container == PIN_CONTAINER_SINGLE &&
+           to->container == PIN_CONTAINER_SINGLE;
+}
+
+int conversion_matches_pins(const pin_spec *from, const pin_spec *to, const node_desc *conversion)
+{
+    if (!conversion_scalar_pins(from, to) || !conversion ||
+        conversion->input_count != 1 || conversion->output_count != 1 ||
+        conversion->pure_kind != NODE_PURE_CALL || !conversion->fn) {
+        return 0;
     }
-    if (from->type != PIN_STRUCT || to->type != PIN_STRUCT) {
-        return conversion_for(from->type, to->type);
+    if (conversion == conversion_for(from->type, to->type)) {
+        return 1;
     }
-    if (!from->type_name || !to->type_name) {
-        return NULL;
+    if (!conversion->conversion_from || !conversion->conversion_to ||
+        !conversion_scalar_pins(&conversion->inputs[0], &conversion->outputs[0]) ||
+        !pin_compatible(from, &conversion->inputs[0]) ||
+        !pin_compatible(&conversion->outputs[0], to)) {
+        return 0;
     }
     for (int i = 0; i < registry_node_count(); i++) {
-        const node_desc *node = registry_node(i);
-        if (node->input_count == 1 && node->output_count == 1 &&
-            node->conversion_from && node->conversion_to &&
-            strcmp(node->conversion_from, from->type_name) == 0 &&
-            strcmp(node->conversion_to, to->type_name) == 0) {
-            return node;
+        if (registry_node(i) == conversion) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to)
+{
+    if (!conversion_scalar_pins(from, to)) {
+        return NULL;
+    }
+    const node_desc *builtin = conversion_for(from->type, to->type);
+    if (builtin) {
+        return builtin;
+    }
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *conversion = registry_node(i);
+        if (conversion_matches_pins(from, to, conversion)) {
+            return conversion;
         }
     }
     return NULL;

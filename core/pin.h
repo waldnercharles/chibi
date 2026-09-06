@@ -90,6 +90,8 @@ typedef struct
     unsigned flags;
     int group;
     const char *split_type_name;
+    uint64_t field_source; /* retained aggregate output pin ID on the same node */
+    const char *field_name;
 } pin_spec;
 
 #endif

@@ -1,0 +1,216 @@
+// Adapted from Neon-Swarm shaders/hrc/gather.shd; original source comments retained.
+// C-1 gather: per-quadrant raymarching at canvas resolution.
+//
+// Reads frustum SSBOs directly and traces c-1 intervals at full canvas
+// resolution for per-pixel detail even when work_res < canvas_res.
+// Replaces the former sum_quadrants + blur + gather pipeline.
+
+layout(set = 0, binding = 0) uniform sampler2D u_emission;
+layout(set = 0, binding = 1) uniform sampler2D u_transmittance;
+layout(set = 0, binding = 2) uniform sampler2D u_transmittance_filtered;
+layout(set = 0, binding = 3) uniform sampler2D u_bounce;
+
+layout(std430, set = 0, binding = 4) readonly buffer F0 { uvec2 data[]; } u_f0;
+layout(std430, set = 0, binding = 5) readonly buffer F1 { uvec2 data[]; } u_f1;
+layout(std430, set = 0, binding = 6) readonly buffer F2 { uvec2 data[]; } u_f2;
+layout(std430, set = 0, binding = 7) readonly buffer F3 { uvec2 data[]; } u_f3;
+
+layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D u_out;
+layout(set = 1, binding = 1, rgba16f) uniform writeonly image2D u_out_bounce;
+
+layout(set = 2, binding = 0) uniform Params
+{
+	int u_canvas_w;
+	int u_canvas_h;
+	int u_work_w;
+	int u_work_h;
+	int u_upscale_mode;
+	float u_upscale_threshold;
+	float u_bounce_intensity;
+};
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#include "hrc_common.shd"
+
+// Inverse of seed's rotate_pixel in integer pixel space.
+ivec2 world_to_rotated(ivec2 p, int rot, int w, int h)
+{
+	if (rot == 1) return ivec2(p.y, w - 1 - p.x);
+	if (rot == 2) return ivec2(w - 1 - p.x, h - 1 - p.y);
+	if (rot == 3) return ivec2(h - 1 - p.y, p.x);
+	return p;
+}
+
+vec3 F_load(int rot, ivec2 rp)
+{
+	int rot_w = (rot == 0 || rot == 2) ? u_work_w : u_work_h;
+	int rot_h = (rot == 0 || rot == 2) ? u_work_h : u_work_w;
+	if (rp.x < 0 || rp.x >= rot_w || rp.y < 0 || rp.y >= rot_h) return vec3(0.0);
+	int idx = rp.y * rot_w + rp.x;
+	vec4 val;
+	if      (rot == 0) val = f16_load(u_f0.data[idx]);
+	else if (rot == 1) val = f16_load(u_f1.data[idx]);
+	else if (rot == 2) val = f16_load(u_f2.data[idx]);
+	else               val = f16_load(u_f3.data[idx]);
+	return val.rgb;
+}
+
+// World-space march direction for each quadrant's rotated +x axis.
+ivec2 quadrant_dir(int rot)
+{
+	if (rot == 1) return ivec2(0, 1);
+	if (rot == 2) return ivec2(-1, 0);
+	if (rot == 3) return ivec2(0, -1);
+	return ivec2(1, 0);
+}
+
+// Raymarch c-1 interval from canvas pixel toward nearest c0 probe.
+// Covers the gap between the pixel and the R_0 probe at +1 grid offset
+// in the quadrant's +x direction, sampled at full canvas resolution.
+// Starts from step 1 — step 0 (center pixel) is pre-accumulated by the caller.
+Interval trace_cminus1(ivec2 canvas_pos, int rot, vec3 init_rad, float init_tau, float init_trn)
+{
+	ivec2 dir = quadrant_dir(rot);
+
+	// Dimensions along march direction.
+	int canvas_dim = (rot == 0 || rot == 2) ? u_canvas_w : u_canvas_h;
+	int work_dim = (rot == 0 || rot == 2) ? u_work_w : u_work_h;
+
+	// Position along march direction in canvas space.
+	int pos_along;
+	if      (rot == 0) pos_along = canvas_pos.x;
+	else if (rot == 1) pos_along = canvas_pos.y;
+	else if (rot == 2) pos_along = (u_canvas_w - 1) - canvas_pos.x;
+	else               pos_along = (u_canvas_h - 1) - canvas_pos.y;
+
+	// Grid cell this pixel maps to (must match R_0 bilinear grid in main()).
+	float cell_f = (float(pos_along) + 0.5) * float(work_dim) / float(canvas_dim) - 0.5;
+	int grid_cell = int(floor(cell_f));
+
+	// First canvas pixel of the next cell (where grid_f = grid_cell + 1).
+	int next_probe = int(ceil((float(grid_cell) + 1.5) * float(canvas_dim) / float(work_dim) - 0.5));
+	int num_steps = max(next_probe - pos_along, 1);
+
+	vec3 acc_rad = init_rad;
+	float acc_trn = init_trn;
+	float acc_tau = init_tau;
+
+	for (int i = 1; i < num_steps; i++) {
+		ivec2 p = canvas_pos + dir * i;
+
+		vec3 e = texelFetch(u_emission, p, 0).rgb
+		       + texelFetch(u_bounce, p, 0).rgb * u_bounce_intensity;
+		float tau = max(dot(texelFetch(u_transmittance, p, 0).rgb, vec3(1.0/3.0)), 0.0);
+		float T = exp(-tau);
+		float opacity = 1.0 - T;
+
+		vec3 rad = opacity > 0.001 ? opacity * e : e;
+		acc_rad += acc_trn * rad;
+		acc_trn *= T;
+		acc_tau += tau;
+	}
+
+	return Interval(acc_rad, acc_tau);
+}
+
+void main()
+{
+	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
+	if (gid.x >= u_canvas_w || gid.y >= u_canvas_h) return;
+
+	// Floating-point grid position for bilinear R_0 interpolation.
+	// At scale=1.0 this degenerates to nearest-neighbor (frac = 0).
+	vec2 grid_f = (vec2(gid) + 0.5) * vec2(u_work_w, u_work_h) / vec2(u_canvas_w, u_canvas_h) - 0.5;
+	ivec2 g0 = ivec2(floor(grid_f));
+	vec2 frac = grid_f - vec2(g0);
+
+	// Precompute edge factor for minmax mode (mode 1).
+	float edge = 0.0;
+	if (u_upscale_mode == 1) {
+		ivec2 c00 = clamp(g0, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		ivec2 c10 = clamp(g0 + ivec2(1, 0), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		ivec2 c01 = clamp(g0 + ivec2(0, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		ivec2 c11 = clamp(g0 + ivec2(1, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		float t00 = texelFetch(u_transmittance_filtered, c00, 0).r;
+		float t10 = texelFetch(u_transmittance_filtered, c10, 0).r;
+		float t01 = texelFetch(u_transmittance_filtered, c01, 0).r;
+		float t11 = texelFetch(u_transmittance_filtered, c11, 0).r;
+		float mn = min(min(t00, t10), min(t01, t11));
+		float mx = max(max(t00, t10), max(t01, t11));
+		edge = smoothstep(0.0, u_upscale_threshold, mx - mn);
+	}
+
+	// Precompute bilateral weights (mode 2).
+	float bw00 = 1.0, bw10 = 1.0, bw01 = 1.0, bw11 = 1.0;
+	if (u_upscale_mode == 2) {
+		vec2 uv_center = (vec2(gid) + 0.5) / vec2(u_canvas_w, u_canvas_h);
+		float t_center = dot(texture(u_transmittance, uv_center).rgb, vec3(1.0/3.0));
+		ivec2 c00 = clamp(g0, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		ivec2 c10 = clamp(g0 + ivec2(1, 0), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		ivec2 c01 = clamp(g0 + ivec2(0, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		ivec2 c11 = clamp(g0 + ivec2(1, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+		float sigma2 = 2.0 * u_upscale_threshold * u_upscale_threshold;
+		float d00 = texelFetch(u_transmittance_filtered, c00, 0).r - t_center;
+		float d10 = texelFetch(u_transmittance_filtered, c10, 0).r - t_center;
+		float d01 = texelFetch(u_transmittance_filtered, c01, 0).r - t_center;
+		float d11 = texelFetch(u_transmittance_filtered, c11, 0).r - t_center;
+		bw00 = exp(-(d00 * d00) / sigma2);
+		bw10 = exp(-(d10 * d10) / sigma2);
+		bw01 = exp(-(d01 * d01) / sigma2);
+		bw11 = exp(-(d11 * d11) / sigma2);
+	}
+
+	// Sample center pixel once for all quadrants (step 0 of trace_cminus1).
+	vec3 center_e = texelFetch(u_emission, gid, 0).rgb
+	              + texelFetch(u_bounce, gid, 0).rgb * u_bounce_intensity;
+	float center_tau = max(dot(texelFetch(u_transmittance, gid, 0).rgb, vec3(1.0/3.0)), 0.0);
+	float center_T = exp(-center_tau);
+	float center_opacity = 1.0 - center_T;
+	vec3 center_rad = center_opacity > 0.001 ? center_opacity * center_e : center_e;
+
+	vec3 total = vec3(0.0);
+	vec3 total_raw = vec3(0.0);
+	for (int rot = 0; rot < 4; rot++) {
+		vec3 v00 = F_load(rot, world_to_rotated(g0,               rot, u_work_w, u_work_h) + ivec2(1,0));
+		vec3 v10 = F_load(rot, world_to_rotated(g0 + ivec2(1,0),  rot, u_work_w, u_work_h) + ivec2(1,0));
+		vec3 v01 = F_load(rot, world_to_rotated(g0 + ivec2(0,1),  rot, u_work_w, u_work_h) + ivec2(1,0));
+		vec3 v11 = F_load(rot, world_to_rotated(g0 + ivec2(1,1),  rot, u_work_w, u_work_h) + ivec2(1,0));
+
+		vec3 bilinear_r0 = mix(mix(v00, v10, frac.x), mix(v01, v11, frac.x), frac.y);
+
+		vec3 r0;
+		if (u_upscale_mode == 1) {
+			// Edge: blend bilinear -> nearest at absorption edges.
+			vec3 nearest_r0 = (frac.x < 0.5 && frac.y < 0.5) ? v00
+			                : (frac.x >= 0.5 && frac.y < 0.5) ? v10
+			                : (frac.x < 0.5)                   ? v01
+			                :                                     v11;
+			r0 = mix(bilinear_r0, nearest_r0, edge);
+		} else if (u_upscale_mode == 2) {
+			// Joint bilateral: bilinear weights modulated by transmittance similarity.
+			float w00 = (1.0 - frac.x) * (1.0 - frac.y) * bw00;
+			float w10 = frac.x          * (1.0 - frac.y) * bw10;
+			float w01 = (1.0 - frac.x) * frac.y          * bw01;
+			float w11 = frac.x          * frac.y          * bw11;
+			float wsum = w00 + w10 + w01 + w11;
+			if (wsum > 1e-6)
+				r0 = (v00 * w00 + v10 * w10 + v01 * w01 + v11 * w11) / wsum;
+			else
+				r0 = (frac.x < 0.5 && frac.y < 0.5) ? v00
+				   : (frac.x >= 0.5 && frac.y < 0.5) ? v10
+				   : (frac.x < 0.5)                   ? v01
+				   :                                     v11;
+		} else {
+			// Mode 0: plain bilinear (current behavior).
+			r0 = bilinear_r0;
+		}
+
+		Interval cminus1 = trace_cminus1(gid, rot, center_rad, center_tau, center_T);
+		total += cminus1.rad + exp(-cminus1.tau) * r0;
+		total_raw += r0;
+	}
+
+	imageStore(u_out, gid, vec4(total * 0.25, 1.0));
+	imageStore(u_out_bounce, gid, vec4(total_raw * 0.25, 1.0));
+}

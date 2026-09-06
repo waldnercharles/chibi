@@ -1,0 +1,54 @@
+// Adapted from Neon-Swarm shaders/hrc/composite.shd; original source comments retained.
+layout (set = 2, binding = 1) uniform sampler2D scene_tex;
+layout (set = 2, binding = 2) uniform sampler2D radiance_tex;
+layout (set = 2, binding = 3) uniform sampler2D emission_tex;
+layout (set = 2, binding = 4) uniform sampler2D transmittance_tex;
+layout (set = 2, binding = 5) uniform sampler2D albedo_tex;
+layout (set = 2, binding = 6) uniform sampler2D bounce_tex;
+layout (set = 2, binding = 7) uniform sampler2D radiance_raw_tex;
+layout (set = 2, binding = 8) uniform sampler2D transmittance_filtered_tex;
+layout (set = 2, binding = 9) uniform sampler2D radiance_r0_tex;
+layout (set = 2, binding = 10) uniform sampler2D background_tex;
+
+layout (set = 3, binding = 1) uniform shd_uniforms {
+    float ambient;
+    float intensity;
+    float debug_view;
+    float shadow_floor;
+    float fog;
+    float dither_phase;
+};
+
+#include "color.shd"
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec4 scene = texture(scene_tex, screen_uv);
+    vec3 emission = texture(emission_tex, screen_uv).rgb;
+    vec3 albedo = texture(albedo_tex, screen_uv).rgb;
+    vec3 radiance = texture(radiance_tex, screen_uv).rgb;
+    vec3 trans = texture(transmittance_tex, screen_uv).rgb;
+
+    int mode = int(debug_view + 0.5);
+    if (mode == 1) return scene;
+    if (mode == 2) return vec4(emission, 1.0);
+    if (mode == 3) return vec4(exp(-trans), 1.0);
+    if (mode == 4) return vec4(albedo, 1.0);
+    if (mode == 5) return vec4(radiance * 5.0, 1.0);
+    if (mode == 6) return vec4(texture(bounce_tex, screen_uv).rgb * 5.0, 1.0);
+    if (mode == 7) return vec4(texture(radiance_raw_tex, screen_uv).rgb, 1.0);
+    if (mode == 8) return vec4(vec3(exp(-texture(transmittance_filtered_tex, screen_uv).r)), 1.0);
+    if (mode == 9) return vec4(texture(radiance_r0_tex, screen_uv).rgb, 1.0);
+
+    vec3 bg = texture(background_tex, screen_uv).rgb;
+
+    vec3 light_field = max(radiance, vec3(0.0));
+    vec3 lit = albedo * light_field;
+    lit += albedo * shadow_floor;
+
+    vec3 out_linear = light_field * fog + emission * intensity + scene.rgb * ambient + lit + bg * (1.0 - scene.a);
+    vec3 out_srgb = linear_to_srgb(max(out_linear, vec3(0.0)));
+    float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);
+    out_srgb = clamp(out_srgb + vec3(dither), vec3(0.0), vec3(1.0));
+    return vec4(out_srgb, 1);
+}

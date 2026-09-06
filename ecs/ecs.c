@@ -403,6 +403,21 @@ ecs_world *ecs_world_new(void)
     return world;
 }
 
+/* Descriptors own their identity strings; reflected type layouts stay borrowed. */
+static ecs_component_desc component_desc_copy(const ecs_component_desc *source)
+{
+    ecs_component_desc copy = *source;
+    copy.name = xstrdup(source->name);
+    copy.key = source->key ? xstrdup(source->key) : NULL;
+    return copy;
+}
+
+static void component_desc_free_names(ecs_component_desc *desc)
+{
+    free((char *)desc->name);
+    free((char *)desc->key);
+}
+
 void ecs_world_free(ecs_world *world)
 {
     if (!world) {
@@ -410,6 +425,7 @@ void ecs_world_free(ecs_world *world)
     }
     ecs_world_clear_commands(world);
     for (int i = 0; i < acount(world->components); i++) {
+        component_desc_free_names(&world->components[i].desc);
         free(world->components[i].desc.column_base);
         free(world->components[i].occupancy);
         afree(world->components[i].dense);
@@ -450,7 +466,7 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
         }
     }
     ecs_component component = { 0 };
-    component.desc = *desc;
+    component.desc = component_desc_copy(desc);
     component.desc.id = id;
     component.desc.layout_hash = desc->layout_hash ? desc->layout_hash
                                                    : ecs_layout_hash(desc->type);
@@ -507,9 +523,11 @@ int ecs_world_migrate_component(
         replacement->element_size != replacement->type->size) {
         return ECS_ERR_ARGUMENT;
     }
+    ecs_component_desc owned = component_desc_copy(replacement);
     if (component->desc.layout_hash == replacement->layout_hash) {
         void *column = component->desc.column_base;
-        component->desc = *replacement;
+        component_desc_free_names(&component->desc);
+        component->desc = owned;
         component->desc.column_base = column;
         return ECS_OK;
     }
@@ -548,7 +566,8 @@ int ecs_world_migrate_component(
         }
     }
     free(component->desc.column_base);
-    component->desc = *replacement;
+    component_desc_free_names(&component->desc);
+    component->desc = owned;
     component->desc.column_base = column;
     if (report) {
         report->changed = 1;

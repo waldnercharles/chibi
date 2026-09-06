@@ -234,13 +234,13 @@ static int read_const(pin_type t, yyjson_val *v, pin_value *out, graph *g)
             if (!yyjson_is_num(v)) {
                 return -1;
             }
-            out->f = (float)yyjson_get_real(v);
+            out->f = (float)yyjson_get_num(v);
             break;
         case PIN_F64:
             if (!yyjson_is_num(v)) {
                 return -1;
             }
-            out->d = yyjson_get_real(v);
+            out->d = yyjson_get_num(v);
             break;
         case PIN_ENUM:
             if (yyjson_is_sint(v)) {
@@ -286,6 +286,12 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
     yyjson_mut_obj_add_uint(doc, o, "split_parent", p->split_parent);
     if (p->split_type_name) {
         yyjson_mut_obj_add_str(doc, o, "split_type_name", p->split_type_name);
+    }
+    if (p->field_source) {
+        yyjson_mut_obj_add_uint(doc, o, "field_source", p->field_source);
+    }
+    if (p->field_name) {
+        yyjson_mut_obj_add_str(doc, o, "field_name", p->field_name);
     }
     yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
     yyjson_mut_obj_add_int(doc, o, "group", p->group);
@@ -708,6 +714,18 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
         p->split_type_name = yyjson_is_str(split_type)
                                ? graph_own_str(g, yyjson_get_str(split_type), yyjson_get_len(split_type))
                                : NULL;
+        yyjson_val *field_source = yyjson_obj_get(v, "field_source");
+        yyjson_val *field_name = yyjson_obj_get(v, "field_name");
+        if ((field_source || field_name) &&
+            (!output || !yyjson_is_uint(field_source) || !yyjson_get_uint(field_source) ||
+             !yyjson_is_str(field_name) || !yyjson_get_len(field_name))) {
+            set_err("invalid exposed field metadata");
+            return -1;
+        }
+        p->field_source = field_source ? yyjson_get_uint(field_source) : 0;
+        p->field_name = field_name
+                          ? graph_own_str(g, yyjson_get_str(field_name), yyjson_get_len(field_name))
+                          : NULL;
         yyjson_val *flags = yyjson_obj_get(v, "flags");
         if (flags && yyjson_is_uint(flags)) {
             p->flags = (unsigned)yyjson_get_uint(flags);
@@ -773,10 +791,10 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
         }
         graph_comment_box box = {
             .id = id,
-            .x = (float)yyjson_get_real(yyjson_obj_get(value, "x")),
-            .y = (float)yyjson_get_real(yyjson_obj_get(value, "y")),
-            .width = (float)yyjson_get_real(yyjson_obj_get(value, "width")),
-            .height = (float)yyjson_get_real(yyjson_obj_get(value, "height")),
+            .x = (float)yyjson_get_num(yyjson_obj_get(value, "x")),
+            .y = (float)yyjson_get_num(yyjson_obj_get(value, "y")),
+            .width = (float)yyjson_get_num(yyjson_obj_get(value, "width")),
+            .height = (float)yyjson_get_num(yyjson_obj_get(value, "height")),
             .title = graph_own_str(g, yyjson_get_str(title), yyjson_get_len(title)),
             .color = (uint32_t)yyjson_get_uint(yyjson_obj_get(value, "color")),
         };
@@ -820,10 +838,10 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
         n->id = id;
         yyjson_val *x = yyjson_obj_get(v, "x"), *y = yyjson_obj_get(v, "y");
         if (x && yyjson_is_num(x)) {
-            n->x = (float)yyjson_get_real(x);
+            n->x = (float)yyjson_get_num(x);
         }
         if (y && yyjson_is_num(y)) {
-            n->y = (float)yyjson_get_real(y);
+            n->y = (float)yyjson_get_num(y);
         }
         yyjson_val *refname = yyjson_obj_get(v, "reference_name");
         yyjson_val *refid = yyjson_obj_get(v, "reference_id");
@@ -933,6 +951,16 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
     /* graph_add_node inflates the counter while allocating scratch ids;
      * restore the serialized floor, then ID-2 keeps the counter at or above
      * every loaded id so new allocations never reissue a retired ID. */
+    for (int i = 0; i < acount(g->nodes); i++) {
+        node *n = g->nodes[i];
+        for (int p = 0; p < n->output_count; p++) {
+            if ((n->output_pins[p].field_source || n->output_pins[p].field_name) &&
+                !graph_output_field(n, p, NULL)) {
+                set_err("invalid exposed field metadata");
+                return -1;
+            }
+        }
+    }
     g->id_counter = requested_counter;
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
@@ -1087,10 +1115,10 @@ static int load_edges(graph *g, yyjson_val *edges)
                 }
             }
             assert(loaded);
-            loaded->from_handle_x = (float)yyjson_get_real(handle);
-            loaded->from_handle_y = (float)yyjson_get_real(handle_y);
-            loaded->to_handle_x = (float)yyjson_get_real(to_handle);
-            loaded->to_handle_y = (float)yyjson_get_real(to_handle_y);
+            loaded->from_handle_x = (float)yyjson_get_num(handle);
+            loaded->from_handle_y = (float)yyjson_get_num(handle_y);
+            loaded->to_handle_x = (float)yyjson_get_num(to_handle);
+            loaded->to_handle_y = (float)yyjson_get_num(to_handle_y);
             loaded->custom_handles = true;
         }
         yyjson_val *points = yyjson_obj_get(v, "reroutes");
@@ -1120,8 +1148,8 @@ static int load_edges(graph *g, yyjson_val *edges)
                     set_err("edge has invalid reroute point");
                     return -1;
                 }
-                loaded->reroutes[loaded->reroute_count].x = (float)yyjson_get_real(x);
-                loaded->reroutes[loaded->reroute_count].y = (float)yyjson_get_real(y);
+                loaded->reroutes[loaded->reroute_count].x = (float)yyjson_get_num(x);
+                loaded->reroutes[loaded->reroute_count].y = (float)yyjson_get_num(y);
                 loaded->reroute_count++;
             }
         }
@@ -1348,6 +1376,56 @@ static int load_behavior_asset_graph(behavior_asset *bp, yyjson_val *obj, uint64
     return 0;
 }
 
+/* Node and pin constructors allocate temporary IDs during loading. Only
+ * identities retained in the loaded asset should advance its shared counter. */
+static int loaded_asset_counter(behavior_asset *asset, uint64_t requested)
+{
+    uint64_t maximum = 0;
+    for (int i = 0; i < acount(asset->variables); i++) {
+        if (asset->variables[i].id > maximum) {
+            maximum = asset->variables[i].id;
+        }
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *g = asset->graphs[i];
+        if (g->graph_id > maximum) {
+            maximum = g->graph_id;
+        }
+        for (int j = 0; j < acount(g->comment_boxes); j++) {
+            if (g->comment_boxes[j].id > maximum) {
+                maximum = g->comment_boxes[j].id;
+            }
+        }
+        for (int j = 0; j < acount(g->nodes); j++) {
+            node *n = g->nodes[j];
+            if (n->id > maximum) {
+                maximum = n->id;
+            }
+            for (int output = 0; output < 2; output++) {
+                pin_spec *pins = output ? n->output_pins : n->input_pins;
+                int count = output ? n->output_count : n->input_count;
+                for (int p = 0; p < count; p++) {
+                    if (pins[p].id > maximum) {
+                        maximum = pins[p].id;
+                    }
+                    if (pins[p].split_parent > maximum) {
+                        maximum = pins[p].split_parent;
+                    }
+                }
+            }
+        }
+    }
+    if (maximum == UINT64_MAX) {
+        set_err("behavior_asset IDs leave no room for a next ID");
+        return -1;
+    }
+    uint64_t next = maximum >= requested ? maximum + 1 : requested;
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        asset->graphs[i]->id_counter = next;
+    }
+    return 0;
+}
+
 /* FMT-1/FMT-8/FMT-17: load a version-3 Behavior Asset document. The unavailable
  * owner handle type name is preserved as authored, never substituted. */
 behavior_asset *behavior_asset_load_json(const char *json)
@@ -1428,6 +1506,9 @@ behavior_asset *behavior_asset_load_json(const char *json)
         set_err("behavior_asset requires a default event graph");
         goto fail;
     }
+    if (loaded_asset_counter(bp, requested_counter)) {
+        goto fail;
+    }
     yyjson_doc_free(doc);
     return bp;
 fail:
@@ -1489,6 +1570,13 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
             new_ids[k] = graph_alloc_id(g);
             n->output_pins[p].id = new_ids[k];
             k++;
+        }
+    }
+    for (int i = 0; i < node_count; i++) {
+        node *n = tmp->nodes[i];
+        for (int p = 0; p < n->output_count; p++) {
+            n->output_pins[p]
+                .field_source = remap_id(n->output_pins[p].field_source, old_ids, new_ids, k);
         }
     }
     for (int i = 0; i < acount(tmp->edges); i++) {

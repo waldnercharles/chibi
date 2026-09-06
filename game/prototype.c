@@ -790,6 +790,32 @@ char *game_prototype_components_json(const game_prototype *prototype)
     return result;
 }
 
+char *game_prototype_entity_component_json(
+    const ecs_world *world,
+    ecs_entity entity,
+    const ecs_component_desc *desc,
+    const game_prototype_registry *registry
+)
+{
+    if (!world || !desc || !registry || !ecs_entity_is_alive(world, entity)) {
+        return NULL;
+    }
+    const void *data = ecs_component_data_const(world, entity, desc->id);
+    if (!data) {
+        return NULL;
+    }
+    game_prototype schema = { .registry = registry };
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_val *fields = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    write_struct_fields(doc, fields, &schema, data, desc->type);
+    yyjson_mut_obj_add_val(doc, root, desc->key ? desc->key : desc->name, fields);
+    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
 static int field_equal(
     const game_prototype *prototype,
     const type_field *field,
@@ -818,11 +844,8 @@ static int field_equal(
     return pin_value_equal(&left_value, &right_value);
 }
 
-char *game_prototype_capture_overrides_json(const game_prototype *base, const ecs_world *world, ecs_entity entity)
+static char *component_overrides_json(const game_prototype *base, const game_prototype_component *current_components)
 {
-    if (!base || !world || !ecs_entity_is_alive(world, entity)) {
-        return NULL;
-    }
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_val *components = yyjson_mut_obj(doc);
@@ -846,11 +869,22 @@ char *game_prototype_capture_overrides_json(const game_prototype *base, const ec
     }
     for (int i = 0; i < acount(order); i++) {
         const game_prototype_component *component = &base->components[order[i]];
-        if (!ecs_component_has(world, entity, component->desc->id)) {
+        const void *current = NULL;
+        for (int j = 0; j < acount(current_components); j++) {
+            if (current_components[j].desc->id == component->desc->id) {
+                current = current_components[j].data;
+                break;
+            }
+        }
+        if (!current) {
+            yyjson_mut_obj_add_val(
+                doc,
+                components,
+                component->desc->key ? component->desc->key : component->desc->name,
+                yyjson_mut_null(doc)
+            );
             continue;
         }
-        const void
-            *current = ecs_component_data_const(world, entity, component->desc->id);
         yyjson_mut_val *fields = NULL;
         for (int field_index = 0; field_index < component->desc->type->field_count;
              field_index++) {
@@ -873,9 +907,57 @@ char *game_prototype_capture_overrides_json(const game_prototype *base, const ec
         }
     }
     afree(order);
+    for (int i = 0; i < acount(current_components); i++) {
+        const game_prototype_component *component = &current_components[i];
+        bool existed = false;
+        for (int j = 0; j < acount(base->components); j++) {
+            existed |= base->components[j].desc->id == component->desc->id;
+        }
+        if (existed) {
+            continue;
+        }
+        yyjson_mut_val *fields = yyjson_mut_obj(doc);
+        write_struct_fields(doc, fields, base, component->data, component->desc->type);
+        yyjson_mut_obj_add_val(
+            doc,
+            components,
+            component->desc->key ? component->desc->key : component->desc->name,
+            fields
+        );
+    }
     char *result = yyjson_mut_val_write(components, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
     return result;
+}
+
+char *game_prototype_overrides_json(const game_prototype *base, const game_prototype *current)
+{
+    if (!base || !current) {
+        return NULL;
+    }
+    return component_overrides_json(base, current->components);
+}
+
+char *game_prototype_capture_overrides_json(const game_prototype *base, const ecs_world *world, ecs_entity entity)
+{
+    if (!base || !world || !ecs_entity_is_alive(world, entity)) {
+        return NULL;
+    }
+    game_prototype_component *components = NULL;
+    for (int i = 0; i < base->registry->component_count; i++) {
+        const ecs_component_desc *desc = base->registry->components[i];
+        if (!ecs_component_has(world, entity, desc->id)) {
+            continue;
+        }
+        game_prototype_component component = {
+            .desc = desc,
+            .data = (void *)ecs_component_data_const(world, entity, desc->id),
+        };
+        apush(components, component);
+    }
+    char *json = component_overrides_json(base, components);
+    afree(components);
+    return json;
 }
 
 static int apply_override_fields(
@@ -985,6 +1067,16 @@ int game_prototype_apply_components_json(
             afree(parser.strings);
             return -1;
         }
+        if (yyjson_is_null(yyjson_obj_iter_get_val(key))) {
+            if (ecs_component_has(world, entity, desc->id) &&
+                ecs_world_record_remove(world, entity, desc->id, 0) != ECS_OK) {
+                set_error(error, error_size, "override component %s could not be removed", desc->name);
+                yyjson_doc_free(doc);
+                afree(parser.strings);
+                return -1;
+            }
+            continue;
+        }
         if (!ecs_component_has(world, entity, desc->id) &&
             ecs_world_record_add(world, entity, desc->id, NULL, 0) != ECS_OK) {
             set_error(error, error_size, "override component %s could not be added", desc->name);
@@ -1002,6 +1094,9 @@ int game_prototype_apply_components_json(
     iterator = yyjson_obj_iter_with(root);
     while ((key = yyjson_obj_iter_next(&iterator))) {
         const ecs_component_desc *desc = find_descriptor(registry, yyjson_get_str(key));
+        if (yyjson_is_null(yyjson_obj_iter_get_val(key))) {
+            continue;
+        }
         if (apply_component_override(&parser, world, entity, registry, desc, yyjson_obj_iter_get_val(key), error, error_size) !=
             0) {
             yyjson_doc_free(doc);
@@ -1012,6 +1107,19 @@ int game_prototype_apply_components_json(
     yyjson_doc_free(doc);
     afree(parser.strings);
     return 0;
+}
+
+int game_prototype_spawn_components(
+    const game_prototype *prototype,
+    ecs_world *world,
+    ecs_entity *entity,
+    char *error,
+    size_t error_size
+)
+{
+    game_prototype components = *prototype;
+    components.graphs = NULL;
+    return game_prototype_spawn(&components, world, NULL, entity, error, error_size);
 }
 
 int game_prototype_spawn(

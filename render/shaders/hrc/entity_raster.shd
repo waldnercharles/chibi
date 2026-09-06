@@ -1,0 +1,429 @@
+// Adapted from the user-supplied Neon-Swarm shaders. Original shader equations retained.
+// Entity tile rasterization pass.
+//
+// One workgroup per tile (16x16 = 256 threads = one thread per pixel).
+// Each thread iterates its tile's entity list, transforms to entity local
+// space, evaluates the shape SDF, and blends results for all 4 canvases.
+//
+// Dispatch: (tiles_x, tiles_y, 1)
+
+#include "entity.shd"
+
+layout(set = 0, binding = 0) readonly buffer EntityBuf {
+    Entity entities[];
+};
+
+layout(set = 0, binding = 1) readonly buffer TileCounts {
+    uint tile_counts[];
+};
+
+layout(set = 0, binding = 2) readonly buffer TileEntities {
+    uint tile_entities[];
+};
+
+layout(set = 1, binding = 0, rgba16f) uniform image2D u_scene;
+layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
+layout(set = 1, binding = 2, rgba16f) uniform image2D u_transmittance;
+layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
+
+layout(set = 2, binding = 0) uniform Params {
+    int u_entity_count;
+    float u_world_min_x;
+    float u_world_max_y;
+    vec2 u_unit_per_px;
+    int u_tiles_x;
+    int u_tiles_y;
+    int u_canvas_w;
+    int u_canvas_h;
+    int u_max_per_tile;
+};
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// Tile lists are already ordered by stable CPU sort and deterministic binning.
+
+#include "sdf.shd"
+#include "noise.shd"
+
+float sdf_polyline(vec2 p, Entity e)
+{
+    int count = int(e.point_count);
+    if (count < 3) count = 3;
+    if (count > 8) count = 8;
+
+    // Extract points.
+    vec2 pts[8];
+    pts[0] = e.points_01.xy;
+    pts[1] = e.points_01.zw;
+    pts[2] = e.points_23.xy;
+    pts[3] = e.points_23.zw;
+    pts[4] = e.points_45.xy;
+    pts[5] = e.points_45.zw;
+    pts[6] = e.points_67.xy;
+    pts[7] = e.points_67.zw;
+
+    // Min distance to any closed polyline segment.
+    float min_d = 1e30;
+    for (int i = 0; i < count; i++) {
+        int j = (i + 1) % count;
+        // Manually index to avoid dynamic indexing issues.
+        vec2 a, b;
+        // Use ternary chain for compile-time indexable access.
+        a = (i == 0) ? pts[0] : (i == 1) ? pts[1] : (i == 2) ? pts[2] : (i == 3) ? pts[3] :
+            (i == 4) ? pts[4] : (i == 5) ? pts[5] : (i == 6) ? pts[6] : pts[7];
+        b = (j == 0) ? pts[0] : (j == 1) ? pts[1] : (j == 2) ? pts[2] : (j == 3) ? pts[3] :
+            (j == 4) ? pts[4] : (j == 5) ? pts[5] : (j == 6) ? pts[6] : pts[7];
+        float d = sdf_segment(p, a, b);
+        min_d = min(min_d, d);
+    }
+    return min_d - e.thickness * 0.5;
+}
+
+float sdf_polygon_filled(vec2 p, Entity e)
+{
+    int count = int(e.point_count);
+    if (count < 3) count = 3;
+    if (count > 8) count = 8;
+
+    // Extract points.
+    vec2 pts[8];
+    pts[0] = e.points_01.xy;
+    pts[1] = e.points_01.zw;
+    pts[2] = e.points_23.xy;
+    pts[3] = e.points_23.zw;
+    pts[4] = e.points_45.xy;
+    pts[5] = e.points_45.zw;
+    pts[6] = e.points_67.xy;
+    pts[7] = e.points_67.zw;
+
+    // Winding-number SDF for filled polygon.
+    float min_d = 1e30;
+    float winding = 0.0;
+    for (int i = 0; i < count; i++) {
+        int j = (i + 1) % count;
+        vec2 a = (i == 0) ? pts[0] : (i == 1) ? pts[1] : (i == 2) ? pts[2] : (i == 3) ? pts[3] :
+                 (i == 4) ? pts[4] : (i == 5) ? pts[5] : (i == 6) ? pts[6] : pts[7];
+        vec2 b = (j == 0) ? pts[0] : (j == 1) ? pts[1] : (j == 2) ? pts[2] : (j == 3) ? pts[3] :
+                 (j == 4) ? pts[4] : (j == 5) ? pts[5] : (j == 6) ? pts[6] : pts[7];
+
+        vec2 edge = b - a;
+        vec2 pa = p - a;
+        float t = clamp(dot(pa, edge) / max(dot(edge, edge), 1e-20), 0.0, 1.0);
+        float d = length(pa - edge * t);
+        min_d = min(min_d, d);
+
+        // Winding number contribution.
+        bvec3 cond = bvec3(a.y <= p.y, b.y > p.y, edge.x * pa.y - edge.y * pa.x > 0.0);
+        if (all(cond)) winding += 1.0;
+        cond = bvec3(a.y > p.y, b.y <= p.y, edge.x * pa.y - edge.y * pa.x < 0.0);
+        if (all(cond)) winding -= 1.0;
+    }
+    return (winding != 0.0) ? -min_d : min_d;
+}
+
+float evaluate_sdf(vec2 local_p, Entity e)
+{
+    uint shape = e.shape_type;
+    float d;
+
+    // LINE and POLY: inherently stroked, thickness built into SDF.
+    if (shape == SHAPE_LINE) {
+        return sdf_line(local_p, e.points_01.xy, e.points_01.zw, e.thickness);
+    }
+    if (shape == SHAPE_POLY) {
+        return sdf_polyline(local_p, e);
+    }
+
+    // All other shapes: compute filled SDF, then optionally stroke.
+    if (shape == SHAPE_CIRCLE) {
+        d = sdf_circle(local_p, e.radius);
+    } else if (shape == SHAPE_BOX) {
+        d = sdf_box(local_p, abs(e.points_01.xy), e.chubbiness);
+    } else if (shape == SHAPE_CAPSULE) {
+        d = sdf_capsule(local_p, e.points_01.xy, e.points_01.zw, e.radius);
+    } else if (shape == SHAPE_TRI) {
+        d = sdf_triangle(local_p, e.points_01.xy, e.points_01.zw, e.points_23.xy, e.chubbiness);
+    } else if (shape == SHAPE_DIAMOND) {
+        d = sdf_diamond(local_p, e.radius) - e.chubbiness;
+    } else if (shape == SHAPE_POLY_FILL) {
+        d = sdf_polygon_filled(local_p, e) - e.chubbiness;
+    } else {
+        d = sdf_circle(local_p, e.radius);
+    }
+
+    // Unified stroke: thickness > 0 converts filled shape to outline.
+    if (e.thickness > 0.0)
+        d = abs(d) - e.thickness * 0.5;
+
+    return d;
+}
+
+#include "color.shd"
+
+vec4 unpack_color(vec4 p) { return p; }
+
+void main()
+{
+    ivec2 tile_id = ivec2(gl_WorkGroupID.xy);
+    ivec2 local_id = ivec2(gl_LocalInvocationID.xy);
+    ivec2 pixel = tile_id * 16 + local_id;
+
+    // Bounds check.
+    if (pixel.x >= u_canvas_w || pixel.y >= u_canvas_h) return;
+
+    // Pixel center -> world position (Y flipped: pixel 0 = world max Y).
+    vec2 world_pos = vec2(
+        u_world_min_x + (float(pixel.x) + 0.5) * u_unit_per_px.x,
+        u_world_max_y - (float(pixel.y) + 0.5) * u_unit_per_px.y
+    );
+
+    // Tile entity list.
+    uint tile_idx = uint(tile_id.y * u_tiles_x + tile_id.x);
+    uint total = min(tile_counts[tile_idx], uint(u_max_per_tile));
+    uint base = tile_idx * uint(u_max_per_tile);
+
+    // Accumulators (initialized to canvas clear colors).
+    vec4 scene_acc = vec4(0, 0, 0, 0);
+    vec4 emission_acc = vec4(0, 0, 0, 1);
+    vec4 trans_acc = vec4(0, 0, 0, 0);
+    vec4 albedo_acc = vec4(0, 0, 0, 1);
+
+    // Metaball group accumulators.
+    #define MAX_METABALL_GROUPS 4
+    float mb_sdf[MAX_METABALL_GROUPS];
+    vec4 mb_scene[MAX_METABALL_GROUPS];
+    vec4 mb_emission[MAX_METABALL_GROUPS];
+    vec4 mb_trans[MAX_METABALL_GROUPS];
+    vec4 mb_albedo[MAX_METABALL_GROUPS];
+    vec4 mb_border_scene[MAX_METABALL_GROUPS];
+    vec4 mb_border_emission[MAX_METABALL_GROUPS];
+    vec4 mb_border_trans[MAX_METABALL_GROUPS];
+    vec4 mb_border_albedo[MAX_METABALL_GROUPS];
+    float mb_aa[MAX_METABALL_GROUPS];
+    float mb_border_thickness[MAX_METABALL_GROUPS];
+    bool mb_active[MAX_METABALL_GROUPS];
+    for (int g = 0; g < MAX_METABALL_GROUPS; g++) {
+        mb_sdf[g] = 1e30;
+        mb_scene[g] = vec4(0);
+        mb_emission[g] = vec4(0);
+        mb_trans[g] = vec4(0);
+        mb_albedo[g] = vec4(0);
+        mb_border_scene[g] = vec4(0);
+        mb_border_emission[g] = vec4(0);
+        mb_border_trans[g] = vec4(0);
+        mb_border_albedo[g] = vec4(0);
+        mb_aa[g] = 0.0;
+        mb_border_thickness[g] = 0.0;
+        mb_active[g] = false;
+    }
+
+    // No workgroup barriers: partial edge tiles may safely return above.
+    for (uint i = 0u; i < total; i++) {
+        uint eidx = tile_entities[base + i];
+        Entity e = entities[eidx];
+
+        // Transform pixel to entity local space.
+        vec2 dp = world_pos - e.pos;
+        vec2 local_p = vec2(
+            e.inv_rot.x * dp.x + e.inv_rot.y * dp.y,
+            e.inv_rot.z * dp.x + e.inv_rot.w * dp.y
+        );
+
+        // SDF wobble: standing wave (sustained hum) + traveling wave (pluck transient).
+        float wobble = e.wobble_pad.x;
+        float pluck_amp = e.pluck_data.x;
+
+        if (wobble > 0.0 || pluck_amp > 0.0) {
+            float ang_freq = round(e.wobble_pad.y);
+            float time_freq = e.wobble_pad.z;
+            float angle = atan(local_p.y, local_p.x);
+            float deform = 0.0;
+
+            // Traveling wave: sustained energy hum rotating around the border.
+            if (wobble > 0.0) {
+                deform += sin(angle * ang_freq - e.simulation_time.x * time_freq) * wobble;
+            }
+
+            // Traveling wave: pluck transient.
+            if (pluck_amp > 0.01) {
+                float pluck_origin = e.pluck_data.y;
+                float pluck_age = e.pluck_data.z;
+                float pluck_speed = e.pluck_data.w;
+
+                float dist = angle - pluck_origin;
+                dist = dist - 6.2831853 * floor((dist + 3.1415926) / 6.2831853);
+
+                float wave_front = pluck_age * pluck_speed;
+
+                // Counter-propagating wave packets from pluck origin.
+                float p1 = dist - wave_front;
+                float p2 = dist + wave_front;
+                float env_w = 0.8 + ang_freq * 0.1;
+                float env1 = exp(-p1 * p1 * env_w);
+                float env2 = exp(-p2 * p2 * env_w);
+
+                float traveling = sin(dist * ang_freq - wave_front) * env1
+                                + sin(dist * ang_freq + wave_front) * env2;
+                deform += traveling * pluck_amp;
+            }
+
+            vec2 radial = local_p + vec2(0.0001);
+            float radial_length = length(radial);
+            if (radial_length > 0.0) local_p += radial / radial_length * deform;
+        }
+
+        float sdf = evaluate_sdf(local_p, e);
+
+        if (e.metaball_group > 0u) {
+            // Accumulate into metaball group.
+            uint g = e.metaball_group - 1u;
+            if (g < MAX_METABALL_GROUPS) {
+                float k = e.metaball_blend;
+                vec4 e_scene = unpack_color(e.scene);
+                vec4 e_emission = unpack_color(e.emission);
+                vec4 e_trans = unpack_color(e.transmittance);
+                vec4 e_albedo = unpack_color(e.albedo);
+                vec4 e_bscene = unpack_color(e.border_scene);
+                vec4 e_bemission = unpack_color(e.border_emission);
+                vec4 e_btrans = unpack_color(e.border_transmittance);
+                vec4 e_balbedo = unpack_color(e.border_albedo);
+                if (!mb_active[g] || k <= 0.0) {
+                    // First entity in group or no blending: just take the closer one.
+                    if (sdf < mb_sdf[g]) {
+                        mb_sdf[g] = sdf;
+                        mb_scene[g] = e_scene;
+                        mb_emission[g] = e_emission;
+                        mb_trans[g] = e_trans;
+                        mb_albedo[g] = e_albedo;
+                        mb_border_scene[g] = e_bscene;
+                        mb_border_emission[g] = e_bemission;
+                        mb_border_trans[g] = e_btrans;
+                        mb_border_albedo[g] = e_balbedo;
+                        mb_aa[g] = e.aa;
+                        mb_border_thickness[g] = e.border_thickness;
+                    }
+                } else {
+                    float h = clamp(0.5 + 0.5 * (sdf - mb_sdf[g]) / k, 0.0, 1.0);
+                    mb_sdf[g] = mix(sdf, mb_sdf[g], h) - k * h * (1.0 - h);
+                    mb_scene[g] = mix(e_scene, mb_scene[g], h);
+                    mb_emission[g] = mix(e_emission, mb_emission[g], h);
+                    mb_trans[g] = mix(e_trans, mb_trans[g], h);
+                    mb_albedo[g] = mix(e_albedo, mb_albedo[g], h);
+                    mb_border_scene[g] = mix(e_bscene, mb_border_scene[g], h);
+                    mb_border_emission[g] = mix(e_bemission, mb_border_emission[g], h);
+                    mb_border_trans[g] = mix(e_btrans, mb_border_trans[g], h);
+                    mb_border_albedo[g] = mix(e_balbedo, mb_border_albedo[g], h);
+                    mb_aa[g] = mix(e.aa, mb_aa[g], h);
+                    mb_border_thickness[g] = mix(e.border_thickness, mb_border_thickness[g], h);
+                }
+                mb_active[g] = true;
+            }
+            continue;
+        }
+
+        // Normal entity (metaball_group == 0).
+        float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
+        float bt = e.border_thickness;
+
+        if (bt > 0.0) {
+            // Border rendering: fill is interior, border is edge band.
+            float shape_coverage = 1.0 - smoothstep(0.0, aa, sdf);
+            float fill_coverage = 1.0 - smoothstep(-bt, -bt + aa, sdf);
+            float border_coverage = shape_coverage - fill_coverage;
+            if (shape_coverage <= 0.0) continue;
+
+            // Scene: border over fill, then onto canvas.
+            vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= fill_coverage;
+            vec4 bsc = unpack_color(e.border_scene); bsc.rgb *= bsc.a; bsc *= border_coverage;
+            scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
+
+            // Emission.
+            vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= fill_coverage;
+            vec4 bem = unpack_color(e.border_emission); bem.rgb *= bem.a; bem *= border_coverage;
+            emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
+
+            // Transmittance.
+            vec4 tr = unpack_color(e.transmittance); tr *= fill_coverage;
+            vec4 btr = unpack_color(e.border_transmittance); btr *= border_coverage;
+            vec4 combined_tr = tr + btr;
+            trans_acc.rgb += combined_tr.rgb * (1.0 - trans_acc.a);
+            trans_acc.a += combined_tr.a * (1.0 - trans_acc.a);
+
+            // Albedo.
+            vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= fill_coverage;
+            vec4 bal = unpack_color(e.border_albedo); bal.rgb *= bal.a; bal *= border_coverage;
+            albedo_acc = alpha_over(alpha_over(bal, al), albedo_acc);
+        } else {
+            // No border: original path.
+            float coverage = 1.0 - smoothstep(0.0, aa, sdf);
+            if (coverage <= 0.0) continue;
+
+            vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= coverage;
+            scene_acc = alpha_over(sc, scene_acc);
+
+            vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= coverage;
+            emission_acc = alpha_over(em, emission_acc);
+
+            vec4 tr = unpack_color(e.transmittance); tr *= coverage;
+            trans_acc.rgb += tr.rgb * (1.0 - trans_acc.a);
+            trans_acc.a += tr.a * (1.0 - trans_acc.a);
+
+            vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= coverage;
+            albedo_acc = alpha_over(al, albedo_acc);
+        }
+    }
+
+
+    // Composite metaball groups on top.
+    for (int g = 0; g < MAX_METABALL_GROUPS; g++) {
+        if (!mb_active[g]) continue;
+        float aa = mb_aa[g] > 0.0 ? mb_aa[g] : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
+        float bt = mb_border_thickness[g];
+
+        if (bt > 0.0) {
+            float shape_coverage = 1.0 - smoothstep(0.0, aa, mb_sdf[g]);
+            float fill_coverage = 1.0 - smoothstep(-bt, -bt + aa, mb_sdf[g]);
+            float border_coverage = shape_coverage - fill_coverage;
+            if (shape_coverage <= 0.0) continue;
+
+            vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= fill_coverage;
+            vec4 bsc = mb_border_scene[g]; bsc.rgb *= bsc.a; bsc *= border_coverage;
+            scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
+
+            vec4 em = mb_emission[g]; em.rgb *= em.a; em *= fill_coverage;
+            vec4 bem = mb_border_emission[g]; bem.rgb *= bem.a; bem *= border_coverage;
+            emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
+
+            vec4 tr = mb_trans[g]; tr *= fill_coverage;
+            vec4 btr = mb_border_trans[g]; btr *= border_coverage;
+            vec4 combined_tr = tr + btr;
+            trans_acc.rgb += combined_tr.rgb * (1.0 - trans_acc.a);
+            trans_acc.a += combined_tr.a * (1.0 - trans_acc.a);
+
+            vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= fill_coverage;
+            vec4 bal = mb_border_albedo[g]; bal.rgb *= bal.a; bal *= border_coverage;
+            albedo_acc = alpha_over(alpha_over(bal, al), albedo_acc);
+        } else {
+            float coverage = 1.0 - smoothstep(0.0, aa, mb_sdf[g]);
+            if (coverage <= 0.0) continue;
+
+            vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= coverage;
+            scene_acc = alpha_over(sc, scene_acc);
+
+            vec4 em = mb_emission[g]; em.rgb *= em.a; em *= coverage;
+            emission_acc = alpha_over(em, emission_acc);
+
+            vec4 tr = mb_trans[g]; tr *= coverage;
+            trans_acc.rgb += tr.rgb * (1.0 - trans_acc.a);
+            trans_acc.a += tr.a * (1.0 - trans_acc.a);
+
+            vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= coverage;
+            albedo_acc = alpha_over(al, albedo_acc);
+        }
+    }
+
+    imageStore(u_scene, pixel, scene_acc);
+    imageStore(u_emission, pixel, emission_acc);
+    imageStore(u_transmittance, pixel, trans_acc);
+    imageStore(u_albedo, pixel, albedo_acc);
+}

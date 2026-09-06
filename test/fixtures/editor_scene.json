@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "name": "Editor interaction fixture",
+  "entities": [
+    {
+      "name": "Enemy_1",
+      "prototype": "Enemy",
+      "components": {},
+      "behaviors": [
+        "HealthBehavior",
+        "EnemyBehavior"
+      ]
+    },
+    {
+      "name": "InputEntity_1",
+      "prototype": "InputEntity",
+      "components": {},
+      "behaviors": [
+        "InputBehavior"
+      ]
+    },
+    {
+      "name": "Player_1",
+      "prototype": "Player",
+      "components": {},
+      "behaviors": [
+        "InputBehavior",
+        "WeaponBehavior",
+        "HealthBehavior",
+        "AutoWeaponBehavior",
+        "PlayerContactBehavior",
+        "MovementTrailBehavior"
+      ]
+    },
+    {
+      "name": "StaticEntity_1",
+      "prototype": "StaticEntity",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Projectile_1",
+      "prototype": "Projectile",
+      "components": {},
+      "behaviors": [
+        "ProjectileBehavior",
+        "ProjectileHitBehavior"
+      ]
+    }
+  ]
+}

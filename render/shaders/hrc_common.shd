@@ -1,0 +1,24 @@
+// From Neon-Swarm shaders/hrc_common.shd.
+// Shared HRC cascade utilities: interval type, float16 packing, probe helpers.
+
+struct Interval
+{
+	vec3 rad;
+	float tau;
+};
+
+vec4 f16_load(uvec2 packed)
+{
+	return vec4(unpackHalf2x16(packed.x), unpackHalf2x16(packed.y));
+}
+
+uvec2 f16_store(vec4 val)
+{
+	return uvec2(packHalf2x16(val.xy), packHalf2x16(val.zw));
+}
+
+int probe_count(int world_w, int n)
+{
+	int step = 1 << n;
+	return (world_w + step - 1) / step;
+}

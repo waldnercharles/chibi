@@ -113,6 +113,7 @@ typedef struct
 } component_identity;
 
 static component_identity *g_component_identities;
+static const collect_ctx *g_collection;
 static const char *g_manifest_path;
 static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size);
 static uint64_t hash_string(uint64_t hash, const char *text);
@@ -174,17 +175,53 @@ static void add_alias(component_identity *identity, const char *name)
     identity->aliases = aliases;
 }
 
+static int identity_declared(const component_identity *identity)
+{
+    for (int i = 0; i < acount(g_collection->structs); i++) {
+        const struct_info *s = &g_collection->structs[i];
+        if (s->component && (strcmp(identity->name, s->name) == 0 ||
+                             alias_has(identity->aliases, s->name))) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int identity_rank(const component_identity *identity, const struct_info *s)
+{
+    if (strcmp(identity->name, s->name) == 0) {
+        return 4;
+    }
+    if (alias_has(identity->aliases, s->name)) {
+        return 3;
+    }
+    /* Layout and location only infer renames after the old declaration is gone.
+     * An inserted component may occupy its line or share its field layout. */
+    if (identity_declared(identity)) {
+        return 0;
+    }
+    if (identity->fingerprint && identity->fingerprint == declaration_fingerprint(s)) {
+        return 2;
+    }
+    return identity->line == s->line && strcmp(identity->file, s->file) == 0;
+}
+
 static int manifest_match(const struct_info *s)
 {
+    int best = 0;
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        int rank = identity_rank(&g_component_identities[i], s);
+        if (rank > best) {
+            best = rank;
+        }
+    }
+    if (!best) {
+        return -1;
+    }
     int found = -1;
-    uint64_t fingerprint = declaration_fingerprint(s);
     for (int i = 0; i < acount(g_component_identities); i++) {
         component_identity *identity = &g_component_identities[i];
-        int match = (identity->fingerprint && identity->fingerprint == fingerprint) ||
-                    strcmp(identity->name, s->name) == 0 ||
-                    alias_has(identity->aliases, s->name) ||
-                    (identity->line == s->line && strcmp(identity->file, s->file) == 0);
-        if (!match) {
+        if (identity_rank(identity, s) != best) {
             continue;
         }
         if (found >= 0 && g_component_identities[found].id != identity->id) {
@@ -1394,6 +1431,88 @@ static uint64_t component_layout_hash(const struct_info *s)
     return hash;
 }
 
+static bool component_unwrap(const struct_info *s)
+{
+    return s->component && acount(s->fields) == 1;
+}
+
+static void emit_component_unwrap(FILE *out, const struct_info *s)
+{
+    if (!component_unwrap(s)) {
+        return;
+    }
+    const field_info *field = &s->fields[0];
+    fprintf(out, "static pin_value __unwrap_%s_%s(const pin_value *inputs, int count, arena *a) {\n", g_prefix, s->name);
+    fputs("    assert(count == 1 && inputs[0].type == PIN_STRUCT && inputs[0].ptr);\n", out);
+    fputs("    assert(inputs[0].container == PIN_CONTAINER_SINGLE);\n    (void)a;\n", out);
+    fprintf(out, "    %s value = *(const %s *)inputs[0].ptr;\n", s->name, s->name);
+    fprintf(
+        out,
+        "    pin_value result = { .type = %s, .type_name = \"%s\" };\n",
+        field->pin,
+        field->spelling
+    );
+    if (strcmp(field->pin, "PIN_STRUCT") == 0) {
+        fprintf(
+            out,
+            "    result.ptr = arena_alloc(a, sizeof(value.%s));\n",
+            field->name
+        );
+        fprintf(
+            out,
+            "    memcpy(result.ptr, &value.%s, sizeof(value.%s));\n",
+            field->name,
+            field->name
+        );
+    } else if (strcmp(field->pin, "PIN_STR") == 0) {
+        fprintf(out, "    if (value.%s) {\n", field->name);
+        fprintf(out, "        size_t size = strlen(value.%s) + 1;\n", field->name);
+        fputs("        char *text = arena_alloc(a, size);\n", out);
+        fprintf(out, "        memcpy(text, value.%s, size);\n", field->name);
+        fputs("        result.str = text;\n    }\n", out);
+    } else {
+        fprintf(
+            out,
+            "    result.%s = value.%s;\n",
+            pin_member(field->pin),
+            field->name
+        );
+    }
+    fputs("    return result;\n}\n", out);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_unwrap_inputs[] = { { \"Value\", PIN_STRUCT, "
+        "\"%s\" } };\n",
+        g_prefix,
+        s->name,
+        s->name
+    );
+    fprintf(out, "static pin_spec %s_%s_unwrap_outputs[] = {\n", g_prefix, s->name);
+    emit_pin_spec(out, field->name, field->pin, field->spelling);
+    fputs("};\n", out);
+    fprintf(out, "static const node_access %s_%s_unwrap_access = { .flags = NODE_EFFECT_PURE };\n", g_prefix, s->name);
+    fprintf(out, "node_desc %s_NODE_Unwrap_%s = {\n", g_prefix, s->name);
+    fprintf(out, "    .name = \"Unwrap_%s\",\n", s->name);
+    fputs("    .input_count = 1, .output_count = 1,\n", out);
+    fprintf(
+        out,
+        "    .inputs = %s_%s_unwrap_inputs, .outputs = %s_%s_unwrap_outputs,\n",
+        g_prefix,
+        s->name,
+        g_prefix,
+        s->name
+    );
+    fprintf(out, "    .pure_kind = NODE_PURE_CALL, .fn = __unwrap_%s_%s,\n", g_prefix, s->name);
+    fprintf(
+        out,
+        "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n",
+        s->name,
+        field->spelling
+    );
+    fputs("    .display_class = NODE_DISPLAY_PURE, .category = \"Conversion\",\n", out);
+    fprintf(out, "    .access = &%s_%s_unwrap_access,\n};\n\n", g_prefix, s->name);
+}
+
 static void emit_component_nodes(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
@@ -1450,6 +1569,157 @@ static void emit_component_nodes(FILE *out, const struct_info *s)
     fprintf(out, "        __removed = %s_%s_remove(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
     fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __removed };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+}
+
+static void emit_component_entity_nodes(FILE *out, const struct_info *s)
+{
+    const char *name = s->name;
+    const char *reads[] = { "get", "has" };
+    for (int i = 0; i < 2; i++) {
+        fprintf(
+            out,
+            "static const char *__read_%s_%s_entity_%s(const eval_context "
+            "*ctx, const pin_value *inputs, arena *a, pin_value *out) {\n",
+            g_prefix,
+            reads[i],
+            name
+        );
+        fputs("    ecs_world *world = eval_context_service(ctx, \"ecs.world\");\n", out);
+        fputs("    if (!world) return \"component access requires ecs.world\";\n", out);
+        fputs("    ecs_entity entity = ecs_entity_from_u64(inputs[0].u64);\n", out);
+        fputs("    if (!ecs_entity_is_alive(world, entity)) return \"component access requires a live entity\";\n", out);
+        if (i == 1) {
+            fprintf(
+                out,
+                "    (void)a;\n    *out = (pin_value){ .type = PIN_BOOL, "
+                ".type_name = \"bool\", .b = %s_%s_has(world, entity) };\n",
+                g_prefix,
+                name
+            );
+            fputs("    return NULL;\n}\n\n", out);
+            continue;
+        }
+        fprintf(out, "    const %s *value = %s_%s_get_const(world, entity);\n", name, g_prefix, name);
+        fputs("    if (!value) return \"entity lacks component\";\n", out);
+        fprintf(out, "    *out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\", .ptr = arena_alloc(a, sizeof(%s)) };\n", name, name);
+        fputs("    if (!out->ptr) return \"component read allocation failed\";\n", out);
+        fprintf(out, "    memcpy(out->ptr, value, sizeof(%s));\n", name);
+        fputs("    return NULL;\n}\n\n", out);
+    }
+    fprintf(out, "static int __flow_%s_set_entity_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
+    fputs("    (void)n;\n    ecs_world *world = flow_context_service(ctx, \"ecs.world\");\n", out);
+    fputs("    if (!world) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set requires ecs.world\");\n", out);
+    fputs("    pin_value target, input;\n    int result = flow_context_eval_data(ctx, 1, &target);\n", out);
+    fputs("    if (result != FLOW_OK) return result;\n", out);
+    fputs("    ecs_entity entity = ecs_entity_from_u64(target.u64);\n", out);
+    fputs("    if (!ecs_entity_is_alive(world, entity)) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set requires a live entity\");\n", out);
+    fputs("    result = flow_context_eval_data(ctx, 2, &input);\n    if (result != FLOW_OK) return result;\n", out);
+    fputs("    if (!input.ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set requires a value\");\n", out);
+    fprintf(out, "    %s *value = %s_%s_get(world, entity);\n", name, g_prefix, name);
+    fputs("    if (!value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
+    fprintf(out, "    memcpy(value, input.ptr, sizeof(%s));\n", name);
+    fprintf(out, "    pin_value *output = flow_context_output_value(ctx, 1);\n    *output = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
+    fprintf(out, "    output->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
+    fputs("    if (!output->ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set allocation failed\");\n", out);
+    fprintf(out, "    memcpy(output->ptr, value, sizeof(%s));\n", name);
+    fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
+}
+
+static void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
+{
+    const char *name = s->name;
+    /* Explicit targets can alias another query row: never mark these accesses
+     * owner-scoped, even when an author happens to wire Self into Entity. */
+    fprintf(
+        out,
+        "static const node_access %s_%s_entity_read_access = { .reads = "
+        "&%s_COMPONENT_%s.id, .read_count = 1, .flags = NODE_EFFECT_WORLD_READ "
+        "};\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "static const node_access %s_%s_entity_write_access = { .writes = "
+        "&%s_COMPONENT_%s.id, .write_count = 1 };\n",
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(out, "static pin_spec %s_%s_entity_inputs[] = { { \"Entity\", PIN_HANDLE, \"ecs.entity\" } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_set_entity_inputs[] = { { \"Exec\", PIN_FLOW, "
+        "NULL, PIN_EXEC }, { \"Entity\", PIN_HANDLE, \"ecs.entity\" }, { "
+        "\"Value\", PIN_STRUCT, \"%s\" } };\n",
+        g_prefix,
+        name,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_GetEntity_%s = { .name = \"GetEntity_%s\", "
+        ".input_count = 1, .inputs = %s_%s_entity_inputs, .output_count = 1, "
+        ".outputs = %s_%s_get_outputs, .pure_kind = NODE_PURE_READ, "
+        ".read_inputs = __read_%s_get_entity_%s, .type = &%s_T_%s, .access = "
+        "&%s_%s_entity_read_access };\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_HasEntity_%s = { .name = \"HasEntity_%s\", "
+        ".input_count = 1, .inputs = %s_%s_entity_inputs, .output_count = 1, "
+        ".outputs = %s_%s_has_outputs, .pure_kind = NODE_PURE_READ, "
+        ".read_inputs = __read_%s_has_entity_%s, .access = "
+        "&%s_%s_entity_read_access };\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
+    fprintf(
+        out,
+        "node_desc %s_NODE_SetEntity_%s = { .name = \"SetEntity_%s\", "
+        ".input_count = 3, .inputs = %s_%s_set_entity_inputs, .output_count = "
+        "2, .outputs = %s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow "
+        "= __flow_%s_set_entity_%s, .type = &%s_T_%s, .access = "
+        "&%s_%s_entity_write_access };\n\n",
+        g_prefix,
+        name,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name,
+        g_prefix,
+        name
+    );
 }
 
 static void emit_component_nodes_desc(FILE *out, const struct_info *s)
@@ -1732,6 +2002,7 @@ static void emit(FILE *out, const collect_ctx *ctx)
             fputs("#include \"ecs/ecs.h\"\n", out);
             fputs("#include \"core/instance.h\"\n", out);
             fputs("#include <string.h>\n", out);
+            fputs("#include <assert.h>\n", out);
         }
     }
     fputs("\n", out);
@@ -1889,8 +2160,11 @@ static void emit(FILE *out, const collect_ctx *ctx)
     }
     for (int i = 0; i < acount(ctx->structs); i++) {
         if (ctx->structs[i].component) {
+            emit_component_unwrap(out, &ctx->structs[i]);
             emit_component_nodes(out, &ctx->structs[i]);
             emit_component_nodes_desc(out, &ctx->structs[i]);
+            emit_component_entity_nodes(out, &ctx->structs[i]);
+            emit_component_entity_nodes_desc(out, &ctx->structs[i]);
         }
     }
 
@@ -1918,6 +2192,17 @@ static void emit(FILE *out, const collect_ctx *ctx)
         );
         fprintf(
             out,
+            "    &%s_NODE_GetEntity_%s, &%s_NODE_SetEntity_%s, "
+            "&%s_NODE_HasEntity_%s,\n",
+            g_prefix,
+            ctx->structs[i].name,
+            g_prefix,
+            ctx->structs[i].name,
+            g_prefix,
+            ctx->structs[i].name
+        );
+        fprintf(
+            out,
             "    &%s_NODE_Add_%s, &%s_NODE_Remove_%s,\n",
             g_prefix,
             ctx->structs[i].name,
@@ -1925,8 +2210,16 @@ static void emit(FILE *out, const collect_ctx *ctx)
             ctx->structs[i].name
         );
     }
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        if (component_unwrap(&ctx->structs[i])) {
+            fprintf(out, "    &%s_NODE_Unwrap_%s,\n", g_prefix, ctx->structs[i].name);
+        }
+    }
     fputs("};\n", out);
-    int component_node_count = component_count * 5;
+    int component_node_count = component_count * 8;
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        component_node_count += component_unwrap(&ctx->structs[i]);
+    }
     int node_count = acount(ctx->structs) * 2 + acount(ctx->fns) + component_node_count;
     fprintf(out, "const int %s_REGISTRY_NODE_COUNT = %d;\n", g_prefix, node_count);
     fprintf(out, "const registry_pack %s_REGISTRY_PACK = {\n", g_prefix);
@@ -2050,6 +2343,7 @@ int main(int argc, char **argv)
         clang_disposeIndex(idx);
         return 1;
     }
+    g_collection = &ctx;
     record_new_components(&ctx);
     if (g_failed) {
         clang_disposeTranslationUnit(tu);

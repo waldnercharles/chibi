@@ -1,0 +1,421 @@
+{
+  "version": 3,
+  "name": "ProjectileHitBehavior",
+  "id_counter": 43,
+  "description": "Damages the contacted enemy, emits an impact burst, then destroys the projectile.",
+  "owner_type": "ecs.entity",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Event",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 3,
+              "name": "Other",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ],
+          "reference_name": "Contact Begin"
+        },
+        {
+          "id": 4,
+          "type": "Get_GameProjectile",
+          "x": 0,
+          "y": 180,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 5,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameProjectile"
+            },
+            {
+              "id": 26,
+              "name": "damage",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int",
+              "field_source": 5,
+              "field_name": "damage"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "type": "Self",
+          "x": 490,
+          "y": 260,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 15,
+              "name": "Self",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "Send Damage",
+          "x": 490,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 17,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 18,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 19,
+              "name": "Amount",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int"
+            },
+            {
+              "id": 20,
+              "name": "Source",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 21,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "type": "Destroy Entity",
+          "x": 740,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 23,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 24,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 25,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 27,
+          "type": "Get_GameTransform",
+          "x": 490,
+          "y": 420,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 28,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 35,
+          "type": "Emit Particles",
+          "x": 740,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 36,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 37,
+              "name": "Position",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "CF_V2"
+            },
+            {
+              "id": 38,
+              "name": "Color",
+              "type": 7,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 4039993855,
+              "type_name": "unsigned int"
+            },
+            {
+              "id": 39,
+              "name": "Count",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 12,
+              "type_name": "int"
+            },
+            {
+              "id": 40,
+              "name": "Speed",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 80.0,
+              "type_name": "float"
+            },
+            {
+              "id": 41,
+              "name": "Lifetime",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.3,
+              "type_name": "float"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 42,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from_pin": 2,
+          "to": 16,
+          "to_pin": 17,
+          "kind": "exec",
+          "from": 1,
+          "order": 0
+        },
+        {
+          "from_pin": 3,
+          "to": 16,
+          "to_pin": 18,
+          "kind": "data",
+          "from": 1
+        },
+        {
+          "from_pin": 15,
+          "to": 16,
+          "to_pin": 20,
+          "kind": "data",
+          "from": 14
+        },
+        {
+          "from_pin": 15,
+          "to": 22,
+          "to_pin": 24,
+          "kind": "data",
+          "from": 14
+        },
+        {
+          "from_pin": 26,
+          "to": 16,
+          "to_pin": 19,
+          "kind": "data",
+          "from": 4
+        },
+        {
+          "from_pin": 28,
+          "to": 35,
+          "to_pin": 37,
+          "kind": "data",
+          "from": 27
+        },
+        {
+          "from_pin": 21,
+          "to": 35,
+          "to_pin": 36,
+          "kind": "exec",
+          "from": 16,
+          "order": 0
+        },
+        {
+          "from_pin": 42,
+          "to": 22,
+          "to_pin": 23,
+          "kind": "exec",
+          "from": 35,
+          "order": 0
+        }
+      ]
+    }
+  ]
+}

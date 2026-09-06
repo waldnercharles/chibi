@@ -6,6 +6,16 @@
 
 typedef struct eval_view eval_view;
 
+/* Return true after formatting a value. Context is borrowed until replaced. */
+typedef bool (*editor_value_formatter)(
+    const pin_value *value,
+    const behavior_instance *instance,
+    char *buf,
+    size_t cap,
+    void *user
+);
+void eval_view_set_formatter(eval_view *v, editor_value_formatter formatter, void *user);
+
 /* Owns a scratch arena and re-runs the core pull-eval so pin values are ready
  * to display. The editor borrows the graph; this is view-side only. */
 eval_view *eval_view_new(void);

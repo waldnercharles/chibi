@@ -69,7 +69,6 @@ ImVec2 ImGui_CalcTextSize(const char *text);
 void ImGui_AlignTextToFramePadding(void);
 bool ImGui_IsItemHovered(int flags);
 bool ImGui_IsItemActive(void);
-void ImGui_SetTooltip(const char *format, ...);
 bool ImGui_ButtonEx(const char *label, ImVec2 size);
 bool ImGui_Button(const char *label);
 void ImGui_SameLine(void);
@@ -263,29 +262,29 @@ static void draw_viewport_canvas(engine_viewport *viewport)
     cf_draw_pop();
 }
 
-static engine_viewport_action draw_controls(
+static engine_viewport_action draw_control(
     engine_viewport *viewport,
     const engine_viewport_controls *controls,
-    bool compact,
-    bool *hovered
+    int index,
+    bool menu,
+    bool *blocked
 )
 {
-    engine_viewport_action action = ENGINE_VIEWPORT_NONE;
     const char *ids[] = { "viewport.play", "viewport.stop",
                           "viewport.step", "viewport.restart",
                           "viewport.fit",  "viewport.reset_camera" };
-    const char *labels[] = { controls->playing ? "Pause" : "Play",
-                             "Stop",
+    const char *labels[] = { controls->playing ? "Pause simulation" : "Play simulation",
+                             "Stop simulation",
                              "Step one frame",
-                             "Restart",
+                             "Restart simulation",
                              "Fit Scene",
-                             "Reset View" };
-    int glyphs[] = { controls->playing ? 0xf04c : 0xf04b,
-                     0xf04d,
-                     0xf051,
-                     0xf01e,
-                     0xf065,
-                     0xf05b };
+                             "Reset view camera" };
+    editor_icon glyphs[] = { controls->playing ? EDITOR_ICON_FA_PAUSE : EDITOR_ICON_FA_PLAY,
+                             EDITOR_ICON_FA_STOP,
+                             EDITOR_ICON_FA_FAST_FORWARD,
+                             EDITOR_ICON_FA_REFRESH,
+                             EDITOR_ICON_FA_EXPAND,
+                             EDITOR_ICON_FA_CROSSHAIRS };
     engine_viewport_action actions[] = { controls->playing ? ENGINE_VIEWPORT_PAUSE
                                                            : ENGINE_VIEWPORT_PLAY,
                                          ENGINE_VIEWPORT_STOP,
@@ -293,49 +292,57 @@ static engine_viewport_action draw_controls(
                                          ENGINE_VIEWPORT_RESTART,
                                          ENGINE_VIEWPORT_FIT,
                                          ENGINE_VIEWPORT_NONE };
-    int count = compact ? 3 : 6;
-    for (int i = 0; i < count; i++) {
-        if (i) {
-            ImGui_SameLine();
-        }
-        bool enabled = (i != 1 || controls->session) && (i != 2 || !controls->playing);
-        if (editor_ui_icon_button_sized(ids[i], glyphs[i], enabled, 32)) {
-            if (i == 5) {
-                engine_viewport_reset_camera(viewport);
-            } else {
-                action = actions[i];
-            }
-        }
-        editor_ui_track_item(ids[i]);
-        *hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("%s · %s", labels[i], controls->title);
-        }
+    bool enabled = (index != 1 && index != 3) || controls->session;
+    enabled &= index != 2 || !controls->playing;
+    bool pressed = menu
+                     ? ImGui_MenuItemEx(labels[index], NULL, false, enabled)
+                     : editor_ui_icon_button_sized(ids[index], glyphs[index], enabled, 32);
+    editor_ui_track_item(ids[index]);
+    /* Hovering the overlay is only visual feedback; an active control owns
+     * the pointer so a passive hover can still reach the scene. */
+    *blocked |= ImGui_IsItemActive();
+    if (!pressed) {
+        return ENGINE_VIEWPORT_NONE;
     }
-    if (compact) {
-        ImGui_SameLine();
-        if (editor_ui_icon_button_sized("viewport.more", 0xf141, true, 32)) {
-            ImGui_OpenPopup("viewport_transport", 0);
-        }
-        editor_ui_track_item("viewport.more");
-        *hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("More scene controls");
-        }
-        if (ImGui_BeginPopup("viewport_transport", 0)) {
-            *hovered = true;
-            for (int i = 3; i < 6; i++) {
-                if (ImGui_MenuItem(labels[i])) {
-                    if (i == 5) {
-                        engine_viewport_reset_camera(viewport);
-                    } else {
-                        action = actions[i];
-                    }
-                }
-                editor_ui_track_item(ids[i]);
+    if (index == 5) {
+        engine_viewport_reset_camera(viewport);
+    }
+    return actions[index];
+}
+
+static engine_viewport_action draw_controls(
+    engine_viewport *viewport,
+    const engine_viewport_controls *controls,
+    bool compact,
+    bool *blocked
+)
+{
+    engine_viewport_action action = draw_control(viewport, controls, 0, false, blocked);
+    if (!compact) {
+        for (int i = 1; i < 6; i++) {
+            ImGui_SameLine();
+            engine_viewport_action next = draw_control(viewport, controls, i, false, blocked);
+            if (next != ENGINE_VIEWPORT_NONE) {
+                action = next;
             }
-            ImGui_EndPopup();
         }
+        return action;
+    }
+    ImGui_SameLine();
+    if (editor_ui_icon_button_sized("viewport.more", EDITOR_ICON_FA_ELLIPSIS_V, true, 32)) {
+        editor_ui_open_popup("viewport_more");
+    }
+    editor_ui_track_item("viewport.more");
+    *blocked |= ImGui_IsItemActive();
+    if (editor_ui_begin_popup("viewport_more")) {
+        *blocked = true;
+        for (int i = 1; i < 6; i++) {
+            engine_viewport_action next = draw_control(viewport, controls, i, true, blocked);
+            if (next != ENGINE_VIEWPORT_NONE) {
+                action = next;
+            }
+        }
+        editor_ui_end_popup();
     }
     return action;
 }
@@ -468,6 +475,26 @@ static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, boo
 #endif
 }
 
+int engine_viewport_image(engine_viewport *viewport, float width, float height)
+{
+    if (width <= 0 || height <= 0) {
+        return -1;
+    }
+    engine_viewport_request_resize(viewport, (int)width, (int)height);
+    if (viewport->stable_resize_frames >= 2 &&
+        engine_viewport_commit_resize(viewport) != 0) {
+        return -1;
+    }
+    CF_Texture target = cf_canvas_get_target(viewport->canvas);
+    ImTextureRef texture = {
+        ._TexData = NULL,
+        ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(target),
+    };
+    ImGui_Image(texture, (ImVec2){ width, height });
+    draw_viewport_canvas(viewport);
+    return 0;
+}
+
 engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const engine_viewport_controls *controls)
 {
     if (!viewport || !viewport->canvas.id) {
@@ -490,11 +517,12 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
         ImGui_End();
         return ENGINE_VIEWPORT_NONE;
     }
-    bool controls_hovered = false;
+    bool controls_blocked = false;
     engine_viewport_action action = ENGINE_VIEWPORT_NONE;
     bool editing = controls && controls->editing;
-    viewport->focused = ImGui_IsWindowFocused(ImGuiFocusedFlags_ChildWindows) &&
-                        !editing;
+    bool scene_focused = ImGui_IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+    bool scene_hovered = ImGui_IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+    viewport->focused = scene_focused && !editing;
     ImVec2 size = ImGui_GetContentRegionAvail();
     int width = (int)size.x;
     int height = (int)size.y;
@@ -519,38 +547,48 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
     ImGui_Image(texture, size);
     editor_ui_track_item("viewport.image");
     bool navigating = navigate_viewport(viewport, size, controls && controls->playing);
-    capture_viewport_pointer(viewport, size, controls_hovered || navigating);
+    capture_viewport_pointer(viewport, size, controls_blocked || navigating);
 #if ENGINE_IMGUI_AVAILABLE
-    if (controls && size.x >= 170 && size.y >= 100) {
+    bool show_controls = controls && (scene_hovered || scene_focused) &&
+                         size.x >= 110 && size.y >= 100;
+    float controls_alpha = editor_ui_controls_opacity("scene.controls.opacity", show_controls);
+    if (controls && (show_controls || controls_alpha > 0) && size.x >= 110 &&
+        size.y >= 100) {
         ImVec2 image_min = ImGui_GetItemRectMin();
-        bool compact = size.x < 270;
-        float toolbar_width = compact ? 162 : 238;
+        bool compact = size.x < 262;
+        float toolbar_width = compact ? 86 : 238;
         ImGui_SetCursorScreenPos((ImVec2){ image_min.x + (size.x - toolbar_width) * 0.5f,
                                            image_min.y + 12 });
+        ImGui_PushStyleVar(ImGuiStyleVar_Alpha, ImGui_GetStyle()->Alpha * fmaxf(1.0f / 255, controls_alpha));
         ImGui_PushStyleVar(ImGuiStyleVar_ChildRounding, 10);
         ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 8, 6 });
         ImGui_PushStyleVarImVec2(ImGuiStyleVar_ItemSpacing, (ImVec2){ 6, 0 });
         ImGui_PushStyleColorImVec4(ImGuiCol_ChildBg, (ImVec4){ 0.12f, 0.13f, 0.15f, 0.96f });
         if (ImGui_BeginChild(
-                "scene_transport",
+                "scene_view_controls",
                 (ImVec2){ toolbar_width, 44 },
                 ImGuiChildFlags_Borders,
-                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                    (show_controls ? 0 : ImGuiWindowFlags_NoInputs)
             )) {
-            controls_hovered = ImGui_IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
-            action = draw_controls(viewport, controls, compact, &controls_hovered);
+            engine_viewport_action next = draw_controls(viewport, controls, compact, &controls_blocked);
+            if (show_controls) {
+                action = next;
+            } else {
+                controls_blocked = false;
+            }
         }
         ImGui_EndChild();
         ImGui_PopStyleColor();
-        ImGui_PopStyleVarEx(3);
+        ImGui_PopStyleVarEx(4);
         ImGui_SetCursorScreenPos(image_min);
     }
 #else
-    if (controls) {
-        action = draw_controls(viewport, controls, false, &controls_hovered);
+    if (controls && (scene_hovered || scene_focused)) {
+        action = draw_controls(viewport, controls, false, &controls_blocked);
     }
 #endif
-    if (controls_hovered) {
+    if (controls_blocked) {
         cancel_viewport_pointer(viewport);
         viewport->pointer.pressed = false;
         viewport->pointer.down = false;

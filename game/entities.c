@@ -619,6 +619,7 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &DAMAGE_NODE,
                                            &NEAREST_NODE,
                                            &NODE_Normalize_Vector_2,
+                                           &NODE_Direction_To,
                                            &NODE_Atan2,
                                            &NODE_Emit_Particles,
                                            &NODE_Emit_Directed_Particles };

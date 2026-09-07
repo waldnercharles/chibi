@@ -47,6 +47,8 @@ typedef struct game_prototype
     const game_prototype_registry *registry;
     game_prototype_tag tag;
     game_prototype_component *components;
+    /* Authoring-only values; never included when spawning runtime components. */
+    game_prototype_component *detached_components;
     char **graphs;
     char **strings;
 } game_prototype;
@@ -127,6 +129,18 @@ int game_prototype_write_field(
 );
 int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc);
 int game_prototype_remove_component(game_prototype *prototype, const char *component_name);
+/* Detach retains values for add_component to restore, including after save/load. */
+int game_prototype_detach_component(game_prototype *prototype, const char *component_name);
+/* Single-component objects from entity_component_json. Defaults may be {} when
+ * the component is local or no longer in the prototype. The owned result keeps
+ * local edits and adopts current defaults for unchanged fields, recursively. */
+char *game_prototype_rebase_component_json(
+    const char *values,
+    const char *previous_defaults,
+    const char *current_defaults
+);
+/* Owned single-component object; {} if this prototype has no such component. */
+char *game_prototype_component_json(const game_prototype *prototype, const char *name);
 int game_prototype_add_graph(game_prototype *prototype, const char *asset_name);
 int game_prototype_remove_graph(game_prototype *prototype, const char *asset_name);
 int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name);

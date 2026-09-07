@@ -1,5 +1,10 @@
 # Editor design and implementation plan
 
+The September 6 usability review and proposed next refactor are in
+[Editor usability review](/Users/cwaldner/Personal/c-blueprints/docs/reviews/editor-ux-2026-09-06/review.md).
+That review includes current screenshots, validation results, and an ImGui/Clay
+assessment. Its recommendations are not yet implemented.
+
 ## Current goal, September 5, 2026
 
 The current request expands the earlier slices below. Build a minimal professional
@@ -30,7 +35,7 @@ refinement, wobble/pluck and a possible 3D SDF renderer are deferred.
 ## Scope checkpoint, September 6, 2026
 
 The minimal editor now has a searchable Files/Scene navigator, contextual
-Inspectors, graph breadcrumbs and local functions, automatic graph arrangement,
+Inspectors, document history and local functions, automatic graph arrangement,
 component field outputs and single-value conversions. Scene properties, actors
 and behavior attachments support Undo/Redo. Play, Pause, Step, Restart and Stop
 preserve the authored scene; behavior graphs remain accessible during Play.
@@ -53,8 +58,8 @@ presentation without requiring their pane layouts or 3D features.
 
 The Navigator uses inset rounded selection, consistent row heights, and aligned
 icon and label columns. Native tree and selection controls retain keyboard,
-context-menu and drag interactions. The Scene no longer displays a control tutorial;
-action names remain in tooltips and menus. Inspector labels use a quieter visual
+context-menu and drag interactions. The Scene no longer displays a control tutorial
+or hover help. Inspector labels use a quieter visual
 hierarchy, with neutral empty states and fewer empty runtime sections.
 
 The Inspector is movable and dockable again. Its local collapse control hides it;
@@ -94,7 +99,7 @@ field disclosure when applicable. Double-click and the context action remain.
 Opening is deferred until the next draw boundary. The navigation row shows the
 actual caller path and a graph picker that lists Events and all local functions.
 Ancestor clicks restore the caller camera and select its call; they do not arrange
-again. Long names truncate with full tooltips and older ancestors use an overflow
+again. Long names truncate and older ancestors use an overflow
 menu when space is limited. Caller history stores IDs and camera snapshots,
 skips deleted graphs, and clears on document replacement or external navigation.
 Native tests click two levels of calls, return to the root breadcrumb, and use
@@ -164,7 +169,7 @@ Call signatures ignore projection rows and report stale signatures explicitly.
 Fire Projectile now wires Direction X/Y straight from its entry, removing its
 last Break node. Nested field expansion and dynamic event signatures remain work.
 
-Health has 13 top-level nodes; Automatic Weapon has eight. Native tests cover
+Health has 10 top-level nodes after its MathExpression conversion; Automatic Weapon has eight. Native tests cover
 field expansion, connected-pin preservation, and choosing Origin fields without
 changing existing Direction fields. Pure, executable, and delayed function calls
 pass parameter/result projection and saved roundtrip checks. `make test` passes.
@@ -230,12 +235,7 @@ buttons. A native WeaponBehavior capture verifies the entity connection and the
   with semantic color retained as an accent.
 - Graph actions and activation debugging now use compact popups. The former single
   toolbar row clipped most actions in a split workspace.
-- Focus hides auxiliary panes and restores their prior visibility and geometry.
-  The graph and scene retain their existing split. Focus is available directly in
-  the menu bar and through View.
 - Icon-button hover color eases from its current value; press feedback is immediate.
-  View > Reduce motion disables that easing and holds flow markers stationary.
-  Focus and reduced-motion preferences currently last for the process only.
 - Normal startup no longer explicitly resets the dock layout. Deterministic test
   scenarios and screenshot runs still reset it. Restart restoration has not yet
   received a native interaction test.
@@ -262,7 +262,7 @@ its selection state. The behavior member navigator remains available for graph
 documents, but prototypes no longer use it as a second attachment editor.
 
 Expanding an attached behavior only expands its contents. Opening its graph is an
-explicit action. Undo and Redo use the Document menu instead of duplicate buttons
+explicit action. Undo and Redo use the Edit menu instead of duplicate buttons
 in a component pane. Content search now has a clear button.
 
 The native integration test reopens a saved prototype, expands GameTransform,
@@ -1059,7 +1059,7 @@ docks retain their arrangement. Native checks cover expansion, restored height,
 manual graph visibility, settings persistence and preview/document transitions.
 The expanded encounter capture was inspected at 1920 by 1080.
 
-Runtime feedback names the active target in the menu bar: Scene running/paused or
+Runtime feedback in the viewport names the active target: Scene running/paused or
 the named prototype preview running/paused. Successful graph updates no longer
 leave a "Preview live" label that can be mistaken for simulation state. Graph
 errors, pending updates and required restarts remain separate actionable notices.
@@ -1133,10 +1133,8 @@ multiplier and border-lighting controls. The advanced group starts collapsed and
 uses the same animated, keyboard-accessible disclosure as components. Property
 values, serialization and Undo semantics are unchanged.
 
-Scene Play displays the app's input mapping beside the viewport focus hint:
-WASD/arrows move and Space fires. The engine accepts optional host-provided hint
-text, wraps it in narrow panes, and uses its ordinary selection/panning guidance
-when stopped. Native checks cover the Play/Stop transition. A settled startup
+Scene Play uses the app's input mapping for gameplay: WASD/arrows move and Space
+fires. Native checks cover the Play/Stop transition. A settled startup
 capture also confirms the shipped InputBehavior graph fits the opening canvas.
 
 Behavior attachment names remain navigable during Scene Play and Pause. Opening
@@ -1190,7 +1188,7 @@ Scene camera navigation during Play requires Option with middle-drag or scrollin
 
 Scene and Graph have floating Font Awesome transport buttons for the same active
 Scene or isolated preview. Play/Pause, Stop and Step use matching states and
-labels in tooltips. Graph-specific actions remain separate; the Scene's optional
+labels. Graph-specific actions remain separate; the Scene's optional
 view controls move into overflow only when the viewport is narrow. Icon buttons
 share hover transitions and immediate pressed feedback. Node rows reserve actual
 widget height, with larger data rings and distinct execution ports.
@@ -1214,3 +1212,55 @@ Undo/Redo, Files drag placement, and node input containment/spacing. Runtime tes
 cover cardinal/diagonal movement and movement trails in both hosts; GPU checks
 cover the full-resolution material output with the reduced radiance grid.
 The composed startup view was captured and visually inspected.
+
+
+## Contextual Scene and Graph transport
+
+Scene and Node Canvas show floating Play/Pause, Stop, Step, and Restart controls
+for the same selected runtime. The menu bar has no transport buttons or runtime
+target selector.
+
+Each toolbar appears while its pane is hovered or focused, including child
+controls and editing focus. Pointer entry and exit animate over 200 ms without
+reserving layout space. Controls reject input immediately when both hover and
+focus leave. Keyboard focus reveals controls immediately.
+
+Narrow Scene panes use Play/Pause and More; short or narrow graph canvases do
+the same so controls remain reachable. Scene keeps Fit and Reset Camera; Graph
+keeps its local actions and Fit. Debug target selection and Pin are inside the
+floating Debug popup. There is no separate graph header or breadcrumb row.
+Navigator retains Back/Forward and its Files, Scene, and Document tabs.
+
+Navigator and Inspector are movable, dockable windows. Their separate collapsed
+rails preserve saved docking and floating geometry when reopened.
+
+## Math expressions
+
+Add-node search includes Math Expression. Creating one selects it and opens its
+source in Inspector. Enter regenerates an ordinary function graph;
+invalid expressions leave the current source, graph, and history unchanged.
+Named scalar Real inputs are inferred from identifiers. Unchanged input names
+keep their identities, defaults, and compatible connections across edits.
+
+Arithmetic, powers, parentheses, common scalar functions, and `rand()` are
+supported. Angles are radians. The source field is intentionally self-contained.
+Inspect generated graph opens a read-only graph with normal operator/function
+nodes. Editing the source is the supported way to change that graph. Undo and
+Redo restore the expression and its generated graph together.
+
+When the canvas is in Fit mode, applying a longer expression refits its changed
+bounds. Manual camera framing is preserved.
+
+See [MathExpression reference](math-expressions.md) for syntax, supported functions,
+System graph use, generated-definition deletion, and the converted sample graphs.
+
+## Real-to-integer conversion
+
+Explicit conversion edges now support scalar Real values feeding Byte, Integer,
+and Integer64 pins. Conversion truncates fractional values toward zero, saturates
+out-of-range values and infinities to the destination bounds, and maps NaN to
+zero. The bounds are checked before casting, including the Integer64 upper bound,
+so narrowing does not invoke undefined C behavior. The registered conversion
+nodes are To Byte, To Integer, and To Integer64; integer widening remains
+available through To Integer64. This supersedes the earlier TYPE-7 policy that
+excluded lossy Real-to-Integer conversion.

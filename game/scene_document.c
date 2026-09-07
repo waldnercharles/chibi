@@ -44,6 +44,7 @@ static void free_entity(game_scene_entity *entity)
     free(entity->name);
     free(entity->prototype);
     free(entity->components_json);
+    free(entity->retained_json);
     free_names(&entity->behaviors);
 }
 
@@ -141,9 +142,8 @@ int game_scene_document_add_entity(
     return 0;
 }
 
-int game_scene_document_set_entity_components(game_scene_document *document, int index, const char *components_json)
+static int set_object_json(char **target, const char *components_json)
 {
-    assert(index >= 0 && index < acount(document->entities));
     if (!components_json) {
         components_json = "{}";
     }
@@ -158,9 +158,21 @@ int game_scene_document_set_entity_components(game_scene_document *document, int
     if (!copy) {
         return -1;
     }
-    free(document->entities[index].components_json);
-    document->entities[index].components_json = copy;
+    free(*target);
+    *target = copy;
     return 0;
+}
+
+int game_scene_document_set_entity_components(game_scene_document *document, int index, const char *json)
+{
+    assert(index >= 0 && index < acount(document->entities));
+    return set_object_json(&document->entities[index].components_json, json);
+}
+
+int game_scene_document_set_entity_retained(game_scene_document *document, int index, const char *json)
+{
+    assert(index >= 0 && index < acount(document->entities));
+    return set_object_json(&document->entities[index].retained_json, json);
 }
 
 char *game_scene_document_save(const game_scene_document *document)
@@ -185,6 +197,23 @@ char *game_scene_document_save(const game_scene_document *document)
                                        : yyjson_mut_obj(json);
         yyjson_mut_obj_add_val(json, value, "components", components);
         yyjson_doc_free(components_doc);
+        if (entity->retained_json) {
+            yyjson_doc *retained = yyjson_read(
+                entity->retained_json,
+                strlen(entity->retained_json),
+                0
+            );
+            assert(retained && yyjson_is_obj(yyjson_doc_get_root(retained)));
+            if (yyjson_obj_size(yyjson_doc_get_root(retained))) {
+                yyjson_mut_obj_add_val(
+                    json,
+                    value,
+                    "retained_components",
+                    yyjson_val_mut_copy(json, yyjson_doc_get_root(retained))
+                );
+            }
+            yyjson_doc_free(retained);
+        }
         yyjson_mut_val *behaviors = yyjson_mut_arr(json);
         for (int j = 0; j < acount(entity->behaviors); j++) {
             yyjson_mut_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
@@ -270,6 +299,17 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
             return NULL;
         }
         int entity_index = acount(document->entities) - 1;
+        yyjson_val *retained = yyjson_obj_get(entity_value, "retained_components");
+        if (retained) {
+            char *retained_json = yyjson_val_write(retained, 0, NULL);
+            int result = game_scene_document_set_entity_retained(document, entity_index, retained_json);
+            free(retained_json);
+            if (result != 0) {
+                set_error(error, error_size, "invalid retained components at scene entity %d", index);
+                load_fail(document, parsed, behavior_names);
+                return NULL;
+            }
+        }
         if (components) {
             char *components_json = yyjson_val_write(components, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
             int component_result = game_scene_document_set_entity_components(document, entity_index, components_json);

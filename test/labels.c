@@ -45,6 +45,8 @@ void test_labels()
     assert(small[1] == 0 && small[0] == 'L' && small[5] == 'R');
     expect_node("Get_GameTransform", "Get Transform");
     expect_node("Set_GameHealth", "Set Health");
+    expect_node("Set_GameHealth_current", "Set Health Current");
+    expect_node("Set_GameHealth_maximum", "Set Health Maximum");
     expect_node("GetEntity_GameCollider", "Get Entity Collider");
     expect_node("SetEntity_GameTransform", "Set Entity Transform");
     expect_node("Make_GameProjectile", "Make Projectile");

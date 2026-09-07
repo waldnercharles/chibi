@@ -1625,6 +1625,84 @@ static void emit_component_entity_nodes(FILE *out, const struct_info *s)
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 }
 
+static bool component_field_settable(const field_info *field)
+{
+    if (!strcmp(field->pin, "PIN_STR") || !strcmp(field->pin, "PIN_NAME")) {
+        return false;
+    }
+    if (strcmp(field->pin, "PIN_STRUCT")) {
+        return true;
+    }
+    for (int i = 0; i < acount(g_collection->structs); i++) {
+        const struct_info *type = &g_collection->structs[i];
+        if (strcmp(type->name, field->spelling)) {
+            continue;
+        }
+        for (int j = 0; j < acount(type->fields); j++) {
+            if (!component_field_settable(&type->fields[j])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+static void emit_component_field_nodes(FILE *out, const struct_info *s)
+{
+    const char *name = s->name;
+    fprintf(out, "static const node_access %s_%s_field_access = {\n", g_prefix, name);
+    fprintf(out, "    .reads = &%s_COMPONENT_%s.id, .read_count = 1,\n", g_prefix, name);
+    fprintf(out, "    .writes = &%s_COMPONENT_%s.id, .write_count = 1,\n", g_prefix, name);
+    fputs("    .flags = NODE_EFFECT_WORLD_READ,\n};\n", out);
+    for (int i = 0; i < acount(s->fields); i++) {
+        const field_info *field = &s->fields[i];
+        if (!component_field_settable(field)) {
+            continue;
+        }
+        char symbol[512];
+        snprintf(symbol, sizeof symbol, "%s_%s_%s", g_prefix, name, field->name);
+        fprintf(out, "static int __flow_set_%s(node *, flow_context *ctx) {\n", symbol);
+        fputs("    ecs_world *world = flow_context_service(ctx, \"ecs.world\");\n", out);
+        fputs("    if (!world) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component field Set requires ecs.world\");\n", out);
+        fputs("    pin_value target, input;\n    int result = flow_context_eval_data(ctx, 2, &target);\n", out);
+        fputs("    if (result != FLOW_OK) return result;\n", out);
+        fputs("    ecs_entity entity = ecs_entity_from_u64(target.u64);\n", out);
+        fputs("    if (!ecs_entity_is_alive(world, entity)) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component field Set requires a live Target\");\n", out);
+        fputs("    result = flow_context_eval_data(ctx, 1, &input);\n    if (result != FLOW_OK) return result;\n", out);
+        if (!strcmp(field->pin, "PIN_STRUCT")) {
+            fputs("    if (!input.ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component field Set requires a value\");\n", out);
+        }
+        fprintf(out, "    %s *value = %s_%s_get(world, entity);\n", name, g_prefix, name);
+        fputs("    if (!value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"Target lacks component\");\n", out);
+        fprintf(out, "    pin_write_field(value, &%s_%s_fields[%d], input);\n", g_prefix, name, i);
+        fprintf(out, "    pin_value *output = flow_context_output_value(ctx, 1);\n    *output = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
+        fprintf(out, "    output->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
+        fprintf(out, "    memcpy(output->ptr, value, sizeof(%s));\n", name);
+        fputs("    return flow_context_continue(ctx, 0);\n}\n", out);
+        fprintf(out, "static pin_spec %s_inputs[] = {\n", symbol);
+        fputs("    { \"Exec\", PIN_FLOW, NULL, PIN_EXEC },\n", out);
+        emit_pin_spec(out, "Value", field->pin, field->spelling);
+        fputs("    { .name = \"Target\", .type = PIN_HANDLE, .type_name = \"ecs.entity\", .flags = PIN_FLAG_DEFAULT_SELF },\n};\n", out);
+        fprintf(out, "node_desc %s_NODE_Set_%s_%s = {\n", g_prefix, name, field->name);
+        fprintf(
+            out,
+            "    .name = \"Set_%s_%s\", .input_count = 3, .output_count = 2,\n",
+            name,
+            field->name
+        );
+        fprintf(out, "    .inputs = %s_inputs, .outputs = %s_%s_set_outputs,\n", symbol, g_prefix, name);
+        fprintf(out, "    .flow_kind = NODE_FLOW_CUSTOM, .flow = __flow_set_%s,\n", symbol);
+        fprintf(out, "    .type = &%s_T_%s, .access = &%s_%s_field_access,\n", g_prefix, name, g_prefix, name);
+        fprintf(out, "    .display_class = NODE_DISPLAY_FUNCTION, .category = \"Components/%s\",\n", name);
+        fprintf(
+            out,
+            "    .keywords = \"set field %s target self\",\n};\n\n",
+            field->name
+        );
+    }
+}
+
 static void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
@@ -2165,6 +2243,7 @@ static void emit(FILE *out, const collect_ctx *ctx)
             emit_component_nodes_desc(out, &ctx->structs[i]);
             emit_component_entity_nodes(out, &ctx->structs[i]);
             emit_component_entity_nodes_desc(out, &ctx->structs[i]);
+            emit_component_field_nodes(out, &ctx->structs[i]);
         }
     }
 
@@ -2209,6 +2288,18 @@ static void emit(FILE *out, const collect_ctx *ctx)
             g_prefix,
             ctx->structs[i].name
         );
+        for (int j = 0; j < acount(ctx->structs[i].fields); j++) {
+            const field_info *field = &ctx->structs[i].fields[j];
+            if (component_field_settable(field)) {
+                fprintf(
+                    out,
+                    "    &%s_NODE_Set_%s_%s,\n",
+                    g_prefix,
+                    ctx->structs[i].name,
+                    field->name
+                );
+            }
+        }
     }
     for (int i = 0; i < acount(ctx->structs); i++) {
         if (component_unwrap(&ctx->structs[i])) {
@@ -2219,6 +2310,13 @@ static void emit(FILE *out, const collect_ctx *ctx)
     int component_node_count = component_count * 8;
     for (int i = 0; i < acount(ctx->structs); i++) {
         component_node_count += component_unwrap(&ctx->structs[i]);
+        if (ctx->structs[i].component) {
+            for (int j = 0; j < acount(ctx->structs[i].fields); j++) {
+                component_node_count += component_field_settable(
+                    &ctx->structs[i].fields[j]
+                );
+            }
+        }
     }
     int node_count = acount(ctx->structs) * 2 + acount(ctx->fns) + component_node_count;
     fprintf(out, "const int %s_REGISTRY_NODE_COUNT = %d;\n", g_prefix, node_count);

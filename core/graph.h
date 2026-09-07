@@ -85,6 +85,7 @@ typedef struct graph
     uint64_t *shared_id_counter; /* Behavior Asset graphs share one ID namespace. */
     char *name;
     char *description;
+    char *math_expression; /* graph-owned source for generated scalar functions */
     unsigned long long topology_revision;
     unsigned flow_pause_count;
     unsigned breakpoints_enabled;

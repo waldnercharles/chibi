@@ -5,6 +5,7 @@
 #include "../core/graph_ir.h"
 #include "../core/graph_jit_sljit.h"
 #include "../core/instance.h"
+#include "../core/math_nodes.h"
 #include "../core/pin_conv.h"
 #include "../core/program.h"
 #include "../core/registry.h"
@@ -69,6 +70,8 @@ typedef struct
     int *aliases;
     int value_count;
     int event_delta;
+    int expression_depth;
+    int dynamic_expression;
     union
     {
         graph_program shared;
@@ -370,22 +373,118 @@ static int new_register(system_program *program, const pin_spec *pin)
 static int compile_value(system_program *program, const node *target, int output);
 static int compile_exec(system_program *program, const node *target);
 
+static pin_value real_width_value(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 1);
+    pin_value value = inputs[0];
+    if (value.type == PIN_F32) {
+        return (pin_value){ .type = PIN_F64, .d = value.f };
+    }
+    assert(value.type == PIN_F64);
+    return (pin_value){ .type = PIN_F32, .f = (float)value.d };
+}
+
 static int compile_input(system_program *program, const node *target, int input)
 {
+    const pin_spec *pin = &target->input_pins[input];
     const edge *link = data_edge(program->graph, target, input);
     if (link) {
         int output = 0;
         const node *source = edge_source(program->graph, link, &output);
-        if (!source || link->conversion) {
+        if (!source) {
             return -1;
         }
-        return compile_value(program, source, output);
+        int value = compile_value(program, source, output);
+        if (value < 0) {
+            return -1;
+        }
+        if (link->conversion) {
+            const node_desc *conversion = link->conversion;
+            int converted = new_register(program, &conversion->outputs[0]);
+            system_instruction *instruction = add_instruction(program, SYSTEM_OP_CALL, target);
+            instruction->fn = conversion->fn;
+            instruction->output = converted;
+            instruction->input_count = 1;
+            instruction->inputs[0] = value;
+            value = converted;
+        }
+        pin_type type = program->slots[value].type;
+        if (type != pin->type && (type == PIN_F32 || type == PIN_F64) &&
+            (pin->type == PIN_F32 || pin->type == PIN_F64)) {
+            int converted = new_register(program, pin);
+            system_instruction *instruction = add_instruction(program, SYSTEM_OP_CALL, target);
+            instruction->fn = real_width_value;
+            instruction->output = converted;
+            instruction->input_count = 1;
+            instruction->inputs[0] = value;
+            value = converted;
+        }
+        return value;
     }
-    int result = new_register(program, &target->input_pins[input]);
+    int result = new_register(program, pin);
     system_instruction *instruction = add_instruction(program, SYSTEM_OP_CONST, target);
     instruction->output = result;
     instruction->output_count = 1;
-    instruction->values[0] = target->input_pins[input].default_value;
+    instruction->values[0] = pin->default_value;
+    return result;
+}
+
+/* Generated expressions lower into the same instruction stream as their
+ * caller. Each call owns distinct registers, including each random sample. */
+static int compile_expression(system_program *program, const node *call)
+{
+    graph *body = behavior_asset_find_graph(program->graph->owner, call->reference_id);
+    if (!body || !body->math_expression || call->output_count != 1 ||
+        program->expression_depth >= 128) {
+        return -1;
+    }
+    node *entry = graph_node_by_id(body, body->entry_id);
+    node *ret = graph_node_by_id(body, body->return_id);
+    if (!entry || !ret || entry->output_count != call->input_count ||
+        ret->input_count != 1) {
+        return -1;
+    }
+    for (int i = 0; i < call->input_count; i++) {
+        program->dynamic_expression |= call->input_pins[i].type == PIN_STRUCT;
+    }
+    program->dynamic_expression |= call->output_pins[0].type == PIN_STRUCT;
+    int *inputs = NULL;
+    for (int i = 0; i < call->input_count; i++) {
+        int value = compile_input(program, call, i);
+        if (value < 0) {
+            afree(inputs);
+            return -1;
+        }
+        apush(inputs, value);
+    }
+    const graph *caller = program->graph;
+    int *caller_base = program->node_base;
+    int *caller_state = program->node_state;
+    program->graph = body;
+    program->node_base = xcalloc((size_t)acount(body->nodes), sizeof *program->node_base);
+    program->node_state = xcalloc((size_t)acount(body->nodes), sizeof *program->node_state);
+    for (int i = 0; i < acount(body->nodes); i++) {
+        const node *n = body->nodes[i];
+        program->node_base[i] = program->value_count;
+        for (int p = 0; p < n->output_count; p++) {
+            int value = new_register(program, &n->output_pins[p]);
+            if (n == entry) {
+                program->aliases[value] = inputs[p];
+            }
+        }
+        if (n == entry) {
+            program->node_state[i] = 2;
+        }
+    }
+    program->expression_depth++;
+    int result = compile_input(program, ret, 0);
+    program->expression_depth--;
+    free(program->node_base);
+    free(program->node_state);
+    program->graph = caller;
+    program->node_base = caller_base;
+    program->node_state = caller_state;
+    afree(inputs);
     return result;
 }
 
@@ -638,6 +737,25 @@ static int compile_value(system_program *program, const node *target, int output
     system_instruction *instruction = NULL;
     int ok = 1;
     switch (desc->pure_kind) {
+        case NODE_PURE_FUNCTION: {
+            int value = compile_expression(program, target);
+            if (value < 0) {
+                ok = 0;
+                break;
+            }
+            program->aliases[result] = value;
+            result = value;
+            break;
+        }
+        case NODE_PURE_READ:
+            if (desc != &NODE_RandomReal) {
+                ok = 0;
+                break;
+            }
+            instruction = add_instruction(program, SYSTEM_OP_CALL, target);
+            instruction->fn = desc->fn;
+            instruction->output = result;
+            break;
         case NODE_PURE_DELTA:
             if (output_count != 1) {
                 ok = 0;
@@ -1030,7 +1148,10 @@ static void program_build_ir(system_program *program)
             .fast = instruction->fast,
             .direct = instruction->direct,
             .direct_count = instruction->direct_count,
-            .operation_id = graph_ir_name_id(desc->name),
+            .operation_id = instruction->op == SYSTEM_OP_CALL &&
+                                    instruction->fn != desc->fn
+                              ? 0
+                              : graph_ir_name_id(desc->name),
             .resource_id = instruction->component ? instruction->component->id : 0,
             .output = instruction->op == SYSTEM_OP_SET || instruction->op == SYSTEM_OP_BREAK
                         ? -1
@@ -1112,7 +1233,7 @@ static system_program *program_new(const behavior_asset *definition, const node 
     program_build_ir(program);
     mark_get_aliases(program);
     mark_break_aliases(program);
-    program->typed = program_can_run_typed(program);
+    program->typed = !program->dynamic_expression && program_can_run_typed(program);
     if (program->typed) {
         program_prepare_storage(program);
         graph_program_compile_backend(&program->shared, NULL);

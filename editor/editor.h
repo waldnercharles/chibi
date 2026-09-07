@@ -3,6 +3,7 @@
 
 #include "../core/behavior_asset.h"
 #include "../core/instance.h"
+#include "../core/math_expression.h"
 #include "choices.h"
 #include "eval_view.h"
 #include "flags.h"
@@ -90,6 +91,7 @@ typedef struct
     int dirty;
     const compile_report *compile;
     const behavior_instance *inspection_instance;
+    bool inspection_blocked;
     const char *preview_error;
     bool can_go_back;
     float zoom;
@@ -107,15 +109,36 @@ typedef struct
 {
     int exec_pins;
     int data_pins;
+    int self_labels;
     float title_x;
     float title_y;
     float top;
     float bottom;
+    float left;
+    float right;
+    float title_bottom;
+    bool compact;
     bool selected;
 } editor_node_ui;
 
 /* Pins actually drawn inside the canvas clip rectangle in the current frame. */
 bool editor_query_node_ui(const editor *e, uint64_t node_id, editor_node_ui *out);
+typedef struct
+{
+    float x;
+    float y;
+} editor_pin_ui;
+bool editor_query_pin_ui(const editor *e, uint64_t pin_id, editor_pin_ui *out);
+typedef struct
+{
+    bool traversed;
+    double timestamp;
+    float opacity;
+    float bubble_opacity;
+} editor_edge_activity;
+
+/* Runtime activity used to draw an edge, without selection or hover styling. */
+void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_activity *out);
 /* Includes curved return wires and authored reroutes, in the current canvas. */
 bool editor_graph_wires_visible(const editor *e);
 
@@ -126,11 +149,67 @@ void editor_free(editor *e);
 /* Returns the editor-owned working document without transferring ownership. */
 const behavior_asset *editor_behavior_asset(const editor *e);
 
+enum
+{
+    EDITOR_LOCATION_CALLER_LIMIT = 64
+};
+
+typedef struct
+{
+    uint64_t graph_id;
+    uint64_t node_id;
+    float pan_x;
+    float pan_y;
+    float zoom;
+    int entry_index;
+    bool fit;
+} editor_caller_location;
+
+typedef struct
+{
+    uint64_t graph_id;
+    uint64_t *nodes; /* capture allocates; caller frees */
+    int node_count;
+    float pan_x;
+    float pan_y;
+    float zoom;
+    bool fit;
+    int entry_index;
+    int caller_count;
+    editor_caller_location callers[EDITOR_LOCATION_CALLER_LIMIT];
+} editor_location;
+
+editor_location editor_capture_location(const editor *e);
+bool editor_can_visit_location(
+    const editor *e,
+    const behavior_asset *source,
+    const char *key,
+    const editor_location *location
+);
+int editor_restore_location(editor *e, const editor_location *location);
+/* Workspace visits retain document Undo/Redo and working values by stable key. */
+int editor_visit_behavior_asset(
+    editor *e,
+    const behavior_asset *source,
+    uint64_t graph_id,
+    const char *key
+);
+
+/* Explicit Reload replaces working data/history and keeps its workspace identity. */
+int editor_reload_behavior_asset(
+    editor *e,
+    const behavior_asset *source,
+    uint64_t graph_id,
+    const char *key
+);
+
 /* Replaces the editable Behavior Asset with a copy of source and opens graph_id. */
 int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id);
 /* Opens a graph and arranges/frames it on its next visible draw. Position changes
  * are undoable. Reopening the active graph preserves its current layout/view. */
 int editor_open_graph(editor *e, uint64_t graph_id);
+/* Delete a graph; generated expression definitions also remove their calls. */
+int editor_delete_graph(editor *e, uint64_t graph_id);
 /* Drill into an authored call; Back restores the caller view and selects the call. */
 int editor_open_graph_call(editor *e, uint64_t node_id);
 int editor_graph_back(editor *e);
@@ -201,6 +280,8 @@ int editor_reveal_node_by_id(editor *e, uint64_t graph_id, uint64_t node_id);
 /* Adds a node of type desc to the graph at canvas (x, y) and returns the core
  * node for wiring, or NULL on allocation failure. */
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y);
+node *editor_add_math_expression(editor *e, const char *source, float x, float y, math_expression_error *error);
+int editor_set_math_expression(editor *e, node *call, const char *source, math_expression_error *error);
 
 /* Save the behavior_asset to `path` as JSON and update the editor's saved
  * baseline used by dirty queries. Returns 0 on success, -1 on error. */
@@ -221,6 +302,8 @@ behavior_instance *editor_preview_instance(const editor *e);
 void editor_set_inspection_instance(editor *e, const behavior_instance *instance);
 void editor_set_inspection_run(editor *e, const flow_run *run);
 void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count);
+/* Disable live overlays and standalone fallback while a debug target is unavailable or stale. */
+void editor_set_inspection_blocked(editor *e, bool blocked);
 /* Updates render-only activity for a host execution path without tracing nodes. */
 void editor_set_execution_pulse(editor *e, double monotonic_time);
 

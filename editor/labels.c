@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 void editor_identifier_label(const char *identifier, char *buf, size_t cap)
@@ -59,6 +60,18 @@ void editor_node_label(const node_desc *desc, char *buf, size_t cap)
 {
     assert(desc);
     const char *type = desc->type ? desc->type->name : NULL;
+    if (type && strncmp(desc->name, "Set_", 4) == 0) {
+        size_t length = strlen(type);
+        const char *name = desc->name + 4;
+        if (strncmp(name, type, length) == 0 && name[length] == '_' &&
+            name[length + 1]) {
+            char component[128], field[128];
+            editor_component_label(type, component, sizeof component);
+            editor_identifier_label(name + length + 1, field, sizeof field);
+            snprintf(buf, cap, "Set %s %s", component, field);
+            return;
+        }
+    }
     const char *operations[] = { "Get",       "Set",  "GetEntity",
                                  "SetEntity", "Make", "Break",
                                  "Unwrap",    "Has",  "HasEntity" };

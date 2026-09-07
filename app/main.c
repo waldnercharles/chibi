@@ -9,7 +9,7 @@
 #include "authoring_session.h"
 #include "cute_host.h"
 #include "event_catalog.h"
-#include "movement_input.h"
+#include "gameplay_input.h"
 #include "scene_authoring.h"
 #include "scene_renderer.h"
 #include "screenshot.h"
@@ -305,25 +305,7 @@ static int app_frame(app_loop *loop)
     }
     loop->monotonic_time += seconds;
     editor_tick(loop->graph_editor, loop->monotonic_time);
-    int viewport_focused = engine_viewport_focused(loop->viewport);
-    if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
-        engine_viewport_release_focus();
-        engine_route_escape(loop->runtime);
-        viewport_focused = 0;
-    }
-    engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
-    if (viewport_focused && !editor_host_captures_keyboard()) {
-        app_movement_input movement = app_movement_from_keys(
-            cf_key_down(CF_KEY_A) || cf_key_down(CF_KEY_LEFT),
-            cf_key_down(CF_KEY_D) || cf_key_down(CF_KEY_RIGHT),
-            cf_key_down(CF_KEY_W) || cf_key_down(CF_KEY_UP),
-            cf_key_down(CF_KEY_S) || cf_key_down(CF_KEY_DOWN)
-        );
-        app_scene_authoring_move(loop->authoring, movement.x, movement.y);
-        if (cf_key_just_pressed(CF_KEY_SPACE)) {
-            app_scene_authoring_input(loop->authoring, "Fire", 1.0, 1);
-        }
-    }
+    app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
     if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
         fprintf(stderr, "runtime frame failed\n");
     }

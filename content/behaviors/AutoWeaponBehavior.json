@@ -554,7 +554,7 @@
         },
         {
           "id": 25,
-          "type": "Subtract",
+          "type": "Direction To",
           "x": 230,
           "y": 160,
           "reference_id": 0,
@@ -564,57 +564,19 @@
           "inputs": [
             {
               "id": 26,
-              "name": "A",
+              "name": "Origin",
               "type": 15,
               "kind": "data",
               "container": 0,
               "split_parent": 0,
-              "flags": 2,
-              "group": 1,
+              "flags": 0,
+              "group": 0,
               "default": null,
               "type_name": "CF_V2"
             },
             {
               "id": 27,
-              "name": "B",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
-              "default": null,
-              "type_name": "CF_V2"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 28,
-              "name": "Result",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": null,
-              "type_name": "CF_V2"
-            }
-          ]
-        },
-        {
-          "id": 29,
-          "type": "Normalize Vector 2",
-          "x": 460,
-          "y": 160,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 30,
-              "name": "Value",
+              "name": "Target",
               "type": 15,
               "kind": "data",
               "container": 0,
@@ -627,8 +589,8 @@
           ],
           "outputs": [
             {
-              "id": 31,
-              "name": "Result",
+              "id": 28,
+              "name": "Direction",
               "type": 15,
               "kind": "data",
               "container": 0,
@@ -643,7 +605,7 @@
         {
           "id": 143,
           "type": "Return",
-          "x": 690,
+          "x": 460,
           "y": 0,
           "reference_id": 0,
           "disabled": false,
@@ -669,28 +631,21 @@
       "edges": [
         {
           "from": 140,
-          "from_pin": 142,
+          "from_pin": 141,
           "to": 25,
           "to_pin": 26,
           "kind": "data"
         },
         {
           "from": 140,
-          "from_pin": 141,
+          "from_pin": 142,
           "to": 25,
           "to_pin": 27,
           "kind": "data"
         },
         {
+          "from": 25,
           "from_pin": 28,
-          "to": 29,
-          "to_pin": 30,
-          "kind": "data",
-          "from": 25
-        },
-        {
-          "from": 29,
-          "from_pin": 31,
           "to": 143,
           "to_pin": 144,
           "kind": "data"

@@ -43,6 +43,39 @@ node_desc NODE_Normalize_Vector_2 = {
     .access = &pure,
 };
 
+static pin_value direction_to(const pin_value *inputs, int count, arena *memory)
+{
+    assert(count == 2 && inputs[0].type == PIN_STRUCT && inputs[0].ptr);
+    assert(inputs[1].type == PIN_STRUCT && inputs[1].ptr);
+    CF_V2 origin = *(const CF_V2 *)inputs[0].ptr;
+    CF_V2 target = *(const CF_V2 *)inputs[1].ptr;
+    CF_V2 delta = { target.x - origin.x, target.y - origin.y };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &delta };
+    return normalize(&value, 1, memory);
+}
+
+static pin_spec direction_inputs[] = {
+    { .name = "Origin", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Target", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+static pin_spec direction_outputs[] = {
+    { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+
+node_desc NODE_Direction_To = {
+    .name = "Direction To",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = direction_inputs,
+    .outputs = direction_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = direction_to,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Math/Vector",
+    .keywords = "direction target origin normalize unit vector",
+    .access = &pure,
+};
+
 static pin_value atan2_value(const pin_value *inputs, int count, arena *)
 {
     assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);

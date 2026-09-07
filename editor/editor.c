@@ -1,10 +1,13 @@
 #include "editor.h"
 
+#include "../core/compare_nodes.h"
 #include "../core/conv_nodes.h"
 #include "../core/extract.h"
 #include "../core/flow_visual.h"
+#include "../core/math_nodes.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
+#include "../core/xalloc.h"
 #include "arrange.h"
 #include "color.h"
 #include "eval_view.h"
@@ -18,9 +21,12 @@
 #include <imgui/dcimgui.h>
 
 CIMGUI_API void ImGui_ClearActiveID(void);
+CIMGUI_API void ImGui_SetKeyOwner(ImGuiKey key, ImGuiID owner_id, ImGuiInputFlags flags);
 
 extern const unsigned char editor_ui_font[];
 extern const size_t editor_ui_font_size;
+extern const unsigned char editor_ui_bold_font[];
+extern const size_t editor_ui_bold_font_size;
 extern const unsigned char editor_nerd_symbols_font[];
 extern const size_t editor_nerd_symbols_font_size;
 
@@ -41,15 +47,23 @@ extern const size_t editor_nerd_symbols_font_size;
 #define ED_FIT_MARGIN 32.0f
 #define ED_VALUE_WIDTH 86.0f
 #define ED_TEXT_WIDTH 120.0f
+#define ED_NODE_COMPACT_ROW_EXTRA 2.0f
+#define ED_NODE_ROW_EXTRA 8.0f
+#define ED_SYMBOL_NODE_WIDTH 80.0f
+#define ED_SYMBOL_FUNCTION_WIDTH 96.0f
+#define ED_SYMBOL_NODE_MIN_HEIGHT 56.0f
+#define ED_SYMBOL_NODE_BODY_PADDING_ROWS 2
+#define ED_SYMBOL_NODE_VALUE_GAP 16.0f
 #define ED_LOG_MAX 128
 #define ED_LOG_MESSAGE 256
+#define ED_LOG_LINE 512
 #define ED_TOAST_WIDTH 320.0f
 #define ED_TOAST_PAD 10.0f
 #define ED_TOAST_ICON 18.0f
 #define ED_TOAST_GAP 8.0f
 #define ED_TOAST_CLOSE 20.0f
 #define ED_TOAST_DURATION 4.0
-#define ED_TOAST_FADE 0.4
+#define ED_TOAST_FADE 0.2
 
 /* Flow pacing. */
 #define ED_FLOW_DOT_SPACING 64.0f
@@ -83,21 +97,23 @@ extern const size_t editor_nerd_symbols_font_size;
 #define ED_FLOW_MIN_ZOOM_SCALE 0.45f
 #define ED_FLOW_MAX_ZOOM_SCALE 1.5f
 
-enum
-{
-    ED_ICON_WARNING_CODEPOINT = 0xf071,
-    ED_ICON_CLOSE_CODEPOINT = 0xf00d,
-    ED_ICON_ADD = 0xf067,
-    ED_ICON_SETTINGS = 0xf013
+static const ImWchar ED_ICON_GLYPH_RANGES[] = {
+    EDITOR_ICON_CODICON_CHEVRON_DOWN,
+    EDITOR_ICON_CODICON_CHEVRON_UP,
+    EDITOR_ICON_CODICON_CHEVRON_LEFT,
+    EDITOR_ICON_CODICON_CHEVRON_LEFT,
+    EDITOR_ICON_CODICON_CHEVRON_RIGHT,
+    EDITOR_ICON_CODICON_CHEVRON_RIGHT,
+    0xf000,
+    0xf385,
+    0xf400,
+    0xf533,
+    EDITOR_ICON_MD_ARROW_TOP_RIGHT,
+    EDITOR_ICON_MD_ARROW_TOP_RIGHT,
+    0,
 };
-
-static const ImWchar ED_ICON_GLYPH_RANGES[] = { 0xf000, 0xf385, 0xf400, 0xf533, 0 };
 static const char ED_ICON_WARNING[] = "\xef\x81\xb1";
 static const char ED_ICON_GRAPH[] = "\xef\x86\xb2";
-static const char ED_ICON_EVENT[] = "\xef\x88\x99";
-static const char ED_ICON_FUNCTION[] = "\xef\x83\xa8";
-static const char ED_ICON_MACRO[] = "\xef\x87\x98";
-static const char ED_ICON_VARIABLE[] = "\xef\x87\x80";
 
 typedef enum ed_pin_kind
 {
@@ -165,6 +181,15 @@ typedef struct ed_graph_caller
     uint64_t node_id;
 } ed_graph_caller;
 
+typedef struct
+{
+    char *key;
+    char *json;
+    char *saved;
+    char **undo;
+    char **redo;
+} ed_document_history;
+
 static int ed_event_add_declared_params(editor *e, node *n, const editor_event_signature *signature);
 static const flow_traversal *ed_latest_flow_record(const editor *e, const edge *ed);
 
@@ -177,6 +202,11 @@ struct editor
     editor_save_handler save_handler;
     void *save_user;
     graph *active_graph;
+    char *math_text;
+    char *math_saved;
+    size_t math_capacity;
+    uint64_t math_node_id;
+    math_expression_error math_error;
     ed_graph_view *graph_views;
     ed_graph_caller *graph_callers;
     eval_view *ev;
@@ -191,10 +221,12 @@ struct editor
     editor_color_state color_state;
     uint64_t open_call_node;
     ImFont *icon_font;
+    ImFont *math_font;
     behavior_asset *preview_behavior_asset;
     behavior_instance *instance; /* preview instance, or NULL after an explicit reset */
     const behavior_instance *inspection_instance; /* borrowed runtime target */
     const flow_run *inspection_run; /* borrowed runtime activation */
+    bool inspection_blocked;
     const behavior_instance_trace_entry *inspection_trace;
     int inspection_trace_count;
     unsigned instance_generation;
@@ -214,6 +246,10 @@ struct editor
     int execution_pulse_active;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
+    char *log_text;
+    size_t log_text_capacity;
+    char *compile_text;
+    size_t compile_text_capacity;
     double run_started_at;
 
     ImVec2 canvas_min;
@@ -301,6 +337,8 @@ struct editor
 
     char **undo;
     char **redo;
+    char *document_key;
+    ed_document_history *documents;
 };
 
 static ImVec2 ed_add(ImVec2 a, ImVec2 b)
@@ -388,6 +426,7 @@ static const ImVec4 ED_PIN_COLORS[] = {
 
 static const ImVec4 ED_NODE_BODY = { 0.16f, 0.17f, 0.19f, 1.0f };
 static const ImVec4 ED_NODE_BORDER = { 0.29f, 0.31f, 0.34f, 1.0f };
+static const editor_icon ED_GRAPH_OPEN_GLYPH = EDITOR_ICON_MD_ARROW_TOP_RIGHT;
 static const ImVec4 ED_NODE_TITLES[] = {
     [NODE_DISPLAY_PURE] = { 0.2f, 0.425f, 0.175f, 1.0f },
     [NODE_DISPLAY_EVENT] = { 0.8f, 0.1f, 0.1f, 1.0f },
@@ -421,10 +460,128 @@ static bool ed_is_graph_call(const node *n)
                  n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallMacro);
 }
 
+typedef struct
+{
+    const char *symbol;
+    int icon;
+    bool compact;
+} ed_node_presentation;
+
+static ed_node_presentation ed_node_appearance(const node_desc *desc)
+{
+    if (desc == &NODE_CallMacro) {
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SEND, false };
+    }
+    if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction) {
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SITEMAP, false };
+    }
+    const char *symbol = NULL;
+    switch (desc->jit_kind) {
+        case NODE_JIT_ADD: symbol = "+"; break;
+        case NODE_JIT_SUB: symbol = "−"; break;
+        case NODE_JIT_MUL: symbol = "×"; break;
+        case NODE_JIT_DIV: symbol = "÷"; break;
+        default: break;
+    }
+    if (desc == &NODE_Less || desc == &NODE_Integer_Less) {
+        symbol = "<";
+    }
+    if (desc == &NODE_Less_Or_Equal || desc == &NODE_Integer_Less_Or_Equal) {
+        symbol = "≤";
+    }
+    if (desc == &NODE_Greater || desc == &NODE_Integer_Greater) {
+        symbol = ">";
+    }
+    if (desc == &NODE_Greater_Or_Equal || desc == &NODE_Integer_Greater_Or_Equal) {
+        symbol = "≥";
+    }
+    if (desc == &NODE_Equal || desc == &NODE_Integer_Equal) {
+        symbol = "=";
+    }
+    if (desc == &NODE_Not_Equal || desc == &NODE_Integer_Not_Equal) {
+        symbol = "≠";
+    }
+    if (desc == &NODE_Sine) {
+        symbol = "SIN";
+    }
+    if (desc == &NODE_Cosine) {
+        symbol = "COS";
+    }
+    if (desc == &NODE_Tangent) {
+        symbol = "TAN";
+    }
+    if (symbol) {
+        return (ed_node_presentation){ symbol, 0, true };
+    }
+    if (desc->flow_kind == NODE_FLOW_BRANCH) {
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK, true };
+    }
+    if (desc->pure_kind == NODE_PURE_READ) {
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_EYE, false };
+    }
+    if (desc->access && desc->access->write_count) {
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_PENCIL, false };
+    }
+    switch (desc->display_class) {
+        case NODE_DISPLAY_EVENT:
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_BOLT, false };
+        case NODE_DISPLAY_FLOW:
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK, false };
+        case NODE_DISPLAY_VARIABLE:
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_DATABASE, false };
+        case NODE_DISPLAY_LITERAL:
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE, false };
+        case NODE_DISPLAY_PURE:
+        case NODE_DISPLAY_FUNCTION:
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_COG, false };
+    }
+    assert(false);
+    return (ed_node_presentation){ 0 };
+}
+
+static const char *ed_node_prefix(const node_desc *desc, char icon[4])
+{
+    ed_node_presentation appearance = ed_node_appearance(desc);
+    if (appearance.symbol) {
+        return appearance.symbol;
+    }
+    unsigned glyph = (unsigned)appearance.icon;
+    icon[0] = (char)(0xe0 | (glyph >> 12));
+    icon[1] = (char)(0x80 | ((glyph >> 6) & 0x3f));
+    icon[2] = (char)(0x80 | (glyph & 0x3f));
+    icon[3] = '\0';
+    return icon;
+}
+
+static float ed_node_title_inset(const node *n)
+{
+    const char *symbol = ed_node_appearance(n->desc).symbol;
+    return symbol ? ImGui_CalcTextSize(symbol).x + 8.0f : 20.0f;
+}
+
+static float ed_node_title_padding(const node *n)
+{
+    return ed_node_appearance(n->desc).compact ? 3.0f : ED_TITLE_PAD;
+}
+
+static float ed_node_body_padding(const node *n)
+{
+    return ed_node_appearance(n->desc).compact ? 4.0f : ED_PAD;
+}
+
 static const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
 {
     if (ed_is_graph_call(n) && n->reference_name && n->reference_name[0]) {
-        editor_identifier_label(n->reference_name, buf, cap);
+        if (math_expression_source(e->bp, n)) {
+            snprintf(buf, cap, "%s", n->reference_name);
+        } else {
+            editor_identifier_label(n->reference_name, buf, cap);
+        }
+        return buf;
+    }
+    const char *expression = math_expression_source(e->bp, n);
+    if (expression) {
+        snprintf(buf, cap, "%s", expression);
         return buf;
     }
     if (n->reference_name && n->reference_name[0] &&
@@ -727,6 +884,91 @@ static void ed_select_variable(editor *e, behavior_variable *v)
 
 static void ed_center_initial_view(editor *e);
 
+static void ed_rebuild_log_text(editor *e)
+{
+    if (!e->log_count) {
+        if (e->log_text) {
+            e->log_text[0] = '\0';
+        }
+        return;
+    }
+    size_t capacity = (size_t)ED_LOG_MAX * ED_LOG_LINE + 1;
+    if (e->log_text_capacity < capacity) {
+        e->log_text = xrealloc(e->log_text, capacity);
+        e->log_text_capacity = capacity;
+    }
+    size_t used = 0;
+    for (int i = 0; i < e->log_count; i++) {
+        const ed_log_entry *entry = &e->log[i];
+        char origin_label[128] = "Unknown";
+        if (entry->origin && entry->origin->desc) {
+            editor_node_label(entry->origin->desc, origin_label, sizeof origin_label);
+        }
+        char line[ED_LOG_LINE];
+        int written = snprintf(
+            line,
+            sizeof line,
+            "[%8.3f | step %lu] %s: %s",
+            entry->timestamp,
+            entry->step,
+            origin_label,
+            entry->message
+        );
+        if (written < 0) {
+            written = 0;
+        }
+        size_t length = (size_t)written;
+        if (length >= sizeof line) {
+            length = sizeof line - 1;
+        }
+        if (i) {
+            e->log_text[used++] = '\n';
+        }
+        memcpy(e->log_text + used, line, length);
+        used += length;
+    }
+    e->log_text[used] = '\0';
+}
+
+static void ed_rebuild_compile_text(editor *e)
+{
+    int count = acount(e->compile.items);
+    if (!count) {
+        if (e->compile_text) {
+            e->compile_text[0] = '\0';
+        }
+        return;
+    }
+    size_t needed = 1;
+    for (int i = 0; i < count; i++) {
+        const compile_diagnostic *item = &e->compile.items[i];
+        const char *severity = item->severity == CMPL_ERROR ? "Error:" : "Warning:";
+        needed += strlen(severity) + 2 + strlen(item->message) + (i != 0);
+    }
+    if (e->compile_text_capacity < needed) {
+        e->compile_text = xrealloc(e->compile_text, needed);
+        e->compile_text_capacity = needed;
+    }
+    size_t used = 0;
+    for (int i = 0; i < count; i++) {
+        const compile_diagnostic *item = &e->compile.items[i];
+        const char *severity = item->severity == CMPL_ERROR ? "Error:" : "Warning:";
+        if (i) {
+            e->compile_text[used++] = '\n';
+        }
+        int written = snprintf(
+            e->compile_text + used,
+            e->compile_text_capacity - used,
+            "%s  %s",
+            severity,
+            item->message
+        );
+        assert(written >= 0);
+        used += (size_t)written;
+    }
+    e->compile_text[used] = '\0';
+}
+
 static void ed_log_sink(const node *origin, const char *message, void *user)
 {
     editor *e = (editor *)user;
@@ -741,6 +983,7 @@ static void ed_log_sink(const node *origin, const char *message, void *user)
     entry->timestamp = e->monotonic_time - e->run_started_at;
     entry->step = e->activation ? flow_run_steps(e->activation) : 0;
     snprintf(entry->message, sizeof entry->message, "%s", message ? message : "");
+    ed_rebuild_log_text(e);
 }
 
 void editor_select_node(editor *e, node *n)
@@ -811,6 +1054,28 @@ static ImFont *ed_load_icon_font(void)
         16.0f,
         &config,
         ED_ICON_GLYPH_RANGES
+    );
+}
+
+static ImFont *ed_load_math_font(void)
+{
+    static const ImWchar glyph_ranges[] = {
+        0x0020, 0x00FF, 0x2212, 0x2212, 0x2260, 0x2265, 0,
+    };
+    ImFontConfig config = { 0 };
+    config.FontDataOwnedByAtlas = false;
+    config.GlyphRanges = glyph_ranges;
+    config.GlyphMaxAdvanceX = FLT_MAX;
+    config.RasterizerMultiply = 1.0f;
+    config.RasterizerDensity = 1.0f;
+    config.ExtraSizeScale = 1.0f;
+    return ImFontAtlas_AddFontFromMemoryTTF(
+        ImGui_GetIO()->Fonts,
+        (void *)editor_ui_bold_font,
+        (int)editor_ui_bold_font_size,
+        16.0f,
+        &config,
+        NULL
     );
 }
 
@@ -953,7 +1218,7 @@ static void ed_draw_connect_error(const editor *e)
     );
     ImU32 close_color = IM_COL32(255, close_hovered ? 245 : 190, close_hovered ? 245 : 190, alpha);
     if (e->icon_font) {
-        ed_draw_centered_icon(dl, e->icon_font, ED_TOAST_CLOSE, close_min, close_max, close_color, ED_ICON_CLOSE_CODEPOINT);
+        ed_draw_centered_icon(dl, e->icon_font, ED_TOAST_CLOSE, close_min, close_max, close_color, EDITOR_ICON_FA_CLOSE);
     } else {
         ImDrawList_AddLineEx(
             dl,
@@ -1043,9 +1308,12 @@ static int ed_input_connected(const graph *g, const node *n, int pin)
 
 static int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
 {
+    if (g->math_expression) {
+        return 0;
+    }
     const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
                                                 : &n->output_pins[pin];
-    if (spec->kind != PIN_DATA || spec->field_source) {
+    if (spec->kind != PIN_DATA || spec->field_source || spec->type == PIN_HANDLE) {
         return 0;
     }
     return kind == ED_PIN_INPUT ? !ed_input_connected(g, n, pin)
@@ -1156,14 +1424,36 @@ static void ed_draw_fields_menu(editor *e, node *n)
     }
 }
 
-static float ed_row_height()
+static float ed_row_height(const node *n)
 {
     /* Controls use the theme's full frame padding, not just the text baseline. */
-    return ImGui_GetFrameHeight() + 8.0f;
+    return ImGui_GetFrameHeight() + (ed_node_appearance(n->desc).compact
+                                         ? ED_NODE_COMPACT_ROW_EXTRA
+                                         : ED_NODE_ROW_EXTRA);
 }
 
 static ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n)
 {
+    if (ed_node_appearance(n->desc).symbol) {
+        bool editable = false;
+        for (int p = 0; p < n->input_count; p++) {
+            editable |= ed_pin_editable(g, n, ED_PIN_INPUT, p);
+        }
+        int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
+        float width = n->desc == &NODE_Sine || n->desc == &NODE_Cosine ||
+                              n->desc == &NODE_Tangent
+                        ? ED_SYMBOL_FUNCTION_WIDTH
+                        : ED_SYMBOL_NODE_WIDTH;
+        float height = ed_max(
+            ED_SYMBOL_NODE_MIN_HEIGHT,
+            ED_SYMBOL_NODE_BODY_PADDING_ROWS * ed_node_body_padding(n) +
+                rows * ed_row_height(n)
+        );
+        return (ImVec2){ width + (editable ? ED_VALUE_WIDTH + ED_SYMBOL_NODE_VALUE_GAP
+                                           : 0),
+                         height };
+    }
+
     float left = 0.0f;
     float right = 0.0f;
     for (int p = 0; p < n->input_count; p++) {
@@ -1176,16 +1466,19 @@ static ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n)
     char node_title[256];
     ImVec2 title_size = ImGui_CalcTextSize(ed_node_title(e, n, node_title, sizeof node_title));
     float width = ed_max(
-                      title_size.x + (ed_field_output(n) >= 0 ? 24.0f : 0.0f) +
+                      title_size.x + ed_node_title_inset(n) +
+                          (ed_field_output(n) >= 0 ? 24.0f : 0.0f) +
                           (ed_is_graph_call(n) ? 24.0f : 0.0f),
                       left + right + 28.0f
                   ) +
                   2.0f * ED_PAD;
     float line = ImGui_GetTextLineHeight();
-    float row_height = ed_row_height();
-    float title_height = line + 2.0f * ED_TITLE_PAD;
+    float row_height = ed_row_height(n);
+    float title_height = ed_node_appearance(n->desc).symbol
+                           ? 0
+                           : line + 2.0f * ed_node_title_padding(n);
     int rows = n->input_count > n->output_count ? n->input_count : n->output_count;
-    float height = title_height + ED_PAD + rows * row_height + ED_PAD;
+    float height = title_height + 2.0f * ed_node_body_padding(n) + rows * row_height;
     return (ImVec2){ width, height };
 }
 
@@ -1203,8 +1496,10 @@ static void ed_build_layout(editor *e)
     for (int i = 0; i < acount(e->active_graph->nodes); i++) {
         node *n = e->active_graph->nodes[i];
         ImVec2 dimensions = ed_node_dimensions(e, e->active_graph, n);
-        float title_height = line + 2.0f * ED_TITLE_PAD;
-        float row_height = ed_row_height();
+        float title_height = ed_node_appearance(n->desc).symbol
+                               ? 0
+                               : line + 2.0f * ed_node_title_padding(n);
+        float row_height = ed_row_height(n);
         ImVec2 min = ed_world_to_screen(e, n->x, n->y);
 
         ImVec2 max = ed_add(min, ed_scale(dimensions, e->zoom));
@@ -1220,13 +1515,19 @@ static void ed_build_layout(editor *e)
         v->input_first = pin_at;
         for (int p = 0; p < n->input_count; p++) {
             float y = min.y + v->title_height +
-                      (ED_PAD + (p + 0.5f) * row_height) * e->zoom;
+                      (ed_node_body_padding(n) + (p + 0.5f) * row_height) * e->zoom;
+            if (ed_node_appearance(n->desc).symbol && n->input_count == 1) {
+                y = (min.y + max.y) * 0.5f;
+            }
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_INPUT, p, { min.x, y } };
         }
         v->output_first = pin_at;
         for (int p = 0; p < n->output_count; p++) {
             float y = min.y + v->title_height +
-                      (ED_PAD + (p + 0.5f) * row_height) * e->zoom;
+                      (ed_node_body_padding(n) + (p + 0.5f) * row_height) * e->zoom;
+            if (ed_node_appearance(n->desc).symbol && n->output_count == 1) {
+                y = (min.y + max.y) * 0.5f;
+            }
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y } };
         }
     }
@@ -2483,7 +2784,7 @@ static graph *ed_create_graph(editor *e, graph_kind kind, int pure)
 
 static node *ed_place_graph_call_at(editor *e, graph *target, ImVec2 world)
 {
-    if (!e->active_graph || !target) {
+    if (!e->active_graph || e->active_graph->math_expression || !target) {
         return NULL;
     }
     ed_snapshot_before(e);
@@ -2504,17 +2805,46 @@ static node *ed_place_graph_call(editor *e, graph *target)
     return ed_place_graph_call_at(e, target, ed_view_center_world(e));
 }
 
-static int ed_delete_graph(editor *e, graph *target)
+int editor_delete_graph(editor *e, uint64_t graph_id)
 {
-    if (!target || target == e->bp->graph || target->owner != e->bp ||
-        !behavior_asset_mutable(e->bp)) {
+    graph *target = behavior_asset_find_graph(e->bp, graph_id);
+    if (!target || target == e->bp->graph || !behavior_asset_mutable(e->bp)) {
         return -1;
     }
     ed_snapshot_before(e);
-    if (target == e->active_graph && ed_switch_graph(e, e->bp->graph) != 0) {
+    if (target == e->active_graph && editor_open_graph(e, e->bp->graph->graph_id) != 0) {
         return -1;
     }
-    return behavior_asset_delete_graph(e->bp, target->graph_id);
+    if (target->math_expression) {
+        ed_clear_selection(e);
+        aclear(e->graph_callers);
+        aclear(e->drag_nodes);
+        e->context_node = NULL;
+        e->reveal_target = NULL;
+        e->front_node = NULL;
+        e->hovered_node = NULL;
+        e->has_context_link = 0;
+        e->has_hovered_link = 0;
+        e->spawn_link_pending = 0;
+        e->dragging = 0;
+        e->linking = 0;
+        e->fields_node = 0;
+        e->open_call_node = 0;
+        for (int i = 0; i < acount(e->bp->graphs); i++) {
+            graph *g = e->bp->graphs[i];
+            for (int j = acount(g->nodes) - 1; j >= 0; j--) {
+                node *n = g->nodes[j];
+                if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction) &&
+                    n->reference_id == graph_id) {
+                    int removed = graph_remove_node(g, n);
+                    assert(removed == 0);
+                    (void)removed;
+                }
+            }
+        }
+    }
+    e->context_graph = NULL;
+    return behavior_asset_delete_graph(e->bp, graph_id);
 }
 
 static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filter)
@@ -2526,8 +2856,9 @@ static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filt
     }
     int id = 5000 + index + (g->kind == GRAPH_MACRO ? 1000 : 0);
     ImGui_PushIDInt(id);
+    char icon[4];
     ed_tree_member_icon(
-        g->kind == GRAPH_MACRO ? ED_ICON_MACRO : ED_ICON_FUNCTION,
+        ed_node_prefix(g->kind == GRAPH_MACRO ? &NODE_CallMacro : &NODE_CallFunction, icon),
         g->kind == GRAPH_MACRO ? (ImVec4){ 0.75f, 0.55f, 1.0f, 1.0f }
                                : (ImVec4){ 0.45f, 0.70f, 1.0f, 1.0f }
     );
@@ -2536,6 +2867,14 @@ static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filt
     if (ImGui_SelectableEx(label, e->active_graph == g, 0, (ImVec2){ 0.0f, 0.0f })) {
         editor_open_graph(e, g->graph_id);
     }
+    char item_id[64];
+    snprintf(
+        item_id,
+        sizeof item_id,
+        "outline.graph.%llu",
+        (unsigned long long)g->graph_id
+    );
+    editor_ui_track_item(item_id);
     if (ImGui_BeginDragDropSource(0)) {
         uint64_t graph_id = g->graph_id;
         (void)ImGui_SetDragDropPayload("CB_GRAPH_CALL", &graph_id, sizeof graph_id, 0);
@@ -2544,7 +2883,7 @@ static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filt
     }
     int delete_requested = 0;
     int rename_requested = 0;
-    if (ImGui_BeginPopupContextItemEx("member_menu", 0)) {
+    if (ImGui_BeginPopupContextItemEx("member_menu", ImGuiPopupFlags_MouseButtonRight)) {
         if (ImGui_MenuItem("Open")) {
             editor_open_graph(e, g->graph_id);
             ImGui_CloseCurrentPopup();
@@ -2555,14 +2894,18 @@ static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filt
             rename_requested = 1;
             ImGui_CloseCurrentPopup();
         }
-        if (ImGui_MenuItem("Place Call Node")) {
+        if (ImGui_MenuItemEx("Place Call Node", NULL, false, !e->active_graph->math_expression)) {
             (void)ed_place_graph_call(e, g);
             ImGui_CloseCurrentPopup();
         }
         ImGui_Separator();
-        delete_requested = ImGui_MenuItem(
-            g->kind == GRAPH_MACRO ? "Delete Macro" : "Delete Function"
+        delete_requested = ImGui_MenuItemEx(
+            g->kind == GRAPH_MACRO ? "Delete Macro" : "Delete Function",
+            NULL,
+            false,
+            true
         );
+        editor_ui_track_item("outline.graph.delete");
         if (delete_requested) {
             ImGui_CloseCurrentPopup();
         }
@@ -2572,10 +2915,7 @@ static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filt
     if (rename_requested) {
         ImGui_OpenPopup("rename_graph", 0);
     }
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
-        ImGui_SetTooltip("Drag to the canvas, or right-click for more actions");
-    }
-    return delete_requested && ed_delete_graph(e, g) == 0;
+    return delete_requested && editor_delete_graph(e, g->graph_id) == 0;
 }
 
 static int ed_event_graph_has_match(const graph *g, const char *filter)
@@ -2663,7 +3003,8 @@ static int ed_draw_event_graph(editor *e, graph *g, int index, const char *filte
             if (!graph_match && !ed_text_matches(name, filter)) {
                 continue;
             }
-            ed_tree_member_icon(ED_ICON_EVENT, (ImVec4){ 1.0f, 0.65f, 0.35f, 1.0f });
+            char icon[4];
+            ed_tree_member_icon(ed_node_prefix(n->desc, icon), (ImVec4){ 1.0f, 0.65f, 0.35f, 1.0f });
             char event_label[192];
             snprintf(event_label, sizeof event_label, "%s##event_%d", name, i);
             if (ImGui_SelectableEx(event_label, ed_node_selected(e, n), 0, (ImVec2){ 0.0f, 0.0f })) {
@@ -2683,9 +3024,6 @@ static int ed_draw_event_graph(editor *e, graph *g, int index, const char *filte
                 event_deleted = ed_delete_event_node(e, g, n) == 0;
                 break;
             }
-            if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
-                ImGui_SetTooltip("Right-click to delete event");
-            }
         }
         ImGui_TreePop();
     }
@@ -2696,12 +3034,13 @@ static int ed_draw_event_graph(editor *e, graph *g, int index, const char *filte
     if (event_deleted) {
         return 1;
     }
-    return delete_requested && ed_delete_graph(e, g) == 0;
+    return delete_requested && editor_delete_graph(e, g->graph_id) == 0;
 }
 
 static int ed_draw_variable_member(editor *e, behavior_variable *v, int index)
 {
-    ed_tree_member_icon(ED_ICON_VARIABLE, (ImVec4){ 0.80f, 0.55f, 0.35f, 1.0f });
+    char icon[4];
+    ed_tree_member_icon(ed_node_prefix(&NODE_GetVariable, icon), (ImVec4){ 0.80f, 0.55f, 0.35f, 1.0f });
     char label[192];
     snprintf(label, sizeof label, "%s##variable_%d", v->name ? v->name : "?", index);
     if (ImGui_SelectableEx(label, e->selected_variable == v, 0, (ImVec2){ 0.0f, 0.0f })) {
@@ -2719,13 +3058,6 @@ static int ed_draw_variable_member(editor *e, behavior_variable *v, int index)
             ImGui_CloseCurrentPopup();
         }
         ImGui_EndPopup();
-    }
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
-        ImGui_SetTooltip(
-            "%s%s\nRight-click to delete variable",
-            pin_type_name(v->type),
-            v->container == PIN_CONTAINER_SINGLE ? "" : " array"
-        );
     }
     if (!delete_requested) {
         return 0;
@@ -2864,13 +3196,10 @@ void editor_draw_outline(editor *e)
         "Search"
     );
     ImGui_SameLine();
-    if (editor_ui_icon_button("my_behavior_asset_settings", ED_ICON_SETTINGS, true)) {
+    if (editor_ui_icon_button("my_behavior_asset_settings", EDITOR_ICON_FA_COG, true)) {
         ImGui_OpenPopup("behavior_settings", 0);
     }
     editor_ui_track_item("outline.settings");
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
-        ImGui_SetTooltip("Behavior settings");
-    }
     ed_draw_settings_popup(e);
 
     const char *filter = e->behavior_asset_search;
@@ -2881,7 +3210,7 @@ void editor_draw_outline(editor *e)
         "Events##member_graphs",
         ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap
     );
-    if (editor_ui_right_icon_button("member_graphs_add", ED_ICON_ADD)) {
+    if (editor_ui_right_icon_button("member_graphs_add", EDITOR_ICON_FA_PLUS)) {
         (void)ed_create_graph(e, GRAPH_EVENT, 0);
     }
     if (graphs_open) {
@@ -2909,7 +3238,7 @@ void editor_draw_outline(editor *e)
             section,
             ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap
         );
-        if (editor_ui_right_icon_button("member_functions_add", ED_ICON_ADD)) {
+        if (editor_ui_right_icon_button("member_functions_add", EDITOR_ICON_FA_PLUS)) {
             (void)ed_create_graph(e, GRAPH_FUNCTION, 0);
         }
         if (functions_open) {
@@ -2928,7 +3257,7 @@ void editor_draw_outline(editor *e)
             ImGui_SetNextItemOpen(true, ImGuiCond_Always);
         }
         bool macros_open = ImGui_CollapsingHeader(section, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-        if (editor_ui_right_icon_button("member_macros_add", ED_ICON_ADD)) {
+        if (editor_ui_right_icon_button("member_macros_add", EDITOR_ICON_FA_PLUS)) {
             (void)ed_create_graph(e, GRAPH_MACRO, 0);
         }
         if (macros_open) {
@@ -2955,7 +3284,7 @@ void editor_draw_outline(editor *e)
             section,
             ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap
         );
-        if (editor_ui_right_icon_button("member_variables_add", ED_ICON_ADD)) {
+        if (editor_ui_right_icon_button("member_variables_add", EDITOR_ICON_FA_PLUS)) {
             ed_snapshot_before(e);
             behavior_variable *v = behavior_asset_add_variable(
                 e->bp,
@@ -3114,6 +3443,79 @@ static void ed_details_event_catalog(editor *e, node *n)
     }
 }
 
+static int ed_math_resize(ImGuiInputTextCallbackData *data)
+{
+    editor *e = data->UserData;
+    if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+        e->math_capacity = (size_t)data->BufSize;
+        e->math_text = xrealloc(e->math_text, e->math_capacity);
+        data->Buf = e->math_text;
+    }
+    return 0;
+}
+
+static void ed_draw_math_graph_name(editor *e, graph *g)
+{
+    snprintf(e->details_title, sizeof e->details_title, "%s", g->name ? g->name : "");
+    if (ImGui_InputText("Name", e->details_title, sizeof e->details_title, 0)) {
+        ed_details_begin_mutation(e);
+        if (behavior_asset_rename_graph(e->bp, g->graph_id, e->details_title) == 0) {
+            e->edit_changed = 1;
+        } else if (e->details_title[0]) {
+            ed_show_error(e, "Function name is empty or already in use");
+        }
+    }
+    editor_ui_track_item("math.title");
+    ed_details_finish_mutation(e, ImGui_IsItemEdited());
+}
+
+static void ed_draw_math_source(editor *e, node *n)
+{
+    const char *source = math_expression_source(e->bp, n);
+    if (!source) {
+        return;
+    }
+    if (e->math_node_id != n->id || !e->math_saved || strcmp(e->math_saved, source)) {
+        e->math_node_id = n->id;
+        free(e->math_saved);
+        e->math_saved = xstrdup(source);
+        e->math_capacity = strlen(source) + 256;
+        e->math_text = xrealloc(e->math_text, e->math_capacity);
+        snprintf(e->math_text, e->math_capacity, "%s", source);
+        e->math_error = (math_expression_error){ 0 };
+    }
+    graph *generated = behavior_asset_find_graph(e->bp, n->reference_id);
+    assert(generated && generated->math_expression);
+    ed_draw_math_graph_name(e, generated);
+    ImGui_SeparatorText("Expression");
+    ImGui_SetNextItemWidth(ImGui_GetContentRegionAvail().x - 36.0f);
+    bool apply = ImGui_InputTextEx(
+        "##math_source",
+        e->math_text,
+        e->math_capacity,
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackResize,
+        ed_math_resize,
+        e
+    );
+    editor_ui_track_item("math.expression");
+    if (ImGui_IsItemEdited()) {
+        e->math_error = (math_expression_error){ 0 };
+    }
+    bool changed = strcmp(e->math_text, source) != 0;
+    ImGui_SameLine();
+    if (editor_ui_icon_button_sized("math.inspect", ED_GRAPH_OPEN_GLYPH, true, 28.0f)) {
+        e->open_call_node = n->id;
+    }
+    editor_ui_track_item("math.inspect");
+    if (apply && changed) {
+        editor_set_math_expression(e, n, e->math_text, &e->math_error);
+    }
+    if (e->math_error.message[0]) {
+        ImGui_TextWrapped("%s (column %d)", e->math_error.message, e->math_error.offset + 1);
+        editor_ui_track_item("math.error");
+    }
+}
+
 static void ed_draw_details(editor *e)
 {
     if (!editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR)) {
@@ -3124,6 +3526,13 @@ static void ed_draw_details(editor *e)
         ImGui_SetNextWindowFocus();
     }
     if (!editor_ui_begin_pane(EDITOR_UI_PANE_INSPECTOR, "Inspector", ImGuiWindowFlags_NoFocusOnAppearing)) {
+        ImGui_End();
+        return;
+    }
+    if (e->active_graph->math_expression) {
+        ImGui_TextUnformatted("Generated math graph · Read-only");
+        ed_draw_math_graph_name(e, e->active_graph);
+        ImGui_TextWrapped("%s", e->active_graph->math_expression);
         ImGui_End();
         return;
     }
@@ -3156,6 +3565,7 @@ static void ed_draw_details(editor *e)
     char node_title[256];
     ImGui_Text("%s", ed_node_title(e, n, node_title, sizeof node_title));
     editor_ui_track_item("inspector.graph");
+    ed_draw_math_source(e, n);
     ImGui_Separator();
     for (int p = 0; p < n->input_count; p++) {
         ed_draw_details_pin(e, n, 0, p);
@@ -3232,6 +3642,10 @@ static int ed_selection_modifier(const ImGuiIO *io);
 
 static float ed_input_editor_column(const graph *g, const node *n)
 {
+    if (ed_node_appearance(n->desc).symbol) {
+        return ED_PIN_RADIUS + 9.0f;
+    }
+
     float width = 0.0f;
     for (int p = 0; p < n->input_count; p++) {
         if (!ed_pin_editable(g, n, ED_PIN_INPUT, p)) {
@@ -3322,6 +3736,19 @@ static void ed_draw_grid(editor *e, ImDrawList *dl)
 
 static const flow_run *ed_flow_run_for_display(const editor *e);
 
+static bool ed_inspection_blocked(const editor *e)
+{
+    return e->inspection_blocked ||
+           (e->inspection_instance && (e->edit_pending || e->pending_snapshot));
+}
+
+static const behavior_instance *ed_display_instance(const editor *e)
+{
+    return ed_inspection_blocked(e)
+             ? NULL
+             : (e->inspection_instance ? e->inspection_instance : e->instance);
+}
+
 static int ed_flow_edge_matches(const flow_traversal *record, const edge *ed)
 {
     return record->kind == ed->kind && record->from_id == ed->from_id &&
@@ -3331,26 +3758,32 @@ static int ed_flow_edge_matches(const flow_traversal *record, const edge *ed)
 
 static const flow_traversal *ed_latest_flow_record(const editor *e, const edge *ed)
 {
+    if (ed_inspection_blocked(e)) {
+        return NULL;
+    }
+    const flow_traversal *latest = NULL;
     const flow_run *run = ed_flow_run_for_display(e);
     if (run) {
         int count = 0;
         const flow_traversal *records = flow_run_traversals(run, &count);
         for (int i = count - 1; i >= 0; i--) {
-            if (ed_flow_edge_matches(&records[i], ed)) {
-                return &records[i];
+            if (ed_flow_edge_matches(&records[i], ed) &&
+                (!latest || records[i].timestamp > latest->timestamp)) {
+                latest = &records[i];
             }
         }
     }
     if (!e->inspection_instance) {
-        return NULL;
+        return latest;
     }
     for (int i = e->inspection_trace_count - 1; i >= 0; i--) {
         const flow_traversal *record = &e->inspection_trace[i].traversal;
-        if (ed_flow_edge_matches(record, ed)) {
-            return record;
+        if (ed_flow_edge_matches(record, ed) &&
+            (!latest || record->timestamp > latest->timestamp)) {
+            latest = record;
         }
     }
-    return NULL;
+    return latest;
 }
 
 typedef struct ed_flow_style
@@ -3365,12 +3798,18 @@ typedef struct ed_flow_style
 
 static const flow_run *ed_flow_run_for_display(const editor *e)
 {
+    if (ed_inspection_blocked(e)) {
+        return NULL;
+    }
     return e->inspection_instance ? e->inspection_run : e->activation;
 }
 
 static int ed_execution_pulse_active(const editor *e)
 {
-    return e->execution_pulse_active && e->active_graph &&
+    /* Whole-graph feedback is only for hosts without an execution trace. */
+    return !ed_inspection_blocked(e) && !e->inspection_instance &&
+           !ed_flow_run_for_display(e) && e->execution_pulse_active &&
+           e->active_graph &&
            e->execution_pulse_graph_id == e->active_graph->graph_id;
 }
 
@@ -3390,6 +3829,9 @@ static ed_flow_style ed_flow_style_for_edge(const editor *e, const edge *ed, ImV
         .wire_color = base,
         .bubble_color = ed_lerp4(base, (ImVec4){ 1.0f, 1.0f, 1.0f, 1.0f }, ED_FLOW_BUBBLE_COLOR_BLEND),
     };
+    if (ed->kind != GRAPH_EDGE_EXEC) {
+        return style;
+    }
     const flow_traversal *latest = ed_latest_flow_record(e, ed);
     if (!latest && !ed_execution_pulse_active(e)) {
         return style;
@@ -3420,6 +3862,19 @@ static ed_flow_style ed_flow_style_for_edge(const editor *e, const edge *ed, ImV
     style.bubble_radius *= style.opacity;
     style.bubble_opacity = 1.0f;
     return style;
+}
+
+void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_activity *out)
+{
+    assert(e && edge && out);
+    const flow_traversal *record = ed_latest_flow_record(e, edge);
+    ed_flow_style style = ed_flow_style_for_edge(e, edge, (ImVec4){ 1, 1, 1, 1 }, false, false);
+    *out = (editor_edge_activity){
+        .traversed = record != NULL,
+        .timestamp = record ? record->timestamp : 0,
+        .opacity = style.opacity,
+        .bubble_opacity = style.bubble_opacity,
+    };
 }
 
 /* UE draws a time-phased bubble stream for the latest traced edge, rather
@@ -3533,7 +3988,9 @@ static void ed_draw_link(editor *e, ImDrawList *dl, const edge *ed)
     if (from_node && graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) && fo) {
         source = &from_node->output_pins[from_pin];
     }
-    ImVec4 base = source ? ed_spec_color(source) : ed_pin_color(PIN_FLOW);
+    ImVec4 base = ed->conversion && ed->conversion->output_count == 1
+                    ? ed_spec_color(&ed->conversion->outputs[0])
+                    : (source ? ed_spec_color(source) : ed_pin_color(PIN_FLOW));
     int hovered = e->has_hovered_link && ed_link_equal(&ref, &e->hovered_link);
     ImVec4 edge_color = base;
     if (selected) {
@@ -3614,6 +4071,23 @@ bool editor_query_node_ui(const editor *e, uint64_t node_id, editor_node_ui *out
         if (v->draw_frame == ImGui_GetFrameCount() && v->id == node_id) {
             *out = v->drawn;
             return out->exec_pins + out->data_pins > 0;
+        }
+    }
+    return false;
+}
+
+bool editor_query_pin_ui(const editor *e, uint64_t pin_id, editor_pin_ui *out)
+{
+    for (int i = 0; i < acount(e->pins); i++) {
+        const ed_pin_view *pin = &e->pins[i];
+        const pin_spec *spec = pin->kind == ED_PIN_OUTPUT
+                                 ? &pin->n->output_pins[pin->index]
+                                 : &pin->n->input_pins[pin->index];
+        editor_node_ui drawn;
+        if (spec->id == pin_id && editor_query_node_ui(e, pin->n->id, &drawn) &&
+            ed_point_in_rect(pin->pos, e->canvas_min, ed_add(e->canvas_min, e->canvas_size))) {
+            *out = (editor_pin_ui){ pin->pos.x, pin->pos.y };
+            return true;
         }
     }
     return false;
@@ -3704,14 +4178,6 @@ static void ed_draw_field_disclosure(editor *e, ImDrawList *dl, const ed_node_vi
     editor_ui_track_item(id);
     bool hovered = ImGui_IsItemHovered(0);
     e->controls_hovered |= hovered || ImGui_IsItemActive();
-    if (hovered) {
-        ImGui_SetTooltip(
-            "%s. Connected fields stay visible.",
-            field_outputs > 1 ? "Choose output fields"
-            : expanded        ? "Hide unused fields"
-                              : "Show fields"
-        );
-    }
     if (ImGui_BeginPopup(id, 0)) {
         ed_draw_fields_menu(e, n);
         ImGui_EndPopup();
@@ -3751,36 +4217,98 @@ static void ed_draw_call_open(editor *e, ImDrawList *dl, const ed_node_view *v)
     editor_ui_track_item(id);
     bool hovered = ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
     e->controls_hovered |= hovered || ImGui_IsItemActive();
-    if (hovered) {
-        ImGui_SetTooltip("%s", available ? "Open graph" : "Graph unavailable");
-    }
     ImGui_EndDisabled();
     ImU32 color = !available ? IM_COL32(100, 105, 115, 255)
                 : hovered    ? IM_COL32(235, 240, 250, 255)
                              : IM_COL32(157, 165, 178, 255);
-    float r = 4.0f * e->zoom;
-    ImDrawList_AddLineEx(
+    ed_draw_centered_icon(
         dl,
-        (ImVec2){ center.x - r, center.y + r },
-        (ImVec2){ center.x + r, center.y - r },
+        e->icon_font,
+        13.0f * e->zoom,
+        (ImVec2){ center.x - size * 0.5f, center.y - size * 0.5f },
+        (ImVec2){ center.x + size * 0.5f, center.y + size * 0.5f },
         color,
-        1.5f * e->zoom
-    );
-    ImDrawList_AddLineEx(
-        dl,
-        (ImVec2){ center.x - r, center.y - r },
-        (ImVec2){ center.x + r, center.y - r },
-        color,
-        1.5f * e->zoom
-    );
-    ImDrawList_AddLineEx(
-        dl,
-        (ImVec2){ center.x + r, center.y - r },
-        (ImVec2){ center.x + r, center.y + r },
-        color,
-        1.5f * e->zoom
+        ED_GRAPH_OPEN_GLYPH
     );
     ImGui_SetCursorScreenPos(cursor);
+}
+
+typedef struct
+{
+    float min_x;
+    float min_y;
+    float max_x;
+    float max_y;
+} ed_symbol_bounds;
+
+static unsigned ed_next_utf8(const char **text)
+{
+    const unsigned char *s = (const unsigned char *)*text;
+    unsigned codepoint;
+    if (s[0] < 0x80) {
+        codepoint = s[0];
+        *text = (const char *)(s + 1);
+        return codepoint;
+    }
+    if ((s[0] & 0xe0) == 0xc0) {
+        codepoint = ((unsigned)(s[0] & 0x1f) << 6) | (s[1] & 0x3f);
+        *text = (const char *)(s + 2);
+        return codepoint;
+    }
+    if ((s[0] & 0xf0) == 0xe0) {
+        codepoint = ((unsigned)(s[0] & 0x0f) << 12) |
+                    ((unsigned)(s[1] & 0x3f) << 6) | (s[2] & 0x3f);
+        *text = (const char *)(s + 3);
+        return codepoint;
+    }
+    assert((s[0] & 0xf8) == 0xf0);
+    codepoint = ((unsigned)(s[0] & 0x07) << 18) | ((unsigned)(s[1] & 0x3f) << 12) |
+                ((unsigned)(s[2] & 0x3f) << 6) | (s[3] & 0x3f);
+    *text = (const char *)(s + 4);
+    return codepoint;
+}
+
+static ed_symbol_bounds ed_math_symbol_bounds(ImFont *font, float size, const char *text)
+{
+    ImFontBaked *baked = ImFont_GetFontBaked(font, size);
+    float scale = size / baked->Size;
+    float cursor_x = 0.0f;
+    ed_symbol_bounds bounds = { FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX };
+    for (const char *at = text; *at;) {
+        ImFontGlyph *glyph = ImFontBaked_FindGlyphNoFallback(baked, ed_next_utf8(&at));
+        assert(glyph && glyph->Visible);
+        bounds.min_x = ed_min(bounds.min_x, cursor_x + glyph->X0 * scale);
+        bounds.min_y = ed_min(bounds.min_y, glyph->Y0 * scale);
+        bounds.max_x = ed_max(bounds.max_x, cursor_x + glyph->X1 * scale);
+        bounds.max_y = ed_max(bounds.max_y, glyph->Y1 * scale);
+        cursor_x += glyph->AdvanceX * scale;
+    }
+    return bounds;
+}
+
+static void ed_draw_math_symbol(
+    const editor *e,
+    ImFont *font,
+    ImDrawList *dl,
+    ImVec2 min,
+    ImVec2 max,
+    const char *symbol
+)
+{
+    assert(font);
+    float size = (max.y - min.y) * 1.15f;
+    float available_width = max.x - min.x - 16.0f * e->zoom;
+    ed_symbol_bounds bounds = ed_math_symbol_bounds(font, size, symbol);
+    float width = bounds.max_x - bounds.min_x;
+    if (width > available_width) {
+        size *= available_width / width;
+        bounds = ed_math_symbol_bounds(font, size, symbol);
+    }
+    ImVec2 center = { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f };
+    ImVec2 pos = { center.x - (bounds.min_x + bounds.max_x) * 0.5f,
+                   center.y - (bounds.min_y + bounds.max_y) * 0.5f };
+    ImU32 color = IM_COL32(210, 216, 228, 52);
+    ImDrawList_AddTextImFontPtr(dl, font, size, pos, color, symbol);
 }
 
 static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
@@ -3789,8 +4317,13 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
     v->drawn = (editor_node_ui){ 0 };
     node *n = v->n;
     int selected = ed_node_selected(e, n);
+    ed_node_presentation appearance = ed_node_appearance(n->desc);
     v->drawn.title_x = (v->min.x + v->max.x) * 0.5f;
     v->drawn.title_y = v->min.y + v->title_height * 0.5f;
+    v->drawn.left = v->min.x;
+    v->drawn.right = v->max.x;
+    v->drawn.title_bottom = v->min.y + v->title_height;
+    v->drawn.compact = appearance.compact;
     v->drawn.top = v->min.y;
     v->drawn.bottom = v->max.y;
     v->drawn.selected = selected;
@@ -3811,11 +4344,38 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         title = ed_dim_color(title, 0.60f);
     }
     ImDrawList_AddRectFilledEx(dl, v->min, v->max, bg, 5.0f * e->zoom, ImDrawFlags_RoundCornersAll);
+    if (appearance.symbol) {
+        ImDrawList_AddRectEx(
+            dl,
+            v->min,
+            v->max,
+            border,
+            5.0f * e->zoom,
+            ImDrawFlags_RoundCornersAll,
+            (selected ? 2.5f : 1.0f) * e->zoom
+        );
+        ImVec2 center = { (v->min.x + v->max.x) * 0.5f, (v->min.y + v->max.y) * 0.5f };
+        v->drawn.title_x = center.x;
+        v->drawn.title_y = center.y;
+        ed_draw_math_symbol(e, e->math_font, dl, v->min, v->max, appearance.symbol);
+        for (int i = 0; i < n->input_count; i++) {
+            ed_pin_view *pin = &e->pins[v->input_first + i];
+            ed_count_drawn_pin(v, pin, &n->input_pins[i], dl);
+            ed_draw_pin(e, dl, pin, &n->input_pins[i]);
+        }
+        for (int i = 0; i < n->output_count; i++) {
+            ed_pin_view *pin = &e->pins[v->output_first + i];
+            ed_count_drawn_pin(v, pin, &n->output_pins[i], dl);
+            ed_draw_pin(e, dl, pin, &n->output_pins[i]);
+        }
+        return;
+    }
+
     ImDrawList_AddRectFilledEx(
         dl,
         v->min,
         (ImVec2){ v->max.x, v->min.y + v->title_height },
-        IM_COL32(48, 50, 55, 255),
+        appearance.compact ? bg : IM_COL32(48, 50, 55, 255),
         5.0f * e->zoom,
         ImDrawFlags_RoundCornersTop
     );
@@ -3835,11 +4395,34 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         ImDrawFlags_RoundCornersAll,
         selected ? 2.5f * e->zoom : 1.0f
     );
+    ImVec2 title_min = ed_add(v->min, (ImVec2){ ED_PAD * e->zoom, 0.0f });
+    float inset = ed_node_title_inset(n) * e->zoom;
+    ImVec2 icon_max = { title_min.x + inset - 6.0f * e->zoom,
+                        title_min.y + v->title_height };
+    if (appearance.symbol) {
+        ed_draw_text(
+            e,
+            dl,
+            ed_add(title_min, (ImVec2){ 0.0f, ed_node_title_padding(n) * e->zoom }),
+            IM_COL32(235, 238, 245, 255),
+            appearance.symbol
+        );
+    } else {
+        ed_draw_centered_icon(
+            dl,
+            e->icon_font,
+            12.0f * e->zoom,
+            title_min,
+            icon_max,
+            IM_COL32(194, 203, 219, 255),
+            appearance.icon
+        );
+    }
     char node_title[256];
     ed_draw_text(
         e,
         dl,
-        ed_add(v->min, (ImVec2){ ED_PAD * e->zoom, ED_TITLE_PAD * e->zoom }),
+        ed_add(title_min, (ImVec2){ inset, ed_node_title_padding(n) * e->zoom }),
         IM_COL32(235, 238, 245, 255),
         ed_node_title(e, n, node_title, sizeof node_title)
     );
@@ -3877,6 +4460,11 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
                     IM_COL32(130, 205, 255, 255),
                     value
                 );
+                if (strcmp(value, "Self") == 0 &&
+                    (spec->flags & PIN_FLAG_DEFAULT_SELF) &&
+                    ed_point_in_rect(pin->pos, ImDrawList_GetClipRectMin(dl), ImDrawList_GetClipRectMax(dl))) {
+                    v->drawn.self_labels++;
+                }
             }
         }
         if (row < n->output_count) {
@@ -4026,6 +4614,9 @@ static int ed_activation_live(const editor *e);
 
 static void ed_accept_graph_call_drop(editor *e)
 {
+    if (e->active_graph->math_expression) {
+        return;
+    }
     if (!ImGui_BeginDragDropTarget()) {
         return;
     }
@@ -4082,6 +4673,7 @@ static int ed_adopt_behavior_asset(editor *e, const char *json)
     e->arrange_pending = false;
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
+    ed_rebuild_compile_text(e);
     ed_clear_selection(e);
     e->selected_variable = NULL;
     e->behavior_asset_search[0] = '\0';
@@ -4097,6 +4689,7 @@ static int ed_adopt_behavior_asset(editor *e, const char *json)
     e->edit_text_node = NULL;
     aclear(e->drag_nodes);
     e->log_count = 0;
+    ed_rebuild_log_text(e);
     e->edit_pending = 1;
     return 0;
 }
@@ -4329,8 +4922,8 @@ static int ed_connection_specs_valid(const pin_spec *output, const pin_spec *inp
     if (output->kind != expected_kind || input->kind != expected_kind) {
         return 0;
     }
-    if (expected_kind != PIN_DATA || (input->flags & PIN_FLAG_WILDCARD) ||
-        pin_types_compatible(output, input)) {
+    if (expected_kind != PIN_DATA || (output->flags & PIN_FLAG_WILDCARD) ||
+        (input->flags & PIN_FLAG_WILDCARD) || pin_types_compatible(output, input)) {
         return 1;
     }
     return conversion_for_pins(output, input) != NULL;
@@ -4359,6 +4952,7 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     int generic_target = out_spec->kind == PIN_DATA &&
                          (in_spec->flags & PIN_FLAG_WILDCARD);
     if (out_spec->kind == PIN_DATA && !generic_target &&
+        !(out_spec->flags & PIN_FLAG_WILDCARD) &&
         !pin_types_compatible(out_spec, in_spec)) {
         const node_desc *conv = conversion_for_pins(out_spec, in_spec);
         assert(conv);
@@ -4393,7 +4987,87 @@ static int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     if (ok && generic_target) {
         ed_format_text_ensure_spare(e, input->n);
     }
+    if (ok) {
+        node *expression = output->n->desc == &NODE_CallPureFunction ? output->n : NULL;
+        if (!expression && input->n->desc == &NODE_CallPureFunction) {
+            expression = input->n;
+        }
+        if (expression && behavior_asset_find_graph(e->bp, expression->reference_id) &&
+            behavior_asset_find_graph(e->bp, expression->reference_id)->math_expression) {
+            math_expression_error error;
+            (void)math_expression_refresh(e->bp, expression, &error);
+            if (error.message[0]) {
+                e->math_error = error;
+            }
+        }
+    }
     return ok;
+}
+
+static bool ed_expression_call_stale(const graph *caller, const node *call)
+{
+    for (int i = 0; i < call->input_count; i++) {
+        if (call->input_pins[i].kind != PIN_DATA) {
+            continue;
+        }
+        node *source;
+        int source_pin;
+        if (!graph_input_source(caller, call, i, &source, &source_pin)) {
+            continue;
+        }
+        const pin_spec *output = &source->output_pins[source_pin];
+        const pin_spec *input = &call->input_pins[i];
+        const node_desc *conversion = graph_input_conversion(caller, call, i);
+        if (conversion ? conversion_matches_pins(output, input, conversion)
+                       : pin_types_compatible(output, input)) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+static void ed_refresh_stale_math_expressions(editor *e)
+{
+    /* Loading or an older edit can leave a direct edge on a generic expression
+     * input after its public pin has fallen back to double. Repair that
+     * boundary before the read-only compiler pass reports it. */
+    for (int i = 0; i < acount(e->bp->graphs); i++) {
+        graph *caller = e->bp->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            node *call = caller->nodes[j];
+            if (call->desc != &NODE_CallPureFunction) {
+                continue;
+            }
+            graph *generated = behavior_asset_find_graph(e->bp, call->reference_id);
+            if (!generated || !generated->math_expression ||
+                !ed_expression_call_stale(caller, call)) {
+                continue;
+            }
+            math_expression_error error = { 0 };
+            if (math_expression_refresh(e->bp, call, &error) != 0 && error.message[0]) {
+                e->math_error = error;
+            }
+        }
+    }
+}
+
+static pin_spec ed_math_inputs[] = { { .name = "a", .type = PIN_F64 },
+                                     { .name = "b", .type = PIN_F64 } };
+static pin_spec ed_math_outputs[] = { { .name = "Result", .type = PIN_F64 } };
+static const node_desc ed_math_desc = {
+    .name = "Math Expression",
+    .category = "Math",
+    .keywords = "formula expression equation calculate",
+    .inputs = ed_math_inputs,
+    .input_count = 2,
+    .outputs = ed_math_outputs,
+    .output_count = 1
+};
+
+static const node_desc *ed_search_desc(int index)
+{
+    return index < 0 ? &ed_math_desc : registry_node(index);
 }
 
 #define ED_SEARCH_MAX 128
@@ -4570,14 +5244,17 @@ static int ed_search_match_cmp(const void *a, const void *b)
 {
     const ed_search_match *ma = (const ed_search_match *)a;
     const ed_search_match *mb = (const ed_search_match *)b;
-    const char *ca = ed_desc_category(registry_node(ma->registry_index));
-    const char *cb = ed_desc_category(registry_node(mb->registry_index));
+    const char *ca = ed_desc_category(ed_search_desc(ma->registry_index));
+    const char *cb = ed_desc_category(ed_search_desc(mb->registry_index));
     int c = strcmp(ca, cb);
     return c ? c : mb->score - ma->score;
 }
 
 static void ed_open_context_menu(editor *e, ImVec2 mouse)
 {
+    if (e->active_graph->math_expression) {
+        return;
+    }
     e->context_node = NULL;
     e->has_context_link = 0;
     ed_pin_view *pin = ed_hit_pin(e, mouse);
@@ -4605,14 +5282,18 @@ static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate
     if (source->kind == PIN_EXEC) {
         return 1;
     }
-    if (candidate->flags & PIN_FLAG_WILDCARD) {
+    if ((source->flags | candidate->flags) & PIN_FLAG_WILDCARD) {
         return 1;
     }
-    return pin_types_compatible(source, candidate);
+    return pin_types_compatible(source, candidate) ||
+           conversion_for_pins(source, candidate) != NULL;
 }
 
 static int ed_system_node_allowed(const node_desc *desc)
 {
+    if (desc == &ed_math_desc) {
+        return 1;
+    }
     static const char *const names[] = {
         "Event",
         "Get_GameInput",
@@ -4765,6 +5446,9 @@ static int ed_autowire_spawn(editor *e, node *n)
 
 static void ed_request_extraction(editor *e)
 {
+    if (e->active_graph->math_expression) {
+        return;
+    }
     for (int i = 1;; i++) {
         if (i == 1) {
             snprintf(e->extract_name, sizeof e->extract_name, "New Function");
@@ -4781,6 +5465,9 @@ static void ed_request_extraction(editor *e)
 
 static const char *ed_extract_selection(editor *e)
 {
+    if (e->active_graph->math_expression) {
+        return "Generated math graphs are read-only";
+    }
     behavior_asset *result = NULL;
     uint64_t call_id = 0;
     const char *error = behavior_asset_extract_function(
@@ -4852,6 +5539,9 @@ static void ed_draw_extract_popup(editor *e)
 
 static void ed_handle_popups(editor *e)
 {
+    if (e->active_graph->math_expression) {
+        return;
+    }
     if (ImGui_BeginPopup("node_menu", 0)) {
         node *n = e->context_node;
         node *single[] = { n };
@@ -4868,9 +5558,6 @@ static void ed_handle_popups(editor *e)
                 ed_select_node(e, n, 0);
             }
             ed_request_extraction(e);
-        }
-        if (extract_reason && ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            ImGui_SetTooltip("%s", extract_reason);
         }
         ImGui_Separator();
         if (ed_is_graph_call(n)) {
@@ -4961,10 +5648,23 @@ static void ed_handle_popups(editor *e)
         }
         ImGui_EndPopup();
     }
+    ImVec2 search_space = ImGui_GetMainViewport()->WorkSize;
+    ImGui_SetNextWindowSize((ImVec2){ fminf(360.0f, search_space.x - 20.0f), 0.0f }, ImGuiCond_Always);
     if (ImGui_BeginPopup("spawn_menu", 0)) {
-        if (ImGui_IsWindowAppearing()) {
+        bool reveal_result = ImGui_IsWindowAppearing();
+        if (reveal_result) {
             ImGui_SetKeyboardFocusHere();
             e->search_selected = 0;
+        }
+        ImGui_SetNextItemWidth(-1.0f);
+        if (editor_ui_search_field("graph.node_search", e->search, sizeof e->search, "Search nodes")) {
+            e->search_selected = 0;
+            reveal_result = true;
+        }
+        bool create_math = false;
+        if (!e->search[0] && ed_spawn_desc_compatible(e, &ed_math_desc)) {
+            create_math = ImGui_MenuItem("Math Expression");
+            editor_ui_track_item("graph.add.math_expression");
         }
         if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM &&
             ImGui_MenuItem("Add Comment Box")) {
@@ -4973,11 +5673,10 @@ static void ed_handle_popups(editor *e)
             e->spawn_link_pending = 0;
             ImGui_CloseCurrentPopup();
         }
-        ImGui_InputText("Filter", e->search, sizeof e->search, 0);
         ImGui_Separator();
         int count = registry_node_count();
         ed_search_match *matches = count ? (ed_search_match *)malloc(
-                                               (size_t)count * sizeof *matches
+                                               (size_t)(count + 1) * sizeof *matches
                                            )
                                          : NULL;
         int match_count = 0;
@@ -4991,6 +5690,10 @@ static void ed_handle_popups(editor *e)
                 continue;
             }
             matches[match_count++] = (ed_search_match){ i, score };
+        }
+        int math_score = ed_desc_score(&ed_math_desc, e->search);
+        if (math_score >= 0 && ed_spawn_desc_compatible(e, &ed_math_desc)) {
+            matches[match_count++] = (ed_search_match){ -1, math_score };
         }
         if (match_count > 1) {
             qsort(matches, (size_t)match_count, sizeof *matches, ed_search_match_cmp);
@@ -5006,30 +5709,48 @@ static void ed_handle_popups(editor *e)
             }
             if (ImGui_IsKeyPressed(ImGuiKey_DownArrow)) {
                 e->search_selected = (e->search_selected + 1) % match_count;
+                reveal_result = true;
             }
             if (ImGui_IsKeyPressed(ImGuiKey_UpArrow)) {
                 e->search_selected = (e->search_selected + match_count - 1) % match_count;
+                reveal_result = true;
             }
         }
         int activate = ImGui_IsKeyPressed(ImGuiKey_Enter);
+        ImGui_BeginChild(
+            "node_results",
+            (ImVec2){ 0.0f, fmaxf(1.0f, fminf(300.0f, search_space.y - 140.0f)) },
+            0,
+            0
+        );
         const char *category = NULL;
         for (int m = 0; m < match_count; m++) {
-            const node_desc *desc = registry_node(matches[m].registry_index);
+            const node_desc *desc = ed_search_desc(matches[m].registry_index);
             const char *next_category = ed_desc_category(desc);
             if (!category || strcmp(category, next_category) != 0) {
                 ImGui_TextDisabled("%s", next_category);
                 category = next_category;
             }
-            char label[256];
-            editor_node_label(desc, label, sizeof label);
+            char name[256], label[272], icon[4];
+            editor_node_label(desc, name, sizeof name);
+            snprintf(label, sizeof label, "%s  %s", ed_node_prefix(desc, icon), name);
             ImGui_PushID(desc->name);
             int clicked = ImGui_SelectableEx(label, m == e->search_selected, 0, (ImVec2){ 0.0f, 0.0f });
+            if (reveal_result && m == e->search_selected) {
+                ImGui_SetScrollHereY(0.5f);
+            }
+            if (m == e->search_selected) {
+                editor_ui_track_item("graph.node_search.selected");
+            }
             ImGui_PopID();
-            if (clicked || (activate && m == e->search_selected)) {
+            if (clicked || (activate && m == e->search_selected) ||
+                (create_math && desc == &ed_math_desc)) {
                 if (!e->spawn_link_pending) {
                     ed_snapshot_before(e);
                 }
-                node *n = graph_add_node(e->active_graph, desc);
+                node *n = desc == &ed_math_desc
+                            ? math_expression_add(e->bp, e->active_graph, "a + b", NULL)
+                            : graph_add_node(e->active_graph, desc);
                 if (n && ed_compact_system_node(e, n) != 0) {
                     graph_remove_node(e->active_graph, n);
                     n = NULL;
@@ -5041,6 +5762,11 @@ static void ed_handle_popups(editor *e)
                 if (n) {
                     n->x = e->popup_x;
                     n->y = e->popup_y;
+                    if (desc == &ed_math_desc) {
+                        ed_select_node(e, n, 0);
+                        e->inspector_active = true;
+                        editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
+                    }
                     if (e->spawn_link_pending) {
                         ed_autowire_spawn(e, n);
                         ed_commit_snapshot(e);
@@ -5058,6 +5784,14 @@ static void ed_handle_popups(editor *e)
             );
         }
         free(matches);
+        ImGui_Dummy((ImVec2){ 0.0f, ImGui_GetStyle()->ItemSpacing.y });
+        ImGui_EndChild();
+        editor_ui_track_item("graph.node_results");
+        /* Keep search text focused while our result selection handles these keys. */
+        ImGuiID navigation = ImGui_GetID("node_search_navigation");
+        ImGui_SetKeyOwner(ImGuiKey_UpArrow, navigation, 0);
+        ImGui_SetKeyOwner(ImGuiKey_DownArrow, navigation, 0);
+        ImGui_SetKeyOwner(ImGuiKey_Enter, navigation, 0);
         ImGui_EndPopup();
     }
     if (e->spawn_link_pending && !ImGui_IsPopupOpen("spawn_menu", 0)) {
@@ -5070,6 +5804,15 @@ static int ed_activation_live(const editor *e)
 {
     return e && e->activation &&
            !editor_preview_allowed(flow_run_status(e->activation));
+}
+
+static const flow_run *ed_display_run(const editor *e)
+{
+    if (ed_inspection_blocked(e)) {
+        return NULL;
+    }
+    return e->inspection_instance ? e->inspection_run
+                                  : (ed_activation_live(e) ? e->activation : NULL);
 }
 
 /* Authoring edits mutate the working Behavior Asset, not the preview snapshot. */
@@ -5146,9 +5889,11 @@ static void ed_run_pause(editor *e)
 }
 static void ed_compile(editor *e)
 {
+    ed_refresh_stale_math_expressions(e);
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     behavior_asset_compile(e->bp, &e->compile);
+    ed_rebuild_compile_text(e);
     if (e->compile.error_count || e->compile.warning_count) {
         editor_ui_set_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS, true);
     }
@@ -5186,9 +5931,9 @@ static void ed_auto_arrange(editor *e)
         ImVec2 size = ed_node_dimensions(e, g, n);
         boxes[i] = (arrange_box){ size.x,
                                   size.y,
-                                  line + 2.0f * ED_TITLE_PAD,
-                                  ed_row_height(),
-                                  ED_PAD };
+                                  line + 2.0f * ed_node_title_padding(n),
+                                  ed_row_height(n),
+                                  ed_node_body_padding(n) };
         pos[i] = (arrange_point){ n->x, n->y };
     }
     for (int i = 0; i < acount(g->edges); i++) {
@@ -5411,18 +6156,9 @@ static void ed_run_stop(editor *e)
     eval_view_set_run(e->ev, NULL);
 }
 
-static void ed_debug_action(
-    editor *e,
-    const char *label,
-    int enabled,
-    const char *reason,
-    void (*action)(editor *)
-)
+static void ed_debug_action(editor *e, const char *label, int enabled, void (*action)(editor *))
 {
     bool clicked = ImGui_MenuItemEx(label, NULL, false, enabled);
-    if (!enabled && ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui_SetTooltip("%s", reason);
-    }
     if (clicked) {
         action(e);
     }
@@ -5460,39 +6196,24 @@ static void ed_draw_debug_menu(editor *e)
         }
         ImGui_EndCombo();
     }
-    const behavior_instance *target_instance = e->inspection_instance
-                                                 ? e->inspection_instance
-                                                 : e->instance;
+    const behavior_instance *target_instance = ed_display_instance(e);
     int attached = target_instance != NULL;
-    int can_dispatch = e->active_graph == e->bp->graph && entry && entry->reference_name;
-    ed_debug_action(
-        e,
-        "Dispatch",
-        can_dispatch,
-        e->active_graph != e->bp->graph
-            ? "Dispatch is available from the default event graph"
-        : !entry || !entry->reference_name
-            ? "Select a named event entry point"
-            : "Dispatch the selected event; attach its runtime automatically",
-        ed_dispatch_selected
-    );
-    flow_state state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
+    int can_dispatch = !ed_inspection_blocked(e) && e->active_graph == e->bp->graph &&
+                       entry && entry->reference_name;
+    ed_debug_action(e, "Dispatch", can_dispatch, ed_dispatch_selected);
+    flow_state state = !ed_inspection_blocked(e) && e->activation
+                         ? flow_run_status(e->activation)
+                         : FLOW_IDLE;
     int can_pause = state == FLOW_RUNNING || state == FLOW_SUSPENDED;
     int can_resume = state == FLOW_PAUSED || state == FLOW_SUSPENDED;
     int can_step = can_resume;
     int can_stop = attached && state != FLOW_IDLE;
-    ed_debug_action(e, "Pause", can_pause, "Pause is available while running or suspended", ed_run_pause);
-    ed_debug_action(e, "Resume", can_resume, "Resume is available only while paused or suspended", ed_run_resume);
-    ed_debug_action(e, "Step", can_step, "Step is available only while paused or suspended", ed_run_step);
-    ed_debug_action(e, "Step Over", can_step, "Step over is available only while paused or suspended", ed_run_step_over);
-    ed_debug_action(e, "Stop", can_stop, "Stop is available only for a live activation", ed_run_stop);
-    ed_debug_action(
-        e,
-        "Show Current Node",
-        flow_run_current_node(e->activation) != NULL,
-        "No execution is paused at a node",
-        ed_run_reveal
-    );
+    ed_debug_action(e, "Pause", can_pause, ed_run_pause);
+    ed_debug_action(e, "Resume", can_resume, ed_run_resume);
+    ed_debug_action(e, "Step", can_step, ed_run_step);
+    ed_debug_action(e, "Step Over", can_step, ed_run_step_over);
+    ed_debug_action(e, "Stop", can_stop, ed_run_stop);
+    ed_debug_action(e, "Show Current Node", flow_run_current_node(e->activation) != NULL, ed_run_reveal);
     ImGui_Separator();
     if (attached) {
         ImGui_Text(
@@ -5501,200 +6222,283 @@ static void ed_draw_debug_menu(editor *e)
             e->activation ? flow_run_steps(e->activation) : 0
         );
     } else if (e->instance_destroyed) {
-        ImGui_TextColored((ImVec4){ 1.0f, 0.6f, 0.3f, 1.0f }, "Runtime snapshot reset; Dispatch will create a new one");
+        ImGui_TextColored((ImVec4){ 1.0f, 0.6f, 0.3f, 1.0f }, "Runtime snapshot reset");
     } else {
         ImGui_Text("Runtime: none  Activation: IDLE  Steps: 0");
     }
 }
 
-static bool ed_can_go_back(const editor *e);
-
-static const char *ed_navigation_name(const editor *e, const graph *g)
+static void ed_keep_document(editor *e)
 {
-    return g == e->bp->graph ? "Events" : ed_graph_display_name(g);
+    if (!e->document_key) {
+        return;
+    }
+    ed_commit_snapshot(e);
+    ed_document_history history = {
+        .key = e->document_key,
+        .json = behavior_asset_save_json(e->bp),
+        .saved = e->saved_snapshot,
+        .undo = e->undo,
+        .redo = e->redo,
+    };
+    apush(e->documents, history);
+    e->document_key = NULL;
+    e->saved_snapshot = NULL;
+    e->undo = NULL;
+    e->redo = NULL;
 }
 
-static void ed_navigation_label(const char *name, float width, char *label, size_t cap)
+int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id, const char *key)
 {
-    snprintf(label, cap, "%s", name);
-    int length = (int)strlen(label);
-    while (length > 0 && ImGui_CalcTextSize(label).x > width) {
-        length--;
-        /* Keep the suffix after a complete UTF-8 character. */
-        while (length > 0 && ((unsigned char)label[length] & 0xc0) == 0x80) {
-            length--;
+    if (e->document_key && strcmp(e->document_key, key) == 0) {
+        return editor_open_graph(e, graph_id);
+    }
+    ed_document_history history = { 0 };
+    int index = -1;
+    for (int i = 0; i < acount(e->documents); i++) {
+        if (strcmp(e->documents[i].key, key) == 0) {
+            history = e->documents[i];
+            index = i;
+            break;
         }
-        if ((size_t)length + 4 > cap) {
+    }
+    behavior_asset *cached = history.json ? behavior_asset_load_json(history.json)
+                                          : NULL;
+    const behavior_asset *target = cached ? cached : source;
+    if (!target || !behavior_asset_find_graph(target, graph_id)) {
+        behavior_asset_free(cached);
+        return -1;
+    }
+    if (index >= 0) {
+        adel(e->documents, index);
+    }
+    ed_keep_document(e);
+    int result = editor_open_behavior_asset(e, target, graph_id);
+    behavior_asset_free(cached);
+    assert(result == 0);
+    if (history.key) {
+        ed_free_string_stack(&e->undo);
+        ed_free_string_stack(&e->redo);
+        free(e->saved_snapshot);
+        e->undo = history.undo;
+        e->redo = history.redo;
+        e->saved_snapshot = history.saved;
+        free(history.json);
+        e->document_key = history.key;
+    } else {
+        e->document_key = xstrdup(key);
+    }
+    return 0;
+}
+
+int editor_reload_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id, const char *key)
+{
+    char *copy = xstrdup(key);
+    if (editor_open_behavior_asset(e, source, graph_id) != 0) {
+        free(copy);
+        return -1;
+    }
+    for (int i = 0; i < acount(e->documents); i++) {
+        ed_document_history *history = &e->documents[i];
+        if (strcmp(history->key, copy) != 0) {
             continue;
         }
-        snprintf(label + length, cap - (size_t)length, "...");
+        free(history->key);
+        free(history->json);
+        free(history->saved);
+        ed_free_string_stack(&history->undo);
+        ed_free_string_stack(&history->redo);
+        adel(e->documents, i);
+        break;
+    }
+    e->document_key = copy;
+    return 0;
+}
+
+bool editor_can_visit_location(
+    const editor *e,
+    const behavior_asset *source,
+    const char *key,
+    const editor_location *location
+)
+{
+    behavior_asset *cached = NULL;
+    const behavior_asset *target = source;
+    if (e->document_key && strcmp(e->document_key, key) == 0) {
+        target = e->bp;
+    } else {
+        for (int i = 0; i < acount(e->documents); i++) {
+            if (strcmp(e->documents[i].key, key) == 0) {
+                cached = behavior_asset_load_json(e->documents[i].json);
+                target = cached;
+                break;
+            }
+        }
+    }
+    graph *graph = target ? behavior_asset_find_graph(target, location->graph_id)
+                          : NULL;
+    bool valid = graph != NULL;
+    for (int i = 0; valid && i < location->node_count; i++) {
+        valid = graph_node_by_id(graph, location->nodes[i]) != NULL;
+    }
+    behavior_asset_free(cached);
+    return valid;
+}
+
+editor_location editor_capture_location(const editor *e)
+{
+    editor_location location = {
+        .graph_id = e->active_graph ? e->active_graph->graph_id : 0,
+        .node_count = acount(e->selected),
+        .pan_x = e->pan.x,
+        .pan_y = e->pan.y,
+        .zoom = e->zoom,
+        .fit = e->fit_mode,
+        .entry_index = e->entry_index,
+        .caller_count = acount(e->graph_callers),
+    };
+    if (location.node_count) {
+        location.nodes = xmalloc((size_t)location.node_count * sizeof *location.nodes);
+        for (int i = 0; i < location.node_count; i++) {
+            location.nodes[i] = e->selected[i]->id;
+        }
+    }
+    assert(location.caller_count <= EDITOR_LOCATION_CALLER_LIMIT);
+    for (int i = 0; i < location.caller_count; i++) {
+        const ed_graph_caller *caller = &e->graph_callers[i];
+        location.callers[i] = (editor_caller_location){
+            .graph_id = caller->view.graph_id,
+            .node_id = caller->node_id,
+            .pan_x = caller->view.pan.x,
+            .pan_y = caller->view.pan.y,
+            .zoom = caller->view.zoom,
+            .entry_index = caller->view.entry_index,
+            .fit = caller->view.fit_mode,
+        };
+    }
+    return location;
+}
+
+static void ed_restore_callers(editor *e, const editor_location *location)
+{
+    assert(location->caller_count >= 0 && location->caller_count <= EDITOR_LOCATION_CALLER_LIMIT);
+    int first = location->caller_count;
+    uint64_t target_id = location->graph_id;
+    for (int i = location->caller_count - 1; i >= 0; i--) {
+        const editor_caller_location *caller = &location->callers[i];
+        graph *parent = behavior_asset_find_graph(e->bp, caller->graph_id);
+        node *call = parent ? graph_node_by_id(parent, caller->node_id) : NULL;
+        if (!ed_is_graph_call(call) || call->reference_id != target_id) {
+            break;
+        }
+        first = i;
+        target_id = caller->graph_id;
+    }
+    aclear(e->graph_callers);
+    for (int i = first; i < location->caller_count; i++) {
+        const editor_caller_location *caller = &location->callers[i];
+        ed_graph_caller restored = {
+            .view = {
+                .graph_id = caller->graph_id,
+                .fit_mode = caller->fit,
+                .pan = { caller->pan_x, caller->pan_y },
+                .zoom = caller->zoom,
+                .view_initialized = 1,
+                .entry_index = caller->entry_index,
+            },
+            .node_id = caller->node_id,
+        };
+        apush(e->graph_callers, restored);
     }
 }
 
-static void ed_draw_graph_navigation(editor *e, float width)
+int editor_restore_location(editor *e, const editor_location *location)
 {
-    float end = ImGui_GetCursorScreenPos().x + width;
-    if (width >= 430.0f) {
-        const char *name = e->bp->name && e->bp->name[0] ? e->bp->name : "Behavior";
-        char title[128];
-        ed_navigation_label(name, ed_min(140.0f, width * 0.2f), title, sizeof title);
-        ImGui_AlignTextToFramePadding();
-        ImGui_TextUnformatted(title);
-        editor_ui_track_item("graph.document");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("%s", name);
+    graph *target = behavior_asset_find_graph(e->bp, location->graph_id);
+    if (!target) {
+        return -1;
+    }
+    for (int i = 0; i < location->node_count; i++) {
+        if (!graph_node_by_id(target, location->nodes[i])) {
+            return -1;
         }
+    }
+    if (editor_open_graph(e, location->graph_id) != 0) {
+        return -1;
+    }
+    ed_restore_callers(e, location);
+    ed_clear_selection(e);
+    e->selected_variable = NULL;
+    e->front_node = NULL;
+    for (int i = 0; i < location->node_count; i++) {
+        ed_add_selected(e, graph_node_by_id(target, location->nodes[i]));
+    }
+    e->pan = (ImVec2){ location->pan_x, location->pan_y };
+    e->zoom = location->zoom;
+    e->fit_mode = location->fit;
+    e->entry_index = location->entry_index;
+    e->view_initialized = 1;
+    e->arrange_pending = false;
+    e->fit_resize_pending = false;
+    e->fit_restore_pending = false;
+    e->camera_moving = false;
+    ed_save_graph_view(e);
+    return 0;
+}
+
+static void ed_draw_transport_button(int index, int columns)
+{
+    const char *ids[] = { "graph.play", "graph.stop", "graph.step", "graph.restart" };
+    bool playing = editor_ui_runtime_playing();
+    bool session = editor_ui_runtime_session();
+    editor_icon glyphs[] = { playing ? EDITOR_ICON_FA_PAUSE : EDITOR_ICON_FA_PLAY,
+                             EDITOR_ICON_FA_STOP,
+                             EDITOR_ICON_FA_FAST_FORWARD,
+                             EDITOR_ICON_FA_REFRESH };
+    editor_ui_command commands[] = { EDITOR_UI_COMMAND_RUNTIME_PLAY_PAUSE,
+                                     EDITOR_UI_COMMAND_RUNTIME_STOP,
+                                     EDITOR_UI_COMMAND_RUNTIME_STEP,
+                                     EDITOR_UI_COMMAND_RUNTIME_RESTART };
+    bool enabled = (index != 1 && index != 3) || session;
+    enabled &= index != 2 || !playing;
+    if (editor_ui_icon_button_sized(ids[index], glyphs[index], enabled, 32.0f)) {
+        editor_ui_run_command(commands[index]);
+    }
+    editor_ui_track_item(ids[index]);
+    if ((index + 1) % columns) {
         ImGui_SameLine();
-        ImGui_TextDisabled("/");
-        ImGui_SameLine();
-    }
-    ImGui_PushStyleColorImVec4(ImGuiCol_Button, (ImVec4){ 0, 0, 0, 0 });
-    int ancestor = -1;
-    uint64_t picked = 0;
-    bool has_pick = false;
-    ImGui_BeginDisabled(!ed_can_go_back(e));
-    if (ImGui_Button("Back")) {
-        ancestor = acount(e->graph_callers) - 1;
-    }
-    editor_ui_track_item("graph.back");
-    ImGui_EndDisabled();
-    ImGui_SameLine();
-    float available = end - ImGui_GetCursorScreenPos().x;
-    int count = acount(e->graph_callers);
-    int visible = (int)((available - 170.0f) / 150.0f);
-    if (visible < 0) {
-        visible = 0;
-    }
-    if (visible > count) {
-        visible = count;
-    }
-    int first = count - visible;
-    if (first > 0) {
-        if (ImGui_Button("...##graph_ancestors")) {
-            ImGui_OpenPopup("graph_ancestors", 0);
-        }
-        editor_ui_track_item("graph.breadcrumb.more");
-        if (ImGui_BeginPopup("graph_ancestors", 0)) {
-            for (int i = 0; i < first; i++) {
-                graph *g = behavior_asset_find_graph(
-                    e->bp,
-                    e->graph_callers[i].view.graph_id
-                );
-                if (!g) {
-                    continue;
-                }
-                ImGui_PushIDInt(i);
-                if (ImGui_MenuItem(ed_navigation_name(e, g))) {
-                    ancestor = i;
-                }
-                char id[64];
-                snprintf(id, sizeof id, "graph.breadcrumb.%d", i);
-                editor_ui_track_item(id);
-                ImGui_PopID();
-            }
-            ImGui_EndPopup();
-        }
-        ImGui_SameLine();
-    }
-    for (int i = first; i < count; i++) {
-        graph *g = behavior_asset_find_graph(e->bp, e->graph_callers[i].view.graph_id);
-        if (!g) {
-            continue;
-        }
-        char label[160];
-        ed_navigation_label(ed_navigation_name(e, g), 110.0f, label, sizeof label);
-        ImGui_PushIDInt(i);
-        if (ImGui_Button(label)) {
-            ancestor = i;
-        }
-        char id[64];
-        snprintf(id, sizeof id, "graph.breadcrumb.%d", i);
-        editor_ui_track_item(id);
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Return to %s", ed_navigation_name(e, g));
-        }
-        ImGui_PopID();
-        ImGui_SameLine();
-        ImGui_TextDisabled("/");
-        ImGui_SameLine();
-    }
-    char current[160];
-    ed_navigation_label(
-        ed_navigation_name(e, e->active_graph),
-        ed_max(30.0f, ed_min(220.0f, end - ImGui_GetCursorScreenPos().x - 35.0f)),
-        current,
-        sizeof current
-    );
-    char label[192];
-    snprintf(label, sizeof label, "%s   ##graph_picker", current);
-    if (ImGui_Button(label)) {
-        ImGui_OpenPopup("graph_picker", 0);
-    }
-    editor_ui_track_item("graph.picker");
-    ImVec2 min = ImGui_GetItemRectMin();
-    ImVec2 max = ImGui_GetItemRectMax();
-    ImVec2 center = { max.x - 10.0f, (min.y + max.y) * 0.5f };
-    ImDrawList *dl = ImGui_GetWindowDrawList();
-    ImU32 color = IM_COL32(157, 165, 178, 255);
-    ImDrawList_AddLineEx(
-        dl,
-        (ImVec2){ center.x - 3, center.y - 1.5f },
-        (ImVec2){ center.x, center.y + 1.5f },
-        color,
-        1.5f
-    );
-    ImDrawList_AddLineEx(
-        dl,
-        (ImVec2){ center.x, center.y + 1.5f },
-        (ImVec2){ center.x + 3, center.y - 1.5f },
-        color,
-        1.5f
-    );
-    if (ImGui_IsItemHovered(0)) {
-        ImGui_SetTooltip(
-            "%s / %s — choose a graph",
-            e->bp->name ? e->bp->name : "Behavior",
-            ed_navigation_name(e, e->active_graph)
-        );
-    }
-    if (ImGui_BeginPopup("graph_picker", 0)) {
-        for (int i = 0; i < acount(e->bp->graphs); i++) {
-            graph *g = e->bp->graphs[i];
-            ImGui_PushIDInt(i);
-            if (ImGui_MenuItemEx(ed_navigation_name(e, g), NULL, g == e->active_graph, true)) {
-                picked = g->graph_id;
-                has_pick = true;
-            }
-            char id[64];
-            snprintf(id, sizeof id, "graph.picker.%llu", (unsigned long long)g->graph_id);
-            editor_ui_track_item(id);
-            ImGui_PopID();
-        }
-        ImGui_EndPopup();
-    }
-    ImGui_PopStyleColor();
-    if (ancestor >= 0) {
-        editor_graph_ancestor(e, ancestor);
-    }
-    if (has_pick) {
-        editor_open_graph(e, picked);
     }
 }
 
 static void ed_draw_toolbar(editor *e)
 {
+    bool show = ImGui_IsWindowHovered(ImGuiHoveredFlags_ChildWindows) ||
+                ImGui_IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+    float alpha = editor_ui_controls_opacity("graph.controls.opacity", show);
+    if (!show && alpha == 0) {
+        return;
+    }
     ImVec2 saved = ImGui_GetCursorScreenPos();
-    int buttons = e->ui_context == EDITOR_UI_CONTEXT_SYSTEM ? 5 : 6;
-    float width = buttons * 32.0f + (buttons - 1) * 6.0f + 16.0f;
-    bool vertical = e->canvas_size.x < width + 24.0f;
-    float height = 48.0f;
-    if (vertical) {
-        height = width;
-        width = 48.0f;
+    int buttons = e->ui_context == EDITOR_UI_CONTEXT_SYSTEM ? 6 : 7;
+    int columns = (int)((e->canvas_size.x - 34.0f) / 38.0f);
+    if (columns < 1) {
+        columns = 1;
+    }
+    if (columns > buttons) {
+        columns = buttons;
+    }
+    int rows = (buttons + columns - 1) / columns;
+    float width = columns * 32.0f + (columns - 1) * 6.0f + 16.0f;
+    float height = rows * 32.0f + (rows - 1) * 6.0f + 16.0f;
+    bool overflow = height + 24.0f > e->canvas_size.y || columns < 2;
+    if (overflow) {
+        width = 86.0f;
+        height = 48.0f;
     }
     ImVec2 min = { e->canvas_min.x + ed_max(8.0f, e->canvas_size.x - width - 12.0f),
                    e->canvas_min.y + 12.0f };
     ImGui_SetCursorScreenPos(min);
+    ImGui_PushStyleVar(ImGuiStyleVar_Alpha, ImGui_GetStyle()->Alpha * fmaxf(alpha, 1.0f / 255));
     ImGui_PushStyleVar(ImGuiStyleVar_ChildRounding, 9.0f);
     ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 8.0f, 8.0f });
     ImGui_PushStyleVarImVec2(ImGuiStyleVar_ItemSpacing, (ImVec2){ 6.0f, 6.0f });
@@ -5703,153 +6507,113 @@ static void ed_draw_toolbar(editor *e)
         "graph_floating_controls",
         (ImVec2){ width, height },
         ImGuiChildFlags_AlwaysUseWindowPadding,
-        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+            (show ? 0 : ImGuiWindowFlags_NoInputs)
     );
     if (visible) {
-        bool playing = editor_ui_runtime_playing();
-        bool session = editor_ui_runtime_session();
-        if (editor_ui_icon_button_sized("graph_play_button", playing ? 0xf04c : 0xf04b, true, 32.0f)) {
-            editor_ui_run_command(EDITOR_UI_COMMAND_RUNTIME_PLAY_PAUSE);
-        }
-        editor_ui_track_item("graph.play");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip(playing ? "Pause simulation" : "Play simulation");
-        }
-        if (!vertical) {
-            ImGui_SameLine();
-        }
-        if (editor_ui_icon_button_sized("graph_stop_button", 0xf04d, session, 32.0f)) {
-            editor_ui_run_command(EDITOR_UI_COMMAND_RUNTIME_STOP);
-        }
-        editor_ui_track_item("graph.stop");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Stop simulation");
-        }
-        if (!vertical) {
-            ImGui_SameLine();
-        }
-        if (editor_ui_icon_button_sized("graph_step_button", 0xf051, !playing, 32.0f)) {
-            editor_ui_run_command(EDITOR_UI_COMMAND_RUNTIME_STEP);
-        }
-        editor_ui_track_item("graph.step");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Step simulation");
-        }
-        ImVec2 separator = ImGui_GetItemRectMax();
-        ImDrawList *draw = ImGui_GetWindowDrawList();
-        if (!vertical) {
-            float x = separator.x + 3.0f;
-            ImDrawList_AddLineEx(
-                draw,
-                (ImVec2){ x, separator.y - 26.0f },
-                (ImVec2){ x, separator.y - 6.0f },
-                IM_COL32(74, 79, 89, 255),
-                1.0f
-            );
-            ImGui_SameLine();
-        } else {
-            float y = separator.y + 3.0f;
-            ImDrawList_AddLineEx(
-                draw,
-                (ImVec2){ separator.x - 26.0f, y },
-                (ImVec2){ separator.x - 6.0f, y },
-                IM_COL32(74, 79, 89, 255),
-                1.0f
-            );
-        }
-        if (editor_ui_icon_button_sized("graph_actions_button", 0xf141, true, 32.0f)) {
-            ImGui_OpenPopup("graph_actions", 0);
-        }
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Graph actions");
-        }
-        editor_ui_track_item("graph.actions");
-        if (ImGui_BeginPopup("graph_actions", 0)) {
-            const char *reason = behavior_asset_can_extract_function(
-                e->bp,
-                e->active_graph,
-                e->selected,
-                acount(e->selected)
-            );
-            if (ImGui_MenuItemEx("Extract Function...", NULL, false, !reason)) {
-                ed_request_extraction(e);
+        bool controls = true;
+        if (overflow) {
+            ed_draw_transport_button(0, 2);
+            if (editor_ui_icon_button_sized("graph_more_button", EDITOR_ICON_FA_ELLIPSIS_V, true, 32.0f)) {
+                editor_ui_open_popup("graph_more");
             }
-            editor_ui_track_item("graph.extract");
-            if (reason && ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                ImGui_SetTooltip("%s", reason);
+            editor_ui_track_item("graph.more");
+            controls = editor_ui_begin_popup("graph_more");
+            columns = 1;
+        }
+        if (controls) {
+            for (int i = overflow ? 1 : 0; i < 4; i++) {
+                ed_draw_transport_button(i, columns);
             }
-            ImGui_Separator();
-            if (ImGui_MenuItem("Compile")) {
-                ed_compile(e);
+            if (editor_ui_icon_button_sized("graph_actions_button", EDITOR_ICON_FA_ELLIPSIS_V, true, 32.0f)) {
+                editor_ui_open_popup("graph_actions");
             }
-            if (ImGui_MenuItemEx(
-                    "Arrange nodes",
-                    NULL,
-                    false,
-                    acount(e->active_graph->nodes) > 0
-                )) {
-                ed_auto_arrange(e);
+            editor_ui_track_item("graph.actions");
+            if (editor_ui_begin_popup("graph_actions")) {
+                const char *reason = behavior_asset_can_extract_function(
+                    e->bp,
+                    e->active_graph,
+                    e->selected,
+                    acount(e->selected)
+                );
+                if (ImGui_MenuItemEx("Extract Function...", NULL, false, !reason)) {
+                    ed_request_extraction(e);
+                }
+                editor_ui_track_item("graph.extract");
+                ImGui_Separator();
+                if (ImGui_MenuItem("Compile")) {
+                    ed_compile(e);
+                }
+                if (ImGui_MenuItemEx(
+                        "Arrange nodes",
+                        NULL,
+                        false,
+                        acount(e->active_graph->nodes) > 0
+                    )) {
+                    ed_auto_arrange(e);
+                }
+                editor_ui_track_item("graph.arrange");
+                if (ImGui_MenuItemEx(
+                        "Fit graph",
+                        NULL,
+                        false,
+                        acount(e->active_graph->nodes) > 0
+                    )) {
+                    ed_zoom_fit(e, true);
+                }
+                ImGui_Separator();
+                if (ImGui_MenuItemEx("Undo", NULL, false, acount(e->undo) > 0)) {
+                    ed_undo(e);
+                }
+                editor_ui_track_item("graph.undo");
+                if (ImGui_MenuItemEx("Redo", NULL, false, acount(e->redo) > 0)) {
+                    ed_redo(e);
+                }
+                editor_ui_track_item("graph.redo");
+                editor_ui_end_popup();
             }
-            editor_ui_track_item("graph.arrange");
-            if (ImGui_MenuItemEx(
-                    "Fit graph",
-                    NULL,
-                    false,
-                    acount(e->active_graph->nodes) > 0
+            if (5 % columns) {
+                ImGui_SameLine();
+            }
+            if (editor_ui_icon_button_sized(
+                    "graph_fit_button",
+                    EDITOR_ICON_FA_EXPAND,
+                    acount(e->active_graph->nodes) > 0,
+                    32.0f
                 )) {
                 ed_zoom_fit(e, true);
             }
-            ImGui_Separator();
-            if (ImGui_MenuItemEx("Undo", NULL, false, acount(e->undo) > 0)) {
-                ed_undo(e);
+            editor_ui_track_item("graph.fit");
+            if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM) {
+                if (6 % columns) {
+                    ImGui_SameLine();
+                }
+                if (editor_ui_icon_button_sized("graph_debug_button", EDITOR_ICON_FA_BUG, true, 32.0f)) {
+                    editor_ui_open_popup("graph_debug");
+                }
+                editor_ui_track_item("graph.debug");
+                if (editor_ui_begin_popup("graph_debug")) {
+                    editor_ui_draw_graph_debug_header();
+                    ImGui_Separator();
+                    ed_draw_debug_menu(e);
+                    editor_ui_end_popup();
+                }
             }
-            editor_ui_track_item("graph.undo");
-            if (ImGui_MenuItemEx("Redo", NULL, false, acount(e->redo) > 0)) {
-                ed_redo(e);
-            }
-            editor_ui_track_item("graph.redo");
-            ImGui_EndPopup();
-        }
-        if (!vertical) {
-            ImGui_SameLine();
-        }
-        if (editor_ui_icon_button(
-                "graph_fit_button",
-                0xf065,
-                acount(e->active_graph->nodes) > 0
-            )) {
-            ed_zoom_fit(e, true);
-        }
-        editor_ui_track_item("graph.fit");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Fit graph · current zoom %.0f%%", e->zoom * 100.0f);
-        }
-        if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM) {
-            if (!vertical) {
-                ImGui_SameLine();
-            }
-            if (editor_ui_icon_button_sized("graph_debug_button", 0xf188, true, 32.0f)) {
-                ImGui_OpenPopup("graph_debug", 0);
-            }
-            if (ImGui_IsItemHovered(0)) {
-                ImGui_SetTooltip("Graph debugging");
-            }
-            editor_ui_track_item("graph.debug");
-            if (ImGui_BeginPopup("graph_debug", 0)) {
-                ed_draw_debug_menu(e);
-                ImGui_EndPopup();
+            if (overflow) {
+                editor_ui_end_popup();
             }
         }
     }
-    e->controls_hovered |= ImGui_IsWindowHovered(ImGuiHoveredFlags_ChildWindows) ||
-                           ed_point_in_rect(
-                               ImGui_GetIO()->MousePos,
-                               min,
-                               ed_add(min, (ImVec2){ width, height })
-                           );
+    e->controls_hovered |= show &&
+                           (ImGui_IsWindowHovered(ImGuiHoveredFlags_ChildWindows) ||
+                            ed_point_in_rect(
+                                ImGui_GetIO()->MousePos,
+                                min,
+                                ed_add(min, (ImVec2){ width, height })
+                            ));
     ImGui_EndChild();
     ImGui_PopStyleColor();
-    ImGui_PopStyleVarEx(3);
+    ImGui_PopStyleVarEx(4);
     ImGui_SetCursorScreenPos(saved);
 }
 
@@ -5860,28 +6624,31 @@ static void ed_draw_log(editor *e)
     ImGui_EndDisabled();
     if (clear) {
         e->log_count = 0;
+        ed_rebuild_log_text(e);
     }
     int visible = ImGui_BeginChild("output_log", (ImVec2){ 0.0f, 0.0f }, 0, 0);
     if (visible) {
         int follow = ImGui_GetScrollY() >= ImGui_GetScrollMaxY() - 2.0f;
-        for (int i = 0; i < e->log_count; i++) {
-            const ed_log_entry *entry = &e->log[i];
-            ImGui_PushIDInt(i);
-            char label[ED_LOG_MESSAGE + 128];
-            snprintf(
-                label,
-                sizeof label,
-                "[%8.3f | step %lu] %s: %s",
-                entry->timestamp,
-                entry->step,
-                entry->origin && entry->origin->desc ? entry->origin->desc->name
-                                                     : "<unknown>",
-                entry->message
-            );
-            if (ImGui_Selectable(label) && entry->origin) {
-                editor_reveal_node(e, (node *)entry->origin);
+        if (e->log_count) {
+            int lines = 1;
+            for (const char *text = e->log_text; *text; text++) {
+                lines += *text == '\n';
             }
-            ImGui_PopID();
+            float height = ImGui_GetFontSize() * lines +
+                           ImGui_GetStyle()->FramePadding.y * 2.0f;
+            ImGui_PushStyleColorImVec4(ImGuiCol_FrameBg, (ImVec4){ 0 });
+            ImGui_PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+            ImGui_InputTextMultilineEx(
+                "##output_log_text",
+                e->log_text,
+                e->log_text_capacity,
+                (ImVec2){ 0.0f, height },
+                ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_NoUndoRedo,
+                NULL,
+                NULL
+            );
+            ImGui_PopStyleVar();
+            ImGui_PopStyleColor();
         }
         if (follow && e->log_count) {
             ImGui_SetScrollHereY(1.0f);
@@ -5924,9 +6691,26 @@ static void ed_draw_compiler_results(editor *e)
     if (!e->compile.error_count && !e->compile.warning_count) {
         ImGui_TextUnformatted("No compiler diagnostics.");
     }
-    for (int i = 0; i < acount(e->compile.items); i++) {
-        const compile_diagnostic *item = &e->compile.items[i];
-        ImGui_Text("%s  %s", item->severity == CMPL_ERROR ? "Error:" : "Warning:", item->message);
+    if (e->compile_text && e->compile_text[0]) {
+        int lines = 1;
+        for (const char *text = e->compile_text; *text; text++) {
+            lines += *text == '\n';
+        }
+        float height = ImGui_GetFontSize() * lines +
+                       ImGui_GetStyle()->FramePadding.y * 2.0f;
+        ImGui_PushStyleColorImVec4(ImGuiCol_FrameBg, (ImVec4){ 0 });
+        ImGui_PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+        ImGui_InputTextMultilineEx(
+            "##compiler_results_text",
+            e->compile_text,
+            e->compile_text_capacity,
+            (ImVec2){ 0.0f, height },
+            ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_NoUndoRedo,
+            NULL,
+            NULL
+        );
+        ImGui_PopStyleVar();
+        ImGui_PopStyleColor();
     }
     ImGui_End();
 }
@@ -6119,6 +6903,17 @@ static void ed_handle_input(editor *e)
         e->pan = ed_add(e->pan, io->MouseDelta);
         return;
     }
+    if (e->active_graph->math_expression) {
+        if (hovered && mouse_clicked) {
+            ed_node_view *view = ed_hit_node(e, mouse);
+            if (view) {
+                ed_select_node(e, view->n, ed_selection_modifier(io));
+            } else {
+                ed_clear_selection(e);
+            }
+        }
+        return;
+    }
     if (hovered && ImGui_IsMouseClicked(1) && !control_down) {
         ed_open_context_menu(e, mouse);
         return;
@@ -6229,6 +7024,9 @@ static void ed_handle_input(editor *e)
 
 static void ed_handle_shortcuts(editor *e)
 {
+    if (e->active_graph->math_expression) {
+        return;
+    }
     ImGuiIO *io = ImGui_GetIO();
     if (!ImGui_IsWindowFocused(0)) {
         return;
@@ -6272,6 +7070,7 @@ editor *editor_new(behavior_asset *bp)
         return NULL;
     }
     e->bp = bp;
+    e->document_key = xstrdup(bp->name);
     e->ui_context = EDITOR_UI_CONTEXT_BEHAVIOR;
     e->inspector_active = true;
     e->graph_visible = 1;
@@ -6283,6 +7082,7 @@ editor *editor_new(behavior_asset *bp)
     e->ev = eval_view_new();
     eval_view_set_formatter(e->ev, e->value_formatter, e->value_formatter_user);
     e->icon_font = ed_load_icon_font();
+    e->math_font = ed_load_math_font();
     e->zoom = 1.0f;
     return e;
 }
@@ -6383,6 +7183,15 @@ flow_run *editor_dispatch(editor *e, const char *name, flow_inputs inputs, flow_
     if (!e) {
         return NULL;
     }
+    if (ed_inspection_blocked(e)) {
+        if (error) {
+            *error = (flow_error){
+                .code = FLOW_ERR_STATE,
+                .message = "Debug target is unavailable or has unapplied edits"
+            };
+        }
+        return NULL;
+    }
     if (e->inspection_instance) {
         return editor_dispatch_instance(e, (behavior_instance *)e->inspection_instance, name, inputs, error);
     }
@@ -6438,6 +7247,8 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
         return -1;
     }
     ed_begin_authoring_edit(e);
+    free(e->document_key);
+    e->document_key = NULL;
     char *json = behavior_asset_save_json(source);
     if (!json) {
         return -1;
@@ -6601,7 +7412,9 @@ const graph *editor_active_graph(const editor *e)
 
 int editor_command_apply(editor *e, editor_command command)
 {
-    if (!e || !e->bp) {
+    if (!e || !e->bp ||
+        (e->active_graph->math_expression && command.kind != EDITOR_COMMAND_OPEN_GRAPH &&
+         command.kind != EDITOR_COMMAND_RENAME_GRAPH)) {
         return -1;
     }
     switch (command.kind) {
@@ -6783,6 +7596,7 @@ void editor_query_state(const editor *e, editor_query *out)
                          editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
     out->compile = &e->compile;
     out->inspection_instance = e->inspection_instance;
+    out->inspection_blocked = ed_inspection_blocked(e);
     out->preview_error = eval_view_error(e->ev);
     out->can_go_back = ed_can_go_back(e);
     out->zoom = e->zoom;
@@ -6814,6 +7628,21 @@ void editor_set_inspection_instance(editor *e, const behavior_instance *instance
     if (instance) {
         e->activation = (flow_run *)e->inspection_run;
     }
+}
+
+void editor_set_inspection_blocked(editor *e, bool blocked)
+{
+    e->inspection_blocked = blocked;
+    if (!blocked) {
+        return;
+    }
+    e->inspection_instance = NULL;
+    e->inspection_run = NULL;
+    e->inspection_trace = NULL;
+    e->inspection_trace_count = 0;
+    e->activation = NULL;
+    eval_view_set_instance(e->ev, NULL);
+    eval_view_set_run(e->ev, NULL);
 }
 
 void editor_set_inspection_run(editor *e, const flow_run *run)
@@ -6851,10 +7680,24 @@ void editor_free(editor *e)
     if (!e) {
         return;
     }
+    free(e->math_text);
+    free(e->math_saved);
     ed_free_string_stack(&e->undo);
     ed_free_string_stack(&e->redo);
+    free(e->document_key);
+    for (int i = 0; i < acount(e->documents); i++) {
+        ed_document_history *history = &e->documents[i];
+        free(history->key);
+        free(history->json);
+        free(history->saved);
+        ed_free_string_stack(&history->undo);
+        ed_free_string_stack(&history->redo);
+    }
+    afree(e->documents);
     free(e->pending_snapshot);
     free(e->clipboard);
+    free(e->log_text);
+    free(e->compile_text);
     free(e->edit_revision_snapshot);
     free(e->saved_snapshot);
     ed_destroy_preview(e);
@@ -6871,8 +7714,59 @@ void editor_free(editor *e)
     free(e);
 }
 
+static void ed_record_math_edit(editor *e, char *before)
+{
+    e->edit_pending = 1;
+    ed_push_string(&e->undo, before);
+    ed_free_string_stack(&e->redo);
+}
+
+node *editor_add_math_expression(editor *e, const char *source, float x, float y, math_expression_error *error)
+{
+    if (!e || e->active_graph->math_expression) {
+        return NULL;
+    }
+    ed_begin_authoring_edit(e);
+    char *before = ed_snapshot(e);
+    node *n = math_expression_add(e->bp, e->active_graph, source, error);
+    if (!n) {
+        free(before);
+        return NULL;
+    }
+    n->x = x;
+    n->y = y;
+    ed_record_math_edit(e, before);
+    ed_select_node(e, n, 0);
+    return n;
+}
+
+int editor_set_math_expression(editor *e, node *call, const char *source, math_expression_error *error)
+{
+    if (!e || e->active_graph->math_expression) {
+        return -1;
+    }
+    const char *current = math_expression_source(e->bp, call);
+    if (source && current && !strcmp(source, current)) {
+        return 0;
+    }
+    ed_begin_authoring_edit(e);
+    char *before = ed_snapshot(e);
+    if (math_expression_set(e->bp, call, source, error) != 0) {
+        free(before);
+        return -1;
+    }
+    ed_record_math_edit(e, before);
+    if (e->fit_mode) {
+        ed_zoom_fit(e, true);
+    }
+    return 0;
+}
+
 node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
 {
+    if (e->active_graph->math_expression) {
+        return NULL;
+    }
     ed_snapshot_before(e);
     node *n = graph_add_node(e->active_graph, desc);
     if (!n) {
@@ -6993,7 +7887,8 @@ void editor_set_graph_visible(editor *e, int visible)
 
 bool editor_has_inspection_selection(const editor *e)
 {
-    return e->selected_variable || acount(e->selected) || acount(e->selected_links);
+    return e->active_graph->math_expression || e->selected_variable ||
+           acount(e->selected) || acount(e->selected_links);
 }
 
 void editor_set_inspector_active(editor *e, bool active)
@@ -7013,7 +7908,12 @@ void editor_set_save_handler(editor *e, editor_save_handler handler, void *user)
 int editor_host_captures_keyboard(void)
 {
     const ImGuiIO *io = ImGui_GetIO();
-    return io->WantCaptureKeyboard || io->WantTextInput;
+    /* Navigation claims every key in a focused window containing controls.
+     * Callers already require viewport focus; only active UI interaction should
+     * prevent that viewport from receiving gameplay keys. */
+    return io->WantTextInput || ImGui_IsAnyItemActive() ||
+           ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup) ||
+           (io->WantCaptureKeyboard && !io->NavActive);
 }
 
 void editor_set_event_catalog(editor *e, const editor_event_signature *events, int count)
@@ -7071,6 +7971,9 @@ static void ed_make_field_space(editor *e, node *expanded)
 
 static void ed_apply_field_request(editor *e)
 {
+    if (e->active_graph->math_expression) {
+        return;
+    }
     uint64_t node_id = e->fields_node;
     e->fields_node = 0;
     if (!node_id) {
@@ -7159,17 +8062,11 @@ void editor_draw(editor *e)
     }
     ImGuiIO *io = ImGui_GetIO();
     flow_state preview_state = e->activation ? flow_run_status(e->activation) : FLOW_IDLE;
-    const behavior_instance *display_instance = e->inspection_instance
-                                                  ? e->inspection_instance
-                                                  : e->instance;
-    const flow_run *display_run = e->inspection_run
-                                    ? e->inspection_run
-                                    : (e->inspection_instance
-                                           ? NULL
-                                           : (ed_activation_live(e) ? e->activation
-                                                                    : NULL));
+    const behavior_instance *display_instance = ed_display_instance(e);
+    const flow_run *display_run = ed_display_run(e);
     eval_view_set_instance(e->ev, display_instance);
-    if (!e->inspection_run && editor_preview_allowed(preview_state)) {
+    if (ed_inspection_blocked(e) ||
+        (!e->inspection_run && editor_preview_allowed(preview_state))) {
         eval_view_refresh(e->ev, e->active_graph);
     }
     eval_view_set_run(e->ev, display_run);
@@ -7186,17 +8083,9 @@ void editor_draw(editor *e)
             ImGui_End();
         } else {
             ed_draw_extract_popup(e);
-            ed_draw_graph_navigation(e, ImGui_GetContentRegionAvail().x);
             /* Toolbar actions can replace the document or destroy its preview. */
-            eval_view_set_instance(e->ev, e->inspection_instance ? e->inspection_instance : e->instance);
-            eval_view_set_run(
-                e->ev,
-                e->inspection_run
-                    ? e->inspection_run
-                    : (e->inspection_instance
-                           ? NULL
-                           : (ed_activation_live(e) ? e->activation : NULL))
-            );
+            eval_view_set_instance(e->ev, ed_display_instance(e));
+            eval_view_set_run(e->ev, ed_display_run(e));
             ImVec2 canvas_min = ImGui_GetCursorScreenPos();
             ImVec2 canvas_size = ImGui_GetContentRegionAvail();
             /* Resizing a neighboring pane must not move the node under the
@@ -7206,15 +8095,8 @@ void editor_draw(editor *e)
             e->controls_hovered = 0;
             ed_draw_toolbar(e);
             /* Floating toolbar actions can invalidate preview pointers. */
-            eval_view_set_instance(e->ev, e->inspection_instance ? e->inspection_instance : e->instance);
-            eval_view_set_run(
-                e->ev,
-                e->inspection_run
-                    ? e->inspection_run
-                    : (e->inspection_instance
-                           ? NULL
-                           : (ed_activation_live(e) ? e->activation : NULL))
-            );
+            eval_view_set_instance(e->ev, ed_display_instance(e));
+            eval_view_set_run(e->ev, ed_display_run(e));
             /* Layout needs the active font and a measured canvas. Opening only
              * schedules this work; inspecting another pane never schedules it. */
             if (e->arrange_pending && canvas_size.x > 0.0f && canvas_size.y > 0.0f) {

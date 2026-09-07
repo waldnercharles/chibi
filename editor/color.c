@@ -17,7 +17,7 @@ bool editor_color_draw(editor_color_state *state, const char *id, unsigned *valu
     }
     ImVec4 color = { rgba[0], rgba[1], rgba[2], rgba[3] };
     ImGui_PushID(id);
-    if (ImGui_ColorButton("##swatch", color, 0)) {
+    if (ImGui_ColorButtonEx("##swatch", color, 0, (ImVec2){ ImGui_CalcItemWidth(), ImGui_GetFrameHeight() })) {
         state->changed = false;
         snprintf(state->hex, sizeof state->hex, "%08X", *value);
         ImGui_OpenPopup("picker", 0);

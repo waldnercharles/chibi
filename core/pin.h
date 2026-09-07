@@ -73,6 +73,7 @@ enum
     PIN_FLAG_REFERENCE = 1u << 2,
     PIN_FLAG_SERVICE = 1u << 3,
     PIN_FLAG_WATCH = 1u << 4,
+    PIN_FLAG_DEFAULT_SELF = 1u << 5,
 };
 
 /* A descriptor pin is also the shape of an instance pin. Descriptor fields

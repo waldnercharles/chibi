@@ -37,13 +37,23 @@ const char *game_authored_data_json(const game_authored_data *data);
 const char *game_authored_data_path(const game_authored_data *data);
 int game_authored_data_set_path(game_authored_data *data, const char *path);
 int game_authored_data_set_json(game_authored_data *data, const char *json, char *error, size_t error_size);
-int game_authored_data_save(const game_authored_data *data, const char *path);
+int game_authored_data_save(game_authored_data *data, const char *path);
 int game_authored_data_apply(game_authored_data *data, game_authored_data_apply_fn apply, void *user);
 int game_authored_data_reload(game_authored_data *data, char *error, size_t error_size);
 int game_authored_data_revert(game_authored_data *data);
+/* Dirty compares against applied values; unsaved compares against the last save/load. */
 int game_authored_data_dirty(const game_authored_data *data);
+int game_authored_data_unsaved(const game_authored_data *data);
 const char *game_authored_data_kind_name(game_data_kind kind);
 const char *game_authored_data_type_name(game_data_kind kind);
 int game_authored_data_read_number(const game_authored_data *data, const char *field, double *value);
+
+int game_authored_data_set_number(
+    game_authored_data *data,
+    const char *field,
+    double value,
+    char *error,
+    size_t error_size
+);
 
 #endif

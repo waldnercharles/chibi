@@ -9,8 +9,8 @@
 int pin_compatible(const pin_spec *a, const pin_spec *b);
 
 /* TYPE-10 Real auto-coercion: if v->type differs from target->type only as
- * F32<->F64, convert in place and return 1; else return 0 unchanged. TYPE-7
- * explicit conversions are future CAT-26 work and land here later. */
+ * F32<->F64, convert in place and return 1; else return 0 unchanged.
+ * Other scalar conversions use descriptors from conv_nodes.h. */
 int pin_coerce(pin_value *v, const pin_spec *target);
 
 #endif

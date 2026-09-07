@@ -9,6 +9,9 @@
 #include "pin_fmt.h"
 #include "registry.h"
 
+#include <assert.h>
+#include <limits.h>
+#include <math.h>
 #include <string.h>
 
 static pin_value conv_to_string(const pin_value *inputs, int input_count, arena *a)
@@ -42,16 +45,83 @@ static pin_value conv_to_real(const pin_value *inputs, int input_count, arena *a
     return r;
 }
 
-static pin_value conv_to_i64(const pin_value *inputs, int input_count, arena *a)
+static double real_value(const pin_value *value)
 {
-    (void)input_count;
-    (void)a;
-    pin_value r = { .type = PIN_I64, .type_name = "int64", .i64 = 0 };
-    if (inputs[0].type == PIN_I32) {
-        r.i64 = (int64_t)inputs[0].i;
-    }
-    return r;
+    assert(value->type == PIN_F32 || value->type == PIN_F64);
+    return value->type == PIN_F32 ? value->f : value->d;
 }
+
+/* Test bounds before casting: converting an out-of-range real is undefined.
+ * In particular, INT64_MAX rounds up to 2^63 when represented as double. */
+static int64_t real_integer(double value, int64_t minimum, int64_t maximum)
+{
+    if (isnan(value)) {
+        return 0;
+    }
+    if (value <= (double)minimum) {
+        return minimum;
+    }
+    if (value >= (double)maximum) {
+        return maximum;
+    }
+    return (int64_t)value;
+}
+
+static pin_value conv_to_byte(const pin_value *inputs, int, arena *)
+{
+    return (pin_value){ .type = PIN_U8,
+                        .type_name = "byte",
+                        .u8 = (uint8_t)real_integer(real_value(inputs), 0, UINT8_MAX) };
+}
+
+static pin_value conv_to_integer(const pin_value *inputs, int, arena *)
+{
+    return (pin_value){ .type = PIN_I32,
+                        .type_name = "int",
+                        .i = (int32_t)real_integer(real_value(inputs), INT32_MIN, INT32_MAX) };
+}
+
+static pin_value conv_to_i64(const pin_value *inputs, int, arena *)
+{
+    int64_t value = inputs->type == PIN_I32
+                      ? inputs->i
+                      : real_integer(real_value(inputs), INT64_MIN, INT64_MAX);
+    return (pin_value){ .type = PIN_I64, .type_name = "int64", .i64 = value };
+}
+
+static pin_spec real_integer_inputs[] = {
+    { "Value", PIN_F64, "double", PIN_DATA },
+};
+static pin_spec to_byte_outputs[] = {
+    { "Byte", PIN_U8, "byte", PIN_DATA },
+};
+static pin_spec to_integer_outputs[] = {
+    { "Integer", PIN_I32, "int", PIN_DATA },
+};
+node_desc NODE_To_Byte = {
+    .name = "To Byte",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = real_integer_inputs,
+    .outputs = to_byte_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = conv_to_byte,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Conversion",
+    .keywords = "convert cast truncate saturate byte uint8",
+};
+node_desc NODE_To_Integer = {
+    .name = "To Integer",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = real_integer_inputs,
+    .outputs = to_integer_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = conv_to_integer,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Conversion",
+    .keywords = "convert cast truncate saturate integer int32",
+};
 
 static pin_spec to_string_inputs[] = {
     { "Value", PIN_STR, "const char *", PIN_DATA },
@@ -92,7 +162,7 @@ node_desc NODE_To_Real = {
 };
 
 static pin_spec to_i64_inputs[] = {
-    { "Value", PIN_I32, "int", PIN_DATA },
+    { "Value", PIN_F64, "double", PIN_DATA },
 };
 static pin_spec to_i64_outputs[] = {
     { "Integer64", PIN_I64, "int64", PIN_DATA },
@@ -127,12 +197,20 @@ static int to_string_source(pin_type t)
     }
 }
 
-/* TYPE-7: integer to float, integer widening within one signedness, and any
- * scalar to string. Real to Integer is lossy and deliberately absent.
+/* TYPE-7: explicit numeric conversions include saturating real-to-integer
+ * truncation, integer-to-real, integer widening, and scalar-to-string.
  * TYPE-10 makes F32 and F64 one Real category, so an integer feeds either
  * width through To Real; the output is F64 and the boundary coerces it. */
 const node_desc *conversion_for(pin_type from, pin_type to)
 {
+    if (from == PIN_F32 || from == PIN_F64) {
+        switch (to) {
+            case PIN_U8: return &NODE_To_Byte;
+            case PIN_I32: return &NODE_To_Integer;
+            case PIN_I64: return &NODE_To_Integer64;
+            default: break;
+        }
+    }
     int real_target = to == PIN_F32 || to == PIN_F64;
     if ((from == PIN_U8 || from == PIN_I32 || from == PIN_I64) && real_target) {
         return &NODE_To_Real;

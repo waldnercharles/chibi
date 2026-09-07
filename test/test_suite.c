@@ -80,6 +80,7 @@ static pin_spec g_editor_float_inputs[] = {
 };
 static pin_spec g_editor_int_inputs[] = {
     { "Value", PIN_I32, "int", PIN_DATA },
+    { "Condition", PIN_BOOL, "bool", PIN_DATA },
 };
 static node_desc g_editor_float_sink_desc = {
     .name = "editor_float_sink",
@@ -93,7 +94,7 @@ static node_desc g_editor_float_desc = {
 };
 static node_desc g_editor_int_desc = {
     .name = "editor_int_sink",
-    .input_count = 1,
+    .input_count = 2,
     .inputs = g_editor_int_inputs,
 };
 
@@ -150,7 +151,7 @@ static void run_editor_command_checks(void)
     editor_tick(e, 0.0);
     editor_command invalid_connect = {
         .kind = EDITOR_COMMAND_CONNECT_DATA,
-        .data.connect = { source->id, 0, sink->id, 0 },
+        .data.connect = { source->id, 0, sink->id, 1 },
     };
     check(editor_command_apply(e, invalid_connect) == -1, "an invalid connection is rejected by the command seam");
     editor_query_state(e, &state);
@@ -1884,7 +1885,17 @@ extern void test_function_fields();
 extern void test_flags();
 extern void test_particles();
 extern void test_labels();
+extern bool test_ui_keyboard();
+extern bool test_gameplay_keyboard();
+extern void test_math_expression();
+extern void test_behavior_math();
 extern void test_appearance();
+extern void test_retained_components();
+extern void test_authored_data();
+extern void test_editor_flow();
+extern void test_component_fields();
+extern void test_scene_navigation();
+extern void test_scene_debug();
 extern void test_appearance_geometry();
 extern void test_orientation();
 extern void test_movement_input();
@@ -5546,7 +5557,7 @@ TEST_CASE(all_checks)
         check(conversion_for(PIN_BOOL, PIN_STR) == &NODE_To_String, "Bool to String has an explicit conversion");
         check(conversion_for(PIN_NAME, PIN_STR) == &NODE_To_String, "Name to String has an explicit conversion");
         check(conversion_for(PIN_STR, PIN_F64) == NULL, "String to Real is not a permitted conversion");
-        check(conversion_for(PIN_F64, PIN_I32) == NULL, "Real to Integer is lossy, so no conversion is offered");
+        check(conversion_for(PIN_F64, PIN_I32) == &NODE_To_Integer, "Real to Integer uses explicit saturating truncation");
         check(conversion_for(PIN_I64, PIN_I32) == NULL, "Integer64 to Integer narrowing is not offered");
     }
 
@@ -5618,7 +5629,7 @@ TEST_CASE(all_checks)
             0,
             &(pin_value){ .type = PIN_I32, .type_name = "int", .i = -3 }
         );
-        graph_connect(&gc, i64in, 0, to_i64, 0);
+        graph_connect_data_conversion(&gc, i64in, 0, to_i64, 0, &NODE_To_Real);
         check(
             graph_eval_output(&gc, to_i64, 0, &ac, &out, &eval_ctx) == 0 &&
                 out.type == PIN_I64 && out.i64 == -3,
@@ -6705,7 +6716,15 @@ TEST_CASE(all_checks)
     test_flags();
     test_particles();
     test_labels();
+    test_math_expression();
+    test_behavior_math();
     test_appearance();
+    test_retained_components();
+    test_authored_data();
+    test_editor_flow();
+    test_component_fields();
+    test_scene_navigation();
+    test_scene_debug();
     test_appearance_geometry();
     test_orientation();
     test_movement_input();
@@ -6721,6 +6740,8 @@ TEST_CASE(all_checks)
     run_hot_reload_checks();
     run_scene_checks();
     run_editor_command_checks();
+    check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
+    check(test_gameplay_keyboard(), "gameplay keyboard navigation and text editing capture");
 
     if (!fails) {
         fails += ui_integration_run(program_name) != 0;
@@ -6739,6 +6760,9 @@ TEST_CASE(all_checks)
 int main(int argc, char **argv)
 {
     program_name = argc ? argv[0] : "test_suite";
+    if (argc > 1 && strcmp(argv[1], "--ui-keyboard") == 0) {
+        return test_ui_keyboard() ? 0 : 1;
+    }
     pu_run_test("all_checks", all_checks);
     return pu_test_failed() ? 1 : 0;
 }

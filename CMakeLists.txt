@@ -27,8 +27,9 @@ FetchContent_Declare(
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)
+target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32)
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage)
+foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -150,7 +151,19 @@ add_custom_command(
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
             ${UI_FONT} ${GEN_UI_FONT} editor_ui_font
     DEPENDS ${UI_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-    COMMENT "Embedding editor typeface"
+    COMMENT "Embedding Inter editor typeface"
+    VERBATIM
+)
+
+set(UI_BOLD_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf)
+set(GEN_UI_BOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_bold_font.c)
+add_custom_command(
+    OUTPUT ${GEN_UI_BOLD_FONT}
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
+            ${UI_BOLD_FONT} ${GEN_UI_BOLD_FONT} editor_ui_bold_font
+    DEPENDS ${UI_BOLD_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
+    COMMENT "Embedding Inter bold typeface"
     VERBATIM
 )
 
@@ -321,7 +334,7 @@ target_include_directories(demo PUBLIC
 file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
 )
-add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT})
+add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE core cute)
 
@@ -356,9 +369,7 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
 )
 list(REMOVE_ITEM APP_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/input_behavior.c
     ${CMAKE_CURRENT_SOURCE_DIR}/app/demo_graph.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/movement_authoring.c
 )
 add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
 target_compile_definitions(app PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/shaders")
@@ -401,14 +412,30 @@ add_custom_command(
 add_executable(test_suite
     test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/ui_integration.c
+    test/ui_keyboard.c
+    test/gameplay_keyboard.c
+    test/math_expression.c
+    test/behavior_math.c
+    test/navigation_runtime.c
     app/screenshot.c
     app/authoring_session.c
     app/behavior_fixtures.c
     app/demo_graph.c
     app/scene_authoring.c
     app/scene_history.c
+    app/scene_retention.c
+    app/prototype_still.c
+    app/scene_navigation.c
+    app/scene_debug.c
+    app/gameplay_input.c
     test/scene_history.c
     test/appearance_geometry.c
+    test/retained_components.c
+    test/authored_data.c
+    test/editor_flow.c
+    test/component_fields.c
+    test/scene_navigation.c
+    test/scene_debug.c
     test/orientation.c
     test/movement_input.c
     test/movement_trail.c

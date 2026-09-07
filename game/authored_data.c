@@ -5,7 +5,11 @@
 #include "../core/xalloc.h"
 #include "../third_party/yyjson/yyjson.h"
 
+#include <assert.h>
+#include <float.h>
+#include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +21,7 @@ struct game_authored_data
     char *path;
     char *working;
     char *applied;
-    int dirty;
+    char *saved;
 };
 
 static const char *const KIND_NAMES[] = {
@@ -53,9 +57,68 @@ const char *game_authored_data_type_name(game_data_kind kind)
                                                                   : NULL;
 }
 
-static int integer_type(pin_type type)
+static bool integer_type(pin_type type)
 {
-    return type == PIN_I8 || type == PIN_I16 || type == PIN_I32 || type == PIN_I64;
+    return type >= PIN_I8 && type <= PIN_U64;
+}
+
+static bool valid_number(pin_type type, yyjson_val *value)
+{
+    if (!yyjson_is_num(value)) {
+        return false;
+    }
+    double number = yyjson_get_num(value);
+    if (type == PIN_F32) {
+        return isfinite(number) && fabs(number) <= FLT_MAX;
+    }
+    if (type == PIN_F64) {
+        return isfinite(number);
+    }
+    if (!yyjson_is_int(value)) {
+        return false;
+    }
+    int64_t minimum;
+    uint64_t maximum;
+    switch (type) {
+        case PIN_I8:
+            minimum = INT8_MIN;
+            maximum = INT8_MAX;
+            break;
+        case PIN_U8:
+            minimum = 0;
+            maximum = UINT8_MAX;
+            break;
+        case PIN_I16:
+            minimum = INT16_MIN;
+            maximum = INT16_MAX;
+            break;
+        case PIN_U16:
+            minimum = 0;
+            maximum = UINT16_MAX;
+            break;
+        case PIN_I32:
+            minimum = INT32_MIN;
+            maximum = INT32_MAX;
+            break;
+        case PIN_U32:
+            minimum = 0;
+            maximum = UINT32_MAX;
+            break;
+        case PIN_I64:
+            minimum = INT64_MIN;
+            maximum = INT64_MAX;
+            break;
+        case PIN_U64:
+            minimum = 0;
+            maximum = UINT64_MAX;
+            break;
+        default: return false;
+    }
+    if (yyjson_is_uint(value)) {
+        return yyjson_get_uint(value) <= maximum;
+    }
+    int64_t integer = yyjson_get_sint(value);
+    return integer >= minimum && (integer < 0 || (uint64_t)integer <= maximum);
 }
 
 static int known_field(const type_desc *type, const char *name)
@@ -68,7 +131,7 @@ static int known_field(const type_desc *type, const char *name)
     return -1;
 }
 
-static int validate(const char *json, game_data_kind kind, char *name, size_t name_size, char *error, size_t error_size)
+static int validate(const char *json, game_data_kind kind, char **name, char *error, size_t error_size)
 {
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     if (!doc) {
@@ -96,7 +159,6 @@ static int validate(const char *json, game_data_kind kind, char *name, size_t na
         result = -1;
     }
     if (!result) {
-        snprintf(name, name_size, "%s", yyjson_get_str(asset_name));
         yyjson_obj_iter iterator = yyjson_obj_iter_with(data);
         yyjson_val *key;
         while ((key = yyjson_obj_iter_next(&iterator))) {
@@ -106,9 +168,7 @@ static int validate(const char *json, game_data_kind kind, char *name, size_t na
                 field = &type->fields[index];
             }
             yyjson_val *value = yyjson_obj_iter_get_val(key);
-            if (!field || !yyjson_is_num(value) ||
-                (integer_type(field->type) && !yyjson_is_sint(value) &&
-                 !yyjson_is_uint(value))) {
+            if (!field || !valid_number(field->type, value)) {
                 error_set(
                     error,
                     error_size,
@@ -121,22 +181,26 @@ static int validate(const char *json, game_data_kind kind, char *name, size_t na
             }
         }
     }
+    if (!result) {
+        *name = xstrdup(yyjson_get_str(asset_name));
+    }
     yyjson_doc_free(doc);
     return result;
 }
 
 static game_authored_data *make(const char *json, game_data_kind kind, char *error, size_t error_size)
 {
-    char name[128];
+    char *name = NULL;
     if (!json || !game_authored_data_kind_name(kind) ||
-        validate(json, kind, name, sizeof name, error, error_size) != 0) {
+        validate(json, kind, &name, error, error_size) != 0) {
         return NULL;
     }
     game_authored_data *data = xcalloc(1, sizeof *data);
     data->kind = kind;
-    data->name = xstrdup(name);
+    data->name = name;
     data->working = xstrdup(json);
     data->applied = xstrdup(json);
+    data->saved = xstrdup(json);
     return data;
 }
 
@@ -173,6 +237,7 @@ void game_authored_data_free(game_authored_data *data)
     free(data->path);
     free(data->working);
     free(data->applied);
+    free(data->saved);
     free(data);
 }
 const char *game_authored_data_name(const game_authored_data *data)
@@ -189,7 +254,12 @@ const char *game_authored_data_path(const game_authored_data *data)
 }
 int game_authored_data_dirty(const game_authored_data *data)
 {
-    return data ? data->dirty : 0;
+    return data && strcmp(data->working, data->applied) != 0;
+}
+
+int game_authored_data_unsaved(const game_authored_data *data)
+{
+    return data && strcmp(data->working, data->saved) != 0;
 }
 
 int game_authored_data_set_path(game_authored_data *data, const char *path)
@@ -205,18 +275,19 @@ int game_authored_data_set_path(game_authored_data *data, const char *path)
 
 int game_authored_data_set_json(game_authored_data *data, const char *json, char *error, size_t error_size)
 {
-    char name[128];
-    if (!data || validate(json, data->kind, name, sizeof name, error, error_size) != 0) {
+    char *name = NULL;
+    if (!data || validate(json, data->kind, &name, error, error_size) != 0) {
         return -1;
     }
     char *copy = xstrdup(json);
     free(data->working);
     data->working = copy;
-    data->dirty = strcmp(data->working, data->applied) != 0;
+    free(data->name);
+    data->name = name;
     return 0;
 }
 
-int game_authored_data_save(const game_authored_data *data, const char *path)
+int game_authored_data_save(game_authored_data *data, const char *path)
 {
     if (!data || !path || !path[0]) {
         return -1;
@@ -225,17 +296,26 @@ int game_authored_data_save(const game_authored_data *data, const char *path)
     char *tmp = xmalloc(size);
     snprintf(tmp, size, "%s.tmp", path);
     FILE *file = fopen(tmp, "wb");
-    int result = 0;
-    if (!file || fputs(data->working, file) < 0 || fclose(file) != 0) {
-        result = -1;
-    } else if (rename(tmp, path) != 0) {
-        result = -1;
+    int result = -1;
+    if (file) {
+        result = fputs(data->working, file) < 0 ? -1 : 0;
+        if (fclose(file) != 0) {
+            result = -1;
+        }
+    }
+    if (!result) {
+        result = rename(tmp, path);
     }
     if (result) {
         remove(tmp);
     }
     free(tmp);
-    return result ? -1 : 0;
+    if (result) {
+        return -1;
+    }
+    free(data->saved);
+    data->saved = xstrdup(data->working);
+    return 0;
 }
 
 int game_authored_data_apply(game_authored_data *data, game_authored_data_apply_fn apply, void *user)
@@ -246,7 +326,6 @@ int game_authored_data_apply(game_authored_data *data, game_authored_data_apply_
     char *copy = xstrdup(data->working);
     free(data->applied);
     data->applied = copy;
-    data->dirty = 0;
     return 0;
 }
 
@@ -256,8 +335,12 @@ int game_authored_data_reload(game_authored_data *data, char *error, size_t erro
         return -1;
     }
     char *json = text_file_read(data->path);
-    char name[128];
-    if (!json || validate(json, data->kind, name, sizeof name, error, error_size) != 0) {
+    char *name = NULL;
+    if (!json) {
+        error_set(error, error_size, "could not read gameplay asset %s", data->path);
+        return -1;
+    }
+    if (validate(json, data->kind, &name, error, error_size) != 0) {
         free(json);
         return -1;
     }
@@ -267,9 +350,10 @@ int game_authored_data_reload(game_authored_data *data, char *error, size_t erro
     free(data->applied);
     data->working = copy;
     data->applied = xstrdup(copy);
-    data->dirty = 0;
+    free(data->saved);
+    data->saved = xstrdup(copy);
     free(data->name);
-    data->name = xstrdup(name);
+    data->name = name;
     return 0;
 }
 
@@ -278,11 +362,7 @@ int game_authored_data_revert(game_authored_data *data)
     if (!data || !data->applied) {
         return -1;
     }
-    char *copy = xstrdup(data->applied);
-    free(data->working);
-    data->working = copy;
-    data->dirty = 0;
-    return 0;
+    return game_authored_data_set_json(data, data->applied, NULL, 0);
 }
 
 int game_authored_data_read_number(const game_authored_data *data, const char *field, double *value)
@@ -299,4 +379,47 @@ int game_authored_data_read_number(const game_authored_data *data, const char *f
     }
     yyjson_doc_free(doc);
     return result ? -1 : 0;
+}
+
+int game_authored_data_set_number(
+    game_authored_data *data,
+    const char *field,
+    double value,
+    char *error,
+    size_t error_size
+)
+{
+    assert(data && field);
+    const type_desc *type = registry_type_by_name(game_authored_data_type_name(data->kind));
+    assert(type);
+    int index = known_field(type, field);
+    if (index < 0 || !isfinite(value)) {
+        error_set(error, error_size, "unknown or invalid gameplay field %s", field);
+        return -1;
+    }
+    yyjson_doc *source = yyjson_read(data->working, strlen(data->working), 0);
+    assert(source);
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(source, NULL);
+    yyjson_doc_free(source);
+    assert(doc);
+    yyjson_mut_val *number;
+    if (integer_type(type->fields[index].type)) {
+        if (trunc(value) != value || value < -0x1p63 || value >= 0x1p64) {
+            yyjson_mut_doc_free(doc);
+            error_set(error, error_size, "invalid integer gameplay field %s", field);
+            return -1;
+        }
+        number = value < 0 ? yyjson_mut_sint(doc, (int64_t)value)
+                           : yyjson_mut_uint(doc, (uint64_t)value);
+    } else {
+        number = yyjson_mut_real(doc, value);
+    }
+    yyjson_mut_val *object = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "data");
+    yyjson_mut_obj_put(object, yyjson_mut_strcpy(doc, field), number);
+    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
+    assert(json);
+    int result = game_authored_data_set_json(data, json, error, error_size);
+    free(json);
+    yyjson_mut_doc_free(doc);
+    return result;
 }

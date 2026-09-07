@@ -8,6 +8,7 @@ typedef struct
     char *name;
     char *prototype;
     char *components_json;
+    char *retained_json;
     char **behaviors;
 } game_scene_entity;
 
@@ -32,6 +33,7 @@ int game_scene_document_set_entity_components(
     const char *components_json
 );
 char *game_scene_document_save(const game_scene_document *document);
+int game_scene_document_set_entity_retained(game_scene_document *document, int index, const char *json);
 game_scene_document *game_scene_document_load(const char *json, char *error, size_t error_size);
 
 #endif

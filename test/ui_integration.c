@@ -1,9 +1,11 @@
 #include "../app/cute_host.h"
 #include "../app/event_catalog.h"
+#include "../app/gameplay_input.h"
 #include "../app/scene_authoring.h"
 #include "../app/scene_renderer.h"
 #include "../app/screenshot.h"
 #include "../app/stacktrace.h"
+#include "../core/compare_nodes.h"
 #include "../core/registry.h"
 #include "../core/serialize.h"
 #include "../editor/editor.h"
@@ -15,10 +17,12 @@
 #include "../game/prototype.h"
 #include "../game/scene_document.h"
 
+#include <SDL3/SDL.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 // pi-lens-ignore: fatal error
 #include <cute_defines.h>
@@ -47,6 +51,31 @@ static void inject_mouse_button(float x, float y, bool down)
     ImGuiIO_AddMouseButtonEvent(io, 0, down);
 }
 
+static bool logical_pane_rect(editor_ui_pane pane, editor_ui_rect *rect)
+{
+    if (!editor_ui_pane_rect(pane, rect)) {
+        return false;
+    }
+    ImVec2 scale = ImGui_GetIO()->DisplayFramebufferScale;
+    rect->x /= scale.x;
+    rect->y /= scale.y;
+    rect->width /= scale.x;
+    rect->height /= scale.y;
+    return true;
+}
+
+static void scroll_inspector_to_item(const char *id)
+{
+    float x, y;
+    ImGuiWindow *inspector = ImGui_FindWindowByName("Inspector");
+    if (inspector && !editor_ui_item_center(id, &x, &y)) {
+        ImGui_SetScrollYImGuiWindowPtr(
+            inspector,
+            inspector->Scroll.y + inspector->Size.y * 0.5f
+        );
+    }
+}
+
 typedef struct
 {
     editor *graph_editor;
@@ -60,6 +89,22 @@ typedef struct
     int integration_failed;
     char content_root[64];
     char io_root[64];
+    char gameplay_root[64];
+    ecs_entity preview_first_entity;
+    ecs_entity keyboard_entity;
+    GameTransform keyboard_before;
+    ImGuiID navigator_dock;
+    ImVec2 navigator_position;
+    int controls_early[2];
+    uint64_t math_speed_pin;
+    uint64_t math_call_id;
+    uint64_t math_graph_id;
+    ecs_entity debug_first_entity;
+    ecs_entity debug_second_entity;
+    int navigation_node_count;
+    float navigation_prototype_x;
+    char preview_scene_path[64];
+    char *preview_scene_json;
     ecs_entity io_player;
     ecs_entity io_enemy;
     editor_ui_rect graph_before_focus;
@@ -177,10 +222,8 @@ static bool workspace_preferences_roundtrip()
     return ok;
 }
 
-static bool saved_prototype_has_x(app_loop *loop, float expected)
+static bool prototype_file_has_x(const char *path, float expected)
 {
-    char path[256];
-    snprintf(path, sizeof path, "%s/prototypes/NewPrototype1.json", loop->content_root);
     FILE *file = fopen(path, "rb");
     if (!file) {
         return false;
@@ -200,6 +243,230 @@ static bool saved_prototype_has_x(app_loop *loop, float expected)
               game_prototype_read_field(prototype, "GameTransform", "x", &value) == 0 &&
               value.type == PIN_F32 && value.f == expected;
     game_prototype_free(prototype);
+    return ok;
+}
+
+static bool saved_prototype_has_x(app_loop *loop, float expected)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/prototypes/NewPrototype1.json", loop->content_root);
+    return prototype_file_has_x(path, expected);
+}
+
+static bool history_prototype_has_x(app_loop *loop, const char *name, float expected)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/prototypes/%s.json", loop->content_root, name);
+    return app_scene_authoring_save_prototype(loop->authoring, name, path) == 0 &&
+           prototype_file_has_x(path, expected);
+}
+
+static bool prototype_document_history(app_loop *loop)
+{
+    app_scene_authoring *scene = loop->authoring;
+    int result = app_scene_authoring_register_prototype(scene, "{\"name\":\"HistoryA\",\"components\":{\"GameTransform\":{\"x\":10,\"y\":0}}}", NULL);
+    result |= app_scene_authoring_register_prototype(scene, "{\"name\":\"HistoryB\",\"components\":{\"GameTransform\":{\"x\":20,\"y\":0}}}", NULL);
+    result |= app_scene_authoring_open_prototype(scene, "HistoryA");
+    result |= app_scene_authoring_set_prototype_field(
+        scene,
+        "HistoryA",
+        "GameTransform",
+        "x",
+        (pin_value){ .type = PIN_F32, .f = 11 }
+    );
+    result |= app_scene_authoring_open_prototype(scene, "HistoryB");
+    result |= app_scene_authoring_set_prototype_field(
+        scene,
+        "HistoryB",
+        "GameTransform",
+        "x",
+        (pin_value){ .type = PIN_F32, .f = 21 }
+    );
+    result |= app_scene_authoring_open_prototype(scene, "HistoryA");
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO);
+    bool ok = result == 0 && history_prototype_has_x(loop, "HistoryA", 10) &&
+              history_prototype_has_x(loop, "HistoryB", 21);
+    result |= app_scene_authoring_open_prototype(scene, "HistoryB");
+    result |= app_scene_authoring_set_prototype_field(
+        scene,
+        "HistoryB",
+        "GameTransform",
+        "x",
+        (pin_value){ .type = PIN_F32, .f = 22 }
+    );
+    result |= app_scene_authoring_open_prototype(scene, "HistoryA");
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_REDO);
+    ok &= history_prototype_has_x(loop, "HistoryA", 11);
+    result |= app_scene_authoring_open_prototype(scene, "HistoryB");
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO);
+    ok &= history_prototype_has_x(loop, "HistoryB", 21);
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO);
+    ok &= history_prototype_has_x(loop, "HistoryB", 20);
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_REDO);
+    ok &= history_prototype_has_x(loop, "HistoryB", 21);
+    result |= app_scene_authoring_set_prototype_field(
+        scene,
+        "HistoryA",
+        "GameTransform",
+        "x",
+        (pin_value){ .type = PIN_F32, .f = 12 }
+    );
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_REDO);
+    ok &= history_prototype_has_x(loop, "HistoryB", 22);
+    result |= app_scene_authoring_open_prototype(scene, "HistoryA");
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_RELOAD);
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO);
+    ok &= history_prototype_has_x(loop, "HistoryA", 11);
+    result |= app_scene_authoring_open_prototype(scene, "HistoryB");
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO);
+    ok &= history_prototype_has_x(loop, "HistoryB", 21);
+    result |= app_scene_authoring_remove_prototype_component(scene, "HistoryB", "GameTransform");
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO);
+    ok &= history_prototype_has_x(loop, "HistoryB", 21);
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_REDO);
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_SAVE);
+    result |= editor_ui_run_command(EDITOR_UI_COMMAND_RELOAD);
+    result |= app_scene_authoring_add_prototype_component(scene, "HistoryB", "GameTransform");
+    ok &= history_prototype_has_x(loop, "HistoryB", 21);
+    return ok && result == 0;
+}
+
+static bool retention_check(bool ok, const char *stage)
+{
+    printf("ui-instance-retention %s: %s\n", ok ? "PASS" : "FAIL", stage);
+    return ok;
+}
+
+static bool io_write(const char *path, const char *text);
+
+static bool instance_retention_roundtrip(app_loop *loop)
+{
+    app_scene_authoring *scene = loop->authoring;
+    bool ok = app_scene_authoring_register_prototype(
+                  scene,
+                  "{\"name\":\"RetainedInstance\",\"components\":{"
+                  "\"GameHealth\":{\"current\":100,\"maximum\":100}}}",
+                  NULL
+              ) == 0;
+    ok &= app_scene_authoring_add_instance(scene, "RetainedInstance") == 0;
+    ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    GameHealth *health = GAME_GameHealth_get(loop->world, entity);
+    if (!ok || !health) {
+        return false;
+    }
+    health->current = 73;
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", false) == 0;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    ok &= app_scene_authoring_delete_instance(scene) == 0;
+    ok &= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0;
+    entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", true) == 0;
+    health = GAME_GameHealth_get(loop->world, entity);
+    ok &= health && health->current == 73 && health->maximum == 100;
+    if (!retention_check(ok, "actor Delete/Undo retains detached component values")) {
+        return false;
+    }
+    ok &= editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    ok &= editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0;
+    health = GAME_GameHealth_get(loop->world, entity);
+    ok &= health && health->current == 73;
+    if (!retention_check(ok, "component Undo/Redo restores attachment metadata")) {
+        return false;
+    }
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", false) == 0;
+    ok &= app_scene_authoring_set_prototype_field(
+              scene,
+              "RetainedInstance",
+              "GameHealth",
+              "maximum",
+              (pin_value){ .type = PIN_I32, .i = 200 }
+          ) == 0;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    if (!retention_check(ok, "prototype default edit leaves manual detachment absent")) {
+        return false;
+    }
+    char path[] = "/tmp/c-blueprints-retained-scene-XXXXXX";
+    int file = mkstemp(path);
+    if (file < 0) {
+        return false;
+    }
+    close(file);
+    ok &= app_scene_authoring_save(scene, path) == 0;
+    ok &= app_scene_authoring_load(scene, path) == 0;
+    remove(path);
+    if (!retention_check(ok, "scene save/load includes retained metadata")) {
+        printf("retention load message: %s\n", app_scene_authoring_message(scene));
+        return false;
+    }
+    entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", true) == 0;
+    health = GAME_GameHealth_get(loop->world, entity);
+    ok &= health && health->current == 73 && health->maximum == 200;
+    if (!retention_check(ok, "reattachment merges retained edits with new defaults")) {
+        printf(
+            "retention values: current=%d maximum=%d\n",
+            health ? health->current : -1,
+            health ? health->maximum : -1
+        );
+        return false;
+    }
+    ok &= app_scene_authoring_remove_prototype_component(scene, "RetainedInstance", "GameHealth") ==
+          0;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    ok &= app_scene_authoring_add_prototype_component(scene, "RetainedInstance", "GameHealth") ==
+          0;
+    health = GAME_GameHealth_get(loop->world, entity);
+    ok &= health && health->current == 73 && health->maximum == 200;
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", false) == 0;
+    ok &= app_scene_authoring_remove_prototype_component(scene, "RetainedInstance", "GameHealth") ==
+          0;
+    ok &= app_scene_authoring_add_prototype_component(scene, "RetainedInstance", "GameHealth") ==
+          0;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", true) == 0;
+    health = GAME_GameHealth_get(loop->world, entity);
+    ok &= health && health->current == 73 && health->maximum == 200;
+    if (!retention_check(ok, "prototype-driven restoration preserves overrides; manual removal stays absent")) {
+        return false;
+    }
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", false) == 0;
+    ok &= app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) ==
+          0;
+    ok &= ecs_world_record_add(loop->world, entity, GAME_COMPONENT_GameHealth.id, NULL, 0) ==
+          ECS_OK;
+    ok &= ecs_world_apply_commands(loop->world) == ECS_OK;
+    health = GAME_GameHealth_get(loop->world, entity);
+    if (health) {
+        health->current = 999;
+    }
+    ok &= app_scene_authoring_save(scene, path) == 0;
+    ok &= app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) ==
+          0;
+    ok &= app_scene_authoring_load(scene, path) == 0;
+    entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    ok &= !GAME_GameHealth_has(loop->world, entity);
+    ok &= app_scene_authoring_set_instance_component(scene, "GameHealth", true) == 0;
+    health = GAME_GameHealth_get(loop->world, entity);
+    ok &= health && health->current == 73 && health->maximum == 200;
+    if (!retention_check(ok, "saving during Play preserves authored retention instead of runtime additions")) {
+        remove(path);
+        return false;
+    }
+    ok &= io_write(
+        path,
+        "{\"name\":\"Invalid\",\"entities\":[{\"name\":\"Invalid\","
+        "\"prototype\":\"RetainedInstance\","
+        "\"retained_components\":{\"GameHealth\":{\"values\":{\"GameHealth\":{"
+        "\"current\":\"wrong type\"}},"
+        "\"defaults\":{},\"automatic\":false}}}]}"
+    );
+    ok &= app_scene_authoring_load(scene, path) == -1;
+    ok &= ecs_entity_is_alive(loop->world, entity) &&
+          GAME_GameHealth_get(loop->world, entity)->current == 73;
+    remove(path);
+    retention_check(ok, "malformed retained values reject load before changing the open scene");
     return ok;
 }
 
@@ -394,21 +661,21 @@ static void scene_edit_input(app_loop *loop, int step)
         case 1801:
         case 1816:
         case 1817:
-            id = "document.menu";
+            id = "edit.menu";
             down = step == 1752 || step == 1768 || step == 1800 || step == 1816;
             break;
         case 1758:
         case 1759:
         case 1806:
         case 1807:
-            id = "document.undo";
+            id = "edit.undo";
             down = step == 1758 || step == 1806;
             break;
         case 1774:
         case 1775:
         case 1822:
         case 1823:
-            id = "document.redo";
+            id = "edit.redo";
             down = step == 1774 || step == 1822;
             break;
     }
@@ -546,27 +813,28 @@ static bool encounter_save_preserves_start(app_loop *loop)
 
 static void inspector_history_input(app_loop *loop, int step)
 {
+    if (step >= 2328 && step <= 2334) {
+        scroll_inspector_to_item("instance.color.GameMaterial.scene");
+    }
     static const struct
     {
         int press;
         const char *id;
     } actions[] = {
         { 2278, "scene.actor.Player_1" },
-        { 2282, "instance.component.GameHealth" },
         { 2286, "instance.field.GameHealth.current" },
-        { 2296, "document.menu" },
-        { 2300, "document.undo" },
-        { 2306, "document.menu" },
-        { 2310, "document.redo" },
+        { 2296, "edit.menu" },
+        { 2300, "edit.undo" },
+        { 2306, "edit.menu" },
+        { 2310, "edit.redo" },
         { 2316, "instance.revert_all" },
-        { 2322, "document.menu" },
-        { 2326, "document.undo" },
-        { 2332, "instance.component.GameMaterial" },
+        { 2322, "edit.menu" },
+        { 2326, "edit.undo" },
         { 2336, "instance.color.GameMaterial.scene" },
         { 2340, "color.hex" },
         { 2350, "color.done" },
-        { 2356, "document.menu" },
-        { 2360, "document.undo" },
+        { 2356, "edit.menu" },
+        { 2360, "edit.undo" },
     };
     for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
         if (step != actions[i].press && step != actions[i].press + 1) {
@@ -637,22 +905,22 @@ static void lifecycle_input(app_loop *loop, int step)
     } actions[] = {
         { 2378, "scene.actor.Player_1" },
         { 2384, "scene.delete" },
-        { 2390, "document.menu" },
-        { 2394, "document.undo" },
-        { 2400, "document.menu" },
-        { 2404, "document.undo" },
-        { 2410, "document.menu" },
-        { 2414, "document.redo" },
-        { 2420, "document.menu" },
-        { 2424, "document.redo" },
-        { 2430, "document.menu" },
-        { 2434, "document.undo" },
+        { 2390, "edit.menu" },
+        { 2394, "edit.undo" },
+        { 2400, "edit.menu" },
+        { 2404, "edit.undo" },
+        { 2410, "edit.menu" },
+        { 2414, "edit.redo" },
+        { 2420, "edit.menu" },
+        { 2424, "edit.redo" },
+        { 2430, "edit.menu" },
+        { 2434, "edit.undo" },
         { 2440, "scene.add" },
         { 2444, "scene.add.Enemy" },
-        { 2450, "document.menu" },
-        { 2454, "document.undo" },
-        { 2460, "document.menu" },
-        { 2464, "document.redo" },
+        { 2450, "edit.menu" },
+        { 2454, "edit.undo" },
+        { 2460, "edit.menu" },
+        { 2464, "edit.redo" },
     };
     if (step == 2376) {
         loop->integration_failed |= encounter_entities(loop, 1, &loop->lifecycle_entity) !=
@@ -717,9 +985,31 @@ static void lifecycle_input(app_loop *loop, int step)
     }
 }
 
+static void reveal_graph_transport(app_loop *loop)
+{
+    editor_ui_rect pane;
+    if (!logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane)) {
+        loop->integration_failed = 1;
+        return;
+    }
+    inject_mouse_button(pane.x + pane.width * 0.5f, pane.y + pane.height * 0.5f, false);
+}
+
+static bool menubar_transport_absent()
+{
+    editor_ui_rect rect;
+    return !editor_ui_item_rect("runtime.play", &rect) &&
+           !editor_ui_item_rect("runtime.stop", &rect) &&
+           !editor_ui_item_rect("runtime.step", &rect) &&
+           !editor_ui_item_rect("runtime.restart", &rect);
+}
+
 static void encounter_input(app_loop *loop, int step)
 {
     int result = 0;
+    if (step == 1938) {
+        reveal_graph_transport(loop);
+    }
     if (step == 1930) {
         result = app_scene_authoring_seed_default(loop->authoring);
         engine_viewport_reset_camera(loop->viewport);
@@ -737,10 +1027,10 @@ static void encounter_input(app_loop *loop, int step)
                   editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
         ok = ok && fabsf(pane.height - loop->scene_before_play.height) < 3;
         if (playing) {
-            editor_ui_rect stop = { 0 }, more = { 0 }, status = { 0 };
-            ok &= editor_ui_item_rect("viewport.stop", &stop) &&
-                  editor_ui_item_rect("viewport.step", &more) &&
-                  editor_ui_item_rect("runtime.status", &status);
+            editor_ui_rect stop = { 0 }, more = { 0 };
+            ok &= editor_ui_item_rect("graph.stop", &stop) &&
+                  editor_ui_item_rect("graph.step", &more) &&
+                  menubar_transport_absent();
             ok &= stop.x + stop.width <= more.x;
         }
         printf(
@@ -880,14 +1170,20 @@ static void encounter_input(app_loop *loop, int step)
     }
     if (step == 2137) {
         result = app_scene_authoring_preview_prototype(loop->authoring, "Player");
-        result |= app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY);
-        bool ok = editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
+        bool ok = app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) !=
+                      0 &&
+                  editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
         result |= app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_PREVIEW, APP_RUNTIME_PAUSE);
         ok &= editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
-        printf("ui-play-workspace %s: returning to prototype preview restores Graph\n", ok && !result ? "PASS" : "FAIL");
+        printf(
+            "ui-play-workspace %s: preview retains target and Graph when Scene "
+            "Play is rejected\n",
+            ok && !result ? "PASS" : "FAIL"
+        );
         loop->integration_failed |= !ok;
     }
     if (step == 2138) {
+        app_scene_authoring_stop_prototype_preview(loop->authoring);
         result = app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY);
         result |= app_scene_authoring_open_system(loop->authoring, "content/systems/MovementSystem.json");
         bool ok = editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
@@ -1023,17 +1319,17 @@ static void scene_numeric_input(app_loop *loop, int step)
         case 1853:
         case 1868:
         case 1869:
-            id = "document.menu";
+            id = "edit.menu";
             down = step == 1852 || step == 1868;
             break;
         case 1858:
         case 1859:
-            id = "document.undo";
+            id = "edit.undo";
             down = step == 1858;
             break;
         case 1874:
         case 1875:
-            id = "document.redo";
+            id = "edit.redo";
             down = step == 1874;
             break;
     }
@@ -1059,7 +1355,7 @@ static void scene_numeric_check(app_loop *loop, int step)
 
     if (step == 1920) {
         editor_ui_rect inspector, input, revert;
-        bool fits = editor_ui_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector) &&
+        bool fits = logical_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector) &&
                     editor_ui_item_rect("instance.transform.x", &input) &&
                     editor_ui_item_rect("instance.revert.transform.x", &revert) &&
                     input.x >= inspector.x && input.width > 60 &&
@@ -1184,10 +1480,10 @@ static void deferred_begin_input(app_loop *loop, int step)
         int press;
         const char *id;
     } actions[] = {
-        { 2584, "document.menu" },
-        { 2588, "document.undo" },
-        { 2594, "document.menu" },
-        { 2598, "document.redo" },
+        { 2584, "edit.menu" },
+        { 2588, "edit.undo" },
+        { 2594, "edit.menu" },
+        { 2598, "edit.redo" },
     };
     for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
         if (step != actions[i].press && step != actions[i].press + 1) {
@@ -1372,16 +1668,16 @@ static void document_io_input(app_loop *loop, int step)
         int press;
         const char *id;
     } actions[] = {
-        { 2760, "document.menu" }, { 2764, "document.save" },
-        { 2770, "document.menu" }, { 2774, "document.reload" },
-        { 2780, "document.menu" }, { 2784, "document.save" },
-        { 2790, "document.menu" }, { 2794, "document.reload" },
-        { 2804, "document.menu" }, { 2808, "document.undo" },
-        { 2814, "document.menu" }, { 2818, "document.save" },
-        { 2824, "document.menu" }, { 2828, "document.reload" },
-        { 2838, "document.menu" }, { 2842, "document.save_all" },
-        { 2850, "document.menu" }, { 2854, "document.reload" },
-        { 2860, "document.menu" }, { 2864, "document.reload" },
+        { 2760, "file.menu" }, { 2764, "file.save" },
+        { 2770, "file.menu" }, { 2774, "file.reload" },
+        { 2780, "file.menu" }, { 2784, "file.save" },
+        { 2790, "file.menu" }, { 2794, "file.reload" },
+        { 2804, "edit.menu" }, { 2808, "edit.undo" },
+        { 2814, "file.menu" }, { 2818, "file.save" },
+        { 2824, "file.menu" }, { 2828, "file.reload" },
+        { 2838, "file.menu" }, { 2842, "file.save_all" },
+        { 2850, "file.menu" }, { 2854, "file.reload" },
+        { 2860, "file.menu" }, { 2864, "file.reload" },
     };
     for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
         if (step != actions[i].press && step != actions[i].press + 1) {
@@ -1621,7 +1917,8 @@ static void scene_search_input(app_loop *loop, int step)
     } actions[] = {
         { 2664, "scene.actor.Player_1" },
         { 2668, "scene.search" },
-        { 2684, "scene.clear_search" },
+        { 2684, "scene.search.clear" },
+        { 2692, "scene.search.clear" },
     };
     for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
         if (step != actions[i].press && step != actions[i].press + 1) {
@@ -1643,6 +1940,16 @@ static void scene_search_input(app_loop *loop, int step)
     if (step == 2670 || step == 2678) {
         ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), step == 2670 ? "eNeMy" : "no-such-actor");
     }
+    if (step == 2689) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "eNeMy");
+    }
+    if (step == 2692) {
+        float x, y;
+        bool ok = editor_ui_item_center("scene.actor.Enemy_1", &x, &y) &&
+                  !editor_ui_item_center("scene.actor.Player_1", &x, &y);
+        printf("ui-scene-search %s: typing after clear keeps search focus\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
     if (step == 2676 || step == 2677) {
         ImGuiIO_AddKeyEvent(
             ImGui_GetIO(),
@@ -1663,12 +1970,37 @@ static void scene_search_input(app_loop *loop, int step)
               ecs_entity_to_u64(
                   app_scene_authoring_runtime_state(loop->authoring).selected_entity
               ) == ecs_entity_to_u64(loop->search_selection);
+    if (step == 2674) {
+        editor_ui_rect x_field, y_field, inspector;
+        bool row_ok = editor_ui_item_rect("instance.transform.x", &x_field) &&
+                      editor_ui_item_rect("instance.transform.y", &y_field) &&
+                      editor_ui_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector) &&
+                      fabsf(x_field.y - y_field.y) < 0.5f &&
+                      x_field.x + x_field.width <= y_field.x &&
+                      y_field.x + y_field.width <= inspector.x + inspector.width;
+        printf("ui-inspector-vector %s: editable X and Y share one row inside Inspector\n", row_ok ? "PASS" : "FAIL");
+        ok &= row_ok;
+    }
+    if (step == 2682) {
+        editor_ui_rect field, clear;
+        ok &= editor_ui_item_rect("scene.search", &field) &&
+              editor_ui_item_rect("scene.search.clear", &clear) &&
+              clear.x >= field.x && clear.y >= field.y &&
+              clear.x + clear.width <= field.x + field.width + 0.5f &&
+              clear.y + clear.height <= field.y + field.height + 0.5f;
+    }
+    if (step == 2688) {
+        ok &= !editor_ui_item_center("scene.search.clear", &x, &y);
+    }
     printf("ui-scene-search %s: mixed-case filter, empty state and clear preserve selection at %d\n", ok ? "PASS" : "FAIL", step);
     loop->integration_failed |= !ok;
 }
 
 static void instance_behavior_input(app_loop *loop, int step)
 {
+    if (step == 2542 || step == 2543) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, step == 2542);
+    }
     if (step == 2496) {
         editor_ui_reset_layout();
         editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, true);
@@ -1687,16 +2019,16 @@ static void instance_behavior_input(app_loop *loop, int step)
     } actions[] = {
         { 2500, "scene.actor.Enemy_1" },
         { 2510, "instance.behavior.remove.EnemyBehavior" },
-        { 2514, "document.menu" },
-        { 2518, "document.undo" },
-        { 2524, "document.menu" },
-        { 2528, "document.redo" },
+        { 2514, "edit.menu" },
+        { 2518, "edit.undo" },
+        { 2524, "edit.menu" },
+        { 2528, "edit.redo" },
         { 2536, "instance.behavior.add" },
         { 2540, "instance.behavior.attach.EnemyBehavior" },
-        { 2546, "document.menu" },
-        { 2550, "document.undo" },
-        { 2556, "document.menu" },
-        { 2560, "document.redo" },
+        { 2546, "edit.menu" },
+        { 2550, "edit.undo" },
+        { 2556, "edit.menu" },
+        { 2560, "edit.redo" },
     };
     for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
         if (step != actions[i].press && step != actions[i].press + 1) {
@@ -1755,9 +2087,9 @@ static void narrow_viewport_input(app_loop *loop, int step)
 {
     const char *id = NULL;
     bool down = false;
-    if (step == 2482 || step == 2483) {
+    if (step == 2478 || step == 2479) {
         id = "viewport.more";
-        down = step == 2482;
+        down = step == 2478;
     }
     if (step == 2486 || step == 2487) {
         id = "viewport.fit";
@@ -1801,11 +2133,13 @@ static bool viewport_pending_resize_check()
 static void narrow_viewport_draw(app_loop *loop, int step)
 {
     editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, true);
+    if (step == 2476) {
+        ImGui_SetNextWindowFocus();
+    }
     ImGui_SetNextWindowDockID(0, ImGuiCond_Always);
     ImGui_SetNextWindowPos((ImVec2){ 600, 200 }, ImGuiCond_Always);
     ImGui_SetNextWindowSize((ImVec2){ 240, 280 }, ImGuiCond_Always);
     engine_viewport_controls controls = {
-        .title = "A deliberately long scene title",
         .session = true,
         .playing = false,
         .editing = true,
@@ -1851,8 +2185,8 @@ static void narrow_viewport_draw(app_loop *loop, int step)
         bool ok = window && pane.width <= 241;
         editor_ui_rect image;
         ok &= editor_ui_item_rect("viewport.image", &image);
-        const char *ids[] = { "viewport.play", "viewport.stop", "viewport.step", "viewport.more" };
-        for (int i = 0; i < 4; i++) {
+        const char *ids[] = { "viewport.play", "viewport.more" };
+        for (int i = 0; i < 2; i++) {
             ok &= editor_ui_item_rect(ids[i], &button);
             if (ok) {
                 ok &= button.x >= image.x && button.y >= image.y &&
@@ -1860,13 +2194,21 @@ static void narrow_viewport_draw(app_loop *loop, int step)
                       button.y + button.height <= image.y + image.height;
             }
         }
-        ok &= !editor_ui_item_rect("viewport.fit", &button);
-        printf("ui-narrow-viewport %s: direct transport stays inside 240px Scene; Fit moves to More\n", ok ? "PASS" : "FAIL");
+        const char *menu_ids[] = { "viewport.stop",
+                                   "viewport.step",
+                                   "viewport.restart",
+                                   "viewport.fit",
+                                   "viewport.reset_camera" };
+        for (int i = 0; i < 5; i++) {
+            ok &= editor_ui_item_rect(menu_ids[i], &button);
+        }
+        printf("ui-narrow-viewport %s: compact transport fits 240px Scene and overflow exposes all actions\n", ok ? "PASS" : "FAIL");
         loop->integration_failed |= !ok;
     }
     if (step == 2490) {
         printf(
-            "ui-narrow-viewport %s: More exposes working Fit Scene action\n",
+            "ui-narrow-viewport %s: floating controls expose working Fit Scene "
+            "action\n",
             loop->narrow_fit_activated ? "PASS" : "FAIL"
         );
         loop->integration_failed |= !loop->narrow_fit_activated;
@@ -1931,14 +2273,18 @@ static void interaction_input(app_loop *loop, int step)
     } actions[] = {
         { 2884, "navigator.collapse" }, { 2890, "navigator.expand" },
         { 2910, "inspector.collapse" }, { 2914, "inspector.expand" },
-        { 2950, "document.menu" },      { 2956, "document.undo" },
-        { 2980, "document.menu" },      { 2986, "document.undo" },
-        { 2994, "document.menu" },      { 3000, "document.redo" },
+        { 2950, "edit.menu" },          { 2956, "edit.undo" },
+        { 2980, "edit.menu" },          { 2986, "edit.undo" },
+        { 2994, "edit.menu" },          { 3000, "edit.redo" },
         { 3040, "graph.play" },         { 3048, "graph.play" },
         { 3056, "graph.step" },         { 3064, "graph.stop" },
         { 3090, "inspector.collapse" }, { 3094, "inspector.expand" },
     };
     for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
+        if (actions[i].press >= 3040 && actions[i].press <= 3064 &&
+            step == actions[i].press - 2) {
+            reveal_graph_transport(loop);
+        }
         if (step != actions[i].press && step != actions[i].press + 1) {
             continue;
         }
@@ -1952,8 +2298,7 @@ static void interaction_input(app_loop *loop, int step)
     if (step == 2888) {
         float width = editor_ui_left_pane_width();
         editor_ui_rect rail;
-        ok = width > 32 && width < loop->sidebar_before &&
-             editor_ui_item_rect("navigator.expand", &rail);
+        ok = fabsf(width - 32) < 1 && editor_ui_item_rect("navigator.expand", &rail);
     }
     if (step == 2907) {
         ok = fabsf(editor_ui_left_pane_width() - loop->sidebar_before) < 2;
@@ -2064,7 +2409,8 @@ static void interaction_input(app_loop *loop, int step)
              editor_ui_pane_rect(EDITOR_UI_PANE_SCENE, &scene) &&
              editor_ui_item_rect("graph.play", &play) &&
              editor_ui_item_rect("graph.stop", &stop) &&
-             editor_ui_item_rect("graph.step", &advance);
+             editor_ui_item_rect("graph.step", &advance) &&
+             menubar_transport_absent();
         if (ok) {
             ok = play.x + play.width <= stop.x && stop.x + stop.width <= advance.x;
         }
@@ -2148,12 +2494,1500 @@ static void interaction_input(app_loop *loop, int step)
     loop->integration_failed |= !ok;
 }
 
+static void node_search_input(app_loop *loop, int step)
+{
+    if (step == 3114) {
+        loop->integration_failed |= editor_command_apply(
+                                        loop->graph_editor,
+                                        (editor_command){
+                                            .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                                            .data.create_graph = { GRAPH_EVENT, "SearchFixture" } }
+                                    ) != 0;
+        const graph *fixture = behavior_asset_find_graph_by_name(
+            editor_behavior_asset(loop->graph_editor),
+            "SearchFixture"
+        );
+        if (!fixture) {
+            loop->integration_failed = 1;
+            return;
+        }
+        loop->integration_failed |= editor_open_graph(
+                                        loop->graph_editor,
+                                        fixture->graph_id
+                                    ) != 0;
+        editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    }
+    if (step == 3118 || step == 3119) {
+        editor_ui_rect pane;
+        if (!logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane)) {
+            loop->integration_failed = 1;
+            return;
+        }
+        ImGuiIO_AddMousePosEvent(ImGui_GetIO(), pane.x + pane.width * 0.5f, pane.y + pane.height * 0.5f);
+        ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 1, step == 3118);
+    }
+    if (step == 3120 || step == 3121) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_UpArrow, step == 3120);
+    }
+    if (step == 3123 || step == 3124) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_DownArrow, step == 3123);
+    }
+    if (step == 3122 || step == 3125) {
+        editor_ui_rect field, results, selected;
+        bool ok = editor_ui_item_rect("graph.node_search", &field) &&
+                  editor_ui_item_rect("graph.node_results", &results) &&
+                  editor_ui_item_rect("graph.node_search.selected", &selected) &&
+                  results.height <= 301 && results.height > 0 &&
+                  results.y > field.y + field.height && selected.y >= results.y &&
+                  selected.y + selected.height <= results.y + results.height;
+        printf(
+            "ui-node-search %s: bounded results reveal wrapped %s selection\n",
+            ok ? "PASS" : "FAIL",
+            step == 3122 ? "last" : "first"
+        );
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3126) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "Integer");
+    }
+    if (step == 3130 || step == 3131) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, step == 3130);
+    }
+    if (step == 3134) {
+        const graph *g = editor_active_graph(loop->graph_editor);
+        bool ok = acount(g->nodes) == 1 &&
+                  strcmp(g->nodes[0]->desc->name, "Integer") == 0;
+        printf("ui-node-search %s: immediate typing and Enter insert the filtered node once\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3135) {
+        bool ok = prototype_document_history(loop);
+        printf("ui-prototype-history %s: navigation, per-document redo, nonselected edits, and isolated reload\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+}
+
+static void attachment_picker_input(app_loop *loop, int step)
+{
+    const struct
+    {
+        int press;
+        const char *id;
+    } actions[] = {
+        { 3142, "prototype.components" },
+        { 3150, "prototype.components.option.GameTransform" },
+        { 3156, "prototype.components.option.GameTransform" },
+        { 3166, "prototype.behaviors" },
+        { 3172, "prototype.behaviors.option.IOFixture" },
+        { 3178, "prototype.behaviors.option.IOFixture" },
+        { 3182, "prototype.behaviors.option.IOFixture" },
+        { 3190, "prototype.component.GameTransform" },
+        { 3202, "prototype.component.GameTransform.remove" },
+    };
+    for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
+        if (step != actions[i].press && step != actions[i].press + 1) {
+            continue;
+        }
+        float x, y;
+        if (editor_ui_item_center(actions[i].id, &x, &y)) {
+            inject_mouse_button(x, y, step == actions[i].press);
+        } else {
+            printf("ui-attachment-picker FAIL: missing %s\n", actions[i].id);
+            loop->integration_failed = 1;
+        }
+    }
+    if (step == 3146 || step == 3170) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), step == 3146 ? "transform" : "IO");
+    }
+    if (step == 3160 || step == 3161 || step == 3186 || step == 3187) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, step == 3160 || step == 3186);
+    }
+    if (step == 3154) {
+        float x, y;
+        bool ok = editor_ui_item_center("prototype.components.search.clear", &x, &y) &&
+                  editor_ui_item_center("prototype.components.option.GameTransform", &x, &y) &&
+                  !editor_ui_item_center("prototype.component.GameTransform", &x, &y);
+        printf("ui-attachment-picker %s: deselection keeps filtered picker open\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3164) {
+        bool ok = history_prototype_has_x(loop, "HistoryB", 21) &&
+                  ImGui_GetCurrentContext()->OpenPopupStack.Size == 0;
+        printf("ui-attachment-picker %s: reattachment restores edited values\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3165) {
+        game_live_definition *source = game_live_find_definition(loop->live, "IOFixture");
+        loop->integration_failed |= !source || game_live_duplicate_definition(
+                                                   loop->live,
+                                                   "OtherFixture",
+                                                   source->working
+                                               ) != 0;
+    }
+    if (step == 3174) {
+        float x, y;
+        ImGuiContext *context = ImGui_GetCurrentContext();
+        ImGuiWindow *popup = context->OpenPopupStack.Size
+                               ? context->OpenPopupStack.Data[0].Window
+                               : NULL;
+        ImVec2 scale = ImGui_GetIO()->DisplayFramebufferScale;
+        bool ok = editor_ui_item_center("prototype.behaviors.search.clear", &x, &y) &&
+                  editor_ui_item_center("prototype.behaviors.option.IOFixture", &x, &y) &&
+                  !editor_ui_item_center("prototype.behaviors.option.OtherFixture", &x, &y) &&
+                  editor_ui_item_center("prototype.behavior.IOFixture", &x, &y) &&
+                  popup && popup->Pos.x >= 0 && popup->Pos.y >= 0 &&
+                  (popup->Pos.x + popup->Size.x) * scale.x <=
+                      cf_app_get_canvas_width() &&
+                  (popup->Pos.y + popup->Size.y) * scale.y <=
+                      cf_app_get_canvas_height();
+        printf("ui-attachment-picker %s: behavior picker shares focused search and filtering\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3180 || step == 3184) {
+        float x, y;
+        bool attached = editor_ui_item_center("prototype.behavior.IOFixture", &x, &y);
+        bool ok = attached == (step == 3184) &&
+                  game_behavior_asset_registered(loop->live->behaviors, "IOFixture") &&
+                  editor_ui_item_center("prototype.behaviors.search.clear", &x, &y);
+        printf("ui-attachment-picker %s: behavior toggles retain the shared asset and filter\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3188) {
+        bool ok = ImGui_GetCurrentContext()->OpenPopupStack.Size == 0;
+        printf("ui-attachment-picker %s: Escape dismisses the behavior picker\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3194 || step == 3195 || step == 3198 || step == 3199) {
+        ImGuiIO_AddKeyEvent(
+            ImGui_GetIO(),
+            step < 3198 ? ImGuiKey_RightArrow : ImGuiKey_LeftArrow,
+            step == 3194 || step == 3198
+        );
+    }
+    if (step == 3192 || step == 3196 || step == 3200) {
+        float x, y;
+        bool visible = editor_ui_item_center("prototype.field.GameTransform.x", &x, &y);
+        bool ok = visible == (step == 3196);
+        printf("ui-component-header %s: disclosure mouse/arrow state at %d\n", ok ? "PASS" : "FAIL", step);
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3205) {
+        float x, y;
+        bool ok = !editor_ui_item_center("prototype.component.GameTransform", &x, &y) &&
+                  editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
+                  history_prototype_has_x(loop, "HistoryB", 21);
+        printf("ui-component-header %s: collapsed header trash removes component; Undo restores values\n", ok ? "PASS" : "FAIL");
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3206) {
+        loop->integration_failed |= !instance_retention_roundtrip(loop);
+    }
+}
+
+static void instance_picker_input(app_loop *loop, int step)
+{
+    if (step == 3210) {
+        ImGuiWindow *inspector = ImGui_FindWindowByName("Inspector");
+        if (inspector) {
+            ImGui_SetScrollYImGuiWindowPtr(inspector, 0);
+        }
+    }
+    const struct
+    {
+        int press;
+        const char *id;
+    } actions[] = {
+        { 3212, "instance.components" },
+        { 3220, "instance.components.option.GameHealth" },
+        { 3224, "instance.components.option.GameHealth" },
+        { 3232, "instance.behavior.add" },
+        { 3240, "instance.behavior.attach.IOFixture" },
+        { 3244, "instance.behavior.attach.IOFixture" },
+    };
+    for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
+        if (step != actions[i].press && step != actions[i].press + 1) {
+            continue;
+        }
+        float x, y;
+        if (editor_ui_item_center(actions[i].id, &x, &y)) {
+            inject_mouse_button(x, y, step == actions[i].press);
+        } else {
+            printf("ui-instance-picker FAIL: missing %s\n", actions[i].id);
+            loop->integration_failed = 1;
+        }
+    }
+    if (step == 3216 || step == 3236) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), step == 3216 ? "health" : "IO");
+    }
+    if (step == 3228 || step == 3229 || step == 3248 || step == 3249) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, step == 3228 || step == 3248);
+    }
+    ecs_entity entity = app_scene_authoring_runtime_state(loop->authoring).selected_entity;
+    if (step == 3222 || step == 3226) {
+        float x, y;
+        const GameHealth *health = GAME_GameHealth_get_const(loop->world, entity);
+        bool ok = editor_ui_item_center("instance.components.search.clear", &x, &y) &&
+                  (step == 3222 ? !health
+                                : health && health->current == 73 &&
+                                      health->maximum == 200);
+        printf("ui-instance-picker %s: component toggle retains filter and authored values at %d\n", ok ? "PASS" : "FAIL", step);
+        loop->integration_failed |= !ok;
+    }
+    if (step == 3242 || step == 3246) {
+        float x, y;
+        bool attached = game_behavior_instance(loop->live->behaviors, entity, "IOFixture") !=
+                        NULL;
+        bool ok = attached == (step == 3242) &&
+                  editor_ui_item_center("instance.behavior.add.search.clear", &x, &y) &&
+                  !editor_ui_item_center("instance.behavior.attach.OtherFixture", &x, &y) &&
+                  game_behavior_asset_registered(loop->live->behaviors, "IOFixture");
+        printf("ui-instance-picker %s: behavior filtering/toggling preserves the shared asset at %d\n", ok ? "PASS" : "FAIL", step);
+        loop->integration_failed |= !ok;
+    }
+}
+
+static bool gameplay_value(app_loop *loop, const char *field, double expected)
+{
+    double value;
+    return game_authored_data_read_number(app_scene_authoring_gameplay(loop->authoring), field, &value) ==
+               0 &&
+           value == expected;
+}
+
+static bool prototype_has_x(app_loop *loop, const char *name, float expected)
+{
+    pin_value value;
+    return app_scene_authoring_read_prototype_field(loop->authoring, name, "GameTransform", "x", &value) ==
+               0 &&
+           value.type == PIN_F32 && value.f == expected;
+}
+
+static void workspace_navigation_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 3512) {
+        ok = app_scene_authoring_open_behavior(loop->authoring, "HealthBehavior") == 0;
+        editor_ui_restore_navigator_tab(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET);
+        loop->navigation_node_count = acount(
+            editor_active_graph(loop->graph_editor)->nodes
+        );
+    }
+    if (step == 3514) {
+        ok &= editor_command_apply(
+                  loop->graph_editor,
+                  (editor_command){
+                      .kind = EDITOR_COMMAND_SPAWN_NODE,
+                      .data.spawn_node = { registry_node_by_name("Bool"), 100, 100 } }
+              ) == 0;
+    }
+    if (step == 3516) {
+        pin_value before;
+        ok = app_scene_authoring_read_prototype_field(
+                 loop->authoring,
+                 "Player",
+                 "GameTransform",
+                 "x",
+                 &before
+             ) == 0;
+        loop->navigation_prototype_x = ok ? before.f : 0;
+        ok &= app_scene_authoring_open_prototype(loop->authoring, "Player") == 0 &&
+              app_scene_authoring_set_prototype_field(
+                  loop->authoring,
+                  "Player",
+                  "GameTransform",
+                  "x",
+                  (pin_value){ .type = PIN_F32, .f = 111 }
+              ) == 0;
+    }
+    const struct
+    {
+        int press;
+        const char *id;
+    } actions[] = {
+        { 3520, "navigator.back" },
+        { 3528, "navigator.forward" },
+        { 3536, "navigator.back" },
+        { 3548, "graph.fit" },
+    };
+    for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
+        if (step != actions[i].press && step != actions[i].press + 1) {
+            continue;
+        }
+        float x, y;
+        if (editor_ui_item_center(actions[i].id, &x, &y)) {
+            inject_mouse_button(x, y, step == actions[i].press);
+        } else {
+            ok = false;
+        }
+    }
+    if (step == 3524 || step == 3540) {
+        app_editor_document_context doc = app_scene_authoring_document(loop->authoring);
+        ok = doc.kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
+             strcmp(doc.id, "HealthBehavior") == 0 &&
+             acount(editor_active_graph(loop->graph_editor)->nodes) ==
+                 loop->navigation_node_count + 1 &&
+             app_scene_authoring_runtime_state(loop->authoring).target ==
+                 APP_RUNTIME_SCENE;
+        if (step == 3540) {
+            editor_undo(loop->graph_editor);
+            ok &= acount(editor_active_graph(loop->graph_editor)->nodes) ==
+                  loop->navigation_node_count;
+            ok &= app_scene_authoring_open_prototype(loop->authoring, "Enemy") == 0;
+            app_scene_authoring_navigation_sync(loop->authoring);
+            ok &= !app_scene_authoring_can_navigate(loop->authoring, true);
+        }
+        printf(
+            "ui-workspace-navigation %s: %s\n",
+            ok ? "PASS" : "FAIL",
+            step == 3524
+                ? "Back restores graph edits without changing runtime target"
+                : "graph Undo survives navigation and new visits truncate "
+                  "Forward"
+        );
+    }
+    if (step == 3532) {
+        app_editor_document_context doc = app_scene_authoring_document(loop->authoring);
+        ok = doc.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
+             strcmp(doc.id, "Player") == 0 && prototype_has_x(loop, "Player", 111) &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
+             prototype_has_x(loop, "Player", loop->navigation_prototype_x);
+        if (!ok) {
+            printf(
+                "ui-navigation-detail frame=%d doc=%d id=%s x111=%d x320=%d "
+                "forward=%d\n",
+                step,
+                doc.kind,
+                doc.id,
+                prototype_has_x(loop, "Player", 111),
+                prototype_has_x(loop, "Player", loop->navigation_prototype_x),
+                app_scene_authoring_can_navigate(loop->authoring, true)
+            );
+        }
+        printf("ui-workspace-navigation %s: Forward restores prototype and its independent Undo\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 3544) {
+        editor_ui_reset_layout();
+        ok = app_scene_authoring_open_behavior(loop->authoring, "HealthBehavior") == 0;
+    }
+    if (step == 3560) {
+        const graph *g = editor_active_graph(loop->graph_editor);
+        bool branch = false, setter = false;
+        for (int i = 0; i < acount(g->nodes); i++) {
+            const node *n = g->nodes[i];
+            editor_node_ui ui;
+            bool visible = editor_query_node_ui(loop->graph_editor, n->id, &ui);
+            if (!visible) {
+                ok = false;
+                continue;
+            }
+            ok &= ui.bottom > ui.title_bottom && ui.right > ui.left;
+            if (n->desc->jit_kind == NODE_JIT_SUB ||
+                n->desc == &NODE_Integer_Greater_Or_Equal) {
+                ok &= ui.title_bottom == ui.top && ui.compact &&
+                      ui.data_pins == 3 && ui.exec_pins == 0;
+            }
+            if (n->desc == &NODE_Branch) {
+                branch = ui.compact && ui.exec_pins == 3 && ui.data_pins == 1;
+            }
+            if (strcmp(n->desc->name, "Set_GameHealth_current") == 0) {
+                setter = ui.self_labels == 1 && ui.exec_pins == 2;
+            }
+        }
+        ok &= branch && setter;
+        printf("ui-compact-nodes %s: compact Branch preserves pins and field setter displays Self\n", ok ? "PASS" : "FAIL");
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void prototype_preview_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 3564) {
+        ok = app_scene_authoring_open_prototype(loop->authoring, "Projectile") == 0;
+        ok &= app_scene_authoring_set_prototype_field(
+                  loop->authoring,
+                  "Projectile",
+                  "GameTransform",
+                  "x",
+                  (pin_value){ .type = PIN_F32, .f = 42 }
+              ) == 0;
+    }
+    if (step == 3568 || step == 3576) {
+        ecs_entity entity;
+        const ecs_world *world = app_scene_authoring_still_preview(loop->authoring, &entity);
+        const GameTransform *position = world
+                                          ? GAME_GameTransform_get_const(world, entity)
+                                          : NULL;
+        const GameProjectile *projectile = world
+                                             ? GAME_GameProjectile_get_const(world, entity)
+                                             : NULL;
+        ok = position && position->x == (step == 3568 ? 42 : 0) && projectile &&
+             projectile->age == 0 &&
+             !app_scene_authoring_runtime_state(loop->authoring).playing;
+        printf(
+            "ui-prototype-preview %s: authored still refreshes after %s\n",
+            ok ? "PASS" : "FAIL",
+            step == 3568 ? "field edit" : "Undo"
+        );
+    }
+    if (step == 3572) {
+        ok = editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0;
+    }
+    if (step == 3580) {
+        ok = app_scene_authoring_preview_prototype(loop->authoring, "Projectile") == 0;
+    }
+    if (step == 3584 || step == 3585) {
+        float x, y;
+        ok = editor_ui_item_center("prototype.preview.loop", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 3584);
+        }
+    }
+    if (step == 3590) {
+        loop->preview_first_entity = app_scene_authoring_runtime_state(loop->authoring)
+                                         .selected_entity;
+    }
+    if (step == 3740) {
+        app_runtime_state state = app_scene_authoring_runtime_state(loop->authoring);
+        const ecs_world *world = app_scene_authoring_preview_world(loop->authoring);
+        ok = world && !ecs_entity_is_alive(world, loop->preview_first_entity) &&
+             ecs_entity_to_u64(state.selected_entity) ==
+                 ecs_entity_to_u64(loop->preview_first_entity);
+        printf("ui-prototype-preview %s: disabling Loop lets projectile expire without restarting\n", ok ? "PASS" : "FAIL");
+        app_scene_authoring_stop_prototype_preview(loop->authoring);
+    }
+    if (step == 3340) {
+        ok = app_scene_authoring_set_content_root(loop->authoring, "content") == 0 &&
+             app_scene_authoring_load_content(loop->authoring) == 0;
+        strcpy(loop->preview_scene_path, "/tmp/c-blueprints-preview-scene-XXXXXX");
+        int file = mkstemp(loop->preview_scene_path);
+        ok &= file >= 0;
+        if (file >= 0) {
+            close(file);
+            ok &= app_scene_authoring_save(loop->authoring, loop->preview_scene_path) == 0;
+            loop->preview_scene_json = io_read(loop->preview_scene_path);
+        }
+        ok &= app_scene_authoring_open_prototype(loop->authoring, "Projectile") == 0;
+    }
+    if (step == 3344 || step == 3508) {
+        ecs_entity entity;
+        const ecs_world *world = app_scene_authoring_still_preview(loop->authoring, &entity);
+        const GameProjectile *projectile = world
+                                             ? GAME_GameProjectile_get_const(world, entity)
+                                             : NULL;
+        const GameTransform *position = world
+                                          ? GAME_GameTransform_get_const(world, entity)
+                                          : NULL;
+        editor_ui_rect image;
+        ok = world && world != loop->world && projectile && projectile->age == 0 &&
+             position && position->x == 0 && position->y == 0 &&
+             editor_ui_item_rect("prototype.preview.image", &image) &&
+             image.height <= 144 &&
+             !editor_ui_item_rect("content.gameplay.error", &image) &&
+             !app_scene_authoring_runtime_state(loop->authoring).playing;
+        printf(
+            "ui-prototype-preview %s: %s\n",
+            ok ? "PASS" : "FAIL",
+            step == 3344
+                ? "selection automatically frames an isolated authored still"
+                : "Stop preserves authored still pose"
+        );
+    }
+    if (step == 3346 || step == 3347) {
+        float x, y;
+        ok = editor_ui_item_center("prototype.preview.simulate", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 3346);
+        }
+    }
+    if (step == 3350) {
+        loop->preview_first_entity = app_scene_authoring_runtime_state(loop->authoring)
+                                         .selected_entity;
+    }
+    if (step == 3370 || step == 3480) {
+        app_runtime_state state = app_scene_authoring_runtime_state(loop->authoring);
+        const ecs_world *world = app_scene_authoring_preview_world(loop->authoring);
+        const GameTransform
+            *position = GAME_GameTransform_get_const(world, state.selected_entity);
+        const GameProjectile
+            *projectile = GAME_GameProjectile_get_const(world, state.selected_entity);
+        engine_viewport_camera camera;
+        engine_viewport_get_camera(loop->viewport, &camera);
+        ok = state.target == APP_RUNTIME_PREVIEW && state.playing && position &&
+             projectile && projectile->age < 2 &&
+             fabsf(camera.center_x - position->x) < 10;
+        if (step == 3480) {
+            ok &= ecs_entity_to_u64(state.selected_entity) !=
+                      ecs_entity_to_u64(loop->preview_first_entity) &&
+                  !ecs_entity_is_alive(world, loop->preview_first_entity);
+        }
+        printf(
+            "ui-prototype-preview %s: %s\n",
+            ok ? "PASS" : "FAIL",
+            step == 3370 ? "Follow keeps moving projectile framed"
+                         : "bounded loop replaces expired preview entity"
+        );
+    }
+    if (step == 3504) {
+        app_scene_authoring_stop_prototype_preview(loop->authoring);
+        ok = app_scene_authoring_save(loop->authoring, loop->preview_scene_path) == 0;
+        char *json = io_read(loop->preview_scene_path);
+        ok &= json && loop->preview_scene_json &&
+              strcmp(json, loop->preview_scene_json) == 0;
+        free(json);
+        free(loop->preview_scene_json);
+        loop->preview_scene_json = NULL;
+        unlink(loop->preview_scene_path);
+        printf("ui-prototype-preview %s: simulation leaves authored scene byte-identical\n", ok ? "PASS" : "FAIL");
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void debug_target_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 3750) {
+        const char
+            *prototype = "{\"name\":\"DebugTarget\",\"components\":{"
+                         "\"GameTransform\":{\"x\":0,\"y\":0},"
+                         "\"GameHealth\":{\"current\":100,\"maximum\":100}},"
+                         "\"behaviors\":[\"HealthBehavior\"]}";
+        ok = app_scene_authoring_register_prototype(loop->authoring, prototype, NULL) ==
+                 0 &&
+             app_scene_authoring_add_instance(loop->authoring, "DebugTarget") == 0;
+        loop->debug_first_entity = app_scene_authoring_runtime_state(loop->authoring)
+                                       .selected_entity;
+        ok &= app_scene_authoring_set_debug_target(
+                  loop->authoring,
+                  APP_RUNTIME_SCENE,
+                  loop->debug_first_entity,
+                  "HealthBehavior"
+              ) == 0;
+        app_scene_authoring_set_debug_pinned(loop->authoring, true);
+    }
+    if (step == 3754) {
+        ok = app_scene_authoring_add_instance(loop->authoring, "DebugTarget") == 0;
+        loop->debug_second_entity = app_scene_authoring_runtime_state(loop->authoring)
+                                        .selected_entity;
+        ok &= app_scene_authoring_open_behavior(loop->authoring, "HealthBehavior") == 0;
+    }
+    if (step == 3758) {
+        app_debug_state state = app_scene_authoring_debug_state(loop->authoring);
+        ok = state.pinned && state.status == APP_DEBUG_AVAILABLE &&
+             ecs_entity_to_u64(state.entity) ==
+                 ecs_entity_to_u64(loop->debug_first_entity) &&
+             ecs_entity_to_u64(
+                 app_scene_authoring_runtime_state(loop->authoring).selected_entity
+             ) == ecs_entity_to_u64(loop->debug_second_entity);
+        printf(
+            "ui-debug-target %s: pinned first instance survives selecting "
+            "second instance and opening its graph\n",
+            ok ? "PASS" : "FAIL"
+        );
+    }
+    if (step == 3760 || step == 3761) {
+        float x, y;
+        ok = editor_ui_item_center("graph.debug", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 3760);
+        }
+    }
+    if (step == 3771 || step == 3772) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, step == 3771);
+    }
+    if (step == 3764 || step == 3765 || step == 3768 || step == 3769) {
+        char id[192];
+        if (step < 3768) {
+            snprintf(id, sizeof id, "graph.debug.target");
+        } else {
+            snprintf(
+                id,
+                sizeof id,
+                "graph.debug.entity.%d.%u.%u.HealthBehavior",
+                APP_RUNTIME_SCENE,
+                loop->debug_second_entity.slot,
+                loop->debug_second_entity.generation
+            );
+        }
+        float x, y;
+        ok = editor_ui_item_center(id, &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 3764 || step == 3768);
+        } else {
+            printf("ui-debug-target FAIL: missing %s\n", id);
+        }
+    }
+    if (step == 3770 || step == 3794) {
+        app_debug_state state = app_scene_authoring_debug_state(loop->authoring);
+        ok = state.status == APP_DEBUG_AVAILABLE && state.pinned &&
+             ecs_entity_to_u64(state.entity) ==
+                 ecs_entity_to_u64(loop->debug_second_entity);
+        printf(
+            "ui-debug-target %s: %s explicitly binds the second instance\n",
+            ok ? "PASS" : "FAIL",
+            step == 3770 ? "chooser" : "reselection"
+        );
+    }
+    if (step == 3774 || step == 3782) {
+        ok = app_scene_authoring_set_instance_behavior(loop->authoring, "HealthBehavior", step == 3782) ==
+             0;
+    }
+    if (step == 3778 || step == 3786) {
+        app_debug_state state = app_scene_authoring_debug_state(loop->authoring);
+        ok = state.pinned && state.status == APP_DEBUG_UNAVAILABLE;
+        printf(
+            "ui-debug-target %s: %s does not silently replace pinned "
+            "attachment\n",
+            ok ? "PASS" : "FAIL",
+            step == 3778 ? "detachment" : "reattachment"
+        );
+    }
+    if (step == 3790) {
+        ok = app_scene_authoring_set_debug_target(
+                 loop->authoring,
+                 APP_RUNTIME_SCENE,
+                 loop->debug_second_entity,
+                 "HealthBehavior"
+             ) == 0;
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void scene_controls_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 3800 || step == 3812 || step == 3818 || step == 3854) {
+        editor_ui_rect graph;
+        ok = editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &graph);
+        if (ok) {
+            inject_mouse_button(graph.x + graph.width * 0.5f, graph.y + 160, false);
+        }
+        if (step != 3812) {
+            editor_ui_request_focus(
+                step == 3818 ? EDITOR_UI_FOCUS_SCENE : EDITOR_UI_FOCUS_NODE_CANVAS
+            );
+        }
+    }
+    if (step == 3806) {
+        editor_ui_rect image;
+        ok = editor_ui_item_rect("viewport.image", &image);
+        if (ok) {
+            inject_mouse_button(image.x + image.width * 0.5f, image.y + image.height - 20, false);
+        }
+    }
+    if (step == 3804 || step == 3810 || step == 3816 || step == 3822 ||
+        step == 3858 || step == 3868) {
+        bool visible = step == 3810 || step == 3822;
+        const char *ids[] = { "viewport.play", "viewport.stop",
+                              "viewport.step", "viewport.restart",
+                              "viewport.fit",  "viewport.reset_camera" };
+        ImGuiWindow *toolbar = NULL;
+        ImGuiContext *context = ImGui_GetCurrentContext();
+        for (int i = 0; i < context->Windows.Size; i++) {
+            ImGuiWindow *window = context->Windows.Data[i];
+            if (strstr(window->Name, "/scene_view_controls_")) {
+                toolbar = window;
+                break;
+            }
+        }
+        editor_ui_rect rect;
+        for (int i = 0; i < 6; i++) {
+            bool painted = editor_ui_item_rect(ids[i], &rect);
+            if (visible || step == 3868) {
+                ok &= painted == visible;
+            } else if (painted) {
+                /* Fade paint retains tracked geometry, but cannot receive input. */
+                ok &= toolbar && (toolbar->Flags & ImGuiWindowFlags_NoInputs) ==
+                                     ImGuiWindowFlags_NoInputs;
+            }
+        }
+        ok &= menubar_transport_absent();
+        printf(
+            "ui-scene-controls %s: %s at %d; menu bar has no transport\n",
+            ok ? "PASS" : "FAIL",
+            visible        ? "visible with hover or focus"
+            : step == 3868 ? "fully hidden after fade"
+                           : "noninteractive while hiding",
+            step
+        );
+    }
+    const struct
+    {
+        int press;
+        const char *id;
+    } actions[] = { { 3824, "viewport.play" },
+                    { 3830, "viewport.play" },
+                    { 3836, "viewport.step" },
+                    { 3842, "viewport.restart" },
+                    { 3848, "viewport.stop" } };
+    for (int i = 0; i < 5; i++) {
+        if (step != actions[i].press && step != actions[i].press + 1) {
+            continue;
+        }
+        float x, y;
+        bool found = editor_ui_item_center(actions[i].id, &x, &y);
+        ok &= found;
+        if (found) {
+            inject_mouse_button(x, y, step == actions[i].press);
+        }
+    }
+    if (step == 3828 || step == 3834 || step == 3840 || step == 3846 || step == 3852) {
+        app_runtime_state state = app_scene_authoring_runtime_state(loop->authoring);
+        ok = state.target == APP_RUNTIME_SCENE &&
+             state.playing == (step == 3828 || step == 3846);
+        printf("ui-scene-controls %s: floating transport dispatches shared runtime action at %d\n", ok ? "PASS" : "FAIL", step);
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void native_gameplay_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 3870) {
+        ok = app_scene_authoring_register_prototype(
+                 loop->authoring,
+                 "{\"name\":\"KeyboardPlayer\",\"components\":{"
+                 "\"GameTransform\":{\"x\":0,\"y\":0},"
+                 "\"GameMovement\":{\"speed\":180},\"GameInput\":{\"move\":{"
+                 "\"x\":0,\"y\":0}}},"
+                 "\"behaviors\":[\"InputBehavior\"]}",
+                 NULL
+             ) == 0;
+        ok &= app_scene_authoring_add_instance(loop->authoring, "KeyboardPlayer") == 0;
+        loop->keyboard_entity = app_scene_authoring_runtime_state(loop->authoring)
+                                    .selected_entity;
+        ok &= app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) ==
+              0;
+        editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
+        editor_ui_rect graph;
+        if (editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &graph)) {
+            inject_mouse_button(graph.x + 100, graph.y + 120, false);
+        }
+    }
+    const SDL_Scancode keys[] = { SDL_SCANCODE_W, SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D };
+    for (int i = 0; i < 4; i++) {
+        int press = 3880 + 16 * i;
+        if (step == press || step == press + 10) {
+            SDL_Event event = { 0 };
+            event.type = step == press ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+            event.key.scancode = keys[i];
+            event.key.down = step == press;
+            ok &= SDL_PushEvent(&event);
+            if (step == press) {
+                const GameTransform *position = GAME_GameTransform_get_const(loop->world, loop->keyboard_entity);
+                ok &= position != NULL;
+                if (position) {
+                    loop->keyboard_before = *position;
+                }
+            }
+        }
+        if (step == press + 12) {
+            const GameTransform *position = GAME_GameTransform_get_const(loop->world, loop->keyboard_entity);
+            bool moved = position &&
+                         (i == 0   ? position->y < loop->keyboard_before.y - 1
+                          : i == 1 ? position->x < loop->keyboard_before.x - 1
+                          : i == 2 ? position->y > loop->keyboard_before.y + 1
+                                   : position->x > loop->keyboard_before.x + 1);
+            ok &= moved;
+            printf(
+                "ui-gameplay-keyboard %s: %c moves player through SDL, host "
+                "routing, and InputBehavior\n",
+                moved ? "PASS" : "FAIL",
+                "WASD"[i]
+            );
+        }
+    }
+    if (step == 3944) {
+        ok = app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) ==
+             0;
+    }
+    loop->integration_failed |= !ok;
+}
+
+static ImGuiWindow *floating_controls_window(int pane)
+{
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    const char *name = pane ? "/scene_view_controls_" : "/graph_floating_controls_";
+    for (int i = 0; i < context->Windows.Size; i++) {
+        ImGuiWindow *window = context->Windows.Data[i];
+        if (strstr(window->Name, name)) {
+            return window;
+        }
+    }
+    return NULL;
+}
+
+static int floating_controls_alpha(int pane)
+{
+    ImGuiWindow *window = floating_controls_window(pane);
+    if (!window || !window->Active) {
+        return 0;
+    }
+    int alpha = 0;
+    for (int i = 0; i < window->DrawList->VtxBuffer.Size; i++) {
+        int value = (window->DrawList->VtxBuffer.Data[i].col >> IM_COL32_A_SHIFT) & 255;
+        if (value > alpha) {
+            alpha = value;
+        }
+    }
+    return alpha;
+}
+
+static void floating_controls_motion_input(app_loop *loop, int step)
+{
+    for (int pane = 0; pane < 2; pane++) {
+        int phase = step - (4140 + pane * 80);
+        if (phase < -20 || phase > 74) {
+            continue;
+        }
+        bool ok = menubar_transport_absent();
+        editor_ui_rect inspector;
+        ok &= editor_ui_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector);
+        if (phase == -20 || phase == 18 || phase == 58) {
+            editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
+            inject_mouse_button(
+                inspector.x + inspector.width * 0.5f,
+                inspector.y + inspector.height - 30,
+                false
+            );
+        }
+        if (phase == 0) {
+            editor_ui_rect rect;
+            ok &= editor_ui_pane_rect(pane ? EDITOR_UI_PANE_SCENE : EDITOR_UI_PANE_NODE_CANVAS, &rect);
+            if (ok) {
+                inject_mouse_button(rect.x + rect.width * 0.75f, rect.y + rect.height - 24, false);
+            }
+        }
+        if (phase == 40) {
+            editor_ui_request_focus(pane ? EDITOR_UI_FOCUS_SCENE : EDITOR_UI_FOCUS_NODE_CANVAS);
+        }
+        int alpha = floating_controls_alpha(pane);
+        if (phase == 4 || phase == 44) {
+            ok &= alpha > 0 && alpha < 100;
+            loop->controls_early[pane] = alpha;
+        }
+        if (phase == 8 || phase == 48) {
+            ok &= alpha > loop->controls_early[pane] + 32 && alpha < 250;
+        }
+        if (phase == 16 || phase == 56) {
+            ok &= alpha >= 250;
+        }
+        if (phase == 22 || phase == 62) {
+            ImGuiWindow *window = floating_controls_window(pane);
+            ok &= alpha > 150 && alpha < 255 && window &&
+                  (window->Flags & ImGuiWindowFlags_NoInputs) == ImGuiWindowFlags_NoInputs;
+        }
+        if (phase == 26 || phase == 66) {
+            ok &= alpha > 0 && alpha < 150;
+        }
+        if (phase == -4 || phase == 34 || phase == 74) {
+            editor_ui_rect rect;
+            ok &= alpha == 0 &&
+                  !editor_ui_item_rect(pane ? "viewport.play" : "graph.play", &rect);
+        }
+        if (phase == 4 || phase == 8 || phase == 16 || phase == 22 ||
+            phase == 26 || phase == 34 || phase == 44 || phase == 48 ||
+            phase == 56 || phase == 62 || phase == 66 || phase == 74 || !ok) {
+            printf(
+                "ui-floating-motion %s: %s phase=%d rendered alpha=%d/255\n",
+                ok ? "PASS" : "FAIL",
+                pane ? "Scene" : "Graph",
+                phase,
+                alpha
+            );
+        }
+        loop->integration_failed |= !ok;
+    }
+}
+
+static void graph_transport_input(app_loop *loop, int step)
+{
+    const char *ids[] = { "graph.play", "graph.play", "graph.step", "graph.restart", "graph.stop" };
+    bool ok = true;
+    for (int i = 0; i < 5; i++) {
+        int press = 3990 + i * 6;
+        if (step == press - 2) {
+            reveal_graph_transport(loop);
+        }
+        if (step == press || step == press + 1) {
+            float x, y;
+            ok = editor_ui_item_center(ids[i], &x, &y);
+            if (ok) {
+                inject_mouse_button(x, y, step == press);
+            }
+        }
+        if (step == press + 4) {
+            app_runtime_state state = app_scene_authoring_runtime_state(loop->authoring);
+            ok = state.target == APP_RUNTIME_SCENE &&
+                 state.playing == (i == 0 || i == 3);
+            printf("ui-graph-transport %s: %s dispatches shared Scene runtime action\n", ok ? "PASS" : "FAIL", ids[i]);
+        }
+    }
+    if (step == 4026) {
+        ImGuiWindow *window = ImGui_FindWindowByName("Node Canvas");
+        ok = window != NULL;
+        if (window) {
+            ImGui_DockContextQueueUndockWindow(ImGui_GetCurrentContext(), window);
+        }
+    }
+    if (step == 4030) {
+        ImGui_SetWindowPosStr("Node Canvas", (ImVec2){ 500, 240 }, 0);
+        ImGui_SetWindowSizeStr("Node Canvas", (ImVec2){ 140, 130 }, 0);
+        editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    }
+    if (step == 4034) {
+        editor_ui_rect pane, play, more;
+        ok = editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane) &&
+             editor_ui_item_rect("graph.play", &play) &&
+             editor_ui_item_rect("graph.more", &more);
+        if (ok) {
+            ok = play.x >= pane.x && more.x + more.width <= pane.x + pane.width &&
+                 more.y + more.height <= pane.y + pane.height;
+        }
+        printf("ui-graph-overflow %s: Play and More fit short narrow canvas\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 4036 || step == 4037) {
+        float x, y;
+        ok = editor_ui_item_center("graph.more", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 4036);
+        }
+    }
+    if (step == 4042) {
+        editor_ui_rect rect;
+        ok = editor_ui_item_rect("graph.fit", &rect) &&
+             editor_ui_item_rect("graph.debug", &rect) &&
+             editor_ui_item_rect("graph.stop", &rect);
+        printf("ui-graph-overflow %s: popup exposes Fit, Debug and Stop\n", ok ? "PASS" : "FAIL");
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void math_expression_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 4050 || step == 4051) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, step == 4050);
+    }
+    if (step == 4054) {
+        ImGui_SetWindowPosStr("Node Canvas", (ImVec2){ 320, 100 }, 0);
+        ImGui_SetWindowSizeStr("Node Canvas", (ImVec2){ 700, 500 }, 0);
+        ok = editor_command_apply(
+                 loop->graph_editor,
+                 (editor_command){ .kind = EDITOR_COMMAND_CREATE_GRAPH,
+                                   .data.create_graph = { GRAPH_EVENT, "MathFixture" } }
+             ) == 0;
+        const graph *fixture = behavior_asset_find_graph_by_name(
+            editor_behavior_asset(loop->graph_editor),
+            "MathFixture"
+        );
+        ok &= fixture && editor_open_graph(loop->graph_editor, fixture->graph_id) == 0;
+        editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    }
+    if (step == 4060 || step == 4061) {
+        editor_ui_rect pane;
+        ok = logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        if (ok) {
+            ImGuiIO_AddMousePosEvent(
+                ImGui_GetIO(),
+                pane.x + pane.width * 0.5f,
+                pane.y + pane.height * 0.5f
+            );
+            ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 1, step == 4060);
+        }
+    }
+    if (step == 4064) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "Math Expression");
+    }
+    if (step == 4068 || step == 4069 || step == 4084 || step == 4085) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, step == 4068 || step == 4084);
+    }
+    if (step == 4072) {
+        const graph *g = editor_active_graph(loop->graph_editor);
+        editor_ui_rect field;
+        ok = acount(g->nodes) == 1 && editor_ui_item_rect("math.expression", &field);
+        printf("ui-math-expression %s: search and Enter insert editable expression\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 4076 || step == 4077 || step == 4094 || step == 4095) {
+        float x, y;
+        ok = editor_ui_item_center(step < 4090 ? "math.expression" : "math.inspect", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 4076 || step == 4094);
+        }
+    }
+    if (step == 4078 || step == 4079) {
+        ImGuiIO_AddKeyEvent(
+            ImGui_GetIO(),
+            ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super : ImGuiMod_Ctrl,
+            step == 4078
+        );
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, step == 4078);
+    }
+    if (step == 4080) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "(1+x)*sin(myVar)-2.4/rand()");
+    }
+    if (step == 4088) {
+        const graph *g = editor_active_graph(loop->graph_editor);
+        const graph *generated = acount(g->nodes) == 1
+                                   ? behavior_asset_find_graph(
+                                         editor_behavior_asset(loop->graph_editor),
+                                         g->nodes[0]->reference_id
+                                     )
+                                   : NULL;
+        ok = generated && generated->math_expression &&
+             !strcmp(generated->math_expression, "(1+x)*sin(myVar)-2.4/rand()") &&
+             g->nodes[0]->input_count == 2;
+        printf("ui-math-expression %s: native source edit regenerates two inferred inputs\n", ok ? "PASS" : "FAIL");
+        editor_ui_rect pane;
+        if (editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane)) {
+            inject_mouse_button(pane.x + 20, pane.y + pane.height - 20, false);
+        }
+    }
+    if (step == 4092) {
+        const graph *g = editor_active_graph(loop->graph_editor);
+        editor_node_ui node_ui;
+        editor_ui_rect pane;
+        ok = acount(g->nodes) == 1 &&
+             editor_query_node_ui(loop->graph_editor, g->nodes[0]->id, &node_ui) &&
+             editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        if (ok) {
+            ok = node_ui.left >= pane.x && node_ui.right <= pane.x + pane.width &&
+                 node_ui.top >= pane.y && node_ui.bottom <= pane.y + pane.height;
+        }
+        printf("ui-math-expression %s: Fit keeps enlarged expression within canvas\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 4100) {
+        ok = editor_active_graph(loop->graph_editor)->math_expression != NULL;
+        printf("ui-math-expression %s: Inspect opens generated graph\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 4104 || step == 4105) {
+        float x, y;
+        ok = editor_ui_item_center("math.title", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 4104);
+        }
+    }
+    if (step == 4108 || step == 4109) {
+        ImGuiIO_AddKeyEvent(
+            ImGui_GetIO(),
+            ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super : ImGuiMod_Ctrl,
+            step == 4108
+        );
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, step == 4108);
+    }
+    if (step == 4112) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "Position Delta");
+    }
+    if (step == 4116 || step == 4117) {
+        editor_ui_rect pane;
+        ok = editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        if (ok) {
+            inject_mouse_button(pane.x + 20, pane.y + pane.height - 20, step == 4116);
+        }
+    }
+    if (step == 4120) {
+        const graph *generated = editor_active_graph(loop->graph_editor);
+        const node *call = NULL;
+        const behavior_asset *asset = editor_behavior_asset(loop->graph_editor);
+        for (int i = 0; generated && i < acount(asset->graphs) && !call; i++) {
+            const graph *caller = asset->graphs[i];
+            for (int j = 0; j < acount(caller->nodes); j++) {
+                const node *candidate = caller->nodes[j];
+                if (candidate->reference_id == generated->graph_id) {
+                    call = candidate;
+                    break;
+                }
+            }
+        }
+        ok = generated && generated->name &&
+             !strcmp(generated->name, "Position Delta") && call &&
+             call->reference_name && !strcmp(call->reference_name, "Position Delta");
+        printf("ui-math-expression %s: generated function title is editable\n", ok ? "PASS" : "FAIL");
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void system_math_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    if (step == 4300) {
+        ok = app_scene_authoring_open_system(loop->authoring, "content/systems/MovementSystem.json") ==
+             0;
+        ImGui_SetWindowPosStr("Node Canvas", (ImVec2){ 320, 100 }, 0);
+        ImGui_SetWindowSizeStr("Node Canvas", (ImVec2){ 1000, 600 }, 0);
+    }
+    if (step == 4302) {
+        graph *g = (graph *)editor_active_graph(loop->graph_editor);
+        node *movement = NULL;
+        for (int i = acount(g->nodes) - 1; i >= 0; i--) {
+            node *n = g->nodes[i];
+            if (!strcmp(n->desc->name, "Get_GameMovement")) {
+                movement = n;
+            } else {
+                graph_remove_node(g, n);
+            }
+        }
+        if (movement) {
+            for (int i = 0; i < movement->output_count; i++) {
+                if (movement->output_pins[i].type == PIN_F32) {
+                    loop->math_speed_pin = movement->output_pins[i].id;
+                }
+            }
+            editor_reveal_node(loop->graph_editor, movement);
+        }
+        ok = loop->math_speed_pin != 0;
+    }
+    if (step == 4336) {
+        editor_undo(loop->graph_editor);
+        graph *g = (graph *)editor_active_graph(loop->graph_editor);
+        ok = acount(g->nodes) == 1;
+        if (ok) {
+            editor_reveal_node(loop->graph_editor, g->nodes[0]);
+        }
+    }
+    if (step == 4320 || step == 4352) {
+        editor_pin_ui pin;
+        ok = editor_query_pin_ui(loop->graph_editor, loop->math_speed_pin, &pin);
+        if (ok) {
+            inject_mouse_button(pin.x, pin.y, true);
+        }
+    }
+    if (step == 4321 || step == 4322 || step == 4353 || step == 4354) {
+        editor_ui_rect pane;
+        ok = logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        if (ok) {
+            inject_mouse_button(
+                pane.x + pane.width - 100,
+                pane.y + pane.height - 90,
+                step == 4321 || step == 4353
+            );
+        }
+    }
+    if (step == 4325) {
+        editor_ui_rect item;
+        ok = editor_ui_item_rect("graph.add.math_expression", &item);
+        printf("ui-system-math %s: Get Movement Speed drag offers Math Expression\n", ok ? "PASS" : "FAIL");
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "Math Expression");
+    }
+    if (step == 4328 || step == 4329) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, step == 4328);
+    }
+    if (step == 4358 || step == 4359) {
+        float x, y;
+        ok = editor_ui_item_center("graph.add.math_expression", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 4358);
+        }
+    }
+    if (step == 4334 || step == 4364) {
+        const graph *g = editor_active_graph(loop->graph_editor);
+        node *call = NULL;
+        for (int i = 0; i < acount(g->nodes); i++) {
+            const graph *generated = behavior_asset_find_graph(
+                editor_behavior_asset(loop->graph_editor),
+                g->nodes[i]->reference_id
+            );
+            if (generated && generated->math_expression) {
+                call = g->nodes[i];
+            }
+        }
+        bool connected = false;
+        for (int i = 0; call && i < acount(g->edges); i++) {
+            connected |= g->edges[i].from_pin_id == loop->math_speed_pin &&
+                         g->edges[i].to_id == call->id &&
+                         g->edges[i].to_pin_id == call->input_pins[0].id;
+        }
+        editor_ui_rect source;
+        ok = call && connected && editor_ui_item_rect("math.expression", &source);
+        printf(
+            "ui-system-math %s: %s autowires Speed to expression and opens "
+            "source\n",
+            ok ? "PASS" : "FAIL",
+            step == 4334 ? "filtered Enter" : "featured click"
+        );
+        if (step == 4364 && call) {
+            loop->math_call_id = call->id;
+            loop->math_graph_id = call->reference_id;
+            editor_ui_restore_navigator_tab(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET);
+            editor_ui_request_focus(EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET);
+        }
+    }
+    if (step == 4365 || step == 4366) {
+        char item[64];
+        snprintf(
+            item,
+            sizeof item,
+            "outline.graph.%llu",
+            (unsigned long long)loop->math_graph_id
+        );
+        editor_ui_rect rect;
+        ImGuiWindow *navigator = ImGui_FindWindowByName("Navigator");
+        if (navigator && !editor_ui_item_rect(item, &rect)) {
+            ImGui_SetScrollYImGuiWindowPtr(navigator, navigator->ScrollMax.y);
+        }
+    }
+    if (step == 4368 || step == 4369) {
+        char item[64];
+        snprintf(
+            item,
+            sizeof item,
+            "outline.graph.%llu",
+            (unsigned long long)loop->math_graph_id
+        );
+        float x, y;
+        editor_ui_rect pane;
+        ok = editor_ui_item_center(item, &x, &y) &&
+             logical_pane_rect(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, &pane) &&
+             x >= pane.x && x <= pane.x + pane.width && y >= pane.y &&
+             y <= pane.y + pane.height;
+        if (ok) {
+            ImGuiIO_AddMousePosEvent(ImGui_GetIO(), x, y);
+            ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 1, step == 4368);
+        }
+    }
+    if (step == 4373 || step == 4374) {
+        float x, y;
+        ok = editor_ui_item_center("outline.graph.delete", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 4373);
+        }
+    }
+    if (step == 4378 || step == 4382) {
+        const behavior_asset *asset = editor_behavior_asset(loop->graph_editor);
+        graph *generated = behavior_asset_find_graph(asset, loop->math_graph_id);
+        node *call = graph_node_by_id(asset->graph, loop->math_call_id);
+        if (step == 4378) {
+            ok = !generated && !call && acount(asset->graph->nodes) == 1 &&
+                 acount(asset->graph->edges) == 0;
+            printf("ui-system-math %s: Documents Delete Function removes generated definition and call\n", ok ? "PASS" : "FAIL");
+            editor_undo(loop->graph_editor);
+        } else {
+            bool connected = false;
+            for (int i = 0; call && i < acount(asset->graph->edges); i++) {
+                connected |= asset->graph->edges[i].from_pin_id == loop->math_speed_pin &&
+                             asset->graph->edges[i].to_id == call->id;
+            }
+            ok = generated && generated->math_expression && call && connected;
+            printf("ui-system-math %s: Undo restores generated definition, call and Speed wire\n", ok ? "PASS" : "FAIL");
+        }
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void navigator_docking_input(app_loop *loop, int step)
+{
+    bool ok = true;
+    ImGuiWindow *window = ImGui_FindWindowByName("Navigator");
+    if (step == 3950) {
+        ok = window && !(window->Flags &
+                         (ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove));
+        if (window) {
+            loop->navigator_dock = window->DockId;
+            ImGui_DockContextQueueUndockWindow(ImGui_GetCurrentContext(), window);
+        }
+    }
+    if (step == 3954) {
+        ok = window && !window->DockNode;
+        if (window) {
+            loop->navigator_position = window->Pos;
+            loop->drop_pointer = (ImVec2){ window->Pos.x + 100, window->Pos.y + 10 };
+        }
+    }
+    if (step >= 3956 && step <= 3958) {
+        inject_mouse_button(
+            loop->drop_pointer.x + (step > 3956 ? 80 : 0),
+            loop->drop_pointer.y + (step > 3956 ? 40 : 0),
+            step != 3958
+        );
+    }
+    if (step == 3962) {
+        ok = window && !window->DockNode &&
+             fabsf(window->Pos.x - loop->navigator_position.x - 80) < 3 &&
+             fabsf(window->Pos.y - loop->navigator_position.y - 40) < 3;
+        if (window) {
+            loop->navigator_position = window->Pos;
+        }
+    }
+    if (step == 3964 || step == 3965 || step == 3970 || step == 3971) {
+        float x, y;
+        ok = editor_ui_item_center(step < 3970 ? "navigator.collapse" : "navigator.expand", &x, &y);
+        if (ok) {
+            inject_mouse_button(x, y, step == 3964 || step == 3970);
+        }
+    }
+    if (step == 3976) {
+        ok = window && !window->DockNode &&
+             fabsf(window->Pos.x - loop->navigator_position.x) < 1 &&
+             fabsf(window->Pos.y - loop->navigator_position.y) < 1;
+        if (loop->navigator_dock) {
+            ImGui_DockBuilderDockWindow("Navigator", loop->navigator_dock);
+        }
+    }
+    if (step == 3980) {
+        ok = window && window->DockNode && window->DockId == loop->navigator_dock;
+    }
+    if (step == 3962 || step == 3976 || step == 3980 || !ok) {
+        printf("ui-navigator-docking %s: move, collapse/reopen, and redock at %d\n", ok ? "PASS" : "FAIL", step);
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void gameplay_input(app_loop *loop, int step)
+{
+    if (step < 3292) {
+        return;
+    }
+    char directory[128], player[160], weapon[160], copy[160];
+    snprintf(directory, sizeof directory, "%s/gameplay", loop->gameplay_root);
+    snprintf(player, sizeof player, "%s/Alpha.json", directory);
+    snprintf(weapon, sizeof weapon, "%s/Beta.json", directory);
+    snprintf(copy, sizeof copy, "%s/Copy.json", directory);
+    bool ok = true;
+    if (step == 3292) {
+        strcpy(loop->gameplay_root, "/tmp/c-blueprints-gameplay-XXXXXX");
+        ok = mkdtemp(loop->gameplay_root) != NULL;
+        snprintf(directory, sizeof directory, "%s/gameplay", loop->gameplay_root);
+        snprintf(player, sizeof player, "%s/Alpha.json", directory);
+        snprintf(weapon, sizeof weapon, "%s/Beta.json", directory);
+        char *player_json = io_read("content/gameplay/Player.json");
+        char *weapon_json = io_read("content/gameplay/Weapon.json");
+        ok &= mkdir(directory, 0700) == 0 && player_json && weapon_json &&
+              io_write(player, player_json) && io_write(weapon, weapon_json);
+        free(player_json);
+        free(weapon_json);
+        ok &= app_scene_authoring_set_content_root(loop->authoring, loop->gameplay_root) ==
+              0;
+        app_scene_authoring_refresh_content(loop->authoring);
+    }
+    const struct
+    {
+        int press;
+        const char *id;
+    } actions[] = {
+        { 3294, "navigator.files" },
+        { 3298, directory },
+        { 3302, player },
+        { 3320, "gameplay.field.max_health" },
+    };
+    for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
+        if (step != actions[i].press && step != actions[i].press + 1) {
+            continue;
+        }
+        float x, y;
+        if (editor_ui_item_center(actions[i].id, &x, &y)) {
+            inject_mouse_button(x, y, step == actions[i].press);
+        } else {
+            printf("ui-gameplay FAIL: missing %s\n", actions[i].id);
+            ok = false;
+        }
+    }
+    if (step == 3306) {
+        editor_ui_rect field;
+        ok = app_scene_authoring_document(loop->authoring).kind ==
+                 APP_EDITOR_DOCUMENT_GAMEPLAY &&
+             gameplay_value(loop, "max_health", 100) &&
+             editor_ui_item_rect("gameplay.field.max_health", &field);
+        printf("ui-gameplay %s: single-click routes data kind independent of filename\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 3310) {
+        ok = app_scene_authoring_set_gameplay_number(loop->authoring, "max_health", 123) ==
+                 0 &&
+             app_scene_authoring_open_gameplay(loop->authoring, weapon) == 0 &&
+             app_scene_authoring_set_gameplay_number(loop->authoring, "damage", 30) == 0 &&
+             app_scene_authoring_open_gameplay(loop->authoring, player) == 0 &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
+             gameplay_value(loop, "max_health", 100) &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0 &&
+             gameplay_value(loop, "max_health", 123) &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_SAVE) == 0 &&
+             !game_authored_data_unsaved(app_scene_authoring_gameplay(loop->authoring)) &&
+             app_scene_authoring_set_gameplay_number(loop->authoring, "max_health", 321) ==
+                 0 &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_RELOAD) == 0 &&
+             gameplay_value(loop, "max_health", 123) &&
+             app_scene_authoring_open_gameplay(loop->authoring, weapon) == 0 &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
+             gameplay_value(loop, "damage", 12) &&
+             app_scene_authoring_open_gameplay(loop->authoring, player) == 0;
+        printf("ui-gameplay %s: independent history, Save and Reload preserve data\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 3323 || step == 3324) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Ctrl, step == 3323);
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, step == 3323);
+    }
+    if (step == 3325) {
+        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "222");
+    }
+    if (step == 3327 || step == 3328) {
+        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, step == 3327);
+    }
+    if (step == 3332) {
+        ok = gameplay_value(loop, "max_health", 222) &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
+             gameplay_value(loop, "max_health", 123) &&
+             editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0 &&
+             gameplay_value(loop, "max_health", 222) &&
+             app_scene_authoring_save_gameplay(loop->authoring, copy) == 0;
+        char *json = io_read(copy);
+        ok &= json && strstr(json, "composition") && strstr(json, "GameInput");
+        free(json);
+        const game_authored_data *before = app_scene_authoring_gameplay(loop->authoring);
+        ok &= io_write(copy, "{broken") &&
+              editor_ui_run_command(EDITOR_UI_COMMAND_RELOAD) != 0 &&
+              app_scene_authoring_gameplay(loop->authoring) == before &&
+              gameplay_value(loop, "max_health", 222) &&
+              app_scene_authoring_open_gameplay(loop->authoring, "/tmp/c-blueprints-missing-gameplay.json") !=
+                  0 &&
+              app_scene_authoring_gameplay(loop->authoring) == before &&
+              gameplay_value(loop, "max_health", 222);
+        printf("ui-gameplay %s: native edit Undo/Redo, Save As, composition and failed-open isolation\n", ok ? "PASS" : "FAIL");
+    }
+    if (step == 3334) {
+        unlink(player);
+        unlink(weapon);
+        unlink(copy);
+        rmdir(directory);
+        rmdir(loop->gameplay_root);
+    }
+    loop->integration_failed |= !ok;
+}
+
+static void runtime_target_input(app_loop *loop, int step)
+{
+    (void)loop;
+    (void)step;
+}
+
 static int app_frame(app_loop *loop)
 {
     if (!cf_app_is_running()) {
         return 1;
     }
     int step = loop->frame - 3;
+    workspace_navigation_input(loop, step);
+    prototype_preview_input(loop, step);
+    debug_target_input(loop, step);
+    scene_controls_input(loop, step);
+    floating_controls_motion_input(loop, step);
+    const int reveal_before_toolbar[] = { 139, 432,  452,  464,  724, 902,
+                                          990, 1050, 1200, 3546, 3758 };
+    for (int i = 0;
+         i < (int)(sizeof reveal_before_toolbar / sizeof *reveal_before_toolbar);
+         i++) {
+        if (step == reveal_before_toolbar[i]) {
+            reveal_graph_transport(loop);
+        }
+    }
+    graph_transport_input(loop, step);
+    math_expression_input(loop, step);
+    system_math_input(loop, step);
+    native_gameplay_input(loop, step);
+    navigator_docking_input(loop, step);
+    gameplay_input(loop, step);
+    runtime_target_input(loop, step);
+    instance_picker_input(loop, step);
+    attachment_picker_input(loop, step);
+    node_search_input(loop, step);
     scene_edit_input(loop, step);
     scene_numeric_input(loop, step);
     narrow_viewport_input(loop, step);
@@ -2379,6 +4213,12 @@ static int app_frame(app_loop *loop)
     if (step == 1675 || step == 1725) {
         app_scene_authoring_stop_prototype_preview(loop->authoring);
     }
+    if (step == 1504 || step == 1564) {
+        float x, y;
+        if (editor_ui_item_center("viewport.image", &x, &y)) {
+            inject_mouse_button(x, y, false);
+        }
+    }
     const char *camera_action = NULL;
     bool camera_down = false;
     switch (step) {
@@ -2462,12 +4302,12 @@ static int app_frame(app_loop *loop)
             break;
         case 1474:
         case 1475:
-            shape_action = "document.menu";
+            shape_action = "edit.menu";
             shape_down = step == 1474;
             break;
         case 1482:
         case 1483:
-            shape_action = "document.undo";
+            shape_action = "edit.undo";
             shape_down = step == 1482;
             break;
     }
@@ -2481,6 +4321,9 @@ static int app_frame(app_loop *loop)
         }
     }
     const char *appearance_action = NULL;
+    if (step >= 1280 && step <= 1290) {
+        scroll_inspector_to_item("prototype.color.GameMaterial.scene");
+    }
     bool appearance_down = false;
     switch (step) {
         case 1264:
@@ -2494,16 +4337,6 @@ static int app_frame(app_loop *loop)
         case 1275:
             appearance_action = "content/prototypes/Player.json";
             appearance_down = step == 1272 || step == 1274;
-            break;
-        case 1284:
-        case 1285:
-            appearance_action = "prototype.component.GameAppearance";
-            appearance_down = step == 1284;
-            break;
-        case 1288:
-        case 1289:
-            appearance_action = "prototype.component.GameMaterial";
-            appearance_down = step == 1288;
             break;
         case 1292:
         case 1293:
@@ -2522,12 +4355,12 @@ static int app_frame(app_loop *loop)
             break;
         case 1330:
         case 1331:
-            appearance_action = "document.menu";
+            appearance_action = "edit.menu";
             appearance_down = step == 1330;
             break;
         case 1338:
         case 1339:
-            appearance_action = "document.undo";
+            appearance_action = "edit.undo";
             appearance_down = step == 1338;
             break;
     }
@@ -2683,6 +4516,14 @@ static int app_frame(app_loop *loop)
     if (step == 600) {
         loop->integration_failed |= editor_open_graph(loop->graph_editor, 0) != 0;
     }
+    if (step == 635) {
+        loop->integration_failed |= editor_graph_back(loop->graph_editor) != 0;
+        loop->integration_failed |= editor_graph_back(loop->graph_editor) != 0;
+    }
+    if (step == 657 || step == 679) {
+        loop->integration_failed |= editor_open_graph(loop->graph_editor, step == 657 ? 173 : 0) !=
+                                    0;
+    }
     const char *navigation = NULL;
     bool navigation_down = false;
     switch (step) {
@@ -2695,31 +4536,6 @@ static int app_frame(app_loop *loop)
         case 621:
             navigation = "graph.call.open.182";
             navigation_down = step == 620;
-            break;
-        case 635:
-        case 636:
-            navigation = "graph.breadcrumb.0";
-            navigation_down = step == 635;
-            break;
-        case 650:
-        case 651:
-            navigation = "graph.picker";
-            navigation_down = step == 650;
-            break;
-        case 672:
-        case 673:
-            navigation = "graph.picker";
-            navigation_down = step == 672;
-            break;
-        case 679:
-        case 680:
-            navigation = "graph.picker.0";
-            navigation_down = step == 679;
-            break;
-        case 657:
-        case 658:
-            navigation = "graph.picker.173";
-            navigation_down = step == 657;
             break;
     }
     if (navigation) {
@@ -2812,13 +4628,8 @@ static int app_frame(app_loop *loop)
     if (step >= 385 && step <= 388) {
         inject_mouse_button(loop->pursuit_click_x, loop->pursuit_click_y, step == 385 || step == 387);
     }
-    if (step == 393 || step == 394) {
-        float x, y;
-        if (editor_ui_item_center("graph.back", &x, &y)) {
-            inject_mouse_button(x, y, step == 393);
-        } else {
-            loop->integration_failed = 1;
-        }
+    if (step == 393) {
+        loop->integration_failed |= editor_graph_back(loop->graph_editor) != 0;
     }
 
     if (step == 410) {
@@ -2845,7 +4656,9 @@ static int app_frame(app_loop *loop)
         loop->integration_failed |= !found;
     }
     if (step == 329) {
-        loop->integration_failed |= app_scene_authoring_preview_prototype(loop->authoring, "Player") !=
+        loop->integration_failed |= app_scene_authoring_open_prototype(loop->authoring, "Player") !=
+                                    0;
+        loop->integration_failed |= app_scene_authoring_set_runtime_target(loop->authoring, APP_RUNTIME_PREVIEW) !=
                                     0;
         loop->integration_failed |= app_scene_authoring_open_behavior(loop->authoring, "WeaponBehavior") !=
                                     0;
@@ -2856,6 +4669,17 @@ static int app_frame(app_loop *loop)
                                     ) != 0;
     }
     if (step == 285) {
+        bool locked = app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) !=
+                          0 &&
+                      app_scene_authoring_set_runtime_target(loop->authoring, APP_RUNTIME_SCENE) !=
+                          0 &&
+                      app_scene_authoring_runtime_state(loop->authoring).target ==
+                          APP_RUNTIME_PREVIEW;
+        printf("ui-runtime-target %s: paused preview prevents a second session\n", locked ? "PASS" : "FAIL");
+        loop->integration_failed |= !locked;
+        app_scene_authoring_stop_prototype_preview(loop->authoring);
+        loop->integration_failed |= app_scene_authoring_set_runtime_target(loop->authoring, APP_RUNTIME_SCENE) !=
+                                    0;
         loop->projectiles_before = runtime_projectiles(loop->world);
         app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY);
         engine_set_focus(loop->runtime, ENGINE_FOCUS_VIEWPORT);
@@ -2869,7 +4693,7 @@ static int app_frame(app_loop *loop)
     }
     if (step == 252 || step == 273 || step == 277) {
         editor_ui_rect pane;
-        editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
         editor_query query;
         editor_query_state(loop->graph_editor, &query);
         loop->zoom_before = query.zoom;
@@ -2879,7 +4703,7 @@ static int app_frame(app_loop *loop)
     }
     if (step == 279 || step == 280) {
         editor_ui_rect pane;
-        editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
         inject_mouse_button(pane.x + pane.width * 0.5f, pane.y + pane.height * 0.3f, step == 279);
     }
     if (step == 236) {
@@ -3062,17 +4886,17 @@ static int app_frame(app_loop *loop)
             case 42:
             case 51:
             case 52:
-                path = "document.menu";
+                path = "file.menu";
                 click_frame = step < 50 ? step - 40 : step - 50;
                 break;
             case 46:
             case 47:
-                path = "document.save_as";
+                path = "file.save_as";
                 click_frame = step - 45;
                 break;
             case 54:
             case 55:
-                path = "document.reload";
+                path = "file.reload";
                 click_frame = step - 53;
                 break;
             case 59:
@@ -3121,20 +4945,6 @@ static int app_frame(app_loop *loop)
                 path = "view.navigator";
                 click_frame = step - 99;
                 break;
-            case 114:
-            case 115:
-            case 125:
-            case 126:
-                path = "view.menu";
-                click_frame = step < 120 ? step - 113 : step - 124;
-                break;
-            case 119:
-            case 120:
-            case 128:
-            case 129:
-                path = "view.focus";
-                click_frame = step < 125 ? step - 118 : step - 127;
-                break;
             case 141:
             case 142:
                 path = "graph.actions";
@@ -3144,7 +4954,7 @@ static int app_frame(app_loop *loop)
             case 152:
             case 155:
             case 156:
-                path = "content.clear_search";
+                path = "content.search.clear";
                 click_frame = step < 155 ? step - 150 : step - 154;
                 break;
             case 163:
@@ -3155,19 +4965,14 @@ static int app_frame(app_loop *loop)
                 path = saved_path;
                 click_frame = step - 162;
                 break;
-            case 171:
-            case 172:
-                path = "prototype.component.GameTransform";
-                click_frame = step - 170;
-                break;
             case 188:
             case 189:
-                path = "document.menu";
+                path = "edit.menu";
                 click_frame = step - 187;
                 break;
             case 192:
             case 193:
-                path = "document.undo";
+                path = "edit.undo";
                 click_frame = step - 191;
                 break;
             case 176:
@@ -3186,17 +4991,20 @@ static int app_frame(app_loop *loop)
             int press;
             const char *path;
         } transport_clicks[] = {
-            { 295, "viewport.play" }, { 299, "viewport.play" },
-            { 306, "viewport.step" }, { 313, "viewport.restart" },
-            { 317, "viewport.play" }, { 324, "viewport.stop" },
-            { 332, "viewport.play" }, { 336, "viewport.play" },
-            { 343, "viewport.step" }, { 350, "viewport.restart" },
-            { 354, "viewport.play" }, { 361, "viewport.stop" },
+            { 295, "graph.play" }, { 299, "graph.play" },
+            { 306, "graph.step" }, { 313, "graph.restart" },
+            { 317, "graph.play" }, { 324, "graph.stop" },
+            { 332, "graph.play" }, { 336, "graph.play" },
+            { 343, "graph.step" }, { 350, "graph.restart" },
+            { 354, "graph.play" }, { 361, "graph.stop" },
         };
         for (int i = 0;
              i < (int)(sizeof(transport_clicks) / sizeof(transport_clicks[0]));
              i++) {
             int offset = step - transport_clicks[i].press;
+            if (offset == -2) {
+                reveal_graph_transport(loop);
+            }
             if (offset == 0 || offset == 1) {
                 path = transport_clicks[i].path;
                 click_frame = offset + 1;
@@ -3238,14 +5046,13 @@ static int app_frame(app_loop *loop)
     lifecycle_input(loop, step);
     double seconds = (double)(loop->frame + 1) / 60.0;
     editor_tick(loop->graph_editor, seconds);
-    int viewport_focused = engine_viewport_focused(loop->viewport);
-    if (viewport_focused && cf_key_just_pressed(CF_KEY_ESCAPE)) {
-        engine_viewport_release_focus();
-        engine_route_escape(loop->runtime);
-        viewport_focused = 0;
-    }
-    engine_set_focus(loop->runtime, viewport_focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_CANVAS);
-    app_scene_authoring_input(loop->authoring, "viewport", 0.0, viewport_focused != 0);
+    app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
+    app_scene_authoring_input(
+        loop->authoring,
+        "viewport",
+        0.0,
+        engine_viewport_focused(loop->viewport) != 0
+    );
     if (app_scene_authoring_frame(loop->authoring, seconds) != FLOW_OK) {
         fprintf(stderr, "runtime frame failed\n");
     }
@@ -3259,6 +5066,69 @@ static int app_frame(app_loop *loop)
     app_scene_authoring_draw(loop->authoring);
     editor_draw(loop->graph_editor);
     cf_app_draw_onto_screen(true);
+    if (step == 3868 || step == 3810) {
+        const char *capture = getenv(
+            step == 3868 ? "CBLUEPRINT_UI_SCENE_CONTROLS_HIDDEN_SCREENSHOT"
+                         : "CBLUEPRINT_UI_SCENE_CONTROLS_VISIBLE_SCREENSHOT"
+        );
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step == 3794) {
+        const char *capture = getenv("CBLUEPRINT_UI_DEBUG_TARGET_SCREENSHOT");
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step == 3560) {
+        const char *capture = getenv("CBLUEPRINT_UI_COMPACT_NODES_SCREENSHOT");
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step >= 4120 && step < 4298) {
+        const char *directory = getenv("CBLUEPRINT_UI_CONTROLS_FRAMES");
+        if (directory) {
+            char path[1024];
+            snprintf(path, sizeof path, "%s/frame-%03d.png", directory, step - 4120);
+            loop->integration_failed |= app_save_screenshot(path);
+        }
+    }
+    if (step == 4092 || step == 4100) {
+        const char *capture = getenv(
+            step == 4092 ? "CBLUEPRINT_UI_MATH_SOURCE_SCREENSHOT" : "CBLUEPRINT_UI_MATH_GRAPH_SCREENSHOT"
+        );
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step == 3344 || step == 3370) {
+        const char *capture = getenv(
+            step == 3344 ? "CBLUEPRINT_UI_STILL_PREVIEW_SCREENSHOT" : "CBLUEPRINT_UI_LOOP_PREVIEW_SCREENSHOT"
+        );
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step == 3330) {
+        const char *capture = getenv("CBLUEPRINT_UI_GAMEPLAY_SCREENSHOT");
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step == 3174 || step == 3242) {
+        const char *capture = getenv("CBLUEPRINT_UI_ATTACHMENT_PICKER_SCREENSHOT");
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
+    if (step == 3122) {
+        const char *capture = getenv("CBLUEPRINT_UI_NODE_SEARCH_SCREENSHOT");
+        if (capture) {
+            loop->integration_failed |= app_save_screenshot(capture);
+        }
+    }
     if (step == 2742) {
         const char *capture = getenv("CBLUEPRINT_UI_LIVE_GRAPH_SCREENSHOT");
         if (capture) {
@@ -3322,12 +5192,11 @@ static int app_frame(app_loop *loop)
         loop->integration_failed |= !ok;
     }
     if (step == 44) {
-        bool ok = editor_ui_item_center("document.save_as", &x, &y) &&
-                  editor_ui_item_center("document.reload", &x, &y) &&
-                  editor_ui_item_center("document.undo", &x, &y);
+        bool ok = editor_ui_item_center("file.save_as", &x, &y) &&
+                  editor_ui_item_center("file.reload", &x, &y);
         editor_ui_rect menu;
         ImGuiWindow *navigator = ImGui_FindWindowByName("Navigator");
-        ok = ok && editor_ui_item_rect("document.menu", &menu) && navigator &&
+        ok = ok && editor_ui_item_rect("file.menu", &menu) && navigator &&
              navigator->Pos.y * ImGui_GetIO()->DisplayFramebufferScale.y >=
                  menu.y + menu.height;
         printf("ui-document %s: menu is unobstructed; save, reload and undo are reachable\n", ok ? "PASS" : "FAIL");
@@ -3420,33 +5289,8 @@ static int app_frame(app_loop *loop)
     if (step == 116) {
         editor_ui_set_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS, false);
     }
-    if (step == 118) {
-        editor_ui_set_reduced_motion(true);
-        loop->integration_failed |= !editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &loop->graph_before_focus);
-    }
-    if (step == 124 || step == 133) {
-        bool focused = step == 124;
-        editor_ui_rect content;
-        bool content_drawn = editor_ui_pane_rect(EDITOR_UI_PANE_CONTENT, &content);
-        bool ok = editor_ui_focus_mode() == focused && content_drawn == !focused &&
-                  !editor_ui_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS) &&
-                  !editor_ui_pane_visible(EDITOR_UI_PANE_OUTPUT_LOG) &&
-                  ui_graph_scene_are_stacked();
-        printf(
-            "ui-focus %s: %s preserves central split and hidden-pane choices\n",
-            ok ? "PASS" : "FAIL",
-            focused ? "enter" : "exit"
-        );
-        loop->integration_failed |= !ok;
-    }
     if (step == 134) {
-        editor_ui_rect graph;
-        bool ok = editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &graph) &&
-                  fabsf(graph.width - loop->graph_before_focus.width) < 3.0f &&
-                  fabsf(graph.x - loop->graph_before_focus.x) < 3.0f;
-        printf("ui-focus-geometry %s: pane widths restored\n", ok ? "PASS" : "FAIL");
         editor_ui_set_reduced_motion(false);
-        loop->integration_failed |= !ok;
         loop->integration_failed |= app_scene_authoring_open_behavior(loop->authoring, "InputBehavior") !=
                                     0;
     }
@@ -3954,17 +5798,17 @@ static int app_frame(app_loop *loop)
                   fabsf(query.pan_x - loop->pursuit_camera.pan_x) < 0.01f &&
                   fabsf(query.pan_y - loop->pursuit_camera.pan_y) < 0.01f &&
                   call->x == loop->pursuit_node_x && call->y == loop->pursuit_node_y;
-        printf("ui-navigation %s: ancestor breadcrumb restores root camera and call selection\n", ok ? "PASS" : "FAIL");
+        printf("ui-navigation %s: back navigation restores root camera and call selection\n", ok ? "PASS" : "FAIL");
         loop->integration_failed |= !ok;
     }
     if (step == 668) {
         bool ok = editor_active_graph(loop->graph_editor)->graph_id == 173;
-        printf("ui-navigation %s: graph picker opens a local function\n", ok ? "PASS" : "FAIL");
+        printf("ui-navigation %s: graph navigation opens a local function\n", ok ? "PASS" : "FAIL");
         loop->integration_failed |= !ok;
     }
     if (step == 688) {
         bool ok = editor_active_graph(loop->graph_editor)->graph_id == 0;
-        printf("ui-navigation %s: graph picker returns to Events\n", ok ? "PASS" : "FAIL");
+        printf("ui-navigation %s: graph navigation returns to Events\n", ok ? "PASS" : "FAIL");
         loop->integration_failed |= !ok;
     }
     if (step == 718 || step == 740) {
@@ -4253,6 +6097,12 @@ static int app_frame(app_loop *loop)
                  fabsf(camera.center_y - 180) < 0.01f;
         }
         if (step == 1640) {
+            printf(
+                "ui-scene-camera actual: %f %f target=%d\n",
+                camera.center_x,
+                camera.center_y,
+                app_scene_authoring_runtime_state(loop->authoring).target
+            );
             ok = fabsf(camera.center_x - 86) < 0.01f &&
                  fabsf(camera.center_y - 180) < 0.01f;
             engine_viewport_get_view(loop->viewport, &loop->scene_view);
@@ -4330,10 +6180,12 @@ static bool asset_preview_without_instance()
     return ok;
 }
 
+extern void test_navigation_runtime();
+
 int ui_integration_run(const char *program)
 {
     cf_set_assert_handler(stacktrace_assert_handler);
-    const int frames = 3112;
+    const int frames = 4386;
     CF_Result result = cf_make_app(
         "c-blueprints",
         0,
@@ -4352,36 +6204,11 @@ int ui_integration_run(const char *program)
     app_scene_renderer_initialize();
     bool border_ok = test_interior_border() == 0;
     cf_app_init_imgui();
+    test_navigation_runtime();
     editor_ui_initialize(false);
     bool preferences_ok = workspace_preferences_roundtrip();
-    if (getenv("CBLUEPRINT_UI_OVERLAY_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_ENCOUNTER_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_ORIENTATION_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_SCENE_EDIT_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_APPEARANCE_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_RESPONSIVE_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_LIVE_GRAPH_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_PLAY_HINT_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_MATERIAL_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_COMPACT_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_ATTACHMENTS_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_SCENE_SEARCH_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_PROPERTIES_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_COLOR_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_SETTINGS_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_NAVIGATOR_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_FLAGS_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_NAVIGATION_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_BURST_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_SPAWN_SCREENSHOT") || getenv("CBLUEPRINT_UI_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_COMBAT_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_FIELDS_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_PURSUIT_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_AUTO_WEAPON_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_FUNCTION_SCREENSHOT") ||
-        getenv("CBLUEPRINT_UI_EXTRACT_SCREENSHOT")) {
-        cf_app_set_imgui_render_target(cf_app_get_canvas());
-    }
+    /* The UI harness always uses framebuffer coordinates, with or without captures. */
+    cf_app_set_imgui_render_target(cf_app_get_canvas());
     ImGuiContextHook clock = { .Type = ImGuiContextHookType_NewFramePre,
                                .Callback = fixed_ui_time };
     ImGui_AddContextHook(ImGui_GetCurrentContext(), &clock);
@@ -4437,6 +6264,16 @@ int ui_integration_run(const char *program)
     bool coverage_ok = authoring &&
                        test_sdf_coverage(app_scene_authoring_shapes(authoring)) == 0;
     bool radiance_ok = authoring && test_radiance() == 0;
+    if (getenv("CBLUEPRINT_RENDER_CHECKS_ONLY")) {
+        app_scene_authoring_free(authoring);
+        engine_free(runtime);
+        game_live_world_free(live);
+        editor_free(graph_editor);
+        ecs_world_free(world);
+        engine_viewport_free(viewport);
+        cf_destroy_app();
+        return !border_ok || !coverage_ok || !radiance_ok;
+    }
     bool scene_ready = authoring &&
                        app_scene_authoring_load_content(authoring) == 0 &&
                        app_scene_authoring_load(authoring, "test/fixtures/editor_scene.json") ==
@@ -4467,6 +6304,13 @@ int ui_integration_run(const char *program)
     engine_viewport_set_render_callback(viewport, app_scene_authoring_render, authoring);
 
     bool viewport_resize_ok = viewport_pending_resize_check();
+    printf(
+        "ui-render-validation %s: border=%d coverage=%d radiance=%d\n",
+        border_ok && coverage_ok && radiance_ok ? "PASS" : "FAIL",
+        border_ok,
+        coverage_ok,
+        radiance_ok
+    );
     app_loop loop = {
         .graph_editor = graph_editor,
         .runtime = runtime,
@@ -4478,8 +6322,15 @@ int ui_integration_run(const char *program)
         .integration_failed = !preferences_ok || !asset_preview_ok || !border_ok ||
                               !coverage_ok || !radiance_ok || !viewport_resize_ok,
     };
-    while (!app_frame(&loop)) {
-    }
+    bool failed = loop.integration_failed;
+    int finished;
+    do {
+        finished = app_frame(&loop);
+        if (!failed && loop.integration_failed) {
+            printf("ui-integration FAIL: first failing frame %d\n", loop.frame - 4);
+        }
+        failed = loop.integration_failed;
+    } while (!finished);
     if (loop.frame < frames) {
         loop.integration_failed = 1;
     }

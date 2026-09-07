@@ -1,7 +1,7 @@
 {
   "version": 3,
   "name": "MovementTrailBehavior",
-  "id_counter": 128,
+  "id_counter": 156,
   "description": "Movement emits a rear-facing ship trail at 64 particles per second; idle clears fractional carry. Frame contribution is bounded to 0.1 seconds.",
   "owner_type": "ecs.entity",
   "variables": [
@@ -12,7 +12,7 @@
       "type_name": "float",
       "container": 0,
       "category": "Trail",
-      "default": 0
+      "default": 0.0
     }
   ],
   "graphs": [
@@ -25,9 +25,10 @@
         {
           "id": 11,
           "type": "Event",
-          "x": 0,
-          "y": 0,
+          "x": 0.0,
+          "y": 0.0,
           "reference_id": 0,
+          "reference_name": "Input",
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
@@ -48,23 +49,23 @@
               "id": 13,
               "name": "Direction",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
-          ],
-          "reference_name": "Input"
+          ]
         },
         {
           "id": 21,
           "type": "Call Function",
-          "x": 220,
-          "y": 0,
+          "x": 220.0,
+          "y": 0.0,
           "reference_id": 2,
+          "reference_name": "Emit Movement Trail",
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
@@ -84,13 +85,13 @@
               "id": 23,
               "name": "Direction",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ],
           "outputs": [
@@ -105,8 +106,7 @@
               "group": 0,
               "default": null
             }
-          ],
-          "reference_name": "Emit Movement Trail"
+          ]
         }
       ],
       "edges": [
@@ -128,16 +128,20 @@
       ]
     },
     {
+      "id": 2,
       "kind": "function",
       "name": "Emit Movement Trail",
       "breakpoints_enabled": true,
       "comment_boxes": [],
+      "entry_id": 14,
+      "return_id": 17,
+      "call_depth_limit": 32,
       "nodes": [
         {
           "id": 14,
           "type": "Function Entry",
-          "x": 0,
-          "y": 0,
+          "x": 0.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -159,49 +163,49 @@
               "id": 16,
               "name": "Direction",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             },
             {
               "id": 19,
               "name": "x",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
+              "field_source": 16,
+              "field_name": "x",
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float",
-              "field_source": 16,
-              "field_name": "x"
+              "default": 0.0
             },
             {
               "id": 20,
               "name": "y",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
+              "field_source": 16,
+              "field_name": "y",
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float",
-              "field_source": 16,
-              "field_name": "y"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 17,
           "type": "Return",
-          "x": 220,
-          "y": 0,
+          "x": 220.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -224,8 +228,8 @@
         {
           "id": 25,
           "type": "Multiply",
-          "x": 440,
-          "y": 0,
+          "x": 440.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -235,25 +239,25 @@
               "id": 26,
               "name": "A",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 27,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -261,21 +265,21 @@
               "id": 28,
               "name": "Result",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 29,
           "type": "Multiply",
-          "x": 660,
-          "y": 0,
+          "x": 660.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -285,25 +289,25 @@
               "id": 30,
               "name": "A",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 31,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -311,21 +315,21 @@
               "id": 32,
               "name": "Result",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 33,
           "type": "Add",
-          "x": 880,
-          "y": 0,
+          "x": 880.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -335,25 +339,25 @@
               "id": 34,
               "name": "a",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 35,
               "name": "b",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -361,21 +365,21 @@
               "id": 36,
               "name": "Result",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 37,
           "type": "Greater Or Equal",
-          "x": 1100,
-          "y": 0,
+          "x": 1100.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -385,25 +389,25 @@
               "id": 38,
               "name": "A",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 39,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -411,21 +415,21 @@
               "id": 40,
               "name": "Result",
               "type": 1,
+              "type_name": "bool",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": false,
-              "type_name": "bool"
+              "default": false
             }
           ]
         },
         {
           "id": 41,
           "type": "Branch",
-          "x": 1320,
-          "y": 0,
+          "x": 1320.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -446,13 +450,13 @@
               "id": 43,
               "name": "Condition",
               "type": 1,
+              "type_name": "bool",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": false,
-              "type_name": "bool"
+              "default": false
             }
           ],
           "outputs": [
@@ -483,8 +487,8 @@
         {
           "id": 46,
           "type": "Set Variable",
-          "x": 1540,
-          "y": 0,
+          "x": 1540.0,
+          "y": 0.0,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -505,13 +509,13 @@
               "id": 48,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -530,21 +534,21 @@
               "id": 50,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 51,
           "type": "Delta Time",
-          "x": 1760,
-          "y": 0,
+          "x": 1760.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -555,133 +559,21 @@
               "id": 52,
               "name": "Seconds",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
-            }
-          ]
-        },
-        {
-          "id": 53,
-          "type": "Clamp",
-          "x": 1980,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 54,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0,
-              "type_name": "float"
-            },
-            {
-              "id": 55,
-              "name": "Min",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0,
-              "type_name": "float"
-            },
-            {
-              "id": 56,
-              "name": "Max",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.1,
-              "type_name": "float"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 57,
-              "name": "Result",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0,
-              "type_name": "float"
-            }
-          ]
-        },
-        {
-          "id": 58,
-          "type": "Multiply",
-          "x": 2200,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 59,
-              "name": "A",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0,
-              "type_name": "float"
-            },
-            {
-              "id": 60,
-              "name": "B",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 64,
-              "type_name": "float"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 61,
-              "name": "Result",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 62,
           "type": "Get Variable",
-          "x": 2420,
-          "y": 0,
+          "x": 2420.0,
+          "y": 0.0,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -692,21 +584,21 @@
               "id": 63,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 64,
           "type": "Add",
-          "x": 2640,
-          "y": 0,
+          "x": 2640.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -716,25 +608,25 @@
               "id": 65,
               "name": "a",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 66,
               "name": "b",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -742,21 +634,21 @@
               "id": 67,
               "name": "Result",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 68,
           "type": "Set Variable",
-          "x": 2860,
-          "y": 0,
+          "x": 2860.0,
+          "y": 0.0,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -777,13 +669,13 @@
               "id": 70,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -802,21 +694,21 @@
               "id": 72,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 73,
           "type": "Greater Or Equal",
-          "x": 3080,
-          "y": 0,
+          "x": 3080.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -826,25 +718,25 @@
               "id": 74,
               "name": "A",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 75,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 1,
-              "type_name": "float"
+              "default": 1.0
             }
           ],
           "outputs": [
@@ -852,21 +744,21 @@
               "id": 76,
               "name": "Result",
               "type": 1,
+              "type_name": "bool",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": false,
-              "type_name": "bool"
+              "default": false
             }
           ]
         },
         {
           "id": 77,
           "type": "Branch",
-          "x": 3300,
-          "y": 0,
+          "x": 3300.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -887,13 +779,13 @@
               "id": 79,
               "name": "Condition",
               "type": 1,
+              "type_name": "bool",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": false,
-              "type_name": "bool"
+              "default": false
             }
           ],
           "outputs": [
@@ -924,8 +816,8 @@
         {
           "id": 82,
           "type": "Normalize Vector 2",
-          "x": 3520,
-          "y": 0,
+          "x": 3520.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -935,13 +827,13 @@
               "id": 83,
               "name": "Value",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ],
           "outputs": [
@@ -949,21 +841,21 @@
               "id": 84,
               "name": "Result",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ]
         },
         {
           "id": 85,
           "type": "Multiply",
-          "x": 3740,
-          "y": 0,
+          "x": 3740.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -973,25 +865,25 @@
               "id": 86,
               "name": "A",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             },
             {
               "id": 87,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": -1,
-              "type_name": "float"
+              "default": -1.0
             }
           ],
           "outputs": [
@@ -999,21 +891,21 @@
               "id": 88,
               "name": "Result",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ]
         },
         {
           "id": 89,
           "type": "Multiply",
-          "x": 3960,
-          "y": 0,
+          "x": 3960.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -1023,25 +915,25 @@
               "id": 90,
               "name": "A",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             },
             {
               "id": 91,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 9,
-              "type_name": "float"
+              "default": 9.0
             }
           ],
           "outputs": [
@@ -1049,21 +941,21 @@
               "id": 92,
               "name": "Result",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ]
         },
         {
           "id": 93,
           "type": "Get_GameTransform",
-          "x": 4180,
-          "y": 0,
+          "x": 4180.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -1074,21 +966,21 @@
               "id": 94,
               "name": "Value",
               "type": 15,
+              "type_name": "GameTransform",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "GameTransform"
+              "default": null
             }
           ]
         },
         {
           "id": 95,
           "type": "Add",
-          "x": 4400,
-          "y": 0,
+          "x": 4400.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -1098,25 +990,25 @@
               "id": 96,
               "name": "a",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             },
             {
               "id": 97,
               "name": "b",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ],
           "outputs": [
@@ -1124,21 +1016,21 @@
               "id": 98,
               "name": "Result",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             }
           ]
         },
         {
           "id": 99,
           "type": "Emit Directed Particles",
-          "x": 4620,
-          "y": 0,
+          "x": 4620.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -1159,205 +1051,205 @@
               "id": 101,
               "name": "Position",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             },
             {
               "id": 102,
               "name": "Direction",
               "type": 15,
+              "type_name": "CF_V2",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
+              "default": null
             },
             {
               "id": 103,
               "name": "Count",
               "type": 6,
+              "type_name": "int",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 1,
-              "type_name": "int"
+              "default": 1
             },
             {
               "id": 104,
               "name": "Color",
               "type": 7,
+              "type_name": "unsigned int",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 4288223999,
-              "type_name": "unsigned int"
+              "default": 4288223999
             },
             {
               "id": 105,
               "name": "End Color",
               "type": 7,
+              "type_name": "unsigned int",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 1291911040,
-              "type_name": "unsigned int"
+              "default": 1291911040
             },
             {
               "id": 106,
               "name": "Min Speed",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 30,
-              "type_name": "float"
+              "default": 30.0
             },
             {
               "id": 107,
               "name": "Max Speed",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 60,
-              "type_name": "float"
+              "default": 60.0
             },
             {
               "id": 108,
               "name": "Min Lifetime",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.2,
-              "type_name": "float"
+              "default": 0.20000000298023224
             },
             {
               "id": 109,
               "name": "Max Lifetime",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.4,
-              "type_name": "float"
+              "default": 0.4000000059604645
             },
             {
               "id": 110,
               "name": "Min Size",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 2,
-              "type_name": "float"
+              "default": 2.0
             },
             {
               "id": 111,
               "name": "Max Size",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 4,
-              "type_name": "float"
+              "default": 4.0
             },
             {
               "id": 112,
               "name": "Spread",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 1.571,
-              "type_name": "float"
+              "default": 1.5709999799728394
             },
             {
               "id": 113,
               "name": "Min Drag",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 4,
-              "type_name": "float"
+              "default": 4.0
             },
             {
               "id": 114,
               "name": "Max Drag",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 8,
-              "type_name": "float"
+              "default": 8.0
             },
             {
               "id": 115,
               "name": "Min Emission",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.2,
-              "type_name": "float"
+              "default": 0.20000000298023224
             },
             {
               "id": 116,
               "name": "Max Emission",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.4,
-              "type_name": "float"
+              "default": 0.4000000059604645
             },
             {
               "id": 117,
               "name": "Size Exponent",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 1.5,
-              "type_name": "float"
+              "default": 1.5
             }
           ],
           "outputs": [
@@ -1377,8 +1269,8 @@
         {
           "id": 119,
           "type": "Subtract",
-          "x": 4840,
-          "y": 0,
+          "x": 4840.0,
+          "y": 0.0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -1388,25 +1280,25 @@
               "id": 120,
               "name": "A",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             },
             {
               "id": 121,
               "name": "B",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 1,
-              "type_name": "float"
+              "default": 1.0
             }
           ],
           "outputs": [
@@ -1414,21 +1306,21 @@
               "id": 122,
               "name": "Result",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ]
         },
         {
           "id": 123,
           "type": "Set Variable",
-          "x": 5060,
-          "y": 0,
+          "x": 5060.0,
+          "y": 0.0,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -1449,13 +1341,13 @@
               "id": 125,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
             }
           ],
           "outputs": [
@@ -1474,18 +1366,72 @@
               "id": 127,
               "name": "Value",
               "type": 10,
+              "type_name": "float",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0,
-              "type_name": "float"
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 153,
+          "type": "Call Pure Function",
+          "x": 1980.0,
+          "y": 0.0,
+          "reference_id": 128,
+          "reference_name": "clamp(dt, 0, 0.10000000149011612) * 64",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 154,
+              "name": "dt",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 155,
+              "name": "Result",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ]
         }
       ],
       "edges": [
+        {
+          "from": 14,
+          "from_pin": 15,
+          "to": 41,
+          "to_pin": 42,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 14,
+          "from_pin": 16,
+          "to": 82,
+          "to_pin": 83,
+          "kind": "data"
+        },
         {
           "from": 14,
           "from_pin": 19,
@@ -1536,14 +1482,6 @@
           "kind": "data"
         },
         {
-          "from": 14,
-          "from_pin": 15,
-          "to": 41,
-          "to_pin": 42,
-          "kind": "exec",
-          "order": 0
-        },
-        {
           "from": 37,
           "from_pin": 40,
           "to": 41,
@@ -1559,6 +1497,14 @@
           "order": 0
         },
         {
+          "from": 41,
+          "from_pin": 45,
+          "to": 68,
+          "to_pin": 69,
+          "kind": "exec",
+          "order": 0
+        },
+        {
           "from": 46,
           "from_pin": 49,
           "to": 17,
@@ -1569,15 +1515,8 @@
         {
           "from": 51,
           "from_pin": 52,
-          "to": 53,
-          "to_pin": 54,
-          "kind": "data"
-        },
-        {
-          "from": 53,
-          "from_pin": 57,
-          "to": 58,
-          "to_pin": 59,
+          "to": 153,
+          "to_pin": 154,
           "kind": "data"
         },
         {
@@ -1588,32 +1527,24 @@
           "kind": "data"
         },
         {
-          "from": 58,
-          "from_pin": 61,
-          "to": 64,
-          "to_pin": 66,
+          "from": 62,
+          "from_pin": 63,
+          "to": 73,
+          "to_pin": 74,
           "kind": "data"
         },
         {
-          "from": 41,
-          "from_pin": 45,
-          "to": 68,
-          "to_pin": 69,
-          "kind": "exec",
-          "order": 0
+          "from": 62,
+          "from_pin": 63,
+          "to": 119,
+          "to_pin": 120,
+          "kind": "data"
         },
         {
           "from": 64,
           "from_pin": 67,
           "to": 68,
           "to_pin": 70,
-          "kind": "data"
-        },
-        {
-          "from": 62,
-          "from_pin": 63,
-          "to": 73,
-          "to_pin": 74,
           "kind": "data"
         },
         {
@@ -1633,18 +1564,19 @@
         },
         {
           "from": 77,
+          "from_pin": 80,
+          "to": 99,
+          "to_pin": 100,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 77,
           "from_pin": 81,
           "to": 17,
           "to_pin": 18,
           "kind": "exec",
           "order": 0
-        },
-        {
-          "from": 14,
-          "from_pin": 16,
-          "to": 82,
-          "to_pin": 83,
-          "kind": "data"
         },
         {
           "from": 82,
@@ -1661,12 +1593,11 @@
           "kind": "data"
         },
         {
-          "from": 93,
-          "from_pin": 94,
-          "to": 95,
-          "to_pin": 96,
-          "kind": "data",
-          "conversion": "game_transform_to_cf"
+          "from": 85,
+          "from_pin": 88,
+          "to": 99,
+          "to_pin": 102,
+          "kind": "data"
         },
         {
           "from": 89,
@@ -1676,39 +1607,18 @@
           "kind": "data"
         },
         {
-          "from": 77,
-          "from_pin": 80,
-          "to": 99,
-          "to_pin": 100,
-          "kind": "exec",
-          "order": 0
+          "from": 93,
+          "from_pin": 94,
+          "to": 95,
+          "to_pin": 96,
+          "kind": "data",
+          "conversion": "game_transform_to_cf"
         },
         {
           "from": 95,
           "from_pin": 98,
           "to": 99,
           "to_pin": 101,
-          "kind": "data"
-        },
-        {
-          "from": 85,
-          "from_pin": 88,
-          "to": 99,
-          "to_pin": 102,
-          "kind": "data"
-        },
-        {
-          "from": 62,
-          "from_pin": 63,
-          "to": 119,
-          "to_pin": 120,
-          "kind": "data"
-        },
-        {
-          "from": 119,
-          "from_pin": 122,
-          "to": 123,
-          "to_pin": 125,
           "kind": "data"
         },
         {
@@ -1720,18 +1630,361 @@
           "order": 0
         },
         {
+          "from": 119,
+          "from_pin": 122,
+          "to": 123,
+          "to_pin": 125,
+          "kind": "data"
+        },
+        {
           "from": 123,
           "from_pin": 126,
           "to": 77,
           "to_pin": 78,
           "kind": "exec",
           "order": 0
+        },
+        {
+          "from": 153,
+          "from_pin": 155,
+          "to": 64,
+          "to_pin": 66,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": 128,
+      "kind": "function",
+      "name": "clamp(dt, 0, 0.10000000149011612) * 64",
+      "breakpoints_enabled": true,
+      "math_expression": "clamp(dt, 0, 0.10000000149011612) * 64",
+      "comment_boxes": [],
+      "entry_id": 129,
+      "return_id": 131,
+      "call_depth_limit": 64,
+      "nodes": [
+        {
+          "id": 129,
+          "type": "Function Entry",
+          "x": 0.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 133,
+              "name": "dt",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 131,
+          "type": "Return",
+          "x": 880.0,
+          "y": 450.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 134,
+              "name": "Result",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 135,
+          "type": "Real",
+          "x": 220.0,
+          "y": 90.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 136,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 137,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 138,
+          "type": "Real",
+          "x": 220.0,
+          "y": 180.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 139,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.10000000149011612
+            }
+          ],
+          "outputs": [
+            {
+              "id": 140,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 141,
+          "type": "Clamp",
+          "x": 440.0,
+          "y": 270.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 142,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 143,
+              "name": "Min",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 2,
+              "default": 0.0
+            },
+            {
+              "id": 144,
+              "name": "Max",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 3,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 145,
+              "name": "Result",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 146,
+          "type": "Real",
+          "x": 220.0,
+          "y": 360.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 147,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 64.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 148,
+              "name": "Value",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 149,
+          "type": "Multiply",
+          "x": 660.0,
+          "y": 450.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 150,
+              "name": "A",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 151,
+              "name": "B",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 2,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 152,
+              "name": "Result",
+              "type": 11,
+              "type_name": "double",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
         }
       ],
-      "id": 2,
-      "entry_id": 14,
-      "return_id": 17,
-      "call_depth_limit": 32
+      "edges": [
+        {
+          "from": 129,
+          "from_pin": 133,
+          "to": 141,
+          "to_pin": 142,
+          "kind": "data"
+        },
+        {
+          "from": 135,
+          "from_pin": 137,
+          "to": 141,
+          "to_pin": 143,
+          "kind": "data"
+        },
+        {
+          "from": 138,
+          "from_pin": 140,
+          "to": 141,
+          "to_pin": 144,
+          "kind": "data"
+        },
+        {
+          "from": 141,
+          "from_pin": 145,
+          "to": 149,
+          "to_pin": 150,
+          "kind": "data"
+        },
+        {
+          "from": 146,
+          "from_pin": 148,
+          "to": 149,
+          "to_pin": 151,
+          "kind": "data"
+        },
+        {
+          "from": 149,
+          "from_pin": 152,
+          "to": 131,
+          "to_pin": 134,
+          "kind": "data"
+        }
+      ]
     }
   ]
 }

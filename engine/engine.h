@@ -64,13 +64,14 @@ typedef enum
 
 typedef struct
 {
-    const char *title;
     bool playing;
     bool session;
     bool editing;
 } engine_viewport_controls;
 
 /* Controls are borrowed for this draw. NULL draws only the viewport. */
+/* Draw a framed, noninteractive canvas inside the current ImGui region. */
+int engine_viewport_image(engine_viewport *viewport, float width, float height);
 engine_viewport_action engine_viewport_draw(
     engine_viewport *viewport,
     const engine_viewport_controls *controls

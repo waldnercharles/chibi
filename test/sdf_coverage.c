@@ -71,7 +71,8 @@ static int render(
     test_draw_set_tiled(tiled);
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
-    cf_draw_push_shape_aa(1);
+    /* Cancel window-density compensation: this fixed canvas has one unit per pixel. */
+    cf_draw_push_shape_aa(cf_app_get_pixel_scale());
     /* Drawn geometry, rather than a clear color, detects false opaque-cover
      * claims by the warped foreground during the tiled reverse walk. */
     cf_draw_push_color(cf_make_color_rgba_f(0, 1, 0, 1));

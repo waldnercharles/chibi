@@ -10,10 +10,13 @@
 #include "conv_nodes.h"
 #include "fmt_nodes.h"
 #include "math.h"
+#include "math_nodes.h"
 #include "node.h"
 #include "pin_conv.h"
 #include "registry.h"
 
+#include <float.h>
+#include <string.h>
 enum
 {
     GENERIC_ADD,
@@ -34,6 +37,20 @@ static pin_value literal_identity(const pin_value *inputs, int input_count, aren
 
 static pin_value numeric_op(pin_value a, pin_value b, int operation)
 {
+    if (a.type == PIN_F32 && b.type == PIN_F64) {
+        bool subnormal = (a.f != 0.0f && fabsf(a.f) < FLT_MIN) ||
+                         (b.d != 0.0 && fabs(b.d) < FLT_MIN);
+        if (subnormal) {
+            a.type = PIN_F64;
+            a.d = (double)a.f;
+        } else {
+            b.type = PIN_F32;
+            b.f = (float)b.d;
+        }
+    } else if (a.type == PIN_F64 && b.type == PIN_F32) {
+        b.type = PIN_F64;
+        b.d = (double)b.f;
+    }
     pin_value result = a;
     switch (a.type) {
         case PIN_F32:
@@ -75,16 +92,25 @@ static pin_value numeric_op(pin_value a, pin_value b, int operation)
     return result;
 }
 
-static pin_value generic_binary(const pin_value *inputs, int input_count, arena *a, int operation)
+static const type_field *find_field(const type_desc *type, const char *name)
 {
-    (void)input_count;
-    pin_value left = inputs[0];
-    pin_value right = inputs[1];
-    if (left.type != PIN_STRUCT) {
-        return numeric_op(left, right, operation);
+    for (int i = 0; i < type->field_count; i++) {
+        if (!strcmp(type->fields[i].name, name)) {
+            return &type->fields[i];
+        }
     }
-    const type_desc *type = registry_type_by_name(left.type_name);
-    if (!type || !left.ptr || (right.type == PIN_STRUCT && !right.ptr)) {
+    return NULL;
+}
+
+static pin_value struct_binary(pin_value aggregate, pin_value other, int operation, arena *a, int aggregate_left)
+{
+    const type_desc *type = registry_type_by_name(aggregate.type_name);
+    const type_desc *other_type = other.type == PIN_STRUCT
+                                    ? registry_type_by_name(other.type_name)
+                                    : NULL;
+    if (!type || !type->field_count || !aggregate.ptr ||
+        (other.type == PIN_STRUCT && !other_type) ||
+        (other.type == PIN_STRUCT && !other.ptr)) {
         return (pin_value){ .type = PIN_FLOW };
     }
     void *memory = arena_alloc(a, type->size);
@@ -92,15 +118,44 @@ static pin_value generic_binary(const pin_value *inputs, int input_count, arena 
         return (pin_value){ .type = PIN_STRUCT, .type_name = type->name };
     }
     for (int i = 0; i < type->field_count; i++) {
-        pin_value l;
-        pin_value r = right;
-        pin_read_field(left.ptr, &type->fields[i], &l);
-        if (right.type == PIN_STRUCT) {
-            pin_read_field(right.ptr, &type->fields[i], &r);
+        const type_field *field = &type->fields[i];
+        pin_value left;
+        pin_value right;
+        pin_read_field(aggregate.ptr, field, aggregate_left ? &left : &right);
+        if (other.type == PIN_STRUCT) {
+            const type_field *peer = find_field(other_type, field->name);
+            if (!peer) {
+                return (pin_value){ .type = PIN_FLOW };
+            }
+            pin_read_field(other.ptr, peer, aggregate_left ? &right : &left);
+        } else if (aggregate_left) {
+            right = other;
+        } else {
+            left = other;
         }
-        pin_write_field(memory, &type->fields[i], numeric_op(l, r, operation));
+        pin_value result = numeric_op(left, right, operation);
+        if (result.type == PIN_FLOW) {
+            return result;
+        }
+        if (field->type == PIN_F32 && result.type == PIN_F64) {
+            result.type = PIN_F32;
+            result.f = (float)result.d;
+        }
+        pin_write_field(memory, field, result);
     }
     return (pin_value){ .type = PIN_STRUCT, .type_name = type->name, .ptr = memory };
+}
+
+static pin_value generic_binary(const pin_value *inputs, int input_count, arena *a, int operation)
+{
+    (void)input_count;
+    pin_value left = inputs[0];
+    pin_value right = inputs[1];
+    if (left.type != PIN_STRUCT && right.type != PIN_STRUCT) {
+        return numeric_op(left, right, operation);
+    }
+    return left.type == PIN_STRUCT ? struct_binary(left, right, operation, a, 1)
+                                   : struct_binary(right, left, operation, a, 0);
 }
 
 static pin_value generic_add(const pin_value *inputs, int input_count, arena *a)
@@ -452,8 +507,21 @@ LITERAL_DESC(NODE_Name, "Name", PIN_NAME, "name")
 LITERAL_DESC(NODE_String, "String", PIN_STR, "const char *")
 
 node_desc *const EXTRA_NODES[] = {
-    &NODE_Greater_Or_Equal,
+#define MATH_NODE_ENTRY(name) &NODE_##name,
+    MATH_EXPRESSION_NODES(MATH_NODE_ENTRY)
+#undef MATH_NODE_ENTRY
+        & NODE_Greater_Or_Equal,
     &NODE_Integer_Greater_Or_Equal,
+    &NODE_Less,
+    &NODE_Integer_Less,
+    &NODE_Less_Or_Equal,
+    &NODE_Integer_Less_Or_Equal,
+    &NODE_Greater,
+    &NODE_Integer_Greater,
+    &NODE_Equal,
+    &NODE_Integer_Equal,
+    &NODE_Not_Equal,
+    &NODE_Integer_Not_Equal,
     &NODE_Has_Any_Flags,
     &NODE_DeltaTime,
     &NODE_Bool,
@@ -476,6 +544,8 @@ node_desc *const EXTRA_NODES[] = {
     &NODE_Abs,
     &NODE_To_Real,
     &NODE_To_Integer64,
+    &NODE_To_Byte,
+    &NODE_To_Integer,
     &NODE_Format_Text,
 };
 const int EXTRA_NODE_COUNT = sizeof EXTRA_NODES / sizeof EXTRA_NODES[0];

@@ -166,6 +166,96 @@ static void delay_calls(bool nested)
     behavior_asset_free(f.asset);
 }
 
+static void expect_exec_trace(fixture *f, const flow_run *run, double start, double end, bool completed)
+{
+    int count = 0;
+    const flow_traversal *trace = flow_run_traversals(run, &count);
+    int expected = 0;
+    for (int i = 0; i < acount(f->asset->graphs); i++) {
+        graph *g = f->asset->graphs[i];
+        for (int j = 0; j < acount(g->edges); j++) {
+            const edge *edge = &g->edges[j];
+            if (edge->kind != GRAPH_EDGE_EXEC) {
+                continue;
+            }
+            bool entering = edge->from_id == g->entry_id ||
+                            edge->from_id == f->event->id;
+            int matches = 0;
+            for (int k = 0; k < count; k++) {
+                const flow_traversal *record = &trace[k];
+                if (record->kind == edge->kind && record->from_id == edge->from_id &&
+                    record->from_pin_id == edge->from_pin_id &&
+                    record->to_id == edge->to_id &&
+                    record->to_pin_id == edge->to_pin_id) {
+                    assert(record->timestamp == (entering ? start : end));
+                    matches++;
+                }
+            }
+            assert(matches == (entering || completed ? 1 : 0));
+            expected += entering || completed;
+        }
+    }
+    int actual = 0;
+    for (int i = 0; i < count; i++) {
+        actual += trace[i].kind == GRAPH_EDGE_EXEC;
+    }
+    assert(actual == expected);
+}
+
+static void traced_calls(bool nested, bool delayed)
+{
+    fixture f = make_fixture(&NODE_Delay, nested);
+    pin_value duration = { .type = PIN_F64, .type_name = "double", .d = delayed ? 1 : 0 };
+    assert(graph_set_pin_default(f.function, f.body, 0, 1, &duration) == 0);
+    double time = 10;
+    behavior_instance *instance = behavior_instance_create(f.asset, NULL, now, &time);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
+    for (int iteration = 0; iteration < 2; iteration++) {
+        assert(behavior_instance_tick(instance, time) >= 0);
+        flow_run *run = dispatch(instance, 42);
+        double end = time + duration.d;
+        if (delayed) {
+            assert(flow_run_status(run) == FLOW_SUSPENDED);
+            expect_exec_trace(&f, run, time, end, false);
+            assert(flow_run_tick_at(run, time + 0.5) >= 0);
+            expect_exec_trace(&f, run, time, end, false);
+            assert(flow_run_tick_at(run, end) == FLOW_OK);
+        }
+        assert(flow_run_status(run) == FLOW_COMPLETED);
+        expect_exec_trace(&f, run, time, end, true);
+        int count = 0;
+        const flow_traversal *trace = flow_run_traversals(run, &count);
+        flow_traversal *saved = NULL;
+        for (int i = 0; i < count; i++) {
+            apush(saved, trace[i]);
+        }
+        behavior_instance_set_trace_enabled(instance, false);
+        behavior_instance_set_trace_enabled(instance, true);
+        assert(behavior_instance_release_activation(instance, run) == 0);
+        int retained_count = 0;
+        const behavior_instance_trace_entry *retained = behavior_instance_trace(instance, &retained_count);
+        assert(retained_count == count);
+        for (int i = 0; i < count; i++) {
+            const flow_traversal *record = &retained[i].traversal;
+            assert(
+                record->from_id == saved[i].from_id &&
+                record->from_pin_id == saved[i].from_pin_id
+            );
+            assert(
+                record->to_id == saved[i].to_id && record->to_pin_id == saved[i].to_pin_id
+            );
+            assert(
+                record->kind == saved[i].kind && record->timestamp == saved[i].timestamp
+            );
+            assert(record->activation == saved[i].activation);
+        }
+        afree(saved);
+        time = end + 2;
+    }
+    behavior_instance_destroy(instance);
+    behavior_asset_free(f.asset);
+}
+
 static void host_calls(bool cancel)
 {
     fixture f = make_fixture(&waiter, true);
@@ -332,6 +422,10 @@ void test_function_wait()
 {
     delay_calls(false);
     delay_calls(true);
+    traced_calls(false, false);
+    traced_calls(true, false);
+    traced_calls(false, true);
+    traced_calls(true, true);
     host_calls(false);
     host_calls(true);
     breakpoint_call();

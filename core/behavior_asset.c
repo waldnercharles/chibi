@@ -1,7 +1,3 @@
-/* core/behavior_asset.c -- authored Behavior Asset definitions (BP-1). The definition
- * owns its default event graph (BP-8), its ID counter, metadata, optional
- * nominal owner handle type (BP-12), and variable list. All strings live in
- * the graph's string table so a single graph_free releases them. */
 #include "behavior_asset.h"
 
 #include "registry.h"

@@ -311,26 +311,23 @@ static void record_traversal(
     graph_edge_kind kind
 )
 {
-    if (acount(run->traversals) >= FLOW_TRAVERSAL_MAX) {
-        memmove(
-            run->traversals,
-            run->traversals + 1,
-            (size_t)(FLOW_TRAVERSAL_MAX - 1) * sizeof *run->traversals
-        );
-        asetlen(run->traversals, FLOW_TRAVERSAL_MAX - 1);
-    }
-    apush(
-        run->traversals,
-        (flow_traversal){
-            from_id,
-            from_pin_id,
-            to_id,
-            to_pin_id,
-            kind,
-            run->current_time,
-            run->steps,
+    flow_traversal traversal = {
+        from_id, from_pin_id,       to_id,      to_pin_id,
+        kind,    run->current_time, run->steps,
+    };
+    /* Call ancestors retain each traversal as it happens, including while a
+     * child waits and after completed children are pruned or recycled. */
+    for (; run; run = run->parent) {
+        if (acount(run->traversals) >= FLOW_TRAVERSAL_MAX) {
+            memmove(
+                run->traversals,
+                run->traversals + 1,
+                (size_t)(FLOW_TRAVERSAL_MAX - 1) * sizeof *run->traversals
+            );
+            asetlen(run->traversals, FLOW_TRAVERSAL_MAX - 1);
         }
-    );
+        apush(run->traversals, traversal);
+    }
 }
 
 /* One output pin has at most one EXEC target. The edge's explicit order is
@@ -1556,6 +1553,17 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         if (src->output_pins[src_pin].flags & PIN_FLAG_WATCH) {
             (void)watch_store(ctx->run, src, 1, src_pin, out);
         }
+        return FLOW_OK;
+    }
+    if ((spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
+        assert(spec->type == PIN_HANDLE);
+        pin_value owner = behavior_instance_owner(ctx->run->instance);
+        if (owner.type != PIN_HANDLE || !owner.type_name || !spec->type_name ||
+            strcmp(owner.type_name, spec->type_name) != 0) {
+            return flow_context_fail(ctx, FLOW_ERR_NODE, "Target requires Self or an explicit entity");
+        }
+        *flow_context_input_value(ctx, input_pin) = owner;
+        *out = owner;
         return FLOW_OK;
     }
     *flow_context_input_value(ctx, input_pin) = spec->default_value;

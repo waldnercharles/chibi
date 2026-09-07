@@ -40,7 +40,8 @@ static int render(CF_Canvas canvas, bool tiled, bool diamond, float alpha, CF_Pi
     test_draw_set_tiled(tiled);
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
-    cf_draw_push_shape_aa(1);
+    /* Cancel window-density compensation: this fixed canvas has one unit per pixel. */
+    cf_draw_push_shape_aa(cf_app_get_pixel_scale());
     cf_draw_push_color(cf_make_color_rgba_f(1, 0, 0, alpha));
     cf_draw_push_interior_border(cf_make_color_rgba_f(0, 0, 1, 0.75f), 3);
     if (diamond) {

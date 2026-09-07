@@ -389,7 +389,8 @@ static bool parameters_match(const pin_spec *left, int left_count, const pin_spe
         if (!a || !b) {
             return a == b;
         }
-        if (!pin_compatible(a, b)) {
+        if (!(a->flags & PIN_FLAG_WILDCARD) &&
+            !(b->flags & PIN_FLAG_WILDCARD) && !pin_compatible(a, b)) {
             return false;
         }
     }

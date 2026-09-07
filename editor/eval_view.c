@@ -168,6 +168,14 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
     if (!n || pin < 0 || pin >= n->input_count || n->input_pins[pin].kind != PIN_DATA) {
         return NULL;
     }
+    const pin_spec *spec = &n->input_pins[pin];
+    node *source;
+    int source_pin;
+    bool connected = graph_input_source(g, n, pin, &source, &source_pin);
+    if (!connected && spec->type == PIN_HANDLE &&
+        (spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
+        return "Self";
+    }
     if (v && v->run) {
         pin_value value;
         if (flow_run_watch_input(v->run, n, pin, &value) != 0) {
@@ -175,9 +183,7 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
         }
         return eval_view_format(v, &value);
     }
-    node *src;
-    int src_pin;
-    if (graph_input_source(g, n, pin, &src, &src_pin)) {
+    if (connected) {
         return NULL;
     }
     pin_value val;

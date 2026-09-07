@@ -2,6 +2,7 @@
 #define CBLUEPRINT_APP_SCENE_AUTHORING_H
 
 #include "../engine/engine.h"
+#include "../game/authored_data.h"
 #include "../game/live.h"
 #include "../game/system_document.h"
 #include "sdf_shapes.h"
@@ -37,10 +38,38 @@ typedef struct
 
 typedef enum
 {
+    APP_DEBUG_NONE,
+    APP_DEBUG_AVAILABLE,
+    APP_DEBUG_UNAVAILABLE,
+    APP_DEBUG_OTHER_GRAPH,
+    APP_DEBUG_STALE,
+} app_debug_status;
+
+typedef struct
+{
+    app_runtime_target target;
+    ecs_entity entity;
+    const char *asset_name;
+    bool pinned;
+    app_debug_status status;
+} app_debug_state;
+
+int app_scene_authoring_set_debug_target(
+    app_scene_authoring *scene,
+    app_runtime_target target,
+    ecs_entity entity,
+    const char *asset_name
+);
+void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned);
+app_debug_state app_scene_authoring_debug_state(app_scene_authoring *scene);
+
+typedef enum
+{
     APP_EDITOR_DOCUMENT_SCENE,
     APP_EDITOR_DOCUMENT_PROTOTYPE,
     APP_EDITOR_DOCUMENT_BEHAVIOR,
     APP_EDITOR_DOCUMENT_SYSTEM,
+    APP_EDITOR_DOCUMENT_GAMEPLAY,
 } app_editor_document_kind;
 
 typedef struct
@@ -70,10 +99,19 @@ int app_scene_authoring_register_prototype(
     const char *path
 );
 int app_scene_authoring_load_prototype(app_scene_authoring *scene, const char *path);
+int app_scene_authoring_open_prototype(app_scene_authoring *scene, const char *name);
 int app_scene_authoring_save_prototype(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *path
+);
+/* Field storage is borrowed from the authored prototype until its next edit. */
+int app_scene_authoring_read_prototype_field(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component,
+    const char *field,
+    pin_value *value
 );
 int app_scene_authoring_set_prototype_field(
     app_scene_authoring *scene,
@@ -106,6 +144,10 @@ int app_scene_authoring_detach_prototype_behavior(
     const char *prototype_name,
     const char *asset_name
 );
+int app_scene_authoring_set_runtime_target(app_scene_authoring *scene, app_runtime_target target);
+/* Read-only authored pose shown in the Inspector; never runs behaviors. */
+const ecs_world *app_scene_authoring_still_preview(const app_scene_authoring *scene, ecs_entity *entity);
+const ecs_world *app_scene_authoring_preview_world(const app_scene_authoring *scene);
 int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char *prototype_name);
 void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene);
 int app_scene_authoring_runtime_command(
@@ -141,5 +183,16 @@ int app_scene_authoring_set_instance_behavior(
     const char *asset_name,
     bool attached
 );
+
+/* Gameplay documents are identified by their source path and keep independent history. */
+int app_scene_authoring_open_gameplay(app_scene_authoring *scene, const char *path);
+const game_authored_data *app_scene_authoring_gameplay(const app_scene_authoring *scene);
+int app_scene_authoring_set_gameplay_number(app_scene_authoring *scene, const char *field, double value);
+int app_scene_authoring_save_gameplay(app_scene_authoring *scene, const char *path);
+
+/* Capture explicit programmatic visits; native frames capture automatically. */
+void app_scene_authoring_navigation_sync(app_scene_authoring *scene);
+bool app_scene_authoring_can_navigate(const app_scene_authoring *scene, bool forward);
+int app_scene_authoring_navigate(app_scene_authoring *scene, bool forward);
 
 #endif

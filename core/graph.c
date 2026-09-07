@@ -684,8 +684,16 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
     }
     pin_spec *p = output ? n->output_pins : n->input_pins;
     int count = output ? n->output_count : n->input_count;
-    if (index < 0 || index >= count || p[index].kind != PIN_DATA ||
-        value->type != p[index].type) {
+    if (index < 0 || index >= count || p[index].kind != PIN_DATA) {
+        return -1;
+    }
+    if ((p[index].flags & PIN_FLAG_WILDCARD) && p[index].type == PIN_FLOW) {
+        if (graph_set_pin_type(g, n, output, index, value->type, value->type_name) != 0) {
+            return -1;
+        }
+        p = output ? n->output_pins : n->input_pins;
+    }
+    if (value->type != p[index].type) {
         return -1;
     }
     p[index].default_value = *value;

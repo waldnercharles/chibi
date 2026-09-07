@@ -48,11 +48,18 @@ polish remain unfinished.
 
 ## Verified starting point (before this slice)
 
-- `content/behaviors/InputBehavior.json` and
-  `content/systems/MovementSystem.json` author movement. Projectile rules remain
-  native: `engine/engine.c` routes Fire to `game_gameplay_fire` and calls
-  `game_gameplay_tick` each frame. `game/gameplay.c` hardcodes projectile creation,
-  movement, collision, damage, and expiration.
+- `content/behaviors/InputBehavior.json` is the live movement path. It is attached
+  to the Player prototype and receives the typed `Input` event dispatched by
+  `app/gameplay_input.c`; the graph writes the owning entity's transform.
+- `content/systems/MovementSystem.json` is a standalone system-authoring fixture
+  used by the System document editor and benchmark. It is not attached to the
+  shipped Scene and is not run by the main gameplay host.
+- `content/gameplay/*.json` files are reflected authoring-data documents. The
+  editor loads them for inspection, numeric editing, Save/Reload, and Undo/Redo;
+  they are not currently applied to ECS state or used to configure simulation.
+- Projectile creation, movement, lifetime, contact, damage, and death are now
+  authored in behavior assets. `game/gameplay.c` remains only the shared native
+  contact detector used by the behavior hosts.
 - `game/prototype.c:game_prototype_spawn` applies ECS commands internally and
   attaches behaviors after writing prototype defaults. It cannot run inside a
   system query. ECS recording APIs also reject active iteration.

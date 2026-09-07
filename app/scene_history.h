@@ -53,6 +53,7 @@ typedef struct
     const char *base_json;
     const char *state_json;
     bool created;
+    const char *retained_json;
 } scene_actor_edit;
 
 /* The app owns actor replay. History owns copies of all strings. Peek returns
@@ -94,6 +95,8 @@ typedef struct
     ecs_component_id component;
     const char *state_json;
     bool added;
+    const char *retained_before_json;
+    const char *retained_after_json;
 } scene_component_edit;
 
 /* Owns the captured single-component JSON. The app replays presence changes

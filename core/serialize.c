@@ -2,6 +2,7 @@
 
 #include "../third_party/yyjson/yyjson.h"
 #include "behavior_asset.h"
+#include "math_expression.h"
 #include "registry.h"
 #include "value_array.h"
 #include "xalloc.h"
@@ -524,6 +525,9 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     yyjson_mut_obj_add_bool(doc, obj, "breakpoints_enabled", g->breakpoints_enabled != 0);
     if (g->dataflow) {
         yyjson_mut_obj_add_bool(doc, obj, "dataflow", true);
+    }
+    if (g->math_expression) {
+        yyjson_mut_obj_add_str(doc, obj, "math_expression", g->math_expression);
     }
     write_comment_boxes(doc, obj, g);
     if (g->entry_id) {
@@ -1344,6 +1348,14 @@ static int load_behavior_asset_graph(behavior_asset *bp, yyjson_val *obj, uint64
         set_err("graph name allocation failed");
         return -1;
     }
+    yyjson_val *expression = yyjson_obj_get(obj, "math_expression");
+    if (expression) {
+        if (!yyjson_is_str(expression) || kind != GRAPH_FUNCTION) {
+            set_err("math_expression must be source text on a function graph");
+            return -1;
+        }
+        g->math_expression = graph_own_str(g, yyjson_get_str(expression), yyjson_get_len(expression));
+    }
     yyjson_val *breakpoints = yyjson_obj_get(obj, "breakpoints_enabled");
     if (breakpoints && yyjson_is_bool(breakpoints)) {
         g->breakpoints_enabled = yyjson_get_bool(breakpoints);
@@ -1426,6 +1438,28 @@ static int loaded_asset_counter(behavior_asset *asset, uint64_t requested)
     return 0;
 }
 
+static int repair_math_expression_calls(behavior_asset *asset)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            node *call = caller->nodes[j];
+            if (call->desc != &NODE_CallPureFunction) {
+                continue;
+            }
+            graph *generated = behavior_asset_find_graph(asset, call->reference_id);
+            if (!generated || !generated->math_expression) {
+                continue;
+            }
+            if (math_expression_repair(asset, call) != 0) {
+                set_err("could not repair math expression call");
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
 /* FMT-1/FMT-8/FMT-17: load a version-3 Behavior Asset document. The unavailable
  * owner handle type name is preserved as authored, never substituted. */
 behavior_asset *behavior_asset_load_json(const char *json)
@@ -1504,6 +1538,9 @@ behavior_asset *behavior_asset_load_json(const char *json)
     }
     if (graph_index == 0) {
         set_err("behavior_asset requires a default event graph");
+        goto fail;
+    }
+    if (repair_math_expression_calls(bp)) {
         goto fail;
     }
     if (loaded_asset_counter(bp, requested_counter)) {

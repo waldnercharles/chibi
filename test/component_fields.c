@@ -1,0 +1,165 @@
+#include "core/array.h"
+#include "core/compile.h"
+#include "core/instance.h"
+#include "core/registry.h"
+#include "core/serialize.h"
+#include "game/generated.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+typedef struct
+{
+    behavior_asset *asset;
+    node *set;
+} field_fixture;
+
+static field_fixture fixture(const char *name, pin_value value, bool wired_target)
+{
+    field_fixture f = { .asset = behavior_asset_new("Component field") };
+    assert(behavior_asset_set_owner_type(f.asset, "ecs.entity") == 0);
+    graph *g = f.asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(graph_set_event_name(g, event, "Set") == 0);
+    const node_desc *desc = registry_node_by_name(name);
+    assert(
+        desc && desc->access && desc->access->write_count == 1 &&
+        desc->access->read_count == 1
+    );
+    assert(!(desc->access->flags & NODE_EFFECT_ENTITY_SCOPED));
+    f.set = graph_add_node(g, desc);
+    assert(graph_set_pin_default(g, f.set, 0, 1, &value) == 0);
+    assert(graph_connect_exec(g, event, 0, f.set, 0, 0) == 0);
+    assert(f.set->input_pins[2].flags & PIN_FLAG_DEFAULT_SELF);
+    if (wired_target) {
+        pin_spec target = { .name = "Target", .type = PIN_HANDLE, .type_name = "ecs.entity" };
+        assert(graph_add_pin(g, event, 1, &target) == 1);
+        assert(graph_connect_data(g, event, 1, f.set, 2) == 0);
+    }
+    uint64_t id = f.set->id;
+    char *json = behavior_asset_save_json(f.asset);
+    assert(json);
+    behavior_asset_free(f.asset);
+    f.asset = behavior_asset_load_json(json);
+    free(json);
+    assert(f.asset);
+    f.set = graph_node_by_id(f.asset->graph, id);
+    assert(f.set && (f.set->input_pins[2].flags & PIN_FLAG_DEFAULT_SELF));
+    compile_report report;
+    compile_report_init(&report);
+    assert(behavior_asset_compile(f.asset, &report) == 0);
+    assert(!report.effects.parallel_eligible);
+    compile_report_free(&report);
+    return f;
+}
+
+static behavior_instance *instance(field_fixture *f, ecs_world *world, ecs_entity owner)
+{
+    pin_value handle = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(owner) };
+    behavior_instance *result = behavior_instance_create(f->asset, &handle, NULL, NULL);
+    assert(result && behavior_instance_bind_service(result, "ecs.world", world) == 0);
+    return result;
+}
+
+static flow_run *dispatch(behavior_instance *instance, const pin_value *target)
+{
+    flow_error error;
+    flow_inputs inputs = { .values = target, .count = target ? 1 : 0 };
+    flow_run *run = behavior_instance_dispatch(instance, "Set", inputs, &error);
+    assert(run);
+    return run;
+}
+
+static void health(ecs_world *world, ecs_entity owner, ecs_entity other)
+{
+    field_fixture f = fixture("Set_GameHealth_current", (pin_value){ .type = PIN_I32, .i = 12 }, false);
+    behavior_instance *runtime = instance(&f, world, owner);
+    flow_run *run = dispatch(runtime, NULL);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    assert(GAME_GameHealth_get_const(world, owner)->current == 12);
+    assert(GAME_GameHealth_get_const(world, owner)->maximum == 200);
+    assert(GAME_GameHealth_get_const(world, other)->current == 40);
+    pin_value snapshot;
+    assert(flow_run_watch_output(run, f.set, 1, &snapshot) == 0);
+    GAME_GameHealth_get(world, owner)->current = 99;
+    assert(((const GameHealth *)snapshot.ptr)->current == 12);
+    assert(((const GameHealth *)snapshot.ptr)->maximum == 200);
+    behavior_instance_destroy(runtime);
+    behavior_asset_free(f.asset);
+
+    f = fixture("Set_GameHealth_current", (pin_value){ .type = PIN_I32, .i = 7 }, true);
+    runtime = instance(&f, world, owner);
+    pin_value target = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(other) };
+    run = dispatch(runtime, &target);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    assert(GAME_GameHealth_get_const(world, owner)->current == 99);
+    assert(GAME_GameHealth_get_const(world, other)->current == 7);
+    assert(GAME_GameHealth_get_const(world, other)->maximum == 75);
+    target.u64 = 0;
+    run = dispatch(runtime, &target);
+    assert(flow_run_status(run) == FLOW_FAILED);
+    assert(GAME_GameHealth_get_const(world, owner)->current == 99);
+    ecs_entity empty = ecs_world_create_entity(world);
+    target.u64 = ecs_entity_to_u64(empty);
+    run = dispatch(runtime, &target);
+    assert(flow_run_status(run) == FLOW_FAILED && !GAME_GameHealth_has(world, empty));
+    assert(ecs_world_destroy_entity(world, empty) == ECS_OK);
+    run = dispatch(runtime, &target);
+    assert(flow_run_status(run) == FLOW_FAILED);
+    behavior_instance_destroy(runtime);
+    behavior_asset_free(f.asset);
+}
+
+static void vector_field(ecs_world *world, ecs_entity owner)
+{
+    CF_V2 direction = { 3, -4 };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &direction };
+    field_fixture f = fixture("Set_GameInput_move", value, false);
+    behavior_instance *runtime = instance(&f, world, owner);
+    flow_run *run = dispatch(runtime, NULL);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    const GameInput *input = GAME_GameInput_get_const(world, owner);
+    assert(input->move.x == 3 && input->move.y == -4);
+    behavior_instance_destroy(runtime);
+    behavior_asset_free(f.asset);
+    input = GAME_GameInput_get_const(world, owner);
+    assert(input->move.x == 3 && input->move.y == -4);
+
+    f = fixture("Set_GameTransform_x", (pin_value){ .type = PIN_F32, .f = 17 }, false);
+    runtime = instance(&f, world, owner);
+    run = dispatch(runtime, NULL);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    assert(GAME_GameTransform_get_const(world, owner)->x == 17);
+    assert(GAME_GameTransform_get_const(world, owner)->y == -9);
+    behavior_instance_destroy(runtime);
+    behavior_asset_free(f.asset);
+}
+
+void test_component_fields()
+{
+    assert(registry_node_by_name("Set_GameHealth"));
+    assert(registry_node_by_name("SetEntity_GameHealth"));
+    ecs_world *world = ecs_world_new();
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) == ECS_OK);
+    ecs_entity owner = ecs_world_create_entity(world);
+    ecs_entity other = ecs_world_create_entity(world);
+    assert(GAME_GameHealth_add(world, owner, 0) == ECS_OK);
+    assert(GAME_GameHealth_add(world, other, 0) == ECS_OK);
+    assert(GAME_GameTransform_add(world, owner, 0) == ECS_OK);
+    assert(GAME_GameInput_add(world, owner, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    *GAME_GameHealth_get(world, owner) = (GameHealth){ 73, 200 };
+    *GAME_GameHealth_get(world, other) = (GameHealth){ 40, 75 };
+    *GAME_GameTransform_get(world, owner) = (GameTransform){ 3, -9 };
+    health(world, owner, other);
+    vector_field(world, owner);
+    ecs_world_free(world);
+    puts("component fields PASS: Self, explicit and invalid targets, preserved members, structs and serialization");
+}

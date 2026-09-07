@@ -55,11 +55,14 @@ static void clear_edits(scene_edit **edits)
             free((void *)actor->prototype_name);
             free((void *)actor->base_json);
             free((void *)actor->state_json);
+            free((void *)actor->retained_json);
             free(actor);
         }
         scene_component_edit *component = (*edits)[i].component;
         if (component) {
             free((void *)component->state_json);
+            free((void *)component->retained_before_json);
+            free((void *)component->retained_after_json);
             free(component);
         }
         scene_behavior_edit *behaviors = (*edits)[i].behaviors;
@@ -264,6 +267,7 @@ bool scene_history_push_actor(scene_history *history, ecs_entity entity, const s
     copy->prototype_name = xstrdup(actor->prototype_name);
     copy->base_json = xstrdup(actor->base_json);
     copy->state_json = xstrdup(actor->state_json);
+    copy->retained_json = xstrdup(actor->retained_json ? actor->retained_json : "{}");
     apush(history->undo, ((scene_edit){ .entity = entity, .group = history->group, .actor = copy }));
     clear_edits(&history->redo);
     return true;
@@ -408,6 +412,12 @@ bool scene_history_push_component(scene_history *history, ecs_entity entity, con
     scene_component_edit *copy = xmalloc(sizeof *copy);
     *copy = *edit;
     copy->state_json = xstrdup(edit->state_json);
+    copy->retained_before_json = xstrdup(
+        edit->retained_before_json ? edit->retained_before_json : "{}"
+    );
+    copy->retained_after_json = xstrdup(
+        edit->retained_after_json ? edit->retained_after_json : "{}"
+    );
     apush(history->undo, ((scene_edit){ .entity = entity, .group = history->group, .component = copy }));
     clear_edits(&history->redo);
     return true;

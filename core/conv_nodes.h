@@ -7,7 +7,8 @@
  * typed input and one typed output. The editor stores compatible conversions
  * on data edges, so they do not appear as graph nodes. */
 
-extern node_desc NODE_To_String, NODE_To_Real, NODE_To_Integer64;
+extern node_desc NODE_To_String, NODE_To_Real, NODE_To_Byte, NODE_To_Integer,
+    NODE_To_Integer64;
 
 /* Returns the conversion descriptor permitted for `from` feeding `to`, or
  * NULL when the pair is compatible or no conversion is registered. */

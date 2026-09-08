@@ -87,8 +87,8 @@ Box2D and Erin Catto's [Box3D](https://github.com/erincatto/box3d) remain future
 headless application checks. `make ui-native` exercises focused native workspace,
 graph, and Scene interactions. `make render-checks` exercises GPU rendering,
 including material replacement, SDF coverage, and radiance transport. The
-focused GPU commands disable LeakSanitizer only for Cute's known third-party
-compiler allocations. `build/test_suite --shader-ui` exercises native
+headless application, UI, and GPU commands disable LeakSanitizer only for Cute's
+known third-party compiler allocations. `build/test_suite --shader-ui` exercises native
 material/shape replacement, serialization every frame, and GPU previews at
 2056 x 1286.
 

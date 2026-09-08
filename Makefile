@@ -49,7 +49,7 @@ test:
 	cmake --build $(BUILD_DIR) --target test_suite
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
 	cmake --build $(BUILD_DIR) --target app
-	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/app --headless --frames 3
+	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/app --headless --frames 3
 
 ui-native: build
 	$(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --ui-native

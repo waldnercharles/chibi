@@ -98,6 +98,7 @@ void run_runtime_arrays_checks()
         );
 
         arena_free(&array_arena);
+        eval_context_free(&array_eval);
         graph_free(&g_array);
     }
 

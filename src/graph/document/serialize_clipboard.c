@@ -119,6 +119,8 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     afree(tmp->edges);
     afree(tmp->strings);
     afree(tmp->blocks);
+    afree(tmp->id_table);
+    afree(tmp->comment_boxes);
     free(tmp);
     return 0;
 }

@@ -65,11 +65,13 @@ void run_graph_document_checks()
                 test_check(json2 && json3 && strcmp(json2, json3) == 0, "load/save/load/save is byte-identical");
                 if (g4) {
                     graph_free(g4);
+                    free(g4);
                 }
                 free(json2);
                 free(json3);
                 arena_free(&a2);
                 graph_free(g3);
+                free(g3);
             }
             free(json);
         }
@@ -225,13 +227,16 @@ void run_graph_document_checks()
         full.nodes[1] = saved_second;
         if (reordered_loaded) {
             graph_free(reordered_loaded);
+            free(reordered_loaded);
         }
         free(reordered);
         if (full_d) {
             graph_free(full_d);
+            free(full_d);
         }
         if (full_b) {
             graph_free(full_b);
+            free(full_b);
         }
         free(full_a);
         free(full_c);
@@ -264,6 +269,7 @@ void run_graph_document_checks()
                     "string const: value round-trips"
                 );
                 graph_free(g5);
+                free(g5);
             }
             free(json);
         }
@@ -412,6 +418,7 @@ void run_graph_document_checks()
                 test_check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "subset: node 1 position");
                 test_check(g3->nodes[0]->input_pins[0].default_value.d == 2.0, "subset: literal value survives");
                 graph_free(g3);
+                free(g3);
             }
             free(json);
         }

@@ -228,6 +228,7 @@ void run_graph_model_checks()
         );
         if (id_loaded) {
             graph_free(id_loaded);
+            free(id_loaded);
         }
         free(id_json);
         test_check(
@@ -272,6 +273,7 @@ void run_graph_model_checks()
         arena_free(&authored_arena);
         if (authored_loaded) {
             graph_free(authored_loaded);
+            free(authored_loaded);
         }
         free(authored_json);
         graph_free(&authored);
@@ -389,6 +391,7 @@ void run_graph_model_checks()
         test_check(literal_values == 3, "literals hold authored values through save/load");
         if (literal_loaded) {
             graph_free(literal_loaded);
+            free(literal_loaded);
         }
         free(literal_json);
         graph_free(&literals);

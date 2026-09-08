@@ -169,6 +169,7 @@ void run_graph_functions_checks()
             registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
             "reroute targets are available for wire navigation"
         );
+        behavior_instance_destroy(bi);
         eval_context_free(&function_eval);
         arena_free(&function_arena);
         char *function_json = behavior_asset_save_json(bp);

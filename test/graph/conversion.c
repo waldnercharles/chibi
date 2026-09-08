@@ -448,7 +448,8 @@ void run_graph_conversion_checks()
                            .kind = PIN_DATA,
                            .flags = PIN_FLAG_WILDCARD };
         graph_add_pin(&gp, fmt, 0, &spare);
-        graph *gp2 = graph_load_json(graph_save_json(&gp));
+        char *gp_json = graph_save_json(&gp);
+        graph *gp2 = gp_json ? graph_load_json(gp_json) : NULL;
         test_check(
             gp2 && gp2->nodes[0]->input_pins[1].type == PIN_F64 &&
                 (gp2->nodes[0]->input_pins[1].flags & PIN_FLAG_WILDCARD) &&
@@ -467,7 +468,9 @@ void run_graph_conversion_checks()
             );
             arena_free(&ap2);
             graph_free(gp2);
+            free(gp2);
         }
+        free(gp_json);
         arena_free(&ap);
         graph_free(&gp);
     }

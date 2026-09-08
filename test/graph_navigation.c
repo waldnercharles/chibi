@@ -1,13 +1,15 @@
-#include "../core/array.h"
-#include "../core/behavior_asset.h"
-#include "../core/registry.h"
-#include "../editor/editor.h"
+#include "editor/workspace/editor.h"
+#include "editor/workspace/editor_internal.h"
+#include "graph/model/behavior_asset.h"
+#include "graph/model/registry.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 typedef struct
@@ -78,6 +80,32 @@ void test_graph_navigation()
     assert(editor_open_graph_call(editor, UINT64_MAX) == -1);
     assert(editor_open_graph_call(editor, f.ordinary) == -1);
     node *root_call = graph_node_by_id(f.asset->graph, f.root_call);
+    char title[256];
+    assert(graph_set_node_reference(f.asset->graph, root_call, f.function, "Wrong function") == 0);
+    assert(strcmp(ed_node_title(editor, root_call, title, sizeof title), "Work") == 0);
+    node *macro_call = graph_node_by_id(f.asset->graph, f.macro_call);
+    assert(graph_set_node_reference(f.asset->graph, macro_call, f.macro, "Wrong macro") == 0);
+    assert(strcmp(ed_node_title(editor, macro_call, title, sizeof title), "Sequence") == 0);
+    node *pure_call = graph_node_by_id(behavior_asset_find_graph(f.asset, f.function), f.nested_call);
+    assert(
+        graph_set_node_reference(behavior_asset_find_graph(f.asset, f.function), pure_call, f.pure, "Wrong pure function") ==
+        0
+    );
+    assert(strcmp(ed_node_title(editor, pure_call, title, sizeof title), "Value") == 0);
+    behavior_asset *library = behavior_asset_new("Shared");
+    library->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    graph *shared = behavior_asset_add_function(library, "Shared Value", 1);
+    node *shared_call = behavior_asset_add_function_call_node(f.asset, shared);
+    assert(shared_call);
+    const behavior_asset *catalog[] = { library };
+    editor_set_asset_catalog(editor, catalog, 1);
+    assert(behavior_asset_rename_graph(library, shared->graph_id, "Renamed Value") == 0);
+    assert(
+        strcmp(ed_node_title(editor, shared_call, title, sizeof title), "Shared.Renamed Value") == 0
+    );
+    graph_remove_node(f.asset->graph, shared_call);
+    editor_set_asset_catalog(editor, NULL, 0);
+    behavior_asset_free(library);
     root_call->reference_id = UINT64_MAX;
     assert(editor_open_graph_call(editor, f.root_call) == -1);
     root_call->reference_id = f.function;

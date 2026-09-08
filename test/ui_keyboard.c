@@ -1,5 +1,5 @@
-#include "../editor/editor.h"
-#include "../editor/ui_shell.h"
+#include "editor/ui/ui_shell.h"
+#include "editor/workspace/editor.h"
 
 #include <imgui/dcimgui.h>
 #include <stdio.h>

@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "Material",
-  "kind": "material",
-  "data": { "friction": 0.8, "damage_multiplier": 1, "emission": 0 },
-  "composition": []
-}

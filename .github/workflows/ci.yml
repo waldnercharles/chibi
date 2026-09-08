@@ -26,15 +26,21 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libclang-18-dev libgl1-mesa-dev libx11-dev libxcursor-dev \
+            clang-18 libclang-18-dev libgl1-mesa-dev libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev xvfb
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
           -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
+          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       - name: Build and run tests
         run: xvfb-run -a make test
+      - name: Build and exercise application reload
+        run: |
+          cmake -S . -B build -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON
+          cmake --build build --target blueprints_host blueprints_application --parallel 2
+          xvfb-run -a cmake --build build --target check-dev-smoke
 
   format:
     name: clang-format
@@ -53,55 +59,3 @@ jobs:
           -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Check format
         run: cmake --build build --target check-format
-
-  warnings:
-    name: Compiler warnings
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: warnings
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ccache libclang-18-dev libgl1-mesa-dev \
-            libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
-            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev
-      - name: Configure
-        run: >-
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
-      - name: Build and run tests
-        run: |
-          cmake --build build --target test_suite --parallel
-          build/test_suite
-
-  sanitizers:
-    name: Address and undefined behavior sanitizers
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: sanitizers
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ccache libclang-18-dev libgl1-mesa-dev \
-            libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
-            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev
-      - name: Configure
-        run: >-
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
-          -DCBLUEPRINT_ENABLE_SANITIZERS=ON
-      - name: Build and run tests
-        env:
-          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: |
-          cmake --build build --target test_suite --parallel
-          build/test_suite

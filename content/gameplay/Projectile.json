@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "Projectile",
-  "kind": "projectile",
-  "data": { "speed": 420, "lifetime": 2, "damage": 12 },
-  "composition": ["GameTransform"]
-}

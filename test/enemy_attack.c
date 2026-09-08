@@ -1,10 +1,12 @@
-#include "../core/array.h"
-#include "../core/serialize.h"
-#include "../core/xalloc.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype_preview.h"
+#include "graph/document/serialize.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
+#include "support/array.h"
+#include "support/event_fixture.h"
+#include "support/xalloc.h"
+#include "test/support/event_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -41,6 +43,9 @@ static behavior_asset *behavior(const char *name)
     snprintf(path, sizeof path, "content/behaviors/%s.json", name);
     char *text = read_file(path);
     behavior_asset *asset = behavior_asset_load_json(text);
+    if (asset) {
+        asset = link_test_libraries(asset);
+    }
     free(text);
     assert(asset);
     compile_report report;
@@ -86,6 +91,7 @@ static host create(bool isolated, const game_prototype_registry *registry, const
     host h = { 0 };
     if (isolated) {
         h.preview = game_prototype_preview_new(registry);
+        register_test_preview_catalog(h.preview);
         h.world = game_prototype_preview_world(h.preview);
     } else {
         h.world = ecs_world_new();
@@ -93,6 +99,7 @@ static host create(bool isolated, const game_prototype_registry *registry, const
             assert(ecs_world_register_component(h.world, registry->components[i], NULL) == ECS_OK);
         }
         h.live = game_live_world_new(h.world);
+        register_damage_event(h.live);
         h.engine = engine_new(h.world, h.live);
     }
     const char *names[] = { "HealthBehavior", "PlayerContactBehavior" };

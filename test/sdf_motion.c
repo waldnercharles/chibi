@@ -1,9 +1,9 @@
-#include "../game/sdf_motion.h"
+#include "render/sdf_motion.h"
 
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype_preview.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
 
 #include <assert.h>
 #include <float.h>

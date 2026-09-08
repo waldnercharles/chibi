@@ -1,11 +1,13 @@
-#include "../core/array.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../core/xalloc.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype_preview.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
+#include "support/array.h"
+#include "support/event_fixture.h"
+#include "support/xalloc.h"
+#include "test/support/event_fixture.h"
 
 #include <assert.h>
 #include <float.h>
@@ -75,6 +77,7 @@ static void contact_history()
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
     game_live_world *live = game_live_world_new(world);
+    register_damage_event(live);
     assert(
         game_live_add_definition(live, game_live_definition_new("Contacts", contact_observer())) == 0
     );
@@ -149,6 +152,7 @@ static void contact_oracle()
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
     game_live_world *live = game_live_world_new(world);
+    register_damage_event(live);
     assert(
         game_live_add_definition(live, game_live_definition_new("Contacts", contact_observer())) == 0
     );
@@ -267,6 +271,9 @@ static behavior_asset *read_behavior(const char *name)
     snprintf(path, sizeof path, "content/behaviors/%s.json", name);
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
+    if (asset) {
+        asset = link_test_libraries(asset);
+    }
     free(text);
     assert(asset);
     compile_report report;
@@ -318,6 +325,7 @@ static void authored_combat(bool isolated)
     game_prototype *projectile = read_prototype("content/prototypes/Projectile.json", &registry);
     game_prototype_preview *preview = isolated ? game_prototype_preview_new(&registry)
                                                : NULL;
+    register_test_preview_catalog(preview);
     ecs_world *world = isolated ? game_prototype_preview_world(preview)
                                 : ecs_world_new();
     game_live_world *live = NULL;
@@ -329,6 +337,7 @@ static void authored_combat(bool isolated)
             );
         }
         live = game_live_world_new(world);
+        register_damage_event(live);
         runtime = engine_new(world, live);
         assert(engine_set_playing(runtime, true) == 0);
     }

@@ -307,10 +307,10 @@
         },
         {
           "id": 145,
-          "type": "Call Pure Function",
+          "type": "Direction To",
           "x": 520,
           "y": 220,
-          "reference_id": 139,
+          "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
@@ -501,153 +501,6 @@
           "from_pin": 46,
           "to": 197,
           "to_pin": 201,
-          "kind": "data"
-        }
-      ]
-    },
-    {
-      "id": 139,
-      "kind": "function",
-      "name": "Direction To",
-      "breakpoints_enabled": true,
-      "comment_boxes": [],
-      "entry_id": 140,
-      "return_id": 143,
-      "call_depth_limit": 64,
-      "nodes": [
-        {
-          "id": 140,
-          "type": "Function Entry",
-          "x": 0,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
-          "outputs": [
-            {
-              "id": 141,
-              "name": "Origin",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 142,
-              "name": "Target",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 25,
-          "type": "Direction To",
-          "x": 230,
-          "y": 160,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 26,
-              "name": "Origin",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
-            },
-            {
-              "id": 27,
-              "name": "Target",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 28,
-              "name": "Direction",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null,
-              "type_name": "CF_V2"
-            }
-          ]
-        },
-        {
-          "id": 143,
-          "type": "Return",
-          "x": 460,
-          "y": 0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 144,
-              "name": "Direction",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": []
-        }
-      ],
-      "edges": [
-        {
-          "from": 140,
-          "from_pin": 141,
-          "to": 25,
-          "to_pin": 26,
-          "kind": "data"
-        },
-        {
-          "from": 140,
-          "from_pin": 142,
-          "to": 25,
-          "to_pin": 27,
-          "kind": "data"
-        },
-        {
-          "from": 25,
-          "from_pin": 28,
-          "to": 143,
-          "to_pin": 144,
           "kind": "data"
         }
       ]
@@ -1820,14 +1673,6 @@
           "from_pin": 89,
           "to": 182,
           "to_pin": 183,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 182,
-          "from_pin": 187,
-          "to": 77,
-          "to_pin": 78,
           "kind": "exec",
           "order": 0
         },

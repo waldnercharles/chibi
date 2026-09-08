@@ -1,4 +1,4 @@
-#include "../game/particles.h"
+#include "render/particles.h"
 
 #include <assert.h>
 #include <float.h>

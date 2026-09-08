@@ -1,9 +1,9 @@
-#include "core/array.h"
-#include "core/compile.h"
-#include "core/instance.h"
-#include "core/registry.h"
-#include "core/serialize.h"
-#include "game/generated.h"
+#include "graph/compiler/compile.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/instance.h"
+#include "runtime/generated.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <stdio.h>

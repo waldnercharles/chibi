@@ -1,4 +1,4 @@
-#include "../game/appearance_geometry.h"
+#include "render/appearance_geometry.h"
 
 #include <assert.h>
 #include <float.h>

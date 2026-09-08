@@ -1,4 +1,4 @@
-#include "editor/editor.h"
+#include "editor/workspace/editor.h"
 
 #include <imgui/dcimgui.h>
 #include <stdio.h>
@@ -35,7 +35,7 @@ bool test_gameplay_keyboard()
     for (int i = 0; i < 4; i++) {
         ImGuiIO_AddKeyEvent(io, keys[i], true);
         gameplay_keyboard_frame(false);
-        /* This is the same gate app/main.c uses before reading CF keys. */
+        /* This is the same gate editor/workspace/application.c uses before reading CF keys. */
         ok &= io->WantCaptureKeyboard && io->NavActive && !io->WantTextInput &&
               !editor_host_captures_keyboard();
         ImGuiIO_AddKeyEvent(io, keys[i], false);

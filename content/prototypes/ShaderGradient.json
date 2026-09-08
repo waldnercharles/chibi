@@ -1,0 +1,29 @@
+{
+  "name": "ShaderGradient",
+  "components": {
+    "GameTransform": {
+      "x": 0,
+      "y": 0
+    },
+    "GameAppearance": {
+      "width": 100,
+      "height": 100,
+      "color": 4294967295,
+      "shape": 1,
+      "border_width": 0,
+      "border_color": 4294967295,
+      "glow_radius": 0,
+      "glow_color": 0,
+      "stroke_width": 0,
+      "antialias": 0.5
+    },
+    "GameShader": {
+      "material": "OutlineGradient",
+      "shape": "",
+      "parameters": "{}",
+      "bounds_x": 50,
+      "bounds_y": 50
+    }
+  },
+  "behaviors": []
+}

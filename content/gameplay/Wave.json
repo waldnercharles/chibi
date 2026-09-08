@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "Wave",
-  "kind": "wave",
-  "data": { "spawn_interval": 1.5, "enemy_count": 8, "first_wave": 1 },
-  "composition": ["Enemy"]
-}

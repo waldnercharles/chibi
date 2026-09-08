@@ -1,0 +1,310 @@
+{
+  "version": 3,
+  "name": "ShaderMath",
+  "domain": "shader-library",
+  "id_counter": 101,
+  "description": "Shared GPU math functions. Pulse maps Time and Speed to a smooth brightness value between zero and one.",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "Functions",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [],
+      "edges": []
+    },
+    {
+      "id": 56,
+      "kind": "function",
+      "name": "Pulse",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "entry_id": 57,
+      "return_id": 59,
+      "call_depth_limit": 64,
+      "nodes": [
+        {
+          "id": 57,
+          "type": "Function Entry",
+          "x": 0.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 61,
+              "name": "Time",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 62,
+              "name": "Speed",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 59,
+          "type": "Return",
+          "x": 850.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 63,
+              "name": "Brightness",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 64,
+          "type": "Shader Multiply",
+          "x": 200.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 65,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 66,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 67,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 68,
+          "type": "Shader Sin",
+          "x": 380.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 69,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 70,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 71,
+          "type": "Shader Add",
+          "x": 530.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 72,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 73,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 1.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 74,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 75,
+          "type": "Shader Multiply",
+          "x": 680.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 76,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 77,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.5
+            }
+          ],
+          "outputs": [
+            {
+              "id": 78,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 57,
+          "from_pin": 61,
+          "to": 64,
+          "to_pin": 65,
+          "kind": "data"
+        },
+        {
+          "from": 57,
+          "from_pin": 62,
+          "to": 64,
+          "to_pin": 66,
+          "kind": "data"
+        },
+        {
+          "from": 64,
+          "from_pin": 67,
+          "to": 68,
+          "to_pin": 69,
+          "kind": "data"
+        },
+        {
+          "from": 68,
+          "from_pin": 70,
+          "to": 71,
+          "to_pin": 72,
+          "kind": "data"
+        },
+        {
+          "from": 71,
+          "from_pin": 74,
+          "to": 75,
+          "to_pin": 76,
+          "kind": "data"
+        },
+        {
+          "from": 75,
+          "from_pin": 78,
+          "to": 59,
+          "to_pin": 63,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

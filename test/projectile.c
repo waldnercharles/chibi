@@ -1,10 +1,12 @@
-#include "../core/array.h"
-#include "../core/serialize.h"
-#include "../core/xalloc.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype_preview.h"
+#include "graph/document/serialize.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
+#include "support/array.h"
+#include "support/event_fixture.h"
+#include "support/xalloc.h"
+#include "test/support/event_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -29,6 +31,9 @@ static behavior_asset *read_behavior(const char *path)
 {
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
+    if (asset) {
+        asset = link_test_libraries(asset);
+    }
     free(text);
     if (!asset) {
         fprintf(stderr, "Could not load %s: %s\n", path, graph_last_error());
@@ -91,6 +96,7 @@ void test_projectile()
         game_prototype_preview *preview = NULL;
         if (isolated) {
             preview = game_prototype_preview_new(&registry);
+            register_test_preview_catalog(preview);
             world = game_prototype_preview_world(preview);
         } else {
             for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -99,6 +105,7 @@ void test_projectile()
                 );
             }
             live = game_live_world_new(world);
+            register_damage_event(live);
             runtime = engine_new(world, live);
         }
         for (int i = 0; i < (int)(sizeof names / sizeof names[0]); i++) {

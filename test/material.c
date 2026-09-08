@@ -1,4 +1,4 @@
-#include "../game/material.h"
+#include "render/material.h"
 
 #include <assert.h>
 #include <float.h>

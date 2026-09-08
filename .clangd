@@ -2,7 +2,7 @@
 #
 # CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON, so build/ already holds
 # the real compile flags, including the libclang include directory that
-# find_path() resolved for reflect/reflect.c. Without this file clangd searches
+# find_path() resolved for tools/reflect/reflect.c. Without this file clangd searches
 # only the source tree, fails to resolve <clang-c/Index.h> and <dcimgui.h>, and
 # reports missing-header errors that the actual build does not have.
 #

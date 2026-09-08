@@ -1,6 +1,6 @@
-#include "../editor/labels.h"
+#include "editor/ui/labels.h"
 
-#include "../core/registry.h"
+#include "graph/model/registry.h"
 
 #include <assert.h>
 #include <stdio.h>

@@ -1,0 +1,1563 @@
+{
+  "version": 3,
+  "name": "OutlineGradient",
+  "domain": "material",
+  "id_counter": 125,
+  "description": "A parameterized ring with a horizontal color gradient and the shared ShaderMath.Pulse shader function.",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Shader Material Output",
+          "x": 1500.0,
+          "y": 100.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 2,
+              "name": "Scene",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+              }
+            },
+            {
+              "id": 3,
+              "name": "Emission",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+              }
+            },
+            {
+              "id": 4,
+              "name": "Albedo",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+              }
+            },
+            {
+              "id": 5,
+              "name": "Absorption",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+              }
+            },
+            {
+              "id": 6,
+              "name": "Border Scene",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+              }
+            },
+            {
+              "id": 7,
+              "name": "Border Emission",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+              }
+            },
+            {
+              "id": 8,
+              "name": "Border Albedo",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0,
+                "w": 1.0
+              }
+            },
+            {
+              "id": 9,
+              "name": "Border Absorption",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0,
+                "w": 0.0
+              }
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 10,
+          "type": "Shader Position",
+          "x": 0.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 11,
+              "name": "Position",
+              "type": 15,
+              "type_name": "ShaderVec2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "Shader Parameter",
+          "x": 0.0,
+          "y": 160.0,
+          "reference_id": 0,
+          "reference_name": "Radius",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 13,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 35.0
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "type": "Shader Parameter",
+          "x": 0.0,
+          "y": 280.0,
+          "reference_id": 1,
+          "reference_name": "Width",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 15,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 5.0
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "Shader Length",
+          "x": 200.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 17,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 18,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "type": "Shader Subtract",
+          "x": 360.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 20,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 21,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 22,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "type": "Shader Abs",
+          "x": 520.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 24,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 25,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 26,
+          "type": "Shader Divide",
+          "x": 680.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 27,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 28,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 29,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 30,
+          "type": "Shader Subtract",
+          "x": 840.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 31,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 1.0
+            },
+            {
+              "id": 32,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 33,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 34,
+          "type": "Shader Max",
+          "x": 1000.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 35,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 36,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 37,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 38,
+          "type": "Shader Vector4",
+          "x": 1160.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 39,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 40,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 41,
+              "name": "Z",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 42,
+              "name": "W",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 43,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 44,
+          "type": "Shader Parameter",
+          "x": 660.0,
+          "y": 340.0,
+          "reference_id": 2,
+          "reference_name": "Color",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 45,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": {
+                "x": 0.05000000074505806,
+                "y": 0.6000000238418579,
+                "z": 1.0,
+                "w": 1.0
+              }
+            }
+          ]
+        },
+        {
+          "id": 46,
+          "type": "Shader X",
+          "x": 200.0,
+          "y": 500.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 47,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 48,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 49,
+          "type": "Shader Divide",
+          "x": 360.0,
+          "y": 500.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 50,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 51,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 100.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 52,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 53,
+          "type": "Shader Add",
+          "x": 520.0,
+          "y": 500.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 54,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 55,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.5
+            }
+          ],
+          "outputs": [
+            {
+              "id": 56,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 57,
+          "type": "Shader Vector4",
+          "x": 680.0,
+          "y": 520.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 58,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 59,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 60,
+              "name": "Z",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 61,
+              "name": "W",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 62,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 63,
+          "type": "Shader Parameter",
+          "x": 680.0,
+          "y": 750.0,
+          "reference_id": 5,
+          "reference_name": "Color B",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 64,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": {
+                "x": 1.0,
+                "y": 0.10000000149011612,
+                "z": 0.44999998807907104,
+                "w": 1.0
+              }
+            }
+          ]
+        },
+        {
+          "id": 65,
+          "type": "Shader Mix",
+          "x": 890.0,
+          "y": 470.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 66,
+              "name": "A",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 67,
+              "name": "B",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 68,
+              "name": "Alpha",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 69,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 70,
+          "type": "Shader Multiply",
+          "x": 1320.0,
+          "y": 100.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 71,
+              "name": "A",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 72,
+              "name": "B",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 73,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 74,
+          "type": "Shader Time",
+          "x": 0.0,
+          "y": 820.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 75,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 76,
+          "type": "Shader Parameter",
+          "x": 0.0,
+          "y": 940.0,
+          "reference_id": 3,
+          "reference_name": "Speed",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 77,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 2.0
+            }
+          ]
+        },
+        {
+          "id": 78,
+          "type": "Shader Parameter",
+          "x": 440.0,
+          "y": 980.0,
+          "reference_id": 4,
+          "reference_name": "Flash",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 79,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 103,
+          "type": "Call Pure Function",
+          "x": 230.0,
+          "y": 820.0,
+          "reference_id": 56,
+          "reference_name": "Pulse",
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 104,
+              "name": "Time",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "declaration_id": 61
+            },
+            {
+              "id": 105,
+              "name": "Speed",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "declaration_id": 62
+            }
+          ],
+          "outputs": [
+            {
+              "id": 106,
+              "name": "Brightness",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "declaration_id": 63
+            }
+          ],
+          "reference_asset": "ShaderMath"
+        },
+        {
+          "id": 107,
+          "type": "Shader Add",
+          "x": 450.0,
+          "y": 820.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 108,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 109,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.30000001192092896
+            }
+          ],
+          "outputs": [
+            {
+              "id": 110,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 111,
+          "type": "Shader Add",
+          "x": 650.0,
+          "y": 900.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 112,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            },
+            {
+              "id": 113,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 114,
+              "name": "Value",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 115,
+          "type": "Shader Vector4",
+          "x": 890.0,
+          "y": 920.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 116,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 117,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 118,
+              "name": "Z",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 119,
+              "name": "W",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 120,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 121,
+          "type": "Shader Multiply",
+          "x": 1320.0,
+          "y": 520.0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 122,
+              "name": "A",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            },
+            {
+              "id": 123,
+              "name": "B",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 124,
+              "name": "Value",
+              "type": 15,
+              "type_name": "ShaderVec4",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 10,
+          "from_pin": 11,
+          "to": 16,
+          "to_pin": 17,
+          "kind": "data"
+        },
+        {
+          "from": 10,
+          "from_pin": 11,
+          "to": 46,
+          "to_pin": 47,
+          "kind": "data"
+        },
+        {
+          "from": 12,
+          "from_pin": 13,
+          "to": 19,
+          "to_pin": 21,
+          "kind": "data"
+        },
+        {
+          "from": 14,
+          "from_pin": 15,
+          "to": 26,
+          "to_pin": 28,
+          "kind": "data"
+        },
+        {
+          "from": 16,
+          "from_pin": 18,
+          "to": 19,
+          "to_pin": 20,
+          "kind": "data"
+        },
+        {
+          "from": 19,
+          "from_pin": 22,
+          "to": 23,
+          "to_pin": 24,
+          "kind": "data"
+        },
+        {
+          "from": 23,
+          "from_pin": 25,
+          "to": 26,
+          "to_pin": 27,
+          "kind": "data"
+        },
+        {
+          "from": 26,
+          "from_pin": 29,
+          "to": 30,
+          "to_pin": 32,
+          "kind": "data"
+        },
+        {
+          "from": 30,
+          "from_pin": 33,
+          "to": 34,
+          "to_pin": 35,
+          "kind": "data"
+        },
+        {
+          "from": 34,
+          "from_pin": 37,
+          "to": 38,
+          "to_pin": 39,
+          "kind": "data"
+        },
+        {
+          "from": 34,
+          "from_pin": 37,
+          "to": 38,
+          "to_pin": 40,
+          "kind": "data"
+        },
+        {
+          "from": 34,
+          "from_pin": 37,
+          "to": 38,
+          "to_pin": 41,
+          "kind": "data"
+        },
+        {
+          "from": 34,
+          "from_pin": 37,
+          "to": 38,
+          "to_pin": 42,
+          "kind": "data"
+        },
+        {
+          "from": 38,
+          "from_pin": 43,
+          "to": 70,
+          "to_pin": 72,
+          "kind": "data"
+        },
+        {
+          "from": 44,
+          "from_pin": 45,
+          "to": 65,
+          "to_pin": 66,
+          "kind": "data"
+        },
+        {
+          "from": 46,
+          "from_pin": 48,
+          "to": 49,
+          "to_pin": 50,
+          "kind": "data"
+        },
+        {
+          "from": 49,
+          "from_pin": 52,
+          "to": 53,
+          "to_pin": 54,
+          "kind": "data"
+        },
+        {
+          "from": 53,
+          "from_pin": 56,
+          "to": 57,
+          "to_pin": 58,
+          "kind": "data"
+        },
+        {
+          "from": 53,
+          "from_pin": 56,
+          "to": 57,
+          "to_pin": 59,
+          "kind": "data"
+        },
+        {
+          "from": 53,
+          "from_pin": 56,
+          "to": 57,
+          "to_pin": 60,
+          "kind": "data"
+        },
+        {
+          "from": 53,
+          "from_pin": 56,
+          "to": 57,
+          "to_pin": 61,
+          "kind": "data"
+        },
+        {
+          "from": 57,
+          "from_pin": 62,
+          "to": 65,
+          "to_pin": 68,
+          "kind": "data"
+        },
+        {
+          "from": 63,
+          "from_pin": 64,
+          "to": 65,
+          "to_pin": 67,
+          "kind": "data"
+        },
+        {
+          "from": 65,
+          "from_pin": 69,
+          "to": 70,
+          "to_pin": 71,
+          "kind": "data"
+        },
+        {
+          "from": 70,
+          "from_pin": 73,
+          "to": 1,
+          "to_pin": 2,
+          "kind": "data"
+        },
+        {
+          "from": 70,
+          "from_pin": 73,
+          "to": 1,
+          "to_pin": 6,
+          "kind": "data"
+        },
+        {
+          "from": 70,
+          "from_pin": 73,
+          "to": 121,
+          "to_pin": 122,
+          "kind": "data"
+        },
+        {
+          "from": 74,
+          "from_pin": 75,
+          "to": 103,
+          "to_pin": 104,
+          "kind": "data"
+        },
+        {
+          "from": 76,
+          "from_pin": 77,
+          "to": 103,
+          "to_pin": 105,
+          "kind": "data"
+        },
+        {
+          "from": 78,
+          "from_pin": 79,
+          "to": 111,
+          "to_pin": 113,
+          "kind": "data"
+        },
+        {
+          "from": 103,
+          "from_pin": 106,
+          "to": 107,
+          "to_pin": 108,
+          "kind": "data"
+        },
+        {
+          "from": 107,
+          "from_pin": 110,
+          "to": 111,
+          "to_pin": 112,
+          "kind": "data"
+        },
+        {
+          "from": 111,
+          "from_pin": 114,
+          "to": 115,
+          "to_pin": 116,
+          "kind": "data"
+        },
+        {
+          "from": 111,
+          "from_pin": 114,
+          "to": 115,
+          "to_pin": 117,
+          "kind": "data"
+        },
+        {
+          "from": 111,
+          "from_pin": 114,
+          "to": 115,
+          "to_pin": 118,
+          "kind": "data"
+        },
+        {
+          "from": 111,
+          "from_pin": 114,
+          "to": 115,
+          "to_pin": 119,
+          "kind": "data"
+        },
+        {
+          "from": 115,
+          "from_pin": 120,
+          "to": 121,
+          "to_pin": 123,
+          "kind": "data"
+        },
+        {
+          "from": 121,
+          "from_pin": 124,
+          "to": 1,
+          "to_pin": 3,
+          "kind": "data"
+        },
+        {
+          "from": 121,
+          "from_pin": 124,
+          "to": 1,
+          "to_pin": 7,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

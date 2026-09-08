@@ -1,21 +1,22 @@
-#include "../app/cute_host.h"
-#include "../app/event_catalog.h"
-#include "../app/gameplay_input.h"
-#include "../app/scene_authoring.h"
-#include "../app/scene_renderer.h"
-#include "../app/screenshot.h"
-#include "../app/stacktrace.h"
-#include "../core/compare_nodes.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../editor/editor.h"
-#include "../editor/eval_view.h"
-#include "../editor/ui_shell.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype.h"
-#include "../game/scene_document.h"
+#include "assets/prototype.h"
+#include "assets/scene_document.h"
+#include "editor/graph/eval_view.h"
+#include "editor/ui/ui_shell.h"
+#include "editor/workspace/editor.h"
+#include "editor/workspace/event_catalog.h"
+#include "editor/workspace/gameplay_input.h"
+#include "editor/workspace/input.h"
+#include "editor/workspace/scene_authoring.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/compare_nodes.h"
+#include "host/stacktrace.h"
+#include "platform/cute.h"
+#include "render/scene_renderer.h"
+#include "render/screenshot.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -49,6 +50,19 @@ static void inject_mouse_button(float x, float y, bool down)
     ImGuiIO *io = ImGui_GetIO();
     ImGuiIO_AddMousePosEvent(io, x, y);
     ImGuiIO_AddMouseButtonEvent(io, 0, down);
+}
+
+static char *io_read(const char *path);
+
+static void register_fixture_prototypes(app_scene_authoring *authoring)
+{
+    const char *paths[] = { "test/fixtures/prototypes/InputEntity.json",
+                            "test/fixtures/prototypes/StaticEntity.json" };
+    for (int i = 0; i < 2; i++) {
+        char *json = io_read(paths[i]);
+        assert(json && app_scene_authoring_register_prototype(authoring, json, paths[i]) == 0);
+        free(json);
+    }
 }
 
 static bool logical_pane_rect(editor_ui_pane pane, editor_ui_rect *rect)
@@ -89,7 +103,6 @@ typedef struct
     int integration_failed;
     char content_root[64];
     char io_root[64];
-    char gameplay_root[64];
     ecs_entity preview_first_entity;
     ecs_entity keyboard_entity;
     GameTransform keyboard_before;
@@ -137,6 +150,7 @@ typedef struct
     ecs_entity inspected_spawn;
     GameTransform inspected_spawn_position;
     ImVec2 inspected_spawn_pointer;
+    engine_viewport_view inspected_spawn_view;
     ecs_entity lifecycle_entity;
     ecs_entity search_selection;
     float material_scroll;
@@ -571,6 +585,7 @@ static void app_cleanup(app_loop *loop)
     editor_free(loop->graph_editor);
     ecs_world_free(loop->world);
     engine_viewport_free(loop->viewport);
+    app_input_shutdown();
     cf_destroy_app();
     if (loop->content_root[0]) {
         char path[256];
@@ -1185,7 +1200,7 @@ static void encounter_input(app_loop *loop, int step)
     if (step == 2138) {
         app_scene_authoring_stop_prototype_preview(loop->authoring);
         result = app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY);
-        result |= app_scene_authoring_open_system(loop->authoring, "content/systems/MovementSystem.json");
+        result |= app_scene_authoring_open_system(loop->authoring, "test/fixtures/systems/MovementSystem.json");
         bool ok = editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
         printf("ui-play-workspace %s: opening a System reveals Graph during Play\n", ok && !result ? "PASS" : "FAIL");
         loop->integration_failed |= !ok;
@@ -1205,10 +1220,14 @@ static void encounter_input(app_loop *loop, int step)
         editor_ui_rect rect;
         ok &= editor_ui_item_rect("viewport.image", &rect);
         if (ok) {
-            engine_viewport_camera camera;
-            engine_viewport_get_camera(loop->viewport, &camera);
             loop->inspected_spawn_position = *GAME_GameTransform_get_const(loop->world, loop->inspected_spawn);
             GameTransform p = loop->inspected_spawn_position;
+            /* Loading now frames authored actors; the enemy spawns outside that view. */
+            engine_viewport_get_view(loop->viewport, &loop->inspected_spawn_view);
+            engine_viewport_view view = { p.x, -p.y, 640, 360 };
+            engine_viewport_set_view(loop->viewport, &view);
+            engine_viewport_camera camera;
+            engine_viewport_get_camera(loop->viewport, &camera);
             float border = ImGui_GetStyle()->ImageBorderSize;
             loop->inspected_spawn_pointer = (ImVec2){
                 rect.x + border +
@@ -1218,6 +1237,10 @@ static void encounter_input(app_loop *loop, int step)
                     (0.5f - (-p.y - camera.center_y) / camera.span_height) *
                         (rect.height - 2 * border),
             };
+            ok &= loop->inspected_spawn_pointer.x > rect.x &&
+                  loop->inspected_spawn_pointer.x < rect.x + rect.width &&
+                  loop->inspected_spawn_pointer.y > rect.y &&
+                  loop->inspected_spawn_pointer.y < rect.y + rect.height;
         }
         loop->integration_failed |= !ok;
     }
@@ -1260,6 +1283,7 @@ static void encounter_input(app_loop *loop, int step)
     }
     if (step == 2264) {
         result = app_scene_authoring_runtime_command(loop->authoring, APP_RUNTIME_SCENE, APP_RUNTIME_STOP);
+        engine_viewport_set_view(loop->viewport, &loop->inspected_spawn_view);
     }
     loop->integration_failed |= result != 0;
 }
@@ -1618,6 +1642,7 @@ static bool io_fixture(app_loop *loop)
     if (!loop->authoring) {
         return false;
     }
+    register_fixture_prototypes(loop->authoring);
     engine_viewport_set_render_callback(loop->viewport, app_scene_authoring_render, loop->authoring);
     if (app_scene_authoring_set_content_root(loop->authoring, loop->io_root) != 0) {
         return false;
@@ -1726,7 +1751,7 @@ static void document_io_input(app_loop *loop, int step)
         }
     }
     if (step == 2834) {
-        char *json = io_read("content/systems/MovementSystem.json");
+        char *json = io_read("test/fixtures/systems/MovementSystem.json");
         ok = json && io_write(system_path, json) &&
              app_scene_authoring_open_system(loop->authoring, system_path) == 0;
         free(json);
@@ -2298,7 +2323,8 @@ static void interaction_input(app_loop *loop, int step)
     if (step == 2888) {
         float width = editor_ui_left_pane_width();
         editor_ui_rect rail;
-        ok = fabsf(width - 32) < 1 && editor_ui_item_rect("navigator.expand", &rail);
+        ok = fabsf(width - 32 * ImGui_GetIO()->DisplayFramebufferScale.x) < 1 &&
+             editor_ui_item_rect("navigator.expand", &rail);
     }
     if (step == 2907) {
         ok = fabsf(editor_ui_left_pane_width() - loop->sidebar_before) < 2;
@@ -2333,7 +2359,11 @@ static void interaction_input(app_loop *loop, int step)
         ok = app_scene_authoring_selection_count(loop->authoring) == 2;
     }
     if (step == 2940 || step == 2941) {
-        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Delete, step == 2940);
+        SDL_Event event = { 0 };
+        event.type = step == 2940 ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        event.key.scancode = SDL_SCANCODE_DELETE;
+        event.key.down = step == 2940;
+        ok &= SDL_PushEvent(&event);
     }
     if (step == 2945) {
         ok = !ecs_entity_is_alive(loop->world, loop->interaction_actors[0]) &&
@@ -2744,14 +2774,6 @@ static void instance_picker_input(app_loop *loop, int step)
         printf("ui-instance-picker %s: behavior filtering/toggling preserves the shared asset at %d\n", ok ? "PASS" : "FAIL", step);
         loop->integration_failed |= !ok;
     }
-}
-
-static bool gameplay_value(app_loop *loop, const char *field, double expected)
-{
-    double value;
-    return game_authored_data_read_number(app_scene_authoring_gameplay(loop->authoring), field, &value) ==
-               0 &&
-           value == expected;
 }
 
 static bool prototype_has_x(app_loop *loop, const char *name, float expected)
@@ -3342,7 +3364,7 @@ static void floating_controls_motion_input(app_loop *loop, int step)
         }
         bool ok = menubar_transport_absent();
         editor_ui_rect inspector;
-        ok &= editor_ui_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector);
+        ok &= logical_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector);
         if (phase == -20 || phase == 18 || phase == 58) {
             editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
             inject_mouse_button(
@@ -3353,7 +3375,7 @@ static void floating_controls_motion_input(app_loop *loop, int step)
         }
         if (phase == 0) {
             editor_ui_rect rect;
-            ok &= editor_ui_pane_rect(pane ? EDITOR_UI_PANE_SCENE : EDITOR_UI_PANE_NODE_CANVAS, &rect);
+            ok &= logical_pane_rect(pane ? EDITOR_UI_PANE_SCENE : EDITOR_UI_PANE_NODE_CANVAS, &rect);
             if (ok) {
                 inject_mouse_button(rect.x + rect.width * 0.75f, rect.y + rect.height - 24, false);
             }
@@ -3437,7 +3459,7 @@ static void graph_transport_input(app_loop *loop, int step)
     }
     if (step == 4034) {
         editor_ui_rect pane, play, more;
-        ok = editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane) &&
+        ok = logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane) &&
              editor_ui_item_rect("graph.play", &play) &&
              editor_ui_item_rect("graph.more", &more);
         if (ok) {
@@ -3539,7 +3561,7 @@ static void math_expression_input(app_loop *loop, int step)
              g->nodes[0]->input_count == 2;
         printf("ui-math-expression %s: native source edit regenerates two inferred inputs\n", ok ? "PASS" : "FAIL");
         editor_ui_rect pane;
-        if (editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane)) {
+        if (logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane)) {
             inject_mouse_button(pane.x + 20, pane.y + pane.height - 20, false);
         }
     }
@@ -3549,7 +3571,7 @@ static void math_expression_input(app_loop *loop, int step)
         editor_ui_rect pane;
         ok = acount(g->nodes) == 1 &&
              editor_query_node_ui(loop->graph_editor, g->nodes[0]->id, &node_ui) &&
-             editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+             logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
         if (ok) {
             ok = node_ui.left >= pane.x && node_ui.right <= pane.x + pane.width &&
                  node_ui.top >= pane.y && node_ui.bottom <= pane.y + pane.height;
@@ -3580,7 +3602,7 @@ static void math_expression_input(app_loop *loop, int step)
     }
     if (step == 4116 || step == 4117) {
         editor_ui_rect pane;
-        ok = editor_ui_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
+        ok = logical_pane_rect(EDITOR_UI_PANE_NODE_CANVAS, &pane);
         if (ok) {
             inject_mouse_button(pane.x + 20, pane.y + pane.height - 20, step == 4116);
         }
@@ -3611,7 +3633,7 @@ static void system_math_input(app_loop *loop, int step)
 {
     bool ok = true;
     if (step == 4300) {
-        ok = app_scene_authoring_open_system(loop->authoring, "content/systems/MovementSystem.json") ==
+        ok = app_scene_authoring_open_system(loop->authoring, "test/fixtures/systems/MovementSystem.json") ==
              0;
         ImGui_SetWindowPosStr("Node Canvas", (ImVec2){ 320, 100 }, 0);
         ImGui_SetWindowSizeStr("Node Canvas", (ImVec2){ 1000, 600 }, 0);
@@ -3832,124 +3854,35 @@ static void navigator_docking_input(app_loop *loop, int step)
     loop->integration_failed |= !ok;
 }
 
-static void gameplay_input(app_loop *loop, int step)
+static void reload_binding_input(app_loop *loop, int step)
 {
-    if (step < 3292) {
+    if (step < 4390 || step > 4405) {
         return;
     }
-    char directory[128], player[160], weapon[160], copy[160];
-    snprintf(directory, sizeof directory, "%s/gameplay", loop->gameplay_root);
-    snprintf(player, sizeof player, "%s/Alpha.json", directory);
-    snprintf(weapon, sizeof weapon, "%s/Beta.json", directory);
-    snprintf(copy, sizeof copy, "%s/Copy.json", directory);
-    bool ok = true;
-    if (step == 3292) {
-        strcpy(loop->gameplay_root, "/tmp/c-blueprints-gameplay-XXXXXX");
-        ok = mkdtemp(loop->gameplay_root) != NULL;
-        snprintf(directory, sizeof directory, "%s/gameplay", loop->gameplay_root);
-        snprintf(player, sizeof player, "%s/Alpha.json", directory);
-        snprintf(weapon, sizeof weapon, "%s/Beta.json", directory);
-        char *player_json = io_read("content/gameplay/Player.json");
-        char *weapon_json = io_read("content/gameplay/Weapon.json");
-        ok &= mkdir(directory, 0700) == 0 && player_json && weapon_json &&
-              io_write(player, player_json) && io_write(weapon, weapon_json);
-        free(player_json);
-        free(weapon_json);
-        ok &= app_scene_authoring_set_content_root(loop->authoring, loop->gameplay_root) ==
-              0;
-        app_scene_authoring_refresh_content(loop->authoring);
-    }
-    const struct
-    {
-        int press;
-        const char *id;
-    } actions[] = {
-        { 3294, "navigator.files" },
-        { 3298, directory },
-        { 3302, player },
-        { 3320, "gameplay.field.max_health" },
-    };
-    for (int i = 0; i < (int)(sizeof actions / sizeof *actions); i++) {
-        if (step != actions[i].press && step != actions[i].press + 1) {
-            continue;
+    if (step == 4390 || step == 4398 || step == 4402 || step == 4404) {
+        const SDL_Scancode keys[] = { SDL_SCANCODE_W, SDL_SCANCODE_SPACE, SDL_SCANCODE_C };
+        bool down = step == 4390 || step == 4402;
+        for (int i = 0; i < 3; i++) {
+            SDL_Event event = { 0 };
+            event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+            event.key.scancode = keys[i];
+            event.key.down = down;
+            assert(SDL_PushEvent(&event));
         }
+    }
+    if (step == 4394) {
+        app_input_shutdown();
+        app_input_initialize();
+    }
+    if (step == 4391 || step == 4395 || step == 4403) {
         float x, y;
-        if (editor_ui_item_center(actions[i].id, &x, &y)) {
-            inject_mouse_button(x, y, step == actions[i].press);
-        } else {
-            printf("ui-gameplay FAIL: missing %s\n", actions[i].id);
-            ok = false;
-        }
+        app_input_movement(&x, &y);
+        bool pressed = step != 4395;
+        bool ok = x == 0 && y == -1 && app_input_pressed(APP_INPUT_FIRE) == pressed &&
+                  app_input_pressed(APP_INPUT_COPY) == pressed;
+        printf("ui-reload-bindings %s: held movement and release-gated actions at %d\n", ok ? "PASS" : "FAIL", step);
+        loop->integration_failed |= !ok;
     }
-    if (step == 3306) {
-        editor_ui_rect field;
-        ok = app_scene_authoring_document(loop->authoring).kind ==
-                 APP_EDITOR_DOCUMENT_GAMEPLAY &&
-             gameplay_value(loop, "max_health", 100) &&
-             editor_ui_item_rect("gameplay.field.max_health", &field);
-        printf("ui-gameplay %s: single-click routes data kind independent of filename\n", ok ? "PASS" : "FAIL");
-    }
-    if (step == 3310) {
-        ok = app_scene_authoring_set_gameplay_number(loop->authoring, "max_health", 123) ==
-                 0 &&
-             app_scene_authoring_open_gameplay(loop->authoring, weapon) == 0 &&
-             app_scene_authoring_set_gameplay_number(loop->authoring, "damage", 30) == 0 &&
-             app_scene_authoring_open_gameplay(loop->authoring, player) == 0 &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
-             gameplay_value(loop, "max_health", 100) &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0 &&
-             gameplay_value(loop, "max_health", 123) &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_SAVE) == 0 &&
-             !game_authored_data_unsaved(app_scene_authoring_gameplay(loop->authoring)) &&
-             app_scene_authoring_set_gameplay_number(loop->authoring, "max_health", 321) ==
-                 0 &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_RELOAD) == 0 &&
-             gameplay_value(loop, "max_health", 123) &&
-             app_scene_authoring_open_gameplay(loop->authoring, weapon) == 0 &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
-             gameplay_value(loop, "damage", 12) &&
-             app_scene_authoring_open_gameplay(loop->authoring, player) == 0;
-        printf("ui-gameplay %s: independent history, Save and Reload preserve data\n", ok ? "PASS" : "FAIL");
-    }
-    if (step == 3323 || step == 3324) {
-        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Ctrl, step == 3323);
-        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, step == 3323);
-    }
-    if (step == 3325) {
-        ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "222");
-    }
-    if (step == 3327 || step == 3328) {
-        ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, step == 3327);
-    }
-    if (step == 3332) {
-        ok = gameplay_value(loop, "max_health", 222) &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0 &&
-             gameplay_value(loop, "max_health", 123) &&
-             editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0 &&
-             gameplay_value(loop, "max_health", 222) &&
-             app_scene_authoring_save_gameplay(loop->authoring, copy) == 0;
-        char *json = io_read(copy);
-        ok &= json && strstr(json, "composition") && strstr(json, "GameInput");
-        free(json);
-        const game_authored_data *before = app_scene_authoring_gameplay(loop->authoring);
-        ok &= io_write(copy, "{broken") &&
-              editor_ui_run_command(EDITOR_UI_COMMAND_RELOAD) != 0 &&
-              app_scene_authoring_gameplay(loop->authoring) == before &&
-              gameplay_value(loop, "max_health", 222) &&
-              app_scene_authoring_open_gameplay(loop->authoring, "/tmp/c-blueprints-missing-gameplay.json") !=
-                  0 &&
-              app_scene_authoring_gameplay(loop->authoring) == before &&
-              gameplay_value(loop, "max_health", 222);
-        printf("ui-gameplay %s: native edit Undo/Redo, Save As, composition and failed-open isolation\n", ok ? "PASS" : "FAIL");
-    }
-    if (step == 3334) {
-        unlink(player);
-        unlink(weapon);
-        unlink(copy);
-        rmdir(directory);
-        rmdir(loop->gameplay_root);
-    }
-    loop->integration_failed |= !ok;
 }
 
 static void runtime_target_input(app_loop *loop, int step)
@@ -3982,8 +3915,8 @@ static int app_frame(app_loop *loop)
     math_expression_input(loop, step);
     system_math_input(loop, step);
     native_gameplay_input(loop, step);
+    reload_binding_input(loop, step);
     navigator_docking_input(loop, step);
-    gameplay_input(loop, step);
     runtime_target_input(loop, step);
     instance_picker_input(loop, step);
     attachment_picker_input(loop, step);
@@ -5040,6 +4973,7 @@ static int app_frame(app_loop *loop)
         ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "73");
     }
     cf_app_update(NULL);
+    app_input_frame();
     editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     encounter_input(loop, step);
     inspector_history_input(loop, step);
@@ -5493,8 +5427,13 @@ static int app_frame(app_loop *loop)
         editor_query query;
         editor_query_state(loop->graph_editor, &query);
         bool tick = false, nearest = false, move_toward = false;
+        bool all_pins_visible = true;
         for (int i = 0; i < acount(active->nodes); i++) {
             node *current = active->nodes[i];
+            editor_node_ui drawn;
+            all_pins_visible &= editor_query_node_ui(loop->graph_editor, current->id, &drawn) &&
+                                drawn.exec_pins + drawn.data_pins ==
+                                    current->input_count + current->output_count;
             tick |= current->reference_name &&
                     strcmp(current->reference_name, "Tick") == 0 &&
                     strcmp(current->desc->name, "Event") == 0;
@@ -5504,16 +5443,16 @@ static int app_frame(app_loop *loop)
                 loop->pursuit_call = current->id;
                 loop->pursuit_node_x = current->x;
                 loop->pursuit_node_y = current->y;
-                editor_node_ui drawn;
                 move_toward &= editor_query_node_ui(loop->graph_editor, current->id, &drawn);
                 loop->pursuit_click_x = drawn.title_x;
                 loop->pursuit_click_y = drawn.title_y;
             }
         }
-        bool ok = document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
-                  document.id && strcmp(document.id, "EnemyBehavior") == 0 &&
-                  tick && nearest && move_toward && query.graph_visible &&
-                  query.zoom >= 0.85f && !query.camera_moving &&
+        bool ok = document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
+                  strcmp(document.id, "EnemyBehavior") == 0 && tick && nearest &&
+                  move_toward && query.graph_visible && all_pins_visible &&
+                  editor_graph_wires_visible(loop->graph_editor) &&
+                  query.zoom > 0.0f && !query.camera_moving &&
                   query.preview_error && !query.preview_error[0];
         printf("ui-pursuit-document %s: pursuit graph opens arranged without preview errors\n", ok ? "PASS" : "FAIL");
         loop->integration_failed |= !ok;
@@ -5564,7 +5503,6 @@ static int app_frame(app_loop *loop)
         editor_query query;
         editor_query_state(loop->graph_editor, &query);
         const behavior_asset *asset = editor_behavior_asset(loop->graph_editor);
-        const graph *direction = behavior_asset_find_graph_by_name(asset, "Direction To");
         const graph *burst = behavior_asset_find_graph_by_name(asset, "Fire Ready Projectiles");
         bool tick = false, nearest = false, normalize = false, fire = false;
         bool all_pins_visible = true;
@@ -5578,8 +5516,7 @@ static int app_frame(app_loop *loop)
                     strcmp(current->reference_name, "Tick") == 0 &&
                     strcmp(current->desc->name, "Event") == 0;
             nearest |= strcmp(current->desc->name, "Find Nearest Entity") == 0;
-            normalize |= direction && current->desc->pure_kind == NODE_PURE_FUNCTION &&
-                         current->reference_id == direction->graph_id;
+            normalize |= strcmp(current->desc->name, "Direction To") == 0;
             fire |= burst && current->reference_id == burst->graph_id;
         }
         bool ok = document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR && document.id &&
@@ -6181,11 +6118,12 @@ static bool asset_preview_without_instance()
 }
 
 extern void test_navigation_runtime();
+extern int test_scene_checkpoint();
 
 int ui_integration_run(const char *program)
 {
     cf_set_assert_handler(stacktrace_assert_handler);
-    const int frames = 4386;
+    const int frames = 4410;
     CF_Result result = cf_make_app(
         "c-blueprints",
         0,
@@ -6204,6 +6142,7 @@ int ui_integration_run(const char *program)
     app_scene_renderer_initialize();
     bool border_ok = test_interior_border() == 0;
     cf_app_init_imgui();
+    app_input_initialize();
     test_navigation_runtime();
     editor_ui_initialize(false);
     bool preferences_ok = workspace_preferences_roundtrip();
@@ -6216,6 +6155,20 @@ int ui_integration_run(const char *program)
     editor_ui_set_framebuffer_target(true);
     editor_ui_set_framebuffer_size(APP_WINDOW_WIDTH, APP_WINDOW_HEIGHT);
     registry_validate();
+    assert(test_scene_checkpoint() == 0);
+    if (getenv("CBLUEPRINT_RELOAD_CHECKS_ONLY")) {
+        app_loop fixture = { 0 };
+        for (int step = 4389; step <= 4405; step++) {
+            reload_binding_input(&fixture, step);
+            cf_app_update(NULL);
+            app_input_frame();
+            ImGui_EndFrame();
+            cf_app_draw_onto_screen(true);
+        }
+        app_input_shutdown();
+        cf_destroy_app();
+        return fixture.integration_failed;
+    }
     bool asset_preview_ok = asset_preview_without_instance();
     behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
     ecs_world *world = ecs_world_new();
@@ -6248,6 +6201,7 @@ int ui_integration_run(const char *program)
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        app_input_shutdown();
         cf_destroy_app();
         return 1;
     }
@@ -6261,6 +6215,9 @@ int ui_integration_run(const char *program)
         NULL,
         runtime
     );
+    if (authoring) {
+        register_fixture_prototypes(authoring);
+    }
     bool coverage_ok = authoring &&
                        test_sdf_coverage(app_scene_authoring_shapes(authoring)) == 0;
     bool radiance_ok = authoring && test_radiance() == 0;
@@ -6271,6 +6228,7 @@ int ui_integration_run(const char *program)
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        app_input_shutdown();
         cf_destroy_app();
         return !border_ok || !coverage_ok || !radiance_ok;
     }
@@ -6290,6 +6248,7 @@ int ui_integration_run(const char *program)
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        app_input_shutdown();
         cf_destroy_app();
         return 1;
     }

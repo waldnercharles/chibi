@@ -1,15 +1,15 @@
-#include "core/math_expression.h"
+#include "graph/nodes/math_expression.h"
 
-#include "core/arena.h"
-#include "core/compile.h"
-#include "core/eval.h"
-#include "core/instance.h"
-#include "core/registry.h"
-#include "core/serialize.h"
-#include "editor/editor.h"
-#include "game/components.h"
-#include "game/generated.h"
-#include "game/system.h"
+#include "editor/workspace/editor.h"
+#include "graph/compiler/compile.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
+#include "runtime/components.h"
+#include "runtime/generated.h"
+#include "runtime/systems/system.h"
+#include "support/arena.h"
 
 #include <assert.h>
 #include <cute_defines.h>

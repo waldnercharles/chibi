@@ -1,11 +1,11 @@
-#include "../core/arena.h"
-#include "../core/array.h"
-#include "../core/compile.h"
-#include "../core/eval.h"
-#include "../core/instance.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../game/components.h"
+#include "graph/compiler/compile.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
+#include "runtime/components.h"
+#include "support/arena.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <stdio.h>

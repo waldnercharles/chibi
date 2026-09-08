@@ -1,9 +1,9 @@
-#include "../editor/flags.h"
+#include "editor/ui/flags.h"
 
-#include "../core/arena.h"
-#include "../core/eval.h"
-#include "../core/graph.h"
-#include "../core/registry.h"
+#include "graph/model/graph.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/eval.h"
+#include "support/arena.h"
 
 #include <assert.h>
 #include <stdio.h>

@@ -1,0 +1,819 @@
+#include "editor/ui/ui_shell.h"
+#include "editor/workspace/scene_internal.h"
+#include "graph/document/serialize.h"
+#include "graph/shader/shader_graph.h"
+#include "runtime/generated.h"
+
+#include <assert.h>
+#include <errno.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
+static const mode_t DOCUMENT_DIRECTORY_MODE = 511;
+
+static void duplicate_current_behavior(app_scene_authoring *scene)
+{
+    for (int i = 1; i < 1000; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "SceneBehaviorCopy%d", i);
+        if (game_behavior_asset_registered(scene->live->behaviors, name)) {
+            continue;
+        }
+        if (game_live_duplicate_definition(scene->live, name, scene->editor_working) == 0) {
+            game_live_mark_dirty(game_live_find_definition(scene->live, name));
+            snprintf(scene->message, sizeof scene->message, "Created %s.", name);
+        } else {
+            snprintf(scene->message, sizeof scene->message, "Could not create %s.", name);
+        }
+        return;
+    }
+    snprintf(scene->message, sizeof scene->message, "Behavior asset name space is full.");
+}
+
+int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
+
+int create_new_prototype(app_scene_authoring *scene)
+{
+    for (int i = 1; i < 1000; i++) {
+        char name[64];
+        char json[512];
+        snprintf(name, sizeof name, "NewPrototype%d", i);
+        if (find_prototype(scene, name)) {
+            continue;
+        }
+        snprintf(
+            json,
+            sizeof json,
+            "{\"name\":\"%s\",\"components\":{"
+            "\"GameHealth\":{\"current\":100,\"maximum\":100},"
+            "\"GameTransform\":{\"x\":0,\"y\":0}}}",
+            name
+        );
+        if (app_scene_authoring_register_prototype(scene, json, NULL) != 0) {
+            break;
+        }
+        open_prototype(scene, acount(scene->prototypes) - 1);
+        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
+        return 0;
+    }
+    snprintf(scene->message, sizeof scene->message, "Prototype name space is full.");
+    return -1;
+}
+
+static int duplicate_selected_prototype(app_scene_authoring *scene)
+{
+    scene_prototype_asset *source = selected_prototype(scene);
+    if (!source) {
+        snprintf(scene->message, sizeof scene->message, "Select a prototype to duplicate.");
+        return -1;
+    }
+    char error[256];
+    for (int i = 1; i < 1000; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "%sCopy%d", source->prototype->name, i);
+        if (find_prototype(scene, name)) {
+            continue;
+        }
+        game_prototype *copy = game_prototype_clone(source->prototype, error, sizeof error);
+        if (!copy) {
+            snprintf(scene->message, sizeof scene->message, "Could not duplicate prototype: %s", error);
+            return -1;
+        }
+        if (game_prototype_set_name(copy, name) != 0) {
+            game_prototype_free(copy);
+            snprintf(scene->message, sizeof scene->message, "Could not duplicate prototype.");
+            return -1;
+        }
+        if (append_prototype_asset(scene, copy, NULL) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Could not duplicate prototype.");
+            return -1;
+        }
+        select_prototype(scene, acount(scene->prototypes) - 1);
+        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
+        return 0;
+    }
+    snprintf(scene->message, sizeof scene->message, "Prototype name space is full.");
+    return -1;
+}
+
+int create_graph_asset(app_scene_authoring *scene, behavior_domain domain)
+{
+    for (int i = 1; i < 1000; i++) {
+        char name[64];
+        const char *labels[] = { "Behavior", "Library", "Material",
+                                 "Shape",    "Event",   "ShaderLibrary" };
+        snprintf(name, sizeof name, "New%s%d", labels[domain], i);
+        if (game_live_find_definition(scene->live, name)) {
+            continue;
+        }
+        behavior_asset *working = behavior_asset_new(name);
+        if (!working) {
+            behavior_asset_free(working);
+            break;
+        }
+        working->domain = domain;
+        if (domain == BEHAVIOR_DOMAIN_EVENT) {
+            behavior_asset_set_owner_type(working, "ecs.entity");
+        }
+        if (domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE) {
+            working->bounds[0] = working->bounds[1] = 32;
+            shader_graph_add_output(working->graph, domain == BEHAVIOR_DOMAIN_SHAPE);
+        }
+        game_live_definition *definition = game_live_definition_new(name, working);
+        if (!definition || game_live_add_definition(scene->live, definition) != 0) {
+            if (definition) {
+                game_live_definition_free(definition);
+            } else {
+                behavior_asset_free(working);
+            }
+            break;
+        }
+        game_live_mark_dirty(definition);
+        if (open_behavior_asset(scene, name) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Created %s, but could not open it.", name);
+            return -1;
+        }
+        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
+        return 0;
+    }
+    snprintf(scene->message, sizeof scene->message, "Behavior asset name space is full.");
+    return -1;
+}
+
+int create_behavior_asset(app_scene_authoring *scene)
+{
+    return create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT);
+}
+
+static int sync_open_behavior(app_scene_authoring *scene)
+{
+    if (!scene->definition || !scene->editor_working || !scene->graph_editor) {
+        return 0;
+    }
+    const behavior_asset *current = editor_behavior_asset(scene->graph_editor);
+    scene->editor_working = current;
+    if (!current || !current->name || !scene->definition->name ||
+        strcmp(current->name, scene->definition->name) != 0 ||
+        scene->editor_working == scene->definition->working) {
+        return 0;
+    }
+    return game_live_sync_working(scene->definition, scene->editor_working);
+}
+
+static int open_behavior_graph(app_scene_authoring *scene, const char *asset_name)
+{
+    game_live_definition *target = game_live_find_definition(scene->live, asset_name);
+    if (!target || !scene->graph_editor || sync_open_behavior(scene) != 0) {
+        return -1;
+    }
+    behavior_asset *working = target->working;
+    graph *default_graph = behavior_asset_find_graph(working, 0);
+    if (!default_graph ||
+        editor_visit_behavior_asset(scene->graph_editor, working, default_graph->graph_id, asset_name) !=
+            0) {
+        return -1;
+    }
+    scene->definition = target;
+    scene->editor_working = editor_behavior_asset(scene->graph_editor);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
+    return 0;
+}
+
+int open_behavior_asset(app_scene_authoring *scene, const char *asset_name)
+{
+    if (open_behavior_graph(scene, asset_name) != 0) {
+        return -1;
+    }
+    set_behavior_component_context(scene, asset_name);
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
+    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    snprintf(scene->message, sizeof scene->message, "Editing behavior asset %s.", asset_name);
+    return 0;
+}
+
+int focus_prototype_behavior(app_scene_authoring *scene, const char *asset_name)
+{
+    if (open_behavior_graph(scene, asset_name) != 0) {
+        return -1;
+    }
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
+    editor_set_graph_visible(scene->graph_editor, 1);
+    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    snprintf(scene->message, sizeof scene->message, "Editing %s in the Prototype.", asset_name);
+    return 0;
+}
+
+int app_scene_authoring_open_behavior(app_scene_authoring *scene, const char *asset_name)
+{
+    return open_behavior_asset(scene, asset_name);
+}
+
+static int spawn_selected_prototype(app_scene_authoring *scene)
+{
+    scene_prototype_asset *asset = selected_prototype(scene);
+    return asset ? app_scene_authoring_add_instance(scene, asset->prototype->name)
+                 : -1;
+}
+
+int asset_search_score(const app_scene_authoring *scene, const char *path)
+{
+    const char *search = scene->asset_search;
+    const char *name = content_basename(path);
+    if (!search[0]) {
+        return 0;
+    }
+    int score = 0;
+    int query = 0;
+    int run = 0;
+    for (int i = 0; name[i] && search[query]; i++) {
+        if (tolower((unsigned char)name[i]) != tolower((unsigned char)search[query])) {
+            run = 0;
+            continue;
+        }
+        bool boundary = i == 0 || name[i - 1] == '_' || name[i - 1] == '-' ||
+                        name[i - 1] == ' ';
+        score += 10 + (boundary ? 12 : 0) + run * 4;
+        run++;
+        query++;
+    }
+    return search[query] ? -1 : score;
+}
+
+int content_prototype_index(const app_scene_authoring *scene, const char *path)
+{
+    for (int i = 0; i < acount(scene->prototypes); i++) {
+        if (scene->prototypes[i].path && strcmp(scene->prototypes[i].path, path) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int content_behavior_index(const app_scene_authoring *scene, const char *path)
+{
+    const char *name = content_basename(path);
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        const char *asset_name = game_live_definition_at(scene->live, i)->name;
+        char filename[256];
+        snprintf(filename, sizeof filename, "%s.json", asset_name);
+        if (strcmp(name, asset_name) == 0 || strcmp(name, filename) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static const char *behavior_path(const app_scene_authoring *scene, const char *asset_name)
+{
+    for (int i = 0; i < acount(scene->content); i++) {
+        const scene_content_entry *entry = &scene->content[i];
+        if (entry->directory || content_behavior_index(scene, entry->path) < 0) {
+            continue;
+        }
+        int index = content_behavior_index(scene, entry->path);
+        if (strcmp(game_live_definition_at(scene->live, index)->name, asset_name) == 0) {
+            return entry->path;
+        }
+    }
+    return NULL;
+}
+
+static int save_behavior_definition(
+    app_scene_authoring *scene,
+    game_live_definition *definition,
+    const char *requested_path
+)
+{
+    const char *path = requested_path ? requested_path
+                                      : game_live_definition_path(definition);
+    if (!path) {
+        path = behavior_path(scene, definition->name);
+    }
+    if (!path) {
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Behavior %s has no source path.",
+            definition->name
+        );
+        return -1;
+    }
+    char *json = behavior_asset_save_json(definition->working);
+    if (!json) {
+        return -1;
+    }
+    int result = write_text_file_atomic(path, json);
+    free(json);
+    if (result == 0) {
+        game_live_definition_set_path(definition, path);
+        definition->unsaved = false;
+    }
+    return result;
+}
+
+static int ensure_directory(const char *path)
+{
+    if (mkdir(path, DOCUMENT_DIRECTORY_MODE) == 0 || errno == EEXIST) {
+        return 0;
+    }
+    return -1;
+}
+
+static char *document_default_path(app_scene_authoring *scene)
+{
+    const char *folder = NULL;
+    const char *name = NULL;
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+        scene_prototype_asset *asset = selected_prototype(scene);
+        folder = "prototypes";
+        name = asset && asset->prototype ? asset->prototype->name : NULL;
+    } else if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        const char *folders[] = { "behaviors", "libraries", "materials",
+                                  "shapes",    "events",    "shader-libraries" };
+        folder = scene->definition ? folders[scene->definition->working->domain]
+                                   : "behaviors";
+        name = scene->definition ? scene->definition->name : NULL;
+    } else {
+        name = "Scene";
+    }
+    if (!name || !name[0] || ensure_directory(scene->content_root) != 0) {
+        return NULL;
+    }
+    char *directory = folder ? content_path_join(scene->content_root, folder)
+                             : xstrdup(scene->content_root);
+    if (folder && ensure_directory(directory) != 0) {
+        free(directory);
+        return NULL;
+    }
+    size_t filename_size = strlen(name) + strlen(".json") + 1;
+    char *filename = (char *)xmalloc(filename_size);
+    snprintf(filename, filename_size, "%s.json", name);
+    char *path = content_path_join(directory, filename);
+    free(filename);
+    free(directory);
+    return path;
+}
+
+static int reload_behavior_document(app_scene_authoring *scene)
+{
+    game_live_definition *definition = scene->definition;
+    if (!definition) {
+        snprintf(scene->message, sizeof scene->message, "No behavior document is active.");
+        return -1;
+    }
+    const char *path = game_live_definition_path(definition);
+    if (!path) {
+        path = behavior_path(scene, definition->name);
+    }
+    if (!path) {
+        snprintf(scene->message, sizeof scene->message, "Behavior requires Save As before Reload.");
+        return -1;
+    }
+    char *json = read_scene_file(path);
+    behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
+    free(json);
+    if (!loaded) {
+        snprintf(scene->message, sizeof scene->message, "Could not reload %s.", path);
+        return -1;
+    }
+    if (!loaded->name || strcmp(loaded->name, definition->name) != 0) {
+        behavior_asset_free(loaded);
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Reloaded behavior name does not match %s.",
+            definition->name
+        );
+        return -1;
+    }
+    const graph *active = editor_active_graph(scene->graph_editor);
+    uint64_t graph_id = active ? active->graph_id : loaded->graph->graph_id;
+    if (!behavior_asset_find_graph(loaded, graph_id)) {
+        graph_id = loaded->graph->graph_id;
+    }
+    if (editor_reload_behavior_asset(
+            scene->graph_editor,
+            loaded,
+            graph_id,
+            definition->name
+        ) != 0) {
+        behavior_asset_free(loaded);
+        snprintf(scene->message, sizeof scene->message, "Could not open reloaded %s.", path);
+        return -1;
+    }
+    behavior_asset *previous = definition->working;
+    definition->working = loaded;
+    definition->dirty = 1;
+    char apply_message[256];
+    int applied = game_live_preview(scene->live, definition, apply_message, sizeof apply_message);
+    definition->unsaved = false;
+    scene->preview_retry = true;
+    behavior_asset_free(previous);
+    scene->editor_working = editor_behavior_asset(scene->graph_editor);
+    scene->editor_revision_seen = editor_edit_revision(scene->graph_editor);
+    scene->editor_behavior_asset_seen = scene->editor_working;
+    scene->editor_definition_seen = definition;
+    scene->editor_state_seen = true;
+    scene->behavior_apply_pending = false;
+    if (applied != 0) {
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Reloaded %s; apply blocked, previous runtime remains active.",
+            path
+        );
+    } else {
+        snprintf(scene->message, sizeof scene->message, "Reloaded %s.", path);
+    }
+    return 0;
+}
+
+static int reload_prototype_document(app_scene_authoring *scene)
+{
+    scene_prototype_asset *asset = selected_prototype(scene);
+    if (!asset || !asset->path) {
+        snprintf(scene->message, sizeof scene->message, "Prototype requires Save As before Reload.");
+        return -1;
+    }
+    char *json = read_scene_file(asset->path);
+    char error[256];
+    game_prototype *loaded = json
+                               ? game_prototype_load(json, &scene->registry, error, sizeof error)
+                               : NULL;
+    free(json);
+    if (!loaded) {
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Could not reload %s.",
+            asset->path
+        );
+        return -1;
+    }
+    if (!loaded->name || strcmp(loaded->name, asset->prototype->name) != 0) {
+        game_prototype_free(loaded);
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Reloaded prototype name does not match %s.",
+            asset->prototype->name
+        );
+        return -1;
+    }
+    game_prototype *previous = asset->prototype;
+    asset->prototype = loaded;
+    if (refresh_prototype_instances(scene, asset) != 0) {
+        asset->prototype = previous;
+        game_prototype_free(loaded);
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Could not apply reloaded %s.",
+            asset->path
+        );
+        return -1;
+    }
+    game_prototype_free(previous);
+    asset->dirty = 0;
+    clear_prototype_history(asset);
+    snprintf(scene->message, sizeof scene->message, "Reloaded %s.", asset->path);
+    return 0;
+}
+
+int reload_active_document(app_scene_authoring *scene)
+{
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        return scene->system_path ? load_system_asset(scene, scene->system_path, true)
+                                  : -1;
+    }
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+        return reload_prototype_document(scene);
+    }
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        return reload_behavior_document(scene);
+    }
+    if (!scene->scene_path) {
+        snprintf(scene->message, sizeof scene->message, "Scene requires Save As before Reload.");
+        return -1;
+    }
+    return app_scene_authoring_load(scene, scene->scene_path);
+}
+
+void select_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
+{
+    content_select_path(scene, entry->path);
+    if (entry->directory) {
+        return;
+    }
+    int prototype_index = content_prototype_index(scene, entry->path);
+    if (prototype_index >= 0) {
+        select_prototype(scene, prototype_index);
+    }
+}
+
+int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
+{
+    char *json = read_scene_file(path);
+    if (!json) {
+        return -1;
+    }
+    char error[256] = { 0 };
+    game_system_document *document = game_system_document_load(
+        json,
+        resolve_system_component,
+        NULL,
+        error,
+        sizeof error
+    );
+    free(json);
+    if (!document) {
+        snprintf(scene->message, sizeof scene->message, "Could not open System: %s", error);
+        return -1;
+    }
+    const behavior_asset *source = game_system_document_behavior_asset(document);
+    graph *graph = behavior_asset_find_graph((behavior_asset *)source, 0);
+    int opened = !graph ? -1
+               : reload ? editor_reload_behavior_asset(
+                              scene->graph_editor,
+                              source,
+                              graph->graph_id,
+                              path
+                          )
+                        : editor_visit_behavior_asset(
+                              scene->graph_editor,
+                              source,
+                              graph->graph_id,
+                              path
+                          );
+    if (opened != 0) {
+        game_system_document_free(document);
+        return -1;
+    }
+    char *saved_path = xstrdup(path);
+    game_system_document_free(scene->system_document);
+    free(scene->system_path);
+    scene->system_document = document;
+    scene->system_path = saved_path;
+    scene->editor_working = editor_behavior_asset(scene->graph_editor);
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SYSTEM, source->name);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
+    editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
+    snprintf(
+        scene->message,
+        sizeof scene->message,
+        "Editing System asset %s.",
+        source->name
+    );
+    return 0;
+}
+
+int open_system_asset(app_scene_authoring *scene, const char *path)
+{
+    return load_system_asset(scene, path, false);
+}
+
+int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path)
+{
+    return scene && path ? open_system_asset(scene, path) : -1;
+}
+
+void open_content_entry(app_scene_authoring *scene, const scene_content_entry *entry)
+{
+    if (entry->directory) {
+        return;
+    }
+    int prototype_index = content_prototype_index(scene, entry->path);
+    if (prototype_index >= 0) {
+        open_prototype(scene, prototype_index);
+        return;
+    }
+    int behavior_index = content_behavior_index(scene, entry->path);
+    if (behavior_index >= 0) {
+        const char *name = game_live_definition_at(scene->live, behavior_index)->name;
+        if (open_behavior_asset(scene, name) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Could not open behavior asset.");
+        }
+        return;
+    }
+    if (content_path_in_folder(scene, entry->path, "scenes")) {
+        if (app_scene_authoring_load(scene, entry->path) == 0) {
+            scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+            editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
+        }
+        return;
+    }
+    if (content_path_in_folder(scene, entry->path, "systems")) {
+        if (open_system_asset(scene, entry->path) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Could not open System asset.");
+        }
+    }
+}
+
+static int save_system_document(app_scene_authoring *scene, const char *path)
+{
+    char *graph_json = behavior_asset_save_json(editor_behavior_asset(scene->graph_editor));
+    behavior_asset *graph = graph_json ? behavior_asset_load_json(graph_json) : NULL;
+    free(graph_json);
+    if (!graph ||
+        game_system_document_replace_behavior_asset(scene->system_document, graph) != 0) {
+        behavior_asset_free(graph);
+        return -1;
+    }
+    char *json = game_system_document_save(
+        scene->system_document,
+        resolve_system_component,
+        system_component_name,
+        NULL
+    );
+    if (!json) {
+        return -1;
+    }
+    int result = write_text_file_atomic(path, json);
+    free(json);
+    if (result == 0) {
+        char *saved_path = xstrdup(path);
+        free(scene->system_path);
+        scene->system_path = saved_path;
+    }
+    return result;
+}
+
+int save_as_active_document(app_scene_authoring *scene)
+{
+    char *path = document_default_path(scene);
+    if (!path) {
+        snprintf(scene->message, sizeof scene->message, "Could not choose a Save As path.");
+        return -1;
+    }
+    int result = -1;
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        result = scene->system_document ? save_system_document(scene, path) : -1;
+    } else if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+        scene_prototype_asset *asset = selected_prototype(scene);
+        result = asset
+                   ? app_scene_authoring_save_prototype(scene, asset->prototype->name, path)
+                   : -1;
+    } else if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        game_live_definition *definition = scene->definition;
+        int synced = definition ? sync_behavior_working(scene) : -1;
+        int saved = synced == 0 ? save_behavior_definition(scene, definition, path)
+                                : -1;
+        int applied = saved == 0 ? game_live_preview(
+                                       scene->live,
+                                       definition,
+                                       scene->preview_message,
+                                       sizeof scene->preview_message
+                                   )
+                                 : -1;
+        result = saved;
+        if (saved == 0 && applied != 0) {
+            snprintf(
+                scene->message,
+                sizeof scene->message,
+                "Saved %s; apply blocked, previous runtime remains active.",
+                definition->name
+            );
+        } else if (saved == 0) {
+            snprintf(
+                scene->message,
+                sizeof scene->message,
+                "Saved %s.",
+                definition->name
+            );
+        }
+    } else {
+        result = app_scene_authoring_save(scene, path);
+    }
+    free(path);
+    return result;
+}
+
+int save_active_document(app_scene_authoring *scene)
+{
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        if (!scene->system_document || !scene->system_path) {
+            snprintf(scene->message, sizeof scene->message, "System requires Save As.");
+            return -1;
+        }
+        return save_system_document(scene, scene->system_path);
+    }
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+        scene_prototype_asset *asset = selected_prototype(scene);
+        if (!asset || !asset->path) {
+            snprintf(scene->message, sizeof scene->message, "Prototype requires Save As.");
+            return -1;
+        }
+        return app_scene_authoring_save_prototype(
+            scene,
+            asset->prototype->name,
+            asset->path
+        );
+    }
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        if (!scene->definition) {
+            return -1;
+        }
+        int synced = sync_behavior_working(scene);
+        int saved = synced == 0
+                      ? save_behavior_definition(scene, scene->definition, NULL)
+                      : -1;
+        int applied = saved == 0 ? game_live_preview(
+                                       scene->live,
+                                       scene->definition,
+                                       scene->preview_message,
+                                       sizeof scene->preview_message
+                                   )
+                                 : -1;
+        if (saved == 0 && applied != 0) {
+            snprintf(
+                scene->message,
+                sizeof scene->message,
+                "Saved %s; apply blocked, previous runtime remains active.",
+                scene->definition->name
+            );
+        } else if (saved == 0) {
+            snprintf(
+                scene->message,
+                sizeof scene->message,
+                "Saved %s.",
+                scene->definition->name
+            );
+        }
+        return saved;
+    }
+    if (!scene->scene_path) {
+        snprintf(scene->message, sizeof scene->message, "Scene requires Save As.");
+        return -1;
+    }
+    return app_scene_authoring_save(scene, scene->scene_path);
+}
+
+int save_all_documents(app_scene_authoring *scene)
+{
+    int result = 0;
+    int apply_blocked = 0;
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        apply_blocked = sync_behavior_working(scene) != 0;
+    }
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM &&
+        (!scene->system_document || !scene->system_path ||
+         save_system_document(scene, scene->system_path) != 0)) {
+        result = -1;
+    }
+    for (int i = 0; i < acount(scene->prototypes); i++) {
+        scene_prototype_asset *asset = &scene->prototypes[i];
+        if (!asset->dirty) {
+            continue;
+        }
+        if (!asset->path || app_scene_authoring_save_prototype(
+                                scene,
+                                asset->prototype->name,
+                                asset->path
+                            ) != 0) {
+            result = -1;
+        }
+    }
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        game_live_definition *definition = game_live_definition_at(scene->live, i);
+        if (!definition || !definition->unsaved) {
+            continue;
+        }
+        if (save_behavior_definition(scene, definition, NULL) != 0) {
+            result = -1;
+            continue;
+        }
+        if (game_live_preview(
+                scene->live,
+                definition,
+                scene->preview_message,
+                sizeof scene->preview_message
+            ) != 0) {
+            apply_blocked = 1;
+        }
+    }
+    if (scene->scene_dirty) {
+        if (!scene->scene_path ||
+            app_scene_authoring_save(scene, scene->scene_path) != 0) {
+            result = -1;
+        }
+    }
+    if (apply_blocked) {
+        snprintf(scene->message, sizeof scene->message, "Saved authored data; one or more behavior applies are blocked.");
+    } else if (result == 0) {
+        snprintf(scene->message, sizeof scene->message, "Saved all dirty documents.");
+    }
+    return result;
+}
+
+int app_scene_authoring_save_as(app_scene_authoring *scene)
+{
+    return scene ? save_as_active_document(scene) : -1;
+}
+
+int app_scene_authoring_reload(app_scene_authoring *scene)
+{
+    return scene ? reload_active_document(scene) : -1;
+}

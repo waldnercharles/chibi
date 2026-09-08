@@ -1,12 +1,13 @@
-#include "../app/movement_input.h"
-#include "../core/array.h"
-#include "../core/serialize.h"
-#include "../core/xalloc.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/particles.h"
-#include "../game/prototype_preview.h"
+#include "editor/workspace/movement_input.h"
+#include "graph/document/serialize.h"
+#include "render/particles.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
+#include "support/array.h"
+#include "support/xalloc.h"
+#include "test/support/event_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -34,6 +35,9 @@ static behavior_asset *read_behavior(const char *name)
     snprintf(path, sizeof path, "content/behaviors/%s.json", name);
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
+    if (asset) {
+        asset = link_test_libraries(asset);
+    }
     free(text);
     assert(asset);
     compile_report report;
@@ -69,6 +73,7 @@ static void trail_case(bool isolated)
     }
     game_prototype_preview *preview = isolated ? game_prototype_preview_new(&registry)
                                                : NULL;
+    register_test_preview_catalog(preview);
     ecs_world *world = preview ? game_prototype_preview_world(preview)
                                : ecs_world_new();
     game_live_world *live = preview ? NULL : game_live_world_new(world);

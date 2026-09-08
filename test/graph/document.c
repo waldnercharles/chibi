@@ -1,0 +1,476 @@
+#include "test/suite_internal.h"
+
+void run_graph_document_checks()
+{
+    eval_context eval_ctx;
+    eval_context_init(&eval_ctx);
+    const node_desc *add = registry_node_by_name("add_floats");
+    const node_desc *make = registry_node_by_name("Make_Vec3");
+    /* 8. serialization round trip: constants + add + edges */
+    {
+        graph g2;
+        graph_init(&g2);
+        const node_desc *cc = registry_node_by_name("Real");
+        test_check(cc != NULL, "registry exposes Real literal");
+
+        node *rc1 = graph_add_node(&g2, cc);
+        graph_set_pin_default(
+            &g2,
+            rc1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 2.0 }
+        );
+        node *rc2 = graph_add_node(&g2, cc);
+        graph_set_pin_default(
+            &g2,
+            rc2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.0 }
+        );
+        node *radd = graph_add_node(&g2, add);
+        test_check(graph_connect(&g2, rc1, 0, radd, 0) == 0, "roundtrip: c1 -> add.a");
+        test_check(graph_connect(&g2, rc2, 0, radd, 1) == 0, "roundtrip: c2 -> add.b");
+
+        rc1->x = -220.0f;
+        rc1->y = 40.0f;
+        radd->x = 100.0f;
+        radd->y = -30.0f;
+
+        char *json = graph_save_json(&g2);
+        test_check(json != NULL, "roundtrip: serialize to JSON");
+        if (json) {
+            printf("\n--- serialized graph ---\n%s--- end ---\n", json);
+
+            graph *g3 = graph_load_json(json);
+            test_check(g3 != NULL, "roundtrip: load from JSON");
+            if (g3) {
+                test_check(acount(g3->nodes) == 3, "roundtrip: node count survives");
+                test_check(acount(g3->edges) == 2, "roundtrip: edge count survives");
+                test_check(g3->nodes[0]->x == -220.0f && g3->nodes[0]->y == 40.0f, "roundtrip: node position survives");
+                test_check(g3->nodes[2]->x == 100.0f && g3->nodes[2]->y == -30.0f, "roundtrip: second node position survives");
+
+                arena a2;
+                arena_init(&a2, 4096);
+                pin_value out;
+                test_check(
+                    graph_eval_output(g3, g3->nodes[2], 0, &a2, &out, &eval_ctx) == 0,
+                    "roundtrip: eval loaded add node"
+                );
+                test_check(out.type == PIN_F32 && out.f == 5.0f, "roundtrip: 2.0 + 3.0 == 5.0");
+                char *json2 = graph_save_json(g3);
+                graph *g4 = json2 ? graph_load_json(json2) : NULL;
+                char *json3 = g4 ? graph_save_json(g4) : NULL;
+                test_check(json2 && json3 && strcmp(json2, json3) == 0, "load/save/load/save is byte-identical");
+                if (g4) {
+                    graph_free(g4);
+                }
+                free(json2);
+                free(json3);
+                arena_free(&a2);
+                graph_free(g3);
+            }
+            free(json);
+        }
+        graph_free(&g2);
+    }
+
+    /* 9. comprehensive v3 authored-field round trip. */
+    {
+        graph full;
+        graph_init(&full);
+        test_check(graph_set_metadata(&full, "RoundTrip", "all authored fields") == 0, "behavior_asset metadata is authored");
+        /* In-memory authored defaults across every pin width on a hand-written
+         * all-types fixture. The fixture is not registry-loadable, so the
+         * byte-identical round trip below uses a separate loadable graph. */
+        node *all = graph_add_node(&full, &g_all_types_desc);
+        test_check(all != NULL, "comprehensive fixture node created");
+        Vec3 *vec = graph_own_block(&full, sizeof *vec);
+        if (vec) {
+            *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
+        }
+        pin_value values[] = {
+            { .type = PIN_BOOL, .b = true },
+            { .type = PIN_I8, .i8 = -8 },
+            { .type = PIN_U8, .u8 = 8 },
+            { .type = PIN_I16, .i16 = -16 },
+            { .type = PIN_U16, .u16 = 16 },
+            { .type = PIN_I32, .i = -32 },
+            { .type = PIN_U32, .u = 32 },
+            { .type = PIN_I64, .i64 = -64 },
+            { .type = PIN_U64, .u64 = 64 },
+            { .type = PIN_F32, .f = 9.5f },
+            { .type = PIN_F64, .d = 10.5 },
+            { .type = PIN_STR, .str = "authored" },
+            { .type = PIN_STRUCT, .type_name = "Vec3", .ptr = vec },
+            { .type = PIN_ENUM, .e = 3 },
+        };
+        for (int i = 0; all && i < 14; i++) {
+            test_check(graph_set_pin_default(&full, all, 1, i, &values[i]) == 0, "every authored pin default is set");
+        }
+        if (all) {
+            test_check(graph_set_node_reference(&full, all, 4242, "Target") == 0, "node reference fields are authored");
+            test_check(graph_set_node_disabled(&full, all, 1) == 0, "disabled state is authored");
+            all->x = 12.25f;
+            all->y = -7.5f;
+        }
+        /* The all-widths fixture is not registry-loadable, so drop it before
+         * the byte-identical round trip, which uses loadable nodes only. */
+        test_check(graph_remove_node(&full, all) == 0, "all-widths fixture removed before round trip");
+
+        /* Loadable fixture: corrected literals, a Make node for the struct
+         * authored default, both edge kinds, an extended group, and node
+         * fields, all registry-loadable for the byte-identical round trip. */
+        node *bool_lit = graph_add_node(&full, registry_node_by_name("Bool"));
+        node *byte_lit = graph_add_node(&full, registry_node_by_name("Byte"));
+        node *int_lit = graph_add_node(&full, registry_node_by_name("Integer"));
+        node *int64_lit = graph_add_node(&full, registry_node_by_name("Integer64"));
+        node *real_lit = graph_add_node(&full, registry_node_by_name("Real"));
+        node *name_lit = graph_add_node(&full, registry_node_by_name("Name"));
+        node *str_lit = graph_add_node(&full, registry_node_by_name("String"));
+        node *make_node = graph_add_node(&full, make);
+        node *event = graph_add_node(&full, registry_node_by_name("Event"));
+        node *sequence = graph_add_node(&full, registry_node_by_name("Sequence"));
+        node *sink = graph_add_node(&full, registry_node_by_name("Print String"));
+        node *sum = graph_add_node(&full, add);
+        test_check(
+            bool_lit && byte_lit && int_lit && int64_lit && real_lit && name_lit &&
+                str_lit && make_node && event && sequence && sink && sum,
+            "comprehensive fixture nodes created"
+        );
+        node *literal_nodes[] = {
+            bool_lit, byte_lit, int_lit, int64_lit, real_lit, name_lit, str_lit,
+        };
+        pin_value lit_defaults[] = {
+            { .type = PIN_BOOL, .b = true },
+            { .type = PIN_U8, .u8 = 8 },
+            { .type = PIN_I32, .i = -32 },
+            { .type = PIN_I64, .i64 = -64 },
+            { .type = PIN_F64, .d = 10.5 },
+            { .type = PIN_NAME, .str = "AuthoredName" },
+            { .type = PIN_STR, .str = "authored" },
+        };
+        for (int i = 0; i < 7; i++) {
+            test_check(
+                graph_set_pin_default(&full, literal_nodes[i], 0, 0, &lit_defaults[i]) == 0,
+                "every authored pin default is set"
+            );
+        }
+        test_check(graph_set_pin_default(&full, make_node, 1, 0, &values[12]) == 0, "struct authored default is set");
+        if (bool_lit) {
+            test_check(graph_set_node_reference(&full, bool_lit, 4242, "Target") == 0, "node reference fields are authored");
+            test_check(graph_set_node_disabled(&full, bool_lit, 1) == 0, "disabled state is authored");
+            bool_lit->x = 12.25f;
+            bool_lit->y = -7.5f;
+        }
+        test_check(graph_set_event_name(&full, event, "Full") == 0, "event reference name is serialized");
+        pin_spec added = { "Then4", PIN_FLOW, NULL, PIN_EXEC };
+        int added_index = sequence ? graph_add_pin(&full, sequence, 1, &added) : -1;
+        test_check(added_index >= 2, "extended Sequence pin is present");
+        test_check(
+            graph_connect(&full, real_lit, 0, sum, 0) == 0 &&
+                graph_connect(&full, str_lit, 0, sink, 1) == 0,
+            "data edge endpoints use pin IDs"
+        );
+        test_check(
+            graph_connect_exec(&full, event, 0, sequence, 0, 11) == 0 &&
+                graph_connect_exec(&full, sequence, added_index, sink, 0, 13) == 0,
+            "exec edge order is serialized"
+        );
+        char *full_a = graph_save_json(&full);
+        graph *full_b = full_a ? graph_load_json(full_a) : NULL;
+        char *full_c = full_b ? graph_save_json(full_b) : NULL;
+        graph *full_d = full_c ? graph_load_json(full_c) : NULL;
+        char *full_e = full_d ? graph_save_json(full_d) : NULL;
+        test_check(
+            full_b && full_d && full_a && full_c && full_e &&
+                strcmp(full_a, full_c) == 0 && strcmp(full_c, full_e) == 0,
+            "all pin types, edges, groups, and node fields round-trip "
+            "byte-identically"
+        );
+        if (full_b) {
+            node *loaded_bool = graph_node_by_id(full_b, bool_lit->id);
+            node *loaded_str = graph_node_by_id(full_b, str_lit->id);
+            node *loaded_make = graph_node_by_id(full_b, make_node->id);
+            test_check(
+                loaded_bool && loaded_bool->reference_id == 4242 &&
+                    strcmp(loaded_bool->reference_name, "Target") == 0 &&
+                    loaded_bool->disabled && loaded_bool->x == 12.25f,
+                "optional node fields survive first load"
+            );
+            test_check(
+                loaded_bool && loaded_str && loaded_make &&
+                    loaded_bool->input_pins[0].default_value.b &&
+                    loaded_str->input_pins[0].default_value.str &&
+                    strcmp(loaded_str->input_pins[0].default_value.str, "authored") == 0 &&
+                    loaded_make->output_pins[0].default_value.ptr &&
+                    ((Vec3 *)loaded_make->output_pins[0].default_value.ptr)->y == 2.5f,
+                "scalar, string, and struct instance pin fields survive "
+                "first load"
+            );
+        }
+        node *saved_first = full.nodes[0];
+        node *saved_second = full.nodes[1];
+        full.nodes[0] = saved_second;
+        full.nodes[1] = saved_first;
+        char *reordered = graph_save_json(&full);
+        graph *reordered_loaded = reordered ? graph_load_json(reordered) : NULL;
+        test_check(
+            reordered && full_a && strcmp(reordered, full_a) == 0 && reordered_loaded,
+            "node array position carries no reference meaning"
+        );
+        test_check(full_a && reordered && strcmp(full_a, reordered) == 0, "deterministic output is byte-identical");
+        full.nodes[0] = saved_first;
+        full.nodes[1] = saved_second;
+        if (reordered_loaded) {
+            graph_free(reordered_loaded);
+        }
+        free(reordered);
+        if (full_d) {
+            graph_free(full_d);
+        }
+        if (full_b) {
+            graph_free(full_b);
+        }
+        free(full_a);
+        free(full_c);
+        free(full_e);
+        graph_free(&full);
+    }
+
+    /* 10. string constant round trip */
+    {
+        graph g4;
+        graph_init(&g4);
+        const node_desc *cs = registry_node_by_name("String");
+        test_check(cs != NULL, "registry exposes String literal");
+        node *s1 = graph_add_node(&g4, cs);
+        pin_value hello = { .type = PIN_STR,
+                            .type_name = "const char *",
+                            .str = "hello, world" };
+        test_check(graph_set_pin_default(&g4, s1, 0, 0, &hello) == 0, "string const: authored value set");
+
+        char *json = graph_save_json(&g4);
+        test_check(json != NULL, "string const: serialize");
+        if (json) {
+            graph *g5 = graph_load_json(json);
+            test_check(g5 && acount(g5->nodes) == 1, "string const: load");
+            if (g5) {
+                test_check(
+                    g5->nodes[0]->input_pins[0].type == PIN_STR &&
+                        strcmp(g5->nodes[0]->input_pins[0].default_value.str, "hello, world") ==
+                            0,
+                    "string const: value round-trips"
+                );
+                graph_free(g5);
+            }
+            free(json);
+        }
+        graph_free(&g4);
+    }
+
+    /* 10. load error handling: malformed JSON, missing fields, unknown type,
+     * out-of-range pin. */
+    {
+        const char *bad[] = {
+            "{ not json",
+            "{\"nodes\": []}",
+            "{\"version\":3,\"id_counter\":1,\"name\":\"\",\"description\":"
+            "\"\",\"nodes\":[{"
+            "\"type\":\"nope\"}],\"edges\":[]}",
+            "{\"version\":3,\"nodes\":[{\"type\":\"add_floats\"}],\"edges\":[]"
+            "}",
+        };
+        test_check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
+        test_check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "missing edges array rejected");
+        test_check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "unknown node type rejected");
+        test_check(graph_load_json(bad[3]) == NULL, "malformed pin list rejected");
+        test_check(
+            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
+                strstr(graph_last_error(), "version"),
+            "unsupported schema version rejected"
+        );
+    }
+
+    /* 11. pin_value_to_string formatting */
+    {
+        pin_value fv = { .type = PIN_F32, .f = 2.5f };
+        pin_value five = { .type = PIN_F32, .f = 5.0f };
+        pin_value sv = { .type = PIN_STR, .str = "hello" };
+        pin_value bv = { .type = PIN_BOOL, .b = true };
+        pin_value iv = { .type = PIN_I32, .i = -42 };
+
+        const char *s_f32 = pin_value_to_string(&fv);
+        const char *s_five = pin_value_to_string(&five);
+        const char *s_str = pin_value_to_string(&sv);
+        const char *s_bool = pin_value_to_string(&bv);
+        printf("  fmt samples: f32 2.5 -> \"%s\", f32 5.0 -> \"%s\", str -> \"%s\", bool -> \"%s\"\n", s_f32, s_five, s_str, s_bool);
+
+        test_check(strcmp(s_f32, "2.5") == 0, "fmt: f32 2.5 -> \"2.5\"");
+        test_check(strcmp(s_five, "5") == 0, "fmt: f32 5.0 -> \"5\"");
+        test_check(strcmp(s_str, "hello") == 0, "fmt: str -> \"hello\"");
+        test_check(strcmp(s_bool, "true") == 0, "fmt: bool true -> \"true\"");
+        test_check(strcmp(pin_value_to_string(&iv), "-42") == 0, "fmt: i32 -42 -> \"-42\"");
+    }
+
+    /* 12. seed graph evaluates to 5.0 */
+    {
+        graph gs;
+        graph_init(&gs);
+        test_check(demo_graph_seed(&gs) == 0, "seed graph builds");
+
+        const node_desc *adddesc = registry_node_by_name("add_floats");
+        node *addn = NULL;
+        for (int i = 0; i < acount(gs.nodes); i++) {
+            if (gs.nodes[i]->desc == adddesc) {
+                addn = gs.nodes[i];
+                break;
+            }
+        }
+        test_check(addn != NULL, "seed graph has an add_floats node");
+
+        if (addn) {
+            arena as;
+            arena_init(&as, 4096);
+            pin_value seed_sum;
+            test_check(graph_eval_output(&gs, addn, 0, &as, &seed_sum, &eval_ctx) == 0, "seed graph evals");
+            test_check(seed_sum.type == PIN_F32 && seed_sum.f == 5.0f, "seed graph: 2.0 + 3.0 == 5.0");
+            arena_free(&as);
+        }
+        graph_free(&gs);
+    }
+
+    /* 13. flow demo graph contains both edge kinds and named entry metadata. */
+    {
+        graph gf;
+        graph_init(&gf);
+        test_check(demo_graph_seed_flow(&gf) == 0, "flow demo graph builds");
+        int data_edges = 0;
+        int exec_edges = 0;
+        for (int i = 0; i < acount(gf.edges); i++) {
+            if (gf.edges[i].kind == GRAPH_EDGE_DATA) {
+                data_edges++;
+            }
+            if (gf.edges[i].kind == GRAPH_EDGE_EXEC) {
+                exec_edges++;
+            }
+        }
+        test_check(acount(gf.nodes) == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
+        test_check(
+            gf.nodes[0]->reference_name &&
+                strcmp(gf.nodes[0]->reference_name, "Begin") == 0,
+            "flow demo graph has named Event entry"
+        );
+        graph_free(&gf);
+    }
+
+    /* 14. subset serialization: only selected nodes + their inter-edges */
+    {
+        graph g2;
+        graph_init(&g2);
+
+        const node_desc *real_desc = registry_node_by_name("Real");
+        node *c1 = graph_add_node(&g2, real_desc);
+        graph_set_pin_default(
+            &g2,
+            c1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 2.0 }
+        );
+        node *c2 = graph_add_node(&g2, real_desc);
+        graph_set_pin_default(
+            &g2,
+            c2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.0 }
+        );
+        node *ad = graph_add_node(&g2, add);
+        graph_connect(&g2, c1, 0, ad, 0);
+        graph_connect(&g2, c2, 0, ad, 1);
+        c1->x = 10.0f;
+        c1->y = 20.0f;
+        c2->x = 30.0f;
+        c2->y = 40.0f;
+        ad->x = 50.0f;
+        ad->y = 60.0f;
+
+        node *subset[] = { c1, ad }; /* c2 is outside the subset */
+        char *json = graph_save_nodes_json(&g2, subset, 2);
+        test_check(json != NULL, "subset: serialize");
+        if (json) {
+            printf("\n--- serialized subset ---\n%s--- end ---\n", json);
+
+            graph *g3 = graph_load_json(json);
+            test_check(g3 != NULL, "subset: load");
+            if (g3) {
+                test_check(acount(g3->nodes) == 2, "subset: node count is 2");
+                test_check(acount(g3->edges) == 1, "subset: crossing edge dropped");
+                test_check(g3->nodes[0]->x == 10.0f && g3->nodes[0]->y == 20.0f, "subset: node 0 position");
+                test_check(g3->nodes[1]->x == 50.0f && g3->nodes[1]->y == 60.0f, "subset: node 1 position");
+                test_check(g3->nodes[0]->input_pins[0].default_value.d == 2.0, "subset: literal value survives");
+                graph_free(g3);
+            }
+            free(json);
+        }
+        graph_free(&g2);
+    }
+
+    /* 14. append: paste a serialized subgraph with a position offset */
+    {
+        graph g4;
+        graph_init(&g4);
+
+        const node_desc *real_desc = registry_node_by_name("Real");
+        node *c1 = graph_add_node(&g4, real_desc);
+        graph_set_pin_default(
+            &g4,
+            c1,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 2.0 }
+        );
+        node *c2 = graph_add_node(&g4, real_desc);
+        graph_set_pin_default(
+            &g4,
+            c2,
+            0,
+            0,
+            &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 3.0 }
+        );
+        node *ad = graph_add_node(&g4, add);
+        graph_connect(&g4, c1, 0, ad, 0);
+        graph_connect(&g4, c2, 0, ad, 1);
+        c1->x = 10.0f;
+        c1->y = 20.0f;
+        ad->x = 50.0f;
+        ad->y = 60.0f;
+
+        node *subset[] = { c1, ad };
+        char *json = graph_save_nodes_json(&g4, subset, 2);
+        test_check(json != NULL, "append: serialize source subset");
+        if (json) {
+            graph g5;
+            graph_init(&g5);
+            test_check(acount(g5.nodes) == 0, "append: fresh graph starts empty");
+            test_check(graph_append_json(&g5, json, 100.0f, 200.0f) == 0, "append: returns 0");
+            test_check(acount(g5.nodes) == 2, "append: node count");
+            test_check(acount(g5.edges) == 1, "append: edge count");
+            test_check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "append: node 0 offset");
+            test_check(g5.nodes[1]->x == 150.0f && g5.nodes[1]->y == 260.0f, "append: node 1 offset");
+            test_check(g5.nodes[0]->input_pins[0].default_value.d == 2.0, "append: literal survives");
+
+            int n_before = acount(g5.nodes);
+            test_check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "append: bad json fails");
+            test_check(acount(g5.nodes) == n_before, "append: graph untouched on error");
+
+            graph_free(&g5);
+            free(json);
+        }
+        graph_free(&g4);
+    }
+
+    eval_context_free(&eval_ctx);
+}

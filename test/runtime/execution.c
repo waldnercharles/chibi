@@ -871,6 +871,7 @@ void run_runtime_execution_checks()
         );
         if (loaded) {
             graph_free(loaded);
+            free(loaded);
         }
         free(json);
 
@@ -1221,6 +1222,7 @@ void run_runtime_execution_checks()
         );
         if (loaded) {
             graph_free(loaded);
+            free(loaded);
         }
         free(json);
         flow_run_free(run);

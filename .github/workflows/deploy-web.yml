@@ -43,6 +43,7 @@ jobs:
           emcmake cmake -S . -B build-web \
             -DCMAKE_BUILD_TYPE=Release \
             -DCBLUEPRINT_ENABLE_WARNINGS=OFF \
+            -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCBLUEPRINT_REFLECT_EXECUTABLE=$GITHUB_WORKSPACE/build-reflect/reflect
           cmake --build build-web --target app
 

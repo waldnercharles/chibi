@@ -41,8 +41,7 @@ AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
-BinPackParameters: false
-BreakAfterReturnType: None
+BinPackParameters: OnePerLine
 BreakBeforeBraces: Mozilla
 BreakBeforeTernaryOperators: true
 ColumnLimit: 80
@@ -71,6 +70,7 @@ SpacesInCStyleCastParentheses: false
 SpacesInContainerLiterals: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
+BreakAfterReturnType: None
 Standard: Latest
 TabWidth: 4
 UseTab: Never

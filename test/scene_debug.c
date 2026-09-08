@@ -1,7 +1,7 @@
-#include "app/scene_debug.h"
+#include "editor/workspace/scene_debug.h"
 
-#include "core/registry.h"
-#include "core/serialize.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
 
 #include <assert.h>
 #include <stdio.h>

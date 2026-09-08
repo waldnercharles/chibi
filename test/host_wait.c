@@ -1,4 +1,4 @@
-#include "../core/flow.h"
+#include "graph/runtime/flow.h"
 
 #include <assert.h>
 #if defined(__clang__)
@@ -90,6 +90,14 @@ void test_host_wait()
     node *sink = graph_add_node(&g, &receive_desc);
     graph_connect_exec(&g, request, 0, sink, 0, 0);
     graph_connect(&g, request, 1, sink, 1);
+    pin_value input = { .type = PIN_I32, .i = 17 };
+    flow_inputs inputs = { .values = &input, .count = 1 };
+    flow_run *reused = flow_run_start(&g, request, inputs, NULL, NULL);
+    assert(reused && flow_run_reset(reused) == FLOW_OK);
+    input.i = 29;
+    assert(flow_run_start_reuse(reused, &g, request, inputs, NULL, NULL) == reused);
+    assert(flow_run_inputs(reused).values[0].i == 29);
+    flow_run_free(reused);
     flow_run *run = flow_run_start(&g, request, (flow_inputs){ 0 }, NULL, NULL);
     assert(run);
     assert(flow_run_resume(run) == FLOW_SUSPENDED_RESULT);

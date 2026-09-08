@@ -1,0 +1,1070 @@
+#include "editor/graph/search.h"
+
+#include "editor/ui/labels.h"
+#include "editor/ui/ui_shell.h"
+#include "editor/workspace/editor_internal.h"
+#include "graph/document/events.h"
+#include "graph/document/extract.h"
+#include "graph/document/library.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
+#include "graph/shader/shader_graph.h"
+
+#include <assert.h>
+#include <imgui/dcimgui.h>
+
+#undef IMGUI_STB_NAMESPACE
+#include <imgui/dcimgui_internal.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static pin_spec ed_math_inputs[] = { { .name = "a", .type = PIN_F64 },
+                                     { .name = "b", .type = PIN_F64 } };
+static pin_spec ed_math_outputs[] = { { .name = "Result", .type = PIN_F64 } };
+static const node_desc ed_math_desc = {
+    .name = "Math Expression",
+    .category = "Math",
+    .keywords = "formula expression equation calculate",
+    .inputs = ed_math_inputs,
+    .input_count = 2,
+    .outputs = ed_math_outputs,
+    .output_count = 1
+};
+
+#define ED_SEARCH_MAX 128
+
+static char ed_search_lower(char c)
+{
+    return c >= 'A' && c <= 'Z' ? (char)(c + ('a' - 'A')) : c;
+}
+
+static int ed_search_length(const char *text)
+{
+    int length = 0;
+    while (text && text[length] && length < ED_SEARCH_MAX - 1) {
+        length++;
+    }
+    return length;
+}
+
+static int ed_damerau_levenshtein(const char *a, const char *b)
+{
+    int al = ed_search_length(a), bl = ed_search_length(b);
+    int pp[ED_SEARCH_MAX] = { 0 }, p[ED_SEARCH_MAX] = { 0 }, c[ED_SEARCH_MAX] = { 0 };
+    for (int j = 0; j <= bl; j++) {
+        p[j] = j;
+    }
+    for (int i = 1; i <= al; i++) {
+        c[0] = i;
+        for (int j = 1; j <= bl; j++) {
+            int v = p[j - 1] +
+                    (ed_search_lower(a[i - 1]) != ed_search_lower(b[j - 1]));
+            if (c[j - 1] + 1 < v) {
+                v = c[j - 1] + 1;
+            }
+            if (p[j] + 1 < v) {
+                v = p[j] + 1;
+            }
+            if (i > 1 && j > 1 &&
+                ed_search_lower(a[i - 1]) == ed_search_lower(b[j - 2]) &&
+                ed_search_lower(a[i - 2]) == ed_search_lower(b[j - 1]) &&
+                pp[j - 2] + 1 < v) {
+                v = pp[j - 2] + 1;
+            }
+            c[j] = v;
+        }
+        memcpy(pp, p, sizeof pp);
+        memcpy(p, c, sizeof p);
+    }
+    return p[bl];
+}
+
+static int ed_best_name_distance(const char *name, const char *filter)
+{
+    int nl = ed_search_length(name), fl = ed_search_length(filter), best = ED_SEARCH_MAX;
+    int low = fl > 2 ? fl - 2 : 1, high = fl + 2;
+    for (int start = 0; start < nl; start++) {
+        for (int length = low; length <= high && start + length <= nl; length++) {
+            char window[ED_SEARCH_MAX];
+            memcpy(window, name + start, (size_t)length);
+            window[length] = '\0';
+            int d = ed_damerau_levenshtein(window, filter);
+            if (d < best) {
+                best = d;
+            }
+        }
+    }
+    return best;
+}
+
+static int ed_name_score(const char *name, const char *filter)
+{
+    if (!filter || !filter[0]) {
+        return 0;
+    }
+    int score = 0, previous = -1, first = -1, matched = 1;
+    for (int fi = 0; filter[fi]; fi++) {
+        int found = -1;
+        for (int ni = previous + 1; name[ni]; ni++) {
+            if (ed_search_lower(name[ni]) == ed_search_lower(filter[fi])) {
+                found = ni;
+                break;
+            }
+        }
+        if (found < 0) {
+            matched = 0;
+            break;
+        }
+        if (first < 0) {
+            first = found;
+        }
+        score += found == previous + 1 ? 8 : 1;
+        if (found == 0 || name[found - 1] == ' ' || name[found - 1] == '_') {
+            score += 5;
+        }
+        previous = found;
+    }
+    int fl = ed_search_length(filter), distance = ed_best_name_distance(name, filter);
+    int limit = fl <= 3 ? 1 : fl / 3;
+    if (!matched && distance > limit) {
+        return -1;
+    }
+    if (!matched) {
+        score = 0;
+    }
+    if (matched && first == 0) {
+        score += 120;
+    }
+    if (matched && first > 0 && (name[first - 1] == ' ' || name[first - 1] == '_')) {
+        score += 60;
+    }
+    if (distance == 0) {
+        score += 60;
+    } else if (distance <= limit) {
+        score += 32 - distance * 8;
+    }
+    return score;
+}
+
+/* CAT-27: a descriptor's searchable text is its name plus its declared
+ * keyword list. The best keyword match scores below any name match so a
+ * keyword hit never outranks the node's own name. */
+static int ed_desc_score(const node_desc *desc, const char *filter)
+{
+    char label[256];
+    editor_node_label(desc, label, sizeof label);
+    int score = ed_name_score(label, filter);
+    int raw_score = ed_name_score(desc->name, filter);
+    if (raw_score > score) {
+        score = raw_score;
+    }
+    if (score >= 0 || !desc->keywords) {
+        return score;
+    }
+    int best = -1;
+    const char *kw = desc->keywords;
+    while (*kw) {
+        while (*kw == ' ') {
+            kw++;
+        }
+        if (!*kw) {
+            break;
+        }
+        const char *end = kw;
+        while (*end && *end != ' ') {
+            end++;
+        }
+        char word[64];
+        size_t len = (size_t)(end - kw);
+        if (len >= sizeof word) {
+            len = sizeof word - 1;
+        }
+        memcpy(word, kw, len);
+        word[len] = '\0';
+        int s = ed_name_score(word, filter);
+        if (s > best) {
+            best = s;
+        }
+        kw = end;
+    }
+    return best;
+}
+
+static const char *ed_desc_category(const node_desc *d)
+{
+    return d && d->category && d->category[0] ? d->category : "Basic";
+}
+
+static int ed_search_match_cmp(const void *a, const void *b)
+{
+    const ed_search_match *ma = (const ed_search_match *)a;
+    const ed_search_match *mb = (const ed_search_match *)b;
+    const char *ca = ma->category;
+    const char *cb = mb->category;
+    int c = mb->score - ma->score;
+    if (c) {
+        return c;
+    }
+    c = strcmp(ca, cb);
+    return c ? c : strcmp(ma->name, mb->name);
+}
+
+void ed_open_context_menu(editor *e, ImVec2 mouse)
+{
+    if (e->active_graph->math_expression) {
+        return;
+    }
+    e->context_node = NULL;
+    e->has_context_link = 0;
+    ed_pin_view *pin = ed_hit_pin(e, mouse);
+    ed_node_view *node_view = pin ? NULL : ed_hit_node(e, mouse);
+    ed_link_ref link;
+    if (node_view) {
+        e->context_node = node_view->n;
+        ImGui_OpenPopup("node_menu", 0);
+    } else if (!pin && ed_hit_link(e, mouse, &link)) {
+        e->context_link = link;
+        e->has_context_link = 1;
+        ImGui_OpenPopup("link_menu", 0);
+    } else {
+        ImVec2 world = ed_screen_to_world(e, mouse);
+        e->popup_x = world.x;
+        e->popup_y = world.y;
+        ImGui_OpenPopup("spawn_menu", 0);
+    }
+}
+
+/* PIN-11: a Generic (wildcard) data pin accepts any data peer; the type is
+ * adopted in core on connect, so the editor treats it as compatible. */
+static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate)
+{
+    if (source->kind == PIN_EXEC) {
+        return 1;
+    }
+    if ((source->flags | candidate->flags) & PIN_FLAG_WILDCARD) {
+        return 1;
+    }
+    return pin_types_compatible(source, candidate) ||
+           conversion_for_pins(source, candidate) != NULL;
+}
+
+static int ed_system_node_allowed(const node_desc *desc)
+{
+    if (desc == &ed_math_desc) {
+        return 1;
+    }
+    static const char *const names[] = {
+        "Event",
+        "Get_GameInput",
+        "Set_GameInput",
+        "Get_GameMovement",
+        "Set_GameMovement",
+        "Get_GameTransform",
+        "Set_GameTransform",
+        "Add",
+        "Multiply",
+        "Subtract",
+        "Divide",
+        "Min",
+        "Max",
+        "Clamp",
+        "Modulo",
+        "Negate",
+        "Abs",
+        "Delta Time",
+    };
+    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
+        if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int ed_compact_system_node(editor *e, node *n)
+{
+    if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM || !n || !n->desc) {
+        return 0;
+    }
+    if (n->desc == &NODE_Event || !n->desc->type) {
+        return 0;
+    }
+    int get = strncmp(n->desc->name, "Get_", 4) == 0;
+    int set = strncmp(n->desc->name, "Set_", 4) == 0;
+    if (!get && !set) {
+        return 0;
+    }
+    if (get) {
+        for (int i = n->input_count - 1; i >= 0; i--) {
+            if (graph_remove_pin(e->active_graph, n, 0, i) != 0) {
+                return -1;
+            }
+        }
+        for (int i = n->output_count - 1; i >= 0; i--) {
+            if (graph_remove_pin(e->active_graph, n, 1, i) != 0) {
+                return -1;
+            }
+        }
+    } else {
+        for (int i = n->input_count - 1; i >= 0; i--) {
+            if (graph_remove_pin(e->active_graph, n, 0, i) != 0) {
+                return -1;
+            }
+        }
+        pin_spec exec = { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC };
+        if (graph_add_pin(e->active_graph, n, 0, &exec) < 0) {
+            return -1;
+        }
+    }
+    int output = get;
+    if (n->desc->type->alias_of) {
+        pin_spec pin = {
+            .name = "Value",
+            .type = PIN_STRUCT,
+            .type_name = n->desc->type->alias_of,
+            .kind = PIN_DATA,
+        };
+        return graph_add_pin(e->active_graph, n, output, &pin) < 0 ? -1 : 0;
+    }
+    for (int i = 0; i < n->desc->type->field_count; i++) {
+        const type_field *field = &n->desc->type->fields[i];
+        pin_spec pin = {
+            .name = field->name,
+            .type = field->type,
+            .type_name = field->type_name,
+            .kind = PIN_DATA,
+        };
+        if (graph_add_pin(e->active_graph, n, output, &pin) < 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
+{
+    if ((e->bp->domain == BEHAVIOR_DOMAIN_LIBRARY ||
+         e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) &&
+        !behavior_library_node_allowed(e->bp->domain, desc)) {
+        return 0;
+    }
+    bool shader = e->bp->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                  e->bp->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    bool shader_node = desc->category && !strncmp(desc->category, "Shader", 6);
+    if (shader != shader_node) {
+        return 0;
+    }
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM && !ed_system_node_allowed(desc)) {
+        return 0;
+    }
+    if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction ||
+        desc == &NODE_CallMacro) {
+        return 0;
+    }
+    if (!e->spawn_link_pending) {
+        return 1;
+    }
+    const pin_spec
+        *source = e->spawn_link_pin.kind == ED_PIN_OUTPUT
+                    ? &e->spawn_link_pin.n->output_pins[e->spawn_link_pin.index]
+                    : &e->spawn_link_pin.n->input_pins[e->spawn_link_pin.index];
+    const pin_spec *pins = e->spawn_link_pin.kind == ED_PIN_OUTPUT ? desc->inputs
+                                                                   : desc->outputs;
+    int count = e->spawn_link_pin.kind == ED_PIN_OUTPUT ? desc->input_count
+                                                        : desc->output_count;
+    for (int i = 0; i < count; i++) {
+        const pin_spec *candidate = &pins[i];
+        if (source->kind != candidate->kind) {
+            continue;
+        }
+        if (source->kind == PIN_EXEC ||
+            (e->spawn_link_pin.kind == ED_PIN_OUTPUT
+                 ? ed_data_connectable(source, candidate)
+                 : ed_data_connectable(candidate, source))) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void ed_add_search_match(
+    const editor *e,
+    ed_search_match **matches,
+    ed_search_match match,
+    const node_desc *signature,
+    const char *filter
+)
+{
+    if (!ed_spawn_desc_compatible(e, signature)) {
+        return;
+    }
+    node_desc named = *signature;
+    named.name = match.name;
+    match.score = ed_desc_score(&named, filter);
+    if (match.score >= 0) {
+        apush(*matches, match);
+    }
+}
+
+static void ed_search_host_events(const editor *e, ed_search_match **matches, const char *filter)
+{
+    for (int i = 0; i < e->event_catalog_count; i++) {
+        const editor_event_signature *event = &e->event_catalog[i];
+        bool used = false;
+        for (int g = 0; g < acount(e->bp->graphs); g++) {
+            const graph *graph = e->bp->graphs[g];
+            for (int n = 0; n < acount(graph->nodes); n++) {
+                const node *node = graph->nodes[n];
+                used |= node->desc->flow_kind == NODE_FLOW_EVENT &&
+                        node->reference_name &&
+                        !strcmp(node->reference_name, event->name);
+            }
+        }
+        if (used) {
+            continue;
+        }
+        pin_spec *outputs = NULL;
+        apush(outputs, NODE_Event.outputs[0]);
+        for (int p = 0; p < event->param_count; p++) {
+            const editor_event_param *param = &event->params[p];
+            apush(
+                outputs,
+                ((pin_spec){ .name = param->name,
+                             .type = param->type,
+                             .type_name = param->type_name })
+            );
+        }
+        node_desc signature = NODE_Event;
+        signature.outputs = outputs;
+        signature.output_count = acount(outputs);
+        ed_search_match match = { .desc = &NODE_Event,
+                                  .host_event = i + 1,
+                                  .category = "Events" };
+        snprintf(match.name, sizeof match.name, "On %s", event->name);
+        ed_add_search_match(e, matches, match, &signature, filter);
+        afree(outputs);
+    }
+}
+
+static void ed_search_events(const editor *e, ed_search_match **matches, const char *filter)
+{
+    const node_desc *descs[] = { &NODE_Event,
+                                 &NODE_CallEvent,
+                                 registry_node_by_name("Send Event") };
+    const char *verbs[] = { "On", "Call", "Send" };
+    for (int i = 0; i < acount(e->asset_catalog); i++) {
+        const behavior_asset *event = e->asset_catalog[i];
+        if (event->domain != BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+            continue;
+        }
+        for (int action = 0; action < 3; action++) {
+            const node_desc *desc = descs[action];
+            if (!desc) {
+                continue;
+            }
+            node_desc signature = *desc;
+            pin_spec *pins = NULL;
+            const pin_spec *base = action ? desc->inputs : desc->outputs;
+            int count = action ? desc->input_count : desc->output_count;
+            for (int p = 0; p < count; p++) {
+                apush(pins, base[p]);
+            }
+            for (int p = 0; p < acount(event->variables); p++) {
+                const behavior_variable *v = &event->variables[p];
+                apush(
+                    pins,
+                    ((pin_spec){ .name = v->name,
+                                 .type = v->type,
+                                 .type_name = v->type_name,
+                                 .container = v->container })
+                );
+            }
+            if (action) {
+                signature.inputs = pins;
+                signature.input_count = acount(pins);
+            } else {
+                signature.outputs = pins;
+                signature.output_count = acount(pins);
+            }
+            ed_search_match match = { .desc = desc, .event = event, .category = "Events" };
+            snprintf(
+                match.name,
+                sizeof match.name,
+                "%s %s",
+                verbs[action],
+                event->name
+            );
+            ed_add_search_match(e, matches, match, &signature, filter);
+            afree(pins);
+        }
+    }
+}
+
+ed_search_match *ed_search_matches(const editor *e, const char *filter)
+{
+    ed_search_match *matches = NULL;
+    for (int i = -1; i < registry_node_count(); i++) {
+        const node_desc *desc = i < 0 ? &ed_math_desc : registry_node(i);
+        if (desc == &NODE_GetVariable || desc == &NODE_SetVariable) {
+            continue;
+        }
+        ed_search_match match = { .desc = desc, .category = ed_desc_category(desc) };
+        editor_node_label(desc, match.name, sizeof match.name);
+        ed_add_search_match(e, &matches, match, desc, filter);
+    }
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
+        return matches;
+    }
+    bool shader = e->bp->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                  e->bp->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    for (int a = -1; a < acount(e->asset_catalog); a++) {
+        const behavior_asset *asset = a < 0 ? e->bp : e->asset_catalog[a];
+        if (a >= 0 && (!strcmp(asset->name, e->bp->name) ||
+                       asset->domain != (shader ? BEHAVIOR_DOMAIN_SHADER_LIBRARY
+                                                : BEHAVIOR_DOMAIN_LIBRARY))) {
+            continue;
+        }
+        for (int i = 1; i < acount(asset->graphs); i++) {
+            graph *function = asset->graphs[i];
+            if (function == e->active_graph ||
+                (function->math_expression &&
+                 !strcmp(function->name, function->math_expression)) ||
+                (function->kind != GRAPH_FUNCTION && function->kind != GRAPH_MACRO)) {
+                continue;
+            }
+            if (a >= 0 && function->kind != GRAPH_FUNCTION) {
+                continue;
+            }
+            node *entry = graph_node_by_id(function, function->entry_id);
+            node *ret = graph_node_by_id(function, function->return_id);
+            if (!entry || !ret) {
+                continue;
+            }
+            const char *category = shader ? "Shader/Functions"
+                                 : function->kind == GRAPH_MACRO ? "Macros"
+                                                                 : "Functions";
+            bool executable = false;
+            for (int p = 0; p < entry->output_count; p++) {
+                executable |= entry->output_pins[p].kind == PIN_EXEC;
+            }
+            for (int p = 0; p < ret->input_count; p++) {
+                executable |= ret->input_pins[p].kind == PIN_EXEC;
+            }
+            ed_search_match match = { .function = function,
+                                      .category = category,
+                                      .desc = function->kind == GRAPH_MACRO ? &NODE_CallMacro
+                                            : executable ? &NODE_CallFunction
+                                                         : &NODE_CallPureFunction };
+            if (a < 0) {
+                editor_identifier_label(function->name, match.name, sizeof match.name);
+            } else {
+                snprintf(
+                    match.name,
+                    sizeof match.name,
+                    "%s / %s",
+                    asset->name,
+                    function->name
+                );
+            }
+            node_desc signature = { .name = match.name,
+                                    .category = category,
+                                    .inputs = entry->output_pins,
+                                    .input_count = entry->output_count,
+                                    .outputs = ret->input_pins,
+                                    .output_count = ret->input_count };
+            ed_add_search_match(e, &matches, match, &signature, filter);
+        }
+    }
+    if (!shader && e->bp->domain == BEHAVIOR_DOMAIN_EVENT) {
+        ed_search_host_events(e, &matches, filter);
+        ed_search_events(e, &matches, filter);
+        for (int i = 0; i < acount(e->bp->variables); i++) {
+            const behavior_variable *v = &e->bp->variables[i];
+            for (int set = 0; set < 2; set++) {
+                const node_desc *desc = set ? &NODE_SetVariable : &NODE_GetVariable;
+                pin_spec data = { .name = v->name,
+                                  .type = v->type,
+                                  .type_name = v->type_name,
+                                  .container = v->container };
+                pin_spec inputs[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+                                      data };
+                pin_spec outputs[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
+                                       data };
+                node_desc signature = *desc;
+                signature.inputs = set ? inputs : NULL;
+                signature.input_count = set ? 2 : 0;
+                signature.outputs = set ? outputs : &data;
+                signature.output_count = set ? 2 : 1;
+                ed_search_match match = { .desc = desc,
+                                          .variable = v,
+                                          .category = "Variables" };
+                char name[256];
+                editor_identifier_label(v->name, name, sizeof name);
+                snprintf(match.name, sizeof match.name, "%s %s", set ? "Set" : "Get", name);
+                ed_add_search_match(e, &matches, match, &signature, filter);
+            }
+        }
+        const node_desc *spawn = registry_node_by_name("Spawn Prototype");
+        for (int i = 0; spawn && i < acount(e->prototype_catalog); i++) {
+            ed_search_match match = { .desc = spawn,
+                                      .prototype = e->prototype_catalog[i],
+                                      .category = "Prototypes" };
+            snprintf(match.name, sizeof match.name, "Spawn %s", match.prototype);
+            ed_add_search_match(e, &matches, match, spawn, filter);
+        }
+    }
+    if (acount(matches) > 1) {
+        qsort(matches, (size_t)acount(matches), sizeof *matches, ed_search_match_cmp);
+    }
+    return matches;
+}
+
+node *ed_spawn_match(editor *e, const ed_search_match *match)
+{
+    graph *g = e->active_graph;
+    if (match->function) {
+        return match->function->kind == GRAPH_MACRO
+                 ? behavior_asset_add_macro_call_node_to_graph(e->bp, g, match->function)
+                 : behavior_asset_add_function_call_node_to_graph(
+                       e->bp,
+                       g,
+                       match->function
+                   );
+    }
+    if (match->desc == &ed_math_desc) {
+        return math_expression_add(e->bp, g, "a + b", NULL);
+    }
+    node *n = graph_add_node(g, match->desc);
+    if (!n) {
+        return NULL;
+    }
+    if (match->variable) {
+        const behavior_variable *v = match->variable;
+        bool set = match->desc == &NODE_SetVariable;
+        graph_set_node_reference(g, n, v->id, v->name);
+        if (set) {
+            graph_set_pin_type(g, n, 0, 1, v->type, v->type_name);
+            graph_set_pin_container(g, n, 0, 1, v->container);
+        }
+        graph_set_pin_type(g, n, 1, set ? 1 : 0, v->type, v->type_name);
+        graph_set_pin_container(g, n, 1, set ? 1 : 0, v->container);
+    }
+    if (match->host_event) {
+        const editor_event_signature *signature = &e->event_catalog[match->host_event - 1];
+        graph_set_node_reference(g, n, 0, signature->name);
+        ed_event_add_declared_params(e, n, signature);
+    }
+    if (match->event && graph_event_apply(g, n, match->event) != 0) {
+        graph_remove_node(g, n);
+        return NULL;
+    }
+    if (match->prototype) {
+        pin_value value = { .type = PIN_NAME, .str = match->prototype };
+        graph_set_pin_default(g, n, 0, 1, &value);
+    }
+    return n;
+}
+
+static int ed_autowire_spawn(editor *e, node *n)
+{
+    int connected = 0;
+    if (e->spawn_link_pin.kind == ED_PIN_OUTPUT) {
+        for (int p = 0; p < n->input_count && !connected; p++) {
+            ed_pin_view target = { n, ED_PIN_INPUT, p, { 0.0f, 0.0f } };
+            const pin_spec *a = &e->spawn_link_pin.n
+                                     ->output_pins[e->spawn_link_pin.index];
+            const pin_spec *b = &n->input_pins[p];
+            if (a->kind == b->kind && ed_data_connectable(a, b)) {
+                connected = ed_connect(e, &e->spawn_link_pin, &target);
+            }
+        }
+    } else {
+        for (int p = 0; p < n->output_count && !connected; p++) {
+            ed_pin_view target = { n, ED_PIN_OUTPUT, p, { 0.0f, 0.0f } };
+            const pin_spec *a = &n->output_pins[p];
+            const pin_spec *b = &e->spawn_link_pin.n
+                                     ->input_pins[e->spawn_link_pin.index];
+            if (a->kind == b->kind && ed_data_connectable(a, b)) {
+                connected = ed_connect(e, &e->spawn_link_pin, &target);
+            }
+        }
+    }
+    return connected;
+}
+
+void ed_request_extraction(editor *e)
+{
+    if (e->active_graph->math_expression) {
+        return;
+    }
+    for (int i = 1;; i++) {
+        if (i == 1) {
+            snprintf(e->extract_name, sizeof e->extract_name, "New Function");
+        } else {
+            snprintf(e->extract_name, sizeof e->extract_name, "New Function %d", i);
+        }
+        if (!behavior_asset_find_graph_by_name(e->bp, e->extract_name)) {
+            break;
+        }
+    }
+    e->extract_error[0] = '\0';
+    e->extract_requested = true;
+}
+
+static const char *ed_extract_selection(editor *e)
+{
+    if (e->active_graph->math_expression) {
+        return "Generated math graphs are read-only";
+    }
+    behavior_asset *result = NULL;
+    uint64_t call_id = 0;
+    const char *error = behavior_asset_extract_function(
+        e->bp,
+        e->active_graph,
+        e->selected,
+        acount(e->selected),
+        e->extract_name,
+        &result,
+        &call_id
+    );
+    if (error) {
+        return error;
+    }
+    char *json = behavior_asset_save_json(result);
+    behavior_asset_free(result);
+    if (!json) {
+        return "Could not save the extracted function.";
+    }
+    ed_snapshot_before(e);
+    int adopted = ed_adopt_behavior_asset(e, json);
+    free(json);
+    assert(adopted == 0);
+    node *call = graph_node_by_id(e->active_graph, call_id);
+    assert(call);
+    ed_select_node(e, call, 0);
+    return NULL;
+}
+
+void ed_draw_extract_popup(editor *e)
+{
+    if (e->extract_requested) {
+        ImGui_OpenPopup("extract_function", 0);
+        e->extract_requested = false;
+    }
+    if (!ImGui_BeginPopup("extract_function", 0)) {
+        return;
+    }
+    ImGui_TextUnformatted("Extract Function");
+    if (ImGui_IsWindowAppearing()) {
+        ImGui_SetKeyboardFocusHere();
+    }
+    bool enter = ImGui_InputText(
+        "Name",
+        e->extract_name,
+        sizeof e->extract_name,
+        ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll
+    );
+    editor_ui_track_item("graph.extract.name");
+    if (e->extract_error[0]) {
+        ImGui_TextColored((ImVec4){ 1.0f, 0.55f, 0.45f, 1.0f }, "%s", e->extract_error);
+    }
+    bool extract = ImGui_Button("Extract");
+    editor_ui_track_item("graph.extract.confirm");
+    if (extract || enter) {
+        const char *error = ed_extract_selection(e);
+        if (error) {
+            snprintf(e->extract_error, sizeof e->extract_error, "%s", error);
+        } else {
+            ImGui_CloseCurrentPopup();
+        }
+    }
+    ImGui_SameLine();
+    if (ImGui_Button("Cancel")) {
+        ImGui_CloseCurrentPopup();
+    }
+    ImGui_EndPopup();
+}
+
+void ed_handle_popups(editor *e)
+{
+    if (e->active_graph->math_expression) {
+        return;
+    }
+    if (ImGui_BeginPopup("node_menu", 0)) {
+        node *n = e->context_node;
+        bool advanced = false;
+        for (int p = 0; n && p < n->input_count; p++) {
+            advanced |= (n->input_pins[p].flags & PIN_FLAG_ADVANCED) != 0;
+        }
+        if (advanced &&
+            ImGui_MenuItemEx("Show Advanced Inputs", NULL, n->show_advanced, true)) {
+            ed_snapshot_before(e);
+            n->show_advanced = !n->show_advanced;
+            e->edit_changed = 1;
+        }
+        node *single[] = { n };
+        node *const *selection = n && !ed_node_selected(e, n) ? single : e->selected;
+        int selection_count = n && !ed_node_selected(e, n) ? 1 : acount(e->selected);
+        const char *extract_reason = behavior_asset_can_extract_function(
+            e->bp,
+            e->active_graph,
+            selection,
+            selection_count
+        );
+        if (ImGui_MenuItemEx("Extract Function...", NULL, false, !extract_reason)) {
+            if (selection == single) {
+                ed_select_node(e, n, 0);
+            }
+            ed_request_extraction(e);
+        }
+        ImGui_Separator();
+        if (ed_is_graph_call(n)) {
+            graph *target = behavior_asset_find_graph(e->bp, n->reference_id);
+            if (n->reference_asset) {
+                target = NULL;
+                for (int a = 0; a < acount(e->asset_catalog); a++) {
+                    if (strcmp(e->asset_catalog[a]->name, n->reference_asset) == 0) {
+                        target = behavior_asset_find_graph(e->asset_catalog[a], n->reference_id);
+                    }
+                }
+                if (ImGui_MenuItemEx("Refresh Signature", NULL, false, target != NULL)) {
+                    ed_snapshot_before(e);
+                    const char *error = graph_library_refresh_call(e->active_graph, n, target);
+                    if (error) {
+                        ed_show_error(e, error);
+                    } else {
+                        ed_commit_snapshot(e);
+                    }
+                }
+            }
+
+            if (ImGui_MenuItemEx(
+                    n->desc == &NODE_CallMacro ? "Open Macro" : "Open Function",
+                    "Double-click",
+                    false,
+                    target && target != e->active_graph
+                )) {
+                e->open_call_node = n->id;
+                ImGui_CloseCurrentPopup();
+                ImGui_EndPopup();
+                return;
+            }
+            ImGui_Separator();
+        }
+        if (n && n->desc && strcmp(n->desc->name, "Sequence") == 0) {
+            if (ImGui_MenuItem("Add output pin")) {
+                char name[32];
+                snprintf(name, sizeof name, "Then%d", n->output_count);
+                pin_spec pin = { name, PIN_FLOW, NULL, PIN_EXEC };
+                ed_snapshot_before(e);
+                graph_add_pin(e->active_graph, n, 1, &pin);
+            }
+            if (n->output_count > 2 && ImGui_MenuItem("Remove last output pin")) {
+                ed_snapshot_before(e);
+                graph_remove_pin(e->active_graph, n, 1, n->output_count - 1);
+            }
+            ImGui_Separator();
+        }
+        if (n && ImGui_MenuItem(n->disabled ? "Enable" : "Disable")) {
+            ed_snapshot_before(e);
+            graph_set_node_disabled(e->active_graph, n, !n->disabled);
+        }
+        if (n && node_behavior_for(n) != NODE_BEHAVIOR_PURE &&
+            ImGui_MenuItem(n->breakpoint ? "Clear Breakpoint" : "Set Breakpoint")) {
+            ed_snapshot_before(e);
+            graph_set_breakpoint(e->active_graph, n, !n->breakpoint);
+        }
+        if (n && ImGui_MenuItem(
+                     n->breakpoint_enabled ? "Disable All Breakpoints" : "Enable All Breakpoints"
+                 )) {
+            ed_snapshot_before(e);
+            graph_set_all_breakpoints(e->active_graph, !e->active_graph->breakpoints_enabled);
+        }
+        if (n && ImGui_MenuItem("Toggle data watches")) {
+            ed_snapshot_before(e);
+            for (int i = 0; i < n->input_count; i++) {
+                if (n->input_pins[i].kind == PIN_DATA) {
+                    graph_set_pin_watch(
+                        e->active_graph,
+                        n,
+                        0,
+                        i,
+                        !(n->input_pins[i].flags & PIN_FLAG_WATCH)
+                    );
+                }
+            }
+            for (int i = 0; i < n->output_count; i++) {
+                if (n->output_pins[i].kind == PIN_DATA) {
+                    graph_set_pin_watch(
+                        e->active_graph,
+                        n,
+                        1,
+                        i,
+                        !(n->output_pins[i].flags & PIN_FLAG_WATCH)
+                    );
+                }
+            }
+        }
+        if (n && ed_field_output(n) >= 0 && ImGui_BeginMenu("Fields")) {
+            ed_draw_fields_menu(e, n);
+            ImGui_EndMenu();
+        }
+        if (ImGui_MenuItem("Delete")) {
+            ed_select_node(e, e->context_node, 0);
+            ed_delete_selected(e);
+        }
+        ImGui_EndPopup();
+    }
+    if (ImGui_BeginPopup("link_menu", 0)) {
+        if (ImGui_MenuItem("Delete Link") && e->has_context_link) {
+            aclear(e->selected);
+            aclear(e->selected_links);
+            ed_add_selected_link(e, &e->context_link);
+            ed_delete_selected(e);
+        }
+        ImGui_EndPopup();
+    }
+    ImVec2 search_space = ImGui_GetMainViewport()->WorkSize;
+    ImGui_SetNextWindowSize((ImVec2){ fminf(360.0f, search_space.x - 20.0f), 0.0f }, ImGuiCond_Always);
+    if (ImGui_BeginPopup("spawn_menu", 0)) {
+        bool reveal_result = ImGui_IsWindowAppearing();
+        if (reveal_result) {
+            ImGui_SetKeyboardFocusHere();
+            e->search_selected = 0;
+        }
+        ImGui_SetNextItemWidth(-1.0f);
+        if (editor_ui_search_field("graph.node_search", e->search, sizeof e->search, "Search nodes")) {
+            e->search_selected = 0;
+            reveal_result = true;
+        }
+        bool create_math = false;
+        if (!e->search[0] && ed_spawn_desc_compatible(e, &ed_math_desc)) {
+            create_math = ImGui_MenuItem("Math Expression");
+            editor_ui_track_item("graph.add.math_expression");
+        }
+        if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM &&
+            ImGui_MenuItem("Add Comment Box")) {
+            ed_snapshot_before(e);
+            graph_add_comment_box(e->active_graph, "Comment", e->popup_x, e->popup_y, 320.0f, 160.0f);
+            e->spawn_link_pending = 0;
+            ImGui_CloseCurrentPopup();
+        }
+        ImGui_Separator();
+        ed_search_match *matches = ed_search_matches(e, e->search);
+        int match_count = acount(matches);
+        if (match_count == 0) {
+            e->search_selected = -1;
+        } else {
+            if (e->search_selected < 0) {
+                e->search_selected = 0;
+            }
+            if (e->search_selected >= match_count) {
+                e->search_selected = match_count - 1;
+            }
+            if (ImGui_IsKeyPressed(ImGuiKey_DownArrow)) {
+                e->search_selected = (e->search_selected + 1) % match_count;
+                reveal_result = true;
+            }
+            if (ImGui_IsKeyPressed(ImGuiKey_UpArrow)) {
+                e->search_selected = (e->search_selected + match_count - 1) % match_count;
+                reveal_result = true;
+            }
+        }
+        int activate = ImGui_IsKeyPressed(ImGuiKey_Enter);
+        ImGui_BeginChild(
+            "node_results",
+            (ImVec2){ 0.0f, fmaxf(1.0f, fminf(300.0f, search_space.y - 140.0f)) },
+            0,
+            0
+        );
+        const char *category = NULL;
+        for (int m = 0; m < match_count; m++) {
+            const node_desc *desc = matches[m].desc;
+            const char *next_category = matches[m].category;
+            if (!category || strcmp(category, next_category) != 0) {
+                ImGui_TextDisabled("%s", next_category);
+                category = next_category;
+            }
+            char label[416], icon[4];
+            snprintf(
+                label,
+                sizeof label,
+                "%s  %s",
+                ed_node_prefix(desc, icon),
+                matches[m].name
+            );
+            ImGui_PushIDInt(m);
+            int clicked = ImGui_SelectableEx(label, m == e->search_selected, 0, (ImVec2){ 0.0f, 0.0f });
+            if (reveal_result && m == e->search_selected) {
+                ImGui_SetScrollHereY(0.5f);
+            }
+            if (m == e->search_selected) {
+                editor_ui_track_item("graph.node_search.selected");
+            }
+            ImGui_PopID();
+            if (clicked || (activate && m == e->search_selected) ||
+                (create_math && desc == &ed_math_desc)) {
+                if (!e->spawn_link_pending) {
+                    ed_snapshot_before(e);
+                }
+                node *n = ed_spawn_match(e, &matches[m]);
+                if (n && !shader_graph_init_parameter(e->active_graph, n)) {
+                    graph_remove_node(e->active_graph, n);
+                    n = NULL;
+                    ed_show_error(e, "This shader already has 32 parameters.");
+                }
+                if (n && ed_compact_system_node(e, n) != 0) {
+                    graph_remove_node(e->active_graph, n);
+                    n = NULL;
+                }
+                if (n && !matches[m].event && !matches[m].host_event &&
+                    ed_name_spawned_event(e, n) != 0) {
+                    graph_remove_node(e->active_graph, n);
+                    n = NULL;
+                }
+                if (n) {
+                    n->x = e->popup_x;
+                    n->y = e->popup_y;
+                    if (desc == &ed_math_desc) {
+                        ed_select_node(e, n, 0);
+                        e->inspector_active = true;
+                        editor_ui_request_focus(EDITOR_UI_FOCUS_INSPECTOR);
+                    }
+                    if (e->spawn_link_pending) {
+                        ed_autowire_spawn(e, n);
+                        ed_commit_snapshot(e);
+                        e->spawn_link_pending = 0;
+                    }
+                    e->search[0] = '\0';
+                    e->search_selected = 0;
+                    ImGui_CloseCurrentPopup();
+                }
+            }
+        }
+        if (match_count == 0) {
+            ImGui_TextUnformatted(
+                e->spawn_link_pending ? "No compatible nodes" : "No matching nodes"
+            );
+        }
+        afree(matches);
+        ImGui_Dummy((ImVec2){ 0.0f, ImGui_GetStyle()->ItemSpacing.y });
+        ImGui_EndChild();
+        editor_ui_track_item("graph.node_results");
+        /* Keep search text focused while our result selection handles these keys. */
+        ImGuiID navigation = ImGui_GetID("node_search_navigation");
+        ImGui_SetKeyOwner(ImGuiKey_UpArrow, navigation, 0);
+        ImGui_SetKeyOwner(ImGuiKey_DownArrow, navigation, 0);
+        ImGui_SetKeyOwner(ImGuiKey_Enter, navigation, 0);
+        ImGui_EndPopup();
+    }
+    if (e->spawn_link_pending && !ImGui_IsPopupOpen("spawn_menu", 0)) {
+        ed_cancel_snapshot(e);
+        e->spawn_link_pending = 0;
+    }
+}

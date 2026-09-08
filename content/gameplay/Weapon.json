@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "Weapon",
-  "kind": "weapon",
-  "data": { "damage": 12, "cooldown": 0.25, "projectile_count": 1 },
-  "composition": ["Projectile"]
-}

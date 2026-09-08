@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "Enemy",
-  "kind": "enemy",
-  "data": { "max_health": 40, "move_speed": 65, "contact_damage": 10 },
-  "composition": ["GameTransform", "GameHealth", "EnemyBehavior"]
-}

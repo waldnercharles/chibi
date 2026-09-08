@@ -1,8 +1,8 @@
-#include "core/array.h"
-#include "core/behavior_asset.h"
-#include "core/instance.h"
-#include "core/registry.h"
-#include "editor/editor.h"
+#include "editor/workspace/editor.h"
+#include "graph/model/behavior_asset.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/instance.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>

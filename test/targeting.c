@@ -1,9 +1,9 @@
-#include "../core/arena.h"
-#include "../core/array.h"
-#include "../core/eval.h"
-#include "../core/registry.h"
-#include "../game/generated.h"
-#include "../game/live.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/eval.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/generated.h"
+#include "support/arena.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <math.h>

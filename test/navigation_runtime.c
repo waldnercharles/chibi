@@ -1,7 +1,7 @@
-#include "../app/scene_authoring.h"
-#include "../editor/editor.h"
-#include "../editor/ui_shell.h"
-#include "../game/generated.h"
+#include "editor/ui/ui_shell.h"
+#include "editor/workspace/editor.h"
+#include "editor/workspace/scene_authoring.h"
+#include "runtime/generated.h"
 
 #include <assert.h>
 #include <cute_defines.h>

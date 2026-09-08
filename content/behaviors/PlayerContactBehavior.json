@@ -1479,7 +1479,7 @@
         },
         {
           "id": 107,
-          "type": "Send Damage",
+          "type": "Send Event",
           "x": 780,
           "y": 0,
           "reference_id": 0,
@@ -1520,7 +1520,8 @@
               "flags": 0,
               "group": 0,
               "default": 10,
-              "type_name": "int"
+              "type_name": "int",
+              "declaration_id": 2
             },
             {
               "id": 105,
@@ -1532,7 +1533,8 @@
               "flags": 0,
               "group": 0,
               "default": null,
-              "type_name": "ecs.entity"
+              "type_name": "ecs.entity",
+              "declaration_id": 3
             }
           ],
           "outputs": [
@@ -1547,7 +1549,8 @@
               "group": 0,
               "default": null
             }
-          ]
+          ],
+          "reference_name": "Damage"
         },
         {
           "id": 109,

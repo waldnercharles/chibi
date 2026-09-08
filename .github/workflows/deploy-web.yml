@@ -1,6 +1,8 @@
 name: Deploy web app
 
 on:
+  push:
+    branches: [main]
   release:
     types: [published]
 
@@ -33,7 +35,7 @@ jobs:
 
       - name: Build native reflection tool
         run: |
-          cmake -S reflect -B build-reflect -DCMAKE_BUILD_TYPE=Release
+          cmake -S tools/reflect -B build-reflect -DCMAKE_BUILD_TYPE=Release
           cmake --build build-reflect
 
       - name: Build web app

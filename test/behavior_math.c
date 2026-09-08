@@ -1,15 +1,17 @@
-#include "core/arena.h"
-#include "core/array.h"
-#include "core/compile.h"
-#include "core/conv_nodes.h"
-#include "core/eval.h"
-#include "core/instance.h"
-#include "core/math_expression.h"
-#include "core/registry.h"
-#include "core/serialize.h"
-#include "core/xalloc.h"
-#include "game/generated.h"
-#include "game/live.h"
+#include "graph/compiler/compile.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/math_expression.h"
+#include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/generated.h"
+#include "support/arena.h"
+#include "support/array.h"
+#include "support/event_fixture.h"
+#include "support/xalloc.h"
+#include "test/support/event_fixture.h"
 
 #include <assert.h>
 #include <float.h>
@@ -32,6 +34,9 @@ static behavior_asset *load(const char *path)
     json[size] = 0;
     fclose(file);
     behavior_asset *asset = behavior_asset_load_json(json);
+    if (asset) {
+        asset = link_test_libraries(asset);
+    }
     free(json);
     assert(asset);
     compile_report report;
@@ -107,6 +112,7 @@ static void health_damage()
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     game_live_world *live = game_live_world_new(world);
+    register_damage_event(live);
     assert(game_live_add_definition(live, game_live_definition_new("HealthBehavior", asset)) == 0);
     const struct
     {

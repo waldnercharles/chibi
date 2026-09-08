@@ -1,11 +1,11 @@
 /* test/bench_activation.c -- headless per-instance activation benchmark. */
-#include "../core/array.h"
-#include "../core/behavior_asset.h"
-#include "../core/compile.h"
-#include "../core/flow.h"
-#include "../core/instance.h"
-#include "../core/registry.h"
-#include "../core/xalloc.h"
+#include "graph/compiler/compile.h"
+#include "graph/model/behavior_asset.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/flow.h"
+#include "graph/runtime/instance.h"
+#include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <errno.h>

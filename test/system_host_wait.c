@@ -1,5 +1,5 @@
-#include "../core/registry.h"
-#include "../game/system.h"
+#include "graph/model/registry.h"
+#include "runtime/systems/system.h"
 
 #include <assert.h>
 #include <string.h>

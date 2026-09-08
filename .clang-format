@@ -42,7 +42,6 @@ AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
 BinPackParameters: OnePerLine
-BreakAfterReturnType: None
 BreakBeforeBraces: Mozilla
 BreakBeforeTernaryOperators: true
 ColumnLimit: 80
@@ -61,7 +60,7 @@ PenaltyBreakString: 500
 PenaltyExcessCharacter: 2
 PenaltyReturnTypeOnItsOwnLine: 1000000
 PointerAlignment: Right
-ReflowComments: Always
+ReflowComments: true
 SpaceAfterCStyleCast: false
 SpaceBeforeParens: ControlStatementsExceptControlMacros
 SpaceInEmptyParentheses: false
@@ -71,7 +70,7 @@ SpacesInCStyleCastParentheses: false
 SpacesInContainerLiterals: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-Language: C
+BreakAfterReturnType: None
 Standard: Latest
 TabWidth: 4
 UseTab: Never

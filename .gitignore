@@ -21,4 +21,9 @@ generated/
 imgui.ini
 NodeEditor.json
 compile_commands.json
+*.tsv.lock
+build-dev/
+.blueprints/
 .DS_STORE
+
+__pycache__/

@@ -1,9 +1,0 @@
-#ifndef CBLUEPRINT_ARRAY_NODES_H
-#define CBLUEPRINT_ARRAY_NODES_H
-
-#include "node.h"
-
-extern node_desc *const ARRAY_NODES[];
-extern const int ARRAY_NODE_COUNT;
-
-#endif

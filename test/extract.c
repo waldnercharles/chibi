@@ -1,13 +1,13 @@
-#include "../core/extract.h"
+#include "graph/document/extract.h"
 
-#include "../core/arena.h"
-#include "../core/array.h"
-#include "../core/conv_nodes.h"
-#include "../core/eval.h"
-#include "../core/instance.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../core/value_array.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
+#include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
+#include "graph/runtime/value_array.h"
+#include "support/arena.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <math.h>
@@ -333,8 +333,67 @@ static void function_counter_roundtrip()
     behavior_asset_free(asset);
 }
 
+static double extraction_time(void *user)
+{
+    return *(double *)user;
+}
+
+static void execution_extraction()
+{
+    behavior_asset *asset = behavior_asset_new("Execution extraction");
+    graph *g = asset->graph;
+    pin_value initial = { .type = PIN_I32, .type_name = "int", .i = 0 };
+    uint64_t first_id = behavior_asset_add_variable(asset, "First", PIN_I32, "int", PIN_CONTAINER_SINGLE, &initial, "")
+                            ->id;
+    uint64_t second_id = behavior_asset_add_variable(asset, "Second", PIN_I32, "int", PIN_CONTAINER_SINGLE, &initial, "")
+                             ->id;
+    node *event = add(g, "Event");
+    assert(graph_set_event_name(g, event, "Go") == 0);
+    pin_spec input = { .name = "Number", .type = PIN_I32, .type_name = "int", .kind = PIN_DATA };
+    assert(graph_add_pin(g, event, 1, &input) == 1);
+    node *wait = add(g, "Delay");
+    pin_value duration = { .type = PIN_F64, .type_name = "double", .d = 1 };
+    assert(graph_set_pin_default(g, wait, 0, 1, &duration) == 0);
+    node *first = behavior_asset_add_set_node(asset, first_id);
+    node *second = behavior_asset_add_set_node(asset, second_id);
+    assert(graph_connect_exec(g, event, 0, wait, 0, 0) == 0);
+    assert(graph_connect_exec(g, wait, 0, first, 0, 0) == 0);
+    assert(graph_connect_exec(g, first, 0, second, 0, 0) == 0);
+    assert(graph_connect_data(g, event, 1, first, 1) == 0);
+    node *read = behavior_asset_add_get_node(asset, first_id);
+    assert(graph_connect_data(g, read, 0, second, 1) == 0);
+    node *selection[] = { first, wait, read };
+    behavior_asset *result = NULL;
+    uint64_t call_id = 0;
+    const char *error = behavior_asset_extract_function(asset, g, selection, 3, "Store later", &result, &call_id);
+    if (error) {
+        fprintf(stderr, "execution extraction: %s\n", error);
+    }
+    assert(!error && result && call_id);
+    behavior_asset *loaded = roundtrip(result);
+    double time = 0;
+    behavior_instance *instance = behavior_instance_create(loaded, NULL, extraction_time, &time);
+    assert(instance);
+    pin_value number = { .type = PIN_I32, .type_name = "int", .i = 42 };
+    flow_error failure;
+    flow_run *run = behavior_instance_dispatch(instance, "Go", (flow_inputs){ &number, 1 }, &failure);
+    assert(run && flow_run_status(run) == FLOW_SUSPENDED);
+    pin_value value;
+    assert(behavior_instance_get_variable(instance, second_id, &value) == 0 && value.i == 0);
+    time = 2;
+    assert(flow_run_tick_at(run, time) == FLOW_OK);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    assert(behavior_instance_get_variable(instance, first_id, &value) == 0 && value.i == 42);
+    assert(behavior_instance_get_variable(instance, second_id, &value) == 0 && value.i == 42);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(loaded);
+    behavior_asset_free(result);
+    behavior_asset_free(asset);
+}
+
 void test_extract()
 {
+    execution_extraction();
     function_counter_roundtrip();
     arithmetic_extraction();
     rejected_extractions();

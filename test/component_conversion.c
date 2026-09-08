@@ -1,11 +1,11 @@
-#include "../core/arena.h"
-#include "../core/array.h"
-#include "../core/compile.h"
-#include "../core/conv_nodes.h"
-#include "../core/eval.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../game/components.h"
+#include "graph/compiler/compile.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
+#include "graph/runtime/eval.h"
+#include "runtime/components.h"
+#include "support/arena.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <math.h>
@@ -213,7 +213,7 @@ static void real_integer_conversions()
                 long double low = t == 0 ? 0 : t == 1 ? INT32_MIN : INT64_MIN;
                 long double high = t == 0 ? UINT8_MAX
                                  : t == 1 ? INT32_MAX
-                                          : INT64_MAX;
+                                          : (long double)INT64_MAX;
                 long double expected = isnan(value) ? 0 : truncl(value);
                 expected = fmaxl(low, fminl(high, expected));
                 assert(result.type == integers[t]);

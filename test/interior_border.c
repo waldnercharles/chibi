@@ -1,4 +1,5 @@
-#include <cute.h>
+#include "platform/cute.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

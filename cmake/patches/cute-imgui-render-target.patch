@@ -1,0 +1,254 @@
+diff --git a/include/cute_app.h b/include/cute_app.h
+index ead3b798..308eb88f 100644
+--- a/include/cute_app.h
++++ b/include/cute_app.h
+@@ -363,6 +363,20 @@ CF_API void CF_CALL cf_app_update(CF_OnUpdateFn* on_update);
+  */
+ CF_API int CF_CALL cf_app_draw_onto_screen(bool clear);
+ 
++/**
++ * @function cf_app_set_imgui_render_target
++ * @category app
++ * @brief    Sets the canvas that receives Dear ImGui before the app canvas is blitted to the screen.
++ * @param    target     The target canvas, or a zero canvas to restore the normal swapchain path.
++ * @return   Returns true when the target can be used by the active graphics backend.
++ * @remarks  Set this to `cf_app_get_canvas()` when a readback should include both the app canvas and
++ *           Dear ImGui. The target is sampled and written by the active frame, so it must remain valid
++ *           until `cf_app_draw_onto_screen` returns. The app canvas target is refreshed automatically when
++ *           the default canvas is recreated.
++ * @related  cf_app_draw_onto_screen cf_app_get_canvas cf_canvas_readback
++ */
++CF_API bool CF_CALL cf_app_set_imgui_render_target(CF_Canvas target);
++
+ /**
+  * @function cf_app_get_size
+  * @category app
+@@ -963,6 +977,7 @@ CF_INLINE bool app_is_running() { return cf_app_is_running(); }
+ CF_INLINE void app_signal_shutdown() { cf_app_signal_shutdown(); }
+ CF_INLINE void app_update(CF_OnUpdateFn* on_update = NULL) { cf_app_update(on_update); }
+ CF_INLINE int app_draw_onto_screen(bool clear = false) { return cf_app_draw_onto_screen(clear); }
++CF_INLINE bool app_set_imgui_render_target(CF_Canvas target) { return cf_app_set_imgui_render_target(target); }
+ CF_INLINE void app_get_size(int* w, int* h) { return cf_app_get_size(w, h); }
+ CF_INLINE void app_set_size(int w, int h) { return cf_app_set_size(w, h); }
+ CF_INLINE void app_get_position(int* x, int* y) { return cf_app_get_position(x, y); }
+diff --git a/src/cute_app.cpp b/src/cute_app.cpp
+index fe7a0784..653ea95d 100644
+--- a/src/cute_app.cpp
++++ b/src/cute_app.cpp
+@@ -146,6 +146,7 @@ using namespace Cute;
+ 
+ static void s_canvas(int w, int h)
+ {
++	bool target_app_canvas = app->offscreen_canvas.id && app->imgui_render_target.id == app->offscreen_canvas.id;
+ 	CF_CanvasParams params = cf_canvas_defaults(w, h);
+ 	params.target.filter = CF_FILTER_LINEAR;
+ 	if (app->offscreen_canvas.id) {
+@@ -154,6 +155,7 @@ static void s_canvas(int w, int h)
+ 	params.depth_stencil_enable = true;
+ 	params.sample_count = (CF_SampleCount)cf_clamp((app->sample_count >> 1), 0, 3);
+ 	app->offscreen_canvas = cf_make_canvas(params);
++	if (target_app_canvas) app->imgui_render_target = app->offscreen_canvas;
+ 	app->canvas_w = w;
+ 	app->canvas_h = h;
+ 	cf_draw_on_app_canvas_resized(w, h);
+@@ -487,6 +489,12 @@ void cf_app_update(CF_OnUpdateFn* on_update)
+ 				ImGui_ImplSDLGPU3_NewFrame();
+ 			}
+ 			ImGui_ImplSDL3_NewFrame();
++			if (app->imgui_render_target.id) {
++				int width;
++				int height;
++				cf_canvas_get_size(app->imgui_render_target, &width, &height);
++				ImGui::GetIO().DisplaySize = ImVec2((float)width, (float)height);
++			}
+ 			ImGui::NewFrame();
+ 		}
+ 
+@@ -554,6 +562,17 @@ int cf_app_draw_onto_screen(bool clear)
+ 	// Render any remaining geometry in the draw API.
+ 	cf_render_to(app->offscreen_canvas, clear);
+ 
++	// Dear ImGui draw. The default path keeps the existing swapchain order. When a target is
++	// selected, draw ImGui into it before blitting the app canvas so the target contains the
++	// complete composed frame.
++	if (app->using_imgui) {
++		ImGui::EndFrame();
++		ImGui::Render();
++		if (app->imgui_render_target.id) {
++			CF_ASSERT(cf_imgui_draw_to_canvas(app->imgui_render_target));
++		}
++	}
++
+ 	// Draw the app canvas
+ 	if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
+ 		cf_gles_blit_canvas(app->offscreen_canvas);
+@@ -563,10 +582,7 @@ int cf_app_draw_onto_screen(bool clear)
+ #endif
+ 	}
+ 
+-	// Dear ImGui draw.
+-	if (app->using_imgui) {
+-		ImGui::EndFrame();
+-		ImGui::Render();
++	if (app->using_imgui && !app->imgui_render_target.id) {
+ 		cf_imgui_draw();
+ 	}
+ 
+@@ -784,6 +800,17 @@ CF_Canvas cf_app_get_canvas()
+ 	return app->offscreen_canvas;
+ }
+ 
++bool cf_app_set_imgui_render_target(CF_Canvas target)
++{
++#if defined(CF_EMSCRIPTEN)
++	if (target.id) return false;
++#else
++	if (target.id && !app->gfx_enabled) return false;
++#endif
++	app->imgui_render_target = target;
++	return true;
++}
++
+ void cf_app_set_canvas_size(int w, int h)
+ {
+ 	s_canvas(w, h);
+diff --git a/src/cute_graphics_sdlgpu.cpp b/src/cute_graphics_sdlgpu.cpp
+index 3ea8eec5..5a50db9f 100644
+--- a/src/cute_graphics_sdlgpu.cpp
++++ b/src/cute_graphics_sdlgpu.cpp
+@@ -941,6 +941,59 @@ SDL_GPUCommandBuffer* cf_sdlgpu_get_command_buffer()
+ 	return g_ctx.cmd;
+ }
+ 
++SDL_GPURenderPass* cf_sdlgpu_begin_imgui_render_pass(CF_Canvas canvas_handle)
++{
++	CF_CanvasInternal* canvas = (CF_CanvasInternal*)canvas_handle.id;
++	CF_ASSERT(canvas);
++	CF_ASSERT(g_ctx.cmd);
++	if (g_ctx.active_pass && g_ctx.canvas != canvas) s_end_active_pass();
++	g_ctx.canvas = canvas;
++	if (g_ctx.active_pass) return g_ctx.active_pass;
++
++	int target_count = canvas->attached_depth ? 0 : (canvas->target_count > 1 ? canvas->target_count : 1);
++	SDL_GPUColorTargetInfo color_infos[CF_MAX_CANVAS_TARGETS];
++	CF_MEMSET(color_infos, 0, sizeof(color_infos));
++	for (int i = 0; i < target_count; ++i) {
++		SDL_GPUColorTargetInfo& color = color_infos[i];
++		color.texture = i == 0 ? canvas->texture : canvas->textures_mrt[i];
++		color.load_op = SDL_GPU_LOADOP_LOAD;
++		color.store_op = canvas->sample_count == CF_SAMPLE_COUNT_1
++			? SDL_GPU_STOREOP_STORE
++			: SDL_GPU_STOREOP_RESOLVE_AND_STORE;
++		color.resolve_texture = canvas->resolve_texture;
++		if (canvas->attached) {
++			color.layer_or_depth_plane = (Uint32)canvas->attach_layer;
++			color.mip_level = (Uint32)canvas->attach_mip;
++		}
++	}
++
++	SDL_GPUDepthStencilTargetInfo depth_info;
++	CF_MEMSET(&depth_info, 0, sizeof(depth_info));
++	SDL_GPUDepthStencilTargetInfo* depth = NULL;
++	if (canvas->depth_stencil) {
++		depth_info.texture = canvas->depth_stencil;
++		depth_info.load_op = SDL_GPU_LOADOP_LOAD;
++		depth_info.store_op = SDL_GPU_STOREOP_STORE;
++		depth_info.stencil_load_op = SDL_GPU_LOADOP_LOAD;
++		depth_info.stencil_store_op = SDL_GPU_STOREOP_STORE;
++		depth_info.mip_level = (Uint8)(canvas->attached_depth ? canvas->attach_mip : 0);
++		depth_info.layer = (Uint8)(canvas->attached_depth ? canvas->attach_layer : 0);
++		depth = &depth_info;
++	}
++
++	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(g_ctx.cmd, color_infos, (Uint32)target_count, depth);
++	CF_ASSERT(pass);
++	g_ctx.active_pass = pass;
++	canvas->pass = pass;
++	canvas->clear = false;
++	return pass;
++}
++
++void cf_sdlgpu_end_imgui_render_pass()
++{
++	s_end_active_pass();
++}
++
+ void cf_sdlgpu_attach(SDL_Window* window)
+ {
+ 	SDL_ClaimWindowForGPUDevice(g_ctx.device, window);
+diff --git a/src/cute_imgui.cpp b/src/cute_imgui.cpp
+index 807ed855..daf7b84f 100644
+--- a/src/cute_imgui.cpp
++++ b/src/cute_imgui.cpp
+@@ -80,3 +80,26 @@ void cf_imgui_draw()
+ #endif
+ 	}
+ }
++
++bool cf_imgui_draw_to_canvas(CF_Canvas canvas)
++{
++	ImDrawData* draw_data = ImGui::GetDrawData();
++	if (!canvas.id || draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f) {
++		return !canvas.id;
++	}
++	if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
++		cf_gles_apply_canvas(canvas, false);
++		ImGui_ImplOpenGL3_RenderDrawData(draw_data);
++		return true;
++	}
++#ifndef CF_EMSCRIPTEN
++	SDL_GPUCommandBuffer* cmd = cf_sdlgpu_get_command_buffer();
++	ImGui_ImplSDLGPU3_PrepareDrawData(draw_data, cmd);
++	SDL_GPURenderPass* render_pass = cf_sdlgpu_begin_imgui_render_pass(canvas);
++	ImGui_ImplSDLGPU3_RenderDrawData(draw_data, cmd, render_pass);
++	cf_sdlgpu_end_imgui_render_pass();
++	return true;
++#else
++	return false;
++#endif
++}
+diff --git a/src/internal/cute_app_internal.h b/src/internal/cute_app_internal.h
+index d5f674ba..bd3278d6 100644
+--- a/src/internal/cute_app_internal.h
++++ b/src/internal/cute_app_internal.h
+@@ -160,6 +160,7 @@ struct CF_App
+ 
+ 	// Dear ImGui stuff.
+ 	bool using_imgui = false;
++	CF_Canvas imgui_render_target = { };
+ 
+ 	// Font stuff.
+ 	uint64_t font_image_id_gen = CF_FONT_ID_RANGE_LO;
+diff --git a/src/internal/cute_graphics_internal.h b/src/internal/cute_graphics_internal.h
+index 19315465..5cbcab76 100644
+--- a/src/internal/cute_graphics_internal.h
++++ b/src/internal/cute_graphics_internal.h
+@@ -257,6 +257,8 @@ bool cf_sdlgpu_wants_msl();
+ SDL_GPUDevice* cf_sdlgpu_get_device();
+ SDL_GPUTexture* cf_sdlgpu_get_swapchain_texture();
+ SDL_GPUCommandBuffer* cf_sdlgpu_get_command_buffer();
++SDL_GPURenderPass* cf_sdlgpu_begin_imgui_render_pass(CF_Canvas canvas);
++void cf_sdlgpu_end_imgui_render_pass();
+ void cf_sdlgpu_attach(SDL_Window* window);
+ bool cf_sdlgpu_supports_msaa(int sample_count);
+ void cf_sdlgpu_flush();
+@@ -277,6 +279,7 @@ void cf_gles_flush();
+ void cf_gles_gpu_sync();
+ bool cf_gles_set_present_mode(CF_PresentMode mode);
+ void cf_gles_begin_frame();
++void cf_gles_apply_canvas(CF_Canvas canvas, bool clear);
+ void cf_gles_blit_canvas(CF_Canvas canvas);
+ void cf_gles_end_frame();
+ void cf_gles_cleanup();
+diff --git a/src/internal/cute_imgui_internal.h b/src/internal/cute_imgui_internal.h
+index 5198426e..05e1a886 100644
+--- a/src/internal/cute_imgui_internal.h
++++ b/src/internal/cute_imgui_internal.h
+@@ -18,5 +18,6 @@
+ void cf_imgui_init();
+ void cf_imgui_shutdown();
+ void cf_imgui_draw();
++bool cf_imgui_draw_to_canvas(CF_Canvas canvas);
+ 
+ #endif // CF_IMGUI_INTERNAL_H
+

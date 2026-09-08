@@ -1,5 +1,5 @@
-#include "../ecs/ecs.h"
-#include "../game/generated.h"
+#include "ecs/ecs.h"
+#include "runtime/generated.h"
 
 #include <stdint.h>
 #include <stdio.h>

@@ -45,7 +45,8 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0
+              "default": 0,
+              "declaration_id": 2
             },
             {
               "id": 4,
@@ -57,7 +58,8 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": null
+              "default": null,
+              "declaration_id": 3
             }
           ]
         },
@@ -511,7 +513,7 @@
           "x": 540.0,
           "y": 180.0,
           "reference_id": 63,
-          "reference_name": "clamp(current - clamp(amount, 0, current), 0, maximum)",
+          "reference_name": "Remaining Health",
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
@@ -674,7 +676,7 @@
     {
       "id": 63,
       "kind": "function",
-      "name": "clamp(current - clamp(amount, 0, current), 0, maximum)",
+      "name": "Remaining Health",
       "breakpoints_enabled": true,
       "math_expression": "clamp(current - clamp(amount, 0, current), 0, maximum)",
       "comment_boxes": [],

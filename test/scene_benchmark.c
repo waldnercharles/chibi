@@ -1,4 +1,4 @@
-#include "../game/scene.h"
+#include "runtime/scenes/scene.h"
 
 #include <stdint.h>
 #include <stdio.h>

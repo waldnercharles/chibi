@@ -1,7 +1,7 @@
-#include "../core/array.h"
-#include "../game/generated.h"
-#include "../game/prototype.h"
 #include "../third_party/yyjson/yyjson.h"
+#include "assets/prototype.h"
+#include "runtime/generated.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <stdio.h>

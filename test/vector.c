@@ -1,9 +1,9 @@
-#include "../core/arena.h"
-#include "../core/eval.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../game/components.h"
-#include "../game/vector_nodes.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/nodes/vector_nodes.h"
+#include "graph/runtime/eval.h"
+#include "runtime/components.h"
+#include "support/arena.h"
 
 #include <assert.h>
 #include <float.h>

@@ -1,14 +1,14 @@
-#include "../game/entities.h"
+#include "runtime/behaviors/entities.h"
 
-#include "../core/arena.h"
-#include "../core/array.h"
-#include "../core/eval.h"
-#include "../core/registry.h"
-#include "../core/xalloc.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype_preview.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/eval.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
+#include "support/arena.h"
+#include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdio.h>

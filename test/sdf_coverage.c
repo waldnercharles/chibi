@@ -1,9 +1,6 @@
 /* The engine and Cute expose ABI-compatible vector types with the same name. */
-#define CF_V2 TestCuteV2
-#include <cute.h>
-#undef CF_V2
-
-#include "../app/sdf_shapes.h"
+#include "platform/cute.h"
+#include "render/sdf_shapes.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -173,6 +170,10 @@ int test_sdf_coverage(app_sdf_shapes shapes)
 {
     if (!shapes.id) {
         fprintf(stderr, "SDF coverage production shader unavailable\n");
+        return 1;
+    }
+    if (app_sdf_shapes_init().id != shapes.id) {
+        fprintf(stderr, "Repeated production SDF registration must reuse its resident shape\n");
         return 1;
     }
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));

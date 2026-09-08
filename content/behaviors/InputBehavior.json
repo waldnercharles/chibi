@@ -788,132 +788,6 @@
           ]
         },
         {
-          "id": 71,
-          "type": "Negate",
-          "x": 260.0,
-          "y": 440.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 69,
-              "name": "Value",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 70,
-              "name": "Result",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 0,
-              "default": 0.0
-            }
-          ]
-        },
-        {
-          "id": 75,
-          "type": "Atan2",
-          "x": 520.0,
-          "y": 440.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 72,
-              "name": "Y",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            },
-            {
-              "id": 73,
-              "name": "X",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 74,
-              "name": "Result",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ]
-        },
-        {
-          "id": 78,
-          "type": "Make_GameOrientation",
-          "x": 780.0,
-          "y": 440.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 76,
-              "name": "radians",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 77,
-              "name": "GameOrientation",
-              "type": 15,
-              "type_name": "GameOrientation",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
           "id": 83,
           "type": "Set_GameOrientation",
           "x": 0.0,
@@ -972,6 +846,61 @@
               "default": null
             }
           ]
+        },
+        {
+          "id": 71,
+          "type": "Call Pure Function",
+          "x": 520.0,
+          "y": 440.0,
+          "reference_id": 1,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 69,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float",
+              "declaration_id": 4
+            },
+            {
+              "id": 72,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float",
+              "declaration_id": 5
+            }
+          ],
+          "outputs": [
+            {
+              "id": 77,
+              "name": "Orientation",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation",
+              "declaration_id": 6
+            }
+          ],
+          "reference_asset": "DirectionMath",
+          "reference_name": "Direction Orientation"
         }
       ],
       "edges": [
@@ -992,23 +921,9 @@
         },
         {
           "from": 40,
-          "from_pin": 38,
-          "to": 75,
-          "to_pin": 73,
-          "kind": "data"
-        },
-        {
-          "from": 40,
           "from_pin": 39,
           "to": 55,
           "to_pin": 53,
-          "kind": "data"
-        },
-        {
-          "from": 40,
-          "from_pin": 39,
-          "to": 71,
-          "to_pin": 69,
           "kind": "data"
         },
         {
@@ -1080,20 +995,6 @@
         },
         {
           "from": 71,
-          "from_pin": 70,
-          "to": 75,
-          "to_pin": 72,
-          "kind": "data"
-        },
-        {
-          "from": 75,
-          "from_pin": 74,
-          "to": 78,
-          "to_pin": 76,
-          "kind": "data"
-        },
-        {
-          "from": 78,
           "from_pin": 77,
           "to": 83,
           "to_pin": 80,
@@ -1106,6 +1007,20 @@
           "to_pin": 41,
           "kind": "exec",
           "order": 0
+        },
+        {
+          "from": 40,
+          "from_pin": 38,
+          "to": 71,
+          "to_pin": 69,
+          "kind": "data"
+        },
+        {
+          "from": 40,
+          "from_pin": 39,
+          "to": 71,
+          "to_pin": 72,
+          "kind": "data"
         }
       ]
     },

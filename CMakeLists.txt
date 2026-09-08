@@ -4,7 +4,7 @@ project(c-blueprints LANGUAGES C CXX)
 option(CBLUEPRINT_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 
-if(APPLE)
+if(CMAKE_HOST_APPLE)
     execute_process(
         COMMAND xcrun --show-sdk-path
         OUTPUT_VARIABLE CBLUEPRINT_SDKROOT
@@ -18,7 +18,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
-set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
+option(CBLUEPRINT_DEVELOPMENT_RELOAD "Build the native reload host and application library" OFF)
+if(CBLUEPRINT_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
+else()
+    set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
+endif()
 set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
@@ -27,9 +32,17 @@ FetchContent_Declare(
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_MakeAvailable(cute_framework)
-target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32)
+# Apple's SDK uses fixed-underlying enum typedef declarations rejected by
+# upstream Clang 22. Restrict compatibility to the framework's SDK consumers.
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_compile_options(cute PRIVATE -Wno-elaborated-enum-base)
+endif()
+
+# WebGL has no base-vertex draw support; large graph canvases exceed 16-bit indices.
+# PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
+target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph)
+foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -127,45 +140,44 @@ if(CBLUEPRINT_ENABLE_CCACHE)
     endif()
 endif()
 
+# Emscripten labels its SDL3 port experimental independently of source warnings.
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_compile_options(-Wno-experimental)
+    add_link_options(-Wno-experimental)
+endif()
+
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wno-gnu-zero-variadic-macro-arguments)
+endif()
+
+# Project headers resolve from the source tree; only the reload ABI is public.
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
+include(cmake/sources.cmake)
+
 # --- embedded editor icon font ---
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-set(NERD_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf)
+function(bp_embed input output symbol)
+    add_custom_command(
+        OUTPUT "${output}.stamp"
+        BYPRODUCTS "${output}"
+        COMMAND ${CMAKE_COMMAND} "-DINPUT=${input}" "-DOUTPUT=${output}" "-DSYMBOL=${symbol}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_binary.cmake"
+        COMMAND ${CMAKE_COMMAND} -E touch "${output}.stamp"
+        DEPENDS "${input}" cmake/embed_binary.cmake cmake/generated_file.cmake
+        VERBATIM)
+    add_custom_target(generate_${symbol} DEPENDS "${output}.stamp")
+endfunction()
 set(GEN_NERD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_nerd_symbols_font.c)
-add_custom_command(
-    OUTPUT ${GEN_NERD_FONT}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-            ${NERD_FONT}
-            ${GEN_NERD_FONT}
-            editor_nerd_symbols_font
-    DEPENDS ${NERD_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-    COMMENT "Embedding Nerd Fonts symbols"
-    VERBATIM
-)
-
-set(UI_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf)
 set(GEN_UI_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_font.c)
-add_custom_command(
-    OUTPUT ${GEN_UI_FONT}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-            ${UI_FONT} ${GEN_UI_FONT} editor_ui_font
-    DEPENDS ${UI_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-    COMMENT "Embedding Inter editor typeface"
-    VERBATIM
-)
-
-set(UI_BOLD_FONT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf)
 set(GEN_UI_BOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_bold_font.c)
-add_custom_command(
-    OUTPUT ${GEN_UI_BOLD_FONT}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-            ${UI_BOLD_FONT} ${GEN_UI_BOLD_FONT} editor_ui_bold_font
-    DEPENDS ${UI_BOLD_FONT} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_binary.py
-    COMMENT "Embedding Inter bold typeface"
-    VERBATIM
-)
+bp_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf" "${GEN_NERD_FONT}" editor_nerd_symbols_font)
+bp_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf" "${GEN_UI_FONT}" editor_ui_font)
+bp_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf" "${GEN_UI_BOLD_FONT}" editor_ui_bold_font)
+
+function(bp_registry output)
+    set(OUTPUT "${output}")
+    set(PACKS "${ARGN}")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/compose_registry.cmake")
+endfunction()
 
 # --- reflect tool -----------------------------------------------------------
 # Reflection runs during the build, so it must always be a native host
@@ -182,7 +194,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CBLUEPRINT_REFLECT_COMMAND "${CBLUEPRINT_REFLECT_EXECUTABLE}")
     set(CBLUEPRINT_REFLECT_DEPENDENCY "${CBLUEPRINT_REFLECT_EXECUTABLE}")
 else()
-    add_executable(reflect reflect/reflect.c core/xalloc.c)
+    add_executable(reflect tools/reflect/reflect.c tools/reflect/collect.c tools/reflect/identity.c tools/reflect/emit.c tools/reflect/emit_function.c tools/reflect/emit_component.c src/support/xalloc.c)
     target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE_DIR})
     target_link_libraries(reflect PRIVATE ${LIBCLANG_LIBRARY})
     get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
@@ -195,17 +207,21 @@ endif()
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
 set(GEN_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/demo_registry.c)
 add_custom_command(
-    OUTPUT ${GEN_REGISTRY}
+    OUTPUT ${GEN_REGISTRY}.stamp
+    BYPRODUCTS ${GEN_REGISTRY}
     COMMAND ${CBLUEPRINT_REFLECT_COMMAND}
-            ${CMAKE_CURRENT_SOURCE_DIR}/demo/demo_nodes.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/demo_nodes.c
             ${GEN_REGISTRY}
             DEMO
+            --include ${CMAKE_CURRENT_SOURCE_DIR}/src
+            --include ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${CMAKE_COMMAND} -E touch ${GEN_REGISTRY}.stamp
     DEPENDS ${CBLUEPRINT_REFLECT_DEPENDENCY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/demo/demo_nodes.c
-            ${CMAKE_CURRENT_SOURCE_DIR}/demo/interface.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/demo/vec3.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/demo/transform.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/demo_nodes.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/interface.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/vec3.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/transform.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/annotate.h
     COMMENT "Generating the demo reflection pack"
     VERBATIM
 )
@@ -213,6 +229,8 @@ add_custom_command(
 set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
+    SHADER_PACK
+    CORE_EVENT_PACK
     DEMO_REGISTRY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
@@ -223,31 +241,19 @@ set(BASE_REGISTRY_PACKS
     CORE_SET_MAP_PACK
     CORE_STRUCT_PACK
 )
-add_custom_command(
-    OUTPUT ${BASE_REGISTRY}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-            ${BASE_REGISTRY}
-            ${BASE_REGISTRY_PACKS}
-    DEPENDS ${GEN_REGISTRY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-    COMMENT "Composing the base registry pack list"
-    VERBATIM
-)
+bp_registry("${BASE_REGISTRY}" ${BASE_REGISTRY_PACKS})
 
-# --- core static lib (compiles the generated reflection pack into it) ---
-file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c
-)
+# --- graph model and execution ---
+
 add_library(core STATIC
     ${CORE_SOURCES}
     third_party/yyjson/yyjson.c
     third_party/fmt/fmt.c
-    ${GEN_REGISTRY}
+
 )
 target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/demo
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
@@ -261,17 +267,15 @@ else()
 endif()
 
 # --- headless ECS consumer module -------------------------------------------
-file(GLOB_RECURSE ECS_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/ecs/*.c
-)
+
 add_library(ecs STATIC ${ECS_SOURCES})
 target_include_directories(ecs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ecs PUBLIC core)
 
-# --- generated game component pack ------------------------------------------
+# --- generated runtime_support component pack ------------------------------------------
 set(GAME_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/game_registry.c)
-set(GAME_COMPONENT_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/game/component_ids.tsv)
-set(GAME_REFLECT_ARGS --manifest ${GAME_COMPONENT_MANIFEST} --include ${cute_framework_SOURCE_DIR}/include)
+set(GAME_COMPONENT_MANIFEST ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/component_ids.tsv)
+set(GAME_REFLECT_ARGS --include ${CMAKE_CURRENT_SOURCE_DIR}/src --include ${CMAKE_CURRENT_SOURCE_DIR} --manifest ${GAME_COMPONENT_MANIFEST} --include ${cute_framework_SOURCE_DIR}/include)
 if(LIBCLANG_RESOURCE_INCLUDE_DIR)
     list(APPEND GAME_REFLECT_ARGS --include ${LIBCLANG_RESOURCE_INCLUDE_DIR})
 endif()
@@ -279,70 +283,75 @@ if(CBLUEPRINT_SDKROOT)
     list(APPEND GAME_REFLECT_ARGS --sysroot ${CBLUEPRINT_SDKROOT})
 endif()
 add_custom_command(
-    OUTPUT ${GAME_REGISTRY}
+    OUTPUT ${GAME_REGISTRY}.stamp
+    BYPRODUCTS ${GAME_REGISTRY}
     COMMAND ${CBLUEPRINT_REFLECT_COMMAND}
-            ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/game_nodes.c
             ${GAME_REGISTRY}
             GAME
             ${GAME_REFLECT_ARGS}
+    COMMAND ${CMAKE_COMMAND} -E touch ${GAME_REGISTRY}.stamp
     DEPENDS ${CBLUEPRINT_REFLECT_DEPENDENCY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/game/game_nodes.c
-            ${CMAKE_CURRENT_SOURCE_DIR}/game/interface.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/game/components.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/game/authored_data_types.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/game_nodes.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/interface.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/components.h
             ${GAME_COMPONENT_MANIFEST}
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/annotate.h
-    COMMENT "Generating the game reflection pack"
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/annotate.h
+    COMMENT "Generating the built-in component reflection pack"
     VERBATIM
 )
-add_library(game STATIC game/material.c game/sdf_motion.c game/appearance_geometry.c game/vector_nodes.c game/particles.c game/particle_nodes.c game/entities.c game/access.c game/system.c game/query.c game/query_editor.c game/system_document.c game/prototype.c game/prototype_preview.c game/behavior.c game/live.c game/hot_reload.c game/scene.c game/scene_document.c game/authored_data.c game/gameplay.c ${GAME_REGISTRY})
-target_include_directories(game PUBLIC
+add_custom_target(generate_runtime_registry DEPENDS ${GAME_REGISTRY}.stamp)
+add_library(runtime_support STATIC ${RUNTIME_SUPPORT_SOURCES} ${GAME_REGISTRY})
+add_dependencies(runtime_support generate_runtime_registry)
+target_include_directories(runtime_support PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/game
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime
 )
-target_link_libraries(game PUBLIC ecs core cute)
+target_link_libraries(runtime_support PUBLIC ecs core cute)
 
 # --- material rasterization and radiance transport --------------------------
-add_library(cblueprint_render STATIC render/material_raster.c render/radiance.c)
+add_library(cblueprint_render STATIC src/render/material_raster.c src/render/radiance.c)
+target_compile_definitions(cblueprint_render PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_include_directories(cblueprint_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(cblueprint_render PUBLIC core cute)
+target_link_libraries(cblueprint_render PUBLIC runtime_support core cute)
 target_compile_options(cblueprint_render PRIVATE -Wno-macro-redefined)
-set_source_files_properties(app/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
+set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
 
 # --- host frame loop and optional viewport surface --------------------------
-file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.c
-)
+
 add_library(engine STATIC ${ENGINE_SOURCES})
 target_include_directories(engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(engine PUBLIC game ecs core cute)
+target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_definitions(engine PRIVATE ENGINE_CUTE_AVAILABLE=1 ENGINE_IMGUI_AVAILABLE=1)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 
 # --- demo nodes (real TUs; interface.h declares what Behavior Assets sees) ---
-# demo/demo_nodes.c is reflect input, not a compiled TU, so it stays explicit.
+# The reflection fixture input is parsed, not compiled as a translation unit.
+add_custom_target(generate_demo_registry DEPENDS ${GEN_REGISTRY}.stamp)
 add_library(demo STATIC
-    demo/vec3.c
-    demo/math.c
+    ${GEN_REGISTRY}
+    test/fixtures/reflection/vec3.c
+    test/fixtures/reflection/math.c
 )
+add_dependencies(demo generate_demo_registry)
 target_include_directories(demo PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/demo
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection
 )
 
 # --- editor canvas (graph model + native dcimgui widget) ---
-file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
-)
+
 add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
+add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(editor PRIVATE core cute)
+target_link_libraries(editor PRIVATE runtime_support core cute)
 
 # --- app: the minimal ECS movement editor -------------------------------
-# Legacy scene/behavior sources remain in regression targets below, but the
-# shipped app does not compile or expose them.
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
 set(APP_REGISTRY_PACKS
+    SHADER_BINDING_PACK
+    SHADER_PACK
+    CORE_EVENT_PACK
     GAME_ENTITY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
@@ -353,85 +362,108 @@ set(APP_REGISTRY_PACKS
     CORE_SET_MAP_PACK
     CORE_STRUCT_PACK
 )
-add_custom_command(
-    OUTPUT ${APP_REGISTRY}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-            ${APP_REGISTRY}
-            ${APP_REGISTRY_PACKS}
-            GAME_REGISTRY_PACK
-    DEPENDS ${GAME_REGISTRY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-    COMMENT "Composing the app registry pack list"
-    VERBATIM
-)
-file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
-)
-list(REMOVE_ITEM APP_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/demo_graph.c
-)
-add_executable(app ${APP_SOURCES} ${APP_REGISTRY})
-target_compile_definitions(app PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/shaders")
-target_link_libraries(app PRIVATE cblueprint_render editor engine game cute)
+bp_registry("${APP_REGISTRY}" ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+
+
+function(bp_watch_platform target)
+    target_sources(${target} PRIVATE src/host/process.c src/host/watch.c src/support/xalloc.c)
+    find_package(Threads REQUIRED)
+    target_link_libraries(${target} PRIVATE Threads::Threads)
+    if(APPLE)
+        target_sources(${target} PRIVATE src/host/watch_macos.c)
+        target_link_libraries(${target} PRIVATE "-framework CoreServices")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_sources(${target} PRIVATE src/host/watch_linux.c)
+    else()
+        message(FATAL_ERROR "Development source watching supports macOS and Linux")
+    endif()
+endfunction()
+
+set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
+add_executable(app ${HOST_SOURCES} ${APP_SOURCES} ${APP_REGISTRY})
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(app PRIVATE BP_STATIC_APPLICATION=1)
+target_link_libraries(app PRIVATE ${CMAKE_DL_LIBS})
+if(CBLUEPRINT_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    foreach(project_target core ecs runtime_support engine editor cblueprint_render)
+        set_target_properties(${project_target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+    endforeach()
+    if(TARGET cblueprint_sljit)
+        set_target_properties(cblueprint_sljit PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+    endif()
+    add_library(blueprints_application SHARED ${APP_SOURCES} ${APP_REGISTRY})
+    target_include_directories(blueprints_application PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_definitions(blueprints_application PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+    target_link_libraries(blueprints_application PRIVATE cblueprint_render editor engine runtime_support cute)
+    set_target_properties(blueprints_application PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
+    add_executable(blueprints_host ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
+    bp_watch_platform(blueprints_host)
+    target_compile_definitions(blueprints_host PRIVATE BP_DEVELOPMENT_HOST=1)
+    target_include_directories(blueprints_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
+    target_include_directories(blueprints_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(blueprints_host PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+    target_link_libraries(blueprints_host PRIVATE cute ${CMAKE_DL_LIBS})
+    set_target_properties(blueprints_host PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+target_compile_definitions(app PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(app PRIVATE cblueprint_render editor engine runtime_support cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")
     target_link_options(app PRIVATE
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
 endif()
 
-# --- test registry: core, game, and demo packs for the consolidated suite ---
+# --- test registry: core, runtime_support, and demo packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-add_custom_command(
-    OUTPUT ${TEST_REGISTRY}
-    COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-            ${TEST_REGISTRY}
-            DEMO_REGISTRY_PACK
-            GAME_ENTITY_PACK
-            CORE_EXTRA_PACK
-            CORE_FLOW_PACK
-            CORE_ARRAY_PACK
-            CORE_STATE_PACK
-            CORE_SWITCH_PACK
-            CORE_REROUTE_PACK
-            CORE_SET_MAP_PACK
-            CORE_STRUCT_PACK
-            GAME_REGISTRY_PACK
-    DEPENDS ${GAME_REGISTRY}
-            ${GEN_REGISTRY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/compose_registry.py
-    COMMENT "Composing the test registry pack list"
-    VERBATIM
-)
+bp_registry("${TEST_REGISTRY}" DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
+file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
+    test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
+    ${TEST_CONCEPT_SOURCES}
     test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
-    test/ui_integration.c
+    test/ui_native.c
+    test/render_checks.c
+    test/shader_ui.c
     test/ui_keyboard.c
+    test/editor_checkpoint.c
     test/gameplay_keyboard.c
     test/math_expression.c
     test/behavior_math.c
+    test/shader_graph.c
+    test/typed_events.c
     test/navigation_runtime.c
-    app/screenshot.c
-    app/authoring_session.c
-    app/behavior_fixtures.c
-    app/demo_graph.c
-    app/scene_authoring.c
-    app/scene_history.c
-    app/scene_retention.c
-    app/prototype_still.c
-    app/scene_navigation.c
-    app/scene_debug.c
-    app/gameplay_input.c
+    src/render/screenshot.c
+    src/render/shader_fragment.c
+    src/assets/behavior_loader.c
+    src/editor/workspace/scene_authoring.c
+    src/editor/workspace/scene_actors.c
+    src/editor/workspace/scene_runtime.c
+    src/editor/workspace/scene_viewport.c
+    src/editor/documents/scene_document.c
+    src/editor/documents/scene_documents.c
+    src/editor/workspace/scene_workspace.c
+    src/editor/documents/scene_prototypes.c
+    src/editor/workspace/scene_checkpoint.c
+    src/editor/panels/scene_properties.c
+    src/editor/panels/prototype_inspector.c
+    src/editor/panels/scene_inspector.c
+    src/editor/panels/scene_navigator.c
+    src/editor/documents/scene_history.c
+    src/editor/documents/scene_retention.c
+    src/editor/workspace/prototype_still.c
+    src/editor/workspace/scene_navigation.c
+    src/editor/workspace/scene_debug.c
+    src/editor/workspace/gameplay_input.c
     test/scene_history.c
+    test/scene_checkpoint.c
     test/appearance_geometry.c
     test/retained_components.c
-    test/authored_data.c
     test/editor_flow.c
     test/component_fields.c
     test/scene_navigation.c
@@ -440,32 +472,23 @@ add_executable(test_suite
     test/movement_input.c
     test/movement_trail.c
     test/sdf_motion.c
-    app/sdf_shapes.c
-    app/scene_renderer.c
+    src/render/sdf_shapes.c
+    src/render/scene_renderer.c
     test/material.c
     test/wave.c
     test/radiance.c
     test/interior_border.c
     test/sdf_coverage.c
     test/draw_backend.cpp
-    app/stacktrace.c
-    app/web_loop.c
-    editor/preview_gate.c
-    demo/vec3.c
-    demo/math.c
+    src/host/stacktrace.c
+    src/editor/graph/preview_gate.c
+    test/fixtures/reflection/vec3.c
+    test/fixtures/reflection/math.c
     ${TEST_REGISTRY}
 )
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(test_suite PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/shaders")
-target_link_libraries(test_suite PRIVATE engine game ecs demo editor cblueprint_render)
-if(TARGET reflect)
-    add_custom_target(test_reflect_identity
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/reflect/test_identity.py $<TARGET_FILE:reflect>
-        DEPENDS reflect
-        VERBATIM
-    )
-    add_dependencies(test_suite test_reflect_identity)
-endif()
+target_compile_definitions(test_suite PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(test_suite PRIVATE engine runtime_support ecs demo editor cblueprint_render)
 if(NOT CBLUEPRINT_ENABLE_PERFORMANCE_TESTS)
     target_compile_definitions(test_suite PRIVATE CBLUEPRINT_SKIP_PERFORMANCE_TESTS=1)
 endif()
@@ -477,50 +500,34 @@ target_link_libraries(bench_activation PRIVATE core demo)
 
 add_executable(scene_benchmark test/scene_benchmark.c ${BASE_REGISTRY})
 target_include_directories(scene_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(scene_benchmark PRIVATE game demo)
+target_link_libraries(scene_benchmark PRIVATE runtime_support demo)
 
 add_executable(system_benchmark test/system_benchmark.c ${APP_REGISTRY})
 target_include_directories(system_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(system_benchmark PRIVATE game ecs)
+target_link_libraries(system_benchmark PRIVATE runtime_support ecs)
 
 add_executable(query_benchmark test/query_benchmark.c ${APP_REGISTRY})
 target_include_directories(query_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(query_benchmark PRIVATE game ecs)
+target_link_libraries(query_benchmark PRIVATE runtime_support ecs)
 
 set_target_properties(query_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(contact_benchmark test/contact_benchmark.c ${APP_REGISTRY})
-target_link_libraries(contact_benchmark PRIVATE game ecs)
+target_link_libraries(contact_benchmark PRIVATE runtime_support ecs)
 set_target_properties(contact_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 
-# --- clang-format (format runs before every build target) -------------------
+# --- explicit formatting checks -------------------------------------------
 # The web toolchain's clang-format may not understand the project's native
 # configuration. Formatting is a native developer check, not a web dependency.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   find_program(CLANG_FORMAT clang-format)
 endif()
 if(CLANG_FORMAT)
-  file(GLOB FORMAT_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/demo/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/demo/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/reflect/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/reflect/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/app/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/editor/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/ecs/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/ecs/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/game/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/game/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/render/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/render/*.h
+  file(GLOB_RECURSE FORMAT_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/*.c ${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/*.c ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h
   )
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} --style=file -i ${FORMAT_SOURCES}
@@ -530,21 +537,6 @@ if(CLANG_FORMAT)
     COMMAND ${CLANG_FORMAT} --dry-run --Werror --style=file ${FORMAT_SOURCES}
     COMMENT "Checking C source formatting"
     VERBATIM)
-  add_dependencies(core format)
-  add_dependencies(ecs format)
-  add_dependencies(game format)
-  add_dependencies(engine format)
-  add_dependencies(demo format)
-  add_dependencies(editor format)
-  add_dependencies(app format)
-  add_dependencies(test_suite format)
-  add_dependencies(bench_activation format)
-  add_dependencies(scene_benchmark format)
-  add_dependencies(system_benchmark format)
-  add_dependencies(query_benchmark format)
-  if(TARGET reflect)
-    add_dependencies(reflect format)
-  endif()
 endif()
 
 file(
@@ -553,3 +545,60 @@ file(
         "${CMAKE_SOURCE_DIR}/compile_commands.json"
     SYMBOLIC
 )
+
+# Exercise the actual native loader with separately compiled generations.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    foreach(fixture reload_one reload_two reload_bad reload_reject reload_checkpoint)
+        add_library(${fixture} MODULE test/reload/fixture.c)
+        target_include_directories(${fixture} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        set_target_properties(${fixture} PROPERTIES C_VISIBILITY_PRESET hidden)
+    endforeach()
+    add_library(reload_no_entry MODULE test/reload/no_entry.c)
+    set_target_properties(reload_no_entry PROPERTIES C_VISIBILITY_PRESET hidden)
+    target_compile_definitions(reload_checkpoint PRIVATE FAIL_CHECKPOINT=1)
+    target_compile_definitions(reload_two PRIVATE GENERATION=2)
+    target_compile_definitions(reload_bad PRIVATE BAD_ABI=1)
+    target_compile_definitions(reload_reject PRIVATE REJECT_IMPORT=1)
+    add_executable(test_reload test/reload/loader.c src/host/module.c src/host/state_file.c)
+    target_include_directories(test_reload PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(test_reload PRIVATE ${CMAKE_DL_LIBS})
+    add_custom_target(check-reload
+        COMMAND test_reload $<TARGET_FILE:reload_one> $<TARGET_FILE:reload_two>
+            $<TARGET_FILE:reload_bad> $<TARGET_FILE:reload_reject>
+            $<TARGET_FILE:reload_no_entry> $<TARGET_FILE:reload_checkpoint>
+        DEPENDS test_reload reload_one reload_two reload_bad reload_reject reload_no_entry reload_checkpoint
+        VERBATIM)
+endif()
+
+if(TARGET blueprints_host)
+    include(cmake/dev_config.cmake)
+endif()
+
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_executable(test_dev test/dev/main.c test/dev/watch.c test/dev/process.c test/dev/controller.c
+        src/host/dev.c src/host/state_file.c third_party/yyjson/yyjson.c)
+    target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
+    bp_watch_platform(test_dev)
+    add_custom_target(check-dev COMMAND test_dev DEPENDS test_dev VERBATIM)
+    add_executable(concurrent_runner test/dev/concurrent.c src/host/process.c)
+    add_custom_target(check-generation
+        COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_SOURCE_DIR}"
+            "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/generation"
+            "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
+            -P "${CMAKE_SOURCE_DIR}/cmake/tests/generation.cmake"
+        DEPENDS concurrent_runner VERBATIM)
+    add_custom_target(check-reflect
+        COMMAND ${CMAKE_COMMAND} "-DREFLECT=$<TARGET_FILE:reflect>"
+            "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/identity"
+            "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
+            -P "${CMAKE_SOURCE_DIR}/cmake/tests/identity.cmake"
+        DEPENDS reflect concurrent_runner VERBATIM)
+endif()
+
+if(TARGET blueprints_host)
+    add_executable(test_dev_smoke test/dev/smoke.c src/host/process.c)
+    add_custom_target(check-dev-smoke
+        COMMAND test_dev_smoke "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_COMMAND}" controller
+        COMMAND test_dev_smoke "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_COMMAND}" editor
+        DEPENDS test_dev_smoke blueprints_host blueprints_application VERBATIM)
+endif()

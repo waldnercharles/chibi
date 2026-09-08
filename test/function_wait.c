@@ -1,9 +1,9 @@
-#include "../core/array.h"
-#include "../core/behavior_asset.h"
-#include "../core/compile.h"
-#include "../core/instance.h"
-#include "../core/registry.h"
-#include "../game/components.h"
+#include "graph/compiler/compile.h"
+#include "graph/model/behavior_asset.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/instance.h"
+#include "runtime/components.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <stdio.h>

@@ -1442,132 +1442,6 @@
           ]
         },
         {
-          "id": 114,
-          "type": "Negate",
-          "x": 260.0,
-          "y": 440.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 112,
-              "name": "Value",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 113,
-              "name": "Result",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 0,
-              "default": 0.0
-            }
-          ]
-        },
-        {
-          "id": 118,
-          "type": "Atan2",
-          "x": 520.0,
-          "y": 440.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 115,
-              "name": "Y",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            },
-            {
-              "id": 116,
-              "name": "X",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 117,
-              "name": "Result",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ]
-        },
-        {
-          "id": 121,
-          "type": "Make_GameOrientation",
-          "x": 780.0,
-          "y": 440.0,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 119,
-              "name": "radians",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 120,
-              "name": "GameOrientation",
-              "type": 15,
-              "type_name": "GameOrientation",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
           "id": 126,
           "type": "Set_GameOrientation",
           "x": 0.0,
@@ -1633,7 +1507,7 @@
           "x": 460.0,
           "y": 400.0,
           "reference_id": 132,
-          "reference_name": "abs(x) + abs(y)",
+          "reference_name": "Direction Magnitude",
           "disabled": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
@@ -1677,6 +1551,61 @@
               "default": 0.0
             }
           ]
+        },
+        {
+          "id": 114,
+          "type": "Call Pure Function",
+          "x": 520.0,
+          "y": 440.0,
+          "reference_id": 1,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 112,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float",
+              "declaration_id": 4
+            },
+            {
+              "id": 115,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float",
+              "declaration_id": 5
+            }
+          ],
+          "outputs": [
+            {
+              "id": 120,
+              "name": "Orientation",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation",
+              "declaration_id": 6
+            }
+          ],
+          "reference_asset": "DirectionMath",
+          "reference_name": "Direction Orientation"
         }
       ],
       "edges": [
@@ -1691,22 +1620,8 @@
         {
           "from": 83,
           "from_pin": 81,
-          "to": 118,
-          "to_pin": 116,
-          "kind": "data"
-        },
-        {
-          "from": 83,
-          "from_pin": 81,
           "to": 150,
           "to_pin": 151,
-          "kind": "data"
-        },
-        {
-          "from": 83,
-          "from_pin": 82,
-          "to": 114,
-          "to_pin": 112,
           "kind": "data"
         },
         {
@@ -1764,20 +1679,6 @@
         },
         {
           "from": 114,
-          "from_pin": 113,
-          "to": 118,
-          "to_pin": 115,
-          "kind": "data"
-        },
-        {
-          "from": 118,
-          "from_pin": 117,
-          "to": 121,
-          "to_pin": 119,
-          "kind": "data"
-        },
-        {
-          "from": 121,
           "from_pin": 120,
           "to": 126,
           "to_pin": 123,
@@ -1797,13 +1698,27 @@
           "to": 106,
           "to_pin": 104,
           "kind": "data"
+        },
+        {
+          "from": 83,
+          "from_pin": 81,
+          "to": 114,
+          "to_pin": 112,
+          "kind": "data"
+        },
+        {
+          "from": 83,
+          "from_pin": 82,
+          "to": 114,
+          "to_pin": 115,
+          "kind": "data"
         }
       ]
     },
     {
       "id": 132,
       "kind": "function",
-      "name": "abs(x) + abs(y)",
+      "name": "Direction Magnitude",
       "breakpoints_enabled": true,
       "math_expression": "abs(x) + abs(y)",
       "comment_boxes": [],

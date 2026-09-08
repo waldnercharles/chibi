@@ -1,8 +1,8 @@
-#include "../app/scene_navigation.h"
+#include "editor/workspace/scene_navigation.h"
 
-#include "../core/array.h"
-#include "../core/registry.h"
-#include "../core/serialize.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -134,8 +134,47 @@ static void nested_callers_survive_workspace_visits()
     puts("scene navigation PASS: nested caller ancestry, selection and views survive visits; deleted callers trim safely and deleted targets preserve the active graph");
 }
 
+static void checkpoint_navigation()
+{
+    scene_navigation *source = scene_navigation_new(),
+                     *restored = scene_navigation_new();
+    uint64_t node = 9;
+    ecs_entity old = { .slot = 4, .generation = 1 },
+               replacement = { .slot = 6, .generation = 2 };
+    scene_location first = {
+        .kind = 2,
+        .document = "First",
+        .entity = old,
+        .camera = { 10, 20, 300, 200 },
+        .graph = { .graph_id = 5,
+                   .nodes = &node,
+                   .node_count = 1,
+                   .pan_x = 123,
+                   .zoom = 1,
+                   .caller_count = 1,
+                   .callers = { { .graph_id = 2, .node_id = 3, .zoom = 0.5f } } }
+    };
+    scene_navigation_record(source, &first);
+    first.document = "Second";
+    scene_navigation_record(source, &first);
+    char *json = scene_navigation_checkpoint(source);
+    uint64_t before = ecs_entity_to_u64(old), after = ecs_entity_to_u64(replacement);
+    assert(scene_navigation_restore_checkpoint(restored, json, &before, &after, 1));
+    const scene_location *location = scene_navigation_step(restored, false);
+    assert(location && !strcmp(location->document, "First"));
+    assert(ecs_entity_to_u64(location->entity) == after);
+    assert(location->graph.nodes[0] == 9 && location->graph.callers[0].node_id == 3);
+    assert(location->camera.center_x == 10 && location->graph.pan_x == 123);
+    assert(!scene_navigation_restore_checkpoint(restored, "{}", NULL, NULL, 0));
+    assert(scene_navigation_can_move(restored, true));
+    free(json);
+    scene_navigation_free(source);
+    scene_navigation_free(restored);
+}
+
 void test_scene_navigation()
 {
+    checkpoint_navigation();
     reload_keeps_document_identity();
     nested_callers_survive_workspace_visits();
     scene_navigation *history = scene_navigation_new();

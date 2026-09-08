@@ -1,5 +1,5 @@
-#include "../game/generated.h"
-#include "../game/live.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/generated.h"
 
 #include <stdio.h>
 #include <stdlib.h>

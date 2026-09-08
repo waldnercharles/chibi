@@ -1,7 +1,0 @@
-{
-  "version": 1,
-  "name": "Arena",
-  "kind": "arena",
-  "data": { "width": 640, "height": 360, "spawn_radius": 280 },
-  "composition": ["Player", "Enemy"]
-}

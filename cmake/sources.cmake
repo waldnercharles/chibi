@@ -1,0 +1,145 @@
+# Explicit compilation ownership, independent of conceptual folder boundaries.
+
+set(CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow_visual.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/compile.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/graph_ir.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/graph_jit_sljit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/program.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/validate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/extract.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/events.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/library.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_adapter.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_clipboard.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_write.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/pin_conv.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/pin_fmt.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/registry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/type.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/array_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/compare_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/const_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/conv_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/flow_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/fmt_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_expression.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/operator.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/reroute_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/set_map_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/state_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/struct_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/switch_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/eval.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/flow.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/flow_host.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/flow_watch.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/instance.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/runtime.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/value_array.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
+)
+
+set(ECS_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ecs/ecs.c
+)
+
+set(ENGINE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/engine.c
+)
+
+set(EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/commands.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/mutations.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/navigation.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/preview.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/arrange.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/camera.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/eval_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/fonts.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/presentation.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/preview_gate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/render.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/search.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/selection.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/toast.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/outline.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/transport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/values.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/choices.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/color.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/flags.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c
+)
+
+set(APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/behavior_loader.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_documents.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_history.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_prototypes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_retention.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/prototype_inspector.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_inspector.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_navigator.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/gameplay_input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/prototype_still.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_actors.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_authoring.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_checkpoint.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_debug.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_navigation.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_runtime.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_viewport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_workspace.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/scene_renderer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_fragment.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/screenshot.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_shapes.c
+)
+
+set(RUNTIME_SUPPORT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/particle_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/vector_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/appearance_geometry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/material.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_catalog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/particles.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_motion.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/behavior.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entities.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/live.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/gameplay.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/prototype_preview.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/scene.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/access.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/query.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/system.c
+)

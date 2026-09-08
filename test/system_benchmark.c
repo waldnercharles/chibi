@@ -1,8 +1,8 @@
-#include "../core/registry.h"
-#include "../core/serialize.h"
-#include "../core/text_file.h"
-#include "../game/generated.h"
-#include "../game/system.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "runtime/generated.h"
+#include "runtime/systems/system.h"
+#include "support/text_file.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
         return 1;
     }
     registry_validate();
-    char *json = text_file_read("content/systems/MovementSystem.json");
+    char *json = text_file_read("test/fixtures/systems/MovementSystem.json");
     behavior_asset *definition = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     ecs_world *world = ecs_world_new();

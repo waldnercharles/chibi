@@ -1,7 +1,7 @@
-#include "../app/scene_history.h"
+#include "editor/documents/scene_history.h"
 
-#include "../game/generated.h"
-#include "../game/prototype.h"
+#include "assets/prototype.h"
+#include "runtime/generated.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -490,8 +490,87 @@ static void grouped_history()
     puts("scene groups PASS: explicit scope, stable replay IDs, rollback and empty/no-op preservation");
 }
 
+static void checkpoint_history()
+{
+    ecs_world *world = ecs_world_new();
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
+    ecs_entity old = add_entity(world, (GameTransform){ 1, 2 });
+    ecs_entity replacement = add_entity(world, (GameTransform){ 3, 2 });
+    scene_history *source = scene_history_new(), *restored = scene_history_new();
+    assert(scene_history_push(source, old, (GameTransform){ 1, 2 }, (GameTransform){ 3, 2 }));
+    scene_history_begin_group(source);
+    assert(scene_history_push_field(
+        source,
+        old,
+        GAME_COMPONENT_GameTransform.id,
+        0,
+        (pin_value){ .type = PIN_F32, .f = 3 },
+        (pin_value){ .type = PIN_F32, .f = 5 }
+    ));
+    scene_history_end_group(source);
+    GAME_GameTransform_get(world, replacement)->x = 5;
+    char *json = scene_history_checkpoint(source);
+    uint64_t before = ecs_entity_to_u64(old), after = ecs_entity_to_u64(replacement);
+    assert(scene_history_restore_checkpoint(restored, json, &before, &after, 1));
+    assert(scene_history_group_id(restored, false) != 0);
+    assert(scene_history_undo(restored, world, NULL) == 1);
+    expect_position(world, replacement, (GameTransform){ 3, 2 });
+    assert(scene_history_undo(restored, world, NULL) == 1);
+    expect_position(world, replacement, (GameTransform){ 1, 2 });
+    expect_position(world, old, (GameTransform){ 1, 2 });
+    assert(!scene_history_restore_checkpoint(restored, "{}", NULL, NULL, 0));
+    assert(scene_history_can_redo(restored));
+    free(json);
+    json = scene_history_checkpoint(restored);
+    assert(scene_history_restore_checkpoint(source, json, &after, &after, 1));
+    assert(scene_history_redo(source, world, NULL) == 1);
+    assert(scene_history_redo(source, world, NULL) == 1);
+    expect_position(world, replacement, (GameTransform){ 5, 2 });
+    free(json);
+    scene_history_free(source);
+    scene_history_free(restored);
+    ecs_world_free(world);
+    puts("scene checkpoint PASS: reflected field history, grouped Undo, Redo, entity remapping, invalid import preservation");
+}
+
+static void string_history()
+{
+    ecs_world *world = ecs_world_new();
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(world);
+    assert(GAME_GameShader_add(world, entity, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    char before[] = "PulseRing", after[] = "OutlineGradient";
+    pin_value first = { .type = PIN_STR, .str = before };
+    pin_value second = { .type = PIN_STR, .str = after };
+    assert(
+        ecs_component_write_field(world, entity, GAME_COMPONENT_GameShader.id, 0, second) == ECS_OK
+    );
+    scene_history *source = scene_history_new(), *restored = scene_history_new();
+    assert(
+        scene_history_push_field(source, entity, GAME_COMPONENT_GameShader.id, 0, first, second)
+    );
+    memset(before, 'x', strlen(before));
+    memset(after, 'x', strlen(after));
+    assert(strcmp(GAME_GameShader_get(world, entity)->material, "OutlineGradient") == 0);
+    char *json = scene_history_checkpoint(source);
+    uint64_t handle = ecs_entity_to_u64(entity);
+    assert(scene_history_restore_checkpoint(restored, json, &handle, &handle, 1));
+    free(json);
+    scene_history_free(source);
+    assert(scene_history_undo(restored, world, NULL) == 1);
+    assert(strcmp(GAME_GameShader_get(world, entity)->material, "PulseRing") == 0);
+    assert(scene_history_redo(restored, world, NULL) == 1);
+    scene_history_free(restored);
+    assert(strcmp(GAME_GameShader_get(world, entity)->material, "OutlineGradient") == 0);
+    ecs_world_free(world);
+    puts("scene string history PASS: owned component values, checkpoint and Undo/Redo lifetimes");
+}
+
 void test_scene_history()
 {
+    string_history();
+    checkpoint_history();
     grouped_history();
     component_history();
     scalar_history();

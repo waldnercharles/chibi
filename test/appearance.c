@@ -1,9 +1,9 @@
-#include "../core/array.h"
-#include "../core/xalloc.h"
-#include "../engine/engine.h"
-#include "../game/generated.h"
-#include "../game/live.h"
-#include "../game/prototype_preview.h"
+#include "runtime/behaviors/live.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
+#include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdio.h>

@@ -337,6 +337,18 @@ void write_component_manifest()
     publish_generated(file, temporary, g_manifest_path);
 }
 
+void dispose_component_manifest()
+{
+    for (int i = 0; i < acount(g_component_identities); i++) {
+        free(g_component_identities[i].file);
+        free(g_component_identities[i].key);
+        free(g_component_identities[i].name);
+        free(g_component_identities[i].aliases);
+    }
+    afree(g_component_identities);
+    g_manifest_path = NULL;
+}
+
 uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)
 {
     const unsigned char *bytes = (const unsigned char *)data;

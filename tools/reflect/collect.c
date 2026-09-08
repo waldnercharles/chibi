@@ -377,3 +377,52 @@ void reflect_collect(CXTranslationUnit tu, collect_ctx *ctx)
 {
     clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, ctx);
 }
+
+static void free_strings(char **strings)
+{
+    for (int i = 0; i < acount(strings); i++) {
+        free(strings[i]);
+    }
+    afree(strings);
+}
+
+static void dispose_fields(field_info *fields)
+{
+    for (int i = 0; i < acount(fields); i++) {
+        free(fields[i].name);
+        free(fields[i].spelling);
+    }
+    afree(fields);
+}
+
+void reflect_dispose(collect_ctx *ctx)
+{
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        struct_info *s = &ctx->structs[i];
+        free(s->name);
+        free(s->file);
+        free(s->alias_of);
+        dispose_fields(s->fields);
+    }
+    for (int i = 0; i < acount(ctx->fns); i++) {
+        fn_info *f = &ctx->fns[i];
+        free(f->name);
+        free(f->ret);
+        free_strings(f->pname);
+        free_strings(f->ptype);
+        afree(f->ppin);
+        afree(f->pout);
+        afree(f->pservice);
+        free_strings(f->pservice_type);
+        free_strings(f->pout_type);
+        free_strings(f->reads);
+        free_strings(f->writes);
+        free(f->operator_name);
+        free(f->jit_kind);
+        free(f->conversion_from);
+        free(f->conversion_to);
+    }
+    afree(ctx->structs);
+    afree(ctx->fns);
+    g_collection = NULL;
+}

@@ -201,34 +201,27 @@ int main(int argc, char **argv)
     load_component_manifest(manifest);
     reflect_collect(tu, &ctx);
     if (g_failed) {
-        clang_disposeTranslationUnit(tu);
-        clang_disposeIndex(idx);
-        return 1;
+        goto cleanup;
     }
     g_collection = &ctx;
     record_new_components(&ctx);
     if (g_failed) {
-        clang_disposeTranslationUnit(tu);
-        clang_disposeIndex(idx);
-        return 1;
+        goto cleanup;
     }
 
-    char *temporary;
+    char *temporary = NULL;
     FILE *out = begin_generated(output, &temporary);
     if (!out) {
         perror("reflect: fopen");
-        return 1;
+        goto cleanup;
     }
     emit(out, &ctx);
     if (!ferror(out) && fflush(out) == 0) {
         write_component_manifest();
     }
     publish_generated(out, temporary, output);
-    if (manifest_lock >= 0) {
-        close(manifest_lock);
-    }
     if (g_failed) {
-        return 1;
+        goto cleanup;
     }
 
     printf("reflect: %d struct(s), %d function(s) -> %s\n", acount(ctx.structs), acount(ctx.fns), output);
@@ -248,7 +241,22 @@ int main(int argc, char **argv)
         printf(") -> %s\n", f->ret);
     }
 
+    reflect_dispose(&ctx);
+    dispose_component_manifest();
     clang_disposeTranslationUnit(tu);
     clang_disposeIndex(idx);
+    if (manifest_lock >= 0) {
+        close(manifest_lock);
+    }
     return 0;
+
+cleanup:
+    if (manifest_lock >= 0) {
+        close(manifest_lock);
+    }
+    clang_disposeTranslationUnit(tu);
+    clang_disposeIndex(idx);
+    reflect_dispose(&ctx);
+    dispose_component_manifest();
+    return 1;
 }

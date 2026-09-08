@@ -72,6 +72,7 @@ const char *component_key(const struct_info *s);
 void load_component_manifest(const char *path);
 void record_new_components(const collect_ctx *ctx);
 void write_component_manifest();
+void dispose_component_manifest();
 uint64_t hash_bytes(uint64_t hash, const void *data, size_t size);
 uint64_t hash_string(uint64_t hash, const char *text);
 const char *pin_member(const char *pin);
@@ -93,5 +94,6 @@ void emit_component_accessors(FILE *out, const struct_info *s);
 void emit(FILE *out, const collect_ctx *ctx);
 
 void reflect_collect(CXTranslationUnit tu, collect_ctx *ctx);
+void reflect_dispose(collect_ctx *ctx);
 
 #endif

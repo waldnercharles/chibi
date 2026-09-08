@@ -85,10 +85,6 @@ TEST_CASE(all_checks)
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
     test_check(test_gameplay_keyboard(), "gameplay keyboard navigation and text editing capture");
 
-    if (!fails) {
-        fails += ui_integration_run(program_name) != 0;
-    }
-
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
     return fails == 0;
@@ -97,9 +93,13 @@ TEST_CASE(all_checks)
 int main(int argc, char **argv)
 {
     program_name = argc ? argv[0] : "test_suite";
-    if (argc > 1 && strcmp(argv[1], "--ui-integration") == 0) {
+    if (argc > 1 && strcmp(argv[1], "--ui-native") == 0) {
         registry_validate();
-        return ui_integration_run(program_name);
+        return ui_native_run(program_name);
+    }
+    if (argc > 1 && strcmp(argv[1], "--render-checks") == 0) {
+        registry_validate();
+        return render_checks_run(program_name);
     }
     if (argc > 1 && strcmp(argv[1], "--editor-graph") == 0) {
         registry_validate();

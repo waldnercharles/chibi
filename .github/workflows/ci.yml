@@ -38,7 +38,11 @@ jobs:
           -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
           -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       - name: Build and run tests
-        run: CBLUEPRINT_RENDER_CHECKS_ONLY=1 xvfb-run -a make test
+        run: xvfb-run -a make test
+      - name: Run native UI smoke tests
+        run: xvfb-run -a make ui-native
+      - name: Run focused render checks
+        run: xvfb-run -a make render-checks
       - name: Build and exercise application reload
         run: |
           cmake -S . -B build -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON

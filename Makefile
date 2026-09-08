@@ -10,7 +10,7 @@ LOCAL_CMAKE_FLAGS ?= -DCBLUEPRINT_ENABLE_SANITIZERS=ON -DCBLUEPRINT_ENABLE_WARNI
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all build run benchmark web web-serve format check-format test ui-integration review clean
+.PHONY: all build run benchmark web web-serve format check-format test ui-native render-checks review clean
 
 all: build
 
@@ -51,7 +51,11 @@ test:
 	cmake --build $(BUILD_DIR) --target app
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/app --headless --frames 3
 
-ui-integration: test
+ui-native: build
+	$(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --ui-native
+
+render-checks: build
+	$(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --render-checks
 
 clean:
 	rm -rf $(BUILD_DIR) $(BENCHMARK_BUILD_DIR)

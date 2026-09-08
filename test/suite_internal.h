@@ -31,8 +31,9 @@
 #include "runtime/scenes/scene.h"
 #include "support/arena.h"
 #include "test/fixtures/reflection/vec3.h"
+#include "test/render_checks.h"
 #include "test/support/demo_graph.h"
-#include "test/ui_integration.h"
+#include "test/ui_native.h"
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
 

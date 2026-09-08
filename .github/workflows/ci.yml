@@ -45,9 +45,12 @@ jobs:
         run: xvfb-run -a make render-checks
       - name: Build and exercise application reload
         run: |
-          cmake -S . -B build -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON
-          cmake --build build --target blueprints_host blueprints_application --parallel 2
-          xvfb-run -a cmake --build build --target check-dev-smoke
+          cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=Debug \
+            -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON \
+            -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
+            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+          cmake --build build-dev --target blueprints_host blueprints_application --parallel 2
+          xvfb-run -a cmake --build build-dev --target check-dev-smoke
 
   format:
     name: clang-format

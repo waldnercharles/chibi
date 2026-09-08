@@ -146,6 +146,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_link_options(-Wno-experimental)
 endif()
 
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wno-gnu-zero-variadic-macro-arguments)
+endif()
+
 # Project headers resolve from the source tree; only the reload ABI is public.
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include(cmake/sources.cmake)

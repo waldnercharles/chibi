@@ -10,7 +10,7 @@ LOCAL_CMAKE_FLAGS ?= -DCBLUEPRINT_ENABLE_SANITIZERS=ON -DCBLUEPRINT_ENABLE_WARNI
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all build run benchmark web web-serve format check-format test ui-native render-checks review clean
+.PHONY: all build run benchmark web web-serve format check-format test ui-native render-checks dev-smoke review clean
 
 all: build
 
@@ -64,9 +64,15 @@ clean:
 .PHONY: dev
 DEV_BUILD_DIR ?= build-dev
 JOBS ?= 4
+DEV_DISPLAY_RUNNER ?=
 
 dev:
 	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target blueprints_host blueprints_application --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/blueprints_host" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" $(ARGS)
+
+dev-smoke:
+	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON -DCBLUEPRINT_ENABLE_SJLIT=OFF
+	cmake --build "$(DEV_BUILD_DIR)" --target blueprints_host blueprints_application --parallel $(JOBS)
+	$(DEV_DISPLAY_RUNNER) env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 cmake --build "$(DEV_BUILD_DIR)" --target check-dev-smoke

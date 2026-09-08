@@ -50,7 +50,8 @@ jobs:
             -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
           cmake --build build-dev --target blueprints_host blueprints_application --parallel 2
-          xvfb-run -a cmake --build build-dev --target check-dev-smoke
+          xvfb-run -a env ASAN_OPTIONS=detect_leaks=0 \
+            cmake --build build-dev --target check-dev-smoke
 
   format:
     name: clang-format

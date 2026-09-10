@@ -2,6 +2,7 @@
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
+#include "assets/system_document.h"
 #include "ecs/ecs.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
@@ -25,6 +26,7 @@
 typedef enum
 {
     ASSET_GRAPH,
+    ASSET_SYSTEM,
     ASSET_PROTOTYPE,
     ASSET_SCENE,
 } asset_loader;
@@ -43,6 +45,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "material", "materials", ASSET_GRAPH },
     { "shape", "shapes", ASSET_GRAPH },
     { "shader-library", "shader-libraries", ASSET_GRAPH },
+    { "system", "systems", ASSET_SYSTEM },
     { "prototype", "prototypes", ASSET_PROTOTYPE },
     { "scene", "scenes", ASSET_SCENE },
 };
@@ -198,6 +201,12 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "graph_id", "uint64", false, "Select one graph by its stable authored ID." },
     { "graph_name", "string", false, "Select one graph by its authored name." },
 };
+static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "path", "string", false, "Content-relative system asset path, alternatively use kind and name." },
+    { "kind", "string", false, "System asset family, required with name when path is omitted." },
+    { "name", "string", false, "System asset name, required with kind when path is omitted." },
+};
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
     {
@@ -302,6 +311,17 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         true,
         false,
     },
+    {
+        "inspect_system",
+        "Inspect a system asset's canonical query, graph summary, and "
+        "diagnostics.",
+        CONTRACT_INSPECT_SYSTEM,
+        CONTRACT_FIELD_COUNT(CONTRACT_INSPECT_SYSTEM),
+        1,
+        true,
+        true,
+        false,
+    },
 };
 
 static const char *const CONTRACT_ERROR_CATEGORIES[] = {
@@ -322,6 +342,32 @@ static int load_asset(
     char *error,
     size_t error_size
 );
+
+static const ecs_component_desc *automation_query_component(const char *name, void *)
+{
+    if (!name) {
+        return NULL;
+    }
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if ((component->name && !strcmp(component->name, name)) ||
+            (component->key && !strcmp(component->key, name))) {
+            return component;
+        }
+    }
+    return NULL;
+}
+
+static const char *automation_query_component_name(ecs_component_id id, void *)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if (component->id == id) {
+            return component->key ? component->key : component->name;
+        }
+    }
+    return NULL;
+}
 
 static const asset_family *family_by_kind(const char *kind)
 {
@@ -951,6 +997,37 @@ static void catalog_validate_asset(catalog_asset *asset, const char *json)
             }
             compile_report_free(&report);
             behavior_asset_free(behavior);
+        }
+    } else if (family->loader == ASSET_SYSTEM) {
+        char error[256] = { 0 };
+        game_system_document *document = game_system_document_load(
+            json,
+            automation_query_component,
+            NULL,
+            error,
+            sizeof error
+        );
+        if (!document) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+        } else {
+            compile_report report;
+            compile_report_init(&report);
+            behavior_asset_compile_for_system(game_system_document_behavior_asset(document), &report);
+            asset->errors = report.error_count;
+            asset->warnings = report.warning_count;
+            for (int i = 0; i < acount(report.items); i++) {
+                const compile_diagnostic *diagnostic = &report.items[i];
+                catalog_add_diagnostic(
+                    asset,
+                    diagnostic->severity == CMPL_ERROR ? "error" : "warning",
+                    diagnostic->rule,
+                    cmpl_rule_name(diagnostic->rule),
+                    diagnostic->message
+                );
+            }
+            compile_report_free(&report);
+            game_system_document_free(document);
         }
     } else if (family->loader == ASSET_PROTOTYPE) {
         game_prototype_registry registry = {
@@ -2362,6 +2439,109 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     return 0;
 }
 
+static void inspect_add_system_graphs(yyjson_mut_doc *doc, yyjson_mut_val *object, const behavior_asset *asset)
+{
+    yyjson_mut_val *graphs = yyjson_mut_obj_add_arr(doc, object, "graphs");
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *graph_value = asset->graphs[i];
+        yyjson_mut_val *summary = yyjson_mut_arr_add_obj(doc, graphs);
+        yyjson_mut_obj_add_uint(doc, summary, "id", graph_value->graph_id);
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            summary,
+            "kind",
+            graph_kind_name(graph_value->kind)
+        );
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            summary,
+            "name",
+            graph_value->name ? graph_value->name : ""
+        );
+        yyjson_mut_obj_add_int(doc, summary, "nodes", acount(graph_value->nodes));
+        yyjson_mut_obj_add_int(doc, summary, "edges", acount(graph_value->edges));
+        yyjson_mut_obj_add_bool(doc, summary, "dataflow", graph_value->dataflow != 0);
+        yyjson_mut_obj_add_uint(doc, summary, "topology_revision", graph_value->topology_revision);
+    }
+}
+
+static int handle_inspect_system(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    asset_ref ref = { 0 };
+    char *json = NULL;
+    size_t bytes = 0;
+    uint64_t hash = 0;
+    char error[256] = { 0 };
+    int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    if (ref.family->loader != ASSET_SYSTEM) {
+        free(json);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "asset is not a system");
+        return -1;
+    }
+
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, hash);
+    game_system_document *document = game_system_document_load(
+        json,
+        automation_query_component,
+        NULL,
+        error,
+        sizeof error
+    );
+    if (!document) {
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+        add_load_diagnostic(result->doc, diagnostics, error);
+        yyjson_mut_obj_add_bool(result->doc, value, "valid", false);
+        free(json);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "system inspection failed");
+        return -1;
+    }
+
+    char *query_json = game_query_save(
+        game_system_document_query(document),
+        automation_query_component,
+        automation_query_component_name,
+        NULL
+    );
+    if (query_json) {
+        yyjson_doc *query_document = yyjson_read(query_json, strlen(query_json), 0);
+        if (query_document) {
+            yyjson_mut_obj_add_val(
+                result->doc,
+                value,
+                "query",
+                yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(query_document))
+            );
+            yyjson_doc_free(query_document);
+        } else {
+            yyjson_mut_obj_add_null(result->doc, value, "query");
+        }
+        free(query_json);
+    } else {
+        yyjson_mut_obj_add_null(result->doc, value, "query");
+    }
+
+    const behavior_asset *asset = game_system_document_behavior_asset(document);
+    inspect_add_system_graphs(result->doc, value, asset);
+    compile_report report;
+    compile_report_init(&report);
+    behavior_asset_compile_for_system(asset, &report);
+    inspect_add_validation(result->doc, value, &report);
+    int errors = report.error_count;
+    compile_report_free(&report);
+    game_system_document_free(document);
+    free(json);
+    if (errors) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "system validation failed");
+        return -1;
+    }
+    return 0;
+}
+
 static int handle_status(const char *root, response *result, int *exit_code)
 {
     asset_entry *entries = NULL;
@@ -2541,6 +2721,49 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             compile_report_free(&report);
             behavior_asset_free(asset);
         }
+    } else if (ref.family->loader == ASSET_SYSTEM) {
+        char load_error[256] = { 0 };
+        game_system_document *document = game_system_document_load(
+            json,
+            automation_query_component,
+            NULL,
+            load_error,
+            sizeof load_error
+        );
+        if (!document) {
+            errors = 1;
+            add_load_diagnostic(result->doc, diagnostics, load_error);
+        } else {
+            char *query_json = game_query_save(
+                game_system_document_query(document),
+                automation_query_component,
+                automation_query_component_name,
+                NULL
+            );
+            if (query_json) {
+                yyjson_doc *query_document = yyjson_read(query_json, strlen(query_json), 0);
+                if (query_document) {
+                    yyjson_mut_obj_add_val(
+                        result->doc,
+                        value,
+                        "query",
+                        yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(query_document))
+                    );
+                    yyjson_doc_free(query_document);
+                }
+                free(query_json);
+            }
+            compile_report report;
+            compile_report_init(&report);
+            behavior_asset_compile_for_system(game_system_document_behavior_asset(document), &report);
+            errors = report.error_count;
+            warnings = report.warning_count;
+            for (int i = 0; i < acount(report.items); i++) {
+                add_diagnostic(result->doc, diagnostics, &report.items[i]);
+            }
+            compile_report_free(&report);
+            game_system_document_free(document);
+        }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
         game_prototype_registry registry = {
             .components = GAME_REGISTRY_COMPONENTS,
@@ -2667,7 +2890,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "read_asset") || !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
-           !strcmp(operation, "inspect_graph");
+           !strcmp(operation, "inspect_graph") ||
+           !strcmp(operation, "inspect_system");
 }
 
 char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -2732,6 +2956,8 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         handle_asset_dependencies(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "inspect_system")) {
+        handle_inspect_system(root, root_value, &result, exit_code);
     } else {
         handle_describe_registry(&result);
     }

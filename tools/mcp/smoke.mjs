@@ -114,7 +114,13 @@ if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" 
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "runtime_snapshot" &&
       tool.inputSchema?.required?.includes("name") &&
       tool.inputSchema?.properties?.entity_limit?.maximum === 256 &&
-      tool.inputSchema?.properties?.field_limit?.maximum === 128)) {
+      tool.inputSchema?.properties?.field_limit?.maximum === 128) ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "record_scenario" &&
+      tool.inputSchema?.required?.includes("name") &&
+      tool.inputSchema?.properties?.inputs?.maxItems === 600) ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "replay_scenario" &&
+      tool.inputSchema?.oneOf?.length === 2 &&
+      tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
 const status = JSON.parse(responseById.get(3).result.content[0].text);
@@ -173,6 +179,10 @@ if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
   template.uriTemplate === "blueprints://asset/{kind}/{name}/graph/{graph_id}")) {
   throw new Error("resources/templates/list did not expose the graph template");
+}
+if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
+  template.uriTemplate === "blueprints://recording/{id}")) {
+  throw new Error("resources/templates/list did not expose the recording template");
 }
 if (responseById.get(9)?.error || responseById.get(10)?.error || responseById.get(17)?.error ||
     responseById.get(18)?.error || responseById.get(21)?.error ||
@@ -376,6 +386,87 @@ try {
         arguments: { name: "Editor2DPreview", entity_limit: 0 },
       },
     },
+    {
+      jsonrpc: "2.0",
+      id: 8,
+      method: "tools/call",
+      params: {
+        name: "record_scenario",
+        arguments: {
+          kind: "prototype",
+          name: "Editor2DPreview",
+          frames: 3,
+          fixed_dt: 1 / 60,
+          inputs: [
+            {
+              movement: { x: 0.5, y: -0.25 },
+              aim: { x: 1, y: 0 },
+              actions: [{ name: "Fire", pressed: true, value: 1 }],
+            },
+            {
+              movement: { x: 0, y: 0 },
+              aim: { x: 0, y: 1 },
+              actions: [{ name: "Fire", pressed: false, value: 0 }],
+            },
+            { movement: { x: -1, y: 0 }, aim: { x: -1, y: 0 }, actions: [] },
+          ],
+        },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 9,
+      method: "tools/call",
+      params: {
+        name: "record_scenario",
+        arguments: {
+          kind: "prototype",
+          name: "Editor2DPreview",
+          frames: 3,
+          fixed_dt: 1 / 60,
+          inputs: [
+            {
+              movement: { x: 0.5, y: -0.25 },
+              aim: { x: 1, y: 0 },
+              actions: [{ name: "fire", pressed: true, value: 1 }],
+            },
+            {
+              movement: { x: 0, y: 0 },
+              aim: { x: 0, y: 1 },
+              actions: [{ name: "fire", pressed: false, value: 0 }],
+            },
+            { movement: { x: -1, y: 0 }, aim: { x: -1, y: 0 }, actions: [] },
+          ],
+        },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 10,
+      method: "tools/call",
+      params: {
+        name: "replay_scenario",
+        arguments: { recording: null },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 11,
+      method: "tools/call",
+      params: {
+        name: "replay_scenario",
+        arguments: { recording_path: `${scenarioRoot}/missing-recording.json` },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 12,
+      method: "tools/call",
+      params: {
+        name: "replay_scenario",
+        arguments: { recording: {}, recording_path: "recording.json" },
+      },
+    },
   ];
   const scenarioProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -393,12 +484,120 @@ try {
   const secondScenario = JSON.parse(scenarioById.get(3)?.result?.content?.[0]?.text || "{}");
   const firstSnapshot = JSON.parse(scenarioById.get(5)?.result?.content?.[0]?.text || "{}");
   const secondSnapshot = JSON.parse(scenarioById.get(6)?.result?.content?.[0]?.text || "{}");
+  const firstRecord = JSON.parse(scenarioById.get(8)?.result?.content?.[0]?.text || "{}");
+  const secondRecord = JSON.parse(scenarioById.get(9)?.result?.content?.[0]?.text || "{}");
   const entities = firstSnapshot.result?.entities;
   const components = entities?.[0]?.components;
   const fields = components?.[0]?.fields;
   const transform = components?.find((component) => component.name === "GameTransform");
   const transformFields = transform?.fields;
   const xField = transformFields?.find((field) => field.name === "x");
+  const firstRecording = firstRecord.result?.recording;
+  const secondRecording = secondRecord.result?.recording;
+  const firstRecordFrames = firstRecord.result?.frames ?? firstRecording?.frames;
+  const secondRecordFrames = secondRecord.result?.frames ?? secondRecording?.frames;
+  const firstFrameHashes = firstRecording?.frame_hashes ||
+    firstRecording?.observations?.map((observation) => observation.world_hash);
+  const secondFrameHashes = secondRecording?.frame_hashes ||
+    secondRecording?.observations?.map((observation) => observation.world_hash);
+  const firstArtifactPath = firstRecord.result?.recording_path ||
+    firstRecord.result?.artifact_path || firstRecording?.artifact_path;
+  const secondArtifactPath = secondRecord.result?.recording_path ||
+    secondRecord.result?.artifact_path || secondRecording?.artifact_path;
+  const firstRecordingWithoutPath = firstRecording && {
+    ...firstRecording,
+    artifact_path: undefined,
+    recording_path: undefined,
+  };
+  const secondRecordingWithoutPath = secondRecording && {
+    ...secondRecording,
+    artifact_path: undefined,
+    recording_path: undefined,
+  };
+  const replayInlineRequest = {
+    jsonrpc: "2.0",
+    id: 13,
+    method: "tools/call",
+    params: { name: "replay_scenario", arguments: { recording: firstRecording } },
+  };
+  const replayProcess = spawnSync(process.execPath, [server], {
+    cwd: root,
+    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    input: `${JSON.stringify(replayInlineRequest)}\n`,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (replayProcess.error || replayProcess.status !== 0) {
+    throw replayProcess.error || new Error(replayProcess.stderr || "replay MCP server failed");
+  }
+  const replayResponse = JSON.parse(replayProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
+  const replayResult = JSON.parse(replayResponse.result?.content?.[0]?.text || "{}");
+  const replayPathRequest = {
+    jsonrpc: "2.0",
+    id: 15,
+    method: "tools/call",
+    params: { name: "replay_scenario", arguments: { recording_path: firstArtifactPath } },
+  };
+  const replayPathProcess = spawnSync(process.execPath, [server], {
+    cwd: root,
+    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    input: `${JSON.stringify(replayPathRequest)}\n`,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (replayPathProcess.error || replayPathProcess.status !== 0) {
+    throw replayPathProcess.error || new Error(replayPathProcess.stderr || "recording path replay MCP server failed");
+  }
+  const replayPathResponse = JSON.parse(replayPathProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
+  const replayPathResult = JSON.parse(replayPathResponse.result?.content?.[0]?.text || "{}");
+  const recordingId = firstRecord.result?.recording_id || firstRecording?.recording_id || firstRecording?.id;
+  const recordingResourceRequest = {
+    jsonrpc: "2.0",
+    id: 16,
+    method: "resources/read",
+    params: { uri: `blueprints://recording/${recordingId}` },
+  };
+  const recordingResourceProcess = spawnSync(process.execPath, [server], {
+    cwd: root,
+    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    input: `${JSON.stringify(recordingResourceRequest)}\n`,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (recordingResourceProcess.error || recordingResourceProcess.status !== 0) {
+    throw recordingResourceProcess.error || new Error(recordingResourceProcess.stderr || "recording resource MCP server failed");
+  }
+  const recordingResourceResponse = JSON.parse(recordingResourceProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
+  const recordingResourceText = recordingResourceResponse.result?.contents?.[0]?.text || "{}";
+  const recordingResource = JSON.parse(recordingResourceText);
+  const recordingResourceValue = recordingResource.result?.recording || recordingResource.result;
+  const mutatedRecording = firstRecording && JSON.parse(JSON.stringify(firstRecording));
+  if (mutatedRecording?.frame_hashes?.length) {
+    mutatedRecording.frame_hashes[1] = "0000000000000000";
+  } else if (mutatedRecording?.observations?.length) {
+    mutatedRecording.observations[1].world_hash = "0000000000000000";
+  }
+  const divergenceRequest = {
+    jsonrpc: "2.0",
+    id: 14,
+    method: "tools/call",
+    params: { name: "replay_scenario", arguments: { recording: mutatedRecording } },
+  };
+  const divergenceProcess = spawnSync(process.execPath, [server], {
+    cwd: root,
+    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    input: `${JSON.stringify(divergenceRequest)}\n`,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (divergenceProcess.error || divergenceProcess.status !== 0) {
+    throw divergenceProcess.error || new Error(divergenceProcess.stderr || "divergence MCP server failed");
+  }
+  const divergenceResponse = JSON.parse(divergenceProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
+  const divergenceResult = JSON.parse(divergenceResponse.result?.content?.[0]?.text || "{}");
+  const firstDivergenceFrame = divergenceResult.result?.first_divergence_frame ??
+    divergenceResult.result?.first_divergence?.frame ??
+    divergenceResult.result?.divergence?.frame;
   if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "run_scenario") !== true ||
       firstScenario.ok !== true || secondScenario.ok !== true ||
       firstScenario.result?.kind !== "prototype" ||
@@ -433,7 +632,25 @@ try {
         component.name.localeCompare(components[index - 1].name) < 0) ||
       fields.some((field, index) => index > 0 &&
         field.name.localeCompare(fields[index - 1].name) < 0) ||
-      scenarioById.get(7)?.error?.code !== -32602) {
+      scenarioById.get(7)?.error?.code !== -32602 ||
+      firstRecord.ok !== true || secondRecord.ok !== true ||
+      firstRecordFrames !== 3 || secondRecordFrames !== 3 ||
+      !firstRecording || !secondRecording ||
+      JSON.stringify(firstRecordingWithoutPath) !== JSON.stringify(secondRecordingWithoutPath) ||
+      JSON.stringify(firstFrameHashes) !== JSON.stringify(secondFrameHashes) ||
+      typeof firstArtifactPath !== "string" || typeof secondArtifactPath !== "string" ||
+      firstArtifactPath.startsWith(scenarioRoot) || secondArtifactPath.startsWith(scenarioRoot) ||
+      replayResponse.result?.isError === true || replayResult.ok !== true ||
+      replayResult.result?.deterministic !== true ||
+      replayPathResponse.result?.isError === true || replayPathResult.ok !== true ||
+      replayPathResult.result?.deterministic !== true ||
+      recordingResourceResponse.error || recordingResource.ok !== true ||
+      (recordingResourceValue?.recording_id || recordingResourceValue?.id) !== recordingId ||
+      divergenceResponse.result?.isError === true || divergenceResult.ok !== true ||
+      firstDivergenceFrame !== 1 ||
+      scenarioById.get(10)?.error?.code !== -32602 ||
+      scenarioById.get(11)?.result?.isError !== true ||
+      scenarioById.get(12)?.error?.code !== -32602) {
     throw new Error("deterministic scenario smoke checks failed");
   }
 } finally {

@@ -54,6 +54,10 @@ function resourceTemplates() {
     uriTemplate: "blueprints://asset/{kind}/{name}/graph/{graph_id}",
     name: "c-blueprints normalized graph",
     mimeType: "application/json",
+  }, {
+    uriTemplate: "blueprints://recording/{id}",
+    name: "c-blueprints deterministic recording",
+    mimeType: "application/json",
   }];
 }
 
@@ -390,6 +394,203 @@ function rawToolDefinitions() {
     required: ["name"],
     additionalProperties: false,
   };
+  const normalizedVector = {
+    type: "object",
+    properties: {
+      x: {
+        type: "number",
+        minimum: -1,
+        maximum: 1,
+        description: "Normalized horizontal input.",
+      },
+      y: {
+        type: "number",
+        minimum: -1,
+        maximum: 1,
+        description: "Normalized vertical input.",
+      },
+    },
+    additionalProperties: false,
+  };
+  const normalizedAim = {
+    type: "object",
+    properties: {
+      x: {
+        type: "number",
+        minimum: -1,
+        maximum: 1,
+        description: "Normalized horizontal aim input.",
+      },
+      y: {
+        type: "number",
+        minimum: -1,
+        maximum: 1,
+        description: "Normalized vertical aim input.",
+      },
+      firing: {
+        type: "boolean",
+        description: "Whether the aim input is firing during this frame.",
+      },
+      point: {
+        type: "boolean",
+        description: "Whether aim coordinates are a point relative to the prototype.",
+      },
+    },
+    additionalProperties: false,
+  };
+  const normalizedAction = {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        maxLength: 64,
+        description: "Normalized action name.",
+      },
+      pressed: {
+        type: "boolean",
+        description: "Whether the action is pressed during this frame.",
+      },
+      value: {
+        type: "number",
+        minimum: -1,
+        maximum: 1,
+        description: "Optional normalized analog action value.",
+      },
+    },
+    required: ["name", "pressed"],
+    additionalProperties: false,
+  };
+  const normalizedInput = {
+    type: "object",
+    properties: {
+      movement: normalizedVector,
+      aim: normalizedAim,
+      actions: {
+        type: "array",
+        maxItems: 2,
+        items: normalizedAction,
+        description: "Bounded normalized action transitions for this frame.",
+      },
+      events: {
+        type: "array",
+        maxItems: 32,
+        items: { type: "object", additionalProperties: true },
+        description: "Bounded normalized runtime events for this frame.",
+      },
+    },
+    additionalProperties: false,
+  };
+  const normalizedInputs = {
+    type: "array",
+    maxItems: 600,
+    items: normalizedInput,
+    description: "One normalized input sample per fixed frame.",
+  };
+  const recording = {
+    type: "object",
+    properties: {
+      version: { type: "integer", minimum: 1, maximum: 32 },
+      recording_version: { type: "integer", minimum: 1, maximum: 32 },
+      contract_version: { type: "integer", minimum: 1, maximum: 32 },
+      id: { type: "string", maxLength: 128 },
+      recording_id: { type: "string", maxLength: 128 },
+      format: { type: "string", maxLength: 128 },
+      prototype: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["prototype"] },
+          name: { type: "string", maxLength: 128 },
+          path: { type: "string", maxLength: 512 },
+          bytes: { type: "integer", minimum: 0 },
+          hash: { type: "string", maxLength: 128 },
+        },
+        additionalProperties: false,
+      },
+      kind: { type: "string", enum: ["prototype"] },
+      name: { type: "string", maxLength: 128 },
+      frames: { type: "integer", minimum: 0, maximum: 600 },
+      fixed_dt: { type: "number", minimum: 0.000001, maximum: 0.25 },
+      content_hash: { type: "string", maxLength: 128 },
+      content_hashes: {
+        type: "array",
+        maxItems: 256,
+        items: { type: "string", maxLength: 128 },
+      },
+      inputs: normalizedInputs,
+      events: {
+        type: "array",
+        maxItems: 600,
+        items: { type: "object", additionalProperties: true },
+      },
+      observations: {
+        type: "array",
+        maxItems: 600,
+        items: {
+          type: "object",
+          properties: {
+            frame: { type: "integer", minimum: 0, maximum: 600 },
+            world_hash: { type: "string", maxLength: 128 },
+            live_entities: { type: "integer", minimum: 0 },
+          },
+          additionalProperties: false,
+        },
+      },
+      frame_hashes: {
+        type: "array",
+        maxItems: 600,
+        items: { type: "string", maxLength: 128 },
+      },
+      world_hash: { type: "string", maxLength: 128 },
+      artifact_path: { type: "string", maxLength: 1024 },
+    },
+    additionalProperties: false,
+  };
+  const recordArguments = {
+    type: "object",
+    properties: {
+      kind: {
+        type: "string",
+        enum: ["prototype"],
+        description: "Target asset family. Only prototype recordings are supported currently.",
+      },
+      name: {
+        type: "string",
+        maxLength: 128,
+        description: "Prototype asset name without the .json suffix.",
+      },
+      frames: {
+        type: "integer",
+        minimum: 0,
+        maximum: 600,
+        description: "Number of deterministic fixed steps to record.",
+      },
+      fixed_dt: {
+        type: "number",
+        minimum: 0.000001,
+        maximum: 0.25,
+        description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
+      },
+      inputs: normalizedInputs,
+    },
+    required: ["name"],
+    additionalProperties: false,
+  };
+  const replayArguments = {
+    type: "object",
+    properties: {
+      recording,
+      recording_path: {
+        type: "string",
+        maxLength: 1024,
+        description: "Safe recording artifact path returned by record_scenario.",
+      },
+    },
+    oneOf: [
+      { type: "object", required: ["recording"] },
+      { type: "object", required: ["recording_path"] },
+    ],
+    additionalProperties: false,
+  };
   return [
     {
       name: "project_status",
@@ -452,6 +653,20 @@ function rawToolDefinitions() {
       operation: "runtime_snapshot",
       description: "Capture bounded deterministic ECS entities, reflected fields, behaviors, and timing.",
       inputSchema: runtimeSnapshotArguments,
+      outputSchema,
+    },
+    {
+      name: "record_scenario",
+      operation: "record_scenario",
+      description: "Record bounded normalized inputs and deterministic frame hashes for a prototype scenario.",
+      inputSchema: recordArguments,
+      outputSchema,
+    },
+    {
+      name: "replay_scenario",
+      operation: "replay_scenario",
+      description: "Replay a versioned deterministic scenario recording and report the first divergence.",
+      inputSchema: replayArguments,
       outputSchema,
     },
     {
@@ -554,6 +769,19 @@ function validateSchema(value, schema, path) {
         validateSchema(value[name], child, `${path}.${name}`);
       }
     }
+    if (schema.oneOf) {
+      const matches = schema.oneOf.filter((candidate) => {
+        try {
+          validateSchema(value, candidate, path);
+          return true;
+        } catch {
+          return false;
+        }
+      }).length;
+      if (matches !== 1) {
+        throw protocolError(-32602, `${path} must match exactly one supported form`);
+      }
+    }
     return;
   }
   if (schema.type === "string" &&
@@ -615,6 +843,8 @@ async function toolCall(name, args) {
     case "inspect_system": return nativeRequest("inspect_system", args || {});
     case "run_scenario": return nativeRequest("run_scenario", args || {});
     case "runtime_snapshot": return nativeRequest("runtime_snapshot", args || {});
+    case "record_scenario": return nativeRequest("record_scenario", args || {});
+    case "replay_scenario": return nativeRequest("replay_scenario", args || {});
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");
@@ -664,8 +894,16 @@ async function resourceRead(uri) {
   } else if (uri === "blueprints://catalog") {
     response = await nativeRequest("catalog");
   } else {
+    const recordingMatch = /^blueprints:\/\/recording\/([^/]+)$/.exec(uri);
+    if (recordingMatch) {
+      const id = decode(recordingMatch[1]);
+      if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {
+        throw protocolError(-32602, `invalid recording resource: ${uri}`);
+      }
+      response = await nativeRequest("read_recording", { id });
+    }
     const graphMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
-    if (graphMatch) {
+    if (response === undefined && graphMatch) {
       const graphId = Number(decode(graphMatch[3]));
       if (!Number.isSafeInteger(graphId) || graphId < 0) {
         throw protocolError(-32602, `invalid graph resource: ${uri}`);
@@ -695,7 +933,8 @@ async function resourceRead(uri) {
     }
   }
   if (response.ok !== true) {
-    const code = response.error?.code === "asset_not_found" ? -32002 : -32603;
+    const missing = response.error?.code === "asset_not_found" || response.error?.code === "recording_not_found";
+    const code = missing ? -32002 : -32603;
     throw protocolError(code, response.error?.message || "resource read failed");
   }
   return response;

@@ -24,6 +24,11 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function responseLimitBytes() {
+  const value = Number(process.env.CBLUEPRINTS_CTL_MAX_RESPONSE_BYTES || 32 * 1024 * 1024);
+  return Number.isSafeInteger(value) && value > 0 ? value : 32 * 1024 * 1024;
+}
+
 function isNotification(message) {
   return !Object.prototype.hasOwnProperty.call(message, "id");
 }
@@ -91,6 +96,7 @@ class ControllerSession {
     this.pending = null;
     this.timer = null;
     this.closed = false;
+    this.maxResponseBytes = responseLimitBytes();
     this.child.stdout.on("data", (chunk) => this.receive(chunk));
     this.child.stderr.on("data", (chunk) => {
       this.stderr = `${this.stderr}${chunk}`.slice(-4096);
@@ -130,6 +136,10 @@ class ControllerSession {
 
   receive(chunk) {
     this.buffer += chunk;
+    if (Buffer.byteLength(this.buffer, "utf8") > this.maxResponseBytes) {
+      this.fail(protocolError(-32003, "blueprints_ctl response exceeded the configured size limit"));
+      return;
+    }
     let newline;
     while ((newline = this.buffer.indexOf("\n")) >= 0) {
       const line = this.buffer.slice(0, newline).trim();
@@ -209,6 +219,28 @@ let controllerSession;
 function rawToolDefinitions() {
   const noArguments = { type: "object", additionalProperties: false };
   const outputSchema = { type: "object", additionalProperties: true };
+  const pageProperties = {
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: 256,
+      description: "Maximum number of records to return.",
+    },
+    cursor: {
+      type: "integer",
+      minimum: 0,
+      description: "Zero-based result offset returned by a previous page.",
+    },
+    summary: {
+      type: "boolean",
+      description: "Return compact asset records without full dependency details.",
+    },
+  };
+  const pageArguments = {
+    type: "object",
+    properties: pageProperties,
+    additionalProperties: false,
+  };
   const assetArguments = {
     type: "object",
     properties: {
@@ -236,6 +268,7 @@ function rawToolDefinitions() {
         items: { type: "string" },
         description: "Optional asset families to include in the search.",
       },
+      ...pageProperties,
     },
     required: ["query"],
     additionalProperties: false,
@@ -282,14 +315,14 @@ function rawToolDefinitions() {
       name: "list_assets",
       operation: "list_assets",
       description: "List authored JSON assets with stable paths, sizes, and content hashes.",
-      inputSchema: noArguments,
+      inputSchema: pageArguments,
       outputSchema,
     },
     {
       name: "catalog",
       operation: "catalog",
       description: "Return the semantic asset catalog, dependency edges, diagnostics, and reflected registry metadata.",
-      inputSchema: noArguments,
+      inputSchema: pageArguments,
       outputSchema,
     },
     {
@@ -421,8 +454,11 @@ function validateSchema(value, schema, path) {
   if (schema.type === "boolean" && typeof value !== "boolean") {
     throw protocolError(-32602, `${path} must be a boolean`);
   }
-  if (schema.type === "integer" && (!Number.isSafeInteger(value) || value < (schema.minimum || 0))) {
-    throw protocolError(-32602, `${path} must be a non-negative integer`);
+  if (schema.type === "integer" &&
+      (!Number.isSafeInteger(value) ||
+       value < (schema.minimum || 0) ||
+       (schema.maximum !== undefined && value > schema.maximum))) {
+    throw protocolError(-32602, `${path} must be a safe integer within the supported range`);
   }
   if (schema.type === "array") {
     if (!Array.isArray(value)) {
@@ -452,8 +488,8 @@ async function toolCall(name, args) {
   validateToolArguments(name, args);
   switch (name) {
     case "project_status": return nativeRequest("status");
-    case "list_assets": return nativeRequest("list_assets");
-    case "catalog": return nativeRequest("catalog");
+    case "list_assets": return nativeRequest("list_assets", args || {});
+    case "catalog": return nativeRequest("catalog", args || {});
     case "search_assets": return nativeRequest("search_assets", args || {});
     case "asset_dependencies": return nativeRequest("asset_dependencies", args || {});
     case "inspect_graph": return nativeRequest("inspect_graph", args || {});
@@ -470,11 +506,20 @@ async function toolCall(name, args) {
 }
 
 function toolResult(response) {
+  const text = boundedJson(response, "tool result");
   return {
-    content: [{ type: "text", text: JSON.stringify(response) }],
+    content: [{ type: "text", text }],
     structuredContent: response,
     isError: response.ok !== true,
   };
+}
+
+function boundedJson(value, label) {
+  const text = JSON.stringify(value);
+  if (Buffer.byteLength(text, "utf8") > responseLimitBytes()) {
+    throw protocolError(-32003, `${label} exceeded the configured size limit`);
+  }
+  return text;
 }
 
 async function resourceRead(uri) {
@@ -599,7 +644,7 @@ async function dispatch(message) {
       return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
-        result: { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(response) }] },
+        result: { contents: [{ uri, mimeType: "application/json", text: boundedJson(response, "resource") }] },
       });
     } catch (error) {
       return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));

@@ -44,6 +44,10 @@ const requests = [
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
   { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describe_contract", arguments: {} } },
+  { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "list_assets", arguments: { limit: 2 } } },
+  { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "catalog", arguments: { limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "search_assets", arguments: { query: "Health", limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "catalog", arguments: { cursor: 1, limit: 1, summary: true } } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
   { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "blueprints://project/status" } },
@@ -58,6 +62,8 @@ const requests = [
   { jsonrpc: "2.0", id: 24, method: "resources/read", params: { uri: "blueprints://asset/behavior/%ZZ" } },
   { jsonrpc: "2.0", id: 25, method: "resources/read", params: { uri: "blueprints://missing" } },
   { jsonrpc: "2.0", id: 26, method: "resources/read", params: {} },
+  { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "catalog", arguments: { limit: 0 } } },
+  { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "catalog", arguments: { cursor: "1" } } },
   { jsonrpc: "2.0", method: "ping" },
 ];
 const result = spawnSync(process.execPath, [server], {
@@ -105,6 +111,10 @@ const read = JSON.parse(responseById.get(5).result.content[0].text);
 const validation = JSON.parse(responseById.get(6).result.content[0].text);
 const registry = JSON.parse(responseById.get(7).result.content[0].text);
 const contract = JSON.parse(responseById.get(27).result.content[0].text);
+const pagedAssets = JSON.parse(responseById.get(28).result.content[0].text);
+const pagedCatalog = JSON.parse(responseById.get(29).result.content[0].text);
+const pagedSearch = JSON.parse(responseById.get(30).result.content[0].text);
+const secondCatalogPage = JSON.parse(responseById.get(31).result.content[0].text);
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -122,7 +132,17 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     registry.result?.nodes?.length < 1 ||
     contract.ok !== true ||
     !contract.result?.operations?.some((operation) => operation.name === "describe_contract") ||
-    contract.result?.reflection?.nodes < 1) {
+    contract.result?.reflection?.nodes < 1 ||
+    pagedAssets.ok !== true || pagedAssets.result?.count !== 2 ||
+    pagedAssets.result?.has_more !== true || pagedAssets.result?.next_cursor !== 2 ||
+    pagedCatalog.ok !== true || pagedCatalog.result?.summary !== true ||
+    pagedCatalog.result?.count !== 1 || pagedCatalog.result?.has_more !== true ||
+    pagedCatalog.result?.assets?.[0]?.members !== undefined ||
+    pagedSearch.ok !== true || pagedSearch.result?.summary !== true ||
+    pagedSearch.result?.count !== 1 || pagedSearch.result?.has_more !== true ||
+    pagedSearch.result?.assets?.[0]?.members !== undefined ||
+    secondCatalogPage.ok !== true || secondCatalogPage.result?.count !== 1 ||
+    secondCatalogPage.result?.next_cursor !== 2) {
   throw new Error("native MCP operations failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
@@ -153,7 +173,9 @@ if (responseById.get(22)?.error?.code !== -32602 ||
     responseById.get(23)?.error?.code !== -32602 ||
     responseById.get(24)?.error?.code !== -32602 ||
     responseById.get(25)?.error?.code !== -32002 ||
-    responseById.get(26)?.error?.code !== -32602) {
+    responseById.get(26)?.error?.code !== -32602 ||
+    responseById.get(32)?.error?.code !== -32602 ||
+    responseById.get(33)?.error?.code !== -32602) {
   throw new Error("MCP protocol boundary errors are not mapped correctly");
 }
 

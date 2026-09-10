@@ -21,6 +21,7 @@ adapter provides these tools:
 - `inspect_graph` — inspect normalized graph nodes, pins, edges, calls, effects, and diagnostics.
 - `inspect_system` — inspect a typed system query, compiled graph, inferred component effects, and diagnostics.
 - `run_scenario` — run a bounded deterministic prototype scenario and return runtime evidence.
+- `runtime_snapshot` — capture bounded, ordered ECS entities, reflected fields, behaviors, and timing.
 - `read_asset` — parsed authored JSON.
 - `validate_asset` — native asset loading and compiler diagnostics.
 - `describe_registry` — reflected nodes, pins, types, services, operators, and components.
@@ -54,6 +55,8 @@ printf '%s\n' '{"contract":1,"operation":"inspect_system","kind":"system","name"
   build/blueprints_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"prototype","name":"Player","frames":60,"fixed_dt":0.0166666666666667}' |
   build/blueprints_ctl --project-root .
+printf '%s\n' '{"contract":1,"operation":"runtime_snapshot","kind":"prototype","name":"Player","frames":2,"entity_limit":32,"component_limit":16,"field_limit":32}' |
+  build/blueprints_ctl --project-root .
 ```
 
 `run_scenario` currently accepts prototype targets, runs at most 600 fixed steps,
@@ -62,6 +65,12 @@ entity count, and engine timing fields. The fixed timestep must match the
 engine's `1/60` second step. Each request creates an isolated preview runtime;
 the returned world hash can be compared across repeated calls to check
 deterministic behavior.
+
+`runtime_snapshot` uses the same isolated preview runtime and returns ordered
+entity and component records with reflected field values, attached behavior
+state, and timing data. `entity_limit`, `component_limit`, `field_limit`, and
+`behavior_limit` bound the response; `fields` can restrict reflected field
+selection. The operation is read-only and does not write authored content.
 
 Catalog, search, and asset-list responses accept a numeric `limit` and `cursor`,
 and return `total`, `count`, `has_more`, and `next_cursor`. Catalog and search

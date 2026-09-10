@@ -110,7 +110,11 @@ if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" 
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "run_scenario" &&
       tool.inputSchema?.required?.includes("name") &&
       tool.inputSchema?.properties?.frames?.maximum === 600 &&
-      tool.inputSchema?.properties?.fixed_dt?.type === "number")) {
+      tool.inputSchema?.properties?.fixed_dt?.type === "number") ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "runtime_snapshot" &&
+      tool.inputSchema?.required?.includes("name") &&
+      tool.inputSchema?.properties?.entity_limit?.maximum === 256 &&
+      tool.inputSchema?.properties?.field_limit?.maximum === 128)) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
 const status = JSON.parse(responseById.get(3).result.content[0].text);
@@ -325,6 +329,51 @@ try {
         arguments: { name: "Editor2DPreview", frames: 601 },
       },
     },
+    {
+      jsonrpc: "2.0",
+      id: 5,
+      method: "tools/call",
+      params: {
+        name: "runtime_snapshot",
+        arguments: {
+          kind: "prototype",
+          name: "Editor2DPreview",
+          frames: 2,
+          fixed_dt: 1 / 60,
+          entity_limit: 4,
+          component_limit: 16,
+          field_limit: 32,
+          behavior_limit: 8,
+        },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 6,
+      method: "tools/call",
+      params: {
+        name: "runtime_snapshot",
+        arguments: {
+          kind: "prototype",
+          name: "Editor2DPreview",
+          frames: 2,
+          fixed_dt: 1 / 60,
+          entity_limit: 4,
+          component_limit: 16,
+          field_limit: 32,
+          behavior_limit: 8,
+        },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/call",
+      params: {
+        name: "runtime_snapshot",
+        arguments: { name: "Editor2DPreview", entity_limit: 0 },
+      },
+    },
   ];
   const scenarioProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -340,6 +389,11 @@ try {
   const scenarioById = new Map(scenarioResponses.map((response) => [response.id, response]));
   const firstScenario = JSON.parse(scenarioById.get(2)?.result?.content?.[0]?.text || "{}");
   const secondScenario = JSON.parse(scenarioById.get(3)?.result?.content?.[0]?.text || "{}");
+  const firstSnapshot = JSON.parse(scenarioById.get(5)?.result?.content?.[0]?.text || "{}");
+  const secondSnapshot = JSON.parse(scenarioById.get(6)?.result?.content?.[0]?.text || "{}");
+  const entities = firstSnapshot.result?.entities;
+  const components = entities?.[0]?.components;
+  const fields = components?.[0]?.fields;
   if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "run_scenario") !== true ||
       firstScenario.ok !== true || secondScenario.ok !== true ||
       firstScenario.result?.kind !== "prototype" ||
@@ -351,7 +405,23 @@ try {
       typeof firstScenario.result?.live_entities !== "number" ||
       !firstScenario.result?.timing ||
       firstScenario.result?.world_hash !== secondScenario.result?.world_hash ||
-      scenarioById.get(4)?.error?.code !== -32602) {
+      scenarioById.get(4)?.error?.code !== -32602 ||
+      firstSnapshot.ok !== true || secondSnapshot.ok !== true ||
+      firstSnapshot.result?.kind !== "prototype" ||
+      firstSnapshot.result?.name !== "Editor2DPreview" ||
+      firstSnapshot.result?.frames !== 2 ||
+      firstSnapshot.result?.fixed_dt !== 1 / 60 ||
+      typeof firstSnapshot.result?.world_hash !== "string" ||
+      firstSnapshot.result?.world_hash !== secondSnapshot.result?.world_hash ||
+      !Array.isArray(entities) ||
+      !Array.isArray(components) ||
+      !Array.isArray(fields) ||
+      entities.some((entity, index) => index > 0 && entity.id <= entities[index - 1].id) ||
+      components.some((component, index) => index > 0 &&
+        component.name.localeCompare(components[index - 1].name) < 0) ||
+      fields.some((field, index) => index > 0 &&
+        field.name.localeCompare(fields[index - 1].name) < 0) ||
+      scenarioById.get(7)?.error?.code !== -32602) {
     throw new Error("deterministic scenario smoke checks failed");
   }
 } finally {

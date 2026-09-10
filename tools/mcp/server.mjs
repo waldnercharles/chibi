@@ -331,6 +331,65 @@ function rawToolDefinitions() {
     required: ["name"],
     additionalProperties: false,
   };
+  const runtimeSnapshotArguments = {
+    type: "object",
+    properties: {
+      kind: {
+        type: "string",
+        enum: ["prototype"],
+        description: "Target asset family. Only prototype snapshots are supported currently.",
+      },
+      name: {
+        type: "string",
+        maxLength: 128,
+        description: "Prototype asset name without the .json suffix.",
+      },
+      frames: {
+        type: "integer",
+        minimum: 0,
+        maximum: 600,
+        description: "Number of deterministic fixed steps to run before capturing the snapshot.",
+      },
+      fixed_dt: {
+        type: "number",
+        minimum: 0.000001,
+        maximum: 0.25,
+        description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
+      },
+      entity_limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 256,
+        description: "Maximum number of ordered entities to include.",
+      },
+      component_limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 64,
+        description: "Maximum number of components to include per entity.",
+      },
+      field_limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 128,
+        description: "Maximum number of reflected fields to include per component.",
+      },
+      behavior_limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 64,
+        description: "Maximum number of attached behaviors to include per entity.",
+      },
+      fields: {
+        type: "array",
+        maxItems: 32,
+        items: { type: "string", maxLength: 128 },
+        description: "Optional reflected field selectors such as GameTransform.x.",
+      },
+    },
+    required: ["name"],
+    additionalProperties: false,
+  };
   return [
     {
       name: "project_status",
@@ -386,6 +445,13 @@ function rawToolDefinitions() {
       operation: "run_scenario",
       description: "Run a bounded deterministic prototype scenario and return structured runtime evidence.",
       inputSchema: scenarioArguments,
+      outputSchema,
+    },
+    {
+      name: "runtime_snapshot",
+      operation: "runtime_snapshot",
+      description: "Capture bounded deterministic ECS entities, reflected fields, behaviors, and timing.",
+      inputSchema: runtimeSnapshotArguments,
       outputSchema,
     },
     {
@@ -490,8 +556,10 @@ function validateSchema(value, schema, path) {
     }
     return;
   }
-  if (schema.type === "string" && typeof value !== "string") {
-    throw protocolError(-32602, `${path} must be a string`);
+  if (schema.type === "string" &&
+      (typeof value !== "string" ||
+       (schema.maxLength !== undefined && value.length > schema.maxLength))) {
+    throw protocolError(-32602, `${path} must be a string within the supported length`);
   }
   if (schema.type === "boolean" && typeof value !== "boolean") {
     throw protocolError(-32602, `${path} must be a boolean`);
@@ -511,6 +579,9 @@ function validateSchema(value, schema, path) {
   if (schema.type === "array") {
     if (!Array.isArray(value)) {
       throw protocolError(-32602, `${path} must be an array`);
+    }
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      throw protocolError(-32602, `${path} has too many items`);
     }
     if (schema.items) {
       value.forEach((item, index) => validateSchema(item, schema.items, `${path}[${index}]`));
@@ -543,6 +614,7 @@ async function toolCall(name, args) {
     case "inspect_graph": return nativeRequest("inspect_graph", args || {});
     case "inspect_system": return nativeRequest("inspect_system", args || {});
     case "run_scenario": return nativeRequest("run_scenario", args || {});
+    case "runtime_snapshot": return nativeRequest("runtime_snapshot", args || {});
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");

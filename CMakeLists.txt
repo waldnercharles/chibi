@@ -309,6 +309,12 @@ target_include_directories(runtime_support PUBLIC
 )
 target_link_libraries(runtime_support PUBLIC ecs core cute)
 
+# --- headless automation controller ----------------------------------------
+
+add_library(automation STATIC src/automation/controller.c)
+target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(automation PUBLIC runtime_support core)
+
 # --- material rasterization and radiance transport --------------------------
 add_library(cblueprint_render STATIC src/render/material_raster.c src/render/radiance.c)
 target_compile_definitions(cblueprint_render PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
@@ -408,6 +414,24 @@ endif()
 target_compile_definitions(app PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(app PRIVATE cblueprint_render editor engine runtime_support cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
+
+add_executable(blueprints_ctl tools/blueprints_ctl/main.c ${APP_REGISTRY})
+add_dependencies(blueprints_ctl generate_runtime_registry)
+target_include_directories(blueprints_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(blueprints_ctl PRIVATE automation runtime_support core)
+set_target_properties(blueprints_ctl PROPERTIES LINKER_LANGUAGE CXX)
+
+find_program(NODE_EXECUTABLE node)
+if(NODE_EXECUTABLE)
+    add_custom_target(check-mcp
+        COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
+        DEPENDS blueprints_ctl
+        VERBATIM)
+else()
+    add_custom_target(check-mcp
+        COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP protocol check"
+        VERBATIM)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")

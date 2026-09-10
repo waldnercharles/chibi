@@ -1,0 +1,12 @@
+{
+  "name": "c-blueprints-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP adapter for the c-blueprints editor",
+  "type": "module",
+  "bin": {
+    "c-blueprints-mcp": "./server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

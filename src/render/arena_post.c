@@ -250,7 +250,10 @@ static void downsample(render_arena_post *post, int last)
         cf_canvas_get_size(source, &width, &height);
         cf_draw_set_uniform_v2("source_texel", (CF_V2){ 1.0f / width, 1.0f / height });
         cf_draw_set_uniform_float("threshold", i ? -1 : post->settings.bloom_threshold);
+        // Sanitize raw HDR texels before filtering can combine infinities into NaNs.
+        cf_draw_push_filter(i ? CF_DRAW_FILTER_LINEAR : CF_DRAW_FILTER_NEAREST);
         pass(source, post->targets.levels[i].down);
+        cf_draw_pop_filter();
         source = post->targets.levels[i].down;
     }
     cf_draw_pop_shader();
@@ -310,7 +313,9 @@ bool render_arena_post_process(render_arena_post *post)
     cf_draw_set_uniform_float("exposure", settings.exposure);
     cf_draw_set_uniform_float("strength", bloom ? settings.bloom_strength : 0);
     cf_draw_set_uniform_float("level_mix", lod - low);
+    cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(source, post->pending_output.id ? post->pending_output : post->output);
+    cf_draw_pop_filter();
     cf_draw_pop_shader();
 
     cf_draw_pop_alpha_discard();

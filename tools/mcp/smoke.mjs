@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = resolve(root, "build/blueprints_ctl");
 
-function nativeRequest(operation, args = {}) {
-  const result = spawnSync(controller, ["--project-root", root], {
-    cwd: root,
+function nativeRequestAt(projectRoot, operation, args = {}) {
+  const result = spawnSync(controller, ["--project-root", projectRoot], {
+    cwd: projectRoot,
     input: `${JSON.stringify({ contract: 1, operation, ...args })}\n`,
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
@@ -22,6 +24,10 @@ function nativeRequest(operation, args = {}) {
     throw new Error(result.stderr.trim() || "blueprints_ctl returned no response");
   }
   return { response: JSON.parse(line), status: result.status };
+}
+
+function nativeRequest(operation, args = {}) {
+  return nativeRequestAt(root, operation, args);
 }
 
 const requests = [
@@ -97,7 +103,10 @@ if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" 
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "asset_dependencies" && tool.inputSchema?.required?.includes("kind")) ||
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_graph" &&
       tool.inputSchema?.properties?.graph_id?.type === "integer" &&
-      tool.inputSchema?.properties?.graph_name?.type === "string")) {
+      tool.inputSchema?.properties?.graph_name?.type === "string") ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_system" &&
+      tool.inputSchema?.required?.includes("kind") &&
+      tool.inputSchema?.required?.includes("name"))) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
 const status = JSON.parse(responseById.get(3).result.content[0].text);
@@ -236,5 +245,37 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeRegistry.response.result?.nodes?.length < 1 ||
     nativeMissing.status !== 6 || nativeMissing.response.error?.code !== "asset_not_found") {
   throw new Error("native controller smoke checks failed");
+}
+
+const systemRoot = mkdtempSync(join(tmpdir(), "c-blueprints-system-"));
+try {
+  const systemDirectory = join(systemRoot, "content", "systems");
+  mkdirSync(systemDirectory, { recursive: true });
+  const systemPath = join(systemDirectory, "MovementSystem.json");
+  const systemDocument = JSON.parse(readFileSync(
+    resolve(root, "test/fixtures/systems/MovementSystem.json"),
+    "utf8"
+  ));
+  systemDocument.query = { op: "has", component: "GameTransform" };
+  writeFileSync(systemPath, JSON.stringify(systemDocument));
+  const inspectedSystem = nativeRequestAt(systemRoot, "inspect_system", {
+    kind: "system",
+    name: "MovementSystem",
+  });
+  const validatedSystem = nativeRequestAt(systemRoot, "validate_asset", {
+    kind: "system",
+    name: "MovementSystem",
+  });
+  if (inspectedSystem.status !== 0 || inspectedSystem.response.ok !== true ||
+      inspectedSystem.response.result?.name !== "MovementSystem" ||
+      inspectedSystem.response.result?.query?.op !== "has" ||
+      inspectedSystem.response.result?.query?.component !== "game.GameTransform" ||
+      !Array.isArray(inspectedSystem.response.result?.validation?.diagnostics) ||
+      validatedSystem.response.ok !== true ||
+      validatedSystem.response.result?.valid !== true) {
+    throw new Error("system inspection smoke checks failed");
+  }
+} finally {
+  rmSync(systemRoot, { recursive: true, force: true });
 }
 console.log("MCP protocol smoke passed");

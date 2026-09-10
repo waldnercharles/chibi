@@ -347,6 +347,13 @@ function rawToolDefinitions() {
       outputSchema,
     },
     {
+      name: "inspect_system",
+      operation: "inspect_system",
+      description: "Inspect a typed system query, compiled graph, inferred component effects, and diagnostics.",
+      inputSchema: assetArguments,
+      outputSchema,
+    },
+    {
       name: "read_asset",
       operation: "read_asset",
       description: "Read one authored asset as parsed JSON.",
@@ -493,6 +500,7 @@ async function toolCall(name, args) {
     case "search_assets": return nativeRequest("search_assets", args || {});
     case "asset_dependencies": return nativeRequest("asset_dependencies", args || {});
     case "inspect_graph": return nativeRequest("inspect_graph", args || {});
+    case "inspect_system": return nativeRequest("inspect_system", args || {});
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");

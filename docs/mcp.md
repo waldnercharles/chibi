@@ -19,6 +19,7 @@ adapter provides these tools:
 - `search_assets` — find catalog entries by kind, name, path, or description.
 - `asset_dependencies` — inspect incoming or outgoing direct and transitive dependencies.
 - `inspect_graph` — inspect normalized graph nodes, pins, edges, calls, effects, and diagnostics.
+- `inspect_system` — inspect a typed system query, compiled graph, inferred component effects, and diagnostics.
 - `read_asset` — parsed authored JSON.
 - `validate_asset` — native asset loading and compiler diagnostics.
 - `describe_registry` — reflected nodes, pins, types, services, operators, and components.
@@ -48,7 +49,13 @@ printf '%s\n' '{"contract":1,"operation":"asset_dependencies","kind":"behavior",
   build/blueprints_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"inspect_graph","kind":"library","name":"DirectionMath","graph_name":"Direction Orientation"}' |
   build/blueprints_ctl --project-root .
+printf '%s\n' '{"contract":1,"operation":"inspect_system","kind":"system","name":"MovementSystem"}' |
+  build/blueprints_ctl --project-root .
 ```
+
+Catalog, search, and asset-list responses accept a numeric `limit` and `cursor`,
+and return `total`, `count`, `has_more`, and `next_cursor`. Catalog and search
+also accept `summary: true` to omit relationship arrays from each asset record.
 
 Set `CBLUEPRINTS_ROOT` when launching the MCP adapter outside the repository,
 or set `CBLUEPRINTS_CTL` to an explicitly built controller executable.

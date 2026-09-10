@@ -148,7 +148,7 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     pagedCatalog.result?.count !== 1 || pagedCatalog.result?.has_more !== true ||
     pagedCatalog.result?.assets?.[0]?.members !== undefined ||
     pagedSearch.ok !== true || pagedSearch.result?.summary !== true ||
-    pagedSearch.result?.count !== 1 || pagedSearch.result?.has_more !== true ||
+    pagedSearch.result?.count !== 1 || pagedSearch.result?.has_more !== false ||
     pagedSearch.result?.assets?.[0]?.members !== undefined ||
     secondCatalogPage.ok !== true || secondCatalogPage.result?.count !== 1 ||
     secondCatalogPage.result?.next_cursor !== 2) {

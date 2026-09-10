@@ -22,6 +22,8 @@ adapter provides these tools:
 - `inspect_system` — inspect a typed system query, compiled graph, inferred component effects, and diagnostics.
 - `run_scenario` — run a bounded deterministic prototype scenario and return runtime evidence.
 - `runtime_snapshot` — capture bounded, ordered ECS entities, reflected fields, behaviors, and timing.
+- `record_scenario` — record bounded normalized inputs, events, and per-frame hashes for a prototype.
+- `replay_scenario` — replay an inline recording or a safe recording artifact and report divergence.
 - `read_asset` — parsed authored JSON.
 - `validate_asset` — native asset loading and compiler diagnostics.
 - `describe_registry` — reflected nodes, pins, types, services, operators, and components.
@@ -30,10 +32,13 @@ The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 `2025-11-25`, keeps notifications response-free, and advertises the dynamic
 `blueprints://asset/{kind}/{name}` and
 `blueprints://asset/{kind}/{name}/dependencies` and
-`blueprints://asset/{kind}/{name}/graph/{graph_id}` resource templates through
-`resources/templates/list`. The static `blueprints://catalog` resource provides
-the same semantic catalog as the `catalog` tool. Tool responses include both a
-text rendering and structured JSON content.
+`blueprints://asset/{kind}/{name}/graph/{graph_id}` and
+`blueprints://recording/{id}` resource templates through
+`resources/templates/list`. Recording IDs are bounded opaque identifiers; the
+recording resource is resolved by the controller so clients never need direct
+filesystem access. The static `blueprints://catalog` resource provides the
+same semantic catalog as the `catalog` tool. Tool responses include both a text
+rendering and structured JSON content.
 
 The native controller also accepts newline-delimited JSON directly:
 
@@ -57,6 +62,8 @@ printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"prototype","name
   build/blueprints_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"runtime_snapshot","kind":"prototype","name":"Player","frames":2,"entity_limit":32,"component_limit":16,"field_limit":32}' |
   build/blueprints_ctl --project-root .
+printf '%s\n' '{"contract":1,"operation":"record_scenario","kind":"prototype","name":"Player","frames":60,"fixed_dt":0.0166666666666667,"inputs":[{"movement":{"x":1,"y":0},"aim":{"x":0,"y":1},"actions":[{"name":"fire","pressed":true}]}]}' |
+  build/blueprints_ctl --project-root .
 ```
 
 `run_scenario` currently accepts prototype targets, runs at most 600 fixed steps,
@@ -71,6 +78,22 @@ entity and component records with reflected field values, attached behavior
 state, and timing data. `entity_limit`, `component_limit`, `field_limit`, and
 `behavior_limit` bound the response; `fields` can restrict reflected field
 selection. The operation is read-only and does not write authored content.
+
+`record_scenario` uses the same fixed-step runtime path while accepting at most
+600 frames of normalized input. Each frame may include bounded `movement` and
+`aim` vectors with `x` and `y` values in `[-1, 1]`, plus at most 32 named action
+transitions. The result includes a versioned recording with contract and
+content hashes, normalized inputs, events, fixed timing, and per-frame world
+hashes. The native controller writes the recording artifact outside authored
+content and returns its path. Repeated recordings of unchanged content and
+inputs should have the same deterministic hashes and recording payload.
+
+`replay_scenario` accepts exactly one of the returned recording object or its
+bounded `recording_path`. It validates the recording and content revisions
+before running the same headless fixed-step path. A matching replay reports
+deterministic frame and world hashes; a mismatch reports the first divergent
+frame and selected state differences. Recording format and contract revisions
+are checked explicitly so incompatible artifacts fail with a useful error.
 
 Catalog, search, and asset-list responses accept a numeric `limit` and `cursor`,
 and return `total`, `count`, `has_more`, and `next_cursor`. Catalog and search

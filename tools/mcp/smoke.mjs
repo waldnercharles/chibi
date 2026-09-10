@@ -346,7 +346,8 @@ try {
       firstScenario.result?.name !== "Editor2DPreview" ||
       firstScenario.result?.frames !== 2 ||
       firstScenario.result?.fixed_dt !== 1 / 60 ||
-      typeof firstScenario.result?.world_hash !== "number" ||
+      typeof firstScenario.result?.world_hash !== "string" ||
+      !/^[0-9a-f]+$/i.test(firstScenario.result.world_hash) ||
       typeof firstScenario.result?.live_entities !== "number" ||
       !firstScenario.result?.timing ||
       firstScenario.result?.world_hash !== secondScenario.result?.world_hash ||

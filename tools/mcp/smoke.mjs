@@ -35,13 +35,18 @@ const requests = [
   { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
   { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "project_status", arguments: {} } },
   { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "list_assets", arguments: {} } },
+  { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "catalog", arguments: {} } },
+  { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "search_assets", arguments: { query: "Health" } } },
+  { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
   { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "blueprints://project/status" } },
+  { jsonrpc: "2.0", id: 17, method: "resources/read", params: { uri: "blueprints://catalog" } },
   { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "blueprints://asset/behavior/HealthBehavior" } },
+  { jsonrpc: "2.0", id: 18, method: "resources/read", params: { uri: "blueprints://asset/behavior/HealthBehavior/dependencies" } },
   { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "missing_tool", arguments: {} } },
   { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "blueprints://asset/behavior/nope" } },
   { jsonrpc: "2.0", method: "ping" },
@@ -68,12 +73,23 @@ if (responseById.get(1)?.result?.serverInfo?.name !== "c-blueprints" ||
 if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "validate_asset" && tool.outputSchema)) {
   throw new Error("tools/list did not expose validate_asset");
 }
+if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" && tool.outputSchema) ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "search_assets" && tool.inputSchema?.required?.includes("query")) ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "asset_dependencies" && tool.inputSchema?.required?.includes("kind"))) {
+  throw new Error("tools/list did not expose semantic catalog tools");
+}
 const status = JSON.parse(responseById.get(3).result.content[0].text);
 const assets = JSON.parse(responseById.get(4).result.content[0].text);
+const catalog = JSON.parse(responseById.get(14).result.content[0].text);
+const search = JSON.parse(responseById.get(15).result.content[0].text);
+const dependencies = JSON.parse(responseById.get(16).result.content[0].text);
 const read = JSON.parse(responseById.get(5).result.content[0].text);
 const validation = JSON.parse(responseById.get(6).result.content[0].text);
 const registry = JSON.parse(responseById.get(7).result.content[0].text);
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
+    catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
+    search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
+    dependencies.ok !== true || dependencies.result?.asset?.name !== "HealthBehavior" ||
     read.result?.name !== "HealthBehavior" || validation.result?.valid !== true ||
     registry.result?.nodes?.length < 1) {
   throw new Error("native MCP operations failed");
@@ -82,7 +98,13 @@ if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
   template.uriTemplate === "blueprints://asset/{kind}/{name}")) {
   throw new Error("resources/templates/list did not expose the asset template");
 }
-if (responseById.get(9)?.error || responseById.get(10)?.error || !responseById.get(10)?.result?.contents?.length) {
+if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
+  template.uriTemplate === "blueprints://asset/{kind}/{name}/dependencies")) {
+  throw new Error("resources/templates/list did not expose the dependency template");
+}
+if (responseById.get(9)?.error || responseById.get(10)?.error || responseById.get(17)?.error ||
+    responseById.get(18)?.error || !responseById.get(10)?.result?.contents?.length ||
+    !responseById.get(17)?.result?.contents?.length || !responseById.get(18)?.result?.contents?.length) {
   throw new Error("MCP status request failed");
 }
 if (responseById.get(11)?.error?.code !== -32602) {
@@ -94,12 +116,18 @@ if (responseById.get(13)?.error?.code !== -32002) {
 
 const nativeStatus = nativeRequest("status");
 const nativeAssets = nativeRequest("list_assets");
+const nativeCatalog = nativeRequest("catalog");
+const nativeSearch = nativeRequest("search_assets", { query: "Health" });
+const nativeDependencies = nativeRequest("asset_dependencies", { kind: "behavior", name: "HealthBehavior" });
 const nativeRead = nativeRequest("read_asset", { kind: "behavior", name: "HealthBehavior" });
 const nativeValidation = nativeRequest("validate_asset", { kind: "behavior", name: "HealthBehavior" });
 const nativeRegistry = nativeRequest("describe_registry");
 const nativeMissing = nativeRequest("read_asset", { path: "content/nope.json" });
 if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeAssets.response.result?.assets?.length < 1 ||
+    nativeCatalog.response.ok !== true || !nativeCatalog.response.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
+    nativeSearch.response.ok !== true || !nativeSearch.response.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
+    nativeDependencies.response.ok !== true || nativeDependencies.response.result?.asset?.name !== "HealthBehavior" ||
     nativeRead.response.result?.name !== "HealthBehavior" ||
     nativeValidation.response.result?.valid !== true ||
     nativeRegistry.response.result?.nodes?.length < 1 ||

@@ -15,20 +15,34 @@ adapter provides these tools:
 
 - `project_status` — project, asset, and reflection counts.
 - `list_assets` — deterministic asset paths, sizes, and hashes.
+- `catalog` — semantic asset metadata, dependency edges, diagnostics, and registry data.
+- `search_assets` — find catalog entries by kind, name, path, or description.
+- `asset_dependencies` — inspect incoming or outgoing direct and transitive dependencies.
 - `read_asset` — parsed authored JSON.
 - `validate_asset` — native asset loading and compiler diagnostics.
 - `describe_registry` — reflected nodes, pins, types, services, operators, and components.
 
 The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 `2025-11-25`, keeps notifications response-free, and advertises the dynamic
-`blueprints://asset/{kind}/{name}` resource template through
-`resources/templates/list`. Tool responses include both a text rendering and
-structured JSON content.
+`blueprints://asset/{kind}/{name}` and
+`blueprints://asset/{kind}/{name}/dependencies` resource templates through
+`resources/templates/list`. The static `blueprints://catalog` resource provides
+the same semantic catalog as the `catalog` tool. Tool responses include both a
+text rendering and structured JSON content.
 
 The native controller also accepts newline-delimited JSON directly:
 
 ```sh
 printf '%s\n' '{"contract":1,"operation":"status"}' |
+  build/blueprints_ctl --project-root .
+```
+
+For example, search the catalog and inspect a graph's asset dependencies:
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"search_assets","query":"Health"}' |
+  build/blueprints_ctl --project-root .
+printf '%s\n' '{"contract":1,"operation":"asset_dependencies","kind":"behavior","name":"HealthBehavior","direction":"both","transitive":true}' |
   build/blueprints_ctl --project-root .
 ```
 

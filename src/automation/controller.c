@@ -11,6 +11,7 @@
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -64,10 +65,48 @@ typedef struct
 
 typedef struct
 {
+    char *kind;
+    char *name;
+    bool resolved;
+} catalog_reference;
+
+typedef struct
+{
+    char *kind;
+    char *name;
+} catalog_member;
+
+typedef struct
+{
+    char *severity;
+    int rule;
+    char *rule_name;
+    char *message;
+} catalog_diagnostic;
+
+typedef struct
+{
+    asset_entry asset;
+    char *name;
+    int schema_version;
+    char *description;
+    bool valid;
+    int errors;
+    int warnings;
+    catalog_member *members;
+    catalog_reference *dependencies;
+    catalog_reference *dependents;
+    catalog_diagnostic *diagnostics;
+} catalog_asset;
+
+typedef struct
+{
     yyjson_mut_doc *doc;
     yyjson_mut_val *root;
     bool ok;
 } response;
+
+static int handle_describe_registry(response *result);
 
 static const asset_family *family_by_kind(const char *kind)
 {
@@ -368,6 +407,445 @@ static void free_asset_entries(asset_entry *entries)
     afree(entries);
 }
 
+static char *asset_name_from_filename(const char *filename)
+{
+    size_t length = strlen(filename) - (sizeof ".json" - 1);
+    char *name = xmalloc(length + 1);
+    memcpy(name, filename, length);
+    name[length] = '\0';
+    return name;
+}
+
+static void free_catalog_references(catalog_reference *references)
+{
+    for (int i = 0; i < acount(references); i++) {
+        free(references[i].kind);
+        free(references[i].name);
+    }
+    afree(references);
+}
+
+static void free_catalog_assets(catalog_asset *assets)
+{
+    for (int i = 0; i < acount(assets); i++) {
+        catalog_asset *asset = &assets[i];
+        free(asset->asset.filename);
+        free(asset->asset.relative);
+        free(asset->name);
+        free(asset->description);
+        for (int j = 0; j < acount(asset->members); j++) {
+            free(asset->members[j].kind);
+            free(asset->members[j].name);
+        }
+        afree(asset->members);
+        free_catalog_references(asset->dependencies);
+        free_catalog_references(asset->dependents);
+        for (int j = 0; j < acount(asset->diagnostics); j++) {
+            free(asset->diagnostics[j].severity);
+            free(asset->diagnostics[j].rule_name);
+            free(asset->diagnostics[j].message);
+        }
+        afree(asset->diagnostics);
+    }
+    afree(assets);
+}
+
+static int catalog_reference_compare(const void *left, const void *right)
+{
+    const catalog_reference *a = left;
+    const catalog_reference *b = right;
+    int kind = strcmp(a->kind ? a->kind : "", b->kind ? b->kind : "");
+    return kind ? kind : strcmp(a->name, b->name);
+}
+
+static int catalog_member_compare(const void *left, const void *right)
+{
+    const catalog_member *a = left;
+    const catalog_member *b = right;
+    int kind = strcmp(a->kind, b->kind);
+    return kind ? kind : strcmp(a->name, b->name);
+}
+
+static void catalog_member_add(catalog_asset *asset, const char *kind, const char *name)
+{
+    if (!name || !name[0]) {
+        return;
+    }
+    for (int i = 0; i < acount(asset->members); i++) {
+        if (!strcmp(asset->members[i].kind, kind) &&
+            !strcmp(asset->members[i].name, name)) {
+            return;
+        }
+    }
+    catalog_member member = { .kind = xstrdup(kind), .name = xstrdup(name) };
+    apush(asset->members, member);
+}
+
+static char *catalog_normalize_name(const char *value)
+{
+    if (!value || !value[0]) {
+        return NULL;
+    }
+    const char *name = strrchr(value, '/');
+    name = name ? name + 1 : value;
+    size_t length = strlen(name);
+    if (length > sizeof ".json" - 1 &&
+        !strcmp(name + length - (sizeof ".json" - 1), ".json")) {
+        length -= sizeof ".json" - 1;
+    }
+    if (!length) {
+        return NULL;
+    }
+    char *copy = xmalloc(length + 1);
+    memcpy(copy, name, length);
+    copy[length] = '\0';
+    return copy;
+}
+
+static void catalog_reference_add(catalog_asset *asset, const char *kind, const char *value)
+{
+    char *name = catalog_normalize_name(value);
+    if (!name) {
+        return;
+    }
+    const char *reference_kind = kind ? kind : "";
+    for (int i = 0; i < acount(asset->dependencies); i++) {
+        if (!strcmp(asset->dependencies[i].kind, reference_kind) &&
+            !strcmp(asset->dependencies[i].name, name)) {
+            free(name);
+            return;
+        }
+    }
+    catalog_reference reference = {
+        .kind = xstrdup(reference_kind),
+        .name = name,
+        .resolved = false,
+    };
+    apush(asset->dependencies, reference);
+}
+
+static void catalog_scan_references(catalog_asset *asset, yyjson_val *value)
+{
+    if (yyjson_is_obj(value)) {
+        yyjson_obj_iter iterator = yyjson_obj_iter_with(value);
+        yyjson_val *key;
+        while ((key = yyjson_obj_iter_next(&iterator))) {
+            const char *field = yyjson_get_str(key);
+            yyjson_val *child = yyjson_obj_iter_get_val(key);
+            if (yyjson_is_str(child)) {
+                const char *kind = NULL;
+                if (!strcmp(field, "reference_asset") ||
+                    !strcmp(field, "includes") || !strcmp(field, "include")) {
+                    kind = !strcmp(asset->asset.family->kind, "material") ||
+                                   !strcmp(asset->asset.family->kind, "shader-library")
+                             ? "shader-library"
+                             : "library";
+                } else if (!strcmp(field, "prototype")) {
+                    kind = "prototype";
+                } else if (!strcmp(field, "material")) {
+                    kind = "material";
+                } else if (!strcmp(field, "shape")) {
+                    kind = "shape";
+                }
+                if (kind) {
+                    catalog_reference_add(asset, kind, yyjson_get_str(child));
+                }
+            } else if (yyjson_is_arr(child) && (!strcmp(field, "behaviors") || !strcmp(field, "includes"))) {
+                size_t index, count;
+                yyjson_val *item;
+                yyjson_arr_foreach(child, index, count, item)
+                {
+                    if (yyjson_is_str(item)) {
+                        catalog_reference_add(
+                            asset,
+                            !strcmp(field, "behaviors") ? "behavior" : "library",
+                            yyjson_get_str(item)
+                        );
+                    } else if (yyjson_is_obj(item)) {
+                        const char *name = request_string(item, "name");
+                        catalog_reference_add(
+                            asset,
+                            !strcmp(field, "behaviors") ? "behavior" : "library",
+                            name
+                        );
+                    }
+                }
+            }
+            catalog_scan_references(asset, child);
+        }
+    } else if (yyjson_is_arr(value)) {
+        size_t index, count;
+        yyjson_val *child;
+        yyjson_arr_foreach(value, index, count, child)
+        {
+            catalog_scan_references(asset, child);
+        }
+    }
+}
+
+static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
+{
+    yyjson_val *graphs = yyjson_obj_get(root, "graphs");
+    size_t index, count;
+    yyjson_val *graph_value;
+    yyjson_arr_foreach(graphs, index, count, graph_value)
+    {
+        if (!yyjson_is_obj(graph_value)) {
+            continue;
+        }
+        const char *name = request_string(graph_value, "name");
+        const char *kind = request_string(graph_value, "kind");
+        catalog_member_add(asset, kind ? kind : "graph", name);
+    }
+    yyjson_val *variables = yyjson_obj_get(root, "variables");
+    yyjson_val *variable;
+    yyjson_arr_foreach(variables, index, count, variable)
+    {
+        if (yyjson_is_obj(variable)) {
+            catalog_member_add(asset, "variable", request_string(variable, "name"));
+        }
+    }
+    yyjson_val *components = yyjson_obj_get(root, "components");
+    yyjson_val *component;
+    yyjson_arr_foreach(components, index, count, component)
+    {
+        if (yyjson_is_obj(component)) {
+            const char *name = request_string(component, "type");
+            if (!name) {
+                name = request_string(component, "name");
+            }
+            catalog_member_add(asset, "component", name);
+        }
+    }
+    yyjson_val *entities = yyjson_obj_get(root, "entities");
+    yyjson_val *entity;
+    yyjson_arr_foreach(entities, index, count, entity)
+    {
+        if (yyjson_is_obj(entity)) {
+            catalog_member_add(asset, "entity", request_string(entity, "name"));
+        }
+    }
+    qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+}
+
+static void catalog_add_diagnostic(
+    catalog_asset *asset,
+    const char *severity,
+    int rule,
+    const char *rule_name,
+    const char *message
+)
+{
+    catalog_diagnostic diagnostic = {
+        .severity = xstrdup(severity ? severity : "error"),
+        .rule = rule,
+        .rule_name = xstrdup(rule_name ? rule_name : "LOAD"),
+        .message = xstrdup(message ? message : "asset rejected"),
+    };
+    apush(asset->diagnostics, diagnostic);
+}
+
+static void catalog_validate_asset(catalog_asset *asset, const char *json)
+{
+    const asset_family *family = asset->asset.family;
+    if (family->loader == ASSET_GRAPH) {
+        behavior_asset *behavior = behavior_asset_load_json(json);
+        if (!behavior) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", graph_last_error());
+        } else {
+            compile_report report;
+            compile_report_init(&report);
+            behavior_asset_compile(behavior, &report);
+            asset->errors = report.error_count;
+            asset->warnings = report.warning_count;
+            for (int i = 0; i < acount(report.items); i++) {
+                const compile_diagnostic *diagnostic = &report.items[i];
+                catalog_add_diagnostic(
+                    asset,
+                    diagnostic->severity == CMPL_ERROR ? "error" : "warning",
+                    diagnostic->rule,
+                    cmpl_rule_name(diagnostic->rule),
+                    diagnostic->message
+                );
+            }
+            compile_report_free(&report);
+            behavior_asset_free(behavior);
+        }
+    } else if (family->loader == ASSET_PROTOTYPE) {
+        game_prototype_registry registry = {
+            .components = GAME_REGISTRY_COMPONENTS,
+            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+        };
+        char error[256] = { 0 };
+        game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+        if (!prototype) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+        } else {
+            game_prototype_free(prototype);
+        }
+    } else {
+        char error[256] = { 0 };
+        game_scene_document *scene = game_scene_document_load(json, error, sizeof error);
+        if (!scene) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+        } else {
+            game_scene_document_free(scene);
+        }
+    }
+    asset->valid = asset->errors == 0;
+}
+
+static int catalog_asset_index(const catalog_asset *assets, int count, const char *kind, const char *name)
+{
+    for (int i = 0; i < count; i++) {
+        if (kind && kind[0] && strcmp(assets[i].asset.family->kind, kind)) {
+            continue;
+        }
+        if (!strcmp(assets[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int catalog_resolve_index(
+    const catalog_asset *assets,
+    int count,
+    const catalog_asset *source,
+    const catalog_reference *reference
+)
+{
+    int index = catalog_asset_index(assets, count, reference->kind, reference->name);
+    if (index >= 0) {
+        return index;
+    }
+    if (!reference->kind[0]) {
+        index = catalog_asset_index(assets, count, NULL, reference->name);
+        if (index >= 0) {
+            return index;
+        }
+    }
+    if (!strcmp(reference->kind, "library")) {
+        index = catalog_asset_index(assets, count, "shader-library", reference->name);
+        if (index >= 0) {
+            return index;
+        }
+    } else if (!strcmp(reference->kind, "shader-library")) {
+        index = catalog_asset_index(assets, count, "library", reference->name);
+        if (index >= 0) {
+            return index;
+        }
+    }
+    if (source && !strcmp(source->asset.family->kind, "shader-library")) {
+        return catalog_asset_index(assets, count, "library", reference->name);
+    }
+    return -1;
+}
+
+static void catalog_resolve_references(catalog_asset *assets)
+{
+    int count = acount(assets);
+    for (int i = 0; i < count; i++) {
+        catalog_asset *source = &assets[i];
+        qsort(
+            source->dependencies,
+            (size_t)acount(source->dependencies),
+            sizeof *source->dependencies,
+            catalog_reference_compare
+        );
+        for (int j = 0; j < acount(source->dependencies); j++) {
+            catalog_reference *reference = &source->dependencies[j];
+            int target_index = catalog_resolve_index(assets, count, source, reference);
+            if (target_index < 0) {
+                continue;
+            }
+            reference->resolved = true;
+            if (strcmp(reference->kind, assets[target_index].asset.family->kind)) {
+                free(reference->kind);
+                reference->kind = xstrdup(assets[target_index].asset.family->kind);
+            }
+            catalog_reference dependent = {
+                .kind = xstrdup(source->asset.family->kind),
+                .name = xstrdup(source->name),
+                .resolved = true,
+            };
+            apush(assets[target_index].dependents, dependent);
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        qsort(
+            assets[i].dependents,
+            (size_t)acount(assets[i].dependents),
+            sizeof *assets[i].dependents,
+            catalog_reference_compare
+        );
+    }
+}
+
+static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
+
+static int build_catalog(const char *root, catalog_asset **out, char *error, size_t error_size)
+{
+    asset_entry *entries = NULL;
+    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+        return -1;
+    }
+    catalog_asset *assets = NULL;
+    for (int i = 0; i < acount(entries); i++) {
+        catalog_asset asset = {
+            .asset = {
+                .family = entries[i].family,
+                .filename = xstrdup(entries[i].filename),
+                .relative = xstrdup(entries[i].relative),
+                .bytes = entries[i].bytes,
+                .hash = entries[i].hash,
+            },
+            .name = asset_name_from_filename(entries[i].filename),
+            .valid = true,
+        };
+        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(path_size);
+        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
+        char read_error[256] = { 0 };
+        char *json = read_file(path, NULL, NULL, read_error, sizeof read_error);
+        free(path);
+        if (!json) {
+            free_catalog_assets(assets);
+            free_asset_entries(entries);
+            return set_error(error, error_size, read_error);
+        }
+        yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+        if (!document) {
+            asset.valid = false;
+            asset.errors = 1;
+            catalog_add_diagnostic(&asset, "error", 0, "JSON", "asset is not valid JSON");
+        } else {
+            yyjson_val *json_root = yyjson_doc_get_root(document);
+            yyjson_val *version = yyjson_obj_get(json_root, "version");
+            if (yyjson_is_num(version)) {
+                asset.schema_version = yyjson_get_sint(version);
+            }
+            const char *description = request_string(json_root, "description");
+            if (description) {
+                asset.description = xstrdup(description);
+            }
+            catalog_scan_members(&asset, json_root);
+            catalog_scan_references(&asset, json_root);
+            yyjson_doc_free(document);
+            catalog_validate_asset(&asset, json);
+        }
+        free(json);
+        apush(assets, asset);
+    }
+    free_asset_entries(entries);
+    catalog_resolve_references(assets);
+    *out = assets;
+    return 0;
+}
+
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size)
 {
     asset_entry *entries = NULL;
@@ -604,6 +1082,405 @@ static void add_asset_identity(
     free(name);
 }
 
+static yyjson_mut_val *add_catalog_reference(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const catalog_reference *reference,
+    const catalog_asset *assets,
+    int count
+)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_strcpy(doc, object, "kind", reference->kind);
+    yyjson_mut_obj_add_strcpy(doc, object, "name", reference->name);
+    yyjson_mut_obj_add_bool(doc, object, "resolved", reference->resolved);
+    if (reference->resolved) {
+        int index = catalog_asset_index(
+            assets,
+            count,
+            reference->kind,
+            reference->name
+        );
+        if (index >= 0) {
+            yyjson_mut_obj_add_strcpy(doc, object, "path", assets[index].asset.relative);
+        }
+    }
+    return object;
+}
+
+static yyjson_mut_val *add_catalog_asset(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const catalog_asset *asset,
+    const catalog_asset *assets,
+    int count
+)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_strcpy(doc, object, "kind", asset->asset.family->kind);
+    yyjson_mut_obj_add_strcpy(doc, object, "name", asset->name);
+    yyjson_mut_obj_add_strcpy(doc, object, "path", asset->asset.relative);
+    yyjson_mut_obj_add_int(doc, object, "schema_version", asset->schema_version);
+    yyjson_mut_obj_add_uint(doc, object, "bytes", asset->asset.bytes);
+    add_hash(doc, object, asset->asset.hash);
+    if (asset->description) {
+        yyjson_mut_obj_add_strcpy(doc, object, "description", asset->description);
+    }
+    yyjson_mut_val *members = yyjson_mut_obj_add_arr(doc, object, "members");
+    for (int i = 0; i < acount(asset->members); i++) {
+        yyjson_mut_val *member = yyjson_mut_arr_add_obj(doc, members);
+        yyjson_mut_obj_add_strcpy(doc, member, "kind", asset->members[i].kind);
+        yyjson_mut_obj_add_strcpy(doc, member, "name", asset->members[i].name);
+    }
+    yyjson_mut_val *dependencies = yyjson_mut_obj_add_arr(doc, object, "dependencies");
+    for (int i = 0; i < acount(asset->dependencies); i++) {
+        add_catalog_reference(doc, dependencies, &asset->dependencies[i], assets, count);
+    }
+    yyjson_mut_val *dependents = yyjson_mut_obj_add_arr(doc, object, "dependents");
+    for (int i = 0; i < acount(asset->dependents); i++) {
+        add_catalog_reference(doc, dependents, &asset->dependents[i], assets, count);
+    }
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
+    for (int i = 0; i < acount(asset->diagnostics); i++) {
+        const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+        yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
+        yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
+        yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
+    }
+    yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
+    yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
+    yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
+    return object;
+}
+
+static void catalog_hash_text(uint64_t *hash, const char *text)
+{
+    for (const unsigned char *value = (const unsigned char *)text; *value; value++) {
+        *hash ^= *value;
+        *hash *= UINT64_C(1099511628211);
+    }
+}
+
+static uint64_t catalog_content_hash(const catalog_asset *assets)
+{
+    uint64_t hash = UINT64_C(1469598103934665603);
+    for (int i = 0; i < acount(assets); i++) {
+        char value[64];
+        catalog_hash_text(&hash, assets[i].asset.relative);
+        snprintf(
+            value,
+            sizeof value,
+            ":%016llx;",
+            (unsigned long long)assets[i].asset.hash
+        );
+        catalog_hash_text(&hash, value);
+    }
+    return hash;
+}
+
+static bool text_contains_casefold(const char *text, const char *query)
+{
+    if (!query || !query[0]) {
+        return true;
+    }
+    if (!text) {
+        return false;
+    }
+    size_t query_length = strlen(query);
+    size_t text_length = strlen(text);
+    if (query_length > text_length) {
+        return false;
+    }
+    for (size_t i = 0; i + query_length <= text_length; i++) {
+        size_t j = 0;
+        while (j < query_length && tolower((unsigned char)text[i + j]) ==
+                                       tolower((unsigned char)query[j])) {
+            j++;
+        }
+        if (j == query_length) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool catalog_search_match(yyjson_val *request, const catalog_asset *asset)
+{
+    const char *query = request_string(request, "query");
+    if (query && query[0]) {
+        bool match = text_contains_casefold(asset->asset.family->kind, query) ||
+                     text_contains_casefold(asset->name, query) ||
+                     text_contains_casefold(asset->asset.relative, query) ||
+                     text_contains_casefold(asset->description, query);
+        for (int i = 0; !match && i < acount(asset->members); i++) {
+            match = text_contains_casefold(asset->members[i].name, query);
+        }
+        if (!match) {
+            return false;
+        }
+    }
+    yyjson_val *kinds = yyjson_obj_get(request, "kinds");
+    if (!kinds) {
+        return true;
+    }
+    size_t index, count;
+    yyjson_val *kind;
+    yyjson_arr_foreach(kinds, index, count, kind)
+    {
+        if (yyjson_is_str(kind) &&
+            family_by_kind(yyjson_get_str(kind)) == asset->asset.family) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int handle_catalog(const char *root, response *result, int *exit_code)
+{
+    catalog_asset *assets = NULL;
+    char error[256] = { 0 };
+    if (build_catalog(root, &assets, error, sizeof error) != 0) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_int(result->doc, value, "catalog_version", 1);
+    char content_hash[32];
+    snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)catalog_content_hash(assets));
+    yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", root);
+    yyjson_mut_val *asset_array = yyjson_mut_obj_add_arr(result->doc, value, "assets");
+    for (int i = 0; i < acount(assets); i++) {
+        add_catalog_asset(result->doc, asset_array, &assets[i], assets, acount(assets));
+    }
+    response registry = response_new("describe_registry");
+    handle_describe_registry(&registry);
+    yyjson_mut_val *registry_value = yyjson_mut_obj_get(registry.root, "result");
+    if (registry_value) {
+        yyjson_mut_obj_add_val(
+            result->doc,
+            value,
+            "registry",
+            yyjson_mut_val_mut_copy(result->doc, registry_value)
+        );
+    }
+    yyjson_mut_doc_free(registry.doc);
+    free_catalog_assets(assets);
+    return 0;
+}
+
+static int handle_search_assets(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *kinds = yyjson_obj_get(request, "kinds");
+    if (kinds && !yyjson_is_arr(kinds)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "kinds must be an array");
+        return -1;
+    }
+    catalog_asset *assets = NULL;
+    char error[256] = { 0 };
+    if (build_catalog(root, &assets, error, sizeof error) != 0) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    const char *query = request_string(request, "query");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "query", query ? query : "");
+    yyjson_mut_val *matches = yyjson_mut_obj_add_arr(result->doc, value, "assets");
+    for (int i = 0; i < acount(assets); i++) {
+        if (catalog_search_match(request, &assets[i])) {
+            add_catalog_asset(result->doc, matches, &assets[i], assets, acount(assets));
+        }
+    }
+    yyjson_mut_obj_add_int(result->doc, value, "count", yyjson_mut_arr_size(matches));
+    free_catalog_assets(assets);
+    return 0;
+}
+
+static yyjson_mut_val *add_dependency_node(yyjson_mut_doc *doc, yyjson_mut_val *array, const catalog_asset *asset)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_strcpy(doc, object, "kind", asset->asset.family->kind);
+    yyjson_mut_obj_add_strcpy(doc, object, "name", asset->name);
+    yyjson_mut_obj_add_strcpy(doc, object, "path", asset->asset.relative);
+    return object;
+}
+
+static void add_dependency_edge(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const catalog_asset *from,
+    const catalog_asset *to,
+    const catalog_reference *unresolved
+)
+{
+    yyjson_mut_val *edge = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_val *from_value = yyjson_mut_obj_add_obj(doc, edge, "from");
+    yyjson_mut_obj_add_strcpy(doc, from_value, "kind", from->asset.family->kind);
+    yyjson_mut_obj_add_strcpy(doc, from_value, "name", from->name);
+    yyjson_mut_obj_add_strcpy(doc, from_value, "path", from->asset.relative);
+    yyjson_mut_val *to_value = yyjson_mut_obj_add_obj(doc, edge, "to");
+    if (to) {
+        yyjson_mut_obj_add_strcpy(doc, to_value, "kind", to->asset.family->kind);
+        yyjson_mut_obj_add_strcpy(doc, to_value, "name", to->name);
+        yyjson_mut_obj_add_strcpy(doc, to_value, "path", to->asset.relative);
+        yyjson_mut_obj_add_bool(doc, to_value, "resolved", true);
+    } else {
+        yyjson_mut_obj_add_strcpy(doc, to_value, "kind", unresolved->kind);
+        yyjson_mut_obj_add_strcpy(doc, to_value, "name", unresolved->name);
+        yyjson_mut_obj_add_bool(doc, to_value, "resolved", false);
+    }
+}
+
+static int handle_asset_dependencies(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    const char *name = request_string(request, "name");
+    if (!kind || !name || !name[0] || !family_by_kind(kind)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "asset_dependencies requires a known kind and name");
+        return -1;
+    }
+    const char *direction = request_string(request, "direction");
+    if (!direction) {
+        direction = "outgoing";
+    }
+    if (strcmp(direction, "outgoing") && strcmp(direction, "incoming") &&
+        strcmp(direction, "both")) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "direction must be outgoing, incoming, or both");
+        return -1;
+    }
+    bool transitive = false;
+    yyjson_val *transitive_value = yyjson_obj_get(request, "transitive");
+    if (transitive_value) {
+        if (!yyjson_is_bool(transitive_value)) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "transitive must be a boolean");
+            return -1;
+        }
+        transitive = yyjson_get_bool(transitive_value);
+    }
+    catalog_asset *assets = NULL;
+    char error[256] = { 0 };
+    if (build_catalog(root, &assets, error, sizeof error) != 0) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    int count = acount(assets);
+    int root_index = catalog_asset_index(assets, count, family_by_kind(kind)->kind, name);
+    if (root_index < 0) {
+        free_catalog_assets(assets);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "asset not found");
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "direction", direction);
+    yyjson_mut_obj_add_bool(result->doc, value, "transitive", transitive);
+    yyjson_mut_val *root_value = yyjson_mut_obj_add_obj(result->doc, value, "root");
+    yyjson_mut_obj_add_strcpy(
+        result->doc,
+        root_value,
+        "kind",
+        assets[root_index].asset.family->kind
+    );
+    yyjson_mut_obj_add_strcpy(
+        result->doc,
+        root_value,
+        "name",
+        assets[root_index].name
+    );
+    yyjson_mut_obj_add_strcpy(
+        result->doc,
+        root_value,
+        "path",
+        assets[root_index].asset.relative
+    );
+    yyjson_mut_obj_add_val(
+        result->doc,
+        value,
+        "asset",
+        yyjson_mut_val_mut_copy(result->doc, root_value)
+    );
+    yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
+    yyjson_mut_val *edges = yyjson_mut_obj_add_arr(result->doc, value, "edges");
+    bool *node_seen = xcalloc((size_t)count, sizeof *node_seen);
+    bool *edge_seen = xcalloc((size_t)count * (size_t)count, sizeof *edge_seen);
+    int *queue = NULL;
+    apush(queue, root_index);
+    node_seen[root_index] = true;
+    add_dependency_node(result->doc, nodes, &assets[root_index]);
+    int cursor = 0;
+    while (cursor < acount(queue)) {
+        int current = queue[cursor++];
+        catalog_asset *source = &assets[current];
+        bool visit_outgoing = !strcmp(direction, "outgoing") ||
+                              !strcmp(direction, "both");
+        bool visit_incoming = !strcmp(direction, "incoming") ||
+                              !strcmp(direction, "both");
+        if (visit_outgoing) {
+            for (int i = 0; i < acount(source->dependencies); i++) {
+                catalog_reference *reference = &source->dependencies[i];
+                int target = reference->resolved ? catalog_asset_index(
+                                                       assets,
+                                                       count,
+                                                       reference->kind,
+                                                       reference->name
+                                                   )
+                                                 : -1;
+                if (target < 0) {
+                    add_dependency_edge(result->doc, edges, source, NULL, reference);
+                    continue;
+                }
+                if (!edge_seen[current * count + target]) {
+                    edge_seen[current * count + target] = true;
+                    add_dependency_edge(result->doc, edges, source, &assets[target], NULL);
+                }
+                if (!node_seen[target]) {
+                    node_seen[target] = true;
+                    add_dependency_node(result->doc, nodes, &assets[target]);
+                    if (transitive) {
+                        apush(queue, target);
+                    }
+                }
+            }
+        }
+        if (visit_incoming) {
+            for (int i = 0; i < acount(source->dependents); i++) {
+                catalog_reference *reference = &source->dependents[i];
+                int dependent = catalog_asset_index(
+                    assets,
+                    count,
+                    reference->kind,
+                    reference->name
+                );
+                if (dependent < 0) {
+                    continue;
+                }
+                if (!edge_seen[dependent * count + current]) {
+                    edge_seen[dependent * count + current] = true;
+                    add_dependency_edge(result->doc, edges, &assets[dependent], source, NULL);
+                }
+                if (!node_seen[dependent]) {
+                    node_seen[dependent] = true;
+                    add_dependency_node(result->doc, nodes, &assets[dependent]);
+                    if (transitive) {
+                        apush(queue, dependent);
+                    }
+                }
+            }
+        }
+        if (!transitive) {
+            break;
+        }
+    }
+    yyjson_mut_obj_add_int(result->doc, value, "node_count", yyjson_mut_arr_size(nodes));
+    yyjson_mut_obj_add_int(result->doc, value, "edge_count", yyjson_mut_arr_size(edges));
+    afree(queue);
+    free(node_seen);
+    free(edge_seen);
+    free_catalog_assets(assets);
+    return 0;
+}
+
 static int handle_status(const char *root, response *result, int *exit_code)
 {
     asset_entry *entries = NULL;
@@ -635,8 +1512,9 @@ static int handle_status(const char *root, response *result, int *exit_code)
     add_registry(result->doc, registry);
     yyjson_mut_val *operations = yyjson_mut_obj_add_arr(result->doc, value, "operations");
     const char *const names[] = {
-        "status",         "list_assets",       "read_asset",
-        "validate_asset", "describe_registry",
+        "status",         "list_assets",        "read_asset",
+        "validate_asset", "describe_registry",  "catalog",
+        "search_assets",  "asset_dependencies",
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         yyjson_mut_arr_add_strcpy(result->doc, operations, names[i]);
@@ -886,7 +1764,9 @@ static int handle_describe_registry(response *result)
 static int operation_requires_root(const char *operation)
 {
     return !strcmp(operation, "status") || !strcmp(operation, "list_assets") ||
-           !strcmp(operation, "read_asset") || !strcmp(operation, "validate_asset");
+           !strcmp(operation, "read_asset") || !strcmp(operation, "validate_asset") ||
+           !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
+           !strcmp(operation, "asset_dependencies");
 }
 
 char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -920,7 +1800,9 @@ char *blueprints_automation_handle(const char *request, const char *default_root
     }
     if (strcmp(operation, "describe_registry") && strcmp(operation, "status") &&
         strcmp(operation, "list_assets") && strcmp(operation, "read_asset") &&
-        strcmp(operation, "validate_asset")) {
+        strcmp(operation, "validate_asset") && strcmp(operation, "catalog") &&
+        strcmp(operation, "search_assets") &&
+        strcmp(operation, "asset_dependencies")) {
         response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "unknown operation");
         yyjson_doc_free(document);
         return response_finish(&result);
@@ -943,6 +1825,12 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         handle_read_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "validate_asset")) {
         handle_validate_asset(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "catalog")) {
+        handle_catalog(root, &result, exit_code);
+    } else if (!strcmp(operation, "search_assets")) {
+        handle_search_assets(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "asset_dependencies")) {
+        handle_asset_dependencies(root, root_value, &result, exit_code);
     } else {
         handle_describe_registry(&result);
     }

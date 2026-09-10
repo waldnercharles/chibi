@@ -26,6 +26,10 @@ function resourceTemplates() {
     uriTemplate: "blueprints://asset/{kind}/{name}",
     name: "c-blueprints authored asset",
     mimeType: "application/json",
+  }, {
+    uriTemplate: "blueprints://asset/{kind}/{name}/dependencies",
+    name: "c-blueprints asset dependencies",
+    mimeType: "application/json",
   }];
 }
 
@@ -71,6 +75,37 @@ function toolDefinitions() {
     required: ["kind", "name"],
     additionalProperties: false,
   };
+  const searchArguments = {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "Case-insensitive text to match against asset kind, name, path, or description.",
+      },
+      kinds: {
+        type: "array",
+        items: { type: "string" },
+        description: "Optional asset families to include in the search.",
+      },
+    },
+    required: ["query"],
+    additionalProperties: false,
+  };
+  const dependencyArguments = {
+    ...assetArguments,
+    properties: {
+      ...assetArguments.properties,
+      direction: {
+        type: "string",
+        enum: ["outgoing", "incoming", "both"],
+        description: "Which side of the dependency graph to return.",
+      },
+      transitive: {
+        type: "boolean",
+        description: "Traverse dependencies beyond the requested asset.",
+      },
+    },
+  };
   return [
     {
       name: "project_status",
@@ -82,6 +117,24 @@ function toolDefinitions() {
       name: "list_assets",
       description: "List authored JSON assets with stable paths, sizes, and content hashes.",
       inputSchema: noArguments,
+      outputSchema,
+    },
+    {
+      name: "catalog",
+      description: "Return the semantic asset catalog, dependency edges, diagnostics, and reflected registry metadata.",
+      inputSchema: noArguments,
+      outputSchema,
+    },
+    {
+      name: "search_assets",
+      description: "Search the semantic asset catalog by kind, name, path, or description.",
+      inputSchema: searchArguments,
+      outputSchema,
+    },
+    {
+      name: "asset_dependencies",
+      description: "Inspect direct or transitive incoming and outgoing asset dependencies.",
+      inputSchema: dependencyArguments,
       outputSchema,
     },
     {
@@ -139,6 +192,9 @@ function toolCall(name, args) {
   switch (name) {
     case "project_status": return nativeRequest("status");
     case "list_assets": return nativeRequest("list_assets");
+    case "catalog": return nativeRequest("catalog");
+    case "search_assets": return nativeRequest("search_assets", args || {});
+    case "asset_dependencies": return nativeRequest("asset_dependencies", args || {});
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");
@@ -162,12 +218,23 @@ function resourceRead(uri) {
   let response;
   if (uri === "blueprints://project/status") {
     response = nativeRequest("status");
+  } else if (uri === "blueprints://catalog") {
+    response = nativeRequest("catalog");
   } else {
+    const dependencyMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
+    if (dependencyMatch) {
+      response = nativeRequest("asset_dependencies", {
+        kind: dependencyMatch[1],
+        name: dependencyMatch[2],
+      });
+    }
     const match = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
-    if (!match) {
+    if (response === undefined && !match) {
       throw new Error(`unknown resource: ${uri}`);
     }
-    response = nativeRequest("read_asset", { kind: match[1], name: match[2] });
+    if (response === undefined) {
+      response = nativeRequest("read_asset", { kind: match[1], name: match[2] });
+    }
   }
   if (response.ok !== true) {
     const error = new Error(response.error?.message || "resource read failed");
@@ -216,6 +283,10 @@ function dispatch(message) {
         resources: [{
           uri: "blueprints://project/status",
           name: "c-blueprints project status",
+          mimeType: "application/json",
+        }, {
+          uri: "blueprints://catalog",
+          name: "c-blueprints semantic asset catalog",
           mimeType: "application/json",
         }],
       },

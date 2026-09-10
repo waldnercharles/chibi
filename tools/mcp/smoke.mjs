@@ -52,6 +52,11 @@ const requests = [
   { jsonrpc: "2.0", id: 21, method: "resources/read", params: { uri: "blueprints://asset/library/DirectionMath/graph/1" } },
   { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "missing_tool", arguments: {} } },
   { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "blueprints://asset/behavior/nope" } },
+  { jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior" } } },
+  { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior", direction: "sideways" } } },
+  { jsonrpc: "2.0", id: 24, method: "resources/read", params: { uri: "blueprints://asset/behavior/%ZZ" } },
+  { jsonrpc: "2.0", id: 25, method: "resources/read", params: { uri: "blueprints://missing" } },
+  { jsonrpc: "2.0", id: 26, method: "resources/read", params: {} },
   { jsonrpc: "2.0", method: "ping" },
 ];
 const result = spawnSync(process.execPath, [server], {
@@ -130,6 +135,38 @@ if (responseById.get(11)?.error?.code !== -32602) {
 }
 if (responseById.get(13)?.error?.code !== -32002) {
   throw new Error("missing resources return the expected JSON-RPC error");
+}
+if (responseById.get(22)?.error?.code !== -32602 ||
+    responseById.get(23)?.error?.code !== -32602 ||
+    responseById.get(24)?.error?.code !== -32602 ||
+    responseById.get(25)?.error?.code !== -32002 ||
+    responseById.get(26)?.error?.code !== -32602) {
+  throw new Error("MCP protocol boundary errors are not mapped correctly");
+}
+
+const cleanEnvironment = { ...process.env };
+delete cleanEnvironment.CBLUEPRINTS_ROOT;
+const cwdIndependent = spawnSync(process.execPath, [server], {
+  cwd: "/tmp",
+  env: cleanEnvironment,
+  input: `${[
+    {
+      jsonrpc: "2.0",
+      id: 30,
+      method: "tools/call",
+      params: { name: "project_status", arguments: {} },
+    },
+  ].map((request) => JSON.stringify(request)).join("\n")}\n`,
+  encoding: "utf8",
+  maxBuffer: 32 * 1024 * 1024,
+});
+if (cwdIndependent.error || cwdIndependent.status !== 0) {
+  throw cwdIndependent.error || new Error(cwdIndependent.stderr || "CWD-independent server launch failed");
+}
+const cwdResponses = cwdIndependent.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
+if (cwdResponses[0]?.result?.isError ||
+    JSON.parse(cwdResponses[0]?.result?.content?.[0]?.text || "{}").ok !== true) {
+  throw new Error("server did not resolve its project root independently of CWD");
 }
 
 const nativeStatus = nativeRequest("status");

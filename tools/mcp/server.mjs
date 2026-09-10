@@ -1,13 +1,28 @@
 #!/usr/bin/env node
 
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
 const serverVersion = "0.1.0";
-const root = resolve(process.env.CBLUEPRINTS_ROOT || process.cwd());
+const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const configuredRoot = process.env.CBLUEPRINTS_ROOT;
+const root = configuredRoot
+  ? resolve(isAbsolute(configuredRoot) ? configuredRoot : resolve(serverRoot, configuredRoot))
+  : serverRoot;
+
+function protocolError(code, message) {
+  const error = new Error(message);
+  error.rpcCode = code;
+  return error;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 function isNotification(message) {
   return !Object.prototype.hasOwnProperty.call(message, "id");
@@ -184,6 +199,8 @@ function toolDefinitions() {
 }
 
 function nativeRequest(operation, args = {}) {
+  const timeoutValue = Number(process.env.CBLUEPRINTS_CTL_TIMEOUT_MS || 30000);
+  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
   const result = spawnSync(
     controllerPath(),
     ["--project-root", root],
@@ -192,28 +209,94 @@ function nativeRequest(operation, args = {}) {
       input: `${JSON.stringify({ contract: 1, operation, ...args })}\n`,
       encoding: "utf8",
       maxBuffer: 32 * 1024 * 1024,
+      timeout,
     },
   );
   if (result.error) {
-    const error = new Error(`blueprints_ctl could not start: ${result.error.message}`);
-    error.rpcCode = -32603;
-    throw error;
+    const code = result.error.code === "ETIMEDOUT" ? -32001 : -32603;
+    throw protocolError(code, `blueprints_ctl failed: ${result.error.message}`);
+  }
+  if (result.signal) {
+    throw protocolError(-32603, `blueprints_ctl terminated by ${result.signal}`);
   }
   const line = result.stdout.trim().split("\n").filter(Boolean).at(-1);
   if (!line) {
-    const error = new Error(result.stderr.trim() || "blueprints_ctl returned no response");
-    error.rpcCode = -32603;
-    throw error;
+    throw protocolError(-32603, result.stderr.trim() || "blueprints_ctl returned no response");
   }
+  let response;
   try {
-    return JSON.parse(line);
+    response = JSON.parse(line);
   } catch (error) {
-    error.rpcCode = -32603;
-    throw error;
+    throw protocolError(-32603, `blueprints_ctl returned invalid JSON: ${error.message}`);
+  }
+  if (result.status !== 0 && response.ok === true) {
+    throw protocolError(
+      -32603,
+      `blueprints_ctl exited with status ${result.status} after a successful response`,
+    );
+  }
+  return response;
+}
+
+function validateSchema(value, schema, path) {
+  if (schema.type === "object") {
+    if (!isObject(value)) {
+      throw protocolError(-32602, `${path} must be an object`);
+    }
+    for (const name of schema.required || []) {
+      if (!Object.hasOwn(value, name)) {
+        throw protocolError(-32602, `${path}.${name} is required`);
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const name of Object.keys(value)) {
+        if (!Object.hasOwn(schema.properties || {}, name)) {
+          throw protocolError(-32602, `${path}.${name} is not supported`);
+        }
+      }
+    }
+    for (const [name, child] of Object.entries(schema.properties || {})) {
+      if (Object.hasOwn(value, name)) {
+        validateSchema(value[name], child, `${path}.${name}`);
+      }
+    }
+    return;
+  }
+  if (schema.type === "string" && typeof value !== "string") {
+    throw protocolError(-32602, `${path} must be a string`);
+  }
+  if (schema.type === "boolean" && typeof value !== "boolean") {
+    throw protocolError(-32602, `${path} must be a boolean`);
+  }
+  if (schema.type === "integer" && (!Number.isSafeInteger(value) || value < (schema.minimum || 0))) {
+    throw protocolError(-32602, `${path} must be a non-negative integer`);
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(value)) {
+      throw protocolError(-32602, `${path} must be an array`);
+    }
+    if (schema.items) {
+      value.forEach((item, index) => validateSchema(item, schema.items, `${path}[${index}]`));
+    }
+  }
+  if (schema.enum && !schema.enum.includes(value)) {
+    throw protocolError(-32602, `${path} has an unsupported value`);
   }
 }
 
+function validateToolArguments(name, args) {
+  const tool = toolDefinitions().find((candidate) => candidate.name === name);
+  if (!tool) {
+    throw protocolError(-32602, "tools/call requires a known tool name");
+  }
+  validateSchema(args === undefined ? {} : args, tool.inputSchema, "arguments");
+}
+
 function toolCall(name, args) {
+  if (typeof name !== "string") {
+    throw protocolError(-32602, "tools/call requires a tool name");
+  }
+  validateToolArguments(name, args);
   switch (name) {
     case "project_status": return nativeRequest("status");
     case "list_assets": return nativeRequest("list_assets");
@@ -241,6 +324,19 @@ function toolResult(response) {
 }
 
 function resourceRead(uri) {
+  if (typeof uri !== "string" || !uri) {
+    throw protocolError(-32602, "resources/read requires a URI string");
+  }
+  if (!uri.startsWith("blueprints://")) {
+    throw protocolError(-32602, `invalid resource URI: ${uri}`);
+  }
+  const decode = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch (error) {
+      throw protocolError(-32602, `invalid resource URI encoding: ${error.message}`);
+    }
+  };
   let response;
   if (uri === "blueprints://project/status") {
     response = nativeRequest("status");
@@ -249,38 +345,37 @@ function resourceRead(uri) {
   } else {
     const graphMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
     if (graphMatch) {
-      const graphId = Number(decodeURIComponent(graphMatch[3]));
+      const graphId = Number(decode(graphMatch[3]));
       if (!Number.isSafeInteger(graphId) || graphId < 0) {
-        throw new Error(`invalid graph resource: ${uri}`);
+        throw protocolError(-32602, `invalid graph resource: ${uri}`);
       }
       response = nativeRequest("inspect_graph", {
-        kind: decodeURIComponent(graphMatch[1]),
-        name: decodeURIComponent(graphMatch[2]),
+        kind: decode(graphMatch[1]),
+        name: decode(graphMatch[2]),
         graph_id: graphId,
       });
     }
     const dependencyMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
     if (response === undefined && dependencyMatch) {
       response = nativeRequest("asset_dependencies", {
-        kind: decodeURIComponent(dependencyMatch[1]),
-        name: decodeURIComponent(dependencyMatch[2]),
+        kind: decode(dependencyMatch[1]),
+        name: decode(dependencyMatch[2]),
       });
     }
     const match = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
     if (response === undefined && !match) {
-      throw new Error(`unknown resource: ${uri}`);
+      throw protocolError(-32002, `resource not found: ${uri}`);
     }
     if (response === undefined) {
       response = nativeRequest("read_asset", {
-        kind: decodeURIComponent(match[1]),
-        name: decodeURIComponent(match[2]),
+        kind: decode(match[1]),
+        name: decode(match[2]),
       });
     }
   }
   if (response.ok !== true) {
-    const error = new Error(response.error?.message || "resource read failed");
-    error.rpcCode = response.error?.code === "asset_not_found" ? -32002 : -32603;
-    throw error;
+    const code = response.error?.code === "asset_not_found" ? -32002 : -32603;
+    throw protocolError(code, response.error?.message || "resource read failed");
   }
   return response;
 }
@@ -342,7 +437,10 @@ function dispatch(message) {
   }
   if (message.method === "resources/read") {
     try {
-      const uri = message.params?.uri;
+      if (!isObject(message.params)) {
+        throw protocolError(-32602, "resources/read params are required");
+      }
+      const uri = message.params.uri;
       const response = resourceRead(uri);
       return reply(message, {
         jsonrpc: "2.0",
@@ -355,6 +453,9 @@ function dispatch(message) {
   }
   if (message.method === "tools/call") {
     try {
+      if (!isObject(message.params)) {
+        throw protocolError(-32602, "tools/call params are required");
+      }
       const response = toolCall(message.params?.name, message.params?.arguments);
       return reply(message, { jsonrpc: "2.0", id: message.id, result: toolResult(response) });
     } catch (error) {

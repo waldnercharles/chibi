@@ -1,10 +1,11 @@
-#ifndef CBLUEPRINT_GAME_LIVE_H
-#define CBLUEPRINT_GAME_LIVE_H
+#ifndef CHIBI_GAME_LIVE_H
+#define CHIBI_GAME_LIVE_H
 
 #include "render/particles.h"
 #include "runtime/behaviors/behavior.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/scenes/gameplay.h"
+#include "runtime/scenes/physics.h"
 
 #include <stddef.h>
 
@@ -28,7 +29,7 @@ struct game_live_world
     ecs_world *ecs;
     game_behavior_world *behaviors;
     game_entities *entities;
-    game_contacts *contacts;
+    game_physics *physics;
     game_particles *particles;
     game_live_definition **definitions;
 };

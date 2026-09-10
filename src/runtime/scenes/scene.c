@@ -1,5 +1,6 @@
 #include "runtime/scenes/scene.h"
 
+#include "graph/document/events.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
@@ -29,7 +30,8 @@ static behavior_asset *scene_definition(void)
     node *branch = graph_add_node(definition->graph, registry_node_by_name("Branch"));
     pin_value condition = { .type = PIN_BOOL, .type_name = "bool", .b = true };
     if (!event || !branch ||
-        graph_set_event_name(definition->graph, event, "Tick") != 0 ||
+        graph_set_event_name(definition->graph, event, graph_host_event_name(GRAPH_HOST_EVENT_TICK)) !=
+            0 ||
         graph_set_pin_default(definition->graph, branch, 0, 1, &condition) != 0 ||
         graph_connect_exec(definition->graph, event, 0, branch, 0, 0) != 0) {
         behavior_asset_free(definition);
@@ -146,8 +148,13 @@ int game_scene_frame(game_scene *scene, double monotonic_time)
     struct timespec end;
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (int i = 0; i < scene->behavior_count; i++) {
-        if (game_behavior_dispatch(scene->behaviors, scene->entities[i], "Tick", (flow_inputs){ 0 }, NULL) <
-            0) {
+        if (game_behavior_dispatch(
+                scene->behaviors,
+                scene->entities[i],
+                graph_host_event_name(GRAPH_HOST_EVENT_TICK),
+                (flow_inputs){ 0 },
+                NULL
+            ) < 0) {
             return FLOW_ERR_NODE;
         }
     }

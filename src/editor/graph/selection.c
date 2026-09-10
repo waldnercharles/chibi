@@ -6,6 +6,7 @@
 #undef IMGUI_STB_NAMESPACE
 #include <imgui/dcimgui_internal.h>
 #include <stdint.h>
+#include <string.h>
 
 int ed_link_equal(const ed_link_ref *a, const ed_link_ref *b)
 {
@@ -17,6 +18,51 @@ void ed_clear_selection(editor *e)
 {
     aclear(e->selected);
     aclear(e->selected_links);
+}
+
+void ed_reset_node_interaction(editor *e)
+{
+    ed_clear_selection(e);
+    aclear(e->drag_nodes);
+    aclear(e->views);
+    aclear(e->pins);
+    e->context_node = NULL;
+    e->reveal_target = NULL;
+    e->front_node = NULL;
+    e->hovered_node = NULL;
+    e->drag_toggle_node = NULL;
+    e->drag_toggle_selected = 0;
+    e->edit_text_node = NULL;
+    e->binding_node = NULL;
+    e->binding_node_id = 0;
+    e->binding_pin = -1;
+    e->binding_selected = 0;
+    e->binding_focus_search = false;
+    e->link_pin = (ed_pin_view){ 0 };
+    e->spawn_link_pin = (ed_pin_view){ 0 };
+    e->fields_node = 0;
+    e->open_call_node = 0;
+    e->math_node_id = 0;
+    e->edit_history_open = 0;
+    e->edit_changed = 0;
+    e->has_context_link = 0;
+    e->has_hovered_link = 0;
+    e->spawn_link_pending = 0;
+    e->dragging = 0;
+    e->linking = 0;
+    for (int i = acount(e->graph_callers) - 1; i >= 0; i--) {
+        const ed_graph_caller *caller = &e->graph_callers[i];
+        graph *g = behavior_asset_find_graph(e->asset, caller->view.graph_id);
+        if (g && graph_node_by_id(g, caller->node_id)) {
+            continue;
+        }
+        memmove(
+            e->graph_callers + i,
+            e->graph_callers + i + 1,
+            (size_t)(acount(e->graph_callers) - i - 1) * sizeof *e->graph_callers
+        );
+        asetlen(e->graph_callers, acount(e->graph_callers) - 1);
+    }
 }
 
 ed_graph_view *ed_graph_view_for(editor *e, uint64_t graph_id, int create)
@@ -76,7 +122,7 @@ void ed_load_graph_view(editor *e)
 
 int ed_switch_graph(editor *e, graph *graph)
 {
-    if (!e || !graph || graph->owner != e->bp) {
+    if (!e || !graph || graph->owner != e->asset) {
         return -1;
     }
     if (e->active_graph == graph) {

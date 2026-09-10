@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_CHECKPOINT_H
-#define CBLUEPRINT_CHECKPOINT_H
+#ifndef CHIBI_CHECKPOINT_H
+#define CHIBI_CHECKPOINT_H
 
 #include "../third_party/yyjson/yyjson.h"
 #include "runtime/engine.h"

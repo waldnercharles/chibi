@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SCENE_DEBUG_H
-#define CBLUEPRINT_SCENE_DEBUG_H
+#ifndef CHIBI_SCENE_DEBUG_H
+#define CHIBI_SCENE_DEBUG_H
 
 #include "runtime/behaviors/behavior.h"
 
@@ -9,6 +9,14 @@ typedef struct
     uint64_t sequence;
     uint64_t session;
     char *asset_name;
+    struct
+    {
+        const behavior_asset *working;
+        const behavior_asset *applied;
+        unsigned revision;
+        bool valid;
+        bool matches;
+    } comparison;
 } scene_debug;
 
 void scene_debug_clear(scene_debug *debug);
@@ -21,5 +29,11 @@ bool scene_debug_resolve(
     game_behavior_attachment_info *out
 );
 bool scene_debug_matches(const behavior_asset *working, const behavior_asset *applied);
+bool scene_debug_matches_cached(
+    scene_debug *debug,
+    const behavior_asset *working,
+    unsigned revision,
+    const behavior_asset *applied
+);
 
 #endif

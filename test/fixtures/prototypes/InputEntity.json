@@ -19,6 +19,36 @@
       "glow_radius": 0.0,
       "glow_color": 0,
       "antialias": 1
+    },
+    "GameInput": {
+      "move": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "GameMovement": {
+      "speed": 180
+    },
+    "GameVelocity": {
+      "x": 0,
+      "y": 0
+    },
+    "GameBody": {
+      "type": 1,
+      "continuous": false
+    },
+    "GameCollider": {
+      "radius": 16,
+      "category": 1,
+      "mask": 0,
+      "shape": 0,
+      "width": 0,
+      "height": 0,
+      "sensor": false,
+      "ignore_entity": null
+    },
+    "GameOrientation": {
+      "radians": 0
     }
   },
   "behaviors": [

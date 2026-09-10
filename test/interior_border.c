@@ -164,7 +164,7 @@ int test_interior_border()
             }
         }
     }
-    const char *capture = getenv("CBLUEPRINT_BORDER_SCREENSHOT");
+    const char *capture = getenv("CHIBI_BORDER_SCREENSHOT");
     if (capture && !failed) {
         CF_Image image = { SIDE, SIDE, available ? tiled : instanced };
         void *data = NULL;

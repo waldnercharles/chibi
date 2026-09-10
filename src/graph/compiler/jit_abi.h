@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_JIT_ABI_H
-#define CBLUEPRINT_JIT_ABI_H
+#ifndef CHIBI_JIT_ABI_H
+#define CHIBI_JIT_ABI_H
 
 #include <stddef.h>
 #include <stdint.h>

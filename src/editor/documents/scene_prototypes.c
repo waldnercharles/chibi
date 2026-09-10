@@ -10,6 +10,22 @@
 #include <string.h>
 #include <sys/stat.h>
 
+static int register_prototype_hosts(app_scene_authoring *scene, const game_prototype *prototype)
+{
+    if (game_entities_register(scene->live->entities, prototype) != 0 ||
+        game_prototype_preview_register_prototype(scene->prototype_preview, prototype) !=
+            0) {
+        snprintf(
+            scene->prototype_message,
+            sizeof scene->prototype_message,
+            "Could not update runtime prototype %s.",
+            prototype->name
+        );
+        return -1;
+    }
+    return 0;
+}
+
 int app_scene_authoring_detach_prototype_behavior(
     app_scene_authoring *scene,
     const char *prototype_name,
@@ -55,6 +71,10 @@ int app_scene_authoring_detach_prototype_behavior(
         actor->base = base;
     }
     asset->dirty = 1;
+    asset_index_invalidate(scene);
+    if (register_prototype_hosts(scene, asset->prototype) != 0) {
+        return -1;
+    }
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "Detached %s from %s.", asset_name, prototype_name);
     return 0;
 }
@@ -215,7 +235,7 @@ int refresh_prototype_instances(app_scene_authoring *scene, scene_prototype_asse
             return -1;
         }
     }
-    return 0;
+    return register_prototype_hosts(scene, asset->prototype);
 }
 
 int write_prototype_field(
@@ -230,6 +250,7 @@ int write_prototype_field(
         return -1;
     }
     asset->dirty = 1;
+    asset_index_invalidate(scene);
     return refresh_prototype_instances(scene, asset);
 }
 
@@ -347,13 +368,37 @@ int app_scene_authoring_set_instance_component(app_scene_authoring *scene, const
     }
     if (result == ECS_OK && present) {
         scene_retained_component *retained = scene_retention_find(actor->retained, desc->name);
-        char *defaults = game_prototype_component_json(actor->base, desc->name);
-        char *restored = retained ? game_prototype_rebase_component_json(
-                                        retained->values_json,
-                                        retained->defaults_json,
-                                        defaults
-                                    )
-                                  : xstrdup(defaults);
+        char *defaults = NULL;
+        for (int i = 0; i < acount(actor->base->components); i++) {
+            if (actor->base->components[i].desc->id == desc->id) {
+                defaults = game_prototype_component_json(actor->base, desc->name);
+                break;
+            }
+        }
+        if (!defaults && desc->id == GAME_COMPONENT_GameVisualMotion.id) {
+            game_prototype *context = game_prototype_capture_entity(
+                actor->prototype_name,
+                scene->world,
+                actor->entity,
+                &scene->registry
+            );
+            if (context && game_prototype_remove_component(context, desc->name) == 0 &&
+                game_prototype_add_component(context, desc) == 0) {
+                defaults = game_prototype_component_json(context, desc->name);
+            }
+            game_prototype_free(context);
+        } else if (!defaults) {
+            defaults = game_prototype_component_defaults_json(&scene->registry, desc);
+        }
+        char *restored = NULL;
+        if (defaults) {
+            restored = retained ? game_prototype_rebase_component_json(
+                                      retained->values_json,
+                                      retained->defaults_json,
+                                      defaults
+                                  )
+                                : xstrdup(defaults);
+        }
         free(defaults);
         result = restored ? apply_components_json(scene, actor->entity, restored)
                           : -1;
@@ -420,6 +465,7 @@ int app_scene_authoring_add_prototype_component(
         return -1;
     }
     asset->dirty = 1;
+    asset_index_invalidate(scene);
     return refresh_prototype_instances(scene, asset);
 }
 
@@ -441,6 +487,7 @@ int app_scene_authoring_remove_prototype_component(
         return -1;
     }
     asset->dirty = 1;
+    asset_index_invalidate(scene);
     return refresh_prototype_instances(scene, asset);
 }
 
@@ -468,6 +515,7 @@ static int restore_prototype(
     game_prototype_free(asset->prototype);
     asset->prototype = prototype;
     asset->dirty = 1;
+    asset_index_invalidate(scene);
     if (refresh_prototype_instances(scene, asset) != 0) {
         free(snapshot);
         return -1;
@@ -500,6 +548,11 @@ int append_prototype_asset(app_scene_authoring *scene, game_prototype *prototype
         .prototype = prototype,
         .dirty = path ? 0 : 1,
     };
+    if (register_prototype_hosts(scene, prototype) != 0) {
+        free(asset.path);
+        game_prototype_free(prototype);
+        return -1;
+    }
     apush(scene->prototypes, asset);
     if (scene->selected_prototype < 0) {
         select_prototype(scene, 0);
@@ -527,6 +580,10 @@ int app_scene_authoring_save_prototype(
     if (!asset || !asset->prototype || !path) {
         return -1;
     }
+    if (scene_tabs_path_in_use(scene, APP_EDITOR_DOCUMENT_PROTOTYPE, path)) {
+        snprintf(scene->prototype_message, sizeof scene->prototype_message, "Prototype path is already open.");
+        return -1;
+    }
     char *json = game_prototype_save(asset->prototype);
     if (!json) {
         return -1;
@@ -539,6 +596,11 @@ int app_scene_authoring_save_prototype(
         asset->path = saved_path;
         asset->dirty = 0;
         content_refresh(scene);
+        scene_tabs_mark_document_saved(
+            scene,
+            APP_EDITOR_DOCUMENT_PROTOTYPE,
+            asset->prototype->name
+        );
     }
     return result;
 }
@@ -652,6 +714,10 @@ int app_scene_authoring_attach_prototype_behavior(
     afree(attached);
     afree(snapshots);
     asset->dirty = 1;
+    asset_index_invalidate(scene);
+    if (register_prototype_hosts(scene, asset->prototype) != 0) {
+        return -1;
+    }
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "Attached %s to %s.", asset_name, prototype_name);
     return 0;
 }

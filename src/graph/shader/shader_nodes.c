@@ -1,4 +1,5 @@
 #include "graph/model/behavior_asset.h"
+#include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
 
 #include <stddef.h>
@@ -8,6 +9,13 @@
 #define FLOAT_PIN(label)                                                       \
     {                                                                          \
         .name = label, .type = PIN_F32, .default_value = {.type = PIN_F32 }    \
+    }
+#define FLOAT_DEFAULT(label, number)                                           \
+    {                                                                          \
+        .name = label, .type = PIN_F32, .default_value = {                     \
+            .type = PIN_F32,                                                   \
+            .f = number                                                        \
+        }                                                                      \
     }
 #define VECTOR_PIN(label, w)                                                   \
     {                                                                          \
@@ -42,11 +50,28 @@ static const type_desc vec4_type = { .name = "ShaderVec4",
                                      .size = 16,
                                      .fields = fields,
                                      .field_count = 4 };
-static const type_desc *const types[] = { &vec2_type, &vec3_type, &vec4_type };
+static const type_field ramp_fields[] = { { .name = "Position",
+                                            .type = PIN_F32,
+                                            .type_name = "float",
+                                            .offset = offsetof(shader_ramp_stop, position),
+                                            .size = sizeof(float) },
+                                          { .name = "Color",
+                                            .type = PIN_STRUCT,
+                                            .type_name = "ShaderVec4",
+                                            .offset = offsetof(shader_ramp_stop, color),
+                                            .size = 4 * sizeof(float) } };
+static const type_desc ramp_type = { .name = "ShaderRampStop",
+                                     .size = sizeof(shader_ramp_stop),
+                                     .fields = ramp_fields,
+                                     .field_count = 2 };
+static const type_desc *const types[] = { &vec2_type, &vec3_type, &vec4_type, &ramp_type };
 static pin_spec scalar_out[] = { FLOAT_PIN("Value") };
 static pin_spec any_out[] = { ANY_PIN("Value") };
 static pin_spec position_out[] = { VECTOR_PIN("Position", 2) };
 static pin_spec vector2_out[] = { VECTOR_PIN("Value", 2) };
+static pin_spec vector3_out[] = { VECTOR_PIN("Value", 3) };
+static pin_spec influence_out[] = { VECTOR_PIN("Color", 3) };
+static pin_spec influence_in[] = { VECTOR_PIN("Position", 3) };
 static pin_spec vector4_out[] = { VECTOR_PIN("Value", 4) };
 static pin_spec unary[] = { ANY_PIN("Value") };
 static pin_spec binary[] = { ANY_PIN("A"), ANY_PIN("B") };
@@ -57,16 +82,124 @@ static pin_spec box[] = { VECTOR_PIN("Position", 2), VECTOR_PIN("Half Size", 2) 
 static pin_spec sdf_pair[] = { FLOAT_PIN("A"), FLOAT_PIN("B") };
 static pin_spec smooth[] = { FLOAT_PIN("A"), FLOAT_PIN("B"), FLOAT_PIN("Smoothness") };
 static pin_spec vector2_in[] = { FLOAT_PIN("X"), FLOAT_PIN("Y") };
+static pin_spec vector3_in[] = { FLOAT_PIN("X"), FLOAT_PIN("Y"), FLOAT_PIN("Z") };
+static pin_spec limits[] = { ANY_PIN("Value"), FLOAT_PIN("Min"), FLOAT_DEFAULT("Max", 1) };
+static pin_spec threshold[] = { ANY_PIN("Value"), FLOAT_DEFAULT("Edge", 0.5f) };
+static pin_spec noise_in[] = { ANY_PIN("Position"), FLOAT_DEFAULT("Scale", 1) };
 static pin_spec vector4_in[] = { FLOAT_PIN("X"),
                                  FLOAT_PIN("Y"),
                                  FLOAT_PIN("Z"),
                                  FLOAT_PIN("W") };
-static pin_spec material[] = {
-    VECTOR_PIN("Scene", 4),         VECTOR_PIN("Emission", 4),
-    VECTOR_PIN("Albedo", 4),        VECTOR_PIN("Absorption", 4),
-    VECTOR_PIN("Border Scene", 4),  VECTOR_PIN("Border Emission", 4),
-    VECTOR_PIN("Border Albedo", 4), VECTOR_PIN("Border Absorption", 4)
+static pin_spec surface[] = {
+    { .name = "Base Color",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderVec3",
+      .flags = PIN_FLAG_COLOR,
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } },
+    { .name = "Emission",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderVec3",
+      .flags = PIN_FLAG_COLOR,
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } },
+    FLOAT_DEFAULT("Roughness", 0.5f),
+    FLOAT_PIN("Metallic"),
+    VECTOR_PIN("Normal", 3),
+    FLOAT_DEFAULT("Opacity", 1),
+    { .name = "Unlit", .type = PIN_BOOL, .default_value = { .type = PIN_BOOL } }
 };
+static pin_spec mapping2[] = { VECTOR_PIN("Position", 2),
+                               VECTOR_PIN("Offset", 2),
+                               FLOAT_PIN("Rotation"),
+                               VECTOR_PIN("Scale", 2) };
+static pin_spec mapping3[] = { VECTOR_PIN("Position", 3),
+                               VECTOR_PIN("Offset", 3),
+                               VECTOR_PIN("Rotation", 3),
+                               VECTOR_PIN("Scale", 3) };
+static pin_spec fresnel_in[] = {
+    { .name = "Normal",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderVec3",
+      .flags = PIN_FLAG_ADVANCED,
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } },
+    { .name = "View Direction",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderVec3",
+      .flags = PIN_FLAG_ADVANCED,
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } },
+    FLOAT_DEFAULT("Power", 5),
+    FLOAT_DEFAULT("Base", .04f)
+};
+static pin_spec remap_in[] = { ANY_PIN("Value"),
+                               VECTOR_PIN("From Range", 2),
+                               VECTOR_PIN("To Range", 2),
+                               { .name = "Clamp",
+                                 .type = PIN_BOOL,
+                                 .default_value = { .type = PIN_BOOL, .b = true } } };
+static pin_spec gradient_in[] = { VECTOR_PIN("Position", 2),
+                                  { .name = "Type",
+                                    .type = PIN_I32,
+                                    .flags = PIN_FLAG_SETTING,
+                                    .default_value = { .type = PIN_I32 } },
+                                  FLOAT_DEFAULT("Scale", 1),
+                                  FLOAT_PIN("Offset") };
+#define TEXTURE_POSITION                                                       \
+    { .name = "Position",                                                      \
+      .type = PIN_STRUCT,                                                      \
+      .type_name = "ShaderVec3",                                               \
+      .flags = PIN_FLAG_WILDCARD,                                              \
+      .group = 1,                                                              \
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } }
+static pin_spec fractal_in[] = { TEXTURE_POSITION,
+                                 FLOAT_DEFAULT("Scale", 1),
+                                 FLOAT_DEFAULT("Detail", 4),
+                                 FLOAT_DEFAULT("Roughness", .5f) };
+static pin_spec voronoi_in[] = { TEXTURE_POSITION,
+                                 FLOAT_DEFAULT("Scale", 1),
+                                 FLOAT_DEFAULT("Randomness", 1) };
+static pin_spec voronoi_out[] = { FLOAT_PIN("Distance"), VECTOR_PIN("Cell Color", 3) };
+static pin_spec ramp_in[] = {
+    FLOAT_DEFAULT("Factor", .5f),
+    { .name = "Stops",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderRampStop",
+      .container = PIN_CONTAINER_ARRAY,
+      .flags = PIN_FLAG_SETTING | PIN_FLAG_ADVANCED,
+      .default_value = { .type = PIN_STRUCT,
+                         .type_name = "ShaderRampStop",
+                         .container = PIN_CONTAINER_ARRAY } },
+    { .name = "Interpolation",
+      .type = PIN_I32,
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32 } }
+};
+static pin_spec color_alpha_out[] = {
+    { .name = "Color",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderVec3",
+      .flags = PIN_FLAG_COLOR,
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } },
+    FLOAT_PIN("Alpha")
+};
+static pin_spec image_in[] = {
+    VECTOR_PIN("UV", 2),
+    { .name = "Image",
+      .type = PIN_STR,
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_STR, .str = "" } },
+    { .name = "Color Space",
+      .type = PIN_I32,
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_SRGB } },
+    { .name = "Filter",
+      .type = PIN_I32,
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_BILINEAR } },
+    { .name = "Wrap",
+      .type = PIN_I32,
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_REPEAT } }
+};
+_Static_assert(sizeof image_in / sizeof *image_in == SHADER_IMAGE_INPUT_COUNT, "image pin schema");
 static pin_spec shape[] = { FLOAT_PIN("Distance") };
 #define NODE(symbol, label, count, pins, outs)                                 \
     static node_desc symbol = { .name = "Shader " label,                       \
@@ -79,8 +212,15 @@ static pin_spec shape[] = { FLOAT_PIN("Distance") };
 NODE(constant, "Constant", 0, NULL, any_out);
 NODE(parameter, "Parameter", 0, NULL, any_out);
 NODE(position, "Position", 0, NULL, position_out);
-NODE(world_position, "WorldPosition", 0, NULL, position_out);
+NODE(uv, "UV", 0, NULL, position_out);
+NODE(world_position, "WorldPosition", 0, NULL, vector3_out);
+NODE(surface_influence, "Surface Influence", 1, influence_in, influence_out);
+NODE(object_position, "ObjectPosition", 0, NULL, vector3_out);
+NODE(normal, "Normal", 0, NULL, vector3_out);
+NODE(view_direction, "ViewDirection", 0, NULL, vector3_out);
 NODE(time_node, "Time", 0, NULL, scalar_out);
+NODE(beat_phase, "Beat Phase", 0, NULL, scalar_out);
+NODE(beat_pulse, "Beat Pulse", 0, NULL, scalar_out);
 NODE(add, "Add", 2, binary, any_out);
 NODE(subtract, "Subtract", 2, binary, any_out);
 NODE(multiply, "Multiply", 2, binary, any_out);
@@ -102,54 +242,209 @@ NODE(intersection, "Intersection", 2, sdf_pair, scalar_out);
 NODE(difference, "Difference", 2, sdf_pair, scalar_out);
 NODE(smooth_node, "SmoothUnion", 3, smooth, scalar_out);
 NODE(vector2, "Vector2", 2, vector2_in, vector2_out);
+NODE(vector3, "Vector3", 3, vector3_in, vector3_out);
 NODE(vector4, "Vector4", 4, vector4_in, vector4_out);
+NODE(normalize_node, "Normalize", 1, unary, any_out);
+NODE(clamp_node, "Clamp", 3, limits, any_out);
+NODE(saturate_node, "Saturate", 1, unary, any_out);
+NODE(step_node, "Step", 2, threshold, any_out);
+NODE(smoothstep_node, "Smoothstep", 3, limits, any_out);
+NODE(noise_node, "Noise", 2, noise_in, scalar_out);
 NODE(x_node, "X", 1, unary, scalar_out);
 NODE(y_node, "Y", 1, unary, scalar_out);
 NODE(z_node, "Z", 1, unary, scalar_out);
 NODE(w_node, "W", 1, unary, scalar_out);
-static node_desc material_output = { .name = "Shader Material Output",
-                                     .input_count = 8,
-                                     .inputs = material,
-                                     .category = "Shader",
-                                     .display_class = NODE_DISPLAY_FUNCTION };
+NODE(mapping_node, "Mapping", 4, mapping2, vector2_out);
+NODE(mapping3d_node, "Mapping3D", 4, mapping3, vector3_out);
+NODE(fresnel_node, "Fresnel", 4, fresnel_in, scalar_out);
+NODE(remap_node, "Remap", 4, remap_in, any_out);
+NODE(gradient_node, "Gradient", 4, gradient_in, scalar_out);
+NODE(fractal_node, "Fractal Noise", 4, fractal_in, scalar_out);
+static node_desc voronoi_node = { .name = "Shader Voronoi",
+                                  .input_count = 3,
+                                  .inputs = voronoi_in,
+                                  .output_count = 2,
+                                  .outputs = voronoi_out,
+                                  .category = "Shader",
+                                  .display_class = NODE_DISPLAY_PURE };
+static node_desc ramp_node = { .name = "Shader Color Ramp",
+                               .input_count = 3,
+                               .inputs = ramp_in,
+                               .output_count = 2,
+                               .outputs = color_alpha_out,
+                               .category = "Shader",
+                               .display_class = NODE_DISPLAY_PURE };
+static node_desc image_node = { .name = "Shader Image Texture",
+                                .input_count = SHADER_IMAGE_INPUT_COUNT,
+                                .inputs = image_in,
+                                .output_count = 2,
+                                .outputs = color_alpha_out,
+                                .category = "Shader",
+                                .display_class = NODE_DISPLAY_PURE };
+static node_desc surface_output = { .name = "Shader Surface Output",
+                                    .input_count = 7,
+                                    .inputs = surface,
+                                    .category = "Shader",
+                                    .display_class = NODE_DISPLAY_FUNCTION };
 static node_desc shape_output = { .name = "Shader Shape Output",
                                   .input_count = 1,
                                   .inputs = shape,
                                   .category = "Shader",
                                   .display_class = NODE_DISPLAY_FUNCTION };
-static node_desc *const nodes[] = {
-    &constant,    &parameter,    &position,       &time_node,
-    &add,         &subtract,     &multiply,       &divide,
-    &minimum,     &maximum,      &absolute,       &sine,
-    &cosine,      &fraction,     &length_node,    &dot,
-    &mix_node,    &select_node,  &circle_node,    &box_node,
-    &union_node,  &intersection, &difference,     &smooth_node,
-    &vector2,     &vector4,      &x_node,         &y_node,
-    &z_node,      &w_node,       &world_position, &material_output,
-    &shape_output
-};
+static node_desc *const nodes[] = { &constant,
+                                    &parameter,
+                                    &position,
+                                    &time_node,
+                                    &add,
+                                    &subtract,
+                                    &multiply,
+                                    &divide,
+                                    &minimum,
+                                    &maximum,
+                                    &absolute,
+                                    &sine,
+                                    &cosine,
+                                    &fraction,
+                                    &length_node,
+                                    &dot,
+                                    &mix_node,
+                                    &select_node,
+                                    &circle_node,
+                                    &box_node,
+                                    &union_node,
+                                    &intersection,
+                                    &difference,
+                                    &smooth_node,
+                                    &vector2,
+                                    &vector4,
+                                    &x_node,
+                                    &y_node,
+                                    &z_node,
+                                    &w_node,
+                                    &world_position,
+                                    &surface_influence,
+                                    &beat_phase,
+                                    &beat_pulse,
+                                    &surface_output,
+                                    &shape_output,
+                                    &vector3,
+                                    &normalize_node,
+                                    &clamp_node,
+                                    &saturate_node,
+                                    &step_node,
+                                    &smoothstep_node,
+                                    &noise_node,
+                                    &uv,
+                                    &object_position,
+                                    &normal,
+                                    &view_direction,
+                                    &mapping_node,
+                                    &mapping3d_node,
+                                    &fresnel_node,
+                                    &remap_node,
+                                    &gradient_node,
+                                    &fractal_node,
+                                    &voronoi_node,
+                                    &ramp_node,
+                                    &image_node };
 const registry_pack SHADER_PACK = { .name = "shader",
                                     .nodes = nodes,
                                     .node_count = sizeof nodes / sizeof *nodes,
                                     .types = types,
-                                    .type_count = 3 };
+                                    .type_count = sizeof types / sizeof *types };
 node *shader_graph_add_output(graph *g, bool shape_graph)
 {
-    node *n = graph_add_node(g, shape_graph ? &shape_output : &material_output);
-    if (shape_graph) {
-        return n;
-    }
-    for (int i = 0; i < 8; i++) {
-        float *value = graph_own_block(g, 4 * sizeof(float));
-        value[0] = value[1] = value[2] = (i == 0 || i == 2 || i == 4 || i == 6) ? 1 : 0;
-        value[3] = (i == 0 || i == 2 || i == 4 || i == 6) ? 1 : 0;
-        n->input_pins[i].default_value.ptr = value;
+    node *n = graph_add_node(g, shape_graph ? &shape_output : &surface_output);
+    if (n) {
+        shader_graph_init_node(g, n);
     }
     return n;
 }
 
-bool shader_graph_init_parameter(graph *g, node *n)
+static const shader_ramp_stop default_stops[] = { { 0, { 0, 0, 0, 1 } },
+                                                  { 1, { 1, 1, 1, 1 } } };
+int shader_node_ramp_get(const node *n, shader_ramp_stop out[SHADER_RAMP_MAX])
 {
+    if (n->desc != &ramp_node || n->input_count != 3) {
+        return 0;
+    }
+    const pin_spec *pin = &n->input_pins[1];
+    if (pin->type != PIN_STRUCT || pin->container != PIN_CONTAINER_ARRAY ||
+        !pin->type_name || strcmp(pin->type_name, "ShaderRampStop")) {
+        return 0;
+    }
+    const pin_array *array = pin->default_value.ptr;
+    if (!array) {
+        memcpy(out, default_stops, sizeof default_stops);
+        return 2;
+    }
+    if (array->element_type != PIN_STRUCT || !array->type_name ||
+        strcmp(array->type_name, "ShaderRampStop") || array->count < 2 ||
+        array->count > SHADER_RAMP_MAX) {
+        return 0;
+    }
+    for (int i = 0; i < array->count; i++) {
+        const pin_value *value = &array->items[i];
+        if (value->type != PIN_STRUCT || !value->ptr || !value->type_name ||
+            strcmp(value->type_name, "ShaderRampStop")) {
+            return 0;
+        }
+        memcpy(&out[i], value->ptr, sizeof out[i]);
+    }
+    return array->count;
+}
+bool shader_node_ramp_set(graph *g, node *n, const shader_ramp_stop *stops, int count)
+{
+    if (n->desc != &ramp_node || !shader_ramp_valid(stops, count)) {
+        return false;
+    }
+    pin_value items[SHADER_RAMP_MAX];
+    for (int i = 0; i < count; i++) {
+        items[i] = (pin_value){ .type = PIN_STRUCT,
+                                .type_name = "ShaderRampStop",
+                                .ptr = (void *)&stops[i] };
+    }
+    pin_array array = { .element_type = PIN_STRUCT,
+                        .type_name = "ShaderRampStop",
+                        .count = count,
+                        .capacity = count,
+                        .items = items };
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = "ShaderRampStop",
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = &array };
+    return graph_set_pin_default(g, n, 0, 1, &value) == 0;
+}
+bool shader_graph_init_node(graph *g, node *n)
+{
+    if (n->desc == &surface_output) {
+        const int vectors[] = { 0, 1, 4 };
+        for (int j = 0; j < 3; j++) {
+            int i = vectors[j];
+            float color[3] = { i == 0, i == 0, i == 0 };
+            pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = color };
+            if (graph_set_pin_default(g, n, 0, i, &value)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (n->desc == &ramp_node) {
+        return shader_node_ramp_set(g, n, default_stops, 2);
+    }
+    if (n->desc == &mapping_node || n->desc == &mapping3d_node) {
+        float ones[3] = { 1, 1, 1 };
+        pin_value value = { .type = PIN_STRUCT,
+                            .type_name = n->desc == &mapping_node ? "ShaderVec2" : "ShaderVec3",
+                            .ptr = ones };
+        return graph_set_pin_default(g, n, 0, 3, &value) == 0;
+    }
+    if (n->desc == &remap_node) {
+        float range[2] = { 0, 1 };
+        pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec2", .ptr = range };
+        return graph_set_pin_default(g, n, 0, 1, &value) == 0 &&
+               graph_set_pin_default(g, n, 0, 2, &value) == 0;
+    }
     if (strcmp(n->desc->name, "Shader Parameter")) {
         return true;
     }

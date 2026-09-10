@@ -2,14 +2,14 @@
 
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
-#include "render/sdf_motion.h"
 #include "runtime/behaviors/live.h"
-#include "runtime/components.h"
-#include "runtime/scenes/gameplay.h"
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/scenes/physics.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
-#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,8 +18,7 @@ struct game_prototype_preview
     ecs_world *world;
     game_live_world *live;
     ecs_entity entity;
-    double last_time;
-    int has_time;
+    engine *runtime;
 };
 
 static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user)
@@ -34,8 +33,8 @@ static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asse
 
 static void clear_entity(game_prototype_preview *preview)
 {
+    engine_reset(preview->runtime);
     game_particles_clear(preview->live->particles);
-    game_contacts_reset(preview->live->contacts);
     game_entities_reset(preview->live->entities);
     if (!preview->entity.slot) {
         return;
@@ -58,6 +57,8 @@ game_prototype_preview *game_prototype_preview_new(const game_prototype_registry
         free(preview);
         return NULL;
     }
+    preview->runtime = engine_new(preview->world, preview->live);
+    engine_set_focus(preview->runtime, ENGINE_FOCUS_VIEWPORT);
     for (int i = 0; i < registry->component_count; i++) {
         if (registry->components[i] &&
             ecs_world_register_component(preview->world, registry->components[i], NULL) !=
@@ -75,6 +76,7 @@ void game_prototype_preview_free(game_prototype_preview *preview)
         return;
     }
     clear_entity(preview);
+    engine_free(preview->runtime);
     game_live_world_free(preview->live);
     ecs_world_free(preview->world);
     free(preview);
@@ -86,22 +88,30 @@ int game_prototype_preview_register_behavior(
     const behavior_asset *source
 )
 {
-    if (!preview || !asset_name || !asset_name[0] || !source ||
-        game_behavior_asset_registered(preview->live->behaviors, asset_name)) {
+    if (!preview || !asset_name || !asset_name[0] || !source) {
         return -1;
     }
     char *json = behavior_asset_save_json(source);
     behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!copy) {
+        fprintf(stderr, "Could not register preview behavior %s: %s\n", asset_name, graph_last_error());
         return -1;
     }
     game_live_definition *definition = game_live_definition_new(asset_name, copy);
     if (!definition) {
+        fprintf(stderr, "Could not register preview behavior %s: %s\n", asset_name, graph_last_error());
         behavior_asset_free(copy);
         return -1;
     }
     if (game_live_add_definition(preview->live, definition) != 0) {
+        const compile_diagnostic *error = compile_report_first_error(&definition->diagnostics);
+        fprintf(
+            stderr,
+            "Could not register preview behavior %s: %s\n",
+            asset_name,
+            error->message
+        );
         game_live_definition_free(definition);
         return -1;
     }
@@ -171,8 +181,8 @@ int game_prototype_preview_launch(
         return ECS_ERR_ARGUMENT;
     }
     clear_entity(preview);
-    preview->has_time = 0;
-    return game_prototype_spawn(
+    engine_set_playing(preview->runtime, true);
+    int result = game_prototype_spawn(
         prototype,
         preview->world,
         &(game_prototype_spawn_hooks){ attach_behavior, preview },
@@ -180,6 +190,10 @@ int game_prototype_preview_launch(
         error,
         error_size
     );
+    if (result != ECS_OK) {
+        engine_set_playing(preview->runtime, false);
+    }
+    return result;
 }
 
 int game_prototype_preview_register_prototype(game_prototype_preview *preview, const game_prototype *prototype)
@@ -191,19 +205,13 @@ void game_prototype_preview_stop(game_prototype_preview *preview)
 {
     if (preview) {
         clear_entity(preview);
+        engine_set_playing(preview->runtime, false);
     }
 }
 
-static void preview_input_delta(const char *action, double value, double *x, double *y)
+engine *game_prototype_preview_runtime(game_prototype_preview *preview)
 {
-    *x = 0.0;
-    *y = 0.0;
-    if (strcmp(action, "MoveLeft") == 0 || strcmp(action, "MoveRight") == 0) {
-        *x = value;
-    }
-    if (strcmp(action, "MoveUp") == 0 || strcmp(action, "MoveDown") == 0) {
-        *y = value;
-    }
+    return preview->runtime;
 }
 
 int game_prototype_preview_input(
@@ -214,102 +222,34 @@ int game_prototype_preview_input(
     flow_error *error
 )
 {
-    if (!preview || !preview->entity.slot || !action) {
+    if (!preview || !preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
     }
-    if (strcmp(action, "Fire") == 0) {
-        return pressed ? game_behavior_dispatch(
-                             preview->live->behaviors,
-                             preview->entity,
-                             "Fire",
-                             (flow_inputs){ 0 },
-                             error
-                         )
-                       : 0;
-    }
-    double x;
-    double y;
-    preview_input_delta(action, pressed ? value : 0.0, &x, &y);
-    CF_V2 delta = { (float)x, (float)y };
-    pin_value input = {
-        .type = PIN_STRUCT,
-        .type_name = "CF_V2",
-        .ptr = &delta,
-    };
-    if (!registry_type_by_name("CF_V2")) {
-        return FLOW_ERR_STATE;
-    }
-    return game_behavior_dispatch(
-        preview->live->behaviors,
-        preview->entity,
-        "Input",
-        (flow_inputs){ &input, 1, NULL },
-        error
-    );
+    return engine_dispatch_input(preview->runtime, action, value, pressed, error);
 }
 
-int game_prototype_preview_idle(game_prototype_preview *preview, double monotonic_time)
+int game_prototype_preview_sample_movement(game_prototype_preview *preview, float x, float y)
 {
-    if (!preview || !preview->entity.slot || !isfinite(monotonic_time)) {
+    if (!preview || !preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
     }
-    preview->last_time = monotonic_time;
-    preview->has_time = 1;
-    return FLOW_OK;
+    return engine_sample_movement(preview->runtime, x, y);
+}
+
+int game_prototype_preview_sample_aim(game_prototype_preview *preview, CF_V2 aim, bool firing, bool point)
+{
+    if (!preview || !preview->entity.slot) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    return engine_sample_aim(preview->runtime, aim, firing, point);
 }
 
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)
 {
-    if (!preview || !preview->entity.slot || !isfinite(monotonic_time)) {
+    if (!preview || !preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
     }
-    double delta = preview->has_time ? monotonic_time - preview->last_time : 0.0;
-    if (delta < 0.0) {
-        delta = 0.0;
-    }
-    preview->last_time = monotonic_time;
-    preview->has_time = 1;
-    int boundary = game_entities_flush(preview->live->entities);
-    if (boundary > 0) {
-        int result = game_entities_tick_initializers(preview->live->entities, monotonic_time);
-        boundary = game_entities_flush(preview->live->entities);
-        if (result < 0) {
-            return result;
-        }
-    }
-    if (boundary != 0) {
-        return boundary < 0 ? boundary : FLOW_OK;
-    }
-    int result = game_particles_tick(preview->live->particles, delta);
-    if (result < 0) {
-        return result;
-    }
-    result = game_sdf_motion_tick(preview->world, delta);
-    if (result < 0) {
-        return result;
-    }
-    game_behavior_set_delta_seconds(preview->live->behaviors, delta);
-    result = game_entities_dispatch_events(preview->live->entities);
-    if (result < 0) {
-        return result;
-    }
-    result = game_behavior_dispatch_all(preview->live->behaviors, "Tick", (flow_inputs){ 0 }, NULL);
-    if (result < 0) {
-        return result;
-    }
-    result = game_behavior_pump(preview->live->behaviors, monotonic_time);
-    if (result < 0) {
-        return result;
-    }
-    result = game_entities_dispatch_events(preview->live->entities);
-    if (result < 0) {
-        return result;
-    }
-    boundary = game_entities_flush(preview->live->entities);
-    if (boundary != 0) {
-        return boundary < 0 ? boundary : FLOW_OK;
-    }
-    return game_contacts_tick(preview->live->contacts);
+    return engine_frame(preview->runtime, monotonic_time);
 }
 
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview)

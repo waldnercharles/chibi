@@ -19,7 +19,7 @@ const char *ed_unique_variable_name(const editor *e)
     static char buf[64];
     for (int i = 1; i < 10000; i++) {
         snprintf(buf, sizeof buf, "NewVariable%d", i);
-        if (!behavior_asset_find_variable_by_name(e->bp, buf)) {
+        if (!behavior_asset_find_variable_by_name(e->asset, buf)) {
             return buf;
         }
     }
@@ -107,7 +107,7 @@ static int ed_draw_variable_default(editor *e, behavior_variable *v)
     }
     if (changed) {
         ed_details_begin_mutation(e);
-        if (behavior_asset_set_variable_default(e->bp, v->id, &value) == 0) {
+        if (behavior_asset_set_variable_default(e->asset, v->id, &value) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -136,13 +136,13 @@ static bool event_parameter_type(pin_type *type)
 
 static void ed_draw_details_variable(editor *e, behavior_variable *v)
 {
-    bool payload = e->bp->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    bool payload = e->asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     ImGui_Text("%s: %s", payload ? "Parameter" : "Variable", v->name ? v->name : "?");
     ImGui_Separator();
     snprintf(e->details_title, sizeof e->details_title, "%s", v->name ? v->name : "");
     if (ImGui_InputText("Name", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
-        if (behavior_asset_rename_variable(e->bp, v->id, e->details_title) == 0) {
+        if (behavior_asset_rename_variable(e->asset, v->id, e->details_title) == 0) {
             e->edit_changed = 1;
         } else if (e->details_title[0]) {
             ed_show_error(e, "Variable name is empty or already in use");
@@ -153,7 +153,7 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
     if (payload ? event_parameter_type(&type) : ed_pin_type_combo("Type", &type)) {
         ed_details_begin_mutation(e);
         if (behavior_asset_retype_variable(
-                e->bp,
+                e->asset,
                 v->id,
                 type,
                 payload && type == PIN_HANDLE ? "ecs.entity" : pin_type_name(type)
@@ -165,7 +165,7 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
     pin_container container = v->container;
     if (!payload && ed_pin_container_combo("Container", &container)) {
         ed_details_begin_mutation(e);
-        if (behavior_asset_set_variable_container(e->bp, v->id, container) == 0) {
+        if (behavior_asset_set_variable_container(e->asset, v->id, container) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -173,7 +173,8 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
     snprintf(e->details_comment, sizeof e->details_comment, "%s", v->category ? v->category : "");
     if (ImGui_InputText("Category", e->details_comment, sizeof e->details_comment, 0)) {
         ed_details_begin_mutation(e);
-        if (behavior_asset_set_variable_category(e->bp, v->id, e->details_comment) == 0) {
+        if (behavior_asset_set_variable_category(e->asset, v->id, e->details_comment) ==
+            0) {
             e->edit_changed = 1;
         }
     }
@@ -182,7 +183,7 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
     ImGui_Separator();
     if (!payload && ImGui_Button("Add Get node")) {
         ed_snapshot_before(e);
-        node *n = behavior_asset_add_get_node(e->bp, v->id);
+        node *n = behavior_asset_add_get_node(e->asset, v->id);
         if (n) {
             ImVec2 world = ed_view_center_world(e);
             n->x = world.x - 160.0f;
@@ -193,7 +194,7 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
     ImGui_SameLine();
     if (!payload && ImGui_Button("Add Set node")) {
         ed_snapshot_before(e);
-        node *n = behavior_asset_add_set_node(e->bp, v->id);
+        node *n = behavior_asset_add_set_node(e->asset, v->id);
         if (n) {
             ImVec2 world = ed_view_center_world(e);
             n->x = world.x + 160.0f;
@@ -204,7 +205,7 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
     ImGui_Separator();
     if (ImGui_Button(payload ? "Delete parameter" : "Delete variable")) {
         ed_snapshot_before(e);
-        if (behavior_asset_delete_variable(e->bp, v->id) == 0) {
+        if (behavior_asset_delete_variable(e->asset, v->id) == 0) {
             e->selected_variable = NULL;
         }
     }
@@ -212,17 +213,20 @@ static void ed_draw_details_variable(editor *e, behavior_variable *v)
 
 void ed_draw_details_behavior_asset(editor *e)
 {
-    ImGui_Text("Behavior Asset: %s", e->bp->name && e->bp->name[0] ? e->bp->name : "Unnamed");
+    ImGui_Text(
+        "Behavior Asset: %s",
+        e->asset->name && e->asset->name[0] ? e->asset->name : "Unnamed"
+    );
     ImGui_Separator();
     snprintf(
         e->details_title,
         sizeof e->details_title,
         "%s",
-        e->bp->name ? e->bp->name : ""
+        e->asset->name ? e->asset->name : ""
     );
     if (ImGui_InputText("Name", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
-        if (behavior_asset_set_name(e->bp, e->details_title) == 0) {
+        if (behavior_asset_set_name(e->asset, e->details_title) == 0) {
             e->edit_changed = 1;
         }
     }
@@ -405,7 +409,7 @@ static void ed_draw_math_graph_name(editor *e, graph *g)
     snprintf(e->details_title, sizeof e->details_title, "%s", g->name ? g->name : "");
     if (ImGui_InputText("Name", e->details_title, sizeof e->details_title, 0)) {
         ed_details_begin_mutation(e);
-        if (behavior_asset_rename_graph(e->bp, g->graph_id, e->details_title) == 0) {
+        if (behavior_asset_rename_graph(e->asset, g->graph_id, e->details_title) == 0) {
             e->edit_changed = 1;
         } else if (e->details_title[0]) {
             ed_show_error(e, "Function name is empty or already in use");
@@ -417,7 +421,7 @@ static void ed_draw_math_graph_name(editor *e, graph *g)
 
 static void ed_draw_math_source(editor *e, node *n)
 {
-    const char *source = math_expression_source(e->bp, n);
+    const char *source = math_expression_source(e->asset, n);
     if (!source) {
         return;
     }
@@ -430,7 +434,7 @@ static void ed_draw_math_source(editor *e, node *n)
         snprintf(e->math_text, e->math_capacity, "%s", source);
         e->math_error = (math_expression_error){ 0 };
     }
-    graph *generated = behavior_asset_find_graph(e->bp, n->reference_id);
+    graph *generated = behavior_asset_find_graph(e->asset, n->reference_id);
     assert(generated && generated->math_expression);
     ed_draw_math_graph_name(e, generated);
     ImGui_SeparatorText("Expression");
@@ -484,10 +488,17 @@ void ed_draw_details(editor *e)
     }
     if (!e->selected_variable && !acount(e->selected) && !acount(e->selected_links)) {
         ed_draw_shader_details(e, NULL);
-        if (e->bp->domain != BEHAVIOR_DOMAIN_MATERIAL &&
-            e->bp->domain != BEHAVIOR_DOMAIN_SHAPE &&
-            e->bp->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
-            ImGui_TextDisabled("No Selection");
+        if (e->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
+            e->asset->domain != BEHAVIOR_DOMAIN_SHAPE &&
+            e->asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+            ImGui_TextUnformatted(e->asset->name);
+            editor_ui_track_item("inspector.document");
+            if (e->asset->description && e->asset->description[0]) {
+                ImGui_TextWrapped("%s", e->asset->description);
+            }
+            if (e->active_graph->name && e->active_graph->name[0]) {
+                ImGui_TextDisabled("Function: %s", e->active_graph->name);
+            }
         }
         ImGui_End();
         return;
@@ -592,8 +603,8 @@ void ed_draw_details(editor *e)
                                                       : pin_type_name(parameter_type),
                                  .kind = PIN_DATA };
                 graph_add_pin(e->active_graph, n, entry, &pin);
-                for (int g = 0; g < acount(e->bp->graphs); g++) {
-                    graph *caller = e->bp->graphs[g];
+                for (int g = 0; g < acount(e->asset->graphs); g++) {
+                    graph *caller = e->asset->graphs[g];
                     for (int i = 0; i < acount(caller->nodes); i++) {
                         node *call = caller->nodes[i];
                         if (ed_is_graph_call(call) && !call->reference_asset &&
@@ -614,8 +625,8 @@ void ed_draw_details(editor *e)
                 ed_snapshot_before(e);
                 pin_spec pin = { .name = port_name, .type = PIN_FLOW, .kind = PIN_EXEC };
                 graph_add_pin(e->active_graph, n, entry, &pin);
-                for (int g = 0; g < acount(e->bp->graphs); g++) {
-                    graph *caller = e->bp->graphs[g];
+                for (int g = 0; g < acount(e->asset->graphs); g++) {
+                    graph *caller = e->asset->graphs[g];
                     for (int i = 0; i < acount(caller->nodes); i++) {
                         node *call = caller->nodes[i];
                         if (call->desc == &NODE_CallMacro &&

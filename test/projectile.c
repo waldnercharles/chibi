@@ -7,6 +7,7 @@
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -83,8 +84,8 @@ void test_projectile()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype *player = read_prototype("content/prototypes/Player.json", &registry);
-    game_prototype *projectile = read_prototype("content/prototypes/Projectile.json", &registry);
+    game_prototype *player = read_prototype("test/fixtures/content/prototypes/Player.json", &registry);
+    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.json", &registry);
     const char *names[] = { "InputBehavior",         "WeaponBehavior",
                             "AutoWeaponBehavior",    "ProjectileBehavior",
                             "HealthBehavior",        "ProjectileHitBehavior",
@@ -110,7 +111,13 @@ void test_projectile()
         }
         for (int i = 0; i < (int)(sizeof names / sizeof names[0]); i++) {
             char path[256];
-            snprintf(path, sizeof path, "content/behaviors/%s.json", names[i]);
+            const char *root = !strcmp(names[i], "InputBehavior") ||
+                                       !strcmp(names[i], "AutoWeaponBehavior") ||
+                                       !strcmp(names[i], "MovementTrailBehavior") ||
+                                       !strcmp(names[i], "WeaponBehavior")
+                                 ? "test/fixtures/content/behaviors"
+                                 : "content/behaviors";
+            snprintf(path, sizeof path, "%s/%s.json", root, names[i]);
             behavior_asset *asset = read_behavior(path);
             if (isolated) {
                 assert(game_prototype_preview_register_behavior(preview, names[i], asset) == 0);
@@ -127,8 +134,7 @@ void test_projectile()
             assert(game_prototype_preview_register_prototype(preview, projectile) == 0);
             assert(game_prototype_preview_launch(preview, player, error, sizeof error) == 0);
             owner = game_prototype_preview_entity(preview);
-            assert(game_prototype_preview_input(preview, "Fire", 1.0, 1, NULL) >= 0);
-            assert(game_prototype_preview_tick(preview, 0.0) >= 0);
+
         } else {
             assert(game_entities_register(live->entities, projectile) == 0);
             assert(
@@ -143,24 +149,22 @@ void test_projectile()
             );
             engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT);
             assert(engine_set_playing(runtime, true) == 0);
-            assert(engine_dispatch_input(runtime, "Fire", 1.0, 1, NULL) >= 0);
-            assert(engine_frame(runtime, 0.0) >= 0);
         }
+        simulation_fixture clock = simulation_fixture_new(runtime, preview);
+        simulation_advance(&clock, 0);
+        simulation_action(&clock, "Fire");
         ecs_entity shot = projectile_in(world);
         assert(shot.slot && shot.slot != owner.slot);
         float origin = GAME_GameTransform_get_const(world, owner)->x;
-        assert(fabsf(GAME_GameTransform_get_const(world, shot)->x - origin - 32.0f) < 0.01f);
-        if (isolated) {
-            assert(game_prototype_preview_tick(preview, 0.1) >= 0);
-        } else {
-            assert(engine_frame(runtime, 0.1) >= 0);
-        }
-        assert(fabsf(GAME_GameTransform_get_const(world, shot)->x - origin - 74.0f) < 0.01f);
-        if (isolated) {
-            assert(game_prototype_preview_tick(preview, 2.1) >= 0);
-        } else {
-            assert(engine_frame(runtime, 2.1) >= 0);
-        }
+        assert(fabsf(GAME_GameTransform_get_const(world, shot)->x - origin - 7.0f) < 0.01f);
+        assert(
+            GAME_GameCollider_get_const(world, shot)->ignore_entity ==
+            ecs_entity_to_u64(owner)
+        );
+        assert(GAME_GameVelocity_get_const(world, shot)->x == 420);
+        simulation_advance(&clock, 0.1);
+        assert(fabsf(GAME_GameTransform_get_const(world, shot)->x - origin - 42.0f) < 0.01f);
+        simulation_advance(&clock, 2.1);
         assert(!ecs_entity_is_alive(world, shot));
         assert(!projectile_in(world).slot);
         assert(
@@ -181,22 +185,19 @@ void test_projectile()
         );
         if (isolated) {
             assert(game_prototype_preview_register_prototype(preview, projectile) == 0);
-            assert(game_prototype_preview_input(preview, "Fire", 1.0, 1, NULL) >= 0);
-            assert(game_prototype_preview_tick(preview, 2.2) >= 0);
+
         } else {
             assert(game_entities_register(live->entities, projectile) == 0);
-            assert(engine_dispatch_input(runtime, "Fire", 1.0, 1, NULL) >= 0);
-            assert(engine_frame(runtime, 2.2) >= 0);
         }
+        simulation_action(&clock, "Fire");
         shot = projectile_in(world);
         assert(shot.slot);
         const GameProjectile *state = GAME_GameProjectile_get_const(world, shot);
         assert(state->speed == 100.0f && state->lifetime == 0.2f);
-        if (isolated) {
-            assert(game_prototype_preview_tick(preview, 2.4) >= 0);
-        } else {
-            assert(engine_frame(runtime, 2.4) >= 0);
-        }
+        assert(GAME_GameVelocity_get_const(world, shot)->x == 100);
+        simulation_advance(&clock, clock.time + 0.18);
+        assert(ecs_entity_is_alive(world, shot));
+        simulation_advance(&clock, clock.time + 0.04);
         assert(!ecs_entity_is_alive(world, shot));
         assert(
             game_prototype_write_field(
@@ -214,6 +215,48 @@ void test_projectile()
                 (pin_value){ .type = PIN_F32, .f = 2.0f }
             ) == 0
         );
+        ecs_entity wall = ecs_world_create_entity(world);
+        assert(GAME_GameTransform_add(world, wall, 0) == ECS_OK);
+        assert(GAME_GameCollider_add(world, wall, 0) == ECS_OK);
+        assert(GAME_GameBody_add(world, wall, 0) == ECS_OK);
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+        const GameTransform *player_position = GAME_GameTransform_get_const(world, owner);
+        *GAME_GameTransform_get(world, wall) = (GameTransform){ player_position->x + 14,
+                                                                player_position->y };
+        *GAME_GameCollider_get(world, wall) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                              .width = 2,
+                                                              .height = 80,
+                                                              .category = 8,
+                                                              .mask = 7 };
+        assert(
+            game_prototype_write_field(
+                projectile,
+                "GameProjectile",
+                "speed",
+                (pin_value){ .type = PIN_F32, .f = 4800 }
+            ) == 0
+        );
+        assert(
+            (preview ? game_prototype_preview_register_prototype(preview, projectile)
+                     : game_entities_register(live->entities, projectile)) == 0
+        );
+        game_particles *particles = preview
+                                      ? game_prototype_preview_particles(preview)
+                                      : live->particles;
+        int before_impact = game_particles_count(particles);
+        simulation_action(&clock, "Fire");
+        assert(!projectile_in(world).slot);
+        assert(ecs_entity_is_alive(world, wall));
+        assert(GAME_GameHealth_get_const(world, owner)->current == 100);
+        assert(game_particles_count(particles) == before_impact + 12);
+        assert(
+            game_prototype_write_field(
+                projectile,
+                "GameProjectile",
+                "speed",
+                (pin_value){ .type = PIN_F32, .f = 420 }
+            ) == 0
+        );
         if (isolated) {
             game_prototype_preview_free(preview);
         } else {
@@ -224,5 +267,5 @@ void test_projectile()
     }
     game_prototype_free(projectile);
     game_prototype_free(player);
-    puts("PASS: authored Fire, projectile movement and expiry run in scene and isolated preview");
+    puts("projectile PASS: authored launch velocity, shooter exclusion, expiry and fast shots against an adjacent thin wall in both hosts");
 }

@@ -9,10 +9,10 @@
 #include <time.h>
 #include <unistd.h>
 
-static void await_exit(bp_process *process)
+static void await_exit(chibi_process *process)
 {
     struct timespec delay = { .tv_nsec = 10000000 };
-    for (int i = 0; i < 500 && !bp_process_poll(process); i++) {
+    for (int i = 0; i < 500 && !chibi_process_poll(process); i++) {
         nanosleep(&delay, NULL);
     }
     assert(process->finished);
@@ -20,7 +20,7 @@ static void await_exit(bp_process *process)
 
 void test_dev_process()
 {
-    char root[] = "/tmp/blueprints-process-XXXXXX";
+    char root[] = "/tmp/chibi-process-XXXXXX";
     assert(mkdtemp(root));
     char log[512];
     snprintf(log, sizeof log, "%s/output.log", root);
@@ -32,8 +32,8 @@ void test_dev_process()
         "literal spaces ; $() `quotes`",
         NULL
     };
-    bp_process process = { 0 };
-    assert(bp_process_start(&process, args, root, log));
+    chibi_process process = { 0 };
+    assert(chibi_process_start(&process, args, root, log));
     await_exit(&process);
     assert(process.status == 7);
     FILE *file = fopen(log, "r");
@@ -42,13 +42,13 @@ void test_dev_process()
     assert(fread(output, 1, sizeof output - 1, file) > 0);
     fclose(file);
     assert(strstr(output, root) && strstr(output, args[4]) && strstr(output, "error"));
-    const char *missing[] = { "/definitely/not/a/blueprints-program", NULL };
-    assert(!bp_process_start(&process, missing, root, log));
+    const char *missing[] = { "/definitely/not/a/chibi-program", NULL };
+    assert(!chibi_process_start(&process, missing, root, log));
     assert(errno == ENOENT);
     const char *sleeping[] = { "/bin/sleep", "30", NULL };
-    assert(bp_process_start(&process, sleeping, root, log));
-    assert(!bp_process_poll(&process));
-    bp_process_stop(&process);
+    assert(chibi_process_start(&process, sleeping, root, log));
+    assert(!chibi_process_poll(&process));
+    chibi_process_stop(&process);
     await_exit(&process);
     assert(process.status == 128 + SIGTERM);
     const char *stubborn[] = {
@@ -57,7 +57,7 @@ void test_dev_process()
         "trap '' TERM; echo ready; while :; do sleep 1; done",
         NULL
     };
-    assert(bp_process_start(&process, stubborn, root, log));
+    assert(chibi_process_start(&process, stubborn, root, log));
     struct timespec delay = { .tv_nsec = 10000000 };
     bool ready = false;
     for (int i = 0; i < 300 && !ready; i++) {
@@ -68,7 +68,7 @@ void test_dev_process()
         nanosleep(&delay, NULL);
     }
     assert(ready);
-    bp_process_stop(&process);
+    chibi_process_stop(&process);
     await_exit(&process);
     assert(process.status == 128 + SIGKILL);
     assert(unlink(log) == 0);

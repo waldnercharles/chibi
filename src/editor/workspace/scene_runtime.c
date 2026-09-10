@@ -92,7 +92,7 @@ static int restart_runtime_actor(app_scene_authoring *scene, scene_actor *actor)
 
 static int restart_runtime(app_scene_authoring *scene)
 {
-    scene->runtime_elapsed = 0;
+    engine_reset(scene->runtime);
     render_shader_clear_world(scene->world);
     finish_transform_edit(scene, false);
     if (capture_runtime_snapshot(scene) != 0) {
@@ -103,7 +103,6 @@ static int restart_runtime(app_scene_authoring *scene)
     editor_set_inspection_blocked(scene->graph_editor, true);
     game_behavior_set_deferred(scene->live->behaviors, true);
     scene->runtime_selected = (ecs_entity){ 0 };
-    game_contacts_reset(scene->live->contacts);
     game_entities_reset(scene->live->entities);
     game_particles_clear(scene->live->particles);
     for (int i = 0; i < acount(scene->actors); i++) {
@@ -201,8 +200,6 @@ int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char
     scene->preview_playing = result == ECS_OK;
     scene->preview_loop = loop;
     scene->preview_follow = follow;
-    scene->preview_has_time = false;
-    scene->preview_elapsed = 0;
     scene->preview_step = false;
     snprintf(
         scene->prototype_message,
@@ -255,9 +252,13 @@ int app_scene_authoring_runtime_command(
             return -1;
         }
     }
+    if (command == APP_RUNTIME_PAUSE || command == APP_RUNTIME_STOP ||
+        command == APP_RUNTIME_RESTART) {
+        app_scene_authoring_move(scene, 0, 0);
+        app_scene_authoring_aim(scene, (CF_V2){ 0 }, false);
+    }
     if (command == APP_RUNTIME_RESTART || command == APP_RUNTIME_STOP) {
         app_scene_renderer_reset(scene->renderer);
-        scene->movement_active[target] = false;
     }
     bool *playing = target == APP_RUNTIME_PREVIEW ? &scene->preview_playing
                                                   : &scene->runtime_playing;
@@ -326,14 +327,16 @@ int app_scene_authoring_runtime_command(
         scene->active_runtime_target = APP_RUNTIME_PREVIEW;
         *playing = command == APP_RUNTIME_PLAY;
         *step = false;
-        return 0;
+        return engine_set_playing(game_prototype_preview_runtime(scene->prototype_preview), *playing);
     }
     if (command == APP_RUNTIME_STEP) {
         editor_ui_set_scene_play_expanded(false);
         scene->active_runtime_target = APP_RUNTIME_PREVIEW;
         *playing = false;
         *step = true;
-        return 0;
+        engine *preview = game_prototype_preview_runtime(scene->prototype_preview);
+        engine_set_playing(preview, false);
+        return engine_step(preview);
     }
     if (command == APP_RUNTIME_STOP) {
         app_scene_authoring_stop_prototype_preview(scene);
@@ -342,6 +345,22 @@ int app_scene_authoring_runtime_command(
     scene_prototype_asset *asset = previewed_prototype(scene);
     return asset ? app_scene_authoring_preview_prototype(scene, asset->prototype->name)
                  : -1;
+}
+
+const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene)
+{
+    engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
+                        ? game_prototype_preview_runtime(scene->prototype_preview)
+                        : scene->runtime;
+    return engine_last_timing(runtime);
+}
+
+const game_behavior_profile_frame *app_scene_authoring_behavior_profile(const app_scene_authoring *scene)
+{
+    engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
+                        ? game_prototype_preview_runtime(scene->prototype_preview)
+                        : scene->runtime;
+    return engine_behavior_profile(runtime);
 }
 
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene)
@@ -388,13 +407,6 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
     if (!scene) {
         return FLOW_ERR_ARGUMENT;
     }
-    for (int i = 0; i < acount(scene->prototypes); i++) {
-        game_entities_register(scene->live->entities, scene->prototypes[i].prototype);
-        game_prototype_preview_register_prototype(
-            scene->prototype_preview,
-            scene->prototypes[i].prototype
-        );
-    }
     preview_behavior_edits(scene);
     char status[128] = { 0 };
     if (scene->active_runtime_target == APP_RUNTIME_PREVIEW) {
@@ -412,32 +424,18 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
         snprintf(status, sizeof status, "Scene %s", scene->runtime_playing ? "running" : "paused");
     }
     editor_ui_set_runtime_status(status);
-    double preview_delta = scene->preview_has_time
-                             ? fmax(0, monotonic_time - scene->preview_last_time)
-                             : 0;
-    scene->preview_last_time = monotonic_time;
-    scene->preview_has_time = true;
-    if (scene->preview_playing || scene->preview_step) {
-        scene->preview_elapsed += preview_delta;
-    }
-    ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
     int result = FLOW_OK;
-    if (preview_entity.slot && !scene->preview_playing && !scene->preview_step) {
-        result = game_prototype_preview_idle(scene->prototype_preview, monotonic_time);
-    }
-    if (preview_entity.slot && (scene->preview_playing || scene->preview_step)) {
+    ecs_entity preview_entity = game_prototype_preview_entity(scene->prototype_preview);
+    engine *preview_runtime = game_prototype_preview_runtime(scene->prototype_preview);
+    engine_set_focus(preview_runtime, engine_get_focus(scene->runtime));
+    if (preview_entity.slot) {
         result = game_prototype_preview_tick(scene->prototype_preview, monotonic_time);
         if (result < 0) {
-            snprintf(
-                scene->prototype_message,
-                sizeof scene->prototype_message,
-                "Prototype preview Tick failed (%d).",
-                result
-            );
+            snprintf(scene->prototype_message, sizeof scene->prototype_message, "%s", engine_error(preview_runtime));
         }
     }
     if (scene->preview_loop && scene->preview_playing && result >= 0 &&
-        (scene->preview_elapsed >= 2.0 ||
+        (engine_last_timing(preview_runtime)->simulation_time >= 2.0 ||
          !ecs_entity_is_alive(game_prototype_preview_world(scene->prototype_preview), preview_entity))) {
         scene_prototype_asset *asset = previewed_prototype(scene);
         if (asset) {
@@ -448,15 +446,16 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
         }
     }
     int frame_result = engine_frame(scene->runtime, monotonic_time);
-    if ((scene->runtime_playing || scene->runtime_step) &&
-        !game_entities_initializing(scene->live->entities)) {
-        scene->runtime_elapsed += preview_delta;
+    if (frame_result < 0) {
+        snprintf(scene->message, sizeof scene->message, "%s", engine_error(scene->runtime));
     }
     app_scene_renderer_set_time(
         scene->renderer,
-        (float)(scene->active_runtime_target == APP_RUNTIME_PREVIEW
-                    ? scene->preview_elapsed
-                    : scene->runtime_elapsed)
+        (float)engine_last_timing(
+            scene->active_runtime_target == APP_RUNTIME_PREVIEW ? preview_runtime
+                                                                : scene->runtime
+        )
+            ->simulation_time
     );
     if (frame_result < 0 && result == FLOW_OK) {
         result = frame_result;
@@ -472,6 +471,10 @@ int app_scene_authoring_input(app_scene_authoring *scene, const char *action, do
         return FLOW_ERR_ARGUMENT;
     }
     if (scene->active_runtime_target == APP_RUNTIME_PREVIEW) {
+        engine_set_focus(
+            game_prototype_preview_runtime(scene->prototype_preview),
+            engine_get_focus(scene->runtime)
+        );
         return game_prototype_preview_input(scene->prototype_preview, action, value, pressed, NULL);
     }
     return engine_dispatch_input(scene->runtime, action, value, pressed, NULL);
@@ -487,23 +490,31 @@ int app_scene_authoring_move(app_scene_authoring *scene, float x, float y)
         !(preview ? scene->preview_playing : scene->runtime_playing)) {
         return FLOW_ERR_STATE;
     }
-    bool active = x != 0 || y != 0;
-    bool *was_active = &scene->movement_active[scene->active_runtime_target];
-    if (!active && !*was_active) {
-        return FLOW_OK;
-    }
-    *was_active = active;
-    CF_V2 direction = { x, y };
-    pin_value input = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &direction };
-    flow_inputs inputs = { &input, 1, NULL };
     if (preview) {
-        return game_behavior_dispatch(
-            game_prototype_preview_behaviors(scene->prototype_preview),
-            game_prototype_preview_entity(scene->prototype_preview),
-            "Input",
-            inputs,
-            NULL
+        engine_set_focus(
+            game_prototype_preview_runtime(scene->prototype_preview),
+            engine_get_focus(scene->runtime)
         );
+        return game_prototype_preview_sample_movement(scene->prototype_preview, x, y);
     }
-    return game_behavior_dispatch_all(scene->live->behaviors, "Input", inputs, NULL);
+    return engine_sample_movement(scene->runtime, x, y);
+}
+
+static int sample_aim(app_scene_authoring *scene, CF_V2 value, bool firing, bool point)
+{
+    engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
+                        ? game_prototype_preview_runtime(scene->prototype_preview)
+                        : scene->runtime;
+    engine_set_focus(runtime, engine_get_focus(scene->runtime));
+    return engine_sample_aim(runtime, value, firing, point);
+}
+
+int app_scene_authoring_aim(app_scene_authoring *scene, CF_V2 direction, bool firing)
+{
+    return sample_aim(scene, direction, firing, false);
+}
+
+int app_scene_authoring_aim_at(app_scene_authoring *scene, CF_V2 point, bool firing)
+{
+    return sample_aim(scene, point, firing, true);
 }

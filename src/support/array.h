@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_ARRAY_H
-#define CBLUEPRINT_ARRAY_H
+#ifndef CHIBI_ARRAY_H
+#define CHIBI_ARRAY_H
 
 /* Dynamic arrays (stretchy buffers): apush / alen / acap / afree / asetlen...
  * Backed by the abort-on-OOM allocator in xalloc.h. */

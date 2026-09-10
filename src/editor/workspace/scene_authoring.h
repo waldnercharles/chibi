@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_SCENE_AUTHORING_H
-#define CBLUEPRINT_APP_SCENE_AUTHORING_H
+#ifndef CHIBI_APP_SCENE_AUTHORING_H
+#define CHIBI_APP_SCENE_AUTHORING_H
 
 #include "assets/system_document.h"
 #include "render/sdf_shapes.h"
@@ -154,6 +154,10 @@ int app_scene_authoring_runtime_command(
     app_runtime_command command
 );
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
+const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
+const game_behavior_profile_frame *app_scene_authoring_behavior_profile(
+    const app_scene_authoring *scene
+);
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
@@ -169,6 +173,9 @@ void app_scene_authoring_render(void *user);
 app_sdf_shapes app_scene_authoring_shapes(const app_scene_authoring *scene);
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time);
 int app_scene_authoring_move(app_scene_authoring *scene, float x, float y);
+/* Sample aiming independently of movement; points use game coordinates. */
+int app_scene_authoring_aim(app_scene_authoring *scene, CF_V2 direction, bool firing);
+int app_scene_authoring_aim_at(app_scene_authoring *scene, CF_V2 point, bool firing);
 int app_scene_authoring_input(app_scene_authoring *scene, const char *action, double value, int pressed);
 
 /* Authored lifecycle actions, recorded in Scene Undo. */

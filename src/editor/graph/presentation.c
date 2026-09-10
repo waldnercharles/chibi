@@ -187,7 +187,7 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
         return buf;
     }
     if (ed_is_graph_call(n)) {
-        const behavior_asset *asset = e->bp;
+        const behavior_asset *asset = e->asset;
         if (n->reference_asset) {
             asset = NULL;
             for (int i = 0; i < acount(e->asset_catalog); i++) {
@@ -207,14 +207,14 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
             editor_node_label(n->desc, buf, cap);
             return buf;
         }
-        if (math_expression_source(e->bp, n)) {
+        if (math_expression_source(e->asset, n)) {
             snprintf(buf, cap, "%s", name);
         } else {
             editor_identifier_label(name, buf, cap);
         }
         return buf;
     }
-    const char *expression = math_expression_source(e->bp, n);
+    const char *expression = math_expression_source(e->asset, n);
     if (expression) {
         snprintf(buf, cap, "%s", expression);
         return buf;
@@ -227,7 +227,7 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
     char label[256];
     editor_node_label(n->desc, label, sizeof label);
     if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
-        const behavior_variable *variable = behavior_asset_find_variable_by_id(e->bp, n->reference_id);
+        const behavior_variable *variable = behavior_asset_find_variable_by_id(e->asset, n->reference_id);
         if (variable && variable->name) {
             char name[192];
             editor_identifier_label(variable->name, name, sizeof name);

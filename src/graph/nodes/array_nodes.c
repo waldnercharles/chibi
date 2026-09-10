@@ -181,12 +181,17 @@ static pin_value array_add(const pin_value *inputs, int count, arena *a)
     if (!source) {
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
-    pin_value result = array_result(a, source);
-    pin_array *array = (pin_array *)result.ptr;
-    if (array->count < array->capacity) {
-        array->items[array->count++] = inputs[1];
-    }
-    return result;
+    pin_array extended = *source;
+    extended.count++;
+    extended.capacity = extended.count;
+    extended.items = arena_alloc(a, (size_t)extended.count * sizeof *extended.items);
+    memcpy(
+        extended.items,
+        source->items,
+        (size_t)source->count * sizeof *extended.items
+    );
+    extended.items[source->count] = inputs[1];
+    return array_result(a, &extended);
 }
 
 static pin_value array_add_unique(const pin_value *inputs, int count, arena *a)

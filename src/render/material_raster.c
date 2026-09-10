@@ -1,6 +1,7 @@
 #include "render/material_raster.h"
 
 #include "render/shader_catalog.h"
+#include "render/shader_program.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -17,9 +18,18 @@ _Static_assert(offsetof(render_material_entity, points) == 80, "entity point off
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
 
+typedef struct
+{
+    int first, last, group, program;
+    render_shader_set set;
+} material_batch;
+
 struct render_material_raster
 {
-    CF_ComputeShader bin, raster;
+    CF_ComputeShader bin;
+    render_programs *programs;
+    material_batch *batches;
+    char error[256];
     CF_Material material;
     CF_StorageBuffer entities, counts, indices, parameters;
     unsigned char *entity_data;
@@ -27,7 +37,6 @@ struct render_material_raster
     CF_Texture textures[4];
     render_material_entity *sorted;
     int width, height, tiles, capacity;
-    unsigned shader_revision;
 };
 
 static void free_targets(render_material_raster *r)
@@ -58,9 +67,9 @@ render_material_raster *render_material_raster_new()
 {
     render_material_raster *r = xcalloc(1, sizeof *r);
     r->bin = cf_make_compute_shader("hrc/entity_bin.shd");
-    r->raster = cf_make_compute_shader("hrc/entity_raster.shd");
+    r->programs = render_programs_new(RENDER_PROGRAM_COMPUTE);
     r->material = cf_make_material();
-    if (!r->bin.id || !r->raster.id || !r->material.id) {
+    if (!r->bin.id || !r->material.id) {
         render_material_raster_free(r);
         return NULL;
     }
@@ -76,9 +85,8 @@ void render_material_raster_free(render_material_raster *r)
     if (r->bin.id) {
         cf_destroy_compute_shader(r->bin);
     }
-    if (r->raster.id) {
-        cf_destroy_compute_shader(r->raster);
-    }
+    render_programs_free(r->programs);
+    afree(r->batches);
     if (r->material.id) {
         cf_destroy_material(r->material);
     }
@@ -174,44 +182,6 @@ static bool reserve(render_material_raster *r, int count)
     return true;
 }
 
-static void update_graph_shader(render_material_raster *r)
-{
-    unsigned version = render_shader_revision();
-    if (r->shader_revision == version) {
-        return;
-    }
-    r->shader_revision = version;
-    if (!render_shader_count()) {
-        return;
-    }
-    FILE *file = fopen(CBLUEPRINT_RENDER_SHADER_DIR "/hrc/entity_raster.shd", "rb");
-    if (!file) {
-        return;
-    }
-    fseek(file, 0, SEEK_END);
-    long bytes = ftell(file);
-    rewind(file);
-    if (bytes < 0) {
-        fclose(file);
-        return;
-    }
-    char *functions = render_shader_glsl();
-    size_t prefix = strlen(functions) + 32;
-    char *source = xmalloc(prefix + (size_t)bytes + 1);
-    int start = snprintf(source, prefix, "#define SG_GRAPHS 1\n%s\n", functions);
-    size_t read = fread(source + start, 1, (size_t)bytes, file);
-    source[start + read] = 0;
-    fclose(file);
-    free(functions);
-    CF_ComputeShader fresh = cf_make_compute_shader_from_source(source);
-    free(source);
-    if (!fresh.id) {
-        return;
-    }
-    cf_destroy_compute_shader(r->raster);
-    r->raster = fresh;
-}
-
 static int compare(const void *a, const void *b)
 {
     const render_material_entity *x = a, *y = b;
@@ -224,6 +194,86 @@ static int compare(const void *a, const void *b)
 static void uniform(render_material_raster *r, const char *name, void *data, CF_UniformType type, int n)
 {
     cf_material_set_uniform_cs(r->material, name, data, type, n);
+}
+
+const char *render_material_raster_error(const render_material_raster *r)
+{
+    return r->error[0] ? r->error : render_programs_error(r->programs);
+}
+
+static bool add_images(render_shader_set *set, const render_material_entity *entity, shader_error *error)
+{
+    return render_shader_set_add(set, (int)entity->reserved[0], error) &&
+           render_shader_set_add(set, (int)entity->reserved[1], error);
+}
+
+static bool prepare_batches(render_material_raster *r)
+{
+    aclear(r->batches);
+    r->error[0] = 0;
+    material_batch ordinary = { 0 };
+    shader_error error = { 0 };
+    for (int i = 0; i < acount(r->sorted); i++) {
+        const render_material_entity *entity = &r->sorted[i];
+        if (entity->metaball_group) {
+            continue;
+        }
+        render_shader_set set = ordinary.set;
+        if (!add_images(&set, entity, &error)) {
+            if (ordinary.last > ordinary.first) {
+                apush(r->batches, ordinary);
+            }
+            ordinary = (material_batch){ .first = i };
+            set = (render_shader_set){ 0 };
+            if (!add_images(&set, entity, &error)) {
+                snprintf(r->error, sizeof r->error, "Entity %d: %s", i, error.message);
+                return false;
+            }
+        }
+        ordinary.set = set;
+        ordinary.last = i + 1;
+    }
+    if (ordinary.last > ordinary.first) {
+        apush(r->batches, ordinary);
+    }
+    /* Each smooth-union group is evaluated in full, then composited in group order. */
+    for (int group = 1; group <= 4; group++) {
+        material_batch batch = { .last = acount(r->sorted), .group = group };
+        bool found = false;
+        for (int i = 0; i < acount(r->sorted); i++) {
+            if (r->sorted[i].metaball_group != (unsigned)group) {
+                continue;
+            }
+            found = true;
+            if (!add_images(&batch.set, &r->sorted[i], &error)) {
+                snprintf(
+                    r->error,
+                    sizeof r->error,
+                    "Metaball group %d: %s",
+                    group,
+                    error.message
+                );
+                return false;
+            }
+        }
+        if (found) {
+            apush(r->batches, batch);
+        }
+    }
+    if (!acount(r->batches)) {
+        apush(r->batches, ((material_batch){ 0 }));
+    }
+    for (int i = 0; i < acount(r->batches); i++) {
+        material_batch *batch = &r->batches[i];
+        batch->program = render_programs_prepare(r->programs, &batch->set);
+        if (render_programs_error(r->programs)[0]) {
+            snprintf(r->error, sizeof r->error, "%s", render_programs_error(r->programs));
+        }
+        if (!batch->program) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool render_material_raster_draw(
@@ -249,7 +299,6 @@ bool render_material_raster_draw(
     if (!reserve(r, count ? count : 1)) {
         return false;
     }
-    update_graph_shader(r);
     asetlen(r->sorted, count);
     for (int i = 0; i < count; i++) {
         r->sorted[i] = entities[i];
@@ -257,6 +306,11 @@ bool render_material_raster_draw(
     }
     if (count) {
         qsort(r->sorted, (size_t)count, sizeof *r->sorted, compare);
+    }
+    if (!prepare_batches(r)) {
+        return false;
+    }
+    if (count) {
         for (int i = 0; i < count; i++) {
             memcpy(r->entity_data + (size_t)i * 320, &r->sorted[i], 320);
             memcpy(r->parameter_data + (size_t)i * 256, r->sorted[i].material_parameters, 1024);
@@ -290,7 +344,17 @@ bool render_material_raster_draw(
     dispatch.ro_buffer_count = 4;
     dispatch.rw_textures = r->textures;
     dispatch.rw_texture_count = 4;
-    cf_dispatch_compute(r->raster, r->material, dispatch);
+    for (int i = 0; i < acount(r->batches); i++) {
+        const material_batch *batch = &r->batches[i];
+        int accumulate = i != 0;
+        uniform(r, "u_first_entity", (void *)&batch->first, CF_UNIFORM_TYPE_INT, 1);
+        uniform(r, "u_last_entity", (void *)&batch->last, CF_UNIFORM_TYPE_INT, 1);
+        uniform(r, "u_metaball_group", (void *)&batch->group, CF_UNIFORM_TYPE_INT, 1);
+        uniform(r, "u_accumulate", &accumulate, CF_UNIFORM_TYPE_INT, 1);
+        CF_ComputeShader
+            shader = render_programs_bind_compute(r->programs, batch->program, r->material);
+        cf_dispatch_compute(shader, r->material, dispatch);
+    }
     return true;
 }
 

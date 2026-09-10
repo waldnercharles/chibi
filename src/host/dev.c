@@ -15,13 +15,13 @@
 #include <unistd.h>
 #include <yyjson.h>
 
-struct bp_dev
+struct chibi_dev
 {
     char *config, *source, *cmake, *script, *result, *log, *checkpoint;
     char *initial, *resident, *digest, *restart_notice, *candidate;
     char *watch_config, *attempted, *pending_digest, *manifest;
-    bp_watch *watch;
-    bp_process process;
+    chibi_watch *watch;
+    chibi_process process;
     uint64_t revision, build_revision;
     double changed_at;
     int jobs, lock;
@@ -63,7 +63,7 @@ static double now()
 
 static yyjson_doc *read_json(const char *path)
 {
-    char *text = bp_read_file(path);
+    char *text = chibi_read_file(path);
     if (!text) {
         return NULL;
     }
@@ -85,7 +85,7 @@ static bool ready(yyjson_val *root)
            text(root, "source_digest") && text(root, "config");
 }
 
-int bp_dev_bootstrap(int argc, char **argv, const char *generation)
+int chibi_dev_bootstrap(int argc, char **argv, const char *generation)
 {
     yyjson_doc *doc = read_json(generation);
     yyjson_val *root = yyjson_doc_get_root(doc);
@@ -129,7 +129,7 @@ int bp_dev_bootstrap(int argc, char **argv, const char *generation)
     return 1;
 }
 
-static bool update_watch(bp_dev *dev, yyjson_val *root)
+static bool update_watch(chibi_dev *dev, yyjson_val *root)
 {
     yyjson_val *roots = yyjson_obj_get(root, "roots");
     yyjson_val *suffixes = yyjson_obj_get(root, "suffixes");
@@ -161,8 +161,8 @@ static bool update_watch(bp_dev *dev, yyjson_val *root)
     if (!valid) {
         errno = EINVAL;
     }
-    bp_watch *watch = valid ? bp_watch_create(paths, count, extensions, suffix_count)
-                            : NULL;
+    chibi_watch *watch = valid ? chibi_watch_create(paths, count, extensions, suffix_count)
+                               : NULL;
     free(paths);
     free(extensions);
     if (!watch) {
@@ -171,11 +171,11 @@ static bool update_watch(bp_dev *dev, yyjson_val *root)
         return false;
     }
     bool replacing = dev->watch != NULL;
-    bp_watch_free(dev->watch);
+    chibi_watch_free(dev->watch);
     free(dev->watch_config);
     dev->watch = watch;
     dev->watch_config = signature;
-    dev->revision = bp_watch_revision(watch);
+    dev->revision = chibi_watch_revision(watch);
     if (replacing) {
         /* Reconcile once after replacing the subscriptions: edits can occur
          * between the completed build and installation of the new roots. */
@@ -185,45 +185,45 @@ static bool update_watch(bp_dev *dev, yyjson_val *root)
     return true;
 }
 
-bp_dev *bp_dev_create(const char *config, const char *generation, int jobs)
+chibi_dev *chibi_dev_create(const char *config, const char *generation, int jobs)
 {
     yyjson_doc *settings = read_json(config),
                *built = generation ? read_json(generation) : NULL;
     yyjson_val *root = yyjson_doc_get_root(settings),
                *initial = yyjson_doc_get_root(built);
-    bp_dev *dev = NULL;
+    chibi_dev *dev = NULL;
     if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1 ||
         !text(root, "source_dir") || !text(root, "cmake") || !ready(initial)) {
         fprintf(stderr, "Development mode requires valid --dev-config and --generation files\n");
         goto done;
     }
     dev = allocate(sizeof *dev);
-    *dev = (bp_dev){ .lock = -1, .jobs = jobs > 0 ? jobs : 4 };
+    *dev = (chibi_dev){ .lock = -1, .jobs = jobs > 0 ? jobs : 4 };
     dev->source = copy(text(root, "source_dir"));
     dev->config = copy(config);
     dev->cmake = copy(text(root, "cmake"));
     dev->script = append(dev->source, "/cmake/dev_build.cmake");
-    dev->log = append(dev->source, "/.blueprints/build.log");
-    dev->checkpoint = append(dev->source, "/.blueprints/workspace.json");
-    dev->manifest = append(dev->source, "/.blueprints/application.current");
+    dev->log = append(dev->source, "/.chibi/build.log");
+    dev->checkpoint = append(dev->source, "/.chibi/workspace.json");
+    dev->manifest = append(dev->source, "/.chibi/application.current");
     char filename[80];
-    snprintf(filename, sizeof filename, "/.blueprints/build-result-%ld.json", (long)getpid());
+    snprintf(filename, sizeof filename, "/.chibi/build-result-%ld.json", (long)getpid());
     dev->result = append(dev->source, filename);
     dev->initial = copy(text(initial, "application"));
     dev->resident = copy(text(initial, "resident"));
     dev->digest = copy(text(initial, "source_digest"));
     dev->pending_digest = copy(dev->digest);
-    char *lock = append(dev->source, "/.blueprints/dev.lock");
+    char *lock = append(dev->source, "/.chibi/dev.lock");
     dev->lock = open(lock, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
     free(lock);
     if (dev->lock < 0 || flock(dev->lock, LOCK_EX | LOCK_NB)) {
         fprintf(stderr, "Could not own development workspace (another host may be running): %s\n", strerror(errno));
-        bp_dev_free(dev);
+        chibi_dev_free(dev);
         dev = NULL;
         goto done;
     }
     if (!update_watch(dev, root)) {
-        bp_dev_free(dev);
+        chibi_dev_free(dev);
         dev = NULL;
         goto done;
     }
@@ -236,16 +236,16 @@ done:
     return dev;
 }
 
-const char *bp_dev_initial_application(const bp_dev *dev)
+const char *chibi_dev_initial_application(const chibi_dev *dev)
 {
     return dev->initial;
 }
-const char *bp_dev_checkpoint_path(const bp_dev *dev)
+const char *chibi_dev_checkpoint_path(const chibi_dev *dev)
 {
     return dev->checkpoint;
 }
 
-static void start_build(bp_dev *dev)
+static void start_build(chibi_dev *dev)
 {
     char *config = append("-DDEV_CONFIG=", dev->config);
     char *result = append("-DRESULT=", dev->result);
@@ -264,7 +264,7 @@ static void start_build(bp_dev *dev)
     dev->dirty = false;
     printf("Building application; diagnostics: %s\n", dev->log);
     fflush(stdout);
-    dev->building = bp_process_start(&dev->process, args, dev->source, dev->log);
+    dev->building = chibi_process_start(&dev->process, args, dev->source, dev->log);
     if (!dev->building) {
         fprintf(stderr, "Could not start build: %s\n", strerror(errno));
     }
@@ -272,7 +272,7 @@ static void start_build(bp_dev *dev)
     free(result);
 }
 
-static const char *complete_build(bp_dev *dev)
+static const char *complete_build(chibi_dev *dev)
 {
     yyjson_doc *doc = read_json(dev->result);
     yyjson_val *root = yyjson_doc_get_root(doc);
@@ -334,7 +334,7 @@ done:
     return candidate;
 }
 
-void bp_dev_accept(bp_dev *dev, bool loaded)
+void chibi_dev_accept(chibi_dev *dev, bool loaded)
 {
     assert(dev->pending_digest);
     if (loaded) {
@@ -342,7 +342,7 @@ void bp_dev_accept(bp_dev *dev, bool loaded)
         dev->digest = dev->pending_digest;
         dev->pending_digest = NULL;
         char *contents = append(dev->candidate ? dev->candidate : dev->initial, "\n");
-        if (!bp_write_file(dev->manifest, contents)) {
+        if (!chibi_write_file(dev->manifest, contents)) {
             fprintf(stderr, "Could not publish accepted application: %s\n", strerror(errno));
         }
         free(contents);
@@ -351,18 +351,18 @@ void bp_dev_accept(bp_dev *dev, bool loaded)
     dev->pending_digest = NULL;
 }
 
-const char *bp_dev_poll(bp_dev *dev)
+const char *chibi_dev_poll(chibi_dev *dev)
 {
     if (dev->closing) {
         return NULL;
     }
-    uint64_t revision = bp_watch_revision(dev->watch);
+    uint64_t revision = chibi_watch_revision(dev->watch);
     if (revision != dev->revision) {
         dev->revision = revision;
         dev->dirty = true;
         dev->changed_at = now();
     }
-    if (dev->building && bp_process_poll(&dev->process)) {
+    if (dev->building && chibi_process_poll(&dev->process)) {
         dev->building = false;
         return complete_build(dev);
     }
@@ -372,29 +372,29 @@ const char *bp_dev_poll(bp_dev *dev)
     return NULL;
 }
 
-void bp_dev_stop(bp_dev *dev)
+void chibi_dev_stop(chibi_dev *dev)
 {
     dev->closing = true;
     if (dev->building) {
-        bp_process_stop(&dev->process);
+        chibi_process_stop(&dev->process);
     }
 }
 
-bool bp_dev_stopped(bp_dev *dev)
+bool chibi_dev_stopped(chibi_dev *dev)
 {
-    if (dev->building && bp_process_poll(&dev->process)) {
+    if (dev->building && chibi_process_poll(&dev->process)) {
         dev->building = false;
     }
     return !dev->building;
 }
 
-void bp_dev_free(bp_dev *dev)
+void chibi_dev_free(chibi_dev *dev)
 {
     if (!dev) {
         return;
     }
     assert(!dev->building);
-    bp_watch_free(dev->watch);
+    chibi_watch_free(dev->watch);
     if (dev->lock >= 0) {
         close(dev->lock);
     }

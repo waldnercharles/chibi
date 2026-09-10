@@ -13,7 +13,7 @@
 
 const behavior_asset *editor_behavior_asset(const editor *e)
 {
-    return e ? e->bp : NULL;
+    return e ? e->asset : NULL;
 }
 
 int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id)
@@ -27,7 +27,7 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
     if (!json) {
         return -1;
     }
-    int result = ed_adopt_behavior_asset(e, json);
+    int result = ed_adopt_behavior_asset_with_identity(e, json, source->identity);
     free(json);
     if (result != 0) {
         return -1;
@@ -36,7 +36,7 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
     aclear(e->graph_views);
     ed_load_graph_view(e);
     free(e->saved_snapshot);
-    e->saved_snapshot = behavior_asset_save_json(e->bp);
+    e->saved_snapshot = behavior_asset_save_json(e->asset);
     ed_free_string_stack(&e->undo);
     ed_free_string_stack(&e->redo);
     e->inspection_instance = NULL;
@@ -48,7 +48,7 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
 bool ed_can_go_back(const editor *e)
 {
     for (int i = acount(e->graph_callers) - 1; i >= 0; i--) {
-        if (behavior_asset_find_graph(e->bp, e->graph_callers[i].view.graph_id)) {
+        if (behavior_asset_find_graph(e->asset, e->graph_callers[i].view.graph_id)) {
             return true;
         }
     }
@@ -57,10 +57,10 @@ bool ed_can_go_back(const editor *e)
 
 int editor_open_graph(editor *e, uint64_t graph_id)
 {
-    if (!e || !e->bp) {
+    if (!e || !e->asset) {
         return -1;
     }
-    graph *target = behavior_asset_find_graph(e->bp, graph_id);
+    graph *target = behavior_asset_find_graph(e->asset, graph_id);
     if (!target) {
         return -1;
     }
@@ -89,7 +89,7 @@ int editor_open_graph_call(editor *e, uint64_t node_id)
         free(name);
         return result;
     }
-    graph *target = behavior_asset_find_graph(e->bp, call->reference_id);
+    graph *target = behavior_asset_find_graph(e->asset, call->reference_id);
     if (!target || target == e->active_graph ||
         (call->desc == &NODE_CallMacro ? target->kind != GRAPH_MACRO
                                        : target->kind != GRAPH_FUNCTION)) {
@@ -113,12 +113,12 @@ int editor_open_graph_call(editor *e, uint64_t node_id)
 
 int editor_graph_back(editor *e)
 {
-    if (!e || !e->bp) {
+    if (!e || !e->asset) {
         return -1;
     }
     while (acount(e->graph_callers)) {
         ed_graph_caller caller = apop(e->graph_callers);
-        graph *target = behavior_asset_find_graph(e->bp, caller.view.graph_id);
+        graph *target = behavior_asset_find_graph(e->asset, caller.view.graph_id);
         if (!target) {
             continue;
         }

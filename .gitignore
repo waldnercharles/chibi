@@ -23,7 +23,7 @@ NodeEditor.json
 compile_commands.json
 *.tsv.lock
 build-dev/
-.blueprints/
-.DS_STORE
+.chibi/
+.DS_Store
 
 __pycache__/

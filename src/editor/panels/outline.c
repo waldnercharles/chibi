@@ -53,26 +53,26 @@ static const char *ed_variable_category(const behavior_variable *v)
     return v->category && v->category[0] ? v->category : "Default";
 }
 
-static int ed_variable_category_seen(const behavior_asset *bp, int index)
+static int ed_variable_category_seen(const behavior_asset *asset, int index)
 {
-    const char *category = ed_variable_category(&bp->variables[index]);
+    const char *category = ed_variable_category(&asset->variables[index]);
     for (int i = 0; i < index; i++) {
-        if (strcmp(category, ed_variable_category(&bp->variables[i])) == 0) {
+        if (strcmp(category, ed_variable_category(&asset->variables[i])) == 0) {
             return 1;
         }
     }
     return 0;
 }
 
-static int ed_variable_category_matches(const behavior_asset *bp, int index, const char *filter)
+static int ed_variable_category_matches(const behavior_asset *asset, int index, const char *filter)
 {
-    const char *category = ed_variable_category(&bp->variables[index]);
+    const char *category = ed_variable_category(&asset->variables[index]);
     if (ed_text_matches(category, filter)) {
         return 1;
     }
-    for (int i = index; i < acount(bp->variables); i++) {
-        if (strcmp(category, ed_variable_category(&bp->variables[i])) == 0 &&
-            ed_text_matches(bp->variables[i].name, filter)) {
+    for (int i = index; i < acount(asset->variables); i++) {
+        if (strcmp(category, ed_variable_category(&asset->variables[i])) == 0 &&
+            ed_text_matches(asset->variables[i].name, filter)) {
             return 1;
         }
     }
@@ -94,14 +94,15 @@ static graph *ed_create_graph(editor *e, graph_kind kind, int pure)
     int first = kind == GRAPH_EVENT;
     for (int i = first; i < 10000; i++) {
         snprintf(name, sizeof name, i ? "%s_%d" : "%s", base, i);
-        if (behavior_asset_find_graph_by_name(e->bp, name) == NULL) {
+        if (behavior_asset_find_graph_by_name(e->asset, name) == NULL) {
             break;
         }
     }
     ed_snapshot_before(e);
-    graph *g = kind == GRAPH_MACRO ? behavior_asset_add_macro(e->bp, name)
-             : kind == GRAPH_EVENT ? behavior_asset_add_graph(e->bp, kind, name)
-                                   : behavior_asset_add_function(e->bp, name, pure);
+    graph *g = kind == GRAPH_MACRO ? behavior_asset_add_macro(e->asset, name)
+             : kind == GRAPH_EVENT
+                 ? behavior_asset_add_graph(e->asset, kind, name)
+                 : behavior_asset_add_function(e->asset, name, pure);
     if (g) {
         editor_open_graph(e, g->graph_id);
     }
@@ -115,8 +116,8 @@ node *ed_place_graph_call_at(editor *e, graph *target, ImVec2 world)
     }
     ed_snapshot_before(e);
     node *call = target->kind == GRAPH_MACRO
-                   ? behavior_asset_add_macro_call_node_to_graph(e->bp, e->active_graph, target)
-                   : behavior_asset_add_function_call_node_to_graph(e->bp, e->active_graph, target);
+                   ? behavior_asset_add_macro_call_node_to_graph(e->asset, e->active_graph, target)
+                   : behavior_asset_add_function_call_node_to_graph(e->asset, e->active_graph, target);
     if (!call) {
         return NULL;
     }
@@ -133,31 +134,19 @@ static node *ed_place_graph_call(editor *e, graph *target)
 
 int editor_delete_graph(editor *e, uint64_t graph_id)
 {
-    graph *target = behavior_asset_find_graph(e->bp, graph_id);
-    if (!target || target == e->bp->graph || !behavior_asset_mutable(e->bp)) {
+    graph *target = behavior_asset_find_graph(e->asset, graph_id);
+    if (!target || target == e->asset->graph || !behavior_asset_mutable(e->asset)) {
         return -1;
     }
     ed_snapshot_before(e);
-    if (target == e->active_graph && editor_open_graph(e, e->bp->graph->graph_id) != 0) {
+    if (target == e->active_graph &&
+        editor_open_graph(e, e->asset->graph->graph_id) != 0) {
         return -1;
     }
     if (target->math_expression) {
-        ed_clear_selection(e);
-        aclear(e->graph_callers);
-        aclear(e->drag_nodes);
-        e->context_node = NULL;
-        e->reveal_target = NULL;
-        e->front_node = NULL;
-        e->hovered_node = NULL;
-        e->has_context_link = 0;
-        e->has_hovered_link = 0;
-        e->spawn_link_pending = 0;
-        e->dragging = 0;
-        e->linking = 0;
-        e->fields_node = 0;
-        e->open_call_node = 0;
-        for (int i = 0; i < acount(e->bp->graphs); i++) {
-            graph *g = e->bp->graphs[i];
+        ed_reset_node_interaction(e);
+        for (int i = 0; i < acount(e->asset->graphs); i++) {
+            graph *g = e->asset->graphs[i];
             for (int j = acount(g->nodes) - 1; j >= 0; j--) {
                 node *n = g->nodes[j];
                 if ((n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallFunction) &&
@@ -165,12 +154,13 @@ int editor_delete_graph(editor *e, uint64_t graph_id)
                     int removed = graph_remove_node(g, n);
                     assert(removed == 0);
                     (void)removed;
+                    j = acount(g->nodes);
                 }
             }
         }
     }
     e->context_graph = NULL;
-    return behavior_asset_delete_graph(e->bp, graph_id);
+    return behavior_asset_delete_graph(e->asset, graph_id);
 }
 
 static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filter)
@@ -268,12 +258,7 @@ static int ed_delete_event_node(editor *e, graph *g, node *n)
     if (graph_remove_node(g, n) != 0) {
         return -1;
     }
-    if (e->active_graph == g) {
-        if (e->front_node == n) {
-            e->front_node = NULL;
-        }
-        ed_clear_selection(e);
-    }
+    ed_reset_node_interaction(e);
     return 0;
 }
 
@@ -301,7 +286,7 @@ static int ed_draw_event_graph(editor *e, graph *g, int index, const char *filte
             editor_open_graph(e, g->graph_id);
             ImGui_CloseCurrentPopup();
         }
-        if (g != e->bp->graph) {
+        if (g != e->asset->graph) {
             if (ImGui_MenuItem("Rename")) {
                 e->context_graph = g;
                 snprintf(e->graph_rename, sizeof e->graph_rename, "%s", ed_graph_display_name(g));
@@ -380,7 +365,7 @@ static int ed_draw_variable_member(editor *e, behavior_variable *v, int index)
         }
         ImGui_Separator();
         delete_requested = ImGui_MenuItem(
-            e->bp->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
+            e->asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
                 ? "Delete Parameter"
                 : "Delete Variable"
         );
@@ -393,7 +378,7 @@ static int ed_draw_variable_member(editor *e, behavior_variable *v, int index)
         return 0;
     }
     ed_snapshot_before(e);
-    if (behavior_asset_delete_variable(e->bp, v->id) != 0) {
+    if (behavior_asset_delete_variable(e->asset, v->id) != 0) {
         return 0;
     }
     e->selected_variable = NULL;
@@ -432,15 +417,15 @@ static void ed_draw_graph_rename_popup(editor *e)
 
 static bool shader_asset(const editor *e)
 {
-    return e->bp->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-           e->bp->domain == BEHAVIOR_DOMAIN_SHAPE ||
-           e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    return e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+           e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+           e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
 }
 
 static bool library_asset(const editor *e)
 {
-    return e->bp->domain == BEHAVIOR_DOMAIN_LIBRARY ||
-           e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    return e->asset->domain == BEHAVIOR_DOMAIN_LIBRARY ||
+           e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
 }
 
 static void add_payload_parameter(editor *e)
@@ -449,10 +434,10 @@ static void add_payload_parameter(editor *e)
     int index = 1;
     do {
         snprintf(name, sizeof name, "Parameter%d", index++);
-    } while (behavior_asset_find_variable_by_name(e->bp, name));
+    } while (behavior_asset_find_variable_by_name(e->asset, name));
     ed_snapshot_before(e);
     behavior_variable *v = behavior_asset_add_variable(
-        e->bp,
+        e->asset,
         name,
         PIN_F32,
         "float",
@@ -470,7 +455,7 @@ static void ed_draw_add_popup(editor *e)
     if (!ImGui_BeginPopup("my_behavior_asset_add", 0)) {
         return;
     }
-    if (e->bp->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+    if (e->asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
         if (ImGui_MenuItem("Parameter")) {
             add_payload_parameter(e);
             ImGui_CloseCurrentPopup();
@@ -497,7 +482,7 @@ static void ed_draw_add_popup(editor *e)
     if (!shader_asset(e) && !library_asset(e) && ImGui_MenuItem("Variable")) {
         ed_snapshot_before(e);
         behavior_variable *v = behavior_asset_add_variable(
-            e->bp,
+            e->asset,
             ed_unique_variable_name(e),
             PIN_I32,
             "int",
@@ -576,16 +561,16 @@ void editor_draw_outline(editor *e)
     ed_draw_settings_popup(e);
 
     const char *filter = e->behavior_asset_search;
-    if (e->bp->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+    if (e->asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
         char label[64];
-        snprintf(label, sizeof label, "Payload (%d)##payload", acount(e->bp->variables));
+        snprintf(label, sizeof label, "Payload (%d)##payload", acount(e->asset->variables));
         bool open = ImGui_CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
         if (editor_ui_right_icon_button("payload_add", EDITOR_ICON_FA_PLUS)) {
             add_payload_parameter(e);
         }
         if (open) {
-            for (int i = 0; i < acount(e->bp->variables); i++) {
-                behavior_variable *v = &e->bp->variables[i];
+            for (int i = 0; i < acount(e->asset->variables); i++) {
+                behavior_variable *v = &e->asset->variables[i];
                 if (ed_text_matches(v->name, filter) &&
                     ed_draw_variable_member(e, v, i)) {
                     break;
@@ -608,8 +593,8 @@ void editor_draw_outline(editor *e)
             (void)ed_create_graph(e, GRAPH_EVENT, 0);
         }
         if (graphs_open) {
-            for (int i = 0; i < acount(e->bp->graphs); i++) {
-                graph *g = e->bp->graphs[i];
+            for (int i = 0; i < acount(e->asset->graphs); i++) {
+                graph *g = e->asset->graphs[i];
                 if (g->kind == GRAPH_EVENT && ed_draw_event_graph(e, g, i, filter)) {
                     break;
                 }
@@ -619,9 +604,9 @@ void editor_draw_outline(editor *e)
 
     int function_count = 0;
     int macro_count = 0;
-    for (int i = 0; i < acount(e->bp->graphs); i++) {
-        function_count += e->bp->graphs[i]->kind == GRAPH_FUNCTION;
-        macro_count += e->bp->graphs[i]->kind == GRAPH_MACRO;
+    for (int i = 0; i < acount(e->asset->graphs); i++) {
+        function_count += e->asset->graphs[i]->kind == GRAPH_FUNCTION;
+        macro_count += e->asset->graphs[i]->kind == GRAPH_MACRO;
     }
     char section[64];
     if (function_count > 0) {
@@ -637,8 +622,8 @@ void editor_draw_outline(editor *e)
             (void)ed_create_graph(e, GRAPH_FUNCTION, shader_asset(e));
         }
         if (functions_open) {
-            for (int i = 0; i < acount(e->bp->graphs); i++) {
-                graph *g = e->bp->graphs[i];
+            for (int i = 0; i < acount(e->asset->graphs); i++) {
+                graph *g = e->asset->graphs[i];
                 if (g->kind == GRAPH_FUNCTION && ed_draw_graph_member(e, g, i, filter)) {
                     break;
                 }
@@ -656,8 +641,8 @@ void editor_draw_outline(editor *e)
             (void)ed_create_graph(e, GRAPH_MACRO, 0);
         }
         if (macros_open) {
-            for (int i = 0; i < acount(e->bp->graphs); i++) {
-                graph *g = e->bp->graphs[i];
+            for (int i = 0; i < acount(e->asset->graphs); i++) {
+                graph *g = e->asset->graphs[i];
                 if (g->kind == GRAPH_MACRO && ed_draw_graph_member(e, g, i, filter)) {
                     break;
                 }
@@ -665,12 +650,12 @@ void editor_draw_outline(editor *e)
         }
     }
 
-    if (acount(e->bp->variables) > 0) {
+    if (acount(e->asset->variables) > 0) {
         snprintf(
             section,
             sizeof section,
             "Variables (%d)##member_variables",
-            acount(e->bp->variables)
+            acount(e->asset->variables)
         );
         if (filter[0]) {
             ImGui_SetNextItemOpen(true, ImGuiCond_Always);
@@ -682,7 +667,7 @@ void editor_draw_outline(editor *e)
         if (editor_ui_right_icon_button("member_variables_add", EDITOR_ICON_FA_PLUS)) {
             ed_snapshot_before(e);
             behavior_variable *v = behavior_asset_add_variable(
-                e->bp,
+                e->asset,
                 ed_unique_variable_name(e),
                 PIN_I32,
                 "int",
@@ -695,11 +680,11 @@ void editor_draw_outline(editor *e)
             }
         }
         if (variables_open) {
-            for (int i = 0; i < acount(e->bp->variables); i++) {
-                behavior_variable *v = &e->bp->variables[i];
+            for (int i = 0; i < acount(e->asset->variables); i++) {
+                behavior_variable *v = &e->asset->variables[i];
                 const char *category = ed_variable_category(v);
-                if (ed_variable_category_seen(e->bp, i) ||
-                    !ed_variable_category_matches(e->bp, i, filter)) {
+                if (ed_variable_category_seen(e->asset, i) ||
+                    !ed_variable_category_matches(e->asset, i, filter)) {
                     continue;
                 }
                 int category_match = ed_text_matches(category, filter);
@@ -714,8 +699,8 @@ void editor_draw_outline(editor *e)
                     ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen
                 );
                 if (category_open) {
-                    for (int j = i; j < acount(e->bp->variables); j++) {
-                        behavior_variable *member = &e->bp->variables[j];
+                    for (int j = i; j < acount(e->asset->variables); j++) {
+                        behavior_variable *member = &e->asset->variables[j];
                         if (strcmp(category, ed_variable_category(member)) != 0 ||
                             (!category_match && !ed_text_matches(member->name, filter))) {
                             continue;

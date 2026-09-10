@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(c-blueprints LANGUAGES C CXX)
+project(chibi LANGUAGES C CXX)
 
-option(CBLUEPRINT_ENABLE_PERFORMANCE_TESTS
+option(CHIBI_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 
 if(CMAKE_HOST_APPLE)
     execute_process(
         COMMAND xcrun --show-sdk-path
-        OUTPUT_VARIABLE CBLUEPRINT_SDKROOT
+        OUTPUT_VARIABLE CHIBI_SDKROOT
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 endif()
@@ -18,8 +18,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
-option(CBLUEPRINT_DEVELOPMENT_RELOAD "Build the native reload host and application library" OFF)
-if(CBLUEPRINT_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application library" OFF)
+if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
 else()
     set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
@@ -42,7 +42,7 @@ endif()
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target)
+foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -52,16 +52,16 @@ unset(CUTE_SOURCE)
 unset(CUTE_PATCH)
 
 # --- SLJIT backend ----------------------------------------------------------
-option(CBLUEPRINT_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
+option(CHIBI_ENABLE_SJLIT "Build the SLJIT graph JIT backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # SLJIT emits native machine code into executable memory. Browsers cannot
     # execute that code from WASM linear memory; web uses bytecode instead.
-    set(CBLUEPRINT_ENABLE_SJLIT OFF CACHE BOOL "Build the SLJIT graph JIT backend" FORCE)
+    set(CHIBI_ENABLE_SJLIT OFF CACHE BOOL "Build the SLJIT graph JIT backend" FORCE)
 endif()
-set(CBLUEPRINT_SJLIT_SOURCE_DIR "" CACHE PATH "Use an existing SLJIT checkout")
-if(CBLUEPRINT_ENABLE_SJLIT)
-    if(CBLUEPRINT_SJLIT_SOURCE_DIR)
-        set(SLJIT_SOURCE_DIR ${CBLUEPRINT_SJLIT_SOURCE_DIR})
+set(CHIBI_SJLIT_SOURCE_DIR "" CACHE PATH "Use an existing SLJIT checkout")
+if(CHIBI_ENABLE_SJLIT)
+    if(CHIBI_SJLIT_SOURCE_DIR)
+        set(SLJIT_SOURCE_DIR ${CHIBI_SJLIT_SOURCE_DIR})
     else()
         FetchContent_Declare(
             sljit
@@ -75,9 +75,9 @@ if(CBLUEPRINT_ENABLE_SJLIT)
         endif()
         set(SLJIT_SOURCE_DIR ${sljit_SOURCE_DIR})
     endif()
-    add_library(cblueprint_sljit STATIC ${SLJIT_SOURCE_DIR}/sljit_src/sljitLir.c)
-    target_include_directories(cblueprint_sljit PUBLIC ${SLJIT_SOURCE_DIR}/sljit_src)
-    target_compile_definitions(cblueprint_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
+    add_library(chibi_sljit STATIC ${SLJIT_SOURCE_DIR}/sljit_src/sljitLir.c)
+    target_include_directories(chibi_sljit PUBLIC ${SLJIT_SOURCE_DIR}/sljit_src)
+    target_compile_definitions(chibi_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
 endif()
 
 # libclang (build tool only; runtime stays dependency-free).
@@ -102,13 +102,13 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
   message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
 endif()
 
-option(CBLUEPRINT_ENABLE_WARNINGS
+option(CHIBI_ENABLE_WARNINGS
        "Enable strict compiler warnings for project targets" ON)
-option(CBLUEPRINT_ENABLE_SANITIZERS
+option(CHIBI_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer" ON)
-option(CBLUEPRINT_ENABLE_CCACHE "Use ccache when it is available" ON)
+option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 
-if(CBLUEPRINT_ENABLE_WARNINGS AND
+if(CHIBI_ENABLE_WARNINGS AND
    (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
     CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
     add_compile_options(
@@ -122,7 +122,7 @@ if(CBLUEPRINT_ENABLE_WARNINGS AND
     )
 endif()
 
-if(CBLUEPRINT_ENABLE_SANITIZERS AND
+if(CHIBI_ENABLE_SANITIZERS AND
    NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
    (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
     CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
@@ -130,7 +130,7 @@ if(CBLUEPRINT_ENABLE_SANITIZERS AND
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-if(CBLUEPRINT_ENABLE_CCACHE)
+if(CHIBI_ENABLE_CCACHE)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
         set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
@@ -155,7 +155,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/
 include(cmake/sources.cmake)
 
 # --- embedded editor icon font ---
-function(bp_embed input output symbol)
+function(chibi_embed input output symbol)
     add_custom_command(
         OUTPUT "${output}.stamp"
         BYPRODUCTS "${output}"
@@ -169,11 +169,11 @@ endfunction()
 set(GEN_NERD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_nerd_symbols_font.c)
 set(GEN_UI_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_font.c)
 set(GEN_UI_BOLD_FONT ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_ui_bold_font.c)
-bp_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf" "${GEN_NERD_FONT}" editor_nerd_symbols_font)
-bp_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf" "${GEN_UI_FONT}" editor_ui_font)
-bp_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf" "${GEN_UI_BOLD_FONT}" editor_ui_bold_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/nerd-fonts-symbols-only/SymbolsNerdFont-Regular.ttf" "${GEN_NERD_FONT}" editor_nerd_symbols_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter.ttf" "${GEN_UI_FONT}" editor_ui_font)
+chibi_embed("${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/inter/Inter-Bold.ttf" "${GEN_UI_BOLD_FONT}" editor_ui_bold_font)
 
-function(bp_registry output)
+function(chibi_registry output)
     set(OUTPUT "${output}")
     set(PACKS "${ARGN}")
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/compose_registry.cmake")
@@ -183,24 +183,24 @@ endfunction()
 # Reflection runs during the build, so it must always be a native host
 # executable. A cross build (notably Emscripten) cannot link libclang into WASM
 # or execute a WASM reflect tool during configuration/build.
-set(CBLUEPRINT_REFLECT_EXECUTABLE "" CACHE FILEPATH
+set(CHIBI_REFLECT_EXECUTABLE "" CACHE FILEPATH
     "Native reflect executable used when cross-compiling")
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if(NOT CBLUEPRINT_REFLECT_EXECUTABLE OR
-       NOT EXISTS "${CBLUEPRINT_REFLECT_EXECUTABLE}")
+    if(NOT CHIBI_REFLECT_EXECUTABLE OR
+       NOT EXISTS "${CHIBI_REFLECT_EXECUTABLE}")
         message(FATAL_ERROR
-            "Emscripten builds require CBLUEPRINT_REFLECT_EXECUTABLE set to a native reflect tool")
+            "Emscripten builds require CHIBI_REFLECT_EXECUTABLE set to a native reflect tool")
     endif()
-    set(CBLUEPRINT_REFLECT_COMMAND "${CBLUEPRINT_REFLECT_EXECUTABLE}")
-    set(CBLUEPRINT_REFLECT_DEPENDENCY "${CBLUEPRINT_REFLECT_EXECUTABLE}")
+    set(CHIBI_REFLECT_COMMAND "${CHIBI_REFLECT_EXECUTABLE}")
+    set(CHIBI_REFLECT_DEPENDENCY "${CHIBI_REFLECT_EXECUTABLE}")
 else()
     add_executable(reflect tools/reflect/reflect.c tools/reflect/collect.c tools/reflect/identity.c tools/reflect/emit.c tools/reflect/emit_function.c tools/reflect/emit_component.c src/support/xalloc.c)
     target_include_directories(reflect PRIVATE ${LIBCLANG_INCLUDE_DIR})
     target_link_libraries(reflect PRIVATE ${LIBCLANG_LIBRARY})
     get_filename_component(LIBCLANG_LIBRARY_DIR ${LIBCLANG_LIBRARY} DIRECTORY)
     set_target_properties(reflect PROPERTIES BUILD_RPATH ${LIBCLANG_LIBRARY_DIR})
-    set(CBLUEPRINT_REFLECT_COMMAND $<TARGET_FILE:reflect>)
-    set(CBLUEPRINT_REFLECT_DEPENDENCY reflect)
+    set(CHIBI_REFLECT_COMMAND $<TARGET_FILE:reflect>)
+    set(CHIBI_REFLECT_DEPENDENCY reflect)
 endif()
 
 # --- generated registry ---
@@ -209,14 +209,14 @@ set(GEN_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/demo_registry.c)
 add_custom_command(
     OUTPUT ${GEN_REGISTRY}.stamp
     BYPRODUCTS ${GEN_REGISTRY}
-    COMMAND ${CBLUEPRINT_REFLECT_COMMAND}
+    COMMAND ${CHIBI_REFLECT_COMMAND}
             ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/demo_nodes.c
             ${GEN_REGISTRY}
             DEMO
             --include ${CMAKE_CURRENT_SOURCE_DIR}/src
             --include ${CMAKE_CURRENT_SOURCE_DIR}
     COMMAND ${CMAKE_COMMAND} -E touch ${GEN_REGISTRY}.stamp
-    DEPENDS ${CBLUEPRINT_REFLECT_DEPENDENCY}
+    DEPENDS ${CHIBI_REFLECT_DEPENDENCY}
             ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/demo_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/vec3.h
@@ -241,7 +241,7 @@ set(BASE_REGISTRY_PACKS
     CORE_SET_MAP_PACK
     CORE_STRUCT_PACK
 )
-bp_registry("${BASE_REGISTRY}" ${BASE_REGISTRY_PACKS})
+chibi_registry("${BASE_REGISTRY}" ${BASE_REGISTRY_PACKS})
 
 # --- graph model and execution ---
 
@@ -257,13 +257,16 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
+if(UNIX)
+    target_link_libraries(core PUBLIC m)
+endif()
 set_source_files_properties(third_party/fmt/fmt.c PROPERTIES
     COMPILE_OPTIONS "-Wno-deprecated-declarations")
-if(CBLUEPRINT_ENABLE_SJLIT)
-    target_compile_definitions(core PRIVATE CBLUEPRINT_HAVE_SJLIT=1)
-    target_link_libraries(core PRIVATE cblueprint_sljit)
+if(CHIBI_ENABLE_SJLIT)
+    target_compile_definitions(core PRIVATE CHIBI_HAVE_SJLIT=1)
+    target_link_libraries(core PRIVATE chibi_sljit)
 else()
-    target_compile_definitions(core PRIVATE CBLUEPRINT_HAVE_SJLIT=0)
+    target_compile_definitions(core PRIVATE CHIBI_HAVE_SJLIT=0)
 endif()
 
 # --- headless ECS consumer module -------------------------------------------
@@ -279,19 +282,19 @@ set(GAME_REFLECT_ARGS --include ${CMAKE_CURRENT_SOURCE_DIR}/src --include ${CMAK
 if(LIBCLANG_RESOURCE_INCLUDE_DIR)
     list(APPEND GAME_REFLECT_ARGS --include ${LIBCLANG_RESOURCE_INCLUDE_DIR})
 endif()
-if(CBLUEPRINT_SDKROOT)
-    list(APPEND GAME_REFLECT_ARGS --sysroot ${CBLUEPRINT_SDKROOT})
+if(CHIBI_SDKROOT)
+    list(APPEND GAME_REFLECT_ARGS --sysroot ${CHIBI_SDKROOT})
 endif()
 add_custom_command(
     OUTPUT ${GAME_REGISTRY}.stamp
     BYPRODUCTS ${GAME_REGISTRY}
-    COMMAND ${CBLUEPRINT_REFLECT_COMMAND}
+    COMMAND ${CHIBI_REFLECT_COMMAND}
             ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/game_nodes.c
             ${GAME_REGISTRY}
             GAME
             ${GAME_REFLECT_ARGS}
     COMMAND ${CMAKE_COMMAND} -E touch ${GAME_REGISTRY}.stamp
-    DEPENDS ${CBLUEPRINT_REFLECT_DEPENDENCY}
+    DEPENDS ${CHIBI_REFLECT_DEPENDENCY}
             ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/game_nodes.c
             ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/interface.h
             ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/components.h
@@ -316,11 +319,14 @@ target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core)
 
 # --- material rasterization and radiance transport --------------------------
-add_library(cblueprint_render STATIC src/render/material_raster.c src/render/radiance.c)
-target_compile_definitions(cblueprint_render PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_include_directories(cblueprint_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(cblueprint_render PUBLIC runtime_support core cute)
-target_compile_options(cblueprint_render PRIVATE -Wno-macro-redefined)
+add_library(chibi_render STATIC src/render/material_raster.c src/render/radiance.c
+    src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
+    src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c src/render/arena_emitters.c
+    src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
+target_compile_definitions(chibi_render PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(chibi_render PUBLIC runtime_support core cute)
+target_compile_options(chibi_render PRIVATE -Wno-macro-redefined)
 set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
 
 # --- host frame loop and optional viewport surface --------------------------
@@ -368,10 +374,10 @@ set(APP_REGISTRY_PACKS
     CORE_SET_MAP_PACK
     CORE_STRUCT_PACK
 )
-bp_registry("${APP_REGISTRY}" ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${APP_REGISTRY}" ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 
-function(bp_watch_platform target)
+function(chibi_watch_platform target)
     target_sources(${target} PRIVATE src/host/process.c src/host/watch.c src/support/xalloc.c)
     find_package(Threads REQUIRED)
     target_link_libraries(${target} PRIVATE Threads::Threads)
@@ -388,44 +394,44 @@ endfunction()
 set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
 add_executable(app ${HOST_SOURCES} ${APP_SOURCES} ${APP_REGISTRY})
 target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_definitions(app PRIVATE BP_STATIC_APPLICATION=1)
+target_compile_definitions(app PRIVATE CHIBI_STATIC_APPLICATION=1)
 target_link_libraries(app PRIVATE ${CMAKE_DL_LIBS})
-if(CBLUEPRINT_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    foreach(project_target core ecs runtime_support engine editor cblueprint_render)
+if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    foreach(project_target core ecs runtime_support engine editor chibi_render)
         set_target_properties(${project_target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
     endforeach()
-    if(TARGET cblueprint_sljit)
-        set_target_properties(cblueprint_sljit PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+    if(TARGET chibi_sljit)
+        set_target_properties(chibi_sljit PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
     endif()
-    add_library(blueprints_application SHARED ${APP_SOURCES} ${APP_REGISTRY})
-    target_include_directories(blueprints_application PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    target_compile_definitions(blueprints_application PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-    target_link_libraries(blueprints_application PRIVATE cblueprint_render editor engine runtime_support cute)
-    set_target_properties(blueprints_application PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
-    add_executable(blueprints_host ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
-    bp_watch_platform(blueprints_host)
-    target_compile_definitions(blueprints_host PRIVATE BP_DEVELOPMENT_HOST=1)
-    target_include_directories(blueprints_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
-    target_include_directories(blueprints_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
-    target_compile_definitions(blueprints_host PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-    target_link_libraries(blueprints_host PRIVATE cute ${CMAKE_DL_LIBS})
-    set_target_properties(blueprints_host PROPERTIES LINKER_LANGUAGE CXX)
+    add_library(chibi_application SHARED ${APP_SOURCES} ${APP_REGISTRY})
+    target_include_directories(chibi_application PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_definitions(chibi_application PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+    target_link_libraries(chibi_application PRIVATE chibi_render editor engine runtime_support cute)
+    set_target_properties(chibi_application PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
+    add_executable(chibi_host ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
+    chibi_watch_platform(chibi_host)
+    target_compile_definitions(chibi_host PRIVATE CHIBI_DEVELOPMENT_HOST=1)
+    target_include_directories(chibi_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
+    target_include_directories(chibi_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(chibi_host PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+    target_link_libraries(chibi_host PRIVATE cute ${CMAKE_DL_LIBS})
+    set_target_properties(chibi_host PROPERTIES LINKER_LANGUAGE CXX)
 endif()
-target_compile_definitions(app PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(app PRIVATE cblueprint_render editor engine runtime_support cute)
+target_compile_definitions(app PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(app PRIVATE chibi_render editor engine runtime_support cute)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
-add_executable(blueprints_ctl tools/blueprints_ctl/main.c ${APP_REGISTRY})
-add_dependencies(blueprints_ctl generate_runtime_registry)
-target_include_directories(blueprints_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(blueprints_ctl PRIVATE automation runtime_support core engine)
-set_target_properties(blueprints_ctl PROPERTIES LINKER_LANGUAGE CXX)
+add_executable(chibi_ctl tools/chibi_ctl/main.c ${APP_REGISTRY})
+add_dependencies(chibi_ctl generate_runtime_registry)
+target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(chibi_ctl PRIVATE automation runtime_support core engine)
+set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
         COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS blueprints_ctl
+        DEPENDS chibi_ctl
         VERBATIM)
 else()
     add_custom_target(check-mcp
@@ -435,7 +441,16 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")
+    file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
+    set_property(TARGET app APPEND PROPERTY LINK_DEPENDS
+        ${WEB_ASSETS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
     target_link_options(app PRIVATE
+        "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
@@ -443,7 +458,7 @@ endif()
 
 # --- test registry: core, runtime_support, and demo packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-bp_registry("${TEST_REGISTRY}" DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -452,13 +467,30 @@ add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
     test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/ui_native.c
+    test/ui_scroll.c
     test/render_checks.c
+    test/arena3d.c
+    test/arena_input.c
+    test/physics.c
+    test/dash.c
+    test/encounter.c
+    test/system_arithmetic.c
+    test/arena_ui.c
     test/shader_ui.c
     test/ui_keyboard.c
     test/editor_checkpoint.c
     test/gameplay_keyboard.c
     test/math_expression.c
     test/behavior_math.c
+    test/surface.c
+    test/arena_post.c
+    test/content_catalog.c
+    test/asset_index.c
+    test/shader_effects.c
+    test/shader_program.c
+    test/shader_image.c
+    test/shader_image_files.c
+    test/shader_image_routes.c
     test/shader_graph.c
     test/typed_events.c
     test/navigation_runtime.c
@@ -466,8 +498,12 @@ add_executable(test_suite
     src/render/shader_fragment.c
     src/assets/behavior_loader.c
     src/editor/workspace/scene_authoring.c
+    src/editor/workspace/asset_index.c
+    src/editor/panels/asset_browser.c
+    src/editor/panels/asset_document.c
     src/editor/workspace/scene_actors.c
     src/editor/workspace/scene_runtime.c
+    src/editor/workspace/scene_tabs.c
     src/editor/workspace/scene_viewport.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c
@@ -484,6 +520,7 @@ add_executable(test_suite
     src/editor/workspace/scene_navigation.c
     src/editor/workspace/scene_debug.c
     src/editor/workspace/gameplay_input.c
+    src/editor/workspace/game_presentation.c
     test/scene_history.c
     test/scene_checkpoint.c
     test/appearance_geometry.c
@@ -511,10 +548,10 @@ add_executable(test_suite
     ${TEST_REGISTRY}
 )
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(test_suite PRIVATE CBLUEPRINT_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(test_suite PRIVATE engine runtime_support ecs demo editor cblueprint_render)
-if(NOT CBLUEPRINT_ENABLE_PERFORMANCE_TESTS)
-    target_compile_definitions(test_suite PRIVATE CBLUEPRINT_SKIP_PERFORMANCE_TESTS=1)
+target_compile_definitions(test_suite PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(test_suite PRIVATE engine runtime_support ecs demo editor chibi_render)
+if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
+    target_compile_definitions(test_suite PRIVATE CHIBI_SKIP_PERFORMANCE_TESTS=1)
 endif()
 
 # --- activation benchmark: headless per-instance event dispatch -------------
@@ -594,7 +631,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         VERBATIM)
 endif()
 
-if(TARGET blueprints_host)
+if(TARGET chibi_host)
     include(cmake/dev_config.cmake)
 endif()
 
@@ -602,7 +639,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_executable(test_dev test/dev/main.c test/dev/watch.c test/dev/process.c test/dev/controller.c
         src/host/dev.c src/host/state_file.c third_party/yyjson/yyjson.c)
     target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
-    bp_watch_platform(test_dev)
+    chibi_watch_platform(test_dev)
     add_custom_target(check-dev COMMAND test_dev DEPENDS test_dev VERBATIM)
     add_executable(concurrent_runner test/dev/concurrent.c src/host/process.c)
     add_custom_target(check-generation
@@ -619,10 +656,20 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         DEPENDS reflect concurrent_runner VERBATIM)
 endif()
 
-if(TARGET blueprints_host)
+if(TARGET chibi_host)
     add_executable(test_dev_smoke test/dev/smoke.c src/host/process.c)
     add_custom_target(check-dev-smoke
         COMMAND test_dev_smoke "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_COMMAND}" controller
         COMMAND test_dev_smoke "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_COMMAND}" editor
-        DEPENDS test_dev_smoke blueprints_host blueprints_application VERBATIM)
+        DEPENDS test_dev_smoke chibi_host chibi_application VERBATIM)
 endif()
+
+# Test drivers use assertions for fixture setup and verification. Keep them
+# active when measuring optimized runtime libraries, which retain their normal
+# Release flags. Otherwise a Release review silently skips the workload.
+foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner bench_activation
+               scene_benchmark system_benchmark query_benchmark contact_benchmark)
+    if(TARGET ${driver})
+        target_compile_options(${driver} PRIVATE -UNDEBUG)
+    endif()
+endforeach()

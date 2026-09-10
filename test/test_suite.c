@@ -2,6 +2,20 @@
 #include "suite_internal.h"
 
 int shader_ui_run(const char *program);
+int arena_ui_run(const char *program);
+int arena_play_review_run(const char *program, bool editor_mode, bool crowd);
+void run_behavior_loader_checks();
+void run_entity_presence_checks();
+void test_surface_cpu();
+void test_shader_effects_cpu();
+void test_shader_image_cpu();
+void test_physics();
+void test_dash();
+void test_encounter();
+void test_system_arithmetic();
+void test_asset_index();
+void test_input_bindings();
+int scene_documents_run(const char *program);
 
 static int fails;
 
@@ -19,6 +33,8 @@ TEST_CASE(all_checks)
 {
     stacktrace_init(program_name);
     registry_validate();
+    run_content_catalog_checks();
+    test_asset_index();
     run_graph_model_checks();
     run_graph_document_checks();
     run_runtime_execution_checks();
@@ -34,6 +50,8 @@ TEST_CASE(all_checks)
     run_prototype_checks();
     run_scene_document_checks();
     run_behavior_checks();
+    run_behavior_loader_checks();
+    run_entity_presence_checks();
     run_live_checks();
     run_live_preview_checks();
     run_prototype_live_checks();
@@ -41,6 +59,9 @@ TEST_CASE(all_checks)
     test_entities();
     test_projectile();
     test_combat();
+    test_physics();
+    test_dash();
+    test_encounter();
     test_targeting();
     test_pursuit();
     test_vector();
@@ -49,7 +70,11 @@ TEST_CASE(all_checks)
     test_auto_weapon();
     test_graph_navigation();
     test_extract();
+    test_input_bindings();
     test_shader_graph();
+    test_surface_cpu();
+    test_shader_effects_cpu();
+    test_shader_image_cpu();
     test_typed_events();
     test_component_conversion();
     test_field_outputs();
@@ -76,6 +101,7 @@ TEST_CASE(all_checks)
     test_scene_history();
     test_enemy_attack();
     test_system_host_wait();
+    test_system_arithmetic();
     run_engine_checks();
     run_parallel_checks();
     run_ecs_migration_checks();
@@ -83,6 +109,7 @@ TEST_CASE(all_checks)
     run_editor_command_checks();
     test_editor_checkpoint();
     test_check(test_ui_keyboard(), "shared icon keyboard activation and disabled routing");
+    test_check(test_ui_scroll_smoothing(), "smooth scrolling is refresh-rate independent");
     test_check(test_gameplay_keyboard(), "gameplay keyboard navigation and text editing capture");
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
@@ -92,7 +119,22 @@ TEST_CASE(all_checks)
 
 int main(int argc, char **argv)
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc > 1 && strcmp(argv[1], "--arena-ui") == 0) {
+        registry_validate();
+        return arena_ui_run(program_name);
+    }
+    if (argc > 1 && (strcmp(argv[1], "--arena-play-review") == 0 ||
+                     strcmp(argv[1], "--arena-editor-review") == 0 ||
+                     strcmp(argv[1], "--arena-crowd-review") == 0)) {
+        registry_validate();
+        return arena_play_review_run(
+            program_name,
+            strcmp(argv[1], "--arena-play-review") != 0,
+            strcmp(argv[1], "--arena-crowd-review") == 0
+        );
+    }
     if (argc > 1 && strcmp(argv[1], "--ui-native") == 0) {
         registry_validate();
         return ui_native_run(program_name);
@@ -107,6 +149,11 @@ int main(int argc, char **argv)
         run_editor_command_checks();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && strcmp(argv[1], "--scene-documents") == 0) {
+        registry_validate();
+        test_scene_navigation();
+        return scene_documents_run(program_name);
+    }
     if (argc > 1 && strcmp(argv[1], "--shader-ui") == 0) {
         registry_validate();
         return shader_ui_run(program_name);
@@ -114,9 +161,36 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--ui-keyboard") == 0) {
         return test_ui_keyboard() ? 0 : 1;
     }
+    if (argc > 1 && strcmp(argv[1], "--ui-scroll") == 0) {
+        return test_ui_scroll_smoothing() ? 0 : 1;
+    }
     if (argc > 1 && strcmp(argv[1], "--runtime-execution") == 0) {
         registry_validate();
         run_runtime_execution_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--system-arithmetic") == 0) {
+        registry_validate();
+        test_system_arithmetic();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--arena-combat") == 0) {
+        registry_validate();
+        test_physics();
+        test_dash();
+        test_encounter();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--arena-encounter") == 0) {
+        registry_validate();
+        test_encounter();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--simulation") == 0) {
+        registry_validate();
+        run_engine_checks();
+        test_physics();
+        test_sdf_motion();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-overhaul") == 0) {

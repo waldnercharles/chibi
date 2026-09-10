@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_LABELS_H
-#define CBLUEPRINT_EDITOR_LABELS_H
+#ifndef CHIBI_EDITOR_LABELS_H
+#define CHIBI_EDITOR_LABELS_H
 
 #include "graph/model/node.h"
 

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EXTRACT_H
-#define CBLUEPRINT_EXTRACT_H
+#ifndef CHIBI_EXTRACT_H
+#define CHIBI_EXTRACT_H
 
 #include "graph/model/behavior_asset.h"
 

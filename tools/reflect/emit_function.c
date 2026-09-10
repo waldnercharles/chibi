@@ -29,7 +29,7 @@ const char *pin_member(const char *pin)
     if (!strcmp(pin, "PIN_I64")) {
         return "i64";
     }
-    if (!strcmp(pin, "PIN_U64")) {
+    if (!strcmp(pin, "PIN_U64") || !strcmp(pin, "PIN_HANDLE")) {
         return "u64";
     }
     if (!strcmp(pin, "PIN_F32")) {
@@ -47,11 +47,11 @@ const char *pin_member(const char *pin)
     return "ptr"; /* PIN_STRUCT / PIN_FLOW */
 }
 
-/* Canonical primitive spelling from PIN_TYPE_LIST; NULL for PIN_STRUCT/
- * PIN_ENUM so those keep the libclang C type name. */
+/* Records, enums and handles keep their nominal type names. */
 static const char *primitive_spelling(const char *pin)
 {
-    if (!strcmp(pin, "PIN_STRUCT") || !strcmp(pin, "PIN_ENUM")) {
+    if (!strcmp(pin, "PIN_STRUCT") || !strcmp(pin, "PIN_ENUM") ||
+        !strcmp(pin, "PIN_HANDLE")) {
         return NULL;
     }
     static const struct
@@ -240,12 +240,89 @@ void emit_fn(FILE *out, const fn_info *f)
     fputs("    return r;\n}\n\n", out);
 }
 
+static const char *param_label(const fn_info *f, int index)
+{
+    return f->plabel[index] ? f->plabel[index] : f->pname[index];
+}
+
+static void emit_read_value_assignment(
+    FILE *out,
+    const char *target,
+    const char *pin,
+    const char *type_name,
+    const char *member,
+    const char *expr
+)
+{
+    fprintf(
+        out,
+        "    %s = (pin_value){ .type = %s, .type_name = \"%s\" };\n",
+        target,
+        pin,
+        type_name ? type_name : ""
+    );
+    if (!strcmp(pin, "PIN_STRUCT")) {
+        fprintf(out, "    %s.ptr = arena_alloc(a, sizeof(%s));\n", target, type_name);
+        fprintf(out, "    if (!%s.ptr) return \"read node output allocation failed\";\n", target);
+        fprintf(out, "    *(%s *)%s.ptr = %s;\n", type_name, target, expr);
+    } else {
+        fprintf(out, "    %s.%s = %s;\n", target, member, expr);
+    }
+}
+
+/* Emit the contextual adapter for a typed, fallible pure read. The native
+ * function owns domain validation; reflection owns graph values, allocation,
+ * and the multi-output descriptor contract. */
+void emit_read_fn(FILE *out, const fn_info *f)
+{
+    int has_struct_output = 0;
+    for (int i = 0; i < acount(f->pname); i++) {
+        has_struct_output |= f->pout[i] && !strcmp(f->ppin[i], "PIN_STRUCT");
+    }
+    fprintf(
+        out,
+        "static const char *__read_%s_%s(const eval_context *ctx, const "
+        "pin_value *args, arena *a, pin_value *out) {\n",
+        g_prefix,
+        f->name
+    );
+    fputs("    (void)ctx;\n", out);
+    if (!has_struct_output) {
+        fputs("    (void)a;\n", out);
+    }
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (f->pout[i]) {
+            fprintf(out, "    %s __out%d = { 0 };\n", f->pout_type[i], i);
+        }
+    }
+    fprintf(out, "    const char *__error = %s(", f->name);
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (i) {
+            fputs(", ", out);
+        }
+        emit_native_arg(out, f, i);
+    }
+    fputs(");\n    if (__error) return __error;\n", out);
+    int output = 0;
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (!f->pout[i]) {
+            continue;
+        }
+        char target[32];
+        char expr[32];
+        snprintf(target, sizeof target, "out[%d]", output++);
+        snprintf(expr, sizeof expr, "__out%d", i);
+        emit_read_value_assignment(out, target, f->ppin[i], f->pout_type[i], pin_member(f->ppin[i]), expr);
+    }
+    fputs("    return NULL;\n}\n\n", out);
+}
+
 /* Emit Make + Break node_desc for one struct. */
 void emit_struct_nodes(FILE *out, const struct_info *s)
 {
     fprintf(out, "static pin_spec %s_%s_make_inputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
-        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, s->fields[j].spelling);
+        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, field_type_name(&s->fields[j]));
     }
     fputs("};\n", out);
     fprintf(out, "static pin_spec %s_%s_make_outputs[] = {\n", g_prefix, s->name);
@@ -267,7 +344,7 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fputs("};\n", out);
     fprintf(out, "static pin_spec %s_%s_break_outputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
-        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, s->fields[j].spelling);
+        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, field_type_name(&s->fields[j]));
     }
     fputs("};\n", out);
     fprintf(out, "node_desc %s_NODE_Break_%s = {\n", g_prefix, s->name);
@@ -502,7 +579,7 @@ void emit_exec_node(FILE *out, const fn_info *f)
         if (!f->pout[i]) {
             emit_pin_spec_flags(
                 out,
-                f->pname[i],
+                param_label(f, i),
                 f->pservice[i] ? "PIN_HANDLE" : f->ppin[i],
                 f->pservice[i] ? f->pservice_type[i] : f->ptype[i],
                 f->pservice[i] ? PIN_FLAG_SERVICE : 0
@@ -517,13 +594,19 @@ void emit_exec_node(FILE *out, const fn_info *f)
     }
     for (int i = 0; i < acount(f->pname); i++) {
         if (f->pout[i]) {
-            emit_pin_spec(out, f->pname[i], f->ppin[i], f->pout_type[i]);
+            emit_pin_spec(out, param_label(f, i), f->ppin[i], f->pout_type[i]);
         }
     }
     fputs("};\n", out);
     emit_fn_access(out, f);
     fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
-    fprintf(out, "    .name = \"%s\", .input_count = %d, .output_count = %d,\n", f->name, input_count, output_count);
+    fprintf(
+        out,
+        "    .name = \"%s\", .input_count = %d, .output_count = %d,\n",
+        f->display_name ? f->display_name : f->name,
+        input_count,
+        output_count
+    );
     fprintf(
         out,
         "    .inputs = %s_%s_exec_inputs, .outputs = %s_%s_exec_outputs,\n",
@@ -537,6 +620,12 @@ void emit_exec_node(FILE *out, const fn_info *f)
     if (fn_has_access(f)) {
         fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
     }
+    if (f->category) {
+        fprintf(out, "    .category = \"%s\",\n", f->category);
+    }
+    if (f->keywords) {
+        fprintf(out, "    .keywords = \"%s\",\n", f->keywords);
+    }
     fputs("    .display_class = NODE_DISPLAY_FUNCTION,\n};\n\n", out);
 }
 
@@ -548,7 +637,7 @@ void emit_fn_node(FILE *out, const fn_info *f)
     } else {
         fprintf(out, "static pin_spec %s_%s_inputs[] = {\n", g_prefix, f->name);
         for (int j = 0; j < acount(f->pname); j++) {
-            emit_pin_spec(out, f->pname[j], f->ppin[j], f->ptype[j]);
+            emit_pin_spec(out, param_label(f, j), f->ppin[j], f->ptype[j]);
         }
         fputs("};\n", out);
     }
@@ -560,7 +649,7 @@ void emit_fn_node(FILE *out, const fn_info *f)
     fputs("};\n", out);
     emit_fn_access(out, f);
     fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
-    fprintf(out, "    .name = \"%s\",\n", f->name);
+    fprintf(out, "    .name = \"%s\",\n", f->display_name ? f->display_name : f->name);
     fprintf(out, "    .input_count = %d,\n", acount(f->pname));
     fprintf(out, "    .output_count = %d,\n", output_count);
     fprintf(out, "    .inputs = %s_%s_inputs,\n", g_prefix, f->name);
@@ -583,6 +672,65 @@ void emit_fn_node(FILE *out, const fn_info *f)
     }
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     emit_conversion_fields(out, f);
+    if (fn_has_access(f)) {
+        fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
+    }
+    if (f->category) {
+        fprintf(out, "    .category = \"%s\",\n", f->category);
+    }
+    if (f->keywords) {
+        fprintf(out, "    .keywords = \"%s\",\n", f->keywords);
+    }
+    fputs("};\n\n", out);
+}
+
+/* Emit the descriptor for a contextual, multi-output pure read. */
+void emit_read_node(FILE *out, const fn_info *f)
+{
+    int input_count = 0;
+    int output_count = 0;
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (f->pout[i]) {
+            output_count++;
+        } else {
+            input_count++;
+        }
+    }
+    if (input_count) {
+        fprintf(out, "static pin_spec %s_%s_read_inputs[] = {\n", g_prefix, f->name);
+        for (int i = 0; i < acount(f->pname); i++) {
+            if (!f->pout[i]) {
+                emit_pin_spec(out, param_label(f, i), f->ppin[i], f->ptype[i]);
+            }
+        }
+        fputs("};\n", out);
+    } else {
+        fprintf(out, "static pin_spec %s_%s_read_inputs[1];\n", g_prefix, f->name);
+    }
+    fprintf(out, "static pin_spec %s_%s_read_outputs[] = {\n", g_prefix, f->name);
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (f->pout[i]) {
+            emit_pin_spec(out, param_label(f, i), f->ppin[i], f->pout_type[i]);
+        }
+    }
+    fputs("};\n", out);
+    emit_fn_access(out, f);
+    fprintf(out, "node_desc %s_NODE_%s = {\n", g_prefix, f->name);
+    fprintf(out, "    .name = \"%s\",\n", f->display_name ? f->display_name : f->name);
+    fprintf(out, "    .input_count = %d,\n", input_count);
+    fprintf(out, "    .output_count = %d,\n", output_count);
+    fprintf(out, "    .inputs = %s_%s_read_inputs,\n", g_prefix, f->name);
+    fprintf(out, "    .outputs = %s_%s_read_outputs,\n", g_prefix, f->name);
+    fputs("    .pure_kind = NODE_PURE_READ,\n", out);
+    fprintf(out, "    .read_inputs = __read_%s_%s,\n", g_prefix, f->name);
+    fputs("    .flow_kind = NODE_FLOW_NONE,\n", out);
+    fputs("    .display_class = NODE_DISPLAY_FUNCTION,\n", out);
+    if (f->category) {
+        fprintf(out, "    .category = \"%s\",\n", f->category);
+    }
+    if (f->keywords) {
+        fprintf(out, "    .keywords = \"%s\",\n", f->keywords);
+    }
     if (fn_has_access(f)) {
         fprintf(out, "    .access = &%s_%s_access,\n", g_prefix, f->name);
     }

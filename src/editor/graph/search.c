@@ -242,6 +242,9 @@ void ed_open_context_menu(editor *e, ImVec2 mouse)
  * adopted in core on connect, so the editor treats it as compatible. */
 static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate)
 {
+    if ((source->flags | candidate->flags) & PIN_FLAG_SETTING) {
+        return 0;
+    }
     if (source->kind == PIN_EXEC) {
         return 1;
     }
@@ -347,14 +350,14 @@ static int ed_compact_system_node(editor *e, node *n)
 
 static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
 {
-    if ((e->bp->domain == BEHAVIOR_DOMAIN_LIBRARY ||
-         e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) &&
-        !behavior_library_node_allowed(e->bp->domain, desc)) {
+    if ((e->asset->domain == BEHAVIOR_DOMAIN_LIBRARY ||
+         e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) &&
+        !behavior_library_node_allowed(e->asset->domain, desc)) {
         return 0;
     }
-    bool shader = e->bp->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                  e->bp->domain == BEHAVIOR_DOMAIN_SHAPE ||
-                  e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                  e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     bool shader_node = desc->category && !strncmp(desc->category, "Shader", 6);
     if (shader != shader_node) {
         return 0;
@@ -416,8 +419,8 @@ static void ed_search_host_events(const editor *e, ed_search_match **matches, co
     for (int i = 0; i < e->event_catalog_count; i++) {
         const editor_event_signature *event = &e->event_catalog[i];
         bool used = false;
-        for (int g = 0; g < acount(e->bp->graphs); g++) {
-            const graph *graph = e->bp->graphs[g];
+        for (int g = 0; g < acount(e->asset->graphs); g++) {
+            const graph *graph = e->asset->graphs[g];
             for (int n = 0; n < acount(graph->nodes); n++) {
                 const node *node = graph->nodes[n];
                 used |= node->desc->flow_kind == NODE_FLOW_EVENT &&
@@ -515,17 +518,28 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
         }
         ed_search_match match = { .desc = desc, .category = ed_desc_category(desc) };
         editor_node_label(desc, match.name, sizeof match.name);
+        if (desc == &NODE_Self) {
+            if (!e->asset->owner_type_name) {
+                continue;
+            }
+            pin_spec output = desc->outputs[0];
+            output.type_name = e->asset->owner_type_name;
+            node_desc signature = *desc;
+            signature.outputs = &output;
+            ed_add_search_match(e, &matches, match, &signature, filter);
+            continue;
+        }
         ed_add_search_match(e, &matches, match, desc, filter);
     }
     if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
         return matches;
     }
-    bool shader = e->bp->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                  e->bp->domain == BEHAVIOR_DOMAIN_SHAPE ||
-                  e->bp->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                  e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     for (int a = -1; a < acount(e->asset_catalog); a++) {
-        const behavior_asset *asset = a < 0 ? e->bp : e->asset_catalog[a];
-        if (a >= 0 && (!strcmp(asset->name, e->bp->name) ||
+        const behavior_asset *asset = a < 0 ? e->asset : e->asset_catalog[a];
+        if (a >= 0 && (!strcmp(asset->name, e->asset->name) ||
                        asset->domain != (shader ? BEHAVIOR_DOMAIN_SHADER_LIBRARY
                                                 : BEHAVIOR_DOMAIN_LIBRARY))) {
             continue;
@@ -581,11 +595,11 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
             ed_add_search_match(e, &matches, match, &signature, filter);
         }
     }
-    if (!shader && e->bp->domain == BEHAVIOR_DOMAIN_EVENT) {
+    if (!shader && e->asset->domain == BEHAVIOR_DOMAIN_EVENT) {
         ed_search_host_events(e, &matches, filter);
         ed_search_events(e, &matches, filter);
-        for (int i = 0; i < acount(e->bp->variables); i++) {
-            const behavior_variable *v = &e->bp->variables[i];
+        for (int i = 0; i < acount(e->asset->variables); i++) {
+            const behavior_variable *v = &e->asset->variables[i];
             for (int set = 0; set < 2; set++) {
                 const node_desc *desc = set ? &NODE_SetVariable : &NODE_GetVariable;
                 pin_spec data = { .name = v->name,
@@ -630,19 +644,36 @@ node *ed_spawn_match(editor *e, const ed_search_match *match)
     graph *g = e->active_graph;
     if (match->function) {
         return match->function->kind == GRAPH_MACRO
-                 ? behavior_asset_add_macro_call_node_to_graph(e->bp, g, match->function)
+                 ? behavior_asset_add_macro_call_node_to_graph(
+                       e->asset,
+                       g,
+                       match->function
+                   )
                  : behavior_asset_add_function_call_node_to_graph(
-                       e->bp,
+                       e->asset,
                        g,
                        match->function
                    );
     }
     if (match->desc == &ed_math_desc) {
-        return math_expression_add(e->bp, g, "a + b", NULL);
+        return math_expression_add(e->asset, g, "a + b", NULL);
+    }
+    if (!strcmp(match->desc->name, "Shader Surface Output")) {
+        return shader_graph_add_output(g, false);
+    }
+    if (!strcmp(match->desc->name, "Shader Shape Output")) {
+        return shader_graph_add_output(g, true);
     }
     node *n = graph_add_node(g, match->desc);
     if (!n) {
         return NULL;
+    }
+    if (match->desc == &NODE_Self) {
+        if (!e->asset->owner_type_name ||
+            graph_set_pin_type(g, n, 1, 0, PIN_HANDLE, e->asset->owner_type_name) != 0) {
+            graph_remove_node(g, n);
+            return NULL;
+        }
     }
     if (match->variable) {
         const behavior_variable *v = match->variable;
@@ -700,7 +731,7 @@ static int ed_autowire_spawn(editor *e, node *n)
 
 void ed_request_extraction(editor *e)
 {
-    if (e->active_graph->math_expression) {
+    if (e->active_graph->math_expression || e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
         return;
     }
     for (int i = 1;; i++) {
@@ -709,7 +740,7 @@ void ed_request_extraction(editor *e)
         } else {
             snprintf(e->extract_name, sizeof e->extract_name, "New Function %d", i);
         }
-        if (!behavior_asset_find_graph_by_name(e->bp, e->extract_name)) {
+        if (!behavior_asset_find_graph_by_name(e->asset, e->extract_name)) {
             break;
         }
     }
@@ -719,13 +750,16 @@ void ed_request_extraction(editor *e)
 
 static const char *ed_extract_selection(editor *e)
 {
+    if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM) {
+        return "Systems do not support extracted functions.";
+    }
     if (e->active_graph->math_expression) {
         return "Generated math graphs are read-only";
     }
     behavior_asset *result = NULL;
     uint64_t call_id = 0;
     const char *error = behavior_asset_extract_function(
-        e->bp,
+        e->asset,
         e->active_graph,
         e->selected,
         acount(e->selected),
@@ -800,7 +834,8 @@ void ed_handle_popups(editor *e)
         node *n = e->context_node;
         bool advanced = false;
         for (int p = 0; n && p < n->input_count; p++) {
-            advanced |= (n->input_pins[p].flags & PIN_FLAG_ADVANCED) != 0;
+            advanced |= (n->input_pins[p].flags &
+                         (PIN_FLAG_ADVANCED | PIN_FLAG_SETTING)) == PIN_FLAG_ADVANCED;
         }
         if (advanced &&
             ImGui_MenuItemEx("Show Advanced Inputs", NULL, n->show_advanced, true)) {
@@ -812,12 +847,12 @@ void ed_handle_popups(editor *e)
         node *const *selection = n && !ed_node_selected(e, n) ? single : e->selected;
         int selection_count = n && !ed_node_selected(e, n) ? 1 : acount(e->selected);
         const char *extract_reason = behavior_asset_can_extract_function(
-            e->bp,
+            e->asset,
             e->active_graph,
             selection,
             selection_count
         );
-        if (ImGui_MenuItemEx("Extract Function...", NULL, false, !extract_reason)) {
+        if (ImGui_MenuItemEx("Extract Function...", NULL, false, !extract_reason && e->ui_context != EDITOR_UI_CONTEXT_SYSTEM)) {
             if (selection == single) {
                 ed_select_node(e, n, 0);
             }
@@ -825,7 +860,7 @@ void ed_handle_popups(editor *e)
         }
         ImGui_Separator();
         if (ed_is_graph_call(n)) {
-            graph *target = behavior_asset_find_graph(e->bp, n->reference_id);
+            graph *target = behavior_asset_find_graph(e->asset, n->reference_id);
             if (n->reference_asset) {
                 target = NULL;
                 for (int a = 0; a < acount(e->asset_catalog); a++) {
@@ -1014,7 +1049,7 @@ void ed_handle_popups(editor *e)
                     ed_snapshot_before(e);
                 }
                 node *n = ed_spawn_match(e, &matches[m]);
-                if (n && !shader_graph_init_parameter(e->active_graph, n)) {
+                if (n && !shader_graph_init_node(e->active_graph, n)) {
                     graph_remove_node(e->active_graph, n);
                     n = NULL;
                     ed_show_error(e, "This shader already has 32 parameters.");

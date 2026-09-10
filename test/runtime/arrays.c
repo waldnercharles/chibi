@@ -3,6 +3,45 @@
 void run_runtime_arrays_checks()
 {
     const node_desc *make = registry_node_by_name("Make_Vec3");
+    {
+        graph g;
+        graph_init(&g);
+        node *first = graph_add_node(&g, registry_node_by_name("Array Add"));
+        node *second = graph_add_node(&g, registry_node_by_name("Add Unique"));
+        node *duplicate = graph_add_node(&g, registry_node_by_name("Add Unique"));
+        pin_array *empty = pin_array_new(PIN_HANDLE, "ecs.entity", 0);
+        pin_value source = { .type = PIN_HANDLE,
+                             .type_name = "ecs.entity",
+                             .container = PIN_CONTAINER_ARRAY,
+                             .ptr = empty };
+        pin_value a = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 17 },
+                  b = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 29 };
+        assert(graph_set_pin_type(&g, first, 0, 0, PIN_HANDLE, "ecs.entity") == 0);
+        assert(graph_set_pin_default(&g, first, 0, 0, &source) == 0);
+        assert(graph_set_pin_default(&g, first, 0, 1, &a) == 0);
+        assert(graph_connect_data(&g, first, 0, second, 0) == 0);
+        assert(graph_set_pin_default(&g, second, 0, 1, &b) == 0);
+        assert(graph_connect_data(&g, second, 0, duplicate, 0) == 0);
+        assert(graph_set_pin_default(&g, duplicate, 0, 1, &a) == 0);
+        arena storage;
+        arena_init(&storage, 4096);
+        eval_context eval;
+        eval_context_init(&eval);
+        pin_value result;
+        assert(graph_eval_output(&g, duplicate, 0, &storage, &result, &eval) == 0);
+        const pin_array *values = result.ptr;
+        test_check(
+            values->count == 2 && values->items[0].u64 == 17 &&
+                values->items[1].u64 == 29,
+            "Array Add grows an empty handle array; Add Unique preserves "
+            "existing entries without duplicates"
+        );
+        test_check(empty->count == 0, "array additions preserve their input snapshot");
+        eval_context_free(&eval);
+        arena_free(&storage);
+        graph_free(&g);
+        pin_array_free(empty);
+    }
     /* Phase 5: typed arrays and deterministic ForEach iteration. */
     {
         graph g_array;
@@ -164,16 +203,16 @@ void run_runtime_arrays_checks()
 
     /* Phase 6: weak delegate bindings. */
     {
-        behavior_asset *bp = behavior_asset_new("Delegates");
-        node *event = graph_add_node(bp->graph, &NODE_Event);
-        graph_set_event_name(bp->graph, event, "Changed");
+        behavior_asset *asset = behavior_asset_new("Delegates");
+        node *event = graph_add_node(asset->graph, &NODE_Event);
+        graph_set_event_name(asset->graph, event, "Changed");
         pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
-        graph_add_pin(bp->graph, event, 1, &value);
-        node *sink = graph_add_node(bp->graph, &g_capture_desc);
-        graph_connect_exec(bp->graph, event, 0, sink, 0, 0);
-        graph_connect_data(bp->graph, event, 1, sink, 1);
-        behavior_instance *source = behavior_instance_create(bp, NULL, NULL, NULL);
-        behavior_instance *target = behavior_instance_create(bp, NULL, NULL, NULL);
+        graph_add_pin(asset->graph, event, 1, &value);
+        node *sink = graph_add_node(asset->graph, &g_capture_desc);
+        graph_connect_exec(asset->graph, event, 0, sink, 0, 0);
+        graph_connect_data(asset->graph, event, 1, sink, 1);
+        behavior_instance *source = behavior_instance_create(asset, NULL, NULL, NULL);
+        behavior_instance *target = behavior_instance_create(asset, NULL, NULL, NULL);
         int service_token = 7;
         test_check(
             behavior_instance_bind_service(target, "SelfCheckService", &service_token) == 0 &&
@@ -205,7 +244,7 @@ void run_runtime_arrays_checks()
         );
         test_check(behavior_instance_unbind_event(source, binding) == 0, "unbinding removes exactly one binding");
         binding = behavior_instance_bind_event(source, target, event->id);
-        char *delegate_json = behavior_asset_save_json(bp);
+        char *delegate_json = behavior_asset_save_json(asset);
         test_check(delegate_json && !strstr(delegate_json, "delegates"), "delegate runtime state is absent from authored JSON");
         free(delegate_json);
         test_check(binding != 0, "typed delegate communication has an instance-owned binding");
@@ -217,6 +256,6 @@ void run_runtime_arrays_checks()
         );
         test_check(delegate_error.code == FLOW_ERR_INVALID_GRAPH, "a broken delegate produces one structured diagnostic");
         behavior_instance_destroy(source);
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
     }
 }

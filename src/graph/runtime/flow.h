@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_FLOW_H
-#define CBLUEPRINT_FLOW_H
+#ifndef CHIBI_FLOW_H
+#define CHIBI_FLOW_H
 
 #include "graph/model/graph.h"
 

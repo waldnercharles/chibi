@@ -36,31 +36,6 @@ static int json_uint(yyjson_val *v, uint64_t *out, const char *path)
     return 0;
 }
 
-static int read_struct_default(const type_desc *type, yyjson_val *def, pin_value *out, graph *g, int pin)
-{
-    void *block = graph_own_block(g, type->size);
-    if (!block) {
-        serialize_error_set("bad struct default for pin %d", pin);
-        return -1;
-    }
-    for (int f = 0; f < type->field_count; f++) {
-        yyjson_val *field_json = yyjson_obj_get(def, type->fields[f].name);
-        if (!field_json) {
-            serialize_error_set("missing struct field %s", type->fields[f].name);
-            return -1;
-        }
-        pin_value field;
-        if (serialize_read_value(type->fields[f].type, field_json, &field, g)) {
-            serialize_error_set("bad struct field %s", type->fields[f].name);
-            return -1;
-        }
-        field.type_name = type->fields[f].type_name;
-        pin_write_field(block, &type->fields[f], field);
-    }
-    *out = (pin_value){ .type = PIN_STRUCT, .ptr = block };
-    return 0;
-}
-
 static int compact_component_node(const graph *g, const node *n)
 {
     return g && g->dataflow && n && n->desc && n->desc->type &&
@@ -196,27 +171,73 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
                 if (serialize_read_array(p->type, p->type_name, def, &pv, g)) {
                     return -1;
                 }
-            } else if (p->type == PIN_STRUCT && yyjson_is_obj(def)) {
-                const type_desc *type = registry_type_by_name(p->type_name);
-                if (!type) {
-                    serialize_error_set("bad struct default for pin %d", i);
-                    return -1;
+            } else if (serialize_read_value(p->type, p->type_name, def, &pv, g)) {
+                if (p->type != PIN_STRUCT) {
+                    serialize_error_set(
+                        "bad default for pin %d on %s (type %d)",
+                        i,
+                        n->desc->name,
+                        p->type
+                    );
                 }
-                if (read_struct_default(type, def, &pv, g, i)) {
-                    return -1;
-                }
-            } else if (serialize_read_value(p->type, def, &pv, g)) {
-                serialize_error_set(
-                    "bad default for pin %d on %s (type %d)",
-                    i,
-                    n->desc->name,
-                    p->type
-                );
                 return -1;
             }
             pv.type_name = p->type_name;
             pv.container = p->container;
             p->default_value = pv;
+        }
+        yyjson_val *binding_json = yyjson_obj_get(v, "binding");
+        if (binding_json) {
+            yyjson_val *binding_kind = yyjson_obj_get(binding_json, "kind");
+            if (output || !yyjson_is_obj(binding_json) || !yyjson_is_str(binding_kind)) {
+                serialize_error_set("invalid pin binding on %s pin %d", output ? "output" : "input", i);
+                return -1;
+            }
+            const char *kind_name = yyjson_get_str(binding_kind);
+            pin_binding binding = { 0 };
+            if (!strcmp(kind_name, "variable")) {
+                binding.kind = PIN_BINDING_VARIABLE;
+                yyjson_val *id = yyjson_obj_get(binding_json, "variable_id");
+                if (!id || !yyjson_is_uint(id) || !yyjson_get_uint(id)) {
+                    serialize_error_set("variable pin binding %d has no variable_id", i);
+                    return -1;
+                }
+                binding.variable_id = yyjson_get_uint(id);
+            } else if (!strcmp(kind_name, "component_field")) {
+                binding.kind = PIN_BINDING_COMPONENT_FIELD;
+                yyjson_val *component = yyjson_obj_get(binding_json, "component");
+                yyjson_val *field = yyjson_obj_get(binding_json, "field");
+                if (!yyjson_is_str(component) || !yyjson_get_len(component) ||
+                    !yyjson_is_str(field) || !yyjson_get_len(field)) {
+                    serialize_error_set("component pin binding %d is incomplete", i);
+                    return -1;
+                }
+                binding.component_key = yyjson_get_str(component);
+                binding.field_name = yyjson_get_str(field);
+            } else if (!strcmp(kind_name, "component")) {
+                binding.kind = PIN_BINDING_COMPONENT;
+                yyjson_val *component = yyjson_obj_get(binding_json, "component");
+                if (!yyjson_is_str(component) || !yyjson_get_len(component)) {
+                    serialize_error_set("component pin binding %d has no component key", i);
+                    return -1;
+                }
+                binding.component_key = yyjson_get_str(component);
+            } else if (!strcmp(kind_name, "delta_time")) {
+                binding.kind = PIN_BINDING_DELTA_TIME;
+            } else {
+                serialize_error_set("unknown pin binding kind '%s'", kind_name);
+                return -1;
+            }
+            yyjson_val *source_asset = yyjson_obj_get(binding_json, "source_asset");
+            if (source_asset && !yyjson_is_str(source_asset)) {
+                serialize_error_set("invalid pin binding source asset");
+                return -1;
+            }
+            binding.source_asset = source_asset ? yyjson_get_str(source_asset) : NULL;
+            if (graph_set_pin_binding(g, n, 0, i, &binding) != 0) {
+                serialize_error_set("could not store pin binding %d", i);
+                return -1;
+            }
         }
         i++;
     }
@@ -318,6 +339,12 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
         yyjson_val *disabled = yyjson_obj_get(v, "disabled");
         n->disabled = disabled && yyjson_is_bool(disabled) &&
                       yyjson_get_bool(disabled);
+        yyjson_val *inline_source = yyjson_obj_get(v, "inline_source");
+        if (inline_source && !yyjson_is_bool(inline_source)) {
+            serialize_error_set("node inline_source must be a boolean");
+            return -1;
+        }
+        n->inline_source = inline_source && yyjson_get_bool(inline_source);
         yyjson_val *breakpoint = yyjson_obj_get(v, "breakpoint");
         yyjson_val *breakpoint_enabled = yyjson_obj_get(v, "breakpoint_enabled");
         n->show_advanced = yyjson_get_bool(yyjson_obj_get(v, "show_advanced"));
@@ -629,6 +656,14 @@ graph *graph_load_json(const char *json)
         serialize_error_set("missing behavior_asset metadata");
         goto fail;
     }
+    yyjson_val *binding_owner = yyjson_obj_get(root, "binding_owner_id");
+    if (binding_owner) {
+        if (!yyjson_is_uint(binding_owner) || !yyjson_get_uint(binding_owner)) {
+            serialize_error_set("invalid binding clipboard owner");
+            goto fail;
+        }
+        g->clipboard_owner_id = yyjson_get_uint(binding_owner);
+    }
     yyjson_val *breakpoints = yyjson_obj_get(root, "breakpoints_enabled");
     if (breakpoints && yyjson_is_bool(breakpoints)) {
         g->breakpoints_enabled = yyjson_get_bool(breakpoints);
@@ -652,7 +687,7 @@ fail:
     return NULL;
 }
 
-static int load_variable(behavior_asset *bp, yyjson_val *v)
+static int load_variable(behavior_asset *asset, yyjson_val *v)
 {
     if (!yyjson_is_obj(v)) {
         serialize_error_set("variable is not an object");
@@ -685,25 +720,18 @@ static int load_variable(behavior_asset *bp, yyjson_val *v)
     pin_value pv = { 0 };
     if (def) {
         if (pc >= PIN_CONTAINER_ARRAY) {
-            if (serialize_read_array(pt, type_name, def, &pv, bp->graph)) {
+            if (serialize_read_array(pt, type_name, def, &pv, asset->graph)) {
                 return -1;
             }
-        } else if (pt == PIN_STRUCT && yyjson_is_obj(def)) {
-            const type_desc *t = registry_type_by_name(type_name);
-            if (!t) {
-                serialize_error_set("bad struct default for variable %llu", (unsigned long long)id);
-                return -1;
+        } else if (serialize_read_value(pt, type_name, def, &pv, asset->graph)) {
+            if (pt != PIN_STRUCT) {
+                serialize_error_set("bad default for variable %llu", (unsigned long long)id);
             }
-            if (read_struct_default(t, def, &pv, bp->graph, -1)) {
-                return -1;
-            }
-        } else if (serialize_read_value(pt, def, &pv, bp->graph)) {
-            serialize_error_set("bad default for variable %llu", (unsigned long long)id);
             return -1;
         }
     }
     behavior_variable *var = behavior_asset_add_variable(
-        bp,
+        asset,
         yyjson_get_str(name),
         pt,
         type_name,
@@ -719,7 +747,7 @@ static int load_variable(behavior_asset *bp, yyjson_val *v)
     return 0;
 }
 
-static int load_behavior_asset_graph(behavior_asset *bp, yyjson_val *obj, uint64_t requested_counter, int is_default)
+static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uint64_t requested_counter, int is_default)
 {
     if (!yyjson_is_obj(obj)) {
         serialize_error_set("graph is not an object");
@@ -744,17 +772,17 @@ static int load_behavior_asset_graph(behavior_asset *bp, yyjson_val *obj, uint64
     if (!is_default && json_uint(yyjson_obj_get(obj, "id"), &graph_id, "graph.id")) {
         return -1;
     }
-    graph *g = is_default ? bp->graph : NULL;
+    graph *g = is_default ? asset->graph : NULL;
     if (!g) {
         g = (graph *)xcalloc(1, sizeof *g);
         graph_init(g);
-        g->owner = bp;
-        g->shared_id_counter = &bp->graph->id_counter;
+        g->owner = asset;
+        g->shared_id_counter = &asset->graph->id_counter;
         g->graph_id = graph_id;
         g->kind = kind;
         g->name = graph_own_str(g, yyjson_get_str(name_json), yyjson_get_len(name_json));
         g->description = graph_own_str(g, "", 0);
-        apush(bp->graphs, g);
+        apush(asset->graphs, g);
     } else {
         g->kind = kind;
         g->graph_id = graph_id;
@@ -807,8 +835,8 @@ static int load_behavior_asset_graph(behavior_asset *bp, yyjson_val *obj, uint64
     if (load_nodes(g, nodes, requested_counter) || load_edges(g, edges)) {
         return -1;
     }
-    if (g->id_counter > bp->graph->id_counter) {
-        bp->graph->id_counter = g->id_counter;
+    if (g->id_counter > asset->graph->id_counter) {
+        asset->graph->id_counter = g->id_counter;
     }
     return 0;
 }
@@ -865,7 +893,7 @@ static int loaded_asset_counter(behavior_asset *asset, uint64_t requested)
 
 behavior_asset *behavior_asset_load_json(const char *json)
 {
-    behavior_asset *bp = NULL;
+    behavior_asset *asset = NULL;
     if (!json) {
         serialize_error_set("null JSON input");
         return NULL;
@@ -899,18 +927,18 @@ behavior_asset *behavior_asset_load_json(const char *json)
         goto fail;
     }
     requested_counter = yyjson_get_uint(counter);
-    bp = behavior_asset_new(yyjson_get_str(metadata_name));
-    if (!bp) {
+    asset = behavior_asset_new(yyjson_get_str(metadata_name));
+    if (!asset) {
         serialize_error_set("out of memory");
         goto fail;
     }
-    bp->graph->id_counter = requested_counter;
+    asset->graph->id_counter = requested_counter;
     const char *domain = yyjson_get_str(yyjson_obj_get(root, "domain"));
     if (domain) {
         int found = 0;
         for (int i = BEHAVIOR_DOMAIN_EVENT; i <= BEHAVIOR_DOMAIN_SHADER_LIBRARY; i++) {
             if (!strcmp(domain, behavior_domain_name((behavior_domain)i))) {
-                bp->domain = (behavior_domain)i;
+                asset->domain = (behavior_domain)i;
                 found = 1;
                 break;
             }
@@ -920,12 +948,12 @@ behavior_asset *behavior_asset_load_json(const char *json)
             goto fail;
         }
     }
-    bp->bounds[0] = (float)yyjson_get_num(yyjson_obj_get(root, "bounds_x"));
-    bp->bounds[1] = (float)yyjson_get_num(yyjson_obj_get(root, "bounds_y"));
-    behavior_asset_set_description(bp, yyjson_get_str(metadata_description));
+    asset->bounds[0] = (float)yyjson_get_num(yyjson_obj_get(root, "bounds_x"));
+    asset->bounds[1] = (float)yyjson_get_num(yyjson_obj_get(root, "bounds_y"));
+    behavior_asset_set_description(asset, yyjson_get_str(metadata_description));
     yyjson_val *owner = yyjson_obj_get(root, "owner_type");
     if (yyjson_is_str(owner) &&
-        behavior_asset_set_owner_type(bp, yyjson_get_str(owner))) {
+        behavior_asset_set_owner_type(asset, yyjson_get_str(owner))) {
         serialize_error_set("cannot set owner type");
         goto fail;
     }
@@ -939,7 +967,7 @@ behavior_asset *behavior_asset_load_json(const char *json)
         yyjson_arr_iter_init(vars, &vit);
         yyjson_val *vv;
         while ((vv = yyjson_arr_iter_next(&vit))) {
-            if (load_variable(bp, vv)) {
+            if (load_variable(asset, vv)) {
                 goto fail;
             }
         }
@@ -949,7 +977,7 @@ behavior_asset *behavior_asset_load_json(const char *json)
     yyjson_val *graph_json;
     int graph_index = 0;
     while ((graph_json = yyjson_arr_iter_next(&git))) {
-        if (load_behavior_asset_graph(bp, graph_json, requested_counter, graph_index == 0)) {
+        if (load_behavior_asset_graph(asset, graph_json, requested_counter, graph_index == 0)) {
             goto fail;
         }
         graph_index++;
@@ -958,18 +986,18 @@ behavior_asset *behavior_asset_load_json(const char *json)
         serialize_error_set("behavior_asset requires a default event graph");
         goto fail;
     }
-    if (serialize_repair_math_calls(bp)) {
+    if (serialize_repair_math_calls(asset)) {
         goto fail;
     }
-    if (loaded_asset_counter(bp, requested_counter)) {
+    if (loaded_asset_counter(asset, requested_counter)) {
         goto fail;
     }
     yyjson_doc_free(doc);
-    return bp;
+    return asset;
 fail:
     yyjson_doc_free(doc);
-    if (bp) {
-        behavior_asset_free(bp);
+    if (asset) {
+        behavior_asset_free(asset);
     }
     return NULL;
 }

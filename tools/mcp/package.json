@@ -1,10 +1,10 @@
 {
-  "name": "c-blueprints-mcp",
+  "name": "chibi-mcp",
   "version": "0.1.0",
-  "description": "Local MCP adapter for the c-blueprints editor",
+  "description": "Local MCP adapter for the Chibi editor",
   "type": "module",
   "bin": {
-    "c-blueprints-mcp": "./server.mjs"
+    "chibi-mcp": "./server.mjs"
   },
   "engines": {
     "node": ">=20"

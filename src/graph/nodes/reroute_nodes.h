@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_REROUTE_NODES_H
-#define CBLUEPRINT_REROUTE_NODES_H
+#ifndef CHIBI_REROUTE_NODES_H
+#define CHIBI_REROUTE_NODES_H
 
 #include "graph/model/node.h"
 

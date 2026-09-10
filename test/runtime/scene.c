@@ -210,21 +210,21 @@ void run_prototype_checks(void)
 
 behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
 {
-    behavior_asset *bp = behavior_asset_new(name);
-    if (!bp) {
+    behavior_asset *asset = behavior_asset_new(name);
+    if (!asset) {
         return NULL;
     }
-    graph *graph = bp->graph;
+    graph *graph = asset->graph;
     node *event = graph_add_node(graph, registry_node_by_name("Event"));
     if (!event || graph_set_event_name(graph, event, "Tick") != 0) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
     node *begin = NULL;
     if (!latent) {
         begin = graph_add_node(graph, registry_node_by_name("Event"));
         if (!begin || graph_set_event_name(graph, begin, "Begin") != 0) {
-            behavior_asset_free(bp);
+            behavior_asset_free(asset);
             return NULL;
         }
     }
@@ -233,13 +233,13 @@ behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
         pin_value duration = { .type = PIN_F64, .type_name = "double", .d = 1.0 };
         if (!delay || graph_set_pin_default(graph, delay, 0, 1, &duration) != 0 ||
             graph_connect_exec(graph, event, 0, delay, 0, 0) != 0) {
-            behavior_asset_free(bp);
+            behavior_asset_free(asset);
             return NULL;
         }
-        return bp;
+        return asset;
     }
     behavior_variable *counter = behavior_asset_add_variable(
-        bp,
+        asset,
         "Counter",
         PIN_I32,
         "int",
@@ -247,15 +247,15 @@ behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
         &(pin_value){ .type = PIN_I32, .i = 0 },
         "Behavior"
     );
-    node *set = counter ? behavior_asset_add_set_node(bp, counter->id) : NULL;
+    node *set = counter ? behavior_asset_add_set_node(asset, counter->id) : NULL;
     pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
     if (!counter || !set || graph_set_pin_default(graph, set, 0, 1, &one) != 0 ||
         graph_connect_exec(graph, event, 0, set, 0, 0) != 0 ||
         graph_connect_exec(graph, begin, 0, set, 0, 0) != 0) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
-    return bp;
+    return asset;
 }
 
 static int g_promote_probe;
@@ -325,20 +325,23 @@ void run_scene_document_checks(void)
 
 static behavior_asset *make_log_behavior(void)
 {
-    behavior_asset *bp = behavior_asset_new("LogBehavior");
-    node *event = bp ? graph_add_node(bp->graph, registry_node_by_name("Event")) : NULL;
-    node *print = bp ? graph_add_node(bp->graph, registry_node_by_name("Print String"))
-                     : NULL;
-    node *text = bp ? make_string(bp->graph, "entity log") : NULL;
-    if (!bp || !event || !print || !text ||
-        behavior_asset_set_owner_type(bp, "ecs.entity") != 0 ||
-        graph_set_event_name(bp->graph, event, "Log") != 0 ||
-        graph_connect_exec(bp->graph, event, 0, print, 0, 0) != 0 ||
-        graph_connect_data(bp->graph, text, 0, print, 1) != 0) {
-        behavior_asset_free(bp);
+    behavior_asset *asset = behavior_asset_new("LogBehavior");
+    node *event = asset
+                    ? graph_add_node(asset->graph, registry_node_by_name("Event"))
+                    : NULL;
+    node *print = asset
+                    ? graph_add_node(asset->graph, registry_node_by_name("Print String"))
+                    : NULL;
+    node *text = asset ? make_string(asset->graph, "entity log") : NULL;
+    if (!asset || !event || !print || !text ||
+        behavior_asset_set_owner_type(asset, "ecs.entity") != 0 ||
+        graph_set_event_name(asset->graph, event, "Log") != 0 ||
+        graph_connect_exec(asset->graph, event, 0, print, 0, 0) != 0 ||
+        graph_connect_data(asset->graph, text, 0, print, 1) != 0) {
+        behavior_asset_free(asset);
         return NULL;
     }
-    return bp;
+    return asset;
 }
 
 void run_behavior_checks(void)

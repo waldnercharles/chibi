@@ -59,7 +59,7 @@ void emit(FILE *out, const collect_ctx *ctx)
                 s->name,
                 f->name,
                 f->spelling,
-                f->spelling
+                field_type_name(f)
             );
         }
         fputs("};\n\n", out);
@@ -180,7 +180,9 @@ void emit(FILE *out, const collect_ctx *ctx)
     }
 
     for (int i = 0; i < acount(ctx->fns); i++) {
-        if (ctx->fns[i].exec) {
+        if (ctx->fns[i].read) {
+            emit_read_fn(out, &ctx->fns[i]);
+        } else if (ctx->fns[i].exec) {
             emit_exec_fn(out, &ctx->fns[i]);
         } else {
             emit_fn(out, &ctx->fns[i]);
@@ -191,7 +193,9 @@ void emit(FILE *out, const collect_ctx *ctx)
         emit_struct_nodes(out, &ctx->structs[i]);
     }
     for (int i = 0; i < acount(ctx->fns); i++) {
-        if (ctx->fns[i].exec) {
+        if (ctx->fns[i].read) {
+            emit_read_node(out, &ctx->fns[i]);
+        } else if (ctx->fns[i].exec) {
             emit_exec_node(out, &ctx->fns[i]);
         } else {
             emit_fn_node(out, &ctx->fns[i]);

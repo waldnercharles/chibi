@@ -10,28 +10,27 @@ static bool fail(char *error, size_t size, const char *message)
     return false;
 }
 
-bool bp_module_replace(
-    bp_module *current,
+bool chibi_module_replace(
+    chibi_module *current,
     const char *path,
-    const bp_host *host,
+    const chibi_host *host,
     const char *initial_checkpoint,
     char *error,
     size_t size
 )
 {
-    bp_module candidate = { .library = dlopen(path, RTLD_NOW | RTLD_LOCAL) };
+    chibi_module candidate = { .library = dlopen(path, RTLD_NOW | RTLD_LOCAL) };
     if (!candidate.library) {
         return fail(error, size, dlerror());
     }
-    bp_application_entry entry = NULL;
-    void *symbol = dlsym(candidate.library, BLUEPRINTS_APPLICATION_SYMBOL);
+    chibi_application_entry entry = NULL;
+    void *symbol = dlsym(candidate.library, CHIBI_APPLICATION_SYMBOL);
     _Static_assert(sizeof entry == sizeof symbol, "POSIX function pointer size");
     memcpy(&entry, &symbol, sizeof entry);
     candidate.api = entry ? entry() : NULL;
-    const bp_application_api *api = candidate.api;
-    if (!api || api->abi != BLUEPRINTS_APPLICATION_ABI || !api->create ||
-        !api->checkpoint || !api->activate || !api->deactivate || !api->frame ||
-        !api->destroy) {
+    const chibi_application_api *api = candidate.api;
+    if (!api || api->abi != CHIBI_APPLICATION_ABI || !api->create || !api->checkpoint ||
+        !api->activate || !api->deactivate || !api->frame || !api->destroy) {
         dlclose(candidate.library);
         return fail(error, size, "incompatible application lifecycle");
     }
@@ -61,7 +60,7 @@ bool bp_module_replace(
     return true;
 }
 
-void bp_module_close(bp_module *module)
+void chibi_module_close(chibi_module *module)
 {
     if (!module->api) {
         return;
@@ -71,5 +70,5 @@ void bp_module_close(bp_module *module)
     if (module->library) {
         dlclose(module->library);
     }
-    *module = (bp_module){ 0 };
+    *module = (chibi_module){ 0 };
 }

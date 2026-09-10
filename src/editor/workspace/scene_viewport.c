@@ -1,7 +1,8 @@
-#include "../src/platform/cute.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
+#include "platform/cute.h"
 #include "render/appearance_geometry.h"
+#include "render/arena3d.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
@@ -17,7 +18,14 @@
 static float actor_orientation(const ecs_world *world, ecs_entity entity)
 {
     const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-    return orientation ? orientation->radians : 0;
+    return orientation ? -orientation->radians : 0;
+}
+
+static render_arena_camera arena_camera(engine_viewport *viewport)
+{
+    render_arena_camera camera;
+    engine_viewport_get_arena_camera(viewport, &camera);
+    return camera;
 }
 
 static bool appearance_bounds(
@@ -60,8 +68,50 @@ static bool appearance_bounds(
            isfinite(out->max.x) && isfinite(out->max.y);
 }
 
+static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
+{
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameGeometry3D.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        return;
+    }
+    CF_V3 *points = NULL;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        CF_V3 corners[8];
+        if ((only.slot && ecs_entity_to_u64(entity) != ecs_entity_to_u64(only)) ||
+            !render_arena_entity_bounds(world, entity, corners)) {
+            continue;
+        }
+        for (int i = 0; i < 8; i++) {
+            apush(points, corners[i]);
+        }
+    }
+    ecs_query_end(&query);
+    if (acount(points)) {
+        engine_viewport_camera camera;
+        engine_viewport_get_camera(viewport, &camera);
+        CF_Aabb fit = render_arena_fit(
+            points,
+            acount(points),
+            camera.span_width / camera.span_height
+        );
+        engine_viewport_view view = { (fit.min.x + fit.max.x) * 0.5f,
+                                      (fit.min.y + fit.max.y) * 0.5f,
+                                      fit.max.x - fit.min.x,
+                                      fit.max.y - fit.min.y };
+        engine_viewport_set_view(viewport, &view);
+    }
+    afree(points);
+}
+
 void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
 {
+    if (engine_viewport_perspective(viewport)) {
+        fit_arena_view(viewport, world, only);
+        return;
+    }
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameAppearance.id };
     ecs_query query;
@@ -168,6 +218,42 @@ static ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y
     return picked;
 }
 
+static bool selection_bounds(
+    app_scene_authoring *scene,
+    engine_viewport *viewport,
+    ecs_entity entity,
+    CF_Aabb *bounds
+)
+{
+    if (engine_viewport_perspective(viewport)) {
+        CF_V3 corners[8];
+        render_arena_camera camera = arena_camera(viewport);
+        return render_arena_entity_bounds(scene->world, entity, corners) &&
+               render_arena_screen_bounds(&camera, corners, bounds);
+    }
+    const GameTransform *position = GAME_GameTransform_get_const(scene->world, entity);
+    const GameAppearance *appearance = GAME_GameAppearance_get_const(scene->world, entity);
+    if (!position || !appearance ||
+        !appearance_bounds(
+            position,
+            appearance,
+            GAME_GameShader_get_const(scene->world, entity),
+            actor_orientation(scene->world, entity),
+            GAME_GameSdfMotion_get_const(scene->world, entity),
+            false,
+            bounds
+        )) {
+        return false;
+    }
+    engine_viewport_camera camera;
+    engine_viewport_get_camera(viewport, &camera);
+    bounds->min.x = 2 * (bounds->min.x - camera.center_x) / camera.span_width;
+    bounds->max.x = 2 * (bounds->max.x - camera.center_x) / camera.span_width;
+    bounds->min.y = 2 * (bounds->min.y - camera.center_y) / camera.span_height;
+    bounds->max.y = 2 * (bounds->max.y - camera.center_y) / camera.span_height;
+    return true;
+}
+
 static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *viewport)
 {
     engine_viewport_pointer pointer;
@@ -223,7 +309,17 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
     }
     if (pointer.pressed) {
         finish_transform_edit(scene, false);
-        ecs_entity picked = pick_scene_entity(scene, pointer.world_x, pointer.world_y);
+        ecs_entity picked;
+        if (engine_viewport_perspective(viewport)) {
+            render_arena_camera camera = arena_camera(viewport);
+            picked = render_arena_pick(
+                scene->world,
+                &camera,
+                (CF_V2){ pointer.ndc_x, pointer.ndc_y }
+            );
+        } else {
+            picked = pick_scene_entity(scene, pointer.world_x, pointer.world_y);
+        }
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
         if (!picked.slot) {
             scene->selected = -1;
@@ -233,7 +329,7 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
                 scene->actors[i].marked = false;
             }
             scene->marquee = true;
-            scene->marquee_start = (GameTransform){ pointer.world_x, pointer.world_y };
+            scene->marquee_start = (CF_V2){ pointer.ndc_x, pointer.ndc_y };
             scene->marquee_end = scene->marquee_start;
             return;
         }
@@ -252,31 +348,20 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         scene->drag_origin = (GameTransform){ pointer.world_x, -pointer.world_y };
     }
     if (scene->marquee) {
-        scene->marquee_end = (GameTransform){ pointer.world_x, pointer.world_y };
+        scene->marquee_end = (CF_V2){ pointer.ndc_x, pointer.ndc_y };
         scene->marquee_visible = pointer.dragging;
         if (pointer.dragging) {
-            float min_x = fminf(scene->marquee_start.x, pointer.world_x);
-            float max_x = fmaxf(scene->marquee_start.x, pointer.world_x);
-            float min_y = fminf(scene->marquee_start.y, pointer.world_y);
-            float max_y = fmaxf(scene->marquee_start.y, pointer.world_y);
+            float min_x = fminf(scene->marquee_start.x, pointer.ndc_x);
+            float max_x = fmaxf(scene->marquee_start.x, pointer.ndc_x);
+            float min_y = fminf(scene->marquee_start.y, pointer.ndc_y);
+            float max_y = fmaxf(scene->marquee_start.y, pointer.ndc_y);
             scene->selected = -1;
             for (int i = 0; i < acount(scene->actors); i++) {
                 scene_actor *actor = &scene->actors[i];
                 CF_Aabb bounds;
-                actor->marked =
-                    GAME_GameTransform_has(scene->world, actor->entity) &&
-                    GAME_GameAppearance_has(scene->world, actor->entity) &&
-                    appearance_bounds(
-                        GAME_GameTransform_get_const(scene->world, actor->entity),
-                        GAME_GameAppearance_get_const(scene->world, actor->entity),
-                        GAME_GameShader_get_const(scene->world, actor->entity),
-                        actor_orientation(scene->world, actor->entity),
-                        GAME_GameSdfMotion_get_const(scene->world, actor->entity),
-                        false,
-                        &bounds
-                    ) &&
-                    bounds.max.x >= min_x && bounds.min.x <= max_x &&
-                    bounds.max.y >= min_y && bounds.min.y <= max_y;
+                actor->marked = selection_bounds(scene, viewport, actor->entity, &bounds) &&
+                                bounds.max.x >= min_x && bounds.min.x <= max_x &&
+                                bounds.max.y >= min_y && bounds.min.y <= max_y;
                 if (actor->marked) {
                     scene->selected = i;
                 }
@@ -309,28 +394,40 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     app_runtime_target target = scene->active_runtime_target;
     scene_prototype_asset *prototype = previewed_prototype(scene);
     bool preview = target == APP_RUNTIME_PREVIEW && prototype;
+    bool perspective = scene->perspective;
+    if (preview) {
+        ecs_world *world = game_prototype_preview_world(scene->prototype_preview);
+        ecs_entity entity = game_prototype_preview_entity(scene->prototype_preview);
+        perspective = GAME_GameGeometry3D_has(world, entity);
+    }
+    engine_viewport_set_perspective(viewport, perspective);
+    bool camera_session = !preview && scene->runtime_snapshot_valid;
+    if (perspective && camera_session) {
+        /* Renderer simulation time advances on Play and freezes on Pause. */
+        engine_viewport_set_arena_showcase(
+            viewport,
+            app_scene_renderer_time(scene->renderer)
+        );
+    } else {
+        engine_viewport_clear_arena_camera(viewport);
+    }
     /* Prototype records are append-only; indices survive array reallocations. */
     int camera_target = preview ? (int)(prototype - scene->prototypes) + 1 : 0;
     scene_camera *camera = preview ? &prototype->camera : &scene->camera;
+    bool fit = false;
     if (camera_target != scene->camera_target) {
         if (camera->saved) {
             engine_viewport_set_view(viewport, &camera->view);
         } else {
             engine_viewport_reset_camera(viewport);
-            fit_scene_view(
-                viewport,
-                preview ? game_prototype_preview_world(scene->prototype_preview)
-                        : scene->world,
-                (ecs_entity){ 0 }
-            );
+            fit = true;
         }
         app_scene_renderer_reset(scene->renderer);
         scene->camera_target = camera_target;
     }
-    if (scene->reveal_actor.slot) {
-        fit_scene_view(viewport, scene->world, scene->reveal_actor);
-        scene->reveal_actor = (ecs_entity){ 0 };
-    }
+    ecs_entity fit_entity = scene->reveal_actor;
+    fit |= fit_entity.slot != 0;
+    scene->reveal_actor = (ecs_entity){ 0 };
     if (preview && scene->preview_follow &&
         (scene->preview_playing || scene->preview_step)) {
         ecs_world *world = game_prototype_preview_world(scene->prototype_preview);
@@ -347,6 +444,7 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         }
     }
     engine_viewport_controls controls = {
+        .error = app_scene_renderer_error(scene->renderer),
         .session = target == APP_RUNTIME_PREVIEW ? prototype != NULL
                                                  : scene->runtime_snapshot_valid,
         .editing = scene_can_move(scene),
@@ -356,12 +454,12 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     app_runtime_command command;
     engine_viewport_action action = engine_viewport_draw(viewport, &controls);
     edit_scene_pointer(scene, viewport);
-    if (action == ENGINE_VIEWPORT_FIT) {
+    if (action == ENGINE_VIEWPORT_FIT || fit) {
         fit_scene_view(
             viewport,
             preview ? game_prototype_preview_world(scene->prototype_preview)
                     : scene->world,
-            (ecs_entity){ 0 }
+            action == ENGINE_VIEWPORT_FIT ? (ecs_entity){ 0 } : fit_entity
         );
     }
     engine_viewport_get_view(viewport, &camera->view);
@@ -478,6 +576,65 @@ app_sdf_shapes app_scene_authoring_shapes(const app_scene_authoring *scene)
     return scene->shapes;
 }
 
+static CF_V2 canvas_point(const engine_viewport_camera *frame, CF_V2 ndc)
+{
+    return (CF_V2){ frame->center_x + ndc.x * frame->span_width * 0.5f,
+                    frame->center_y + ndc.y * frame->span_height * 0.5f };
+}
+
+static void draw_marquee(app_scene_authoring *scene)
+{
+    if (!scene->marquee_visible) {
+        return;
+    }
+    engine_viewport_camera frame;
+    engine_viewport_get_camera(scene->render_viewport, &frame);
+    CF_V2 a = canvas_point(&frame, scene->marquee_start);
+    CF_V2 b = canvas_point(&frame, scene->marquee_end);
+    CF_Aabb box = { { fminf(a.x, b.x), fminf(a.y, b.y) },
+                    { fmaxf(a.x, b.x), fmaxf(a.y, b.y) } };
+    cf_draw_push_color(packed_color(0x82B5FF22));
+    cf_draw_quad_fill(box, 0);
+    cf_draw_pop_color();
+    cf_draw_push_color(packed_color(0x82B5FFFF));
+    cf_draw_quad(box, scene->selection_scale * 0.5f, 0);
+    cf_draw_pop_color();
+}
+
+static void draw_arena_selection(app_scene_authoring *scene, ecs_world *world, const render_arena_camera *camera)
+{
+    engine_viewport_camera frame;
+    engine_viewport_get_camera(scene->render_viewport, &frame);
+    float stroke = scene->selection_scale > 0 ? scene->selection_scale * 0.5f : 0.5f;
+    for (int i = -1; i < acount(scene->actors); i++) {
+        ecs_entity entity = i < 0 ? scene->runtime_selected : scene->actors[i].entity;
+        bool selected = i < 0 ? entity.slot != 0
+                              : scene->actors[i].marked || i == scene->selected;
+        if (!selected || !entity.slot) {
+            continue;
+        }
+        CF_V3 bounds[8];
+        if (!render_arena_entity_bounds(world, entity, bounds)) {
+            continue;
+        }
+        CF_V2 corners[8];
+        for (int j = 0; j < 8; j++) {
+            CF_V3 projected = render_arena_project(camera, bounds[j]);
+            corners[j] = canvas_point(&frame, (CF_V2){ projected.x, projected.y });
+        }
+        cf_draw_push_color(packed_color(0x82B5FFFF));
+        for (int j = 0; j < 8; j++) {
+            for (int bit = 1; bit <= 4; bit *= 2) {
+                if (!(j & bit)) {
+                    cf_draw_line(corners[j], corners[j | bit], stroke);
+                }
+            }
+        }
+        cf_draw_pop_color();
+    }
+    draw_marquee(scene);
+}
+
 void app_scene_authoring_render(void *user)
 {
     app_scene_authoring *scene = (app_scene_authoring *)user;
@@ -490,11 +647,33 @@ void app_scene_authoring_render(void *user)
     const game_particles *particles = scene->active_runtime_target == APP_RUNTIME_PREVIEW
                                         ? game_prototype_preview_particles(scene->prototype_preview)
                                         : scene->live->particles;
+    const engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
+                              ? game_prototype_preview_runtime(scene->prototype_preview)
+                              : scene->runtime;
+    if (scene_can_move(scene)) {
+        runtime = NULL;
+    }
+    if (scene->render_viewport && engine_viewport_perspective(scene->render_viewport)) {
+        render_arena_camera camera = arena_camera(scene->render_viewport);
+        app_scene_renderer_draw3d(
+            scene->renderer,
+            world,
+            particles,
+            &camera,
+            scene->render_viewport,
+            runtime
+        );
+        if (scene_can_move(scene)) {
+            draw_arena_selection(scene, world, &camera);
+        }
+        return;
+    }
     bool material_drawn = scene->render_viewport && app_scene_renderer_draw(
                                                         scene->renderer,
                                                         world,
                                                         particles,
-                                                        scene->render_viewport
+                                                        scene->render_viewport,
+                                                        runtime
                                                     );
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameAppearance.id };
@@ -504,7 +683,11 @@ void app_scene_authoring_render(void *user)
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        const GameTransform *transform = GAME_GameTransform_get_const(world, entity);
+        GameTransform pose = *GAME_GameTransform_get_const(world, entity);
+        if (runtime) {
+            engine_render_position(runtime, entity, &pose);
+        }
+        const GameTransform *transform = &pose;
         const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
         CF_Aabb bounds;
         float radians = actor_orientation(world, entity);
@@ -610,16 +793,5 @@ void app_scene_authoring_render(void *user)
             cf_draw_pop_color();
         }
     }
-    if (scene->marquee_visible) {
-        CF_Aabb box = { { fminf(scene->marquee_start.x, scene->marquee_end.x),
-                          fminf(scene->marquee_start.y, scene->marquee_end.y) },
-                        { fmaxf(scene->marquee_start.x, scene->marquee_end.x),
-                          fmaxf(scene->marquee_start.y, scene->marquee_end.y) } };
-        cf_draw_push_color(packed_color(0x82B5FF22));
-        cf_draw_quad_fill(box, 0);
-        cf_draw_pop_color();
-        cf_draw_push_color(packed_color(0x82B5FFFF));
-        cf_draw_quad(box, scene->selection_scale * 0.5f, 0);
-        cf_draw_pop_color();
-    }
+    draw_marquee(scene);
 }

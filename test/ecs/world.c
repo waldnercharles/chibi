@@ -39,8 +39,53 @@ static void ecs_destroy_probe(ecs_world *world, ecs_entity entity, void *user)
     }
 }
 
+static void sparse_component_growth()
+{
+    ecs_world *world = ecs_world_new();
+    ecs_entity entity = ecs_world_create_entity(world);
+    ecs_component_desc desc = {
+        .name = "Sparse",
+        .element_size = sizeof(ecs_health),
+        .type = &g_ecs_health_type,
+    };
+    enum
+    {
+        COMPONENTS = 129
+    };
+    for (int i = 0; i < COMPONENTS; i++) {
+        desc.id = UINT64_C(0xffff000000000001) + (uint64_t)i * 256;
+        assert(ecs_world_register_component(world, &desc, NULL) == ECS_OK);
+        ecs_health value = { i + 1 };
+        assert(ecs_world_record_add(world, entity, desc.id, &value, 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    bool retained = true;
+    for (int i = COMPONENTS - 1; i >= 0; i--) {
+        ecs_component_id id = UINT64_C(0xffff000000000001) + (uint64_t)i * 256;
+        const ecs_health *value = ecs_component_data_const(world, entity, id);
+        retained &= value && value->value == i + 1;
+    }
+    test_check(retained, "sparse component identities retain values across registry growth");
+    test_check(
+        ecs_world_register_component(world, &desc, NULL) == ECS_ERR_DUPLICATE &&
+            !ecs_world_component(world, UINT64_MAX),
+        "grown component registry distinguishes duplicate and missing "
+        "identities"
+    );
+    desc.id = 0;
+    ecs_component_id automatic = 0;
+    test_check(
+        ecs_world_register_component(world, &desc, &automatic) == ECS_OK &&
+            automatic == 1 && ecs_world_component(world, automatic),
+        "automatic component identities coexist with sparse registered "
+        "identities"
+    );
+    ecs_world_free(world);
+}
+
 void run_ecs_checks(void)
 {
+    sparse_component_growth();
     ecs_world *world = ecs_world_new();
     ecs_component_id position = 0;
     ecs_component_id health = 0;
@@ -146,6 +191,30 @@ void run_ecs_checks(void)
                         found[0].slot < found[1].slot;
     ecs_query_end(&query);
     test_check(dense_ordered, "dense and bitset indexes preserve observable ascending order");
+
+    ecs_query_expr *expression = ecs_query_expr_new(ECS_QUERY_ALL);
+    ecs_query_expr *excluded = ecs_query_expr_new(ECS_QUERY_NOT);
+    test_check(
+        ecs_query_expr_add(expression, ecs_query_expr_has(position)) == ECS_OK &&
+            ecs_query_expr_add(excluded, ecs_query_expr_has(health)) == ECS_OK &&
+            ecs_query_expr_add(expression, excluded) == ECS_OK,
+        "nested query filters can combine required and excluded components"
+    );
+    ecs_query_expr *copy = ecs_query_expr_clone(expression);
+    ecs_query_expr_free(expression);
+    test_check(
+        ecs_query_begin_expression(world, &query, copy) == ECS_OK,
+        "a cloned query owns its complete expression after the source is freed"
+    );
+    found_count = 0;
+    ecs_entity match;
+    while (ecs_query_next(&query, &match)) {
+        found_count++;
+        test_check(match.slot == e2.slot, "cloned filters reject entities missing Position or holding Health");
+    }
+    ecs_query_end(&query);
+    test_check(found_count == 1, "a cloned nested query retains its exact matching set");
+    ecs_query_expr_free(copy);
 
     ecs_world *ordered = ecs_world_new();
     ecs_component_id ordered_position = 0;

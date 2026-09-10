@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_EVENT_CATALOG_H
-#define CBLUEPRINT_APP_EVENT_CATALOG_H
+#ifndef CHIBI_APP_EVENT_CATALOG_H
+#define CHIBI_APP_EVENT_CATALOG_H
 
 #include "editor/workspace/editor.h"
 
@@ -15,6 +15,7 @@ static const editor_event_param APP_DAMAGE_PARAMS[] = {
 };
 static const editor_event_signature APP_EVENT_CATALOG[] = {
     { "Fire", NULL, 0 },
+    { "Dash", NULL, 0 },
     { "Tick", APP_TICK_PARAMS, 1 },
     { "Contact Begin", APP_CONTACT_PARAMS, 1 },
     { "Damage", APP_DAMAGE_PARAMS, 2 },

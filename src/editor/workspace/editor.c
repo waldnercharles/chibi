@@ -74,22 +74,22 @@ void ed_push_string(char ***stack, char *value)
     apush(*stack, value);
 }
 
-editor *editor_new(behavior_asset *bp)
+editor *editor_new(behavior_asset *asset)
 {
     registry_validate();
     editor *e = (editor *)calloc(1, sizeof *e);
     if (!e) {
         return NULL;
     }
-    e->bp = bp;
-    e->document_key = xstrdup(bp->name);
+    e->asset = asset;
+    e->document_key = xstrdup(asset->name);
     e->ui_context = EDITOR_UI_CONTEXT_BEHAVIOR;
     e->inspector_active = true;
     e->graph_visible = 1;
-    e->active_graph = bp ? bp->graph : NULL;
+    e->active_graph = asset ? asset->graph : NULL;
     e->arrange_pending = true;
-    e->edit_revision_bp = bp;
-    e->saved_snapshot = bp ? behavior_asset_save_json(bp) : NULL;
+    e->edit_revision_asset = asset;
+    e->saved_snapshot = asset ? behavior_asset_save_json(asset) : NULL;
     compile_report_init(&e->compile);
     e->ev = eval_view_new();
     eval_view_set_formatter(e->ev, e->value_formatter, e->value_formatter_user);
@@ -161,7 +161,7 @@ void editor_free(editor *e)
     free(e->saved_snapshot);
     ed_destroy_preview(e);
     compile_report_free(&e->compile);
-    behavior_asset_free(e->bp);
+    behavior_asset_free(e->asset);
     afree(e->graph_views);
     afree(e->graph_callers);
     afree(e->views);
@@ -219,10 +219,15 @@ void editor_set_save_handler(editor *e, editor_save_handler handler, void *user)
 int editor_host_captures_keyboard(void)
 {
     const ImGuiIO *io = ImGui_GetIO();
+    const ImGuiContext *context = ImGui_GetCurrentContext();
+    bool active_control = context->ActiveId &&
+                          (!context->ActiveIdWindow ||
+                           context->ActiveId != context->ActiveIdWindow->MoveId);
     /* Navigation claims every key in a focused window containing controls.
      * Callers already require viewport focus; only active UI interaction should
-     * prevent that viewport from receiving gameplay keys. */
-    return io->WantTextInput || ImGui_IsAnyItemActive() ||
+     * prevent that viewport from receiving gameplay keys. Clicking the viewport
+     * image holds its window move ID, which owns the pointer rather than keys. */
+    return io->WantTextInput || active_control ||
            ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup) ||
            (io->WantCaptureKeyboard && !io->NavActive);
 }
@@ -261,8 +266,8 @@ void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, in
 void editor_draw(editor *e)
 {
     if (e && !e->icon_font) {
-        e->icon_font = ed_find_font("Blueprints Body");
-        e->math_font = ed_find_font("Blueprints Math");
+        e->icon_font = ed_find_font("Chibi Body");
+        e->math_font = ed_find_font("Chibi Math");
     }
     if (!e || !e->ev) {
         return;
@@ -299,9 +304,11 @@ void editor_draw(editor *e)
         if (editor_ui_take_focus(EDITOR_UI_FOCUS_NODE_CANVAS)) {
             ImGui_SetNextWindowFocus();
         }
+        char title[256];
+        snprintf(title, sizeof title, "%s###Node Canvas", e->asset->name);
         if (!editor_ui_begin_pane(
                 EDITOR_UI_PANE_NODE_CANVAS,
-                "Node Canvas",
+                title,
                 ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
             )) {
             ImGui_End();
@@ -358,6 +365,7 @@ void editor_draw(editor *e)
             ed_accept_graph_call_drop(e);
             ed_handle_shortcuts(e);
             ed_handle_popups(e);
+            ed_draw_binding_popup(e);
             ImGui_End();
         }
     }

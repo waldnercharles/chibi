@@ -5,6 +5,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/type.h"
+#include "platform/cute.h"
 #include "render/shader_catalog.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
@@ -57,8 +58,7 @@ static behavior_asset *load_linked_example(const char *path, const behavior_asse
     char error[256] = { 0 };
     behavior_asset *linked = behavior_asset_link_libraries(source, catalog, 1, error, sizeof error);
     assert(linked);
-    assert(acount(source->graphs) == 1);
-    assert(acount(linked->graphs) > 1);
+    assert(acount(linked->graphs) > acount(source->graphs));
     behavior_asset_free(source);
     return linked;
 }
@@ -67,50 +67,63 @@ static void examples()
 {
     behavior_asset *library = load_example("content/shader-libraries/ShaderMath.json");
     assert(behavior_asset_validate_library(library) == NULL);
-    behavior_asset *ring = load_linked_example("content/materials/PulseRing.json", library);
+    behavior_asset *ring = load_linked_example("test/fixtures/content/materials/PulseRing.json", library);
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error;
     assert(shader_graph_from_graph(ring->graph, &ir, &error));
-    float point[2] = { 35, 0 }, result[8][4], params[32][4] = { { 0 } };
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, NULL, result, &error));
-    near(result[0][3], 1);
+    shader_sample_context sample = { .position = { 35, 0 } };
+    float result[8][4], params[32][4] = { { 0 } };
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
+    near(result[5][0], 1);
+    near(result[6][0], 1);
     float emission = result[1][2];
-    assert(shader_graph_eval_outputs(&ir, point, point, .78539816f, NULL, result, &error));
+    sample.time = .78539816f;
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     assert(result[1][2] > emission);
     for (int i = 0; i < acount(ir.nodes); i++) {
         if (ir.nodes[i].op == SHADER_PARAMETER) {
             memcpy(params[ir.nodes[i].parameter], ir.nodes[i].value, sizeof params[0]);
         }
     }
+    sample.time = 0;
     params[4][0] = 3;
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, params, result, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, params, result, &error));
     assert(result[1][2] > emission + 2.9f);
+    sample.position[0] = 0;
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
+    near(result[5][0], 0);
+    sample.position[0] = 35;
     behavior_asset_free(ring);
 
-    behavior_asset *gradient = load_linked_example("content/materials/OutlineGradient.json", library);
+    behavior_asset *gradient = load_linked_example(
+        "test/fixtures/content/materials/OutlineGradient.json",
+        library
+    );
     assert(shader_graph_from_graph(gradient->graph, &ir, &error));
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, NULL, result, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     float right_red = result[0][0];
-    point[0] = -35;
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, NULL, result, &error));
+    sample.position[0] = -35;
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     assert(right_red > result[0][0]);
     behavior_asset_free(gradient);
     behavior_asset_free(library);
 
-    behavior_asset *shape = load_example("content/shapes/SmoothUnion.json");
+    behavior_asset *shape = load_example("test/fixtures/content/shapes/SmoothUnion.json");
     assert(shader_graph_from_graph(shape->graph, &ir, &error));
-    point[0] = point[1] = 0;
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, NULL, result, &error));
+    sample.position[0] = sample.position[1] = 0;
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     near(result[0][0], -9);
-    point[0] = shape->bounds[0];
-    point[1] = shape->bounds[1];
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, NULL, result, &error));
+    sample.position[0] = shape->bounds[0];
+    sample.position[1] = shape->bounds[1];
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     assert(result[0][0] > 0);
     behavior_asset_free(shape);
     shader_graph_free(&ir);
 
-    behavior_asset *flash = load_example("content/behaviors/DamageFlashBehavior.json");
+    behavior_asset *flash = load_example(
+        "test/fixtures/content/behaviors/DamageFlashBehavior.json"
+    );
     compile_report report;
     compile_report_init(&report);
     assert(behavior_asset_compile(flash, &report) == 0);
@@ -131,11 +144,11 @@ static void live_shader_library()
     );
     game_live_definition *ring = game_live_definition_new(
         "PulseRing",
-        load_example("content/materials/PulseRing.json")
+        load_example("test/fixtures/content/materials/PulseRing.json")
     );
     game_live_definition *gradient = game_live_definition_new(
         "OutlineGradient",
-        load_example("content/materials/OutlineGradient.json")
+        load_example("test/fixtures/content/materials/OutlineGradient.json")
     );
     assert(library && ring && gradient);
     assert(game_live_add_definition(live, library) == 0);
@@ -161,9 +174,10 @@ static void live_shader_library()
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error;
-    float point[2] = { 35, 0 }, result[8][4];
+    shader_sample_context sample = { .position = { 35, 0 } };
+    float result[8][4];
     assert(shader_graph_from_graph(ring->applied->graph, &ir, &error));
-    assert(shader_graph_eval_outputs(&ir, point, point, 0, NULL, result, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     near(result[1][2], .55f);
     shader_graph_free(&ir);
     old_ring = ring->applied;
@@ -179,8 +193,283 @@ static void live_shader_library()
     render_shader_catalog_clear();
 }
 
+static void math_program(shader_graph *ir)
+{
+    shader_graph_init(ir);
+    for (int i = 0; i < 4; i++) {
+        int parameter = shader_graph_add(ir, SHADER_PARAMETER, i ? 1 : 3);
+        ir->nodes[parameter].parameter = i;
+    }
+    shader_op operations[] = { SHADER_NORMALIZE,  SHADER_CLAMP,
+                               SHADER_SATURATE,   SHADER_STEP,
+                               SHADER_SMOOTHSTEP, SHADER_NOISE };
+    for (int i = 0; i < 6; i++) {
+        int index = shader_graph_add(ir, operations[i], i == 5 ? 1 : 3);
+        shader_node *n = &ir->nodes[index];
+        n->input[0] = 0;
+        n->input[1] = i == 5 ? 3 : 1;
+        n->input[2] = 2;
+        ir->output[i] = index;
+    }
+    int channels[3];
+    for (int i = 0; i < 3; i++) {
+        channels[i] = shader_graph_add(ir, SHADER_X + i, 1);
+        ir->nodes[channels[i]].input[0] = 0;
+    }
+    int xy = shader_graph_add(ir, SHADER_VECTOR2, 2);
+    ir->nodes[xy].input[0] = channels[0];
+    ir->nodes[xy].input[1] = channels[1];
+    int noise2 = shader_graph_add(ir, SHADER_NOISE, 1);
+    ir->nodes[noise2].input[0] = xy;
+    ir->nodes[noise2].input[1] = 3;
+    ir->output[6] = noise2;
+    int xyz = shader_graph_add(ir, SHADER_VECTOR3, 3);
+    memcpy(ir->nodes[xyz].input, channels, sizeof channels);
+    ir->output[7] = xyz;
+    ir->output_count = 8;
+}
+
+static const float math_cases[][4][4] = {
+    { { 3, 4, 0 }, { 0 }, { 1 }, { 0.25f } },
+    { { 0, 0, 0 }, { 0 }, { 0 }, { 1 } },
+    { { -0.25f, 0.5f, 1.5f }, { 1 }, { 0 }, { 2 } },
+    { { 1e20f, -2e20f, 3e20f }, { -1 }, { 1 }, { 0.75f } },
+    { { 1e-20f, -2e-20f, 3e-20f }, { 0 }, { 1 }, { 4096 } },
+    { { 4095.75f, -0.25f, 0.125f }, { -0.5f }, { 2 }, { 1 } },
+    { { -4096.25f, -7.25f, 2.125f }, { 0.25f }, { 0.25f }, { -1 } },
+    { { 1, 2, 3 }, { 0 }, { 1 }, { 1 } },
+    { { -1, -2, -3 }, { 0 }, { 1 }, { 1 } },
+};
+
+static void math_nodes()
+{
+    shader_graph ir;
+    math_program(&ir);
+    shader_sample_context sample = { 0 };
+    float values[32][4] = { 0 }, out[8][4];
+    shader_error error;
+    for (int i = 0; i < (int)(sizeof math_cases / sizeof *math_cases); i++) {
+        memcpy(values, math_cases[i], sizeof math_cases[i]);
+        assert(shader_graph_eval_outputs(&ir, &sample, values, out, &error));
+        for (int j = 0; j < 8; j++) {
+            for (int k = 0; k < ir.nodes[ir.output[j]].width; k++) {
+                assert(isfinite(out[j][k]));
+            }
+        }
+        if (i == 0) {
+            near(out[0][0], 0.6f);
+            near(out[0][1], 0.8f);
+            near(out[1][0], 1);
+            near(out[5][0], out[6][0]);
+        }
+        if (i == 1) {
+            near(out[0][0], 0);
+            near(out[4][0], 1);
+        }
+        if (i == 2) {
+            near(out[1][0], 0);
+            near(out[1][2], 1);
+            near(out[4][0], 1);
+            near(out[4][1], 0.5f);
+            near(out[4][2], 0);
+        }
+        if (i == 3 || i == 4) {
+            near(out[0][0], 1 / sqrtf(14));
+            near(out[0][1], -2 / sqrtf(14));
+            near(out[0][2], 3 / sqrtf(14));
+        }
+        if (i == 7) {
+            near(out[5][0], 0.500847012f);
+        }
+        if (i == 8) {
+            near(out[5][0], 0.913893337f);
+        }
+        assert(out[5][0] >= 0 && out[5][0] <= 1);
+    }
+    values[0][0] = 0.25f;
+    values[0][1] = values[0][2] = 0.5f;
+    assert(shader_graph_eval_outputs(&ir, &sample, values, out, &error));
+    float first = out[5][0];
+    values[0][0] += 4096;
+    assert(shader_graph_eval_outputs(&ir, &sample, values, out, &error));
+    near(out[5][0], first);
+    values[0][0] = -0.0001f;
+    assert(shader_graph_eval_outputs(&ir, &sample, values, out, &error));
+    first = out[5][0];
+    values[0][0] = 0.0001f;
+    assert(shader_graph_eval_outputs(&ir, &sample, values, out, &error));
+    near(out[5][0], first);
+    shader_graph_free(&ir);
+
+    behavior_asset *asset = behavior_asset_new("Procedural math");
+    graph *g = asset->graph;
+    node *vector = add(g, "Shader Vector3");
+    scalar(g, vector, 0, 0, 1);
+    scalar(g, vector, 0, 1, 2);
+    scalar(g, vector, 0, 2, 3);
+    node *previous = vector;
+    const char *chain[] = { "Shader Normalize",  "Shader Clamp",
+                            "Shader Saturate",   "Shader Step",
+                            "Shader Smoothstep", "Shader Noise" };
+    for (int i = 0; i < 6; i++) {
+        node *n = add(g, chain[i]);
+        assert(graph_connect_data(g, previous, 0, n, 0) == 0);
+        if (i == 1 || i == 4) {
+            assert(n->input_pins[2].type == PIN_F32);
+            near(n->input_pins[2].default_value.f, 1);
+        }
+        previous = n;
+    }
+    node *root = shader_graph_add_output(g, true);
+    assert(graph_connect_data(g, previous, 0, root, 0) == 0);
+    char *json = behavior_asset_save_json(asset);
+    behavior_asset *copy = behavior_asset_load_json(json);
+    assert(copy && shader_graph_from_graph(copy->graph, &ir, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, out, &error));
+    near(out[0][0], 0.253253296f);
+    free(json);
+    behavior_asset_free(copy);
+    behavior_asset_free(asset);
+    shader_graph_free(&ir);
+}
+
+/* Runs inside the existing native render checks' active Cute context. */
+int test_shader_graph_gpu()
+{
+    shader_graph ir;
+    math_program(&ir);
+    shader_error error;
+    char *function = shader_graph_glsl_named(&ir, "test_math", &error);
+    assert(function);
+    const char *
+        body = "layout(local_size_x=8,local_size_y=1,local_size_z=1) in;\n"
+               "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
+               "layout(set=2,binding=0) uniform Inputs { vec4 values[32]; };\n"
+               "void main(){vec4 result[8],p[32]; for(int i=0;i<32;i++) "
+               "p[i]=values[i];"
+               "SGSample sg_test=SGSample(vec2(0),vec2(0),vec3(0),"
+               "vec3(0),vec3(0),vec3(0),0.0);"
+               "test_math(sg_test,p,result);"
+               "int x=int(gl_GlobalInvocationID.x); "
+               "imageStore(result_image,ivec2(x,0),result[x]);}\n";
+    char *source = malloc(strlen(function) + strlen(body) + 1);
+    assert(source);
+    strcpy(source, function);
+    strcat(source, body);
+    CF_ComputeShader shader = cf_make_compute_shader_from_source(source);
+    assert(shader.id);
+    CF_Material material = cf_make_material();
+    CF_CanvasParams canvas_params = cf_canvas_defaults(8, 1);
+    canvas_params.target.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+    canvas_params.target.usage |= CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
+    CF_Canvas canvas = cf_make_canvas(canvas_params);
+    assert(canvas.id);
+    CF_Texture texture = cf_canvas_get_target(canvas);
+    CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
+    dispatch.rw_textures = &texture;
+    dispatch.rw_texture_count = 1;
+    for (int i = 0; i < (int)(sizeof math_cases / sizeof *math_cases); i++) {
+        shader_sample_context sample = { 0 };
+        float values[32][4] = { 0 }, expected[8][4], actual[8][4];
+        memcpy(values, math_cases[i], sizeof math_cases[i]);
+        assert(shader_graph_eval_outputs(&ir, &sample, values, expected, &error));
+        cf_app_update(NULL);
+        cf_material_set_uniform_cs(material, "values", values, CF_UNIFORM_TYPE_FLOAT4, 32);
+        cf_dispatch_compute(shader, material, dispatch);
+        cf_app_draw_onto_screen(false);
+        CF_Readback readback = cf_canvas_readback(canvas);
+        assert(readback.id);
+        uint64_t start = cf_get_ticks();
+        while (!cf_readback_ready(readback)) {
+            assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
+            cf_sleep(1);
+        }
+        assert(cf_readback_data(readback, actual, sizeof actual) == sizeof actual);
+        cf_destroy_readback(readback);
+        for (int output = 0; output < ir.output_count; output++) {
+            for (int channel = 0; channel < ir.nodes[ir.output[output]].width;
+                 channel++) {
+                float want = expected[output][channel], got = actual[output][channel];
+                if (!isfinite(got) ||
+                    fabsf(got - want) > 0.0001f * fmaxf(1, fabsf(want))) {
+                    fprintf(stderr, "shader math GPU case %d output %d channel %d: %.9g != %.9g\n", i, output, channel, got, want);
+                    assert(false);
+                }
+            }
+        }
+    }
+    cf_destroy_canvas(canvas);
+    cf_destroy_material(material);
+    cf_destroy_compute_shader(shader);
+    shader_graph_free(&ir);
+    free(source);
+    free(function);
+    puts("shader math GPU PASS: vector operations and noise match CPU including negative and extreme inputs");
+    return 0;
+}
+
+static void parameter_slots()
+{
+    behavior_asset *asset = behavior_asset_new("Parameter slot conflicts");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *root = shader_graph_add_output(g, false);
+    node *first = add(g, "Shader Parameter"), *second = add(g, "Shader Parameter");
+    assert(graph_set_node_reference(g, first, 2, "Roughness") == 0);
+    assert(graph_set_node_reference(g, second, 2, "Opacity") == 0);
+    scalar(g, first, 1, 0, .3f);
+    scalar(g, second, 1, 0, .7f);
+    assert(graph_connect_data(g, first, 0, root, 2) == 0);
+    assert(graph_connect_data(g, first, 0, root, 5) == 0);
+    shader_graph ir;
+    shader_graph_init(&ir);
+    shader_error error = { 0 };
+    assert(shader_graph_from_graph(g, &ir, &error));
+    assert(graph_connect_data(g, second, 0, root, 5) == 0);
+    /* Loading a serialized collision must fail without replacing the last valid program. */
+    char *json = behavior_asset_save_json(asset);
+    behavior_asset *loaded = behavior_asset_load_json(json);
+    assert(loaded);
+    free(json);
+    assert(!shader_graph_from_graph(loaded->graph, &ir, &error));
+    assert(error.node == second->id && strstr(error.message, "different slots"));
+    float result[SHADER_OUTPUT_MAX][4];
+    assert(shader_graph_eval_outputs(&ir, &(shader_sample_context){ 0 }, NULL, result, &error));
+    near(result[2][0], .3f);
+    near(result[5][0], .3f);
+    behavior_asset_free(loaded);
+    assert(graph_set_node_reference(g, second, 7, "Opacity") == 0);
+    assert(shader_graph_from_graph(g, &ir, &error));
+    assert(shader_graph_eval_outputs(&ir, &(shader_sample_context){ 0 }, NULL, result, &error));
+    near(result[5][0], .7f);
+    assert(graph_set_node_reference(g, second, UINT64_C(1) << 32, "Opacity") == 0);
+    assert(!shader_graph_from_graph(g, &ir, &error));
+    assert(error.node == second->id && strstr(error.message, "between 0 and 31"));
+
+    graph *function = behavior_asset_add_function(asset, "Shared parameter", 1);
+    node *ret = graph_node_by_id(function, function->return_id);
+    pin_spec pin = { .name = "Value", .type = PIN_F32, .kind = PIN_DATA };
+    assert(graph_add_pin(function, ret, 0, &pin) >= 0);
+    node *shared = add(function, "Shader Parameter");
+    assert(graph_set_node_reference(function, shared, 2, "Shared") == 0);
+    assert(graph_connect_data(function, shared, 0, ret, 0) == 0);
+    node *call = behavior_asset_add_function_call_node(asset, function);
+    assert(graph_connect_data(g, call, 0, root, 5) == 0);
+    assert(!shader_graph_from_graph(g, &ir, &error));
+    assert(error.node == shared->id && strstr(error.message, "different slots"));
+    assert(graph_set_node_reference(function, shared, 7, "Shared") == 0);
+    assert(shader_graph_from_graph(g, &ir, &error));
+    /* Inlining the same parameter node through two calls is one shared parameter. */
+    node *other_call = behavior_asset_add_function_call_node(asset, function);
+    assert(graph_connect_data(g, other_call, 0, root, 2) == 0);
+    assert(shader_graph_from_graph(g, &ir, &error));
+    shader_graph_free(&ir);
+    behavior_asset_free(asset);
+}
+
 void test_shader_graph()
 {
+    parameter_slots();
     /* Reflected scalar reads must clear a previous array tag before serialization. */
     float component = 0.6f;
     type_field field = { .name = "x",
@@ -205,12 +494,13 @@ void test_shader_graph()
     shader_graph_init(&ir);
     shader_error error = { 0 };
     assert(shader_graph_from_graph(g, &ir, &error));
-    float local[2] = { 3, 4 }, world[2] = { 10, 20 }, outputs[8][4],
-          params[32][4] = { { 0 } };
-    assert(shader_graph_eval_outputs(&ir, local, world, 0, NULL, outputs, &error));
+    shader_sample_context sample = { .position = { 3, 4 },
+                                     .world_position = { 10, 20, 0 } };
+    float outputs[8][4], params[32][4] = { { 0 } };
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 3);
     params[3][0] = 4;
-    assert(shader_graph_eval_outputs(&ir, local, world, 0, params, outputs, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, params, outputs, &error));
     near(outputs[0][0], 1);
     char *glsl = shader_graph_glsl_named(&ir, "test_shape", &error);
     assert(glsl && strstr(glsl, "void test_shape(") && strstr(glsl, "sg_params[3]"));
@@ -222,7 +512,7 @@ void test_shader_graph()
     assert(copy);
     free(json);
     assert(shader_graph_from_graph(copy->graph, &ir, &error));
-    assert(shader_graph_eval_outputs(&ir, local, world, 0, NULL, outputs, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 3);
     behavior_asset_free(copy);
 
@@ -242,7 +532,7 @@ void test_shader_graph()
     assert(graph_connect_data(g, circle, 0, call, 0) == 0);
     assert(graph_connect_data(g, call, 0, root, 0) == 0);
     assert(shader_graph_from_graph(g, &ir, &error));
-    assert(shader_graph_eval_outputs(&ir, local, world, 0, NULL, outputs, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 6);
 
     /* Reject a cycle and preserve the previously compiled program. */
@@ -258,12 +548,17 @@ void test_shader_graph()
     graph_init(&material);
     shader_graph_add_output(&material, false);
     assert(shader_graph_from_graph(&material, &ir, &error));
-    assert(ir.output_count == 8);
-    assert(shader_graph_eval_outputs(&ir, local, world, 0, NULL, outputs, &error));
+    assert(ir.output_count == 7);
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 1);
-    near(outputs[0][3], 1);
+    near(outputs[0][1], 1);
+    near(outputs[0][2], 1);
     near(outputs[1][0], 0);
+    near(outputs[2][0], .5f);
     near(outputs[3][0], 0);
+    near(outputs[4][0], 0);
+    near(outputs[5][0], 1);
+    near(outputs[6][0], 0);
     graph_free(&material);
     shader_graph_free(&ir);
     /* Editing a scalar default before connecting a vector must discard the old union bits. */
@@ -280,12 +575,13 @@ void test_shader_graph()
     assert(graph_connect_data(&specialized, vector_multiply, 0, vector_length, 0) == 0);
     assert(graph_connect_data(&specialized, vector_length, 0, distance_output, 0) == 0);
     assert(shader_graph_from_graph(&specialized, &ir, &error));
-    assert(shader_graph_eval_outputs(&ir, local, world, 0, NULL, outputs, &error));
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 0);
     graph_free(&specialized);
     shader_graph_free(&ir);
 
     examples();
     live_shader_library();
+    math_nodes();
     puts("shader graph PASS: parameter instances, SDF evaluation, portable GLSL, serialization, functions and cycle rejection");
 }

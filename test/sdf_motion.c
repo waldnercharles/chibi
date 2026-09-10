@@ -4,6 +4,7 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <float.h>
@@ -84,7 +85,8 @@ static void clocks()
     engine *runtime = engine_new(world, live);
     assert(engine_frame(runtime, 0) >= 0);
     assert(engine_set_playing(runtime, true) == 0);
-    assert(engine_frame(runtime, 0.25) >= 0);
+    simulation_fixture simulation = simulation_fixture_new(runtime, NULL);
+    simulation_advance(&simulation, 0.25);
     close_to(motion->time, 2.25f);
     close_to(motion->pluck_age, 3.25f);
     assert(engine_set_playing(runtime, false) == 0);
@@ -92,15 +94,15 @@ static void clocks()
     close_to(motion->time, 2.25f);
     assert(engine_step(runtime) == 0);
     assert(engine_frame(runtime, 5.5) >= 0);
-    close_to(motion->time, 2.75f);
+    close_to(motion->time, 2.25f + ENGINE_FIXED_SECONDS);
     assert(engine_frame(runtime, 9) >= 0);
-    close_to(motion->time, 2.75f);
+    close_to(motion->time, 2.25f + ENGINE_FIXED_SECONDS);
     ecs_entity invalid = ecs_world_create_entity(world);
     assert(GAME_GameSdfMotion_add(world, invalid, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     GAME_GameSdfMotion_get(world, invalid)->time = NAN;
     assert(game_sdf_motion_tick(world, 1) < 0);
-    close_to(GAME_GameSdfMotion_get_const(world, entity)->time, 2.75f);
+    close_to(GAME_GameSdfMotion_get_const(world, entity)->time, 2.25f + ENGINE_FIXED_SECONDS);
     assert(game_sdf_motion_tick(world, INFINITY) < 0);
     engine_free(runtime);
     game_live_world_free(live);
@@ -123,23 +125,29 @@ static void preview_clocks()
     game_prototype_preview *preview = game_prototype_preview_new(&registry);
     assert(game_prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
     assert(game_prototype_preview_tick(preview, 0) >= 0);
-    assert(game_prototype_preview_tick(preview, 0.25) >= 0);
+    simulation_fixture simulation = simulation_fixture_new(NULL, preview);
+    simulation_advance(&simulation, 0.25);
     const GameSdfMotion *motion = GAME_GameSdfMotion_get_const(
         game_prototype_preview_world(preview),
         game_prototype_preview_entity(preview)
     );
     close_to(motion->time, 2.25f);
     close_to(motion->pluck_age, 3.25f);
-    assert(game_prototype_preview_idle(preview, 50) == FLOW_OK);
+    engine *runtime = game_prototype_preview_runtime(preview);
+    assert(engine_set_playing(runtime, false) == 0);
+    simulation_frame(&simulation, 50);
     close_to(motion->time, 2.25f);
-    assert(game_prototype_preview_tick(preview, 50.25) >= 0);
+    assert(engine_set_playing(runtime, true) == 0);
+    simulation_advance(&simulation, 50.25);
     close_to(motion->time, 2.5f);
-    assert(game_prototype_preview_idle(preview, 90) == FLOW_OK);
-    assert(game_prototype_preview_tick(preview, 90.5) >= 0);
-    close_to(motion->time, 3);
-    assert(game_prototype_preview_idle(preview, 100) == FLOW_OK);
-    close_to(motion->time, 3);
-    assert(game_prototype_preview_idle(preview, NAN) == FLOW_ERR_ARGUMENT);
+    assert(engine_set_playing(runtime, false) == 0);
+    simulation_frame(&simulation, 90);
+    assert(engine_step(runtime) == 0);
+    simulation_frame(&simulation, 90.5);
+    close_to(motion->time, 2.5f + ENGINE_FIXED_SECONDS);
+    simulation_frame(&simulation, 100);
+    close_to(motion->time, 2.5f + ENGINE_FIXED_SECONDS);
+    assert(game_prototype_preview_tick(preview, NAN) == FLOW_ERR_ARGUMENT);
     game_prototype_preview_stop(preview);
     assert(game_prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
     motion = GAME_GameSdfMotion_get_const(

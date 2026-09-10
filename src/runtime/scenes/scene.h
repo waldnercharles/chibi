@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_SCENE_H
-#define CBLUEPRINT_GAME_SCENE_H
+#ifndef CHIBI_GAME_SCENE_H
+#define CHIBI_GAME_SCENE_H
 
 #include "runtime/behaviors/behavior.h"
 

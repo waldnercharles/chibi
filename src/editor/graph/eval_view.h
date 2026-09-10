@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_EVAL_VIEW_H
-#define CBLUEPRINT_EDITOR_EVAL_VIEW_H
+#ifndef CHIBI_EDITOR_EVAL_VIEW_H
+#define CHIBI_EDITOR_EVAL_VIEW_H
 
 #include "graph/model/graph.h"
 #include "graph/runtime/flow.h"

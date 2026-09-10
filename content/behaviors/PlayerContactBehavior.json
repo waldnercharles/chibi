@@ -1,7 +1,7 @@
 {
   "version": 3,
   "name": "PlayerContactBehavior",
-  "id_counter": 110,
+  "id_counter": 129,
   "description": "Enemy body contact deals 10 damage at most once per half second. Only new contacts can hit; continuing overlap never repeats.",
   "owner_type": "ecs.entity",
   "variables": [
@@ -50,8 +50,8 @@
         {
           "id": 7,
           "type": "Get Variable",
-          "x": 260,
-          "y": 0,
+          "x": 0,
+          "y": 230,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -75,8 +75,8 @@
         {
           "id": 9,
           "type": "Delta Time",
-          "x": 520,
-          "y": 0,
+          "x": 0,
+          "y": 420,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -100,8 +100,8 @@
         {
           "id": 13,
           "type": "Subtract",
-          "x": 780,
-          "y": 0,
+          "x": 280,
+          "y": 230,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -150,8 +150,8 @@
         {
           "id": 17,
           "type": "Max",
-          "x": 0,
-          "y": 220,
+          "x": 550,
+          "y": 230,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -200,8 +200,8 @@
         {
           "id": 22,
           "type": "Set Variable",
-          "x": 260,
-          "y": 220,
+          "x": 820,
+          "y": 0,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -260,8 +260,8 @@
         {
           "id": 25,
           "type": "Event",
-          "x": 520,
-          "y": 220,
+          "x": 0,
+          "y": 700,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -297,8 +297,8 @@
         {
           "id": 27,
           "type": "Get Variable",
-          "x": 780,
-          "y": 220,
+          "x": 0,
+          "y": 1260,
           "reference_id": 1,
           "disabled": false,
           "breakpoint": false,
@@ -322,8 +322,8 @@
         {
           "id": 31,
           "type": "Greater Or Equal",
-          "x": 0,
-          "y": 440,
+          "x": 1120,
+          "y": 900,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -372,8 +372,8 @@
         {
           "id": 36,
           "type": "Branch",
-          "x": 260,
-          "y": 440,
+          "x": 1380,
+          "y": 700,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -431,8 +431,8 @@
         {
           "id": 40,
           "type": "Call Function",
-          "x": 520,
-          "y": 440,
+          "x": 1660,
+          "y": 700,
           "reference_id": 2,
           "disabled": false,
           "breakpoint": false,
@@ -476,6 +476,238 @@
             }
           ],
           "reference_name": "Check Enemy Contact"
+        },
+        {
+          "id": 110,
+          "type": "Has_GameDash",
+          "x": 0,
+          "y": 880,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 111,
+              "name": "Value",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 112,
+          "type": "Branch",
+          "x": 270,
+          "y": 700,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 113,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 114,
+              "name": "Condition",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 115,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 116,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 117,
+          "type": "Get_GameDash",
+          "x": 270,
+          "y": 930,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 118,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameDash"
+            },
+            {
+              "id": 119,
+              "name": "remaining",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "float",
+              "field_source": 118,
+              "field_name": "remaining"
+            }
+          ]
+        },
+        {
+          "id": 120,
+          "type": "Less",
+          "x": 540,
+          "y": 930,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 121,
+              "name": "A",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "float"
+            },
+            {
+              "id": 122,
+              "name": "B",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "float"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 123,
+              "name": "Result",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 124,
+          "type": "Branch",
+          "x": 820,
+          "y": 700,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 125,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 126,
+              "name": "Condition",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 127,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 128,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
         }
       ],
       "edges": [
@@ -530,14 +762,6 @@
           "kind": "data"
         },
         {
-          "from": 25,
-          "from_pin": 23,
-          "to": 36,
-          "to_pin": 32,
-          "kind": "exec",
-          "order": 0
-        },
-        {
           "from": 36,
           "from_pin": 34,
           "to": 40,
@@ -551,6 +775,59 @@
           "to": 40,
           "to_pin": 38,
           "kind": "data"
+        },
+        {
+          "from": 25,
+          "from_pin": 23,
+          "to": 112,
+          "to_pin": 113,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 110,
+          "from_pin": 111,
+          "to": 112,
+          "to_pin": 114,
+          "kind": "data"
+        },
+        {
+          "from": 112,
+          "from_pin": 115,
+          "to": 124,
+          "to_pin": 125,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 112,
+          "from_pin": 116,
+          "to": 36,
+          "to_pin": 32,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 117,
+          "from_pin": 119,
+          "to": 120,
+          "to_pin": 122,
+          "kind": "data"
+        },
+        {
+          "from": 120,
+          "from_pin": 123,
+          "to": 124,
+          "to_pin": 126,
+          "kind": "data"
+        },
+        {
+          "from": 124,
+          "from_pin": 128,
+          "to": 36,
+          "to_pin": 32,
+          "kind": "exec",
+          "order": 0
         }
       ]
     },

@@ -235,7 +235,9 @@ static int parse_field(
             free(nested_value);
             return result;
         }
-        case PIN_HANDLE:
+        /* Runtime handles have no authored identity. A saved component clears
+         * them; graph events supply live handles after instantiation. */
+        case PIN_HANDLE: result = !yyjson_is_null(json); break;
         case PIN_FLOW: result = 1; break;
     }
     if (result) {
@@ -1411,6 +1413,119 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
         .data = xcalloc(1, desc->element_size),
     };
     apush(prototype->components, component);
+    if (!strcmp(desc->name, "GameVisualTransform")) {
+        return game_prototype_write_field(
+            prototype,
+            desc->name,
+            "scale",
+            (pin_value){ .type = PIN_F32, .f = 1 }
+        );
+    }
+    if (!strcmp(desc->name, "GameVisualMotion")) {
+        float rotation[3] = { 0 };
+        const char *angles[] = { "pitch", "yaw", "roll" };
+        pin_value value;
+        if (find_component(prototype, "GameVisualTransform")) {
+            for (int i = 0; i < 3; i++) {
+                if (game_prototype_read_field(prototype, "GameVisualTransform", angles[i], &value) !=
+                    0) {
+                    return -1;
+                }
+                rotation[i] = value.f;
+            }
+        }
+        float elevation = 0;
+        if (find_component(prototype, "GameGeometry3D")) {
+            if (game_prototype_read_field(prototype, "GameGeometry3D", "elevation", &value) !=
+                0) {
+                return -1;
+            }
+            elevation = value.f;
+        }
+        const char *fields[] = { "speed", "reaction_duration", "reaction_age", "rest_elevation" };
+        const float values[] = { 1, .32f, .32f, elevation };
+        for (int i = 0; i < 4; i++) {
+            if (game_prototype_write_field(
+                    prototype,
+                    desc->name,
+                    fields[i],
+                    (pin_value){ .type = PIN_F32, .f = values[i] }
+                ) != 0) {
+                return -1;
+            }
+        }
+        return game_prototype_write_field(
+            prototype,
+            desc->name,
+            "rotation",
+            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = rotation }
+        );
+    }
+    if (!strcmp(desc->name, "GameRhythm")) {
+        int result = game_prototype_write_field(
+            prototype,
+            desc->name,
+            "bpm",
+            (pin_value){ .type = PIN_F32, .f = 120 }
+        );
+        return result ? result
+                      : game_prototype_write_field(
+                            prototype,
+                            desc->name,
+                            "pulse_width",
+                            (pin_value){ .type = PIN_F32, .f = .18f }
+                        );
+    }
+    if (!strcmp(desc->name, "GameMeshParts")) {
+        return game_prototype_write_field(
+            prototype,
+            desc->name,
+            "parts",
+            (pin_value){ .type = PIN_STR, .str = "[]" }
+        );
+    }
+    if (!strcmp(desc->name, "GameParticleEmitter")) {
+        const char *fields[] = { "rate",     "lifetime",      "speed",
+                                 "size",     "spread",        "drag",
+                                 "emission", "size_exponent", "velocity_inherit" };
+        const float values[] = { 90, .3f, 70, 2, .3f, 1, .7f, .8f, 1 };
+        for (int i = 0; i < 9; i++) {
+            int result = game_prototype_write_field(
+                prototype,
+                desc->name,
+                fields[i],
+                (pin_value){ .type = PIN_F32, .f = values[i] }
+            );
+            if (result) {
+                return result;
+            }
+        }
+        int result = game_prototype_write_field(
+            prototype,
+            desc->name,
+            "color",
+            (pin_value){ .type = PIN_U32, .u = 0xffffffffu }
+        );
+        if (result) {
+            return result;
+        }
+        result = game_prototype_write_field(
+            prototype,
+            desc->name,
+            "end_color",
+            (pin_value){ .type = PIN_U32, .u = 0xffffff00u }
+        );
+        if (result) {
+            return result;
+        }
+        float direction[] = { -1, 0, 0 };
+        return game_prototype_write_field(
+            prototype,
+            desc->name,
+            "direction",
+            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = direction }
+        );
+    }
     return 0;
 }
 
@@ -1427,6 +1542,20 @@ int game_prototype_detach_component(game_prototype *prototype, const char *compo
     apush(prototype->detached_components, *component);
     adel(prototype->components, index);
     return 0;
+}
+
+char *game_prototype_component_defaults_json(
+    const game_prototype_registry *registry,
+    const ecs_component_desc *desc
+)
+{
+    game_prototype *defaults = xcalloc(1, sizeof *defaults);
+    defaults->registry = registry;
+    char *json = game_prototype_add_component(defaults, desc) == 0
+                   ? game_prototype_component_json(defaults, desc->name)
+                   : NULL;
+    game_prototype_free(defaults);
+    return json;
 }
 
 int game_prototype_remove_component(game_prototype *prototype, const char *component_name)

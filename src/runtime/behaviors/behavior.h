@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_BEHAVIOR_H
-#define CBLUEPRINT_GAME_BEHAVIOR_H
+#ifndef CHIBI_GAME_BEHAVIOR_H
+#define CHIBI_GAME_BEHAVIOR_H
 
 #include "ecs/ecs.h"
 #include "graph/runtime/instance.h"
@@ -7,6 +7,30 @@
 #include <stdint.h>
 
 typedef struct game_behavior_world game_behavior_world;
+
+#define GAME_BEHAVIOR_PROFILE_MAX 256
+typedef struct
+{
+    const char *behavior;
+    const char *event;
+    uint64_t starts;
+    uint64_t resumes;
+    double cpu_ms;
+} game_behavior_profile_row;
+
+typedef struct
+{
+    game_behavior_profile_row rows[GAME_BEHAVIOR_PROFILE_MAX];
+    int count;
+    game_behavior_profile_row overflow;
+    double cpu_ms;
+} game_behavior_profile_frame;
+
+/* Per display frame, including every fixed step. Labels belong to the world.
+ * Snapshot remains valid until the next read or world destruction. Execution
+ * intervals exclude nested root events; host dispatch/setup remains unassigned. */
+void game_behavior_profile_begin(game_behavior_world *world);
+const game_behavior_profile_frame *game_behavior_profile(const game_behavior_world *world);
 struct game_entities;
 void game_behavior_bind_entities(game_behavior_world *world, struct game_entities *entities);
 struct game_particles;
@@ -103,7 +127,12 @@ int game_behavior_dispatch_all(
     flow_inputs inputs,
     flow_error *error
 );
+/* Returns whether at least one attached behavior declares the event. */
+bool game_behavior_has_event(const game_behavior_world *world, const char *event_name);
 int game_behavior_pump(game_behavior_world *world, double monotonic_time);
+/* Set the simulation clock before dispatch, including newly attached Begin runs. */
+void game_behavior_set_time(game_behavior_world *world, double simulation_time);
+bool game_behavior_paused(const game_behavior_world *world);
 void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds);
 void game_behavior_set_parallel_for(
     game_behavior_world *world,

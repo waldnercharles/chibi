@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_ARENA_H
-#define CBLUEPRINT_ARENA_H
+#ifndef CHIBI_ARENA_H
+#define CHIBI_ARENA_H
 
 #include <stddef.h>
 

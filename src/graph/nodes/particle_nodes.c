@@ -79,8 +79,8 @@ static int emit_directed(node *, flow_context *ctx)
     if (!particles) {
         return flow_context_fail(ctx, FLOW_ERR_NODE, "Emit Directed Particles requires a game world");
     }
-    pin_value v[17];
-    for (int i = 0; i < 17; i++) {
+    pin_value v[19];
+    for (int i = 0; i < 19; i++) {
         int result = flow_context_eval_data(ctx, i + 1, &v[i]);
         if (result < 0) {
             return result;
@@ -108,6 +108,8 @@ static int emit_directed(node *, flow_context *ctx)
         .emission_min = v[14].f,
         .emission_max = v[15].f,
         .size_exponent = v[16].f,
+        .elevation = v[17].f,
+        .shape = v[18].i,
     };
     if (game_particles_emit_directed(particles, &spray) < 0) {
         return flow_context_fail(ctx, FLOW_ERR_NODE, "Directed particle ranges and direction must be finite and valid");
@@ -193,10 +195,20 @@ static pin_spec DIRECTED_INPUTS[] = {
       .type = PIN_F32,
       .type_name = "float",
       .default_value = { .type = PIN_F32, .f = 1.5f } },
+    { .name = "Elevation",
+      .flags = PIN_FLAG_ADVANCED,
+      .type = PIN_F32,
+      .type_name = "float",
+      .default_value = { .type = PIN_F32, .f = 0 } },
+    { .name = "Shape",
+      .flags = PIN_FLAG_ADVANCED,
+      .type = PIN_I32,
+      .type_name = "int",
+      .default_value = { .type = PIN_I32, .i = GAME_PARTICLE_ROUND } },
 };
 node_desc NODE_Emit_Directed_Particles = {
     .name = "Emit Directed Particles",
-    .input_count = 18,
+    .input_count = 20,
     .inputs = DIRECTED_INPUTS,
     .output_count = 1,
     .outputs = OUTPUTS,

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_FLAGS_H
-#define CBLUEPRINT_EDITOR_FLAGS_H
+#ifndef CHIBI_EDITOR_FLAGS_H
+#define CHIBI_EDITOR_FLAGS_H
 
 #include "graph/model/node.h"
 

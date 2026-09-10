@@ -1,3 +1,4 @@
+#include "assets/prototype.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -8,6 +9,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct
 {
@@ -115,6 +117,67 @@ static void health(ecs_world *world, ecs_entity owner, ecs_entity other)
     behavior_asset_free(f.asset);
 }
 
+static void handle_field(ecs_world *world, ecs_entity owner, ecs_entity other)
+{
+    const type_desc *type = GAME_COMPONENT_GameCollider.type;
+    const type_field *field = &type->fields[type->field_count - 1];
+    assert(field->type == PIN_HANDLE && !strcmp(field->type_name, "ecs.entity"));
+    const node_desc *make = registry_node_by_name("Make_GameCollider");
+    const node_desc *split = registry_node_by_name("Break_GameCollider");
+    assert(!strcmp(make->inputs[7].type_name, "ecs.entity"));
+    assert(!strcmp(split->outputs[7].type_name, "ecs.entity"));
+    pin_value handle = { .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    field_fixture f = fixture("Set_GameCollider_ignore_entity", handle, false);
+    node *event = f.asset->graph->nodes[0];
+    pin_spec parameter = { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    assert(graph_add_pin(f.asset->graph, event, 1, &parameter) == 1);
+    assert(graph_connect_data(f.asset->graph, event, 1, f.set, 1) == 0);
+    compile_report report;
+    compile_report_init(&report);
+    assert(behavior_asset_compile(f.asset, &report) == 0);
+    compile_report_free(&report);
+    behavior_instance *runtime = instance(&f, world, owner);
+    handle.u64 = ecs_entity_to_u64(other);
+    flow_run *run = dispatch(runtime, &handle);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    const GameCollider *collider = GAME_GameCollider_get_const(world, owner);
+    assert(collider->ignore_entity == handle.u64 && collider->radius == 12);
+    pin_value read;
+    pin_read_field(collider, field, &read);
+    assert(read.type == PIN_HANDLE && !strcmp(read.type_name, "ecs.entity"));
+    assert(read.u64 == handle.u64);
+    behavior_instance_destroy(runtime);
+    behavior_asset_free(f.asset);
+
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char error[256];
+    game_prototype *prototype = game_prototype_load(
+        "{\"name\":\"Owner\",\"components\":{\"GameCollider\":{\"radius\":12,"
+        "\"ignore_entity\":null}}}",
+        &registry,
+        error,
+        sizeof error
+    );
+    assert(prototype);
+    assert(game_prototype_write_field(prototype, "GameCollider", "ignore_entity", handle) == 0);
+    char *json = game_prototype_save(prototype);
+    game_prototype_free(prototype);
+    prototype = game_prototype_load(json, &registry, error, sizeof error);
+    free(json);
+    assert(prototype);
+    assert(game_prototype_read_field(prototype, "GameCollider", "ignore_entity", &read) == 0);
+    assert(read.type == PIN_HANDLE && read.u64 == 0);
+    game_prototype_free(prototype);
+    assert(!game_prototype_load(
+        "{\"name\":\"Stale\",\"components\":{\"GameCollider\":{\"ignore_"
+        "entity\":123}}}",
+        &registry,
+        error,
+        sizeof error
+    ));
+}
+
 static void vector_field(ecs_world *world, ecs_entity owner)
 {
     CF_V2 direction = { 3, -4 };
@@ -148,18 +211,22 @@ void test_component_fields()
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
     ecs_entity owner = ecs_world_create_entity(world);
     ecs_entity other = ecs_world_create_entity(world);
     assert(GAME_GameHealth_add(world, owner, 0) == ECS_OK);
     assert(GAME_GameHealth_add(world, other, 0) == ECS_OK);
     assert(GAME_GameTransform_add(world, owner, 0) == ECS_OK);
     assert(GAME_GameInput_add(world, owner, 0) == ECS_OK);
+    assert(GAME_GameCollider_add(world, owner, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameHealth_get(world, owner) = (GameHealth){ 73, 200 };
     *GAME_GameHealth_get(world, other) = (GameHealth){ 40, 75 };
     *GAME_GameTransform_get(world, owner) = (GameTransform){ 3, -9 };
+    GAME_GameCollider_get(world, owner)->radius = 12;
     health(world, owner, other);
     vector_field(world, owner);
+    handle_field(world, owner, other);
     ecs_world_free(world);
     puts("component fields PASS: Self, explicit and invalid targets, preserved members, structs and serialization");
 }

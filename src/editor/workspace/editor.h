@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_H
-#define CBLUEPRINT_EDITOR_H
+#ifndef CHIBI_EDITOR_H
+#define CHIBI_EDITOR_H
 
 #include "editor/graph/eval_view.h"
 #include "editor/ui/choices.h"
@@ -148,8 +148,8 @@ void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_a
 /* Includes curved return wires and authored reroutes, in the current canvas. */
 bool editor_graph_wires_visible(const editor *e);
 
-/* The editor takes ownership of bp and frees it in editor_free(). */
-editor *editor_new(behavior_asset *bp);
+/* The editor takes ownership of asset and frees it in editor_free(). */
+editor *editor_new(behavior_asset *asset);
 void editor_free(editor *e);
 
 /* Returns the editor-owned working document without transferring ownership. */
@@ -278,6 +278,8 @@ void editor_tick(editor *e, double monotonic_time);
 
 /* Returns the revision of the last committed authoring edit. */
 unsigned editor_edit_revision(const editor *e);
+/* UI edits may precede the next tick that advances the committed revision. */
+bool editor_has_pending_edits(const editor *e);
 void editor_undo(editor *e);
 void editor_redo(editor *e);
 

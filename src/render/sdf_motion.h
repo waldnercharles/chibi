@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_SDF_MOTION_H
-#define CBLUEPRINT_GAME_SDF_MOTION_H
+#ifndef CHIBI_GAME_SDF_MOTION_H
+#define CHIBI_GAME_SDF_MOTION_H
 
 #include "runtime/components.h"
 

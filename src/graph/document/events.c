@@ -3,14 +3,28 @@
 #include "graph/runtime/instance.h"
 #include "support/array.h"
 
+#include <assert.h>
 #include <string.h>
+
+static const char *const GRAPH_HOST_EVENT_NAMES[] = {
+    "Begin", "End", "Tick", "Fire", "Dash", "Input", "Contact Begin",
+};
+
+const char *graph_host_event_name(graph_host_event event)
+{
+    assert(event >= 0 && event < GRAPH_HOST_EVENT_COUNT);
+    return GRAPH_HOST_EVENT_NAMES[event];
+}
+
+bool graph_host_event_is(const char *name, graph_host_event event)
+{
+    return name && !strcmp(name, graph_host_event_name(event));
+}
 
 bool graph_event_host_name(const char *name)
 {
-    static const char *names[] = { "Begin", "End",   "Tick",
-                                   "Fire",  "Input", "Contact Begin" };
-    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
-        if (name && !strcmp(name, names[i])) {
+    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
+        if (graph_host_event_is(name, i)) {
             return true;
         }
     }
@@ -137,8 +151,8 @@ static int call_event(node *n, flow_context *ctx)
         return flow_context_fail(ctx, FLOW_ERR_NODE, "Choose a local event");
     }
     node *entry = NULL;
-    for (int i = 0; i < acount(instance->bp->graph->nodes); i++) {
-        node *candidate = instance->bp->graph->nodes[i];
+    for (int i = 0; i < acount(instance->asset->graph->nodes); i++) {
+        node *candidate = instance->asset->graph->nodes[i];
         if (receiver(candidate) && candidate->reference_name &&
             !strcmp(candidate->reference_name, n->reference_name)) {
             if (entry) {

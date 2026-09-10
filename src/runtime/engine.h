@@ -1,14 +1,16 @@
-#ifndef CBLUEPRINT_ENGINE_H
-#define CBLUEPRINT_ENGINE_H
+#ifndef CHIBI_ENGINE_H
+#define CHIBI_ENGINE_H
 
 #include "ecs/ecs.h"
 #include "runtime/behaviors/live.h"
+#include "runtime/components.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef struct engine engine;
 typedef struct engine_viewport engine_viewport;
+typedef struct render_arena_camera render_arena_camera;
 
 typedef enum
 {
@@ -18,20 +20,35 @@ typedef enum
     ENGINE_FOCUS_CANVAS,
 } engine_focus;
 
+#define ENGINE_FIXED_SECONDS (1.0 / 60.0)
+#define ENGINE_STEPS_MAX 8
+#define ENGINE_EVENT_BATCHES_MAX 8
+#define ENGINE_FRAME_SECONDS_MAX 0.25
+
 typedef struct
 {
     uint64_t frame;
-    double behavior_ms;
+    uint64_t simulation_steps;
+    double simulation_time;
+    double dropped_seconds; /* Cumulative wall time omitted by overload/debug holds. */
+    int event_backlog; /* Events deferred after the bounded reaction pump. */
+    int steps; /* Fixed clock ticks completed during this display frame. */
+    float alpha; /* Presentation interpolation; paused and explicit Step show solved state. */
+    double behavior_ms; /* Includes event dispatch and spawn initialization. */
+    double physics_ms;
+    double events_ms; /* Contact reactions, included in behavior_ms. */
     double systems_ms;
     double rendering_ms;
     uint32_t command_apply_count;
 } engine_frame_timing;
 
-typedef void (*engine_system_fn)(ecs_world *world, double now, void *user);
+typedef void (*engine_system_fn)(ecs_world *world, double simulation_time, void *user);
 typedef void (*engine_render_fn)(void *user);
 
 engine *engine_new(ecs_world *world, game_live_world *live);
 void engine_free(engine *engine);
+/* Reset time and input before recreating authored entities and their Begin runs. */
+void engine_reset(engine *engine);
 int engine_add_system(engine *engine, engine_system_fn fn, void *user);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);
 int engine_set_focus(engine *engine, engine_focus focus);
@@ -41,8 +58,15 @@ int engine_set_playing(engine *engine, bool playing);
 bool engine_is_playing(const engine *engine);
 int engine_step(engine *engine);
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error);
+/* Host input ingress: hold the latest movement/aim sample across fixed steps. */
+int engine_sample_movement(engine *engine, float x, float y);
+int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
 int engine_frame(engine *engine, double monotonic_time);
+/* Borrowed diagnostic from the last frame failure, or NULL after success. */
+const char *engine_error(const engine *engine);
 const engine_frame_timing *engine_last_timing(const engine *engine);
+const game_behavior_profile_frame *engine_behavior_profile(const engine *engine);
+bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out);
 
 /* Host viewport surface. Resize requests are coalesced; the target is
  * recreated only when engine_viewport_commit_resize is called. */
@@ -67,6 +91,7 @@ typedef struct
     bool playing;
     bool session;
     bool editing;
+    const char *error; /* Borrowed renderer diagnostic, read after drawing. */
 } engine_viewport_controls;
 
 /* Controls are borrowed for this draw. NULL draws only the viewport. */
@@ -81,6 +106,7 @@ typedef struct engine_viewport_pointer
     float world_x;
     float world_y;
     float world_per_pixel;
+    float ndc_x, ndc_y;
     bool hovered;
     bool pressed;
     bool down;
@@ -95,6 +121,8 @@ typedef struct engine_viewport_pointer
  * remains captured outside it through release. Hidden panes or blocked input
  * cancel the gesture. World coordinates use the rendered Y-up projection. */
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer);
+/* Sample this frame's mouse against the last displayed image rectangle. */
+bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
 
 /* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
  * way to hand focus back so Escape can release the viewport. */
@@ -124,6 +152,13 @@ void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_v
 void engine_viewport_set_view(engine_viewport *viewport, const engine_viewport_view *view);
 
 void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport_camera *camera);
+/* The optional arena presentation camera is rebuilt from the current viewport
+ * frame, so panning and zooming remain synchronized with picking. */
+void engine_viewport_set_arena_showcase(engine_viewport *viewport, float time);
+void engine_viewport_clear_arena_camera(engine_viewport *viewport);
+void engine_viewport_get_arena_camera(const engine_viewport *viewport, render_arena_camera *camera);
+void engine_viewport_set_perspective(engine_viewport *viewport, bool perspective);
+bool engine_viewport_perspective(const engine_viewport *viewport);
 void engine_viewport_fit(engine_viewport *viewport, float min_x, float min_y, float max_x, float max_y);
 void engine_viewport_reset_camera(engine_viewport *viewport);
 

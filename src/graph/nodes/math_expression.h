@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_MATH_EXPRESSION_H
-#define CBLUEPRINT_MATH_EXPRESSION_H
+#ifndef CHIBI_MATH_EXPRESSION_H
+#define CHIBI_MATH_EXPRESSION_H
 
 #include "graph/model/behavior_asset.h"
 

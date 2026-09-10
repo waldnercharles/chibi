@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EVAL_H
-#define CBLUEPRINT_EVAL_H
+#ifndef CHIBI_EVAL_H
+#define CHIBI_EVAL_H
 
 #include "graph/model/graph.h"
 #include "graph/model/pin.h"
@@ -21,6 +21,31 @@ typedef struct
 } eval_status;
 
 typedef struct behavior_instance behavior_instance;
+
+enum
+{
+    EVAL_COMPONENT_READ_OK = 0,
+    EVAL_COMPONENT_READ_MISSING_COMPONENT = 1,
+    EVAL_COMPONENT_READ_MISSING_FIELD = 2,
+    EVAL_COMPONENT_READ_INVALID_OWNER = 3,
+};
+
+typedef int (*eval_component_read_fn)(
+    void *user,
+    uint64_t owner,
+    const char *component_key,
+    /* NULL reads the complete reflected component. */
+    const char *field_name,
+    pin_value *out
+);
+
+typedef struct eval_component_reader
+{
+    eval_component_read_fn read;
+    void *user;
+} eval_component_reader;
+
+#define EVAL_COMPONENT_READER_SERVICE "ecs.component_reader"
 
 typedef void (*eval_data_edge_fn)(
     const node *source,
@@ -52,6 +77,16 @@ void eval_context_attach_runtime(eval_context *ctx, runtime_store *runtime);
 void eval_context_detach_runtime(eval_context *ctx);
 const eval_status *eval_context_status(const eval_context *ctx);
 void *eval_context_service(const eval_context *ctx, const char *type_name);
+/* Resolve an unconnected data input. The returned value is copied into `a`
+ * when the source owns transient data. Returns NULL on success or a stable
+ * diagnostic string on an unavailable or incompatible source. */
+const char *eval_context_resolve_input(
+    const eval_context *ctx,
+    const pin_spec *spec,
+    const pin_binding *binding,
+    arena *a,
+    pin_value *out
+);
 int eval_context_input(const eval_context *ctx, const node *n, int pin, pin_value *out);
 int eval_context_output(const eval_context *ctx, const node *n, int pin, pin_value *out);
 

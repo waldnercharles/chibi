@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_FMT_NODES_H
-#define CBLUEPRINT_FMT_NODES_H
+#ifndef CHIBI_FMT_NODES_H
+#define CHIBI_FMT_NODES_H
 
 #include "graph/model/node.h"
 

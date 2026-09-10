@@ -14,8 +14,24 @@ concurrency:
 
 jobs:
   native:
-    name: Native tests
+    name: Native tests (${{ matrix.build_type }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build_type: Debug
+            sanitizers: "ON"
+            sljit: "OFF"
+          - build_type: RelWithDebInfo
+            sanitizers: "OFF"
+            sljit: "ON"
+    env:
+      LOCAL_CMAKE_FLAGS: >-
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DCHIBI_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
+        -DCHIBI_ENABLE_SJLIT=${{ matrix.sljit }}
+        -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
     steps:
       - uses: actions/checkout@v4
       - name: Set up CMake
@@ -23,7 +39,7 @@ jobs:
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: native
+          key: native-${{ matrix.build_type }}
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -34,8 +50,8 @@ jobs:
             libwayland-dev libxkbcommon-dev xvfb
       - name: Configure
         run: >-
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
+          cmake -S . -B build $LOCAL_CMAKE_FLAGS
+          -DLIBCLANG_ROOT=/usr/lib/llvm-18
           -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       - name: Build and run tests
         run: xvfb-run -a make test
@@ -44,12 +60,13 @@ jobs:
       - name: Run focused render checks
         run: xvfb-run -a make render-checks
       - name: Build and exercise application reload
+        if: matrix.build_type == 'Debug'
         run: |
           cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=Debug \
-            -DCBLUEPRINT_DEVELOPMENT_RELOAD=ON \
-            -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
+            -DCHIBI_DEVELOPMENT_RELOAD=ON \
+            -DCHIBI_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-dev --target blueprints_host blueprints_application --parallel 2
+          cmake --build build-dev --target chibi_host chibi_application --parallel 2
           xvfb-run -a env ASAN_OPTIONS=detect_leaks=0 \
             cmake --build build-dev --target check-dev-smoke
 
@@ -74,6 +91,6 @@ jobs:
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          -DCBLUEPRINT_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
+          -DCHIBI_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Check format
         run: cmake --build build --target check-format

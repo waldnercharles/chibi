@@ -17,8 +17,9 @@ static void ed_keep_document(editor *e)
     ed_save_graph_view(e);
     ed_document_history history = {
         .key = e->document_key,
-        .json = behavior_asset_save_json(e->bp),
+        .json = behavior_asset_save_json(e->asset),
         .saved = e->saved_snapshot,
+        .owner_identity = e->asset ? e->asset->identity : 0,
         .undo = e->undo,
         .redo = e->redo,
         .views = e->graph_views,
@@ -57,6 +58,9 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
         behavior_asset_free(cached);
         return -1;
     }
+    if (cached && history.owner_identity) {
+        cached->identity = history.owner_identity;
+    }
     if (index >= 0) {
         adel(e->documents, index);
     }
@@ -78,7 +82,7 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
         if (history.location.graph_id == graph_id) {
             editor_restore_location(e, &history.location);
             e->selected_variable = behavior_asset_find_variable_by_id(
-                e->bp,
+                e->asset,
                 history.variable_id
             );
             for (int i = 0; i < acount(history.links); i++) {
@@ -130,7 +134,7 @@ bool editor_can_visit_location(
     behavior_asset *cached = NULL;
     const behavior_asset *target = source;
     if (e->document_key && strcmp(e->document_key, key) == 0) {
-        target = e->bp;
+        target = e->asset;
     } else {
         for (int i = 0; i < acount(e->documents); i++) {
             if (strcmp(e->documents[i].key, key) == 0) {
@@ -191,7 +195,7 @@ static void ed_restore_callers(editor *e, const editor_location *location)
     uint64_t target_id = location->graph_id;
     for (int i = location->caller_count - 1; i >= 0; i--) {
         const editor_caller_location *caller = &location->callers[i];
-        graph *parent = behavior_asset_find_graph(e->bp, caller->graph_id);
+        graph *parent = behavior_asset_find_graph(e->asset, caller->graph_id);
         node *call = parent ? graph_node_by_id(parent, caller->node_id) : NULL;
         if (!ed_is_graph_call(call) || call->reference_id != target_id) {
             break;
@@ -219,7 +223,7 @@ static void ed_restore_callers(editor *e, const editor_location *location)
 
 int editor_restore_location(editor *e, const editor_location *location)
 {
-    graph *target = behavior_asset_find_graph(e->bp, location->graph_id);
+    graph *target = behavior_asset_find_graph(e->asset, location->graph_id);
     if (!target) {
         return -1;
     }
@@ -273,6 +277,7 @@ static yyjson_mut_val *checkpoint_document(yyjson_mut_doc *doc, const ed_documen
         "saved",
         history->saved ? history->saved : history->json
     );
+    yyjson_mut_obj_add_uint(doc, value, "owner_identity", history->owner_identity);
     yyjson_mut_obj_add_val(doc, value, "undo", checkpoint_strings(doc, history->undo));
     yyjson_mut_obj_add_val(doc, value, "redo", checkpoint_strings(doc, history->redo));
     yyjson_mut_obj_add_uint(doc, value, "variable", history->variable_id);
@@ -341,10 +346,11 @@ char *editor_checkpoint(editor *e)
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_int(doc, root, "version", 1);
-    char *json = behavior_asset_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->asset);
     ed_document_history current = { .key = e->document_key,
                                     .json = json,
                                     .saved = e->saved_snapshot,
+                                    .owner_identity = e->asset ? e->asset->identity : 0,
                                     .undo = e->undo,
                                     .redo = e->redo,
                                     .views = e->graph_views,
@@ -361,7 +367,7 @@ char *editor_checkpoint(editor *e)
     yyjson_mut_obj_add_uint(doc, root, "graph", e->active_graph->graph_id);
     yyjson_mut_val *views = yyjson_mut_obj_add_arr(doc, root, "views");
     for (int i = 0; i < acount(e->graph_views); i++) {
-        if (behavior_asset_find_graph(e->bp, e->graph_views[i].graph_id)) {
+        if (behavior_asset_find_graph(e->asset, e->graph_views[i].graph_id)) {
             yyjson_mut_arr_append(views, checkpoint_view(doc, &e->graph_views[i]));
         }
     }
@@ -478,6 +484,12 @@ static bool checkpoint_read_document(yyjson_val *value, ed_document_history *his
     history->key = xstrdup(key);
     history->json = xstrdup(json);
     history->saved = xstrdup(saved);
+    yyjson_val *owner_identity = yyjson_obj_get(value, "owner_identity");
+    if (owner_identity &&
+        (!yyjson_is_uint(owner_identity) || !yyjson_get_uint(owner_identity))) {
+        return false;
+    }
+    history->owner_identity = owner_identity ? yyjson_get_uint(owner_identity) : 0;
     if (!checkpoint_read_strings(yyjson_obj_get(value, "undo"), &history->undo) ||
         !checkpoint_read_strings(yyjson_obj_get(value, "redo"), &history->redo)) {
         return false;
@@ -584,6 +596,9 @@ bool editor_restore_checkpoint(editor *e, const char *json)
         goto done;
     }
     asset = behavior_asset_load_json(current.json);
+    if (asset && current.owner_identity) {
+        asset->identity = current.owner_identity;
+    }
     location.graph_id = yyjson_get_uint(graph_id);
     graph *active = behavior_asset_find_graph(asset, location.graph_id);
     if (!active) {
@@ -678,7 +693,7 @@ bool editor_restore_checkpoint(editor *e, const char *json)
     e->graph_views = views;
     views = NULL;
     ok = editor_restore_location(e, &location) == 0;
-    e->selected_variable = behavior_asset_find_variable_by_id(e->bp, variable_id);
+    e->selected_variable = behavior_asset_find_variable_by_id(e->asset, variable_id);
     for (int i = 0; i < acount(links); i++) {
         apush(e->selected_links, links[i]);
     }

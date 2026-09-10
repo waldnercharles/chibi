@@ -32,7 +32,7 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    snprintf(path, sizeof path, "test/fixtures/content/behaviors/%s.json", name);
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
     if (asset) {
@@ -60,7 +60,7 @@ static void trail_case(bool isolated)
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_content("content/prototypes/Player.json");
+    char *text = read_content("test/fixtures/content/prototypes/Player.json");
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
     free(text);
@@ -132,9 +132,11 @@ static void trail_case(bool isolated)
             game_behavior_dispatch(behaviors, entity, "Input", (flow_inputs){ &input, 1, NULL }, NULL) >= 0
         );
         const GameTransform *after = GAME_GameTransform_get_const(world, entity);
-        float distance = GAME_GameMovement_get_const(world, entity)->speed / 64;
-        assert(fabsf(after->x - before.x - vector.x * distance) < 0.0001f);
-        assert(fabsf(after->y - before.y - vector.y * distance) < 0.0001f);
+        float speed = GAME_GameMovement_get_const(world, entity)->speed;
+        const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
+        assert(velocity && fabsf(velocity->x - vector.x * speed) < 0.0001f);
+        assert(fabsf(velocity->y - vector.y * speed) < 0.0001f);
+        assert(after->x == before.x && after->y == before.y);
         assert(game_particles_count(particles) == 1);
         const game_particle *particle = game_particles_data(particles);
         assert(fabsf(particle->position.x - after->x + vector.x * 9) < 0.0001f);
@@ -174,5 +176,5 @@ void test_movement_trail()
 {
     trail_case(false);
     trail_case(true);
-    puts("movement trail PASS: keyboard direction reaches movement and rear exhaust, fractional emission and idle in both hosts");
+    puts("movement trail PASS: keyboard direction sets velocity and rear exhaust, fractional emission and idle in both hosts");
 }

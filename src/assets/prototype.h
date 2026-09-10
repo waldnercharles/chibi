@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_PROTOTYPE_H
-#define CBLUEPRINT_GAME_PROTOTYPE_H
+#ifndef CHIBI_GAME_PROTOTYPE_H
+#define CHIBI_GAME_PROTOTYPE_H
 
 #include "ecs/ecs.h"
 
@@ -141,6 +141,11 @@ char *game_prototype_rebase_component_json(
 );
 /* Owned single-component object; {} if this prototype has no such component. */
 char *game_prototype_component_json(const game_prototype *prototype, const char *name);
+/* Owned default component values shared by prototype and scene attachment. */
+char *game_prototype_component_defaults_json(
+    const game_prototype_registry *registry,
+    const ecs_component_desc *desc
+);
 int game_prototype_add_graph(game_prototype *prototype, const char *asset_name);
 int game_prototype_remove_graph(game_prototype *prototype, const char *asset_name);
 int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name);

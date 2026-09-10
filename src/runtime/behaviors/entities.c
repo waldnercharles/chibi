@@ -6,6 +6,9 @@
 #include "graph/runtime/eval.h"
 #include "graph/runtime/value_array.h"
 #include "runtime/generated.h"
+#include "runtime/rhythm.h"
+#include "runtime/scenes/physics.h"
+#include "runtime/visual_motion.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -17,6 +20,7 @@
 enum
 {
     SPAWN_BATCH_MAX = 64,
+    SPAWN_INITIALIZER_BATCHES_MAX = 256,
     EVENT_BATCH_MAX = 64
 };
 
@@ -215,6 +219,17 @@ static bool destroy_requested(const game_entities *entities, ecs_entity entity)
     return false;
 }
 
+bool game_entities_is_retiring(const game_entities *entities, ecs_entity entity)
+{
+    return destroy_requested(entities, entity) ||
+           ecs_entity_is_retiring(entities->world, entity);
+}
+
+int game_entities_pending_events(const game_entities *entities)
+{
+    return acount(entities->events);
+}
+
 int game_entities_request_event(game_entities *entities, ecs_entity target, const char *name, flow_inputs inputs)
 {
     if (!name || !name[0] || inputs.count < 0 || inputs.user_data ||
@@ -257,7 +272,7 @@ int game_entities_dispatch_events(game_entities *entities)
             continue;
         }
         if (ecs_entity_is_alive(entities->world, event->target) &&
-            !destroy_requested(entities, event->target)) {
+            !game_entities_is_retiring(entities, event->target)) {
             int result = game_behavior_dispatch(
                 entities->behaviors,
                 event->target,
@@ -290,7 +305,7 @@ bool game_entities_initializing(const game_entities *entities)
     return false;
 }
 
-int game_entities_tick_initializers(game_entities *entities, double monotonic_time)
+static int tick_initializers(game_entities *entities, double monotonic_time)
 {
     flow_run **roots = NULL;
     for (int i = 0; i < acount(entities->spawns); i++) {
@@ -383,15 +398,20 @@ int game_entities_flush(game_entities *entities)
     spawn_request *batch = entities->spawns;
     entities->spawns = NULL;
     int blocked = 0;
+    int processed = 0;
     spawn_request *pending = NULL;
     for (int i = 0; i < acount(batch); i++) {
         spawn_request *request = &batch[i];
-        if (i >= SPAWN_BATCH_MAX) {
+        if (processed >= SPAWN_BATCH_MAX) {
             apush(pending, *request);
             blocked |= request->entity.slot != 0;
             continue;
         }
+        bool started = request->entity.slot != 0;
         int result = finish_spawn(entities, request);
+        /* Waiting ancestors share the newest child's host continuation. They
+         * must not consume the batch and starve that child's spawn request. */
+        processed += !started || result <= 0;
         if (result > 0) {
             apush(pending, *request);
             blocked = 1;
@@ -425,6 +445,43 @@ int game_entities_flush(game_entities *entities)
     }
     asetlen(entities->owned, alive);
     return blocked;
+}
+
+static bool initializer_ready(const game_entities *entities, double now)
+{
+    for (int i = 0; i < acount(entities->spawns); i++) {
+        const spawn_request *request = &entities->spawns[i];
+        flow_run *run = flow_host_run(request->wait);
+        if (!request->entity.slot || !run ||
+            !ecs_entity_is_alive(entities->world, request->entity) ||
+            destroy_requested(entities, request->entity)) {
+            return true;
+        }
+        flow_state state = flow_run_status(run);
+        if (state == FLOW_COMPLETED || state == FLOW_FAILED ||
+            state == FLOW_IDLE || flow_run_ready(run, now)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int game_entities_flush_initializers(game_entities *entities, double now)
+{
+    for (int batch = 0; batch < SPAWN_INITIALIZER_BATCHES_MAX; batch++) {
+        int result = game_entities_flush(entities);
+        if (result < 0) {
+            return result;
+        }
+        result = tick_initializers(entities, now);
+        if (result < 0) {
+            return result;
+        }
+        if (!initializer_ready(entities, now)) {
+            return game_entities_initializing(entities);
+        }
+    }
+    return FLOW_ERR_STEP_BUDGET;
 }
 
 static int spawn_node(node *, flow_context *ctx)
@@ -542,6 +599,125 @@ static const char *nearest_entity(const eval_context *ctx, const pin_value *inpu
 }
 
 static const node_access NEAREST_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+
+static const ecs_component_desc *query_component(game_entities *entities, const char *key)
+{
+    for (int i = 0; key && i < ecs_world_component_count(entities->world); i++) {
+        const ecs_component_desc *component = ecs_world_component_at(entities->world, i);
+        if (!strcmp(component->key ? component->key : component->name, key)) {
+            return component;
+        }
+    }
+    return NULL;
+}
+
+static const char *has_entities_with_component(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *,
+    pin_value *out
+)
+{
+    game_entities *entities = eval_context_service(ctx, "game.entities");
+    if (!entities) {
+        return "Has Entities With Component requires a game world";
+    }
+    const char *key = inputs[0].str;
+    if (!key || !key[0]) {
+        return "Choose a component for Has Entities With Component";
+    }
+    const ecs_component_desc *component = query_component(entities, key);
+    if (!component) {
+        return "Selected component is not registered in this world";
+    }
+    *out = (pin_value){
+        .type = PIN_BOOL,
+        .type_name = "bool",
+        .b = ecs_component_has_entities(
+            entities->world,
+            component->id,
+            entities->destroy,
+            acount(entities->destroy)
+        ),
+    };
+    return NULL;
+}
+
+static const char *find_entities_with_component(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *storage,
+    pin_value *out
+)
+{
+    game_entities *entities = eval_context_service(ctx, "game.entities");
+    if (!entities) {
+        return "Find Entities With Component requires a game world";
+    }
+    const ecs_component_desc *component = query_component(entities, inputs[0].str);
+    if (!component) {
+        return "Choose a registered component for Find Entities With Component";
+    }
+    ecs_query query;
+    if (ecs_query_begin(entities->world, &query, &component->id, 1) != ECS_OK) {
+        return "Find Entities With Component could not query the world";
+    }
+    pin_value *items = NULL;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        if (game_entities_is_retiring(entities, entity)) {
+            continue;
+        }
+        pin_value value = { .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .u64 = ecs_entity_to_u64(entity) };
+        apush(items, value);
+    }
+    ecs_query_end(&query);
+    pin_array snapshot = { .element_type = PIN_HANDLE,
+                           .type_name = "ecs.entity",
+                           .count = acount(items),
+                           .items = items };
+    *out = (pin_value){ .type = PIN_HANDLE,
+                        .type_name = "ecs.entity",
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = pin_array_clone_to_arena(storage, &snapshot) };
+    afree(items);
+    return NULL;
+}
+
+static pin_spec HAS_ENTITIES_IN[] = { { .name = "Component", .type = PIN_NAME } };
+static pin_spec HAS_ENTITIES_OUT[] = {
+    { .name = "Found", .type = PIN_BOOL, .type_name = "bool" }
+};
+static node_desc HAS_ENTITIES_NODE = {
+    .name = "Has Entities With Component",
+    .input_count = 1,
+    .inputs = HAS_ENTITIES_IN,
+    .output_count = 1,
+    .outputs = HAS_ENTITIES_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = has_entities_with_component,
+    .category = "Entities",
+    .keywords = "query has any exists find component present alive",
+    .access = &NEAREST_ACCESS,
+};
+static pin_spec FIND_ENTITIES_OUT[] = { { .name = "Entities",
+                                          .type = PIN_HANDLE,
+                                          .type_name = "ecs.entity",
+                                          .container = PIN_CONTAINER_ARRAY } };
+static node_desc FIND_ENTITIES_NODE = {
+    .name = "Find Entities With Component",
+    .input_count = 1,
+    .inputs = HAS_ENTITIES_IN,
+    .output_count = 1,
+    .outputs = FIND_ENTITIES_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = find_entities_with_component,
+    .category = "Entities",
+    .keywords = "query find component entities array snapshot",
+    .access = &NEAREST_ACCESS,
+};
 static pin_spec NEAREST_IN[] = {
     { .name = "Position", .type = PIN_STRUCT, .type_name = "CF_V2" },
     { .name = "Radius", .type = PIN_F32, .type_name = "float" },
@@ -621,11 +797,17 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &DESTROY_NODE,
                                            &DAMAGE_NODE,
                                            &NEAREST_NODE,
+                                           &HAS_ENTITIES_NODE,
                                            &NODE_Normalize_Vector_2,
+                                           &FIND_ENTITIES_NODE,
+                                           &GAME_NODE_GetContactEntities,
                                            &NODE_Direction_To,
                                            &NODE_Atan2,
+                                           &NODE_Random_Range_Vector,
+                                           &NODE_Set_Visual_Reaction,
                                            &NODE_Emit_Particles,
-                                           &NODE_Emit_Directed_Particles };
+                                           &NODE_Emit_Directed_Particles,
+                                           &NODE_Scene_Rhythm };
 static const type_desc ENTITY_TYPE = { .name = "ecs.entity", .size = sizeof(uint64_t) };
 static const type_desc *const ENTITY_TYPES[] = { &ENTITY_TYPE };
 const registry_pack GAME_ENTITY_PACK = {

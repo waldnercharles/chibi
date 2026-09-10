@@ -1,4 +1,5 @@
 #include "editor/graph/eval_view.h"
+#include "editor/panels/shader_inline.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 
@@ -53,9 +54,13 @@ static float ed_input_editor_column(const graph *g, const node *n)
 static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
 {
     node *n = view->n;
+    if (graph_node_is_inline(e->active_graph, n)) {
+        return;
+    }
     float input_column = ed_input_editor_column(e->active_graph, n) * e->zoom;
     for (int p = 0; p < n->input_count; p++) {
-        if (!ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, p)) {
+        bool inline_source = ed_inline_source_for(e, n, p, NULL, NULL);
+        if (!ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, p) && !inline_source) {
             continue;
         }
         ed_pin_view *pin = &e->pins[view->input_first + p];
@@ -63,7 +68,9 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
             pin->pos,
             (ImVec2){ input_column, -ImGui_GetFrameHeight() * e->zoom * 0.5f }
         );
-        ed_begin_value_edit(e, n, ED_PIN_INPUT, p, pos);
+        if (!inline_source) {
+            ed_begin_value_edit(e, n, ED_PIN_INPUT, p, pos);
+        }
         ed_draw_value_editor(e, n, ED_PIN_INPUT, p, pos);
         char id[96];
         snprintf(id, sizeof id, "graph.input.%llu.%d", (unsigned long long)n->id, p);
@@ -82,7 +89,8 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
         ed_pin_label(n, &n->output_pins[p], pin_label, sizeof pin_label);
         ImVec2 label = ed_text_size(e, pin_label);
         ImVec2 pos = { pin->pos.x - (ED_PIN_RADIUS + 9.0f) * e->zoom - label.x -
-                           ED_VALUE_WIDTH * e->zoom,
+                           ed_pin_value_width(e->active_graph, n, ED_PIN_OUTPUT, p) *
+                               e->zoom,
                        pin->pos.y - ImGui_GetFrameHeight() * e->zoom * 0.5f };
         ed_begin_value_edit(e, n, ED_PIN_OUTPUT, p, pos);
         ed_draw_value_editor(e, n, ED_PIN_OUTPUT, p, pos);
@@ -91,6 +99,7 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
         }
         e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
     }
+    ed_draw_shader_inline(e, n, view->min, view->max);
 }
 
 void ed_draw_controls(editor *e, int on_top)
@@ -233,7 +242,7 @@ static void ed_draw_call_open(editor *e, ImDrawList *dl, const ed_node_view *v)
     if (!ed_is_graph_call(n) || e->zoom < 0.5f) {
         return;
     }
-    graph *target = behavior_asset_find_graph(e->bp, n->reference_id);
+    graph *target = behavior_asset_find_graph(e->asset, n->reference_id);
     bool available = target && target != e->active_graph;
     float size = 18.0f * e->zoom;
     float inset = ed_field_output(n) >= 0 ? 37.0f : 13.0f;
@@ -348,6 +357,9 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
     v->draw_frame = ImGui_GetFrameCount();
     v->drawn = (editor_node_ui){ 0 };
     node *n = v->n;
+    if (graph_node_is_inline(e->active_graph, n)) {
+        return;
+    }
     int selected = ed_node_selected(e, n);
     ed_node_presentation appearance = ed_node_appearance(n->desc);
     v->drawn.title_x = (v->min.x + v->max.x) * 0.5f;
@@ -490,7 +502,8 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
                 ImDrawList_PushClipRect(
                     dl,
                     at,
-                    (ImVec2){ at.x + ed_pin_value_width(n, ED_PIN_INPUT, row) * e->zoom,
+                    (ImVec2){ at.x + ed_pin_value_width(e->active_graph, n, ED_PIN_INPUT, row) *
+                                         e->zoom,
                               at.y + ed_font_size(e) },
                     true
                 );

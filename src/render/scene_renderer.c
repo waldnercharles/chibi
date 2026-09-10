@@ -2,23 +2,29 @@
 
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
+#include "render/arena_post.h"
 #include "render/material.h"
 #include "render/material_raster.h"
 #include "render/radiance.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
+#include "render/shader_images.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 struct app_scene_renderer
 {
+    render_arena *arena;
+    render_arena_post *post;
+    bool arena_attempted;
     render_material_raster *raster;
     render_radiance *radiance;
     CF_Canvas output;
@@ -27,14 +33,24 @@ struct app_scene_renderer
     engine_viewport_camera camera;
     int width, height;
     float pixel_aa, time;
-    CF_Shader fragment;
-    unsigned fragment_revision;
+    render_programs *fragment;
+    int *fragment_programs;
+    char error[256];
 };
 
 void app_scene_renderer_initialize()
 {
-    cf_fs_mount(CBLUEPRINT_RENDER_SHADER_DIR, "/cblueprint-render", true);
-    cf_shader_directory("/cblueprint-render");
+    char message[256];
+    if (!render_image_mount_content("content", message, sizeof message)) {
+        fprintf(stderr, "%s\n", message);
+    }
+    cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
+    cf_shader_directory("/chibi-render");
+}
+
+unsigned app_scene_renderer_shader_compile_count()
+{
+    return render_shader_compile_count();
 }
 
 app_scene_renderer *app_scene_renderer_new()
@@ -58,19 +74,152 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
         return;
     }
     render_material_raster_free(renderer->raster);
+    render_arena_free(renderer->arena);
+    render_arena_post_free(renderer->post);
     render_radiance_free(renderer->radiance);
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
     }
-    if (renderer->fragment.id) {
-        cf_destroy_shader(renderer->fragment);
-    }
+    render_programs_free(renderer->fragment);
+    afree(renderer->fragment_programs);
     afree(renderer->entities);
     free(renderer);
 }
 
+static bool arena_ready(app_scene_renderer *renderer)
+{
+    if (!renderer->arena_attempted) {
+        renderer->arena_attempted = true;
+        renderer->arena = render_arena_new();
+        renderer->post = render_arena_post_new();
+    }
+    return renderer->arena && renderer->post;
+}
+
+const char *app_scene_renderer_error(const app_scene_renderer *renderer)
+{
+    return renderer ? renderer->error : "";
+}
+
+int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
+{
+    return renderer && renderer->arena ? render_arena_particle_count(renderer->arena)
+                                       : 0;
+}
+
+static bool arena_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
+{
+    *settings = render_arena_post_defaults();
+    if (!ecs_world_component(world, GAME_COMPONENT_GameEnvironment.id)) {
+        return true;
+    }
+    ecs_component_id required[] = { GAME_COMPONENT_GameEnvironment.id };
+    ecs_query query;
+    int result = ecs_query_begin(world, &query, required, 1);
+    assert(result == ECS_OK);
+    (void)result;
+    ecs_entity entity;
+    bool found = false, valid = true;
+    while (ecs_query_next(&query, &entity)) {
+        if (found) {
+            snprintf(renderer->error, sizeof renderer->error, "A 3D scene can have only one Environment component.");
+            valid = false;
+            break;
+        }
+        *settings = *GAME_GameEnvironment_get_const(world, entity);
+        found = true;
+    }
+    ecs_query_end(&query);
+    return valid;
+}
+
+static void arena_present(app_scene_renderer *renderer)
+{
+    CF_Canvas output = render_arena_post_output(renderer->post);
+    if (!output.id) {
+        return;
+    }
+    cf_draw_push();
+    cf_draw_TSR_absolute((CF_V2){ 0 }, (CF_V2){ 1, 1 }, 0);
+    cf_draw_projection(cf_ortho_2d(0, 0, 2, 2));
+    cf_draw_canvas(output, (CF_V2){ 0 }, (CF_V2){ 2, 2 });
+    cf_draw_pop();
+}
+
+static bool arena_prepare(app_scene_renderer *renderer, int width, int height, const GameEnvironment *settings)
+{
+    if (render_arena_post_prepare(renderer->post, width, height, settings)) {
+        return true;
+    }
+    snprintf(
+        renderer->error,
+        sizeof renderer->error,
+        "%s",
+        render_arena_post_error(renderer->post)
+    );
+    arena_present(renderer);
+    return false;
+}
+
+static bool arena_finish(app_scene_renderer *renderer, bool submitted)
+{
+    snprintf(
+        renderer->error,
+        sizeof renderer->error,
+        "%s",
+        render_arena_error(renderer->arena)
+    );
+    bool processed = false;
+    if (submitted) {
+        cf_render_to(render_arena_post_target(renderer->post), true);
+        processed = render_arena_post_process(renderer->post);
+        if (!processed) {
+            snprintf(
+                renderer->error,
+                sizeof renderer->error,
+                "%s",
+                render_arena_post_error(renderer->post)
+            );
+        }
+    }
+    arena_present(renderer);
+    return submitted && processed;
+}
+
+bool app_scene_renderer_draw3d(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const game_particles *particles,
+    const render_arena_camera *camera,
+    engine_viewport *viewport,
+    const engine *runtime
+)
+{
+    if (!arena_ready(renderer)) {
+        return false;
+    }
+    renderer->error[0] = 0;
+    GameEnvironment settings;
+    if (!arena_environment(renderer, world, &settings)) {
+        arena_present(renderer);
+        return false;
+    }
+    int width, height;
+    engine_viewport_pixel_size(viewport, &width, &height);
+    if (!arena_prepare(renderer, width, height, &settings)) {
+        return false;
+    }
+    return arena_finish(
+        renderer,
+        render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime)
+    );
+}
+
 void app_scene_renderer_reset(app_scene_renderer *renderer)
 {
+    if (renderer && renderer->arena) {
+        render_arena_reset(renderer->arena);
+    }
     if (renderer && renderer->radiance) {
         render_radiance_reset(renderer->radiance);
     }
@@ -86,20 +235,29 @@ void app_scene_renderer_set_time(app_scene_renderer *renderer, float time)
         renderer->time = time;
     }
 }
-static bool fragment_ready(app_scene_renderer *renderer)
+static bool prepare_fragments(app_scene_renderer *renderer)
 {
-    unsigned version = render_shader_revision();
-    if (renderer->fragment_revision != version) {
-        CF_Shader fresh = render_shader_fragment_new();
-        renderer->fragment_revision = version;
-        if (fresh.id) {
-            if (renderer->fragment.id) {
-                cf_destroy_shader(renderer->fragment);
-            }
-            renderer->fragment = fresh;
-        }
+    if (!renderer->fragment) {
+        renderer->fragment = render_programs_new(RENDER_PROGRAM_FRAGMENT);
     }
-    return renderer->fragment.id != 0;
+    asetlen(renderer->fragment_programs, acount(renderer->entities));
+    for (int i = 0; i < acount(renderer->entities); i++) {
+        shader_error error = { 0 };
+        int program = render_shader_fragment_prepare(
+            renderer->fragment,
+            &renderer->entities[i],
+            &error
+        );
+        if (error.message[0]) {
+            snprintf(renderer->error, sizeof renderer->error, "%s", error.message);
+        }
+        if (!program) {
+            snprintf(renderer->error, sizeof renderer->error, "%s", error.message);
+            return false;
+        }
+        renderer->fragment_programs[i] = program;
+    }
+    return true;
 }
 
 static void copy_material(render_material_entity *entity, const game_material_coefficients *material)
@@ -218,7 +376,12 @@ static unsigned particle_color(unsigned start, unsigned end, float age)
     return color;
 }
 
-static void collect(app_scene_renderer *renderer, ecs_world *world, const game_particles *particles)
+static void collect(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const game_particles *particles,
+    const engine *runtime
+)
 {
     asetlen(renderer->entities, 0);
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
@@ -239,11 +402,15 @@ static void collect(app_scene_renderer *renderer, ecs_world *world, const game_p
                 appearance.height = 2 * (binding->bounds_y > 0 ? binding->bounds_y
                                                                : bounds[1]);
             }
+            GameTransform position = *GAME_GameTransform_get_const(world, entity);
+            if (runtime) {
+                engine_render_position(runtime, entity, &position);
+            }
             if (!append_entity(
                     renderer,
-                    GAME_GameTransform_get_const(world, entity),
+                    &position,
                     &appearance,
-                    orientation ? orientation->radians : 0,
+                    orientation ? -orientation->radians : 0,
                     GAME_GameSdfMotion_get_const(world, entity),
                     GAME_GameMaterial_get_const(world, entity)
                 )) {
@@ -271,19 +438,53 @@ static void collect(app_scene_renderer *renderer, ecs_world *world, const game_p
                             ? powf(age, particle->size_exponent)
                             : 0;
             float diameter = 2 * particle->size * (1 - phase);
+            bool ring = particle->shape == GAME_PARTICLE_RING;
+            bool triangle = particle->shape == GAME_PARTICLE_TRIANGLE ||
+                            particle->shape == GAME_PARTICLE_TRIANGLE_OUTLINE;
+            if (ring) {
+                diameter = 2 * particle->size * (.45f + .55f * age);
+            }
             unsigned color = particle_color(particle->color, particle->end_color, age);
-            GameAppearance appearance = { .width = diameter,
-                                          .height = diameter,
-                                          .color = color,
-                                          .shape = GAME_SHAPE_CIRCLE,
-                                          .antialias = 1.5f };
-            GameMaterial material = { .scene = color,
-                                      .emission_color = color,
+            unsigned core = particle_color(color, 0xfffae0ffu, .7f);
+            core = (core & 0xffffff00u) | (color & 255u);
+            GameAppearance appearance = {
+                .width = diameter * (particle->shape == GAME_PARTICLE_STREAK ? 2.8f : 1),
+                .height = diameter,
+                .color = ring ? color & 0xffffff00u : core,
+                .border_color = color,
+                .border_width = diameter * (ring ? .07f : .16f),
+                .shape = particle->shape == GAME_PARTICLE_STREAK ? GAME_SHAPE_DIAMOND
+                       : triangle ? GAME_SHAPE_BOX
+                                  : GAME_SHAPE_CIRCLE,
+                .antialias = 1.5f
+            };
+            GameMaterial material = { .scene = appearance.color,
+                                      .emission_color = appearance.color,
+                                      .border_scene = color,
+                                      .border_emission_color = color,
                                       .emission_intensity = particle->emission,
                                       .emission_multiplier = 1,
                                       .absorption = 0.01f };
             GameTransform position = { particle->position.x, particle->position.y };
-            append_entity(renderer, &position, &appearance, 0, NULL, &material);
+            if (append_entity(renderer, &position, &appearance, -particle->angle, NULL, &material) &&
+                triangle) {
+                render_material_entity
+                    *draw = &renderer->entities[acount(renderer->entities) - 1];
+                bool outline = particle->shape == GAME_PARTICLE_TRIANGLE_OUTLINE;
+                draw->shape_type = outline ? RENDER_SHAPE_POLY : RENDER_SHAPE_POLY_FILL;
+                draw->point_count = 3;
+                draw->thickness = diameter * .08f;
+                const CF_V2 points[] = { { .5f, 0 }, { -.5f, .5f }, { -.5f, -.5f } };
+                for (int i = 0; i < 3; i++) {
+                    // Center the stroke inside the same triangle footprint as the 3D particle.
+                    draw->points[i * 2] = diameter *
+                                          (outline ? -1.0f / 6 +
+                                                         (points[i].x + 1.0f / 6) * .88f
+                                                   : points[i].x);
+                    draw->points[i * 2 + 1] = diameter * points[i].y *
+                                              (outline ? .88f : 1);
+                }
+            }
             continue;
         }
         unsigned color = (particle->color & 0xffffff00u) |
@@ -302,7 +503,8 @@ bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
-    engine_viewport *viewport
+    engine_viewport *viewport,
+    const engine *runtime
 )
 {
     if (!renderer) {
@@ -311,6 +513,7 @@ bool app_scene_renderer_draw(
     engine_viewport_camera camera;
     engine_viewport_get_camera(viewport, &camera);
     int width, height;
+    renderer->error[0] = 0;
     engine_viewport_pixel_size(viewport, &width, &height);
     /* Material edges and final composition retain viewport pixel resolution.
      * Only the radiance work grid is reduced, inside render_radiance_resize. */
@@ -324,12 +527,16 @@ bool app_scene_renderer_draw(
     if (!renderer->raster) {
         renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                              0.5f;
-        collect(renderer, world, particles);
-        if (!fragment_ready(renderer)) {
+        collect(renderer, world, particles, runtime);
+        if (!prepare_fragments(renderer)) {
             return false;
         }
         for (int i = 0; i < acount(renderer->entities); i++) {
-            render_shader_fragment_draw(renderer->fragment, &renderer->entities[i]);
+            render_shader_fragment_draw(
+                renderer->fragment,
+                renderer->fragment_programs[i],
+                &renderer->entities[i]
+            );
         }
         return true;
     }
@@ -351,17 +558,24 @@ bool app_scene_renderer_draw(
     }
     renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                          0.5f;
-    collect(renderer, world, particles);
+    collect(renderer, world, particles, runtime);
     render_material_view view = { camera.center_x - camera.span_width * 0.5f,
                                   camera.center_y + camera.span_height * 0.5f,
                                   camera.span_width,
                                   camera.span_height };
-    if (!render_material_raster_draw(
-            renderer->raster,
-            renderer->entities,
-            acount(renderer->entities),
-            view
-        )) {
+    bool drawn = render_material_raster_draw(
+        renderer->raster,
+        renderer->entities,
+        acount(renderer->entities),
+        view
+    );
+    snprintf(
+        renderer->error,
+        sizeof renderer->error,
+        "%s",
+        render_material_raster_error(renderer->raster)
+    );
+    if (!drawn) {
         return false;
     }
     render_material_textures textures = render_material_raster_textures(renderer->raster);
@@ -388,15 +602,38 @@ bool app_scene_renderer_preview(
     int height
 )
 {
-    (void)width;
-    (void)height;
-    shader_error error;
+    shader_error error = { 0 };
     if (!renderer || !asset) {
         return false;
     }
-    render_shader_upsert(asset, &error);
+    renderer->time = time;
+    renderer->error[0] = 0;
+    if (asset->domain == BEHAVIOR_DOMAIN_MATERIAL) {
+        if (!arena_ready(renderer)) {
+            return false;
+        }
+        CF_V3 corners[8];
+        for (int i = 0; i < 8; i++) {
+            corners[i] = (CF_V3){ i & 1 ? 50 : -50, i & 2 ? 50 : -50, i & 4 ? 50 : -50 };
+        }
+        CF_Aabb bounds = render_arena_fit(corners, 8, (float)width / height);
+        render_arena_camera camera = render_arena_camera_make(
+            (bounds.min.x + bounds.max.x) * .5f,
+            (bounds.min.y + bounds.max.y) * .5f,
+            bounds.max.x - bounds.min.x,
+            bounds.max.y - bounds.min.y
+        );
+        GameEnvironment settings = render_arena_post_defaults();
+        if (!arena_prepare(renderer, width, height, &settings)) {
+            return false;
+        }
+        return arena_finish(renderer, render_arena_preview(renderer->arena, asset, &camera, time));
+    }
+    if (!render_shader_upsert(asset, &error)) {
+        snprintf(renderer->error, sizeof renderer->error, "%s", error.message);
+    }
     int id = render_shader_find(asset->name);
-    if (!id || !fragment_ready(renderer)) {
+    if (!id) {
         return false;
     }
     GameAppearance appearance = { .width = 100,
@@ -424,6 +661,9 @@ bool app_scene_renderer_preview(
         draw->reserved[0] = (float)id;
         render_shader_parameters(id, NULL, (ecs_entity){ 0 }, NULL, draw->material_parameters);
     }
-    render_shader_fragment_draw(renderer->fragment, draw);
+    if (!prepare_fragments(renderer)) {
+        return false;
+    }
+    render_shader_fragment_draw(renderer->fragment, renderer->fragment_programs[0], draw);
     return true;
 }

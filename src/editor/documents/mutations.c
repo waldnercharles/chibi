@@ -4,6 +4,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/shader/shader_graph.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -18,9 +19,19 @@ static void ed_format_text_repair(editor *e, node *n);
 #include <stdlib.h>
 #include <string.h>
 
+static void ed_select_appended_visible(editor *e, int first)
+{
+    for (int i = first; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
+        if (!graph_node_is_inline(e->active_graph, n)) {
+            ed_add_selected(e, n);
+        }
+    }
+}
+
 char *ed_snapshot(const editor *e)
 {
-    return behavior_asset_save_json(e->bp);
+    return behavior_asset_save_json(e->asset);
 }
 
 void ed_commit_snapshot(editor *e)
@@ -51,6 +62,36 @@ void ed_cancel_snapshot(editor *e)
     e->pending_snapshot = NULL;
 }
 
+static void accept_image_drop(editor *e)
+{
+    if (e->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
+        e->asset->domain != BEHAVIOR_DOMAIN_SHAPE &&
+        e->asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        return;
+    }
+    const ImGuiPayload *payload = ImGui_AcceptDragDropPayload("CHIBI_IMAGE", 0);
+    if (!payload || !payload->Delivery || payload->DataSize <= 1) {
+        return;
+    }
+    const char *path = payload->Data;
+    if (path[payload->DataSize - 1] != '\0') {
+        return;
+    }
+    ImVec2 position = ed_screen_to_world(e, ImGui_GetMousePos());
+    node *n = editor_spawn(
+        e,
+        registry_node_by_name("Shader Image Texture"),
+        position.x,
+        position.y
+    );
+    assert(n);
+    pin_value value = { .type = PIN_STR, .str = path };
+    int result = graph_set_pin_default(e->active_graph, n, 0, SHADER_IMAGE_INPUT_IMAGE, &value);
+    assert(result == 0);
+    (void)result;
+    ed_select_node(e, n, false);
+}
+
 void ed_accept_graph_call_drop(editor *e)
 {
     if (e->active_graph->math_expression) {
@@ -63,11 +104,12 @@ void ed_accept_graph_call_drop(editor *e)
     if (payload && payload->Delivery && payload->DataSize == sizeof(uint64_t)) {
         uint64_t graph_id;
         memcpy(&graph_id, payload->Data, sizeof graph_id);
-        graph *target = behavior_asset_find_graph(e->bp, graph_id);
+        graph *target = behavior_asset_find_graph(e->asset, graph_id);
         if (target && (target->kind == GRAPH_FUNCTION || target->kind == GRAPH_MACRO)) {
             (void)ed_place_graph_call_at(e, target, ed_screen_to_world(e, ImGui_GetMousePos()));
         }
     }
+    accept_image_drop(e);
     ImGui_EndDragDropTarget();
 }
 
@@ -85,7 +127,7 @@ void ed_destroy_preview(editor *e)
 }
 
 /* Every behavior_asset swap must release the preview copy and its activations. */
-int ed_adopt_behavior_asset(editor *e, const char *json)
+int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t owner_identity)
 {
     ed_destroy_preview(e);
     uint64_t active_graph_id = e->active_graph ? e->active_graph->graph_id : 0;
@@ -94,19 +136,22 @@ int ed_adopt_behavior_asset(editor *e, const char *json)
     if (!fresh) {
         return -1;
     }
+    if (owner_identity) {
+        fresh->identity = owner_identity;
+    }
     /* The value preview borrows nodes from the old asset. */
     eval_view_free(e->ev);
     e->ev = eval_view_new();
     eval_view_set_formatter(e->ev, e->value_formatter, e->value_formatter_user);
     asetlen(e->views, 0);
     asetlen(e->pins, 0);
-    behavior_asset_free(e->bp);
-    e->bp = fresh;
+    behavior_asset_free(e->asset);
+    e->asset = fresh;
     e->fields_node = 0;
     e->open_call_node = 0;
-    e->active_graph = behavior_asset_find_graph(e->bp, active_graph_id);
+    e->active_graph = behavior_asset_find_graph(e->asset, active_graph_id);
     if (!e->active_graph) {
-        e->active_graph = e->bp->graph;
+        e->active_graph = e->asset->graph;
     }
     ed_load_graph_view(e);
     e->arrange_pending = false;
@@ -133,13 +178,22 @@ int ed_adopt_behavior_asset(editor *e, const char *json)
     return 0;
 }
 
+int ed_adopt_behavior_asset(editor *e, const char *json)
+{
+    return ed_adopt_behavior_asset_with_identity(
+        e,
+        json,
+        e && e->asset ? e->asset->identity : 0
+    );
+}
+
 void ed_undo(editor *e)
 {
     if (acount(e->undo) == 0) {
         return;
     }
     char *target = apop(e->undo);
-    char *current = behavior_asset_save_json(e->bp);
+    char *current = behavior_asset_save_json(e->asset);
     if (current) {
         ed_push_string(&e->redo, current);
     }
@@ -153,7 +207,7 @@ void ed_redo(editor *e)
         return;
     }
     char *target = apop(e->redo);
-    char *current = behavior_asset_save_json(e->bp);
+    char *current = behavior_asset_save_json(e->asset);
     if (current) {
         ed_push_string(&e->undo, current);
     }
@@ -165,6 +219,18 @@ void ed_delete_selected(editor *e)
 {
     if (acount(e->selected) == 0 && acount(e->selected_links) == 0) {
         return;
+    }
+    uint64_t *selected_ids = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        node *n = e->selected[i];
+        apush(selected_ids, n->id);
+        for (int pin = 0; pin < n->input_count; pin++) {
+            node *source = NULL;
+            int source_pin = -1;
+            if (graph_inline_source(e->active_graph, n, pin, &source, &source_pin)) {
+                apush(selected_ids, source->id);
+            }
+        }
     }
     ed_snapshot_before(e);
     for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
@@ -183,17 +249,17 @@ void ed_delete_selected(editor *e)
             }
         }
     }
-    int front_deleted = 0;
-    for (int i = acount(e->selected) - 1; i >= 0; i--) {
-        if (e->selected[i] == e->front_node) {
-            front_deleted = 1;
+
+    for (int i = acount(selected_ids) - 1; i >= 0; i--) {
+        node *target = graph_node_by_id(e->active_graph, selected_ids[i]);
+        if (target) {
+            int removed = graph_remove_node(e->active_graph, target);
+            assert(removed == 0);
+            (void)removed;
         }
-        graph_remove_node(e->active_graph, e->selected[i]);
     }
-    if (front_deleted) {
-        e->front_node = NULL;
-    }
-    ed_clear_selection(e);
+    ed_reset_node_interaction(e);
+    afree(selected_ids);
 }
 
 void ed_copy_selected(editor *e)
@@ -232,9 +298,7 @@ void ed_paste(editor *e)
     int first = acount(e->active_graph->nodes);
     if (graph_append_json(e->active_graph, clipboard, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
-        for (int i = first; i < acount(e->active_graph->nodes); i++) {
-            ed_add_selected(e, e->active_graph->nodes[i]);
-        }
+        ed_select_appended_visible(e, first);
     }
 }
 
@@ -251,9 +315,7 @@ void ed_duplicate_selected(editor *e)
     int first = acount(e->active_graph->nodes);
     if (graph_append_json(e->active_graph, json, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
-        for (int i = first; i < acount(e->active_graph->nodes); i++) {
-            ed_add_selected(e, e->active_graph->nodes[i]);
-        }
+        ed_select_appended_visible(e, first);
     }
     free(json);
 }
@@ -353,6 +415,9 @@ static void ed_format_text_ensure_spare(editor *e, node *n)
 
 int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind)
 {
+    if ((output->flags | input->flags) & PIN_FLAG_SETTING) {
+        return 0;
+    }
     if (output->kind != expected_kind || input->kind != expected_kind) {
         return 0;
     }
@@ -425,10 +490,11 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
         if (!expression && input->n->desc == &NODE_CallPureFunction) {
             expression = input->n;
         }
-        if (expression && behavior_asset_find_graph(e->bp, expression->reference_id) &&
-            behavior_asset_find_graph(e->bp, expression->reference_id)->math_expression) {
+        if (expression &&
+            behavior_asset_find_graph(e->asset, expression->reference_id) &&
+            behavior_asset_find_graph(e->asset, expression->reference_id)->math_expression) {
             math_expression_error error;
-            (void)math_expression_refresh(e->bp, expression, &error);
+            (void)math_expression_refresh(e->asset, expression, &error);
             if (error.message[0]) {
                 e->math_error = error;
             }
@@ -465,20 +531,21 @@ void ed_refresh_stale_math_expressions(editor *e)
     /* Loading or an older edit can leave a direct edge on a generic expression
      * input after its public pin has fallen back to double. Repair that
      * boundary before the read-only compiler pass reports it. */
-    for (int i = 0; i < acount(e->bp->graphs); i++) {
-        graph *caller = e->bp->graphs[i];
+    for (int i = 0; i < acount(e->asset->graphs); i++) {
+        graph *caller = e->asset->graphs[i];
         for (int j = 0; j < acount(caller->nodes); j++) {
             node *call = caller->nodes[j];
             if (call->desc != &NODE_CallPureFunction) {
                 continue;
             }
-            graph *generated = behavior_asset_find_graph(e->bp, call->reference_id);
+            graph *generated = behavior_asset_find_graph(e->asset, call->reference_id);
             if (!generated || !generated->math_expression ||
                 !ed_expression_call_stale(caller, call)) {
                 continue;
             }
             math_expression_error error = { 0 };
-            if (math_expression_refresh(e->bp, call, &error) != 0 && error.message[0]) {
+            if (math_expression_refresh(e->asset, call, &error) != 0 &&
+                error.message[0]) {
                 e->math_error = error;
             }
         }

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_GRAPH_SEARCH_H
-#define CBLUEPRINT_EDITOR_GRAPH_SEARCH_H
+#ifndef CHIBI_EDITOR_GRAPH_SEARCH_H
+#define CHIBI_EDITOR_GRAPH_SEARCH_H
 
 #include "graph/model/behavior_asset.h"
 

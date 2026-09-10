@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_REFLECT_INTERNAL_H
-#define CBLUEPRINT_REFLECT_INTERNAL_H
+#ifndef CHIBI_REFLECT_INTERNAL_H
+#define CHIBI_REFLECT_INTERNAL_H
 
 #include "graph/model/pin.h"
 #include "support/array.h"
@@ -12,10 +12,16 @@ typedef struct
 {
     char *name;       /* field name */
     char *spelling;   /* C type spelling, e.g. "float", "Vec3" */
+    char *handle;     /* Nominal handle type when explicitly annotated. */
     const char *pin;  /* pin_type enum name, e.g. "PIN_F32" */
     long long offset; /* bytes */
     long long size;   /* bytes */
 } field_info;
+
+static inline const char *field_type_name(const field_info *field)
+{
+    return field->handle ? field->handle : field->spelling;
+}
 
 typedef struct
 {
@@ -34,9 +40,11 @@ typedef struct
     char *name;
     char *ret;           /* return type spelling */
     const char *ret_pin; /* pin_type enum name for the return, or NULL for void */
+    int read; /* contextual pure read returning const char * on error */
     int exec;
     int ret_void;
     char **pname;         /* param names */
+    char **plabel;        /* optional display names for pins */
     char **ptype;         /* param type spellings */
     const char **ppin;    /* pin_type enum names per param */
     int *pout;            /* explicit NODE_OUT pointer parameters */
@@ -46,6 +54,9 @@ typedef struct
     char **reads;         /* NODE_READS type names */
     char **writes;        /* NODE_WRITES type names */
     unsigned effect_flags;
+    char *display_name;
+    char *category;
+    char *keywords;
     char *operator_name; /* optional NODE_OPERATOR name */
     char *jit_kind;
     unsigned jit_flags;
@@ -78,10 +89,12 @@ uint64_t hash_string(uint64_t hash, const char *text);
 const char *pin_member(const char *pin);
 void emit_pin_spec(FILE *out, const char *name, const char *pin, const char *spelling);
 void emit_fn(FILE *out, const fn_info *f);
+void emit_read_fn(FILE *out, const fn_info *f);
 void emit_struct_nodes(FILE *out, const struct_info *s);
 void emit_exec_fn(FILE *out, const fn_info *f);
 void emit_exec_node(FILE *out, const fn_info *f);
 void emit_fn_node(FILE *out, const fn_info *f);
+void emit_read_node(FILE *out, const fn_info *f);
 bool component_unwrap(const struct_info *s);
 void emit_component_unwrap(FILE *out, const struct_info *s);
 void emit_component_nodes(FILE *out, const struct_info *s);

@@ -1,11 +1,56 @@
-#ifndef CBLUEPRINT_GAME_GENERATED_H
-#define CBLUEPRINT_GAME_GENERATED_H
+#ifndef CHIBI_GAME_GENERATED_H
+#define CHIBI_GAME_GENERATED_H
 
 #include "ecs/ecs.h"
 #include "graph/model/node.h"
 #include "runtime/components.h"
 
+/* External reflected types are emitted alongside component descriptors. */
+extern const type_desc GAME_T_CF_V2;
+
+extern const ecs_component_desc GAME_COMPONENT_GameBody;
+extern GameBody *GAME_GameBody_get(ecs_world *, ecs_entity);
+extern const GameBody *GAME_GameBody_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameBody_has(const ecs_world *, ecs_entity);
+extern int GAME_GameBody_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameBody_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameVelocity;
+extern GameVelocity *GAME_GameVelocity_get(ecs_world *, ecs_entity);
+extern const GameVelocity *GAME_GameVelocity_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameVelocity_has(const ecs_world *, ecs_entity);
+extern int GAME_GameVelocity_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameVelocity_remove(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_GameTransform;
+extern const ecs_component_desc GAME_COMPONENT_GameEnvironment;
+extern const ecs_component_desc GAME_COMPONENT_GamePointLight;
+extern const ecs_component_desc GAME_COMPONENT_GameSurfaceInfluence;
+extern GameSurfaceInfluence *GAME_GameSurfaceInfluence_get(ecs_world *, ecs_entity);
+extern const GameSurfaceInfluence *GAME_GameSurfaceInfluence_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameSurfaceInfluence_has(const ecs_world *, ecs_entity);
+extern int GAME_GameSurfaceInfluence_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameSurfaceInfluence_remove(ecs_world *, ecs_entity, uint64_t);
+extern GamePointLight *GAME_GamePointLight_get(ecs_world *, ecs_entity);
+extern const GamePointLight *GAME_GamePointLight_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GamePointLight_has(const ecs_world *, ecs_entity);
+extern int GAME_GamePointLight_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GamePointLight_remove(ecs_world *, ecs_entity, uint64_t);
+extern GameEnvironment *GAME_GameEnvironment_get(ecs_world *, ecs_entity);
+extern const GameEnvironment *GAME_GameEnvironment_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameEnvironment_has(const ecs_world *, ecs_entity);
+extern int GAME_GameEnvironment_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameEnvironment_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameGeometry3D;
+extern GameGeometry3D *GAME_GameGeometry3D_get(ecs_world *, ecs_entity);
+extern const GameGeometry3D *GAME_GameGeometry3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameGeometry3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameGeometry3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameGeometry3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameAim;
+extern GameAim *GAME_GameAim_get(ecs_world *, ecs_entity);
+extern const GameAim *GAME_GameAim_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameAim_has(const ecs_world *, ecs_entity);
+extern int GAME_GameAim_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameAim_remove(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_GameOrientation;
 extern GameOrientation *GAME_GameOrientation_get(ecs_world *, ecs_entity);
 extern const GameOrientation *GAME_GameOrientation_get_const(const ecs_world *, ecs_entity);
@@ -145,5 +190,89 @@ extern node_desc GAME_NODE_Set_GameShader;
 extern node_desc GAME_NODE_Has_GameShader;
 extern node_desc GAME_NODE_Add_GameShader;
 extern node_desc GAME_NODE_Remove_GameShader;
+
+extern const ecs_component_desc GAME_COMPONENT_GameDash;
+extern GameDash *GAME_GameDash_get(ecs_world *, ecs_entity);
+extern const GameDash *GAME_GameDash_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameDash_has(const ecs_world *, ecs_entity);
+extern int GAME_GameDash_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameDash_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameEncounter;
+extern GameEncounter *GAME_GameEncounter_get(ecs_world *, ecs_entity);
+extern const GameEncounter *GAME_GameEncounter_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameEncounter_has(const ecs_world *, ecs_entity);
+extern int GAME_GameEncounter_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameEncounter_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameEncounterMember;
+extern GameEncounterMember *GAME_GameEncounterMember_get(ecs_world *, ecs_entity);
+extern const GameEncounterMember *GAME_GameEncounterMember_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameEncounterMember_has(const ecs_world *, ecs_entity);
+extern int GAME_GameEncounterMember_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameEncounterMember_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameRhythm;
+extern GameRhythm *GAME_GameRhythm_get(ecs_world *, ecs_entity);
+extern const GameRhythm *GAME_GameRhythm_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameRhythm_has(const ecs_world *, ecs_entity);
+extern int GAME_GameRhythm_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameRhythm_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameVisualTransform;
+extern GameVisualTransform *GAME_GameVisualTransform_get(ecs_world *, ecs_entity);
+extern const GameVisualTransform *GAME_GameVisualTransform_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameVisualTransform_has(const ecs_world *, ecs_entity);
+extern int GAME_GameVisualTransform_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameVisualTransform_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameVisualMotion;
+extern GameVisualMotion *GAME_GameVisualMotion_get(ecs_world *, ecs_entity);
+extern const GameVisualMotion *GAME_GameVisualMotion_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameVisualMotion_has(const ecs_world *, ecs_entity);
+extern int GAME_GameVisualMotion_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameVisualMotion_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameMeshParts;
+extern GameMeshParts *GAME_GameMeshParts_get(ecs_world *, ecs_entity);
+extern const GameMeshParts *GAME_GameMeshParts_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameMeshParts_has(const ecs_world *, ecs_entity);
+extern int GAME_GameMeshParts_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameMeshParts_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameParticleEmitter;
+extern GameParticleEmitter *GAME_GameParticleEmitter_get(ecs_world *, ecs_entity);
+extern const GameParticleEmitter *GAME_GameParticleEmitter_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameParticleEmitter_has(const ecs_world *, ecs_entity);
+extern int GAME_GameParticleEmitter_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameParticleEmitter_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameSpawnRequest;
+extern GameSpawnRequest *GAME_GameSpawnRequest_get(ecs_world *, ecs_entity);
+extern const GameSpawnRequest *GAME_GameSpawnRequest_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameSpawnRequest_has(const ecs_world *, ecs_entity);
+extern int GAME_GameSpawnRequest_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameSpawnRequest_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameTrail;
+extern GameTrail *GAME_GameTrail_get(ecs_world *, ecs_entity);
+extern const GameTrail *GAME_GameTrail_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameTrail_has(const ecs_world *, ecs_entity);
+extern int GAME_GameTrail_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameTrail_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameExperience;
+extern GameExperience *GAME_GameExperience_get(ecs_world *, ecs_entity);
+extern const GameExperience *GAME_GameExperience_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameExperience_has(const ecs_world *, ecs_entity);
+extern int GAME_GameExperience_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameExperience_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GamePickup;
+extern GamePickup *GAME_GamePickup_get(ecs_world *, ecs_entity);
+extern const GamePickup *GAME_GamePickup_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GamePickup_has(const ecs_world *, ecs_entity);
+extern int GAME_GamePickup_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GamePickup_remove(ecs_world *, ecs_entity, uint64_t);
 
 #endif

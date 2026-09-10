@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_ENUM_H
-#define CBLUEPRINT_ENUM_H
+#ifndef CHIBI_ENUM_H
+#define CHIBI_ENUM_H
 
 /* X-macro enum -> name table (from Neon-Swarm, trimmed to what we use).
  *

@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <imgui/dcimgui.h>
 #include <stdio.h>
+#include <string.h>
 
 void editor_choices_format(int value, const editor_choices *choices, char *buf, size_t cap)
 {
@@ -46,6 +47,40 @@ bool editor_choices_draw(const char *id, int *value, const editor_choices *choic
         snprintf(item, sizeof item, "choice.%d", choice->value);
         editor_ui_track_item(item);
         ImGui_PopID();
+    }
+    ImGui_EndCombo();
+    ImGui_PopID();
+    return changed;
+}
+
+bool editor_choices_draw_name(const char *id, const char **value, const editor_choices *choices)
+{
+    const char *preview = *value && (*value)[0] ? *value : "Choose...";
+    for (int i = 0; i < choices->count; i++) {
+        if (*value && !strcmp(choices->items[i].name, *value)) {
+            preview = choices->items[i].label;
+            break;
+        }
+    }
+    ImGui_PushID(id);
+    bool open = ImGui_BeginCombo("##value", preview, 0);
+    editor_ui_track_item(id);
+    if (!open) {
+        ImGui_PopID();
+        return false;
+    }
+    bool changed = false;
+    for (int i = 0; i < choices->count; i++) {
+        const editor_choice *choice = &choices->items[i];
+        assert(choice->name && choice->label && choice->label[0]);
+        bool selected = *value && !strcmp(*value, choice->name);
+        if (ImGui_SelectableEx(choice->label, selected, 0, (ImVec2){ 0, 0 })) {
+            changed = !selected;
+            *value = choice->name;
+        }
+        char item[256];
+        snprintf(item, sizeof item, "choice.%s", choice->name);
+        editor_ui_track_item(item);
     }
     ImGui_EndCombo();
     ImGui_PopID();

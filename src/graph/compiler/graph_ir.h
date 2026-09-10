@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GRAPH_IR_H
-#define CBLUEPRINT_GRAPH_IR_H
+#ifndef CHIBI_GRAPH_IR_H
+#define CHIBI_GRAPH_IR_H
 
 #include "graph/model/node.h"
 

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_INSTANCE_H
-#define CBLUEPRINT_INSTANCE_H
+#ifndef CHIBI_INSTANCE_H
+#define CHIBI_INSTANCE_H
 
 #include "graph/compiler/compile.h"
 #include "graph/model/behavior_asset.h"
@@ -13,6 +13,9 @@
  * defaults, per-node scratch keyed by node ID, an optional owner handle, and
  * the ready/suspended event activations that currently belong to it. */
 typedef struct behavior_instance behavior_instance;
+/* One executed root-event interval. Nested functions are included; other root
+ * events called synchronously are excluded. Waiting wall time is never sampled. */
+typedef void (*behavior_profile_fn)(const char *event, uint64_t nanoseconds, bool first, void *user);
 typedef enum
 {
     INSTANCE_UPDATE_READY,
@@ -30,7 +33,7 @@ typedef struct instance_scratch_slot
 typedef struct
 {
     flow_traversal traversal;
-    char *event_name;
+    const char *event_name; /* interned by the instance */
     uint64_t current_node_id;
     flow_state state;
     int error_code;
@@ -54,9 +57,12 @@ typedef struct behavior_delegate_ref
 
 struct behavior_instance
 {
-    behavior_asset *bp;   /* borrowed; must outlive the instance */
-    pin_value *variables; /* runtime storage, parallel to bp->variables */
-    arena *variable_arenas; /* owned values; replaced atomically with each assignment */
+    /* Borrowed; must outlive the instance. */
+    behavior_asset *asset;
+    /* Runtime storage, parallel to asset->variables. */
+    pin_value *variables;
+    /* Owned values; replaced atomically with each assignment. */
+    arena *variable_arenas;
     int variable_count;
     instance_scratch_slot *scratch;
     pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
@@ -69,9 +75,15 @@ struct behavior_instance
     double delta_seconds;
     flow_sink_fn sink;
     void *sink_user;
+    behavior_profile_fn profile;
+    void *profile_user;
     flow_run **activations;     /* scheduler queue, FIFO by dispatch sequence */
     flow_run **activation_pool; /* idle reusable activations */
-    behavior_instance_trace_entry *trace; /* oldest-to-newest completed records */
+    behavior_instance_trace_entry *trace; /* bounded ring; read through behavior_instance_trace */
+    behavior_instance_trace_entry *trace_view; /* lazily ordered inspection cache */
+    char **trace_names;
+    int trace_head;
+    bool trace_view_dirty;
     int pool_enabled;
     int trace_enabled;
     int breakpoints_override;
@@ -94,7 +106,7 @@ struct behavior_instance
  * declared owner type. Variable storage is initialized from authored defaults
  * exactly once (VAR-11). */
 behavior_instance *behavior_instance_create(
-    behavior_asset *bp,
+    behavior_asset *asset,
     const pin_value *owner,
     flow_clock_fn now,
     void *now_user
@@ -117,7 +129,7 @@ void behavior_instance_update(behavior_instance *bi, behavior_asset *next);
 int behavior_instance_pool_release(behavior_instance *bi);
 behavior_instance *behavior_instance_pool_reuse(
     behavior_instance *bi,
-    behavior_asset *bp,
+    behavior_asset *asset,
     const pin_value *owner,
     flow_clock_fn now,
     void *now_user
@@ -136,8 +148,9 @@ int behavior_instance_release_activation(behavior_instance *bi, flow_run *act);
 int behavior_instance_rebind(behavior_instance *bi, const pin_value *owner);
 void behavior_instance_set_trace_enabled(behavior_instance *bi, int enabled);
 
-/* Borrow the bounded, oldest-to-newest execution trace. Entries remain valid
- * until the instance is released, reused, or destroyed. */
+/* Borrow the bounded, oldest-to-newest execution trace. The view is valid until
+ * another activation is recorded, tracing is cleared, or the instance changes
+ * definition, is released, reused, or destroyed. */
 const behavior_instance_trace_entry *behavior_instance_trace(const behavior_instance *bi, int *count);
 
 /* Dispatch a named event (EVT-9). Creates a distinct activation carrying

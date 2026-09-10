@@ -49,18 +49,25 @@ static ecs_query_expr *copy_edit(
             result = ecs_query_expr_has(component);
         }
         for (int i = 0; i < ecs_query_expr_child_count(source); i++) {
-            assert(
-                ecs_query_expr_add(result, ecs_query_expr_clone(ecs_query_expr_child(source, i))) == ECS_OK
+            int added = ecs_query_expr_add(
+                result,
+                ecs_query_expr_clone(ecs_query_expr_child(source, i))
             );
+            assert(added == ECS_OK);
+            (void)added;
         }
         if (edit == QUERY_EDIT_ADD) {
             ecs_query_expr *child = kind == ECS_QUERY_HAS
                                       ? ecs_query_expr_has(component)
                                       : ecs_query_expr_new(kind);
             if (kind != ECS_QUERY_HAS) {
-                assert(ecs_query_expr_add(child, ecs_query_expr_has(component)) == ECS_OK);
+                int added = ecs_query_expr_add(child, ecs_query_expr_has(component));
+                assert(added == ECS_OK);
+                (void)added;
             }
-            assert(ecs_query_expr_add(result, child) == ECS_OK);
+            int added = ecs_query_expr_add(result, child);
+            assert(added == ECS_OK);
+            (void)added;
         }
         return result;
     }
@@ -87,7 +94,9 @@ static ecs_query_expr *copy_edit(
             copy = ecs_query_expr_clone(child);
         }
         if (copy) {
-            assert(ecs_query_expr_add(result, copy) == ECS_OK);
+            int added = ecs_query_expr_add(result, copy);
+            assert(added == ECS_OK);
+            (void)added;
         }
     }
     return result;

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_SYSTEM_H
-#define CBLUEPRINT_GAME_SYSTEM_H
+#ifndef CHIBI_GAME_SYSTEM_H
+#define CHIBI_GAME_SYSTEM_H
 
 #include "ecs/ecs.h"
 #include "graph/compiler/compile.h"

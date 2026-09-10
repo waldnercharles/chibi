@@ -1,4 +1,4 @@
-/* Vendored from the GeometryWars fork of stclib/STC c11/fmt.h.
+/* Vendored fork of stclib/STC c11/fmt.h.
  *   fork:    https://github.com/stclib/STC (include/c11/fmt.h)
  *   vendored from: GeometryWars include/fmt.h + src/fmt.c
  * MIT License, (c) operamint 2022-2026. The fork splits the original

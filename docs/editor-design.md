@@ -5,7 +5,18 @@ The September 6 usability review and proposed next refactor are in
 That review includes current screenshots, validation results, and an ImGui/Clay
 assessment. Its recommendations are not yet implemented.
 
-## Current goal, September 5, 2026
+## Current goal, September 9, 2026
+
+The [arena roadmap](arena-roadmap.md) now prioritizes one beautiful playable
+iteration with the existing weapon and fixed arena. Reactive flooring, readable
+faceted actors and behavior-authored combat feedback prove the editor's utility.
+Dash, extra weapons, transformations, upgrades and bosses are deferred. Reusable
+engine capabilities belong in reflected components and ordinary asset workflows.
+The [development notes](arena-development.md) record implemented increments and
+validation; the [latest reference review](research/arena-reactive-slice.md) defines
+the visual comparison and authoring acceptance still required.
+
+## Goal recorded September 5, 2026
 
 The current request expands the earlier slices below. Build a minimal professional
 game editor whose visual language can express Neon-Swarm's gameplay. Visual polish,
@@ -272,7 +283,7 @@ including the existing scene/graph, Focus, and resize scenarios. Inspected a
 complete native capture of the consolidated Inspector.
 
 The app and native test now share the existing screenshot readback function.
-`CBLUEPRINT_UI_SCREENSHOT=/tmp/inspector.png make test` optionally captures the
+`CHIBI_UI_SCREENSHOT=/tmp/inspector.png make test` optionally captures the
 Inspector edit, or the last rendered frame if a required UI item is missing.
 Captures aid inspection; assertions remain the correctness gate.
 
@@ -648,10 +659,10 @@ without changing node dimensions or pin locations.
 
 ## Authored appearance
 
-GameAppearance provides Width, Height, and packed RGBA Color. Rendering requires
-Transform and Appearance, independently of health or projectile gameplay. Health
-bars remain an optional overlay and follow the authored body height. All five
-existing visible prototypes now include Appearance; Player is blue, Enemy coral,
+The 2D Appearance component provides Width, Height, and packed RGBA Color. Rendering
+requires Transform and 2D Appearance, independently of health or projectile gameplay.
+Health bars remain an optional overlay and follow the authored body height. 2D fixture
+prototypes include Appearance for editor coverage; Player is blue, Enemy coral,
 and Projectile gold. Missing Appearance deliberately means no visible body.
 Nonfinite positions/extents and nonpositive extents are excluded from drawing.
 

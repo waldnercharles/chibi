@@ -43,7 +43,7 @@ are separated from execution.
 
 Unused Gameplay documents, their nine content assets and their reflection types
 are removed. Reflection examples and example graphs live under test fixtures and
-support. Unused root blueprint data, copied framework declarations, legacy reload
+support. Unused root asset data, copied framework declarations, legacy reload
 helpers and production test scenarios are removed. All authoring uses the editor's
 canonical commands. Production headers use the actual Cute and ImGui declarations.
 

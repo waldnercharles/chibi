@@ -3,6 +3,7 @@
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/runtime/flow.h"
+#include "render/shader_images.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -19,7 +20,8 @@ typedef struct
 {
     char *name, *source_json;
     shader_graph graph;
-    char *glsl;
+    char *glsl; /* Structural GLSL used to detect topology changes. */
+    int *images;
     char *names[SHADER_PARAMETER_MAX];
     int widths[SHADER_PARAMETER_MAX];
     float defaults[SHADER_PARAMETER_MAX][4], bounds[2];
@@ -36,6 +38,7 @@ typedef struct
 static shader_asset *assets;
 static shader_override *overrides;
 static unsigned revision = 1;
+static unsigned ramp_revision = 1;
 
 static void append(char **text, const char *format, ...)
 {
@@ -91,15 +94,43 @@ bool render_shader_is_shape(int index)
 {
     return index > 0 && index <= acount(assets) && assets[index - 1].shape;
 }
+bool render_shader_may_be_transparent(int index)
+{
+    if (index <= 0 || index > acount(assets) || render_shader_is_shape(index)) {
+        return false;
+    }
+    const shader_graph *graph = &assets[index - 1].graph;
+    const shader_node *opacity = &graph->nodes[graph->output[5]];
+    return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
+}
+bool render_shader_sample(
+    int index,
+    const shader_sample_context *sample,
+    const float parameters[SHADER_PARAMETER_MAX][4],
+    float result[SHADER_OUTPUT_MAX][4],
+    shader_error *error
+)
+{
+    shader_sample_context context = *sample;
+    context.resolve_image = render_image_resolve;
+    context.image_userdata = NULL;
+    return index > 0 && index <= acount(assets) &&
+           shader_graph_eval_outputs(&assets[index - 1].graph, &context, parameters, result, error);
+}
 unsigned render_shader_revision()
 {
     return revision;
+}
+unsigned render_shader_ramp_revision()
+{
+    return ramp_revision;
 }
 static void free_asset(shader_asset *asset)
 {
     free(asset->name);
     free(asset->source_json);
     free(asset->glsl);
+    afree(asset->images);
     shader_graph_free(&asset->graph);
     for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
         free(asset->names[i]);
@@ -134,6 +165,38 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
         return false;
     }
     fresh.name = xstrdup(source->name);
+    for (int i = 0; i < acount(fresh.graph.images); i++) {
+        int variant = render_image_variant(&fresh.graph.images[i], error);
+        if (!variant) {
+            if (error) {
+                for (int n = 0; n < acount(fresh.graph.nodes); n++) {
+                    const shader_node *node = &fresh.graph.nodes[n];
+                    if ((node->op == SHADER_IMAGE_TEXTURE ||
+                         node->op == SHADER_IMAGE_TEXTURE_ALPHA) &&
+                        node->image == i) {
+                        error->node = node->source_id;
+                        break;
+                    }
+                }
+            }
+            free_asset(&fresh);
+            return false;
+        }
+        apush(fresh.images, variant);
+    }
+    if (acount(fresh.images) > RENDER_SHADER_IMAGE_MAX) {
+        if (error) {
+            snprintf(
+                error->message,
+                sizeof error->message,
+                "Material %s exceeds %d image variants per program.",
+                source->name,
+                RENDER_SHADER_IMAGE_MAX
+            );
+        }
+        free_asset(&fresh);
+        return false;
+    }
     memcpy(fresh.bounds, source->bounds, sizeof fresh.bounds);
     int id = render_shader_find(source->name);
     if (!id) {
@@ -141,7 +204,7 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
     }
     char name[64];
     snprintf(name, sizeof name, "sg_asset_%d", id);
-    fresh.glsl = shader_graph_glsl_named(&fresh.graph, name, error);
+    fresh.glsl = shader_graph_glsl_named_ramps(&fresh.graph, name, 0, error);
     if (!fresh.glsl) {
         free_asset(&fresh);
         return false;
@@ -167,13 +230,29 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
             const char *a = old->names[slot], *b = fresh.names[slot];
             names_equal &= (!a && !b) || (a && b && !strcmp(a, b));
         }
-        if (names_equal && !strcmp(old->glsl, fresh.glsl) &&
+        bool images_equal = acount(old->images) == acount(fresh.images) &&
+                            (!acount(fresh.images) ||
+                             !memcmp(
+                                 old->images,
+                                 fresh.images,
+                                 (size_t)acount(fresh.images) * sizeof *fresh.images
+                             ));
+        if (old->shape == fresh.shape && names_equal && images_equal &&
+            !strcmp(old->glsl, fresh.glsl) &&
             !memcmp(old->defaults, fresh.defaults, sizeof old->defaults) &&
             !memcmp(old->bounds, fresh.bounds, sizeof old->bounds)) {
-            free(old->source_json);
-            old->source_json = fresh.source_json;
-            fresh.source_json = NULL;
-            free_asset(&fresh);
+            if (old->source_json && json && !strcmp(old->source_json, json)) {
+                free(old->source_json);
+                old->source_json = fresh.source_json;
+                fresh.source_json = NULL;
+                free_asset(&fresh);
+                return true;
+            }
+            /* Ramp stop values are uploaded as a live payload. Keep the
+             * compiled program revision when only those values changed. */
+            free_asset(old);
+            *old = fresh;
+            ramp_revision++;
             return true;
         }
         free_asset(old);
@@ -182,6 +261,7 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
         apush(assets, fresh);
     }
     revision++;
+    ramp_revision++;
     return true;
 }
 int render_shader_load(const char *root)
@@ -253,17 +333,188 @@ int render_shader_load(const char *root)
     afree(sources);
     return loaded;
 }
-char *render_shader_glsl()
+static int set_slot(const render_shader_set *set, int image)
+{
+    for (int i = 0; i < set->count; i++) {
+        if (set->images[i] == image) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool asset_in_set(const render_shader_set *set, int index)
+{
+    return render_shader_set_contains(set, index + 1);
+}
+
+static int ramp_offset(const render_shader_set *set, int index)
+{
+    int offset = 0;
+    for (int i = 0; i < index; i++) {
+        if (asset_in_set(set, i)) {
+            offset += shader_graph_ramp_vec4_count(&assets[i].graph);
+        }
+    }
+    return offset;
+}
+
+bool render_shader_set_contains(const render_shader_set *set, int id)
+{
+    if (id <= 0) {
+        return true;
+    }
+    const shader_asset *asset = &assets[id - 1];
+    for (int i = 0; i < acount(asset->images); i++) {
+        if (set_slot(set, asset->images[i]) < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
+{
+    if (id <= 0) {
+        return true;
+    }
+    const shader_asset *asset = &assets[id - 1];
+    render_shader_set fresh = *set;
+    for (int i = 0; i < acount(asset->images); i++) {
+        int image = asset->images[i];
+        if (set_slot(&fresh, image) >= 0) {
+            continue;
+        }
+        if (fresh.count == RENDER_SHADER_IMAGE_MAX) {
+            if (error) {
+                snprintf(
+                    error->message,
+                    sizeof error->message,
+                    "Adding %s exceeds %d image variants in one material/shape "
+                    "or composite group.",
+                    asset->name,
+                    RENDER_SHADER_IMAGE_MAX
+                );
+            }
+            return false;
+        }
+        int at = fresh.count++;
+        while (at > 0 && fresh.images[at - 1] > image) {
+            fresh.images[at] = fresh.images[at - 1];
+            at--;
+        }
+        fresh.images[at] = image;
+    }
+    *set = fresh;
+    return true;
+}
+
+int render_shader_ramp_vec4_count(const render_shader_set *set)
+{
+    int count = 0;
+    for (int i = 0; i < acount(assets); i++) {
+        if (asset_in_set(set, i)) {
+            int asset_count = shader_graph_ramp_vec4_count(&assets[i].graph);
+            if (asset_count > RENDER_SHADER_RAMP_VEC4_MAX - count) {
+                return RENDER_SHADER_RAMP_VEC4_MAX + 1;
+            }
+            count += asset_count;
+        }
+    }
+    return count;
+}
+
+void render_shader_ramp_payload(const render_shader_set *set, float (*payload)[4])
+{
+    int offset = 0;
+    for (int i = 0; i < acount(assets); i++) {
+        if (!asset_in_set(set, i)) {
+            continue;
+        }
+        shader_graph_ramp_payload(&assets[i].graph, payload + offset);
+        offset += shader_graph_ramp_vec4_count(&assets[i].graph);
+    }
+}
+
+char *render_shader_glsl(const render_shader_set *set, int sampler_set, int first_binding)
 {
     char *text = NULL;
-    for (int i = 0; i < acount(assets); i++) {
-        append(&text, "%s\n", assets[i].glsl);
+    for (int i = 0; i < set->count; i++) {
+        append(
+            &text,
+            "layout(set=%d,binding=%d) uniform sampler2D sg_image_%d;\n",
+            sampler_set,
+            first_binding + i,
+            i
+        );
     }
-    append(&text, "void sg_dispatch(int id,vec2 p,vec2 wp,float time,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0);\n switch(id) {\n");
+    append(&text, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
     for (int i = 0; i < acount(assets); i++) {
-        append(&text, "case %d: sg_asset_%d(p,wp,time,values,result); break;\n", i + 1, i + 1);
+        if (!render_shader_set_contains(set, i + 1)) {
+            continue;
+        }
+        for (int j = 0; j < acount(assets[i].images); j++) {
+            const char *normalize = assets[i].graph.images[j].wrap == SHADER_IMAGE_REPEAT
+                                      ? "uv-floor(uv)"
+                                      : "clamp(uv,vec2(0),vec2(1))";
+            append(
+                &text,
+                "vec4 sg_asset_%d_image_%d(vec2 uv) { "
+                "if(any(isnan(uv))||any(isinf(uv))) return vec4(0); uv=%s; "
+                "return textureLod(sg_image_%d,uv,0.0); }\n",
+                i + 1,
+                j,
+                normalize,
+                set_slot(set, assets[i].images[j])
+            );
+        }
+        char name[64];
+        snprintf(name, sizeof name, "sg_asset_%d", i + 1);
+        shader_error error = { 0 };
+        char *glsl = shader_graph_glsl_named_ramps(&assets[i].graph, name, ramp_offset(set, i), &error);
+        if (glsl) {
+            append(&text, "%s\n", glsl);
+        }
+        free(glsl);
+    }
+    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0);\n switch(id) {\n");
+    for (int i = 0; i < acount(assets); i++) {
+        if (!render_shader_set_contains(set, i + 1)) {
+            continue;
+        }
+        append(&text, "case %d: sg_asset_%d(sg_context,values,result); break;\n", i + 1, i + 1);
     }
     append(&text, "default: break;\n }\n}\n");
+    append(
+        &text,
+        "void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float "
+        "time,vec4 values[32],out vec4 result[8]) {\n"
+        " SGSample sg_context; sg_context.position=p; "
+        "sg_context.uv=vec2(p.x,-p.y)/max(2.0*half_size,vec2(0.0001))+0.5;\n"
+        " sg_context.object_position=vec3(p.x,0.0,p.y); "
+        "sg_context.world_position=vec3(wp.x,0.0,wp.y);\n"
+        " sg_context.normal=vec3(0,1,0); "
+        "sg_context.view_direction=vec3(0,1,0); "
+        "sg_context.time=time;\n"
+        " sg_dispatch(id,sg_context,values,result);\n switch(id) {\n"
+    );
+    for (int i = 0; i < acount(assets); i++) {
+        if (assets[i].shape) {
+            append(&text, "case %d: return;\n", i + 1);
+        }
+    }
+    append(
+        &text,
+        "default: break; }\n"
+        " vec3 base=max(result[0].rgb,vec3(0)); vec3 "
+        "emission=max(result[1].rgb,vec3(0));\n"
+        " float opacity=clamp(result[5].x,0.0,1.0); float "
+        "metallic=clamp(result[3].x,0.0,1.0); bool unlit=result[6].x>0.5;\n"
+        " result[0]=vec4(base,opacity); result[1]=vec4(emission,opacity);\n"
+        " result[2]=vec4(unlit?vec3(0):base*(1.0-metallic),opacity); "
+        "result[3]=vec4(vec3(opacity),opacity);\n"
+        " for(int i=0;i<4;i++)result[i+4]=result[i];\n}\n"
+    );
     return text;
 }
 void render_shader_parameters(
@@ -292,6 +543,10 @@ void render_shader_parameters(
         if (yyjson_is_num(value) && asset->widths[i] == 1) {
             parsed[0] = (float)yyjson_get_num(value);
             valid = isfinite(parsed[0]);
+        }
+        if (yyjson_is_bool(value) && asset->widths[i] == 1) {
+            parsed[0] = yyjson_get_bool(value);
+            valid = true;
         }
         if (yyjson_is_arr(value) && (int)yyjson_arr_size(value) == asset->widths[i]) {
             valid = true;
@@ -339,7 +594,17 @@ bool render_shader_contains(
     float parameters[32][4], result[8][4];
     shader_error error;
     render_shader_parameters(id, world, entity, binding->parameters, parameters);
-    return shader_graph_eval_outputs(&assets[id - 1].graph, local, wp, time, parameters, result, &error) &&
+    shader_sample_context sample = {
+        .position = { local[0], local[1] },
+        .uv = { local[0] / (2 * assets[id - 1].bounds[0]) + 0.5f,
+                0.5f - local[1] / (2 * assets[id - 1].bounds[1]) },
+        .object_position = { local[0], 0, local[1] },
+        .world_position = { wp[0], 0, wp[1] },
+        .normal = { 0, 1, 0 },
+        .view_direction = { 0, 1, 0 },
+        .time = time,
+    };
+    return render_shader_sample(id, &sample, parameters, result, &error) &&
            result[0][0] <= 0;
 }
 void render_shader_clear_world(ecs_world *world)
@@ -357,11 +622,13 @@ void render_shader_catalog_clear()
         free_asset(&assets[i]);
     }
     afree(assets);
+    render_images_clear();
     for (int i = 0; i < acount(overrides); i++) {
         free(overrides[i].name);
     }
     afree(overrides);
     revision++;
+    ramp_revision++;
 }
 static int set_parameter(node *, flow_context *ctx)
 {
@@ -402,6 +669,8 @@ static int set_parameter(node *, flow_context *ctx)
         fresh.value[0] = value.f;
     } else if (fresh.width == 1 && value.type == PIN_F64) {
         fresh.value[0] = (float)value.d;
+    } else if (fresh.width == 1 && value.type == PIN_BOOL) {
+        fresh.value[0] = value.b;
     } else if (
         value.type == PIN_STRUCT && value.ptr && value.type_name &&
         ((!strcmp(value.type_name, "ShaderVec2") && fresh.width == 2) ||

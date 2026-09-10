@@ -195,6 +195,9 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
     pin_value val;
     if (!v || eval_context_input(&v->eval, n, pin, &val) != 0 ||
         !has_preview_value(v, n)) {
+        if (spec->binding) {
+            return v && v->error && v->error[0] ? v->error : "Input binding unavailable";
+        }
         return "";
     }
     val.type = n->input_pins[pin].type;

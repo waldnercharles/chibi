@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_FLOW_INTERNAL_H
-#define CBLUEPRINT_FLOW_INTERNAL_H
+#ifndef CHIBI_FLOW_INTERNAL_H
+#define CHIBI_FLOW_INTERNAL_H
 
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
@@ -57,6 +57,7 @@ struct flow_run
     flow_state state;
     unsigned long step_budget;
     unsigned long steps;
+    bool profile_started;
     unsigned long long topology_revision;
     flow_clock_fn now;
     void *now_user;
@@ -101,7 +102,12 @@ struct flow_run
     arena input_arena;
     arena scratch;
     flow_watch *watches;
+    int *watch_index;
+    int watch_capacity;
     flow_traversal *traversals;
+    flow_traversal *traversal_view;
+    int traversal_head;
+    bool traversal_view_dirty;
 };
 
 struct flow_context
@@ -110,6 +116,7 @@ struct flow_context
     node *node;
     int input_pin;
     int pause_requested;
+    bool inputs_unchanged;
     double pause_time;
     int pause_output;
     int failed;
@@ -117,6 +124,7 @@ struct flow_context
 
 int flow_watch_store(flow_run *run, const node *n, int output, int pin, const pin_value *value);
 void flow_watch_capture(flow_run *run, node *n);
+void flow_watch_capture_outputs(flow_run *run, node *n);
 void flow_watch_clear(flow_run *run);
 
 void flow_host_finish(flow_run *run, flow_host_state state);

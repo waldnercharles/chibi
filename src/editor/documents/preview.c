@@ -78,7 +78,7 @@ static int ed_entry_count(const editor *e)
 
 static void ed_dispatch_selected(editor *e)
 {
-    if (e->active_graph != e->bp->graph) {
+    if (e->active_graph != e->asset->graph) {
         return;
     }
     node *entry = ed_entry_at(e, e->entry_index);
@@ -113,7 +113,7 @@ void ed_compile(editor *e)
     compile_report_init(&e->compile);
     char message[256];
     behavior_asset *linked = behavior_asset_link_libraries(
-        e->bp,
+        e->asset,
         e->asset_catalog,
         acount(e->asset_catalog),
         message,
@@ -169,7 +169,7 @@ static void ed_run_reveal(editor *e)
             if (runtime->source_asset) {
                 node_id -= runtime->graph_id - runtime->source_graph_id;
                 graph_id = runtime->source_graph_id;
-                if (strcmp(runtime->source_asset, e->bp->name) != 0) {
+                if (strcmp(runtime->source_asset, e->asset->name) != 0) {
                     if (!e->open_asset) {
                         return;
                     }
@@ -241,8 +241,9 @@ void ed_draw_debug_menu(editor *e)
     }
     const behavior_instance *target_instance = ed_display_instance(e);
     int attached = target_instance != NULL;
-    int can_dispatch = !ed_inspection_blocked(e) && e->active_graph == e->bp->graph &&
-                       entry && entry->reference_name;
+    int can_dispatch = !ed_inspection_blocked(e) &&
+                       e->active_graph == e->asset->graph && entry &&
+                       entry->reference_name;
     ed_debug_action(e, "Dispatch", can_dispatch, ed_dispatch_selected);
     flow_state state = !ed_inspection_blocked(e) && e->activation
                          ? flow_run_status(e->activation)
@@ -286,6 +287,11 @@ unsigned editor_edit_revision(const editor *e)
     return e ? e->edit_revision : 0;
 }
 
+bool editor_has_pending_edits(const editor *e)
+{
+    return e && e->edit_pending;
+}
+
 void editor_undo(editor *e)
 {
     if (e) {
@@ -305,7 +311,7 @@ void editor_preview_create(editor *e)
     if (!e || e->instance || e->inspection_instance) {
         return;
     }
-    char *json = behavior_asset_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->asset);
     e->preview_behavior_asset = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!e->preview_behavior_asset) {
@@ -387,17 +393,18 @@ static void ed_refresh_edit_revision(editor *e)
     if (e->edit_revision_initialized && !e->edit_pending) {
         return;
     }
-    char *json = behavior_asset_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->asset);
     if (!json) {
         return;
     }
     int changed = e->edit_revision_initialized
-                    ? e->edit_revision_bp != e->bp || !e->edit_revision_snapshot ||
+                    ? e->edit_revision_asset != e->asset ||
+                          !e->edit_revision_snapshot ||
                           strcmp(e->edit_revision_snapshot, json) != 0
                     : e->edit_pending;
     free(e->edit_revision_snapshot);
     e->edit_revision_snapshot = json;
-    e->edit_revision_bp = e->bp;
+    e->edit_revision_asset = e->asset;
     e->edit_revision_initialized = 1;
     e->edit_pending = 0;
     if (changed) {

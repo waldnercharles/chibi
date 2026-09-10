@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SERIALIZE_H
-#define CBLUEPRINT_SERIALIZE_H
+#ifndef CHIBI_SERIALIZE_H
+#define CHIBI_SERIALIZE_H
 
 #include "graph/model/behavior_asset.h"
 #include "graph/model/graph.h"
@@ -13,7 +13,7 @@ int graph_append_json(graph *g, const char *json, float dx, float dy);
 /* FMT-1/FMT-2/FMT-16: the version-3 Behavior Asset document (metadata, ID
  * counter, optional owner type, variable list, graph list). Runtime state is
  * never serialized. */
-char *behavior_asset_save_json(const behavior_asset *bp);
+char *behavior_asset_save_json(const behavior_asset *asset);
 behavior_asset *behavior_asset_load_json(const char *json);
 
 #endif

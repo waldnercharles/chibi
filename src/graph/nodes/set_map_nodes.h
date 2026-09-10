@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SET_MAP_NODES_H
-#define CBLUEPRINT_SET_MAP_NODES_H
+#ifndef CHIBI_SET_MAP_NODES_H
+#define CHIBI_SET_MAP_NODES_H
 
 #include "graph/model/node.h"
 

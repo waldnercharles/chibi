@@ -10,17 +10,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef CBLUEPRINT_HAVE_SJLIT
-#define CBLUEPRINT_HAVE_SJLIT 0
+#ifndef CHIBI_HAVE_SJLIT
+#define CHIBI_HAVE_SJLIT 0
 #endif
 
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
 #include <sljitLir.h>
 #endif
 
 struct graph_sljit_program
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     void *code;
     void *batch_code;
     size_t *offsets;
@@ -44,7 +44,7 @@ static graph_sljit_program *compile_fail(const char **reason, const char *messag
     return NULL;
 }
 
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
 
 typedef struct
 {
@@ -992,7 +992,7 @@ static int emit_minmax(sljit_builder *builder, int maximum, sljit_s32 output, sl
 {
     struct sljit_jump *select_right = sljit_emit_fcmp(
         builder->compiler,
-        (maximum ? SLJIT_F_LESS : SLJIT_F_GREATER),
+        (maximum ? SLJIT_F_LESS : SLJIT_F_GREATER) | SLJIT_32,
         left,
         0,
         right,
@@ -1129,6 +1129,7 @@ static int emit_register_instruction(
                     );
                 }
             }
+#if defined(__aarch64__)
             if (kind == 3 && registers->simd) {
                 int transform;
                 int scale;
@@ -1161,6 +1162,7 @@ static int emit_register_instruction(
                     return alias_location(registers, instruction->output, transform);
                 }
             }
+#endif
             sljit_value_location output;
             sljit_value_kind output_kind = value_location_kind(
                 &values[instruction->output]
@@ -1208,6 +1210,7 @@ static int emit_register_instruction(
                     0
                 );
             }
+#if defined(__aarch64__)
             if (output.kind == SJLIT_VALUE_SIMD2) {
                 if (kind == 2) {
                     if (emit_simd_scalar_op(
@@ -1232,7 +1235,9 @@ static int emit_register_instruction(
                 } else {
                     return -1;
                 }
-            } else if (kind == 2) {
+            } else
+#endif
+                if (kind == 2) {
                 if (emit_fop2(
                         registers->builder,
                         SLJIT_MUL_F32,
@@ -1669,7 +1674,7 @@ static void *compile_batch_code(const graph_ir *ir, graph_sljit_program *program
                               (program->simd_mode
                                    ? SLJIT_ENTER_VECTOR(SJLIT_FLOAT_REGISTER_COUNT)
                                    : 0);
-    if (sljit_emit_enter(compiler, SLJIT_ENTER_REG_ARG, SLJIT_ARGS1(W, P_R), scratch_count, 0, 0) !=
+    if (sljit_emit_enter(compiler, 0, SLJIT_ARGS1(W, P_R), scratch_count, 0, 0) !=
             SLJIT_SUCCESS ||
         emit_op1(&builder, SLJIT_MOV_P, SLJIT_R4, 0, SLJIT_R0, 0) ||
         (ir->event_delta >= 0 &&
@@ -1778,7 +1783,7 @@ static graph_sljit_program *compile_ir(const graph_ir *ir, const char **reason)
     }
     if (sljit_emit_enter(
             builder.compiler,
-            register_mode ? SLJIT_ENTER_REG_ARG : 0,
+            0,
             register_mode ? SLJIT_ARGS1(W, P_R) : SLJIT_ARGS1(W, P),
             (register_mode ? 3 : 4) |
                 (register_mode ? SLJIT_ENTER_FLOAT(SJLIT_FLOAT_REGISTER_COUNT) : 0) |
@@ -1830,12 +1835,12 @@ static graph_sljit_program *compile_ir(const graph_ir *ir, const char **reason)
 
 int graph_sljit_available()
 {
-    return CBLUEPRINT_HAVE_SJLIT;
+    return CHIBI_HAVE_SJLIT;
 }
 
 graph_sljit_program *graph_sljit_compile(const graph_ir *ir, const char **reason)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     if (!ir) {
         return compile_fail(reason, "graph IR is required");
     }
@@ -1850,7 +1855,7 @@ graph_sljit_program *graph_sljit_compile(const graph_ir *ir, const char **reason
 
 void graph_sljit_free(graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     if (!program) {
         return;
     }
@@ -1871,7 +1876,7 @@ void graph_sljit_free(graph_sljit_program *program)
 
 graph_jit_entry_fn graph_sljit_entry(const graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     return (graph_jit_entry_fn)program->code;
 #else
     return NULL;
@@ -1880,7 +1885,7 @@ graph_jit_entry_fn graph_sljit_entry(const graph_sljit_program *program)
 
 graph_sljit_batch_entry_fn graph_sljit_batch_entry(const graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     return (graph_sljit_batch_entry_fn)program->batch_code;
 #else
     return NULL;
@@ -1889,7 +1894,7 @@ graph_sljit_batch_entry_fn graph_sljit_batch_entry(const graph_sljit_program *pr
 
 int graph_sljit_uses_registers(const graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     return program->register_mode;
 #else
     return 0;
@@ -1898,7 +1903,7 @@ int graph_sljit_uses_registers(const graph_sljit_program *program)
 
 int graph_sljit_uses_batch(const graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     return program->batch_code != NULL;
 #else
     return 0;
@@ -1907,7 +1912,7 @@ int graph_sljit_uses_batch(const graph_sljit_program *program)
 
 int graph_sljit_uses_simd(const graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     return program->simd_mode;
 #else
     return 0;
@@ -1916,7 +1921,7 @@ int graph_sljit_uses_simd(const graph_sljit_program *program)
 
 int graph_sljit_column_count(const graph_sljit_program *program)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     return program->column_count;
 #else
     return 0;
@@ -1925,7 +1930,7 @@ int graph_sljit_column_count(const graph_sljit_program *program)
 
 uint64_t graph_sljit_column_id_at(const graph_sljit_program *program, int index)
 {
-#if CBLUEPRINT_HAVE_SJLIT
+#if CHIBI_HAVE_SJLIT
     assert(index >= 0 && index < program->column_count);
     return program->column_ids[index];
 #else

@@ -24,6 +24,6 @@ compile_commands.json
 *.tsv.lock
 build-dev/
 .chibi/
-.DS_STORE
+.DS_Store
 
 __pycache__/

@@ -2894,7 +2894,6 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         } else {
             yyjson_mut_obj_add_strcpy(result->doc, value, "scene_name", scene->name);
             yyjson_mut_obj_add_int(result->doc, value, "entities", acount(scene->entities));
-            yyjson_mut_obj_add_bool(result->doc, value, "perspective", scene->perspective);
             game_scene_document_free(scene);
         }
     }
@@ -2980,24 +2979,17 @@ static int register_preview_assets(
     return 0;
 }
 
-static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, const engine_frame_timing *timing)
+static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "timing");
-    yyjson_mut_obj_add_uint(doc, value, "frame", timing->frame);
-    yyjson_mut_obj_add_uint(doc, value, "simulation_steps", timing->simulation_steps);
-    yyjson_mut_obj_add_real(doc, value, "simulation_time", timing->simulation_time);
-    yyjson_mut_obj_add_real(doc, value, "dropped_seconds", timing->dropped_seconds);
-    yyjson_mut_obj_add_int(doc, value, "event_backlog", timing->event_backlog);
-    yyjson_mut_obj_add_int(doc, value, "steps", timing->steps);
-    yyjson_mut_obj_add_real(doc, value, "alpha", timing->alpha);
-    yyjson_mut_obj_add_real(doc, value, "behavior_ms", timing->behavior_ms);
-    yyjson_mut_obj_add_real(doc, value, "physics_ms", timing->physics_ms);
-    yyjson_mut_obj_add_real(doc, value, "events_ms", timing->events_ms);
-    yyjson_mut_obj_add_real(doc, value, "systems_ms", timing->systems_ms);
-    yyjson_mut_obj_add_real(doc, value, "rendering_ms", timing->rendering_ms);
-    yyjson_mut_obj_add_uint(doc, value, "command_apply_count", timing->command_apply_count);
+    yyjson_mut_obj_add_uint(doc, value, "frame", frames);
+    yyjson_mut_obj_add_uint(doc, value, "simulation_steps", frames);
+    yyjson_mut_obj_add_real(doc, value, "simulation_time", frames * fixed_dt);
+    yyjson_mut_obj_add_real(doc, value, "fixed_dt", fixed_dt);
     return 0;
 }
+
+#define SCENARIO_FIXED_DT (1.0 / 60.0)
 
 static uint64_t scenario_hash_bytes(uint64_t hash, const void *data, size_t size)
 {
@@ -3295,7 +3287,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
         return -1;
     }
-    double fixed_dt = ENGINE_FIXED_SECONDS;
+    double fixed_dt = SCENARIO_FIXED_DT;
     yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
     if (fixed_dt_value) {
         if (!yyjson_is_num(fixed_dt_value)) {
@@ -3304,7 +3296,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         }
         fixed_dt = yyjson_get_num(fixed_dt_value);
         if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
-            fabs(fixed_dt - ENGINE_FIXED_SECONDS) > 1e-12) {
+            fabs(fixed_dt - SCENARIO_FIXED_DT) > 1e-12) {
             response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
             return -1;
         }
@@ -3433,23 +3425,9 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         game_prototype_free(prototype);
         return -1;
     }
-    engine *runtime = game_prototype_preview_runtime(preview);
-    if (engine_set_playing(runtime, false) != 0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "could not pause prototype runtime");
-        game_prototype_preview_free(preview);
-        game_prototype_free(prototype);
-        return -1;
-    }
     for (uint64_t frame = 0; frame < frames; frame++) {
-        if (engine_step(runtime) != 0 ||
-            game_prototype_preview_tick(preview, (double)(frame + 1) * fixed_dt) != 0) {
-            const char *runtime_error = engine_error(runtime);
-            response_error(
-                result,
-                exit_code,
-                BLUEPRINTS_AUTOMATION_EXECUTION_ERROR,
-                runtime_error ? runtime_error : "prototype scenario failed"
-            );
+        if (game_prototype_preview_tick(preview, (double)(frame + 1) * fixed_dt) != 0) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "prototype scenario failed");
             game_prototype_preview_free(preview);
             game_prototype_free(prototype);
             return -1;
@@ -3472,7 +3450,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         "live_entities",
         ecs_world_live_count(game_prototype_preview_world(preview))
     );
-    add_scenario_timing(result->doc, value, engine_last_timing(runtime));
+    add_scenario_timing(result->doc, value, frames, fixed_dt);
     game_prototype_preview_free(preview);
     game_prototype_free(prototype);
     return 0;
@@ -3514,17 +3492,10 @@ static int advance_scenario(
         set_error(error, error_size, launch_error[0] ? launch_error : "could not launch prototype");
         return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
     }
-    engine *runtime = game_prototype_preview_runtime(context->preview);
-    if (engine_set_playing(runtime, false) != 0) {
-        set_error(error, error_size, "could not pause prototype runtime");
-        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
-    }
     for (uint64_t frame = 0; frame < frames; frame++) {
-        if (engine_step(runtime) != 0 ||
-            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
-                0) {
-            const char *runtime_error = engine_error(runtime);
-            set_error(error, error_size, runtime_error ? runtime_error : "prototype scenario failed");
+        if (game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
+            0) {
+            set_error(error, error_size, "prototype scenario failed");
             return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
         }
     }
@@ -3750,7 +3721,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
         return -1;
     }
-    double fixed_dt = ENGINE_FIXED_SECONDS;
+    double fixed_dt = SCENARIO_FIXED_DT;
     yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
     if (fixed_dt_value) {
         if (!yyjson_is_num(fixed_dt_value)) {
@@ -3759,7 +3730,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         }
         fixed_dt = yyjson_get_num(fixed_dt_value);
         if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
-            fabs(fixed_dt - ENGINE_FIXED_SECONDS) > 1e-12) {
+            fabs(fixed_dt - SCENARIO_FIXED_DT) > 1e-12) {
             response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
             return -1;
         }
@@ -3892,11 +3863,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         emitted_logs++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
-    add_scenario_timing(
-        result->doc,
-        value,
-        engine_last_timing(game_prototype_preview_runtime(context.preview))
-    );
+    add_scenario_timing(result->doc, value, frames, fixed_dt);
     scenario_context_free(&context);
     return 0;
 }

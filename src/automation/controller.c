@@ -218,6 +218,17 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
 };
+static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
+    { "kind", "string", false, "Target family; defaults to prototype." },
+    { "name", "string", true, "Prototype asset name." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
+    { "entity_limit", "uint64", false, "Maximum number of ordered entities; maximum 256." },
+    { "component_limit", "uint64", false, "Maximum number of components per entity; maximum 64." },
+    { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
+    { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
+    { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
+};
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
     {
@@ -343,6 +354,16 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         true,
         false,
     },
+    {
+        "runtime_snapshot",
+        "Launch one prototype and return a bounded reflected runtime snapshot.",
+        CONTRACT_RUNTIME_SNAPSHOT,
+        CONTRACT_FIELD_COUNT(CONTRACT_RUNTIME_SNAPSHOT),
+        1,
+        true,
+        true,
+        false,
+    },
 };
 
 static const char *const CONTRACT_ERROR_CATEGORIES[] = {
@@ -353,6 +374,7 @@ static const char *const CONTRACT_ERROR_CATEGORIES[] = {
 static int handle_describe_registry(response *result);
 static int handle_describe_contract(response *result);
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_runtime_snapshot(const char *root, yyjson_val *request, response *result, int *exit_code);
 static uint64_t catalog_content_hash(const catalog_asset *assets);
 static int load_asset(
     const char *root,
@@ -2927,9 +2949,11 @@ static int load_behavior_family_assets(
         behavior_asset *asset = behavior_asset_load_json(json);
         free(json);
         if (!asset) {
+            char relative[512];
+            snprintf(relative, sizeof relative, "%s", entries[i].relative);
             free_asset_entries(entries);
             free_behavior_assets(assets);
-            snprintf(error, error_size, "could not load %s: %s", entries[i].relative, graph_last_error());
+            snprintf(error, error_size, "could not load %s: %s", relative, graph_last_error());
             return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
         }
         apush(assets, asset);
@@ -2985,42 +3009,76 @@ static uint64_t scenario_hash_bytes(uint64_t hash, const void *data, size_t size
     return hash;
 }
 
-static void scenario_hash_string_fields(uint64_t *hash, const void *data, const type_desc *type)
+static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_name, const pin_value *value)
 {
-    if (!type) {
-        return;
-    }
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        const unsigned char *address = (const unsigned char *)data + field->offset;
-        if (field->type == PIN_NAME || field->type == PIN_STR) {
-            const char *value = *(const char *const *)address;
-            uint64_t length = value ? strlen(value) : 0;
-            *hash = scenario_hash_bytes(*hash, &length, sizeof length);
-            *hash = scenario_hash_bytes(*hash, value ? value : "", (size_t)length);
-        } else if (field->type == PIN_STRUCT) {
-            scenario_hash_string_fields(
-                hash,
-                address,
-                registry_type_by_name(field->type_name)
-            );
+    *hash = scenario_hash_bytes(*hash, &type, sizeof type);
+    const char *name = type_name ? type_name : "";
+    uint64_t name_size = strlen(name);
+    *hash = scenario_hash_bytes(*hash, &name_size, sizeof name_size);
+    *hash = scenario_hash_bytes(*hash, name, (size_t)name_size);
+    switch (type) {
+        case PIN_BOOL:
+            *hash = scenario_hash_bytes(*hash, &value->b, sizeof value->b);
+            break;
+        case PIN_I8:
+            *hash = scenario_hash_bytes(*hash, &value->i8, sizeof value->i8);
+            break;
+        case PIN_U8:
+            *hash = scenario_hash_bytes(*hash, &value->u8, sizeof value->u8);
+            break;
+        case PIN_I16:
+            *hash = scenario_hash_bytes(*hash, &value->i16, sizeof value->i16);
+            break;
+        case PIN_U16:
+            *hash = scenario_hash_bytes(*hash, &value->u16, sizeof value->u16);
+            break;
+        case PIN_I32:
+            *hash = scenario_hash_bytes(*hash, &value->i, sizeof value->i);
+            break;
+        case PIN_U32:
+            *hash = scenario_hash_bytes(*hash, &value->u, sizeof value->u);
+            break;
+        case PIN_I64:
+            *hash = scenario_hash_bytes(*hash, &value->i64, sizeof value->i64);
+            break;
+        case PIN_U64:
+        case PIN_HANDLE:
+            *hash = scenario_hash_bytes(*hash, &value->u64, sizeof value->u64);
+            break;
+        case PIN_F32:
+            *hash = scenario_hash_bytes(*hash, &value->f, sizeof value->f);
+            break;
+        case PIN_F64:
+            *hash = scenario_hash_bytes(*hash, &value->d, sizeof value->d);
+            break;
+        case PIN_ENUM:
+            *hash = scenario_hash_bytes(*hash, &value->e, sizeof value->e);
+            break;
+        case PIN_NAME:
+        case PIN_STR: {
+            const char *text = value->str ? value->str : "";
+            uint64_t text_size = strlen(text);
+            *hash = scenario_hash_bytes(*hash, &text_size, sizeof text_size);
+            *hash = scenario_hash_bytes(*hash, text, (size_t)text_size);
+            break;
         }
-    }
-}
-
-static void scenario_zero_string_fields(void *data, const type_desc *type)
-{
-    if (!type) {
-        return;
-    }
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        unsigned char *address = (unsigned char *)data + field->offset;
-        if (field->type == PIN_NAME || field->type == PIN_STR) {
-            memset(address, 0, field->size);
-        } else if (field->type == PIN_STRUCT) {
-            scenario_zero_string_fields(address, registry_type_by_name(field->type_name));
+        case PIN_STRUCT: {
+            const type_desc *struct_type = registry_type_by_name(type_name);
+            if (!struct_type || !value->ptr) {
+                break;
+            }
+            for (int i = 0; i < struct_type->field_count; i++) {
+                const type_field *field = &struct_type->fields[i];
+                uint64_t field_size = strlen(field->name ? field->name : "");
+                *hash = scenario_hash_bytes(*hash, &field_size, sizeof field_size);
+                *hash = scenario_hash_bytes(*hash, field->name, (size_t)field_size);
+                pin_value field_value;
+                pin_read_field(value->ptr, field, &field_value);
+                scenario_hash_value(hash, field->type, field->type_name, &field_value);
+            }
+            break;
         }
+        case PIN_FLOW: break;
     }
 }
 
@@ -3041,12 +3099,20 @@ static uint64_t scenario_world_hash(const ecs_world *world)
             }
             hash = scenario_hash_bytes(hash, &component->id, sizeof component->id);
             const void *data = ecs_component_data_const(world, entity, component->id);
-            void *copy = xmalloc(component->element_size);
-            memcpy(copy, data, component->element_size);
-            scenario_hash_string_fields(&hash, data, component->type);
-            scenario_zero_string_fields(copy, component->type);
-            hash = scenario_hash_bytes(hash, copy, component->element_size);
-            free(copy);
+            if (!component->type) {
+                hash = scenario_hash_bytes(hash, data, component->element_size);
+                continue;
+            }
+            for (int field_index = 0; field_index < component->type->field_count;
+                 field_index++) {
+                const type_field *field = &component->type->fields[field_index];
+                uint64_t field_size = strlen(field->name ? field->name : "");
+                hash = scenario_hash_bytes(hash, &field_size, sizeof field_size);
+                hash = scenario_hash_bytes(hash, field->name, (size_t)field_size);
+                pin_value value;
+                pin_read_field(data, field, &value);
+                scenario_hash_value(&hash, field->type, field->type_name, &value);
+            }
         }
     }
     return hash;
@@ -3074,6 +3140,139 @@ static char *scenario_prototype_json(const char *json, uint64_t hash)
     yyjson_mut_doc_free(mutable);
     yyjson_doc_free(document);
     return copy;
+}
+
+typedef struct
+{
+    asset_ref prototype_ref;
+    size_t prototype_bytes;
+    uint64_t prototype_hash;
+    game_prototype_registry registry;
+    game_prototype *prototype;
+    game_prototype_preview *preview;
+} scenario_context;
+
+static void scenario_context_free(scenario_context *context)
+{
+    if (!context) {
+        return;
+    }
+    game_prototype_preview_free(context->preview);
+    game_prototype_free(context->prototype);
+    *context = (scenario_context){ 0 };
+}
+
+static int prepare_scenario(
+    const char *root,
+    const char *name,
+    scenario_context *context,
+    char *error,
+    size_t error_size
+)
+{
+    *context = (scenario_context){ 0 };
+    const asset_family *prototype_family = family_by_kind("prototype");
+    char *prototype_json = NULL;
+    int status = load_named_asset(
+        root,
+        prototype_family,
+        name,
+        &context->prototype_ref,
+        &prototype_json,
+        &context->prototype_bytes,
+        &context->prototype_hash,
+        error,
+        error_size
+    );
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        return status;
+    }
+
+    context->registry = (game_prototype_registry){
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    char *scenario_json = scenario_prototype_json(prototype_json, context->prototype_hash);
+    context->prototype = scenario_json
+                           ? game_prototype_load(scenario_json, &context->registry, error, error_size)
+                           : NULL;
+    free(scenario_json);
+    free(prototype_json);
+    if (!context->prototype) {
+        scenario_context_free(context);
+        if (!error[0]) {
+            set_error(error, error_size, "prototype validation failed");
+        }
+        return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
+    }
+
+    context->preview = game_prototype_preview_new(&context->registry);
+    if (!context->preview) {
+        scenario_context_free(context);
+        set_error(error, error_size, "could not create prototype preview");
+        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+
+    behavior_asset **libraries = NULL;
+    behavior_asset **events = NULL;
+    int result = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
+    if (result == BLUEPRINTS_AUTOMATION_OK) {
+        result = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
+    }
+    if (result == BLUEPRINTS_AUTOMATION_OK &&
+        register_preview_assets(context->preview, libraries, error, error_size) != 0) {
+        result = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (result == BLUEPRINTS_AUTOMATION_OK &&
+        register_preview_assets(context->preview, events, error, error_size) != 0) {
+        result = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    free_behavior_assets(libraries);
+    free_behavior_assets(events);
+    if (result != BLUEPRINTS_AUTOMATION_OK) {
+        scenario_context_free(context);
+        return result;
+    }
+
+    for (int i = 0; i < acount(context->prototype->graphs); i++) {
+        asset_ref behavior_ref = { 0 };
+        char *behavior_json = NULL;
+        status = load_named_asset(
+            root,
+            family_by_kind("behavior"),
+            context->prototype->graphs[i],
+            &behavior_ref,
+            &behavior_json,
+            NULL,
+            NULL,
+            error,
+            error_size
+        );
+        if (status != BLUEPRINTS_AUTOMATION_OK) {
+            free(behavior_json);
+            scenario_context_free(context);
+            return status;
+        }
+        behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+        free(behavior_json);
+        if (!behavior) {
+            set_error(error, error_size, graph_last_error());
+            scenario_context_free(context);
+            return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
+        }
+        int registered = game_prototype_preview_register_behavior(
+            context->preview,
+            context->prototype->graphs[i],
+            behavior
+        );
+        behavior_asset_free(behavior);
+        if (registered != 0) {
+            set_error(error, error_size, "could not register prototype behavior");
+            scenario_context_free(context);
+            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        }
+    }
+    return BLUEPRINTS_AUTOMATION_OK;
 }
 
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -3279,6 +3478,429 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
     return 0;
 }
 
+#define RUNTIME_SNAPSHOT_MAX_ENTITIES 256
+#define RUNTIME_SNAPSHOT_MAX_COMPONENTS 64
+#define RUNTIME_SNAPSHOT_MAX_FIELDS 128
+#define RUNTIME_SNAPSHOT_MAX_BEHAVIORS 64
+#define RUNTIME_SNAPSHOT_MAX_LOGS 128
+
+static bool runtime_snapshot_limit(
+    yyjson_val *request,
+    const char *key,
+    uint64_t default_value,
+    uint64_t maximum,
+    uint64_t *out
+)
+{
+    yyjson_val *value = yyjson_obj_get(request, key);
+    if (!value) {
+        *out = default_value;
+        return true;
+    }
+    return request_uint(request, key, out) && *out > 0 && *out <= maximum;
+}
+
+static int advance_scenario(
+    scenario_context *context,
+    uint64_t frames,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+)
+{
+    char launch_error[256] = { 0 };
+    if (game_prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error) !=
+        ECS_OK) {
+        set_error(error, error_size, launch_error[0] ? launch_error : "could not launch prototype");
+        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    engine *runtime = game_prototype_preview_runtime(context->preview);
+    if (engine_set_playing(runtime, false) != 0) {
+        set_error(error, error_size, "could not pause prototype runtime");
+        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        if (engine_step(runtime) != 0 ||
+            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
+                0) {
+            const char *runtime_error = engine_error(runtime);
+            set_error(error, error_size, runtime_error ? runtime_error : "prototype scenario failed");
+            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        }
+    }
+    return BLUEPRINTS_AUTOMATION_OK;
+}
+
+static void add_snapshot_component(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const ecs_world *world,
+    ecs_entity entity,
+    const ecs_component_desc *component,
+    const game_prototype_registry *registry,
+    yyjson_val *field_selectors,
+    uint64_t field_limit
+)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_uint(doc, object, "id", component->id);
+    yyjson_mut_obj_add_strcpy(doc, object, "key", component->key ? component->key : "");
+    yyjson_mut_obj_add_strcpy(doc, object, "name", component->name ? component->name : "");
+    yyjson_mut_obj_add_uint(doc, object, "bytes", component->element_size);
+    yyjson_mut_obj_add_uint(doc, object, "layout_hash", component->layout_hash);
+    if (component->type && component->type->name) {
+        yyjson_mut_obj_add_strcpy(doc, object, "type", component->type->name);
+    }
+
+    yyjson_mut_val *fields = yyjson_mut_obj_add_arr(doc, object, "fields");
+    const type_desc *type = component->type;
+    if (!type) {
+        yyjson_mut_obj_add_int(doc, object, "field_count", 0);
+        yyjson_mut_obj_add_bool(doc, object, "fields_truncated", false);
+        return;
+    }
+
+    char *fields_json = game_prototype_entity_component_json(world, entity, component, registry);
+    yyjson_doc *fields_doc = fields_json
+                               ? yyjson_read(fields_json, strlen(fields_json), 0)
+                               : NULL;
+    yyjson_val *field_values = fields_doc ? yyjson_doc_get_root(fields_doc) : NULL;
+    if (field_values && yyjson_is_obj(field_values)) {
+        field_values = yyjson_obj_get(
+            field_values,
+            component->key ? component->key : component->name
+        );
+    }
+    int *order = type->field_count
+                   ? xmalloc((size_t)type->field_count * sizeof *order)
+                   : NULL;
+    int order_count = 0;
+    for (int i = 0; i < type->field_count; i++) {
+        const char *field_name = type->fields[i].name ? type->fields[i].name : "";
+        bool selected = !field_selectors;
+        size_t component_size = strlen(component->name ? component->name : "");
+        size_t field_size = strlen(field_name);
+        size_t selector_size = component_size + 1 + field_size + 1;
+        char *selector = xmalloc(selector_size);
+        snprintf(selector, selector_size, "%s.%s", component->name ? component->name : "", field_name);
+        if (field_selectors) {
+            size_t selector_count = yyjson_arr_size(field_selectors);
+            for (size_t selector_index = 0; selector_index < selector_count;
+                 selector_index++) {
+                yyjson_val *value = yyjson_arr_get(field_selectors, selector_index);
+                const char *text = yyjson_is_str(value) ? yyjson_get_str(value) : NULL;
+                if (text && (!strcmp(text, selector) || !strcmp(text, field_name))) {
+                    selected = true;
+                    break;
+                }
+            }
+        }
+        free(selector);
+        if (selected) {
+            order[order_count++] = i;
+        }
+    }
+
+    for (int i = 1; i < order_count; i++) {
+        int current = order[i];
+        int j = i;
+        while (j > 0 &&
+               strcmp(
+                   type->fields[order[j - 1]].name ? type->fields[order[j - 1]].name : "",
+                   type->fields[current].name ? type->fields[current].name : ""
+               ) > 0) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = current;
+    }
+    for (int i = 0; i < order_count && (uint64_t)i < field_limit; i++) {
+        const type_field *field = &type->fields[order[i]];
+        yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, fields);
+        yyjson_mut_obj_add_strcpy(doc, entry, "name", field->name ? field->name : "");
+        yyjson_mut_obj_add_strcpy(doc, entry, "type", pin_json_name(field->type));
+        if (field->type_name) {
+            yyjson_mut_obj_add_strcpy(doc, entry, "type_name", field->type_name);
+        }
+        yyjson_val *field_value = field_values && yyjson_is_obj(field_values)
+                                    ? yyjson_obj_get(field_values, field->name)
+                                    : NULL;
+        if (field_value) {
+            yyjson_mut_obj_add_val(doc, entry, "value", yyjson_val_mut_copy(doc, field_value));
+        } else {
+            yyjson_mut_obj_add_null(doc, entry, "value");
+        }
+    }
+    yyjson_mut_obj_add_int(doc, object, "field_count", order_count);
+    yyjson_mut_obj_add_bool(doc, object, "fields_truncated", (uint64_t)order_count > field_limit);
+    yyjson_doc_free(fields_doc);
+    free(fields_json);
+    free(order);
+}
+
+static void add_snapshot_behavior(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    game_behavior_world *behaviors,
+    ecs_entity entity,
+    int index
+)
+{
+    game_behavior_attachment_info info = { 0 };
+    if (game_behavior_attachment_info_at(behaviors, entity, index, &info) != 0) {
+        return;
+    }
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_strcpy(doc, object, "asset", info.asset_name ? info.asset_name : "");
+    yyjson_mut_obj_add_uint(doc, object, "sequence", info.sequence);
+    yyjson_mut_obj_add_bool(doc, object, "debug_hold", info.debug_hold != 0);
+    game_behavior_entity_state state = { 0 };
+    if (game_behavior_entity_state_at(behaviors, entity, info.asset_name, &state) == 0) {
+        yyjson_mut_val *state_value = yyjson_mut_obj_add_obj(doc, object, "state");
+        yyjson_mut_obj_add_bool(doc, state_value, "active", state.active != 0);
+        yyjson_mut_obj_add_bool(doc, state_value, "suspended", state.suspended != 0);
+        yyjson_mut_obj_add_real(doc, state_value, "wake_time", state.wake_time);
+    }
+}
+
+static void add_snapshot_entity(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    ecs_world *world,
+    ecs_entity entity,
+    game_behavior_world *behaviors,
+    const game_prototype_registry *registry,
+    yyjson_val *field_selectors,
+    uint64_t component_limit,
+    uint64_t field_limit,
+    uint64_t behavior_limit
+)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_uint(doc, object, "id", ecs_entity_to_u64(entity));
+    yyjson_mut_obj_add_uint(doc, object, "slot", entity.slot);
+    yyjson_mut_obj_add_uint(doc, object, "generation", entity.generation);
+
+    int world_component_count = ecs_world_component_count(world);
+    const ecs_component_desc **present = xmalloc(
+        (size_t)world_component_count * sizeof *present
+    );
+    int present_components = 0;
+    for (int i = 0; i < world_component_count; i++) {
+        const ecs_component_desc *component = ecs_world_component_at(world, i);
+        if (ecs_component_has(world, entity, component->id)) {
+            present[present_components++] = component;
+        }
+    }
+    for (int i = 1; i < present_components; i++) {
+        const ecs_component_desc *current = present[i];
+        int j = i;
+        while (j > 0 && strcmp(
+                            present[j - 1]->name ? present[j - 1]->name : "",
+                            current->name ? current->name : ""
+                        ) > 0) {
+            present[j] = present[j - 1];
+            j--;
+        }
+        present[j] = current;
+    }
+    yyjson_mut_obj_add_int(doc, object, "component_count", present_components);
+    yyjson_mut_val *components = yyjson_mut_obj_add_arr(doc, object, "components");
+    int emitted_components = 0;
+    for (int i = 0; i < present_components; i++) {
+        if ((uint64_t)emitted_components < component_limit) {
+            add_snapshot_component(doc, components, world, entity, present[i], registry, field_selectors, field_limit);
+            emitted_components++;
+        }
+    }
+    yyjson_mut_obj_add_bool(doc, object, "components_truncated", present_components > emitted_components);
+
+    int behavior_count = game_behavior_attachment_count_for_entity(behaviors, entity);
+    yyjson_mut_obj_add_int(doc, object, "behavior_count", behavior_count);
+    yyjson_mut_val *attachments = yyjson_mut_obj_add_arr(doc, object, "behaviors");
+    int emitted_behaviors = 0;
+    for (int i = 0; i < behavior_count; i++) {
+        if ((uint64_t)emitted_behaviors >= behavior_limit) {
+            break;
+        }
+        add_snapshot_behavior(doc, attachments, behaviors, entity, i);
+        emitted_behaviors++;
+    }
+    yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", behavior_count > emitted_behaviors);
+    free(present);
+}
+
+static int handle_runtime_snapshot(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "runtime_snapshot supports prototype targets only");
+        return -1;
+    }
+    const char *name = request_string(request, "name");
+    if (!name || !name[0]) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        return -1;
+    }
+
+    uint64_t frames = SCENARIO_DEFAULT_FRAMES;
+    yyjson_val *frames_value = yyjson_obj_get(request, "frames");
+    if (frames_value && (!request_uint(request, "frames", &frames) ||
+                         frames > SCENARIO_MAX_FRAMES)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+        return -1;
+    }
+    double fixed_dt = ENGINE_FIXED_SECONDS;
+    yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
+    if (fixed_dt_value) {
+        if (!yyjson_is_num(fixed_dt_value)) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
+            return -1;
+        }
+        fixed_dt = yyjson_get_num(fixed_dt_value);
+        if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
+            fabs(fixed_dt - ENGINE_FIXED_SECONDS) > 1e-12) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
+            return -1;
+        }
+    }
+
+    uint64_t entity_limit = 0;
+    uint64_t component_limit = 0;
+    uint64_t field_limit = 0;
+    uint64_t behavior_limit = 0;
+    if (!runtime_snapshot_limit(
+            request,
+            "entity_limit",
+            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            &entity_limit
+        ) ||
+        !runtime_snapshot_limit(
+            request,
+            "component_limit",
+            RUNTIME_SNAPSHOT_MAX_COMPONENTS,
+            RUNTIME_SNAPSHOT_MAX_COMPONENTS,
+            &component_limit
+        ) ||
+        !runtime_snapshot_limit(request, "field_limit", RUNTIME_SNAPSHOT_MAX_FIELDS, RUNTIME_SNAPSHOT_MAX_FIELDS, &field_limit) ||
+        !runtime_snapshot_limit(
+            request,
+            "behavior_limit",
+            RUNTIME_SNAPSHOT_MAX_BEHAVIORS,
+            RUNTIME_SNAPSHOT_MAX_BEHAVIORS,
+            &behavior_limit
+        )) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "snapshot limits must be positive integers within their supported bounds");
+        return -1;
+    }
+    yyjson_val *field_selectors = yyjson_obj_get(request, "fields");
+    if (field_selectors) {
+        if (!yyjson_is_arr(field_selectors) || yyjson_arr_size(field_selectors) > 32) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fields must be an array with at most 32 selectors");
+            return -1;
+        }
+        size_t selector_count = yyjson_arr_size(field_selectors);
+        for (size_t i = 0; i < selector_count; i++) {
+            yyjson_val *selector = yyjson_arr_get(field_selectors, i);
+            if (!yyjson_is_str(selector) || strlen(yyjson_get_str(selector)) > 128) {
+                response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "field selectors must be strings no longer than 128 characters");
+                return -1;
+            }
+        }
+    }
+
+    scenario_context context = { 0 };
+    char error[256] = { 0 };
+    int status = prepare_scenario(root, name, &context, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    status = advance_scenario(&context, frames, fixed_dt, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        scenario_context_free(&context);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+
+    ecs_world *world = game_prototype_preview_world(context.preview);
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context.preview);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(
+        result->doc,
+        value,
+        &context.prototype_ref,
+        context.prototype_bytes,
+        context.prototype_hash
+    );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    add_hash_named(result->doc, value, "world_hash", scenario_world_hash(world));
+    uint32_t live_entities = ecs_world_live_count(world);
+    yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
+    yyjson_mut_obj_add_uint(result->doc, value, "entity_count", live_entities);
+    yyjson_mut_val *entities = yyjson_mut_obj_add_arr(result->doc, value, "entities");
+    uint32_t emitted_entities = 0;
+    uint32_t high_water = ecs_world_high_water_mark(world);
+    for (uint32_t slot = 1; slot <= high_water; slot++) {
+        ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+        if (!ecs_entity_is_alive(world, entity)) {
+            continue;
+        }
+        if ((uint64_t)emitted_entities >= entity_limit) {
+            break;
+        }
+        add_snapshot_entity(
+            result->doc,
+            entities,
+            world,
+            entity,
+            behaviors,
+            &context.registry,
+            field_selectors,
+            component_limit,
+            field_limit,
+            behavior_limit
+        );
+        emitted_entities++;
+    }
+    yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
+    int log_count = game_behavior_log_count(behaviors);
+    yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
+    yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
+    int emitted_logs = 0;
+    for (int i = 0; i < log_count && emitted_logs < RUNTIME_SNAPSHOT_MAX_LOGS; i++) {
+        game_behavior_log_info info = { 0 };
+        if (game_behavior_log_info_at(behaviors, i, &info) != 0) {
+            continue;
+        }
+        yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
+        yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
+        yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
+        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
+        if (info.origin) {
+            yyjson_mut_val *origin = yyjson_mut_obj_add_obj(result->doc, log, "origin");
+            yyjson_mut_obj_add_uint(result->doc, origin, "id", info.origin->id);
+            yyjson_mut_obj_add_strcpy(
+                result->doc,
+                origin,
+                "name",
+                info.origin->desc && info.origin->desc->name ? info.origin->desc->name : ""
+            );
+        }
+        emitted_logs++;
+    }
+    yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
+    add_scenario_timing(
+        result->doc,
+        value,
+        engine_last_timing(game_prototype_preview_runtime(context.preview))
+    );
+    scenario_context_free(&context);
+    return 0;
+}
+
 static int handle_describe_registry(response *result)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -3363,7 +3985,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "inspect_graph") ||
            !strcmp(operation, "inspect_system") ||
-           !strcmp(operation, "run_scenario");
+           !strcmp(operation, "run_scenario") ||
+           !strcmp(operation, "runtime_snapshot");
 }
 
 char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -3432,6 +4055,8 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         handle_inspect_system(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "run_scenario")) {
         handle_run_scenario(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "runtime_snapshot")) {
+        handle_runtime_snapshot(root, root_value, &result, exit_code);
     } else {
         handle_describe_registry(&result);
     }

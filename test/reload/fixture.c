@@ -1,12 +1,12 @@
-#include <blueprints/application.h>
+#include <chibi/application.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifndef GENERATION
 #define GENERATION 1
 #endif
-static bp_host allocator;
-static void *create(const bp_host *host, const char *text, char *error, size_t size)
+static chibi_host allocator;
+static void *create(const chibi_host *host, const char *text, char *error, size_t size)
 {
 #ifdef REJECT_IMPORT
     snprintf(error, size, "candidate rejected checkpoint");
@@ -40,13 +40,13 @@ static void destroy(void *state)
 {
     allocator.release(state);
 }
-BP_APPLICATION_EXPORT const bp_application_api *blueprints_application()
+CHIBI_APPLICATION_EXPORT const chibi_application_api *chibi_application()
 {
-    static const bp_application_api api = {
+    static const chibi_application_api api = {
 #ifdef BAD_ABI
-        .abi = BLUEPRINTS_APPLICATION_ABI + 1,
+        .abi = CHIBI_APPLICATION_ABI + 1,
 #else
-        .abi = BLUEPRINTS_APPLICATION_ABI,
+        .abi = CHIBI_APPLICATION_ABI,
 #endif
         .create = create,
         .checkpoint = checkpoint,

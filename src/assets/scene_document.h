@@ -1,6 +1,7 @@
-#ifndef CBLUEPRINT_GAME_SCENE_DOCUMENT_H
-#define CBLUEPRINT_GAME_SCENE_DOCUMENT_H
+#ifndef CHIBI_GAME_SCENE_DOCUMENT_H
+#define CHIBI_GAME_SCENE_DOCUMENT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 typedef struct
@@ -16,6 +17,7 @@ typedef struct game_scene_document
 {
     char *name;
     game_scene_entity *entities;
+    bool perspective;
 } game_scene_document;
 
 game_scene_document *game_scene_document_new(const char *name);

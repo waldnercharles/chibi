@@ -8,6 +8,7 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/simulation_fixture.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -37,19 +38,26 @@ static void input(graph *g, node *n, int index, pin_value value)
     assert(graph_set_pin_default(g, n, 0, index, &value) == 0);
 }
 
-static behavior_variable *variable(behavior_asset *bp, const char *name, pin_type type, const char *type_name)
+static behavior_variable *variable(behavior_asset *asset, const char *name, pin_type type, const char *type_name)
 {
     pin_value zero = { .type = type, .type_name = type_name };
-    behavior_variable *
-        v = behavior_asset_add_variable(bp, name, type, type_name, PIN_CONTAINER_SINGLE, &zero, "Test");
+    behavior_variable *v = behavior_asset_add_variable(
+        asset,
+        name,
+        type,
+        type_name,
+        PIN_CONTAINER_SINGLE,
+        &zero,
+        "Test"
+    );
     assert(v);
     return v;
 }
 
 static pin_value value(behavior_instance *instance, const char *name)
 {
-    for (int i = 0; i < acount(instance->bp->variables); i++) {
-        behavior_variable *v = &instance->bp->variables[i];
+    for (int i = 0; i < acount(instance->asset->variables); i++) {
+        behavior_variable *v = &instance->asset->variables[i];
         if (strcmp(v->name, name) == 0) {
             pin_value result;
             assert(behavior_instance_get_variable(instance, v->id, &result) == 0);
@@ -62,31 +70,31 @@ static pin_value value(behavior_instance *instance, const char *name)
 
 static behavior_asset *child_asset()
 {
-    behavior_asset *bp = behavior_asset_new("Child");
-    assert(behavior_asset_set_owner_type(bp, "ecs.entity") == 0);
-    uint64_t observed = variable(bp, "ObservedX", PIN_F32, "float")->id;
-    graph *g = bp->graph;
+    behavior_asset *asset = behavior_asset_new("Child");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    uint64_t observed = variable(asset, "ObservedX", PIN_F32, "float")->id;
+    graph *g = asset->graph;
     node *begin = add(g, "Event");
     assert(graph_set_event_name(g, begin, "Begin") == 0);
     node *get = add(g, "Get_GameTransform");
     node *split = add(g, "Break_GameTransform");
-    node *set = behavior_asset_add_set_node(bp, observed);
+    node *set = behavior_asset_add_set_node(asset, observed);
     node *log = add(g, "Print String");
     input(g, log, 1, (pin_value){ .type = PIN_STR, .str = "child began" });
     data(g, get, 0, split, 0);
     data(g, split, 0, set, 1);
     next(g, begin, set);
     next(g, set, log);
-    return bp;
+    return asset;
 }
 
 static behavior_asset *parent_asset(bool pause, bool destroy)
 {
-    behavior_asset *bp = behavior_asset_new("Parent");
-    assert(behavior_asset_set_owner_type(bp, "ecs.entity") == 0);
-    uint64_t spawned = variable(bp, "Spawned", PIN_HANDLE, "ecs.entity")->id;
-    uint64_t read_x = variable(bp, "ReadX", PIN_F32, "float")->id;
-    graph *g = bp->graph;
+    behavior_asset *asset = behavior_asset_new("Parent");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    uint64_t spawned = variable(asset, "Spawned", PIN_HANDLE, "ecs.entity")->id;
+    uint64_t read_x = variable(asset, "ReadX", PIN_F32, "float")->id;
+    graph *g = asset->graph;
     node *fire = add(g, "Event");
     assert(graph_set_event_name(g, fire, "Fire") == 0);
     node *spawn = add(g, "Spawn Prototype");
@@ -96,10 +104,10 @@ static behavior_asset *parent_asset(bool pause, bool destroy)
     input(g, make, 1, (pin_value){ .type = PIN_F32, .f = -4.0f });
     node *initialize = add(g, "SetEntity_GameTransform");
     assert(graph_set_breakpoint(g, initialize, pause) == 0);
-    node *remember = behavior_asset_add_set_node(bp, spawned);
+    node *remember = behavior_asset_add_set_node(asset, spawned);
     node *get = add(g, "GetEntity_GameTransform");
     node *split = add(g, "Break_GameTransform");
-    node *read = behavior_asset_add_set_node(bp, read_x);
+    node *read = behavior_asset_add_set_node(asset, read_x);
     next(g, fire, spawn);
     next(g, spawn, initialize);
     data(g, spawn, 1, initialize, 1);
@@ -115,7 +123,7 @@ static behavior_asset *parent_asset(bool pause, bool destroy)
         next(g, read, remove);
         data(g, spawn, 1, remove, 1);
     }
-    return bp;
+    return asset;
 }
 
 static int entity_count(ecs_world *world)
@@ -577,13 +585,11 @@ static void delayed_spawn_case(bool isolated, int mode)
     behavior_instance *parent = game_behavior_instance(behaviors, owner, "parent");
     assert(parent);
     behavior_instance_set_breakpoints_enabled(parent, mode == 1);
+    simulation_fixture simulation = simulation_fixture_new(runtime, preview);
     assert(game_behavior_dispatch(behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1);
     assert(acount(parent->activations) == 1);
     flow_run *run = parent->activations[0];
-    assert(
-        (isolated ? game_prototype_preview_tick(preview, 0)
-                  : engine_frame(runtime, 0)) >= 0
-    );
+    simulation_frame(&simulation, 0);
     ecs_query query;
     ecs_component_id transform = GAME_COMPONENT_GameTransform.id;
     ecs_entity spawned;
@@ -595,20 +601,14 @@ static void delayed_spawn_case(bool isolated, int mode)
         game_behavior_attachment_count(behaviors) == 1 &&
         game_behavior_log_count(behaviors) == 0
     );
-    assert(
-        (isolated ? game_prototype_preview_tick(preview, 0.25)
-                  : engine_frame(runtime, 0.25)) >= 0
-    );
+    simulation_advance(&simulation, .25);
     assert(
         game_behavior_attachment_count(behaviors) == 1 &&
         game_behavior_log_count(behaviors) == 0
     );
     if (mode == 2) {
         assert(behavior_instance_stop_activation(parent, run) == 0);
-        assert(
-            (isolated ? game_prototype_preview_tick(preview, 1)
-                      : engine_frame(runtime, 1)) >= 0
-        );
+        simulation_advance(&simulation, simulation.time + .5);
         assert(!ecs_entity_is_alive(world, spawned));
         assert(
             game_behavior_attachment_count(behaviors) == 1 &&
@@ -617,7 +617,7 @@ static void delayed_spawn_case(bool isolated, int mode)
     } else {
         if (!isolated) {
             assert(engine_set_playing(runtime, false) == 0);
-            assert(engine_frame(runtime, 1) >= 0);
+            simulation_advance(&simulation, 1);
             assert(
                 game_behavior_attachment_count(behaviors) == 1 &&
                 game_behavior_log_count(behaviors) == 0
@@ -625,10 +625,7 @@ static void delayed_spawn_case(bool isolated, int mode)
             assert(GAME_GameTransform_get(world, spawned)->x == 1);
             assert(engine_set_playing(runtime, true) == 0);
         }
-        assert(
-            (isolated ? game_prototype_preview_tick(preview, 1)
-                      : engine_frame(runtime, 1)) >= 0
-        );
+        simulation_advance(&simulation, simulation.time + .5);
         if (mode == 1) {
             assert(flow_run_status(run) == FLOW_PAUSED);
             assert(
@@ -636,19 +633,15 @@ static void delayed_spawn_case(bool isolated, int mode)
                 game_behavior_log_count(behaviors) == 0
             );
             assert(GAME_GameTransform_get(world, spawned)->x == 1);
-            assert(
-                (isolated ? game_prototype_preview_tick(preview, 2)
-                          : engine_frame(runtime, 2)) >= 0
-            );
+            double held_time = engine_last_timing(simulation.runtime)->simulation_time;
+            simulation_advance(&simulation, simulation.time + 1);
+            assert(engine_last_timing(simulation.runtime)->simulation_time == held_time);
             assert(
                 flow_run_status(run) == FLOW_PAUSED &&
                 game_behavior_log_count(behaviors) == 0
             );
             assert(flow_run_resume(run) == FLOW_OK);
-            assert(
-                (isolated ? game_prototype_preview_tick(preview, 2)
-                          : engine_frame(runtime, 2)) >= 0
-            );
+            simulation_frame(&simulation, simulation.time);
         }
         assert(
             game_behavior_attachment_count(behaviors) == 2 &&

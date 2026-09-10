@@ -1,4 +1,3 @@
-#include "../src/platform/cute.h"
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
@@ -19,9 +18,12 @@
 #include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
+#include "graph/shader/shader_graph.h"
+#include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/scene_renderer.h"
 #include "render/sdf_motion.h"
+#include "render/shader_images.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/gameplay.h"
 #include "runtime/scenes/prototype_preview.h"
@@ -38,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 enum
@@ -93,13 +96,21 @@ int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, 
 int refresh_prototype_instances(app_scene_authoring *scene, scene_prototype_asset *asset);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 
-static const editor_choices *resolve_pin_choices(const node *n, int output, int pin, void *)
+static const editor_choices *resolve_pin_choices(const node *n, int output, int pin, void *user)
 {
+    if (!output && pin == SHADER_IMAGE_INPUT_IMAGE &&
+        n->desc == registry_node_by_name("Shader Image Texture")) {
+        return &((app_scene_authoring *)user)->image_choices;
+    }
+    if (!output && pin == 0 &&
+        (n->desc == registry_node_by_name("Has Entities With Component") ||
+         n->desc == registry_node_by_name("Find Entities With Component"))) {
+        return &((app_scene_authoring *)user)->component_choices;
+    }
     const type_desc *type = n->desc->type;
     return !output && type && n->desc->pure_kind == NODE_PURE_MAKE &&
-                   pin >= 0 && pin < type->field_count &&
-                   appearance_shape_field(type, &type->fields[pin])
-             ? &APPEARANCE_SHAPES
+                   pin >= 0 && pin < type->field_count
+             ? property_choices(type, &type->fields[pin])
              : NULL;
 }
 
@@ -218,6 +229,14 @@ char *content_path_join(const char *base, const char *name)
     return path;
 }
 
+static bool content_image_path(const char *path)
+{
+    const char *extension = strrchr(path, '.');
+    return extension &&
+           (!strcasecmp(extension, ".png") || !strcasecmp(extension, ".jpg") ||
+            !strcasecmp(extension, ".jpeg"));
+}
+
 static void content_scan_directory(app_scene_authoring *scene, const char *path)
 {
     DIR *directory = opendir(path);
@@ -236,7 +255,12 @@ static void content_scan_directory(app_scene_authoring *scene, const char *path)
             continue;
         }
         bool is_directory = S_ISDIR(info.st_mode);
-        apush(scene->content, (scene_content_entry){ child, is_directory });
+        apush(
+            scene->content,
+            ((scene_content_entry){ .path = child,
+                                    .directory = is_directory,
+                                    .image = !is_directory && content_image_path(child) })
+        );
         if (is_directory) {
             content_scan_directory(scene, child);
         }
@@ -253,12 +277,36 @@ static int content_entry_compare(const void *left, const void *right)
 
 void content_refresh(app_scene_authoring *scene)
 {
+    asset_index_invalidate(scene);
+    free((void *)scene->image_choices.items);
+    scene->image_choices = (editor_choices){ 0 };
     for (int i = 0; i < acount(scene->content); i++) {
         free(scene->content[i].path);
     }
     asetlen(scene->content, 0);
     content_scan_directory(scene, scene->content_root);
     qsort(scene->content, (size_t)acount(scene->content), sizeof *scene->content, content_entry_compare);
+    if (!acount(scene->content)) {
+        return;
+    }
+    editor_choice *images = xmalloc((size_t)acount(scene->content) * sizeof *images);
+    for (int i = 0; i < acount(scene->content); i++) {
+        const scene_content_entry *entry = &scene->content[i];
+        if (entry->image) {
+            images[scene->image_choices.count++] = (editor_choice){
+                .label = entry->path + strlen(scene->content_root) + 1,
+                .name = entry->path
+            };
+        }
+    }
+    scene->image_choices.items = images;
+}
+
+void asset_index_invalidate(app_scene_authoring *scene)
+{
+    if (scene) {
+        scene->asset_index_generation++;
+    }
 }
 
 const char *content_basename(const char *path)
@@ -424,6 +472,7 @@ void scene_authoring_select_document(
     free(scene->document_id);
     scene->document_id = copy;
     scene->document = (app_editor_document_context){ kind, copy };
+    scene_tabs_document_selected(scene, kind, id);
     bool graph_active = kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
                         kind == APP_EDITOR_DOCUMENT_SYSTEM;
     editor_set_inspector_active(scene->graph_editor, graph_active);
@@ -742,12 +791,16 @@ void sync_editor_inspection(app_scene_authoring *scene)
             if (scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
                 scene->graph_document_id &&
                 !strcmp(scene->graph_document_id, info.asset_name)) {
-                scene->debug_status = scene_debug_matches(
-                                          editor_behavior_asset(scene->graph_editor),
-                                          info.definition
-                                      )
-                                        ? APP_DEBUG_AVAILABLE
-                                        : APP_DEBUG_STALE;
+                editor *e = scene->graph_editor;
+                bool matches = editor_has_pending_edits(e)
+                                 ? scene_debug_matches(editor_behavior_asset(e), info.definition)
+                                 : scene_debug_matches_cached(
+                                       &scene->debug,
+                                       editor_behavior_asset(e),
+                                       editor_edit_revision(e),
+                                       info.definition
+                                   );
+                scene->debug_status = matches ? APP_DEBUG_AVAILABLE : APP_DEBUG_STALE;
             }
         }
     }
@@ -973,17 +1026,37 @@ app_scene_authoring *app_scene_authoring_new(
         return NULL;
     }
     scene->content_root = xstrdup("content");
+    scene->asset_index = asset_index_new();
+    scene->asset_index_generation = 1;
+    scene->quick_open_kind = ASSET_INDEX_KIND_COUNT;
+    scene->content_kind = ASSET_INDEX_KIND_COUNT;
     content_refresh(scene);
     scene->selected = -1;
     scene->selected_prototype = -1;
     scene->runtime_preview_prototype = -1;
     scene->selected_attachment = -1;
+    scene->navigation = scene_navigation_new();
+    scene_tabs_initialize(scene);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     editor_ui_set_command_handler(app_ui_command, scene);
     editor_set_save_handler(graph_editor, app_editor_save, scene);
     editor_set_value_formatter(graph_editor, format_entity_value, scene);
     editor_set_flags_resolver(graph_editor, resolve_pin_flags, scene);
     editor_set_color_resolver(graph_editor, resolve_pin_color, scene);
+    editor_choice *component_choices = xmalloc(
+        (size_t)scene->registry.component_count * sizeof *component_choices
+    );
+    for (int i = 0; i < scene->registry.component_count; i++) {
+        const ecs_component_desc *component = scene->registry.components[i];
+        char label[128];
+        editor_component_label(component->name, label, sizeof label);
+        component_choices[i] = (editor_choice){
+            .label = xstrdup(label),
+            .name = component->key ? component->key : component->name,
+        };
+    }
+    scene->component_choices = (editor_choices){ component_choices,
+                                                 scene->registry.component_count };
     editor_set_choices_resolver(graph_editor, resolve_pin_choices, scene);
     engine_set_playing(runtime, false);
     scene->runtime_playing = false;
@@ -994,7 +1067,15 @@ app_scene_authoring *app_scene_authoring_new(
     scene->scene_dirty = false;
     snprintf(scene->message, sizeof scene->message, "No scene entities yet.");
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "No Selection");
-    scene->navigation = scene_navigation_new();
+    if (cf_app_is_running() && !render_image_mount_content(
+                                   scene->content_root,
+                                   scene->message,
+                                   sizeof scene->message
+                               )) {
+        fprintf(stderr, "%s\n", scene->message);
+        app_scene_authoring_free(scene);
+        return NULL;
+    }
     return scene;
 }
 
@@ -1009,15 +1090,20 @@ static void queue_behavior_apply(app_scene_authoring *scene)
 {
     scene->editor_working = editor_behavior_asset(scene->graph_editor);
     unsigned revision = editor_edit_revision(scene->graph_editor);
-    if (scene->editor_state_seen && scene->editor_definition_seen == scene->definition &&
-        scene->editor_behavior_asset_seen == scene->editor_working &&
-        scene->editor_revision_seen == revision) {
+    bool changed = !scene->editor_state_seen ||
+                   scene->editor_definition_seen != scene->definition ||
+                   scene->editor_behavior_asset_seen != scene->editor_working ||
+                   scene->editor_revision_seen != revision;
+    if (!changed && !editor_has_pending_edits(scene->graph_editor)) {
         return;
     }
     scene->editor_state_seen = true;
     scene->editor_definition_seen = scene->definition;
     scene->editor_behavior_asset_seen = scene->editor_working;
     scene->editor_revision_seen = revision;
+    if (changed) {
+        asset_index_invalidate(scene);
+    }
     scene->behavior_apply_pending = true;
 }
 
@@ -1161,6 +1247,10 @@ int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char 
     if (!scene || !path || !path[0]) {
         return -1;
     }
+    if (cf_app_is_running() &&
+        !render_image_mount_content(path, scene->message, sizeof scene->message)) {
+        return -1;
+    }
     char *copy = xstrdup(path);
     free(scene->content_root);
     scene->content_root = copy;
@@ -1184,7 +1274,7 @@ int app_scene_authoring_seed_default(app_scene_authoring *scene)
         return -1;
     }
     char path[CONTENT_PATH_CAP];
-    snprintf(path, sizeof path, "%s/scenes/NeonSwarm.json", scene->content_root);
+    snprintf(path, sizeof path, "%s/scenes/Arena3D.json", scene->content_root);
     return app_scene_authoring_load(scene, path);
 }
 
@@ -1197,7 +1287,6 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     scene_debug_clear(&scene->debug);
     editor_set_inspection_blocked(scene->graph_editor, false);
     app_scene_renderer_free(scene->renderer);
-    scene_navigation_free(scene->navigation);
     finish_transform_edit(scene, true);
     editor_set_inspection_instance(scene->graph_editor, NULL);
     editor_set_inspection_run(scene->graph_editor, NULL);
@@ -1207,12 +1296,19 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     editor_set_flags_resolver(scene->graph_editor, NULL, NULL);
     editor_set_color_resolver(scene->graph_editor, NULL, NULL);
     editor_set_choices_resolver(scene->graph_editor, NULL, NULL);
+    for (int i = 0; i < scene->component_choices.count; i++) {
+        free((void *)scene->component_choices.items[i].label);
+    }
+    free((void *)scene->component_choices.items);
     while (acount(scene->actors)) {
         scene->selected = acount(scene->actors) - 1;
         remove_selected(scene);
     }
     afree(scene->actors);
     afree(scene->runtime_entities);
+    scene_navigation_free(scene->navigation);
+    asset_index_free(scene->asset_index);
+    scene_tabs_free(scene);
     scene_history_free(scene->history);
     for (int i = 0; i < acount(scene->prototypes); i++) {
         clear_prototype_history(&scene->prototypes[i]);
@@ -1223,6 +1319,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     game_prototype_preview_free(scene->prototype_preview);
     prototype_still_free(scene->still_preview);
     free(scene->preview_prototype_id);
+    free((void *)scene->image_choices.items);
     for (int i = 0; i < acount(scene->content); i++) {
         free(scene->content[i].path);
     }
@@ -1231,6 +1328,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     free(scene->scene_path);
     game_system_document_free(scene->system_document);
     free(scene->system_path);
+    free(scene->current_scene_tab_key);
     free(scene->content_selected_path);
     free(scene->document_id);
     free(scene->graph_document_id);
@@ -1335,6 +1433,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
     if (!scene) {
         return;
     }
+    scene_tabs_draw(scene);
     const behavior_asset **assets = NULL;
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         apush(assets, game_live_definition_at(scene->live, i)->working);
@@ -1380,7 +1479,28 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
     editor_ui_set_runtime_target(target_label, selected_prototype(scene) != NULL, runtime_session(scene));
     scene->property_seen = false;
     app_scene_authoring_navigation_sync(scene);
+    bool defer_asset_index = false;
+    unsigned editor_revision = editor_edit_revision(scene->graph_editor);
+    if (editor_revision != scene->asset_index_editor_revision) {
+        scene->asset_index_editor_revision = editor_revision;
+        asset_index_invalidate(scene);
+        defer_asset_index = scene->asset_index_built_generation != 0;
+    }
+    unsigned system_revision = game_system_document_revision(scene->system_document);
+    if (system_revision != scene->asset_index_system_revision) {
+        scene->asset_index_system_revision = system_revision;
+        asset_index_invalidate(scene);
+        defer_asset_index = defer_asset_index ||
+                            scene->asset_index_built_generation != 0;
+    }
+    if (scene->asset_index_built_generation != scene->asset_index_generation &&
+        !defer_asset_index && !editor_has_pending_edits(scene->graph_editor) &&
+        !ImGui_IsAnyItemActive()) {
+        app_scene_authoring_refresh_asset_index(scene);
+    }
+    draw_quick_open(scene);
     draw_navigator(scene);
+    draw_asset_document_overview(scene);
     int navigation = editor_ui_take_navigation();
     if (navigation) {
         app_scene_authoring_navigate(scene, navigation > 0);
@@ -1415,8 +1535,11 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
             break;
         }
         case APP_EDITOR_DOCUMENT_BEHAVIOR: {
-            bool inspect_graph = editor_has_inspection_selection(scene->graph_editor) ||
-                                 !selected_scene_entity(scene).slot;
+            behavior_domain domain = editor_behavior_asset(scene->graph_editor)->domain;
+            bool shader = domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                          domain == BEHAVIOR_DOMAIN_SHAPE ||
+                          domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+            bool inspect_graph = shader || scene->graph_document_id != NULL;
             editor_set_inspector_active(scene->graph_editor, inspect_graph);
             if (!inspect_graph) {
                 draw_scene_inspector(scene);

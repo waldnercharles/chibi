@@ -1,3 +1,11 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "chibi": {
+      "command": "node",
+      "args": ["tools/mcp/server.mjs"],
+      "env": {
+        "CHIBI_ROOT": "."
+      }
+    }
+  }
 }

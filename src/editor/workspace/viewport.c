@@ -1,6 +1,7 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/input.h"
 #include "platform/cute.h"
+#include "render/arena3d.h"
 #include "runtime/engine.h"
 #include "support/xalloc.h"
 
@@ -23,6 +24,10 @@ struct engine_viewport
     float view_height;
     bool panning;
     bool pointer_active;
+    bool perspective;
+    bool arena_showcase;
+    float arena_showcase_time;
+    ImVec2 image_min, image_size;
     engine_viewport_pointer pointer;
     int requested_width;
     int requested_height;
@@ -33,6 +38,13 @@ struct engine_viewport
     engine_viewport_render_fn render;
     void *render_user;
 };
+
+static CF_Canvas viewport_canvas(int width, int height)
+{
+    CF_CanvasParams params = cf_canvas_defaults(width, height);
+    params.depth_stencil_enable = true;
+    return cf_make_canvas(params);
+}
 
 engine_viewport *engine_viewport_new(int width, int height)
 {
@@ -45,7 +57,7 @@ engine_viewport *engine_viewport_new(int width, int height)
     engine_viewport_reset_camera(viewport);
     viewport->requested_width = width;
     viewport->requested_height = height;
-    viewport->canvas = cf_make_canvas(cf_canvas_defaults(width, height));
+    viewport->canvas = viewport_canvas(width, height);
     if (!viewport->canvas.id) {
         free(viewport);
         return NULL;
@@ -88,9 +100,7 @@ int engine_viewport_commit_resize(engine_viewport *viewport)
     if (!viewport || !viewport->resize_pending) {
         return 0;
     }
-    CF_Canvas replacement = cf_make_canvas(
-        cf_canvas_defaults(viewport->requested_width, viewport->requested_height)
-    );
+    CF_Canvas replacement = viewport_canvas(viewport->requested_width, viewport->requested_height);
     if (!replacement.id) {
         return -1;
     }
@@ -170,6 +180,87 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
         width = height * aspect;
     }
     *camera = (engine_viewport_camera){ viewport->center_x, viewport->center_y, width, height };
+}
+
+void engine_viewport_set_arena_showcase(engine_viewport *viewport, float time)
+{
+    assert(isfinite(time));
+    viewport->arena_showcase = true;
+    viewport->arena_showcase_time = time;
+}
+
+void engine_viewport_clear_arena_camera(engine_viewport *viewport)
+{
+    viewport->arena_showcase = false;
+}
+
+void engine_viewport_get_arena_camera(const engine_viewport *viewport, render_arena_camera *camera)
+{
+    engine_viewport_camera frame;
+    engine_viewport_get_camera(viewport, &frame);
+    *camera = viewport->arena_showcase ? render_arena_camera_make_showcase(
+                                             frame.center_x,
+                                             frame.center_y,
+                                             frame.span_width,
+                                             frame.span_height,
+                                             viewport->arena_showcase_time
+                                         )
+                                       : render_arena_camera_make(
+                                             frame.center_x,
+                                             frame.center_y,
+                                             frame.span_width,
+                                             frame.span_height
+                                         );
+}
+
+void engine_viewport_set_perspective(engine_viewport *viewport, bool perspective)
+{
+    viewport->perspective = perspective;
+}
+
+bool engine_viewport_perspective(const engine_viewport *viewport)
+{
+    return viewport->perspective;
+}
+
+static bool pointer_world(const engine_viewport *viewport, CF_V2 ndc, CF_V2 *world)
+{
+    engine_viewport_camera frame;
+    engine_viewport_get_camera(viewport, &frame);
+    if (!viewport->perspective) {
+        *world = (CF_V2){ frame.center_x + ndc.x * frame.span_width * 0.5f,
+                          frame.center_y + ndc.y * frame.span_height * 0.5f };
+        return true;
+    }
+    render_arena_camera camera;
+    engine_viewport_get_arena_camera(viewport, &camera);
+    if (!render_arena_ground(&camera, ndc, world)) {
+        return false;
+    }
+    world->y = -world->y;
+    return true;
+}
+
+bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y)
+{
+    ImVec2 mouse = ImGui_GetIO()->MousePos;
+    ImVec2 size = viewport->image_size, min = viewport->image_min;
+    if (size.x <= 0 || size.y <= 0 || mouse.x < min.x || mouse.y < min.y ||
+        mouse.x >= min.x + size.x || mouse.y >= min.y + size.y) {
+        return false;
+    }
+    CF_V2 world;
+    if (!pointer_world(
+            viewport,
+            (CF_V2){ 2 * (mouse.x - min.x) / size.x - 1,
+                     1 - 2 * (mouse.y - min.y) / size.y },
+            &world
+        )) {
+        return false;
+    }
+    *x = world.x;
+    *y = world.y;
+    return true;
 }
 
 static void draw_viewport_canvas(engine_viewport *viewport)
@@ -309,15 +400,28 @@ static bool navigate_viewport(engine_viewport *viewport, ImVec2 size, bool playi
         float y = 0.5f - (io->MousePos.y - min.y) / size.y;
         float scale = powf(1.1f, -io->MouseWheel);
         scale = fmaxf(1.0f / before.span_width, fminf(100000.0f / before.span_width, scale));
+        CF_V2 anchor;
+        bool anchored = pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &anchor);
         viewport->view_width *= scale;
         viewport->view_height *= scale;
-        viewport->center_x += x * before.span_width * (1.0f - scale);
-        viewport->center_y += y * before.span_height * (1.0f - scale);
+        CF_V2 after;
+        if (anchored && pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &after)) {
+            viewport->center_x += anchor.x - after.x;
+            viewport->center_y += anchor.y - after.y;
+        }
     }
     /* The press-frame delta precedes the gesture and may come from another pane. */
     if (viewport->panning && !pan_started) {
-        viewport->center_x -= io->MouseDelta.x * before.span_width / size.x;
-        viewport->center_y += io->MouseDelta.y * before.span_height / size.y;
+        CF_V2 origin, delta;
+        if (pointer_world(viewport, (CF_V2){ 0, 0 }, &origin) &&
+            pointer_world(
+                viewport,
+                (CF_V2){ 2 * io->MouseDelta.x / size.x, -2 * io->MouseDelta.y / size.y },
+                &delta
+            )) {
+            viewport->center_x -= delta.x - origin.x;
+            viewport->center_y -= delta.y - origin.y;
+        }
     }
     return true;
 #else
@@ -349,18 +453,20 @@ static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, boo
         cancel_viewport_pointer(viewport);
         return;
     }
-    ImVec2 min = ImGui_GetItemRectMin();
-    float border = ImGui_GetStyle()->ImageBorderSize;
-    min.x += border;
-    min.y += border;
+    ImVec2 min = viewport->image_min;
     engine_viewport_camera camera;
     engine_viewport_get_camera(viewport, &camera);
     engine_viewport_pointer *pointer = &viewport->pointer;
     pointer->world_per_pixel = camera.span_width / size.x;
-    pointer->world_x = camera.center_x + ((io->MousePos.x - min.x) / size.x - 0.5f) *
-                                             camera.span_width;
-    pointer->world_y = camera.center_y + (0.5f - (io->MousePos.y - min.y) / size.y) *
-                                             camera.span_height;
+    pointer->ndc_x = 2 * (io->MousePos.x - min.x) / size.x - 1;
+    pointer->ndc_y = 1 - 2 * (io->MousePos.y - min.y) / size.y;
+    CF_V2 world;
+    if (!pointer_world(viewport, (CF_V2){ pointer->ndc_x, pointer->ndc_y }, &world)) {
+        cancel_viewport_pointer(viewport);
+        return;
+    }
+    pointer->world_x = world.x;
+    pointer->world_y = world.y;
     pointer->hovered = ImGui_IsItemHovered(0) && io->MousePos.x >= min.x &&
                        io->MousePos.y >= min.y && io->MousePos.x < min.x + size.x &&
                        io->MousePos.y < min.y + size.y;
@@ -368,7 +474,7 @@ static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, boo
                               !io->WantTextInput &&
                               app_input_pressed(APP_INPUT_DELETE);
     if (ImGui_BeginDragDropTarget()) {
-        const ImGuiPayload *payload = ImGui_AcceptDragDropPayload("CBLUEPRINT_PROTOTYPE", 0);
+        const ImGuiPayload *payload = ImGui_AcceptDragDropPayload("CHIBI_PROTOTYPE", 0);
         if (payload && payload->DataSize > 0 &&
             payload->DataSize <= (int)sizeof pointer->dropped_prototype) {
             memcpy(pointer->dropped_prototype, payload->Data, (size_t)payload->DataSize);
@@ -425,6 +531,7 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
         return ENGINE_VIEWPORT_ERROR;
     }
     viewport->pointer = (engine_viewport_pointer){ 0 };
+    viewport->image_size = (ImVec2){ 0 };
     if (!editor_ui_pane_visible(EDITOR_UI_PANE_SCENE)) {
         cancel_viewport_pointer(viewport);
         viewport->focused = 0;
@@ -470,6 +577,11 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
     };
     ImGui_Image(texture, size);
     editor_ui_track_item("viewport.image");
+    viewport->image_min = ImGui_GetItemRectMin();
+    float border = ImGui_GetStyle()->ImageBorderSize;
+    viewport->image_min.x += border;
+    viewport->image_min.y += border;
+    viewport->image_size = size;
     bool navigating = navigate_viewport(viewport, size, controls && controls->playing);
     capture_viewport_pointer(viewport, size, controls_blocked || navigating);
 #if ENGINE_IMGUI_AVAILABLE
@@ -527,6 +639,23 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
      * may settle over several frames, but its temporary scaling must not change
      * object proportions or pointer coordinates. */
     draw_viewport_canvas(viewport);
+    if (controls && controls->error && controls->error[0]) {
+        ImGui_SetCursorScreenPos((ImVec2){ viewport->image_min.x + 12,
+                                           viewport->image_min.y + 52 });
+        ImGui_PushStyleColorImVec4(ImGuiCol_ChildBg, (ImVec4){ .08f, .07f, .06f, .96f });
+        ImGui_PushStyleColorImVec4(ImGuiCol_Text, (ImVec4){ 1, .68f, .4f, 1 });
+        if (ImGui_BeginChild(
+                "render_error",
+                (ImVec2){ fmaxf(1, viewport->image_size.x - 24), 0 },
+                ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding,
+                ImGuiWindowFlags_NoSavedSettings
+            )) {
+            ImGui_TextWrapped("%s", controls->error);
+            editor_ui_track_item("viewport.error");
+        }
+        ImGui_EndChild();
+        ImGui_PopStyleColorEx(2);
+    }
     ImGui_End();
     return action;
 }

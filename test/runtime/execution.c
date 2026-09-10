@@ -1,6 +1,9 @@
 #include "graph/document/library.h"
+#include "graph/runtime/runtime.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "test/suite_internal.h"
+
+#include <assert.h>
 
 static void library_contract_checks()
 {
@@ -49,18 +52,18 @@ static void library_contract_checks()
     free(after_refresh);
     graph_set_pin_type(function, ret, 0, 0, PIN_I32, "int");
     graph_connect_data(function, entry, 0, ret, 0);
-    behavior_asset *bp = behavior_asset_new("LibraryConsumer");
-    node *event = graph_add_node(bp->graph, &NODE_Event);
-    node *call = behavior_asset_add_function_call_node_to_graph(bp, bp->graph, forward);
-    uint64_t result_id = behavior_asset_add_variable(bp, "Result", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "")
+    behavior_asset *asset = behavior_asset_new("LibraryConsumer");
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    node *call = behavior_asset_add_function_call_node_to_graph(asset, asset->graph, forward);
+    uint64_t result_id = behavior_asset_add_variable(asset, "Result", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "")
                              ->id;
-    node *body = behavior_asset_add_set_node(bp, result_id);
-    graph_set_event_name(bp->graph, event, "Test");
-    graph_connect_exec(bp->graph, event, 0, body, 0, 0);
-    graph_connect_data(bp->graph, call, 0, body, 1);
+    node *body = behavior_asset_add_set_node(asset, result_id);
+    graph_set_event_name(asset->graph, event, "Test");
+    graph_connect_exec(asset->graph, event, 0, body, 0, 0);
+    graph_connect_data(asset->graph, call, 0, body, 1);
     const behavior_asset *catalog[] = { library, wrapper };
     char error[256];
-    behavior_asset *linked = behavior_asset_link_libraries(bp, catalog, 2, error, sizeof error);
+    behavior_asset *linked = behavior_asset_link_libraries(asset, catalog, 2, error, sizeof error);
     if (!linked) {
         fprintf(stderr, "Library link failure: %s / %s\n", error, graph_last_error());
     }
@@ -81,7 +84,7 @@ static void library_contract_checks()
     );
     test_check(
         call->reference_asset && strcmp(call->reference_asset, wrapper->name) == 0 &&
-            acount(bp->graphs) == 1,
+            acount(asset->graphs) == 1,
         "linking preserves the authored qualified call and graph list"
     );
     test_check(
@@ -91,20 +94,27 @@ static void library_contract_checks()
     );
     behavior_instance_destroy(bi);
     behavior_asset_free(linked);
-    linked = behavior_asset_link_libraries(bp, catalog, 1, error, sizeof error);
+    linked = behavior_asset_link_libraries(asset, catalog, 1, error, sizeof error);
     test_check(!linked && strstr(error, "missing function library"), "missing library blocks linking with an actionable error");
     node *cycle = behavior_asset_add_function_call_node_to_graph(library, function, forward);
-    linked = behavior_asset_link_libraries(bp, catalog, 2, error, sizeof error);
+    linked = behavior_asset_link_libraries(asset, catalog, 2, error, sizeof error);
     test_check(cycle && !linked && strstr(error, "cyclic"), "cyclic shared libraries fail before execution");
     graph_remove_node(function, cycle);
     node *wait = graph_add_node(function, registry_node_by_name("Delay"));
-    test_check(behavior_asset_validate_library(library) != NULL, "library validation rejects latent state");
+    test_check(behavior_asset_validate_library(library) == NULL, "function libraries permit activation-local suspension");
+    compile_report report;
+    compile_report_init(&report);
+    test_check(behavior_asset_compile(library, &report) > 0, "pure functions still reject latent operations");
+    compile_report_free(&report);
     graph_remove_node(function, wait);
+    node *owner = graph_add_node(function, &NODE_Self);
+    test_check(behavior_asset_validate_library(library) != NULL, "library functions require an explicit owner parameter");
+    graph_remove_node(function, owner);
     ecs_world *ecs = ecs_world_new();
     game_live_world *world = game_live_world_new(ecs);
     game_live_definition *shared = game_live_definition_new(library->name, library);
     game_live_definition *forwarding = game_live_definition_new(wrapper->name, wrapper);
-    game_live_definition *consumer = game_live_definition_new(bp->name, bp);
+    game_live_definition *consumer = game_live_definition_new(asset->name, asset);
     test_check(
         game_live_add_definition(world, shared) == 0 &&
             game_live_add_definition(world, forwarding) == 0 &&
@@ -196,10 +206,10 @@ static void library_contract_checks()
 
 static void macro_contract_checks()
 {
-    behavior_asset *bp = behavior_asset_new("MacroPaths");
-    uint64_t result_id = behavior_asset_add_variable(bp, "Result", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "")
+    behavior_asset *asset = behavior_asset_new("MacroPaths");
+    uint64_t result_id = behavior_asset_add_variable(asset, "Result", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "")
                              ->id;
-    graph *macro = behavior_asset_add_macro(bp, "Choose Path");
+    graph *macro = behavior_asset_add_macro(asset, "Choose Path");
     node *entry = graph_node_by_id(macro, macro->entry_id);
     node *ret = graph_node_by_id(macro, macro->return_id);
     pin_spec path = { .name = "Alternate", .type = PIN_FLOW, .kind = PIN_EXEC };
@@ -210,16 +220,16 @@ static void macro_contract_checks()
     graph_connect_exec(macro, entry, 0, ret, 0, 0);
     graph_connect_exec(macro, entry, 1, delay, 0, 0);
     graph_connect_exec(macro, delay, 0, ret, 1, 0);
-    node *event = graph_add_node(bp->graph, &NODE_Event);
-    graph_set_event_name(bp->graph, event, "Test");
-    node *call = behavior_asset_add_macro_call_node(bp, macro);
-    node *other = behavior_asset_add_macro_call_node(bp, macro);
-    node *set = behavior_asset_add_set_node(bp, result_id);
-    graph_set_pin_default(bp->graph, set, 0, 1, &(pin_value){ .type = PIN_I32, .i = 7 });
-    graph_connect_exec(bp->graph, event, 0, call, 1, 0);
-    graph_connect_exec(bp->graph, call, 1, set, 0, 0);
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    graph_set_event_name(asset->graph, event, "Test");
+    node *call = behavior_asset_add_macro_call_node(asset, macro);
+    node *other = behavior_asset_add_macro_call_node(asset, macro);
+    node *set = behavior_asset_add_set_node(asset, result_id);
+    graph_set_pin_default(asset->graph, set, 0, 1, &(pin_value){ .type = PIN_I32, .i = 7 });
+    graph_connect_exec(asset->graph, event, 0, call, 1, 0);
+    graph_connect_exec(asset->graph, call, 1, set, 0, 0);
     char error[256];
-    behavior_asset *linked = behavior_asset_link_libraries(bp, NULL, 0, error, sizeof error);
+    behavior_asset *linked = behavior_asset_link_libraries(asset, NULL, 0, error, sizeof error);
     test_check(linked && acount(linked->graphs) == 4, "each macro call expands into an independent runtime graph");
     node *expanded = linked ? graph_node_by_id(linked->graph, call->id) : NULL;
     node *expanded_other = linked ? graph_node_by_id(linked->graph, other->id) : NULL;
@@ -243,14 +253,118 @@ static void macro_contract_checks()
     test_check(value.i == 7 && run && flow_run_status(run) == FLOW_COMPLETED, "macro resumes through the selected execution exit");
     behavior_instance_destroy(bi);
     behavior_asset_free(linked);
-    behavior_asset_add_macro_call_node_to_graph(bp, macro, macro);
-    linked = behavior_asset_link_libraries(bp, NULL, 0, error, sizeof error);
+    behavior_asset_add_macro_call_node_to_graph(asset, macro, macro);
+    linked = behavior_asset_link_libraries(asset, NULL, 0, error, sizeof error);
     test_check(!linked && strstr(error, "recursive"), "recursive macro expansion fails before execution");
-    behavior_asset_free(bp);
+    behavior_asset_free(asset);
+}
+
+static void foreach_watch_checks()
+{
+    for (int breaking = 0; breaking < 2; breaking++) {
+        graph g;
+        graph_init(&g);
+        node *event = graph_add_node(&g, &NODE_Event);
+        assert(graph_set_event_name(&g, event, "Watch") == 0);
+        assert(
+            graph_add_pin(
+                &g,
+                event,
+                true,
+                &(pin_spec){ .name = "Values", .kind = PIN_DATA, .type = PIN_STR, .container = PIN_CONTAINER_ARRAY }
+            ) == 1
+        );
+        node *loop = graph_add_node(&g, registry_node_by_name(breaking ? "ForEachWithBreak" : "ForEach"));
+        node *delay = graph_add_node(&g, registry_node_by_name("Delay"));
+        node *completed_delay = graph_add_node(&g, registry_node_by_name("Delay"));
+        node *print = graph_add_node(&g, registry_node_by_name("Print String"));
+        assert(
+            graph_set_pin_default(&g, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = .1 }) == 0
+        );
+        assert(
+            graph_set_pin_default(&g, completed_delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = .1 }) == 0
+        );
+        assert(graph_connect_exec(&g, event, 0, loop, 0, 0) == 0);
+        assert(graph_connect_data(&g, event, 1, loop, breaking ? 2 : 1) == 0);
+        assert(graph_connect_exec(&g, loop, 0, delay, 0, 0) == 0);
+        assert(graph_connect_exec(&g, loop, 3, completed_delay, 0, 0) == 0);
+        assert(graph_connect_exec(&g, completed_delay, 0, print, 0, 0) == 0);
+        assert(graph_connect_data(&g, loop, 1, print, 1) == 0);
+        if (breaking) {
+            assert(graph_connect_exec(&g, delay, 0, loop, 1, 0) == 0);
+        }
+        pin_array *values = pin_array_new(PIN_STR, NULL, 3);
+        const char *words[] = { "one", "two", "three" };
+        for (int i = 0; i < 3; i++) {
+            assert(
+                pin_array_push(values, &(pin_value){ .type = PIN_STR, .str = words[i] }) == i
+            );
+        }
+        pin_value input = { .type = PIN_STR,
+                            .container = PIN_CONTAINER_ARRAY,
+                            .ptr = values };
+        flow_error error = { 0 };
+        flow_options printing = { .sink = print_sink };
+        g_print_count = 0;
+        flow_run *run = flow_run_start(&g, event, (flow_inputs){ &input, 1, NULL }, &printing, &error);
+        assert(run && flow_run_resume(run) == FLOW_SUSPENDED_RESULT);
+        pin_value array_watch, item, index;
+        assert(flow_run_watch_input(run, loop, breaking ? 2 : 1, &array_watch) == 0);
+        assert(flow_run_watch_output(run, loop, 1, &item) == 0 && !strcmp(item.str, "one"));
+        /* Change the producer's live input after ForEach took its iteration
+         * snapshot. Continuations must retain the input that started the loop. */
+        pin_array *live = flow_run_inputs(run).values[0].ptr;
+        live->items[0].str = "changed";
+        live->items[2].str = "changed";
+        assert(flow_run_tick_at(run, .1) == FLOW_SUSPENDED_RESULT);
+        assert(flow_run_watch_input(run, loop, breaking ? 2 : 1, &array_watch) == 0);
+        const pin_array *snapshot = array_watch.ptr;
+        test_check(
+            snapshot->count == 3 && !strcmp(snapshot->items[0].str, "one") &&
+                !strcmp(snapshot->items[2].str, "three"),
+            "ForEach continuation and Break preserve the original input watch "
+            "after the producer mutates"
+        );
+        assert(flow_run_watch_output(run, loop, 1, &item) == 0);
+        assert(flow_run_watch_output(run, loop, 2, &index) == 0);
+        test_check(
+            !strcmp(item.str, breaking ? "one" : "two") &&
+                index.i == (breaking ? 0 : 1),
+            "suspended ForEach watches show the latest element and index"
+        );
+        if (!breaking) {
+            assert(flow_run_tick_at(run, .2) == FLOW_SUSPENDED_RESULT);
+            assert(flow_run_tick_at(run, .31) == FLOW_SUSPENDED_RESULT);
+        }
+        assert(flow_run_watch_output(run, loop, 1, &item) == 0);
+        test_check(flow_run_status(run) == FLOW_SUSPENDED && !strcmp(item.str, breaking ? "one" : "three"), "the final string element watch survives release of the iteration array");
+        assert(g_print_count == 0 && flow_run_tick_at(run, .5) == FLOW_OK);
+        test_check(
+            flow_run_status(run) == FLOW_COMPLETED && g_print_count == 1 &&
+                !strcmp(g_print_messages[0], breaking ? "one" : "three"),
+            "delayed Completed consumers read the owned final ForEach element "
+            "after normal completion and Break"
+        );
+        assert(flow_run_recycle(run) == FLOW_OK);
+        test_check(
+            flow_run_watch_input(run, loop, breaking ? 2 : 1, &array_watch) != 0 &&
+                flow_run_watch_output(run, loop, 1, &item) != 0,
+            "recycling clears watch values and their lookup index"
+        );
+        assert(
+            flow_run_start_reuse(run, &g, event, (flow_inputs){ &input, 1, NULL }, &printing, &error) == run
+        );
+        assert(flow_run_resume(run) == FLOW_SUSPENDED_RESULT);
+        assert(flow_run_watch_output(run, loop, 1, &item) == 0 && !strcmp(item.str, "one"));
+        flow_run_free(run);
+        pin_array_free(values);
+        graph_free(&g);
+    }
 }
 
 static void flow_contract_checks()
 {
+    foreach_watch_checks();
     for (int variant = 0; variant < 3; variant++) {
         graph g;
         graph_init(&g);
@@ -289,9 +403,9 @@ static void flow_contract_checks()
         flow_run_free(run);
         graph_free(&g);
     }
-    behavior_asset *bp = behavior_asset_new("WhileContract");
+    behavior_asset *asset = behavior_asset_new("WhileContract");
     behavior_variable *condition = behavior_asset_add_variable(
-        bp,
+        asset,
         "Condition",
         PIN_BOOL,
         "bool",
@@ -299,18 +413,18 @@ static void flow_contract_checks()
         &(pin_value){ .type = PIN_BOOL, .b = true },
         ""
     );
-    node *event = graph_add_node(bp->graph, &NODE_Event);
-    node *loop = graph_add_node(bp->graph, registry_node_by_name("WhileLoop"));
-    node *get = behavior_asset_add_get_node(bp, condition->id);
-    node *set = behavior_asset_add_set_node(bp, condition->id);
-    node *done = graph_add_node(bp->graph, &g_sink_done_desc);
-    graph_set_event_name(bp->graph, event, "Test");
-    graph_connect_exec(bp->graph, event, 0, loop, 0, 0);
-    graph_connect_data(bp->graph, get, 0, loop, 1);
-    graph_connect_exec(bp->graph, loop, 0, set, 0, 0);
-    graph_connect_exec(bp->graph, loop, 1, done, 0, 0);
-    graph_set_pin_default(bp->graph, set, 0, 1, &(pin_value){ .type = PIN_BOOL, .b = false });
-    behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    node *loop = graph_add_node(asset->graph, registry_node_by_name("WhileLoop"));
+    node *get = behavior_asset_add_get_node(asset, condition->id);
+    node *set = behavior_asset_add_set_node(asset, condition->id);
+    node *done = graph_add_node(asset->graph, &g_sink_done_desc);
+    graph_set_event_name(asset->graph, event, "Test");
+    graph_connect_exec(asset->graph, event, 0, loop, 0, 0);
+    graph_connect_data(asset->graph, get, 0, loop, 1);
+    graph_connect_exec(asset->graph, loop, 0, set, 0, 0);
+    graph_connect_exec(asset->graph, loop, 1, done, 0, 0);
+    graph_set_pin_default(asset->graph, set, 0, 1, &(pin_value){ .type = PIN_BOOL, .b = false });
+    behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
     flow_error error = { 0 };
     flow_log_reset();
     flow_run *run = behavior_instance_dispatch(bi, "Test", (flow_inputs){ 0 }, &error);
@@ -319,17 +433,17 @@ static void flow_contract_checks()
         "WhileLoop reevaluates changed state and completes without a backedge"
     );
     behavior_instance_destroy(bi);
-    behavior_asset_free(bp);
+    behavior_asset_free(asset);
 
-    bp = behavior_asset_new("RetriggerContract");
-    event = graph_add_node(bp->graph, &NODE_Event);
-    node *delay = graph_add_node(bp->graph, registry_node_by_name("Retriggerable Delay"));
-    done = graph_add_node(bp->graph, &g_sink_done_desc);
-    graph_set_event_name(bp->graph, event, "Test");
-    graph_connect_exec(bp->graph, event, 0, delay, 0, 0);
-    graph_connect_exec(bp->graph, delay, 0, done, 0, 0);
-    graph_set_pin_default(bp->graph, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 1 });
-    bi = behavior_instance_create(bp, NULL, NULL, NULL);
+    asset = behavior_asset_new("RetriggerContract");
+    event = graph_add_node(asset->graph, &NODE_Event);
+    node *delay = graph_add_node(asset->graph, registry_node_by_name("Retriggerable Delay"));
+    done = graph_add_node(asset->graph, &g_sink_done_desc);
+    graph_set_event_name(asset->graph, event, "Test");
+    graph_connect_exec(asset->graph, event, 0, delay, 0, 0);
+    graph_connect_exec(asset->graph, delay, 0, done, 0, 0);
+    graph_set_pin_default(asset->graph, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 1 });
+    bi = behavior_instance_create(asset, NULL, NULL, NULL);
     flow_log_reset();
     behavior_instance_dispatch(bi, "Test", (flow_inputs){ 0 }, &error);
     behavior_instance_tick(bi, 0.5);
@@ -339,22 +453,22 @@ static void flow_contract_checks()
     behavior_instance_tick(bi, 1.5);
     test_check(strcmp(g_flow_log, "D") == 0, "retrigger emits one completion at the updated deadline");
     behavior_instance_destroy(bi);
-    behavior_asset_free(bp);
-    bp = behavior_asset_new("MultiGateContract");
-    event = graph_add_node(bp->graph, &NODE_Event);
-    node *reset = graph_add_node(bp->graph, &NODE_Event);
-    node *gate = graph_add_node(bp->graph, registry_node_by_name("MultiGate"));
-    node *a = graph_add_node(bp->graph, &g_sink_a_desc);
-    node *b = graph_add_node(bp->graph, &g_sink_b_desc);
-    graph_set_event_name(bp->graph, event, "Test");
-    graph_set_event_name(bp->graph, reset, "Reset");
-    graph_connect_exec(bp->graph, event, 0, gate, 0, 0);
-    graph_connect_exec(bp->graph, reset, 0, gate, 1, 0);
-    graph_connect_exec(bp->graph, gate, 0, a, 0, 0);
-    graph_connect_exec(bp->graph, gate, 1, b, 0, 0);
-    graph_set_pin_default(bp->graph, gate, 0, 3, &(pin_value){ .type = PIN_BOOL, .b = true });
-    graph_set_pin_default(bp->graph, gate, 0, 4, &(pin_value){ .type = PIN_I32, .i = -1 });
-    bi = behavior_instance_create(bp, NULL, NULL, NULL);
+    behavior_asset_free(asset);
+    asset = behavior_asset_new("MultiGateContract");
+    event = graph_add_node(asset->graph, &NODE_Event);
+    node *reset = graph_add_node(asset->graph, &NODE_Event);
+    node *gate = graph_add_node(asset->graph, registry_node_by_name("MultiGate"));
+    node *a = graph_add_node(asset->graph, &g_sink_a_desc);
+    node *b = graph_add_node(asset->graph, &g_sink_b_desc);
+    graph_set_event_name(asset->graph, event, "Test");
+    graph_set_event_name(asset->graph, reset, "Reset");
+    graph_connect_exec(asset->graph, event, 0, gate, 0, 0);
+    graph_connect_exec(asset->graph, reset, 0, gate, 1, 0);
+    graph_connect_exec(asset->graph, gate, 0, a, 0, 0);
+    graph_connect_exec(asset->graph, gate, 1, b, 0, 0);
+    graph_set_pin_default(asset->graph, gate, 0, 3, &(pin_value){ .type = PIN_BOOL, .b = true });
+    graph_set_pin_default(asset->graph, gate, 0, 4, &(pin_value){ .type = PIN_I32, .i = -1 });
+    bi = behavior_instance_create(asset, NULL, NULL, NULL);
     bool varied = false;
     for (int round = 0; round < 32; round++) {
         flow_log_reset();
@@ -370,11 +484,54 @@ static void flow_contract_checks()
     }
     test_check(varied, "MultiGate Random changes traversal order");
     behavior_instance_destroy(bi);
-    behavior_asset_free(bp);
+    behavior_asset_free(asset);
+}
+
+static void runtime_lookup_edits()
+{
+    graph g;
+    graph_init(&g);
+    node *a = graph_add_node(&g, registry_node_by_name("Integer"));
+    node *b = graph_add_node(&g, registry_node_by_name("Integer"));
+    runtime_store *first = runtime_store_create(&g);
+    runtime_store *second = runtime_store_create(&g);
+    runtime_node *kept = runtime_store_node(first, b);
+    runtime_node_outputs(kept)[0] = (pin_value){ .type = PIN_I32, .i = 73 };
+    g.id_counter += 10000;
+    node *unvisited = graph_add_node(&g, registry_node_by_name("Integer"));
+    node *sparse = graph_add_node(&g, registry_node_by_name("Integer"));
+    runtime_store_node(first, sparse);
+    test_check(
+        runtime_store_node_const(first, b) == kept &&
+            runtime_node_outputs(kept)[0].i == 73 &&
+            runtime_store_node_const(first, unvisited) == NULL,
+        "sparse runtime lookup growth preserves existing values and "
+        "initializes new slots"
+    );
+    test_check(runtime_store_node_const(second, b) == NULL, "runtime lookup state remains private to each activation");
+    runtime_store_node(first, a);
+    graph_remove_node(&g, a);
+    runtime_store_reset(first);
+    test_check(runtime_store_node_const(first, b) == kept, "runtime lookup preserves surviving state after node removal");
+    node *replacement = graph_add_node(&g, registry_node_by_name("Integer"));
+    test_check(runtime_store_node_const(first, replacement) == NULL, "new graph nodes never inherit removed runtime state");
+    runtime_store_node(first, replacement);
+    b->id = graph_alloc_id(&g);
+    graph_reindex(&g);
+    runtime_store_reset(first);
+    test_check(
+        runtime_store_node_const(first, b) == NULL &&
+            runtime_node_outputs(runtime_store_node(first, b))[0].i == 0,
+        "graph ID reassignment invalidates the old runtime lookup"
+    );
+    runtime_store_free(second);
+    runtime_store_free(first);
+    graph_free(&g);
 }
 
 void run_runtime_execution_checks()
 {
+    runtime_lookup_edits();
     flow_contract_checks();
     library_contract_checks();
     macro_contract_checks();
@@ -542,8 +699,16 @@ void run_runtime_execution_checks()
         }
         run = graph_run_event(&capped, "CappedFlow", (flow_inputs){ 0 }, &dispatch_error);
         traversal_count = 0;
-        (void)flow_run_traversals(run, &traversal_count);
+        const flow_traversal *bounded = flow_run_traversals(run, &traversal_count);
         test_check(traversal_count == 256, "traversal records stay within their bound");
+        bool chronological = true;
+        for (int i = 0; i < traversal_count; i++) {
+            /* Sequence schedules its stack in reverse output order. */
+            int output = traversal_count - i - 1;
+            chronological &= bounded[i].from_pin_id ==
+                             cap_sequence->output_pins[output].id;
+        }
+        test_check(chronological, "bounded traversal history retains the latest edges in recording order");
         flow_run_free(run);
         graph_free(&capped);
 

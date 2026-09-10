@@ -34,6 +34,171 @@ static const char *component_name(ecs_component_id id, void *)
     return NULL;
 }
 
+static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene_authoring *scene)
+{
+    scene_tabs_sync_current(scene);
+    yyjson_mut_obj_add_int(doc, root, "active_tab", scene->active_tab);
+    checkpoint_text(doc, root, "scene_tab_key", scene_tabs_current_scene_key(scene));
+    yyjson_mut_val *tabs = yyjson_mut_obj_add_arr(doc, root, "tabs");
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        const scene_document_tab *tab = &scene->tabs[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, tabs);
+        yyjson_mut_obj_add_int(doc, item, "kind", tab->kind);
+        checkpoint_text(doc, item, "key", tab->key);
+        checkpoint_text(doc, item, "label", tab->label);
+        checkpoint_text(doc, item, "path", tab->path);
+        checkpoint_text(doc, item, "scene", tab->scene_json);
+        checkpoint_text(doc, item, "history", tab->scene_history);
+        yyjson_mut_obj_add_uint(doc, item, "selected_entity", tab->selected_entity);
+        yyjson_mut_obj_add_val(doc, item, "camera", checkpoint_camera(doc, tab->camera));
+        yyjson_mut_obj_add_bool(doc, item, "camera_saved", tab->camera_saved);
+        yyjson_mut_obj_add_bool(doc, item, "dirty", tab->scene_dirty);
+        yyjson_mut_obj_add_int(doc, item, "selected", tab->selected);
+        yyjson_mut_obj_add_int(doc, item, "selected_prototype", tab->selected_prototype);
+        yyjson_mut_obj_add_int(doc, item, "selected_attachment", tab->selected_attachment);
+        checkpoint_text(doc, item, "selected_prototype_name", tab->selected_prototype_name);
+        yyjson_mut_val *entities = yyjson_mut_obj_add_arr(doc, item, "entities");
+        for (int j = 0; j < tab->scene_entity_count; j++) {
+            yyjson_mut_arr_add_uint(doc, entities, tab->scene_entities[j]);
+        }
+        checkpoint_text(doc, item, "system", tab->system_json);
+        checkpoint_text(doc, item, "system_saved", tab->system_saved);
+        checkpoint_text(doc, item, "asset_saved", tab->asset_saved);
+    }
+}
+
+static void free_checkpoint_tab(scene_document_tab *tab)
+{
+    free(tab->key);
+    free(tab->label);
+    free(tab->path);
+    free(tab->scene_json);
+    free(tab->scene_history);
+    afree(tab->scene_entities);
+    free(tab->selected_prototype_name);
+    free(tab->asset_saved);
+    free(tab->system_json);
+    free(tab->system_saved);
+}
+
+static bool restore_next_scene_key(app_scene_authoring *scene, yyjson_val *root)
+{
+    int next = yyjson_get_int(yyjson_obj_get(root, "next_scene_key"));
+    scene->next_scene_key = next > 0 ? next : 1;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        const scene_document_tab *tab = &scene->tabs[i];
+        int key = 0;
+        if (tab->kind == APP_EDITOR_DOCUMENT_SCENE && tab->key &&
+            sscanf(tab->key, "scene:scene-%d", &key) == 1 &&
+            key >= scene->next_scene_key) {
+            scene->next_scene_key = key + 1;
+        }
+    }
+    return true;
+}
+
+static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
+{
+    yyjson_val *stored = yyjson_obj_get(root, "tabs");
+    if (!stored) {
+        return true;
+    }
+    if (!yyjson_is_arr(stored)) {
+        return false;
+    }
+    scene_document_tab *candidate = NULL;
+    size_t i, count;
+    yyjson_val *item;
+    yyjson_arr_foreach(stored, i, count, item)
+    {
+        int kind = yyjson_get_int(yyjson_obj_get(item, "kind"));
+        const char *key = yyjson_get_str(yyjson_obj_get(item, "key"));
+        const char *label = yyjson_get_str(yyjson_obj_get(item, "label"));
+        if (!yyjson_is_obj(item) || !key || !label ||
+            kind < APP_EDITOR_DOCUMENT_SCENE || kind > APP_EDITOR_DOCUMENT_SYSTEM) {
+            goto fail;
+        }
+        for (int j = 0; j < acount(candidate); j++) {
+            if (strcmp(candidate[j].key, key) == 0) {
+                goto fail;
+            }
+        }
+        scene_document_tab tab = {
+            .kind = kind,
+            .key = xstrdup(key),
+            .label = xstrdup(label),
+            .path = checkpoint_copy_text(item, "path"),
+            .scene_json = checkpoint_copy_text(item, "scene"),
+            .scene_history = checkpoint_copy_text(item, "history"),
+            .selected_entity = yyjson_get_uint(yyjson_obj_get(item, "selected_entity")),
+            .camera_saved = yyjson_get_bool(yyjson_obj_get(item, "camera_saved")),
+            .scene_dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty")),
+            .selected = yyjson_get_int(yyjson_obj_get(item, "selected")),
+            .selected_prototype = yyjson_get_int(yyjson_obj_get(item, "selected_prototype")),
+            .selected_attachment = yyjson_get_int(yyjson_obj_get(item, "selected_attachment")),
+            .selected_prototype_name = checkpoint_copy_text(item, "selected_prototype_name"),
+            .system_json = checkpoint_copy_text(item, "system"),
+            .system_saved = checkpoint_copy_text(item, "system_saved"),
+            .asset_saved = checkpoint_copy_text(item, "asset_saved"),
+        };
+        if (!checkpoint_read_camera(yyjson_obj_get(item, "camera"), &tab.camera)) {
+            free_checkpoint_tab(&tab);
+            goto fail;
+        }
+        yyjson_val *entities = yyjson_obj_get(item, "entities");
+        if (!yyjson_is_arr(entities)) {
+            free_checkpoint_tab(&tab);
+            goto fail;
+        }
+        for (size_t j = 0; j < yyjson_arr_size(entities); j++) {
+            yyjson_val *entity = yyjson_arr_get(entities, j);
+            if (!yyjson_is_uint(entity)) {
+                free_checkpoint_tab(&tab);
+                goto fail;
+            }
+            apush(tab.scene_entities, yyjson_get_uint(entity));
+        }
+        tab.scene_entity_count = acount(tab.scene_entities);
+        apush(candidate, tab);
+    }
+    if (!acount(candidate)) {
+        goto fail;
+    }
+    int active = yyjson_get_int(yyjson_obj_get(root, "active_tab"));
+    if (active < 0 || active >= acount(candidate)) {
+        goto fail;
+    }
+    scene_tabs_free(scene);
+    scene->tabs = candidate;
+    scene->active_tab = active;
+    scene->close_tab = -1;
+    editor_ui_set_document_bar_visible(true);
+    free(scene->current_scene_tab_key);
+    scene->current_scene_tab_key = NULL;
+    const char *scene_tab_key = yyjson_get_str(yyjson_obj_get(root, "scene_tab_key"));
+    if (scene_tab_key) {
+        for (int i = 0; i < acount(scene->tabs); i++) {
+            if (scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE &&
+                !strcmp(scene->tabs[i].key, scene_tab_key)) {
+                scene->current_scene_tab_key = xstrdup(scene_tab_key);
+                break;
+            }
+        }
+    }
+    if (!scene->current_scene_tab_key &&
+        scene->tabs[active].kind == APP_EDITOR_DOCUMENT_SCENE) {
+        scene->current_scene_tab_key = xstrdup(scene->tabs[active].key);
+    }
+    restore_next_scene_key(scene, root);
+    return true;
+fail:
+    for (int j = 0; j < acount(candidate); j++) {
+        free_checkpoint_tab(&candidate[j]);
+    }
+    afree(candidate);
+    return false;
+}
+
 char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
 {
     if (scene_authoring_sync_document(scene) != 0) {
@@ -66,7 +231,16 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
     );
     yyjson_mut_obj_add_int(doc, root, "selected", scene->selected);
     yyjson_mut_obj_add_int(doc, root, "selected_prototype", scene->selected_prototype);
+    checkpoint_text(
+        doc,
+        root,
+        "selected_prototype_name",
+        selected_prototype(scene) && selected_prototype(scene)->prototype
+            ? selected_prototype(scene)->prototype->name
+            : NULL
+    );
     yyjson_mut_obj_add_int(doc, root, "selected_attachment", scene->selected_attachment);
+    yyjson_mut_obj_add_int(doc, root, "next_scene_key", scene->next_scene_key);
     checkpoint_text(doc, root, "selected_content", scene->content_selected_path);
     checkpoint_text(doc, root, "scene_search", scene->scene_search);
     checkpoint_text(doc, root, "asset_search", scene->asset_search);
@@ -153,6 +327,7 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
             ? game_system_document_save(scene->system_document, resolve_component, component_name, NULL)
             : NULL
     );
+    checkpoint_tabs(doc, root, scene);
     char *json = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
     return json;
@@ -439,7 +614,12 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->camera.saved = yyjson_get_bool(yyjson_obj_get(root, "camera_saved"));
     scene->scene_dirty = yyjson_get_bool(yyjson_obj_get(root, "dirty"));
     scene->selected = yyjson_get_int(yyjson_obj_get(root, "selected"));
-    scene->selected_prototype = yyjson_get_int(yyjson_obj_get(root, "selected_prototype"));
+    const char *selected_prototype_name = yyjson_get_str(
+        yyjson_obj_get(root, "selected_prototype_name")
+    );
+    scene->selected_prototype = selected_prototype_name
+                                  ? prototype_index(scene, selected_prototype_name)
+                                  : yyjson_get_int(yyjson_obj_get(root, "selected_prototype"));
     scene->selected_attachment = yyjson_get_int(yyjson_obj_get(root, "selected_attachment"));
     if (scene->selected < -1 || scene->selected >= acount(scene->actors) ||
         scene->selected_prototype < -1 ||
@@ -469,6 +649,9 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->editor_state_seen = false;
     scene->behavior_apply_pending = false;
     app_scene_authoring_refresh_content(scene);
+    if (!restore_tabs(scene, root)) {
+        goto done;
+    }
     result = 0;
 done:
     afree(before);

@@ -38,12 +38,12 @@ static void measure(int count, float spacing)
         *GAME_GameCollider_get(ecs, entity) = (GameCollider){ 8.0f, 1, 1 };
     }
     double start = seconds();
-    require(game_contacts_tick(live->contacts) == 0);
+    require(game_physics_tick(live->physics, 0) == 0);
     double first = seconds() - start;
     game_entities_reset(live->entities);
     start = seconds();
     for (int i = 0; i < PASSES; i++) {
-        require(game_contacts_tick(live->contacts) == 0);
+        require(game_physics_tick(live->physics, 0) == 0);
     }
     double average = (seconds() - start) / PASSES;
     printf(

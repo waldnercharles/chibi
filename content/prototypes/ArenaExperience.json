@@ -1,0 +1,54 @@
+{
+  "name": "ArenaExperience",
+  "components": {
+    "GameTransform": {
+      "x": 0,
+      "y": 0
+    },
+    "GameGeometry3D": {
+      "primitive": 9,
+      "width": 5,
+      "depth": 5,
+      "height": 0.1,
+      "elevation": 5
+    },
+    "GameShader": {
+      "material": "ArenaExperience",
+      "shape": "",
+      "parameters": "{}",
+      "bounds_x": 0,
+      "bounds_y": 0
+    },
+    "GameVisualTransform": {
+      "pitch": 0,
+      "yaw": 0,
+      "roll": 0,
+      "scale": 1
+    },
+    "GamePickup": {
+      "value": 1,
+      "lifetime": 12,
+      "age": 0,
+      "state": 0,
+      "collection_age": 0,
+      "target": null,
+      "origin": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "GameTrail": {
+      "color": 3489624831,
+      "width": 0,
+      "lifetime": 0.12,
+      "emission": 0.25
+    },
+    "GameOrientation": {
+      "radians": 0
+    }
+  },
+  "behaviors": [
+    "ArenaPickupBehavior",
+    "ArenaDropBehavior"
+  ]
+}

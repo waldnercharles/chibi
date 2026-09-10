@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_PROTOTYPE_STILL_H
-#define CBLUEPRINT_APP_PROTOTYPE_STILL_H
+#ifndef CHIBI_APP_PROTOTYPE_STILL_H
+#define CHIBI_APP_PROTOTYPE_STILL_H
 
 #include "assets/prototype.h"
 #include "runtime/engine.h"

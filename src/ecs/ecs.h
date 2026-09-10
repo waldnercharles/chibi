@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_ECS_H
-#define CBLUEPRINT_ECS_H
+#ifndef CHIBI_ECS_H
+#define CHIBI_ECS_H
 
 #include "graph/model/pin.h"
 #include "graph/model/type.h"
@@ -19,6 +19,7 @@
 typedef struct ecs_world ecs_world;
 typedef struct ecs_query ecs_query;
 typedef struct ecs_query_expr ecs_query_expr;
+typedef struct eval_component_reader eval_component_reader;
 
 typedef struct
 {
@@ -141,7 +142,16 @@ int ecs_world_destroy_entity(ecs_world *world, ecs_entity entity);
 uint64_t ecs_entity_to_u64(ecs_entity entity);
 ecs_entity ecs_entity_from_u64(uint64_t value);
 int ecs_entity_is_alive(const ecs_world *world, ecs_entity entity);
+bool ecs_entity_is_retiring(const ecs_world *world, ecs_entity entity);
 int ecs_component_has(const ecs_world *world, ecs_entity entity, ecs_component_id component);
+/* Read the existing component index without allocating a query plan. Pending
+ * destruction and explicitly excluded handles do not count as matches. */
+bool ecs_component_has_entities(
+    const ecs_world *world,
+    ecs_component_id component,
+    const ecs_entity *excluded,
+    int excluded_count
+);
 void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component);
 const void *ecs_component_data_const(const ecs_world *world, ecs_entity entity, ecs_component_id component);
 int ecs_component_read_field(
@@ -151,6 +161,9 @@ int ecs_component_read_field(
     int field,
     pin_value *out
 );
+/* Bind the ECS reflected component reader used by authored graph input
+ * bindings. Its field_name argument is NULL for a whole component snapshot. */
+void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *world);
 int ecs_component_write_field(
     ecs_world *world,
     ecs_entity entity,
@@ -158,6 +171,8 @@ int ecs_component_write_field(
     int field,
     pin_value value
 );
+/* Retain reflected string values until the world is freed. */
+const char *ecs_world_intern_string(ecs_world *world, const char *text);
 
 /* Simple component lists visit their intersection in ascending slot order.
  * Expression queries also visit in ascending slot order and support boolean

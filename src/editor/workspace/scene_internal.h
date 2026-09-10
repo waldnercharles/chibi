@@ -1,8 +1,9 @@
-#ifndef CBLUEPRINT_SCENE_INTERNAL_H
-#define CBLUEPRINT_SCENE_INTERNAL_H
+#ifndef CHIBI_SCENE_INTERNAL_H
+#define CHIBI_SCENE_INTERNAL_H
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/ui/color.h"
+#include "editor/workspace/asset_index.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/prototype_still.h"
 #include "editor/workspace/scene_authoring.h"
@@ -43,7 +44,33 @@ typedef struct
 {
     char *path;
     bool directory;
+    bool image;
 } scene_content_entry;
+
+typedef struct
+{
+    app_editor_document_kind kind;
+    char *key;
+    char *label;
+    char *path;
+    char *scene_json;
+    char *scene_history;
+    uint64_t *scene_entities;
+    int scene_entity_count;
+    uint64_t selected_entity;
+    engine_viewport_view camera;
+    bool camera_saved;
+    bool scene_dirty;
+    int selected;
+    int selected_prototype;
+    int selected_attachment;
+    char *selected_prototype_name;
+    char *asset_saved;
+    char *system_json;
+    char *system_saved;
+    unsigned system_editor_revision;
+    unsigned system_query_revision;
+} scene_document_tab;
 
 /* Private authoring state. Module replacement transfers versioned document
  * checkpoints, never this layout or its runtime pointers. */
@@ -52,6 +79,7 @@ struct app_scene_authoring
     app_sdf_shapes shapes;
     app_scene_renderer *renderer;
     engine_viewport *render_viewport;
+    bool perspective;
     ecs_world *world;
     game_live_world *live;
     game_live_definition *definition;
@@ -67,6 +95,8 @@ struct app_scene_authoring
     app_scene_prototype_resolve_fn resolve_prototype;
     void *resolve_user;
     game_prototype_registry registry;
+    editor_choices component_choices;
+    editor_choices image_choices; /* Labels and names borrow content paths. */
     game_system_document *system_document;
     char *system_path;
     engine *runtime;
@@ -77,6 +107,9 @@ struct app_scene_authoring
     scene_actor *actors;
     scene_prototype_asset *prototypes;
     scene_content_entry *content;
+    asset_index *asset_index;
+    unsigned asset_index_generation;
+    unsigned asset_index_built_generation;
     char *content_root;
     char *content_selected_path;
     int selected;
@@ -96,15 +129,10 @@ struct app_scene_authoring
     bool runtime_snapshot_valid;
     bool runtime_playing;
     bool runtime_step;
-    bool movement_active[2];
     bool preview_playing;
     bool preview_step;
     bool preview_loop;
     bool preview_follow;
-    bool preview_has_time;
-    double preview_last_time;
-    double preview_elapsed;
-    double runtime_elapsed;
     GameTransform preview_origin;
     app_runtime_target active_runtime_target;
     scene_camera camera;
@@ -124,13 +152,21 @@ struct app_scene_authoring
     bool dragging_actor;
     bool marquee;
     bool marquee_visible;
-    GameTransform marquee_start;
-    GameTransform marquee_end;
+    CF_V2 marquee_start; /* Normalized viewport coordinates. */
+    CF_V2 marquee_end;
     int edit_field;
     float selection_scale;
     bool navigator_scene;
     char asset_search[128];
+    char quick_open_query[128];
+    asset_index_kind quick_open_kind;
+    int quick_open_selected;
+    bool quick_open;
+    bool quick_open_focus;
+    asset_index_kind content_kind;
     double content_scan_time;
+    unsigned asset_index_editor_revision;
+    unsigned asset_index_system_revision;
     char scene_search[128];
     app_editor_document_context document;
     char *document_id;
@@ -138,6 +174,12 @@ struct app_scene_authoring
     app_editor_document_kind graph_document_kind;
     char *scene_path;
     bool scene_dirty;
+    scene_document_tab *tabs;
+    int active_tab;
+    char *current_scene_tab_key;
+    int next_scene_key;
+    int close_tab;
+    bool tabs_transitioning;
     char message[256];
     char prototype_message[256];
 };
@@ -151,6 +193,31 @@ void scene_authoring_select_document(
     app_editor_document_kind kind,
     const char *id
 );
+void scene_tabs_initialize(app_scene_authoring *scene);
+void scene_tabs_free(app_scene_authoring *scene);
+void scene_tabs_sync_current(app_scene_authoring *scene);
+void scene_tabs_mark_saved(app_scene_authoring *scene);
+void scene_tabs_mark_document_saved(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *id
+);
+void scene_tabs_document_selected(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *id
+);
+int scene_tabs_open_scene(app_scene_authoring *scene, const char *path);
+bool scene_tabs_path_in_use(
+    const app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *path
+);
+int scene_tabs_activate(app_scene_authoring *scene, int index);
+int scene_tabs_discard(app_scene_authoring *scene, int index);
+const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
+void scene_tabs_draw(app_scene_authoring *scene);
+int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload);
 /* Scene model operations used by its native panels. */
 
 int asset_search_score(const app_scene_authoring *scene, const char *path);
@@ -162,6 +229,14 @@ bool content_path_in_folder(const app_scene_authoring *scene, const char *path, 
 bool content_path_is_child(const char *parent, const char *path);
 int content_prototype_index(const app_scene_authoring *scene, const char *path);
 void content_refresh(app_scene_authoring *scene);
+void asset_index_invalidate(app_scene_authoring *scene);
+void draw_quick_open(app_scene_authoring *scene);
+void draw_asset_catalog(app_scene_authoring *scene);
+void asset_browser_request_quick_open(app_scene_authoring *scene);
+bool draw_asset_document_overview(app_scene_authoring *scene);
+void draw_asset_references(app_scene_authoring *scene, int asset_position);
+void draw_asset_binding_usages(app_scene_authoring *scene, int asset_position);
+void draw_component_asset_links(app_scene_authoring *scene, const char *json, const char *id);
 int create_behavior_asset(app_scene_authoring *scene);
 int create_graph_asset(app_scene_authoring *scene, behavior_domain domain);
 int create_new_prototype(app_scene_authoring *scene);

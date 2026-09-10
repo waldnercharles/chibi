@@ -14,10 +14,10 @@
 
 /* Layered auto-arrange. The measurement and the wire topology come from the
  * editor; the layout itself lives in arrange.c, which knows no ImGui. */
-static int ed_node_index(const graph *g, const node *n)
+static int ed_node_index(node *const *nodes, const node *n)
 {
-    for (int i = 0; i < acount(g->nodes); i++) {
-        if (g->nodes[i] == n) {
+    for (int i = 0; i < acount(nodes); i++) {
+        if (nodes[i] == n) {
             return i;
         }
     }
@@ -27,8 +27,15 @@ static int ed_node_index(const graph *g, const node *n)
 void ed_auto_arrange(editor *e)
 {
     graph *g = e->active_graph;
-    int count = acount(g->nodes);
+    node **nodes = NULL;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (!graph_node_is_inline(g, g->nodes[i])) {
+            apush(nodes, g->nodes[i]);
+        }
+    }
+    int count = acount(nodes);
     if (!count) {
+        afree(nodes);
         return;
     }
     float line = ImGui_GetTextLineHeight();
@@ -38,7 +45,7 @@ void ed_auto_arrange(editor *e)
     asetlen(boxes, count);
     asetlen(pos, count);
     for (int i = 0; i < count; i++) {
-        node *n = g->nodes[i];
+        node *n = nodes[i];
         ImVec2 size = ed_node_dimensions(e, g, n);
         boxes[i] = (arrange_box){ size.x,
                                   size.y,
@@ -61,8 +68,8 @@ void ed_auto_arrange(editor *e)
         if (!graph_pin_by_id(to, ed->to_pin_id, &to_out, &to_pin) || to_out) {
             continue;
         }
-        int from_at = ed_node_index(g, from);
-        int to_at = ed_node_index(g, to);
+        int from_at = ed_node_index(nodes, from);
+        int to_at = ed_node_index(nodes, to);
         if (from_at < 0 || to_at < 0) {
             continue;
         }
@@ -73,15 +80,15 @@ void ed_auto_arrange(editor *e)
 
     int moved = 0;
     for (int i = 0; i < count && !moved; i++) {
-        moved = g->nodes[i]->x != pos[i].x || g->nodes[i]->y != pos[i].y;
+        moved = nodes[i]->x != pos[i].x || nodes[i]->y != pos[i].y;
     }
     /* An already arranged graph must not push a do-nothing undo entry, and
      * must not destroy the preview instance at the edit choke point. */
     if (moved) {
         ed_snapshot_before(e);
         for (int i = 0; i < count; i++) {
-            g->nodes[i]->x = pos[i].x;
-            g->nodes[i]->y = pos[i].y;
+            nodes[i]->x = pos[i].x;
+            nodes[i]->y = pos[i].y;
         }
     }
     /* The arranged graph rarely still sits where the view was looking, so
@@ -92,6 +99,7 @@ void ed_auto_arrange(editor *e)
     afree(links);
     afree(pos);
     afree(boxes);
+    afree(nodes);
 }
 
 static void ed_curve_axis_bounds(float p0, float p1, float p2, float p3, float *minimum, float *maximum)
@@ -155,8 +163,10 @@ bool editor_graph_wires_visible(const editor *e)
     ImVec2 limit = ed_add(e->canvas_min, e->canvas_size);
     for (int i = 0; i < acount(e->active_graph->edges); i++) {
         ImVec2 minimum, maximum;
-        if (!ed_wire_bounds(e, &e->active_graph->edges[i], &minimum, &maximum) ||
-            minimum.x < e->canvas_min.x || minimum.y < e->canvas_min.y ||
+        if (!ed_wire_bounds(e, &e->active_graph->edges[i], &minimum, &maximum)) {
+            continue;
+        }
+        if (minimum.x < e->canvas_min.x || minimum.y < e->canvas_min.y ||
             maximum.x > limit.x || maximum.y > limit.y) {
             return false;
         }
@@ -173,14 +183,25 @@ void ed_zoom_fit(editor *e, bool animate)
     if (!count || e->canvas_size.x <= 0.0f || e->canvas_size.y <= 0.0f) {
         return;
     }
-    node *first = e->active_graph->nodes[0];
+    int first_index = 0;
+    while (first_index < count &&
+           graph_node_is_inline(e->active_graph, e->active_graph->nodes[first_index])) {
+        first_index++;
+    }
+    if (first_index == count) {
+        return;
+    }
+    node *first = e->active_graph->nodes[first_index];
     ImVec2 first_size = ed_node_dimensions(e, e->active_graph, first);
     float min_x = first->x;
     float max_x = first->x + first_size.x;
     float min_y = first->y;
     float max_y = first->y + first_size.y;
-    for (int i = 1; i < count; i++) {
+    for (int i = first_index + 1; i < count; i++) {
         node *n = e->active_graph->nodes[i];
+        if (graph_node_is_inline(e->active_graph, n)) {
+            continue;
+        }
         ImVec2 size = ed_node_dimensions(e, e->active_graph, n);
         if (n->x < min_x) {
             min_x = n->x;
@@ -243,6 +264,9 @@ static void ed_make_field_space(editor *e, node *expanded)
     ed_field_spacing *rows = NULL;
     for (int i = 0; i < acount(e->active_graph->nodes); i++) {
         node *n = e->active_graph->nodes[i];
+        if (graph_node_is_inline(e->active_graph, n)) {
+            continue;
+        }
         apush(rows, ((ed_field_spacing){ n, ed_node_dimensions(e, e->active_graph, n), n == expanded }));
     }
     qsort(rows, (size_t)acount(rows), sizeof *rows, ed_field_spacing_order);

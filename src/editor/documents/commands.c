@@ -2,6 +2,7 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
+#include "graph/shader/shader_graph.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -15,17 +16,17 @@
 
 int editor_command_apply(editor *e, editor_command command)
 {
-    if (!e || !e->bp ||
+    if (!e || !e->asset ||
         (e->active_graph->math_expression && command.kind != EDITOR_COMMAND_OPEN_GRAPH &&
          command.kind != EDITOR_COMMAND_RENAME_GRAPH)) {
         return -1;
     }
     switch (command.kind) {
         case EDITOR_COMMAND_CREATE_GRAPH: {
-            if (!command.data.create_graph.name ||
-                !command.data.create_graph.name[0] || !behavior_asset_mutable(e->bp) ||
+            if (!command.data.create_graph.name || !command.data.create_graph.name[0] ||
+                !behavior_asset_mutable(e->asset) ||
                 behavior_asset_find_graph_by_name(
-                    e->bp,
+                    e->asset,
                     command.data.create_graph.name
                 )) {
                 return -1;
@@ -33,17 +34,17 @@ int editor_command_apply(editor *e, editor_command command)
             ed_snapshot_before(e);
             graph *created = command.data.create_graph.graph_kind == GRAPH_FUNCTION
                                ? behavior_asset_add_function(
-                                     e->bp,
+                                     e->asset,
                                      command.data.create_graph.name,
                                      0
                                  )
                            : command.data.create_graph.graph_kind == GRAPH_MACRO
                                ? behavior_asset_add_macro(
-                                     e->bp,
+                                     e->asset,
                                      command.data.create_graph.name
                                  )
                                : behavior_asset_add_graph(
-                                     e->bp,
+                                     e->asset,
                                      command.data.create_graph.graph_kind,
                                      command.data.create_graph.name
                                  );
@@ -52,22 +53,26 @@ int editor_command_apply(editor *e, editor_command command)
         case EDITOR_COMMAND_RENAME_GRAPH: {
             const char *name = command.data.rename_graph.name;
             graph *target = behavior_asset_find_graph(
-                e->bp,
+                e->asset,
                 command.data.rename_graph.graph_id
             );
-            graph *same = behavior_asset_find_graph_by_name(e->bp, name);
-            if (!name || !name[0] || !behavior_asset_mutable(e->bp) || !target ||
+            graph *same = behavior_asset_find_graph_by_name(e->asset, name);
+            if (!name || !name[0] || !behavior_asset_mutable(e->asset) || !target ||
                 command.data.rename_graph.graph_id == 0 || (same && same != target)) {
                 return -1;
             }
             ed_snapshot_before(e);
-            return behavior_asset_rename_graph(e->bp, command.data.rename_graph.graph_id, name);
+            return behavior_asset_rename_graph(
+                e->asset,
+                command.data.rename_graph.graph_id,
+                name
+            );
         }
         case EDITOR_COMMAND_OPEN_GRAPH:
             return editor_open_graph(e, command.data.open_graph.graph_id);
         case EDITOR_COMMAND_SPAWN_NODE:
             if (!command.data.spawn_node.desc || !e->active_graph ||
-                !behavior_asset_mutable(e->bp)) {
+                !behavior_asset_mutable(e->asset)) {
                 return -1;
             }
             return editor_spawn(
@@ -87,7 +92,7 @@ int editor_command_apply(editor *e, editor_command command)
             if (!n || !value ||
                 (command.data.set_pin_default.output != 0 &&
                  command.data.set_pin_default.output != 1) ||
-                !behavior_asset_mutable(e->bp)) {
+                !behavior_asset_mutable(e->asset)) {
                 return -1;
             }
             const pin_spec *pins = command.data.set_pin_default.output
@@ -126,7 +131,7 @@ int editor_command_apply(editor *e, editor_command command)
             pin_kind expected_kind = command.kind == EDITOR_COMMAND_CONNECT_DATA
                                        ? PIN_DATA
                                        : PIN_EXEC;
-            if (!behavior_asset_mutable(e->bp) ||
+            if (!behavior_asset_mutable(e->asset) ||
                 !ed_connection_specs_valid(
                     &from->output_pins[command.data.connect.from_pin],
                     &to->input_pins[command.data.connect.to_pin],
@@ -164,7 +169,7 @@ int editor_command_apply(editor *e, editor_command command)
                 }
                 free(e->edit_revision_snapshot);
                 e->edit_revision_snapshot = ed_snapshot(e);
-                e->edit_revision_bp = e->bp;
+                e->edit_revision_asset = e->asset;
                 e->edit_revision_initialized = 1;
             }
             free(current);
@@ -189,11 +194,11 @@ void editor_query_state(const editor *e, editor_query *out)
 {
     assert(out);
     *out = (editor_query){ 0 };
-    if (!e || !e->bp) {
+    if (!e || !e->asset) {
         return;
     }
     out->active_graph = e->active_graph;
-    out->graph_count = acount(e->bp->graphs);
+    out->graph_count = acount(e->asset->graphs);
     out->graph_visible = e->graph_visible &&
                          e->ui_context != EDITOR_UI_CONTEXT_SCENE &&
                          editor_ui_pane_visible(EDITOR_UI_PANE_NODE_CANVAS);
@@ -207,12 +212,12 @@ void editor_query_state(const editor *e, editor_query *out)
     out->pan_y = e->pan.y;
     out->camera_moving = e->camera_moving;
     if (e->edit_revision_initialized && !e->edit_pending &&
-        e->edit_revision_bp == e->bp && e->edit_revision_snapshot) {
+        e->edit_revision_asset == e->asset && e->edit_revision_snapshot) {
         out->dirty = !e->saved_snapshot ||
                      strcmp(e->edit_revision_snapshot, e->saved_snapshot) != 0;
         return;
     }
-    char *json = behavior_asset_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->asset);
     out->dirty = !json || !e->saved_snapshot || strcmp(json, e->saved_snapshot) != 0;
     free(json);
 }
@@ -230,7 +235,7 @@ node *editor_add_math_expression(editor *e, const char *source, float x, float y
         return NULL;
     }
     char *before = ed_snapshot(e);
-    node *n = math_expression_add(e->bp, e->active_graph, source, error);
+    node *n = math_expression_add(e->asset, e->active_graph, source, error);
     if (!n) {
         free(before);
         return NULL;
@@ -247,12 +252,12 @@ int editor_set_math_expression(editor *e, node *call, const char *source, math_e
     if (!e || e->active_graph->math_expression) {
         return -1;
     }
-    const char *current = math_expression_source(e->bp, call);
+    const char *current = math_expression_source(e->asset, call);
     if (source && current && !strcmp(source, current)) {
         return 0;
     }
     char *before = ed_snapshot(e);
-    if (math_expression_set(e->bp, call, source, error) != 0) {
+    if (math_expression_set(e->asset, call, source, error) != 0) {
         free(before);
         return -1;
     }
@@ -273,7 +278,8 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
     if (!n) {
         return NULL;
     }
-    if (ed_name_spawned_event(e, n) != 0) {
+    if (!shader_graph_init_node(e->active_graph, n) ||
+        ed_name_spawned_event(e, n) != 0) {
         graph_remove_node(e->active_graph, n);
         ed_cancel_snapshot(e);
         return NULL;
@@ -288,7 +294,7 @@ int editor_save(editor *e, const char *path)
     if (!e || !path) {
         return -1;
     }
-    char *json = behavior_asset_save_json(e->bp);
+    char *json = behavior_asset_save_json(e->asset);
     if (!json) {
         return -1;
     }
@@ -348,14 +354,14 @@ int editor_load(editor *e, const char *path)
         return -1;
     }
     ed_snapshot_before(e);
-    int result = ed_adopt_behavior_asset(e, json);
+    int result = ed_adopt_behavior_asset_with_identity(e, json, 0);
     if (result == 0) {
         aclear(e->graph_callers);
         aclear(e->graph_views);
         ed_load_graph_view(e);
         e->arrange_pending = true;
         free(e->saved_snapshot);
-        e->saved_snapshot = behavior_asset_save_json(e->bp);
+        e->saved_snapshot = behavior_asset_save_json(e->asset);
         e->edit_revision_initialized = 0;
     }
     free(json);

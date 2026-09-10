@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SERVICE_H
-#define CBLUEPRINT_SERVICE_H
+#ifndef CHIBI_SERVICE_H
+#define CHIBI_SERVICE_H
 
 #include <stdint.h>
 

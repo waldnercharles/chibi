@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_XALLOC_H
-#define CBLUEPRINT_XALLOC_H
+#ifndef CHIBI_XALLOC_H
+#define CHIBI_XALLOC_H
 
 #include <stddef.h>
 

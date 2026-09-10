@@ -45,6 +45,16 @@ static pin_value conv_to_real(const pin_value *inputs, int input_count, arena *a
     return r;
 }
 
+static pin_value conv_to_name(const pin_value *inputs, int count, arena *storage)
+{
+    assert(count == 1 && inputs[0].type == PIN_STR);
+    const char *text = inputs[0].str ? inputs[0].str : "";
+    size_t size = strlen(text) + 1;
+    char *copy = arena_alloc(storage, size);
+    memcpy(copy, text, size);
+    return (pin_value){ .type = PIN_NAME, .type_name = "name", .str = copy };
+}
+
 static double real_value(const pin_value *value)
 {
     assert(value->type == PIN_F32 || value->type == PIN_F64);
@@ -142,6 +152,22 @@ node_desc NODE_To_String = {
     .keywords = "convert cast string text str",
 };
 
+static pin_spec to_name_outputs[] = {
+    { "Name", PIN_NAME, "name", PIN_DATA },
+};
+node_desc NODE_To_Name = {
+    .name = "To Name",
+    .input_count = 1,
+    .output_count = 1,
+    .inputs = to_string_inputs,
+    .outputs = to_name_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = conv_to_name,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Conversion",
+    .keywords = "convert string name prototype asset",
+};
+
 static pin_spec to_real_inputs[] = {
     { "Value", PIN_I32, "int", PIN_DATA },
 };
@@ -203,6 +229,9 @@ static int to_string_source(pin_type t)
  * width through To Real; the output is F64 and the boundary coerces it. */
 const node_desc *conversion_for(pin_type from, pin_type to)
 {
+    if (from == PIN_STR && to == PIN_NAME) {
+        return &NODE_To_Name;
+    }
     if (from == PIN_F32 || from == PIN_F64) {
         switch (to) {
             case PIN_U8: return &NODE_To_Byte;

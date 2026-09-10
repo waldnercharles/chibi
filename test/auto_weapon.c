@@ -7,6 +7,7 @@
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -30,8 +31,8 @@ static char *read_content(const char *path)
 
 static void expect_function_groups(behavior_asset *asset)
 {
-    const char *names[] = { "Check Firing Interval", "Offset Position" };
-    for (int i = 0; i < 2; i++) {
+    const char *names[] = { "Check Firing Interval" };
+    for (int i = 0; i < 1; i++) {
         graph *function = behavior_asset_find_graph_by_name(asset, names[i]);
         assert(function && function->kind == GRAPH_FUNCTION);
         int calls = 0;
@@ -58,16 +59,32 @@ static void expect_function_groups(behavior_asset *asset)
 
 static void expect_elapsed(behavior_instance *instance, float expected)
 {
-    behavior_variable *variable = behavior_asset_find_variable_by_name(instance->bp, "Elapsed");
+    behavior_variable *variable = behavior_asset_find_variable_by_name(instance->asset, "Elapsed");
     pin_value value;
     assert(variable && behavior_instance_get_variable(instance, variable->id, &value) == 0);
     assert(value.type == PIN_F32 && fabsf(value.f - expected) < 0.001f);
 }
 
+static const char *behavior_root(const char *name)
+{
+    return !strcmp(name, "AutoWeaponBehavior") || !strcmp(name, "InputBehavior") ||
+                   !strcmp(name, "MovementTrailBehavior") ||
+                   !strcmp(name, "WeaponBehavior")
+             ? "test/fixtures/content/behaviors"
+             : "content/behaviors";
+}
+
+static void set_elapsed(behavior_instance *instance, float elapsed)
+{
+    behavior_variable *variable = behavior_asset_find_variable_by_name(instance->asset, "Elapsed");
+    pin_value value = { .type = PIN_F32, .type_name = "float", .f = elapsed };
+    assert(variable && behavior_instance_set_variable(instance, variable->id, &value) == 0);
+}
+
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    snprintf(path, sizeof path, "%s/%s.json", behavior_root(name), name);
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
     if (asset) {
@@ -110,6 +127,7 @@ static ecs_entity target_at(ecs_world *world, float x, float y)
     ecs_entity entity = ecs_world_create_entity(world);
     assert(GAME_GameTransform_add(world, entity, 0) == ECS_OK);
     assert(GAME_GameCollider_add(world, entity, 0) == ECS_OK);
+    assert(GAME_GameBody_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameTransform_get(world, entity) = (GameTransform){ x, y };
     *GAME_GameCollider_get(world, entity) = (GameCollider){ .radius = 12,
@@ -135,18 +153,10 @@ static int shots(ecs_world *world, ecs_entity *latest)
     return count;
 }
 
-static void tick(engine *runtime, game_prototype_preview *preview, double time)
-{
-    assert(
-        (preview ? game_prototype_preview_tick(preview, time)
-                 : engine_frame(runtime, time)) >= 0
-    );
-}
-
 static game_prototype *read_prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "content/prototypes/%s.json", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.json", name);
     char *text = read_content(path);
     game_prototype *prototype = game_prototype_load(text, registry, error, sizeof error);
     free(text);
@@ -161,11 +171,11 @@ static void expect_shot(ecs_world *world, int count, float x, float y, int damag
     const GameTransform *position = GAME_GameTransform_get_const(world, shot);
     const GameProjectile *projectile = GAME_GameProjectile_get_const(world, shot);
     assert(position && projectile);
-    assert(fabsf(position->x - x * 32) < 0.001f && fabsf(position->y - y * 32) < 0.001f);
-    assert(
-        fabsf(projectile->direction_x - x) < 0.001f &&
-        fabsf(projectile->direction_y - y) < 0.001f
-    );
+    assert(fabsf(position->x) < 0.001f && fabsf(position->y) < 0.001f);
+    const GameVelocity *velocity = GAME_GameVelocity_get_const(world, shot);
+    const GameOrientation *orientation = GAME_GameOrientation_get_const(world, shot);
+    assert(velocity && velocity->x == 0 && velocity->y == 0);
+    assert(orientation && fabsf(orientation->radians - atan2f(y, x)) < 0.001f);
     assert(projectile->damage == damage && projectile->speed == 0 && projectile->lifetime == 100);
 }
 
@@ -255,38 +265,39 @@ void test_auto_weapon()
         *GAME_GameTransform_get(world, owner) = (GameTransform){ 0 };
         GAME_GameWeapon_get(world, owner)->damage = 17;
         ecs_entity latest;
-        tick(runtime, preview, 0);
-        tick(runtime, preview, 0.5);
+        simulation_fixture clock = simulation_fixture_new(runtime, preview);
+        simulation_advance(&clock, 0);
+        simulation_advance(&clock, 0.5);
         assert(shots(world, &latest) == 0);
         ecs_entity target = target_at(world, 100, 0);
-        tick(runtime, preview, 0.6);
+        simulation_advance(&clock, 0.6);
         assert(shots(world, &latest) == 0);
-        tick(runtime, preview, 0.75);
+        simulation_advance(&clock, 0.75);
         expect_shot(world, 1, 1, 0, 17);
-        tick(runtime, preview, 0.9);
+        simulation_advance(&clock, 0.9);
         assert(shots(world, &latest) == 1);
         expect_elapsed(instance, 0.15f);
-        tick(runtime, preview, 1.1);
+        simulation_advance(&clock, 1.1);
         expect_shot(world, 2, 1, 0, 17);
         expect_elapsed(instance, 0.10f);
-        tick(runtime, preview, 1.25);
+        simulation_advance(&clock, 1.25);
         expect_shot(world, 3, 1, 0, 17);
         expect_elapsed(instance, 0);
         *GAME_GameTransform_get(world, target) = (GameTransform){ -100, 0 };
-        tick(runtime, preview, 1.5);
+        simulation_advance(&clock, 1.5);
         expect_shot(world, 4, -1, 0, 17);
         *GAME_GameTransform_get(world, target) = (GameTransform){ 30, 40 };
-        tick(runtime, preview, 1.75);
+        simulation_advance(&clock, 1.75);
         expect_shot(world, 5, 0.6f, 0.8f, 17);
         *GAME_GameTransform_get(world, target) = (GameTransform){ 0 };
-        tick(runtime, preview, 2.0);
+        simulation_advance(&clock, 2.0);
         expect_shot(world, 6, 0, 0, 17);
         assert(ecs_world_destroy_entity(world, target) == ECS_OK);
-        tick(runtime, preview, 2.5);
+        simulation_advance(&clock, 2.5);
         assert(shots(world, &latest) == 6);
         target = target_at(world, 100, 0);
         behavior_instance_set_breakpoints_enabled(instance, true);
-        tick(runtime, preview, 2.75);
+        simulation_advance(&clock, 2.75);
         assert(shots(world, &latest) == 7 && acount(instance->activations) == 1);
         flow_run *run = instance->activations[0];
         assert(flow_run_status(run) == FLOW_PAUSED);
@@ -294,44 +305,51 @@ void test_auto_weapon()
         assert(ecs_world_destroy_entity(world, target) == ECS_OK);
         *GAME_GameTransform_get(world, owner) = (GameTransform){ 1000, 1000 };
         assert(flow_run_resume(run) == FLOW_OK);
-        tick(runtime, preview, 2.75);
+        simulation_advance(&clock, 2.75);
         expect_shot(world, 7, 1, 0, 17);
         behavior_instance_set_breakpoints_enabled(instance, false);
         *GAME_GameTransform_get(world, owner) = (GameTransform){ 0 };
         target_at(world, -100, 0);
         GAME_GameWeapon_get(world, owner)->cooldown = 0;
-        tick(runtime, preview, 2.77);
-        tick(runtime, preview, 2.77);
-        tick(runtime, preview, 2.77);
-        expect_shot(world, 9, -1, 0, 999);
+        simulation_step(&clock);
+        expect_shot(world, 8, -1, 0, 999);
+        expect_elapsed(instance, (float)ENGINE_FIXED_SECONDS - 0.01f);
+        simulation_frame(&clock, clock.time);
+        assert(shots(world, &latest) == 8);
         GAME_GameWeapon_get(world, owner)->cooldown = -1;
-        tick(runtime, preview, 2.79);
-        tick(runtime, preview, 2.79);
-        tick(runtime, preview, 2.79);
-        expect_shot(world, 11, -1, 0, 999);
+        simulation_step(&clock);
+        expect_shot(world, 10, -1, 0, 999);
+        expect_elapsed(instance, (float)(2 * ENGINE_FIXED_SECONDS) - 0.03f);
         GAME_GameWeapon_get(world, owner)->cooldown = 0.25f;
-        tick(runtime, preview, 3.39);
-        tick(runtime, preview, 3.39);
-        tick(runtime, preview, 3.39);
-        expect_shot(world, 13, -1, 0, 999);
+        simulation_advance(&clock, clock.time + 0.5);
+        expect_shot(world, 12, -1, 0, 999);
+        expect_elapsed(instance, (float)(2 * ENGINE_FIXED_SECONDS) - 0.03f);
+
+        /* Seed two intervals to exercise one activation across two suspended
+         * projectile initializers; display frame length cannot create backlog. */
+        set_elapsed(instance, 0.5f);
         behavior_instance_set_breakpoints_enabled(instance, true);
-        tick(runtime, preview, 3.89);
-        assert(shots(world, &latest) == 14 && acount(instance->activations) == 1);
+        simulation_step(&clock);
+        assert(shots(world, &latest) == 13 && acount(instance->activations) == 1);
         run = instance->activations[0];
         assert(flow_run_status(run) == FLOW_PAUSED);
+        double held_time = engine_last_timing(clock.runtime)->simulation_time;
         GAME_GameWeapon_get(world, owner)->damage = 777;
         *GAME_GameTransform_get(world, owner) = (GameTransform){ 1000, 1000 };
         assert(flow_run_resume(run) >= 0);
-        expect_shot(world, 14, -1, 0, 999);
-        tick(runtime, preview, 3.89);
-        assert(shots(world, &latest) == 15 && flow_run_status(run) == FLOW_PAUSED);
+        expect_shot(world, 13, -1, 0, 999);
+        simulation_frame(&clock, clock.time);
+        assert(shots(world, &latest) == 14 && flow_run_status(run) == FLOW_PAUSED);
         assert(flow_run_resume(run) >= 0);
-        tick(runtime, preview, 3.89);
-        expect_shot(world, 15, -1, 0, 999);
+        simulation_frame(&clock, clock.time);
+        expect_shot(world, 14, -1, 0, 999);
+        expect_elapsed(instance, (float)ENGINE_FIXED_SECONDS);
+        assert(engine_last_timing(clock.runtime)->simulation_time == held_time);
         behavior_instance_set_breakpoints_enabled(instance, false);
         *GAME_GameTransform_get(world, owner) = (GameTransform){ 0 };
-        tick(runtime, preview, 4.14);
-        expect_shot(world, 16, -1, 0, 777);
+        simulation_advance(&clock, clock.time + 0.25);
+        expect_shot(world, 15, -1, 0, 777);
+        expect_elapsed(instance, (float)ENGINE_FIXED_SECONDS);
         if (isolated) {
             game_prototype_preview_free(preview);
             continue;

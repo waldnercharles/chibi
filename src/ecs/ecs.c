@@ -1,6 +1,7 @@
 #include "ecs/ecs.h"
 
 #include "graph/model/pin_conv.h"
+#include "graph/runtime/eval.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -50,6 +51,8 @@ struct ecs_world
     uint32_t live_count;
     uint32_t high_water;
     ecs_component *components;
+    int *component_lookup; /* Component array index + 1; zero is an empty bucket. */
+    int component_lookup_capacity;
     ecs_command *commands;
     char **field_strings; /* Interned values assigned through the field API. */
     uint64_t next_sequence;
@@ -92,7 +95,9 @@ ecs_query_expr *ecs_query_expr_clone(const ecs_query_expr *expr)
                              ? ecs_query_expr_has(expr->component)
                              : ecs_query_expr_new(expr->kind);
     for (int i = 0; i < acount(expr->children); i++) {
-        assert(ecs_query_expr_add(copy, ecs_query_expr_clone(expr->children[i])) == ECS_OK);
+        int result = ecs_query_expr_add(copy, ecs_query_expr_clone(expr->children[i]));
+        assert(result == ECS_OK);
+        (void)result;
     }
     return copy;
 }
@@ -181,12 +186,53 @@ uint64_t ecs_layout_hash(const type_desc *type)
     return hash;
 }
 
+static int component_bucket(ecs_component_id id, int capacity)
+{
+    uint64_t hash = id * UINT64_C(11400714819323198485);
+    return (int)((hash ^ (hash >> 32)) & (uint64_t)(capacity - 1));
+}
+
+static void component_index_insert(ecs_world *world, int index)
+{
+    int bucket = component_bucket(world->components[index].desc.id, world->component_lookup_capacity);
+    while (world->component_lookup[bucket]) {
+        bucket = (bucket + 1) & (world->component_lookup_capacity - 1);
+    }
+    world->component_lookup[bucket] = index + 1;
+}
+
+static void component_index_append(ecs_world *world)
+{
+    int count = acount(world->components);
+    if (count * 2 <= world->component_lookup_capacity) {
+        component_index_insert(world, count - 1);
+        return;
+    }
+    world->component_lookup_capacity = world->component_lookup_capacity
+                                         ? world->component_lookup_capacity * 2
+                                         : 16;
+    free(world->component_lookup);
+    world->component_lookup = xcalloc(
+        (size_t)world->component_lookup_capacity,
+        sizeof *world->component_lookup
+    );
+    for (int i = 0; i < count; i++) {
+        component_index_insert(world, i);
+    }
+}
+
 static ecs_component *find_component(ecs_world *world, ecs_component_id id)
 {
-    for (int i = 0; i < acount(world->components); i++) {
-        if (world->components[i].desc.id == id) {
-            return &world->components[i];
+    if (!world->component_lookup_capacity) {
+        return NULL;
+    }
+    int bucket = component_bucket(id, world->component_lookup_capacity);
+    while (world->component_lookup[bucket]) {
+        ecs_component *component = &world->components[world->component_lookup[bucket] - 1];
+        if (component->desc.id == id) {
+            return component;
         }
+        bucket = (bucket + 1) & (world->component_lookup_capacity - 1);
     }
     return NULL;
 }
@@ -432,6 +478,7 @@ void ecs_world_free(ecs_world *world)
         afree(world->components[i].dense);
     }
     afree(world->components);
+    free(world->component_lookup);
     afree(world->commands);
     for (int i = 0; i < acount(world->field_strings); i++) {
         free(world->field_strings[i]);
@@ -479,6 +526,7 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     component.occupancy = (uint64_t *)
         xcalloc(ECS_ENTITY_WORD_COUNT, sizeof *component.occupancy);
     apush(world->components, component);
+    component_index_append(world);
     if (out_id) {
         *out_id = id;
     }
@@ -784,6 +832,11 @@ int ecs_entity_is_alive(const ecs_world *world, ecs_entity entity)
     return world && entity_matches(world, entity);
 }
 
+bool ecs_entity_is_retiring(const ecs_world *world, ecs_entity entity)
+{
+    return ecs_entity_is_alive(world, entity) && world->pending_destroy[entity.slot];
+}
+
 int ecs_component_has(const ecs_world *world, ecs_entity entity, ecs_component_id component_id)
 {
     const ecs_component *component = world ? find_component_const(world, component_id)
@@ -793,6 +846,38 @@ int ecs_component_has(const ecs_world *world, ecs_entity entity, ecs_component_i
     }
     uint64_t bit = UINT64_C(1) << (entity.slot % 64u);
     return (component->occupancy[entity.slot / 64u] & bit) != 0;
+}
+
+bool ecs_component_has_entities(
+    const ecs_world *world,
+    ecs_component_id component_id,
+    const ecs_entity *excluded,
+    int excluded_count
+)
+{
+    assert(world && excluded_count >= 0 && (!excluded_count || excluded));
+    const ecs_component *component = find_component_const(world, component_id);
+    assert(component);
+    for (uint32_t word = 0; word <= world->high_water / 64u; word++) {
+        uint64_t occupied = component->occupancy[word];
+        while (occupied) {
+            uint32_t slot = word * 64u + (uint32_t)__builtin_ctzll(occupied);
+            occupied &= occupied - 1;
+            if (world->pending_destroy[slot]) {
+                continue;
+            }
+            ecs_entity entity = { slot, world->generations[slot] };
+            int i = 0;
+            while (i < excluded_count &&
+                   ecs_entity_to_u64(entity) != ecs_entity_to_u64(excluded[i])) {
+                i++;
+            }
+            if (i == excluded_count) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component_id)
@@ -841,6 +926,80 @@ int ecs_component_read_field(
     return ECS_OK;
 }
 
+static int eval_read_component_field(
+    void *user,
+    uint64_t owner,
+    const char *component_key,
+    const char *field_name,
+    pin_value *out
+)
+{
+    ecs_world *world = user;
+    ecs_entity entity = ecs_entity_from_u64(owner);
+    if (!world || !out || !ecs_entity_is_alive(world, entity)) {
+        return EVAL_COMPONENT_READ_INVALID_OWNER;
+    }
+    const ecs_component *component = NULL;
+    for (int i = 0; i < ecs_world_component_count(world); i++) {
+        const ecs_component_desc *candidate = ecs_world_component_at(world, i);
+        if (candidate && candidate->key && component_key &&
+            strcmp(candidate->key, component_key) == 0) {
+            component = find_component_const(world, candidate->id);
+            break;
+        }
+    }
+    if (!component) {
+        return EVAL_COMPONENT_READ_MISSING_COMPONENT;
+    }
+    if (!ecs_component_has(world, entity, component->desc.id)) {
+        return EVAL_COMPONENT_READ_MISSING_COMPONENT;
+    }
+    const void *data = ecs_component_data_const(world, entity, component->desc.id);
+    if (!component->desc.type || !data || !out) {
+        return EVAL_COMPONENT_READ_MISSING_COMPONENT;
+    }
+    if (!field_name) {
+        *out = (pin_value){
+            .type = PIN_STRUCT,
+            .container = PIN_CONTAINER_SINGLE,
+            .type_name = component->desc.type->name,
+            .ptr = (void *)data,
+        };
+        return EVAL_COMPONENT_READ_OK;
+    }
+    for (int i = 0; i < component->desc.type->field_count; i++) {
+        if (component->desc.type->fields[i].name &&
+            strcmp(component->desc.type->fields[i].name, field_name) == 0) {
+            return ecs_component_read_field(world, entity, component->desc.id, i, out) == ECS_OK
+                     ? EVAL_COMPONENT_READ_OK
+                     : EVAL_COMPONENT_READ_MISSING_COMPONENT;
+        }
+    }
+    return EVAL_COMPONENT_READ_MISSING_FIELD;
+}
+
+void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *world)
+{
+    if (reader) {
+        *reader = (eval_component_reader){ .read = eval_read_component_field,
+                                           .user = world };
+    }
+}
+
+const char *ecs_world_intern_string(ecs_world *world, const char *text)
+{
+    assert(world);
+    text = text ? text : "";
+    for (int i = 0; i < acount(world->field_strings); i++) {
+        if (!strcmp(world->field_strings[i], text)) {
+            return world->field_strings[i];
+        }
+    }
+    char *owned = xstrdup(text);
+    apush(world->field_strings, owned);
+    return owned;
+}
+
 int ecs_component_write_field(
     ecs_world *world,
     ecs_entity entity,
@@ -856,16 +1015,7 @@ int ecs_component_write_field(
         return ECS_ERR_ARGUMENT;
     }
     if (type_field->type == PIN_STR || type_field->type == PIN_NAME) {
-        const char *text = value.str ? value.str : "";
-        int at = 0;
-        while (at < acount(world->field_strings) &&
-               strcmp(world->field_strings[at], text)) {
-            at++;
-        }
-        if (at == acount(world->field_strings)) {
-            apush(world->field_strings, xstrdup(text));
-        }
-        value.str = world->field_strings[at];
+        value.str = ecs_world_intern_string(world, value.str);
     }
     pin_write_field(data, type_field, value);
     return ECS_OK;

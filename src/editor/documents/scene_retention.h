@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SCENE_RETENTION_H
-#define CBLUEPRINT_SCENE_RETENTION_H
+#ifndef CHIBI_SCENE_RETENTION_H
+#define CHIBI_SCENE_RETENTION_H
 
 #include "assets/prototype.h"
 

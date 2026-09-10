@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-char *bp_read_file(const char *path)
+char *chibi_read_file(const char *path)
 {
     FILE *file = fopen(path, "rb");
     if (!file) {
@@ -34,7 +34,7 @@ char *bp_read_file(const char *path)
     return text;
 }
 
-bool bp_write_file(const char *path, const char *text)
+bool chibi_write_file(const char *path, const char *text)
 {
     size_t size = strlen(path) + sizeof ".XXXXXX";
     char *temporary = malloc(size);

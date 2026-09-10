@@ -38,6 +38,14 @@ void editor_component_label(const char *name, char *buf, size_t cap)
     if (!cap) {
         return;
     }
+    if (!strcmp(name, "GameGeometry3D")) {
+        snprintf(buf, cap, "3D Geometry");
+        return;
+    }
+    if (!strcmp(name, "GameAppearance")) {
+        snprintf(buf, cap, "2D Appearance");
+        return;
+    }
     if (strncmp(name, "Game", 4) == 0 && isupper((unsigned char)name[4])) {
         name += 4;
     }
@@ -59,6 +67,11 @@ void editor_component_label(const char *name, char *buf, size_t cap)
 void editor_node_label(const node_desc *desc, char *buf, size_t cap)
 {
     assert(desc);
+    const char *display_name = desc->name;
+    if (desc->category && !strcmp(desc->category, "Shader") &&
+        !strncmp(display_name, "Shader ", 7)) {
+        display_name += 7;
+    }
     const char *type = desc->type ? desc->type->name : NULL;
     if (type && strncmp(desc->name, "Set_", 4) == 0) {
         size_t length = strlen(type);
@@ -92,5 +105,5 @@ void editor_node_label(const node_desc *desc, char *buf, size_t cap)
             return;
         }
     }
-    editor_identifier_label(desc->name, buf, cap);
+    editor_identifier_label(display_name, buf, cap);
 }

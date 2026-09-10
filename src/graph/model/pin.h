@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_PIN_H
-#define CBLUEPRINT_PIN_H
+#ifndef CHIBI_PIN_H
+#define CHIBI_PIN_H
 
 #include "support/enum.h"
 
@@ -66,6 +66,28 @@ typedef enum
     PIN_EXEC = 1,
 } pin_kind;
 
+typedef enum
+{
+    PIN_BINDING_VARIABLE = 1,
+    PIN_BINDING_COMPONENT_FIELD,
+    PIN_BINDING_DELTA_TIME,
+    PIN_BINDING_COMPONENT,
+} pin_binding_kind;
+
+/* Authored source for an unconnected data input. Strings are owned by the
+ * containing graph. Variable IDs are stable within their source asset; a
+ * source asset is retained so clipboard copies cannot silently bind a local
+ * ID from another behavior. Component bindings use component_key as the
+ * stable reflected identity; field_name is NULL for a whole component. */
+typedef struct pin_binding
+{
+    pin_binding_kind kind;
+    uint64_t variable_id;
+    const char *source_asset;
+    const char *component_key;
+    const char *field_name;
+} pin_binding;
+
 enum
 {
     PIN_FLAG_ADVANCED = 1u << 0,
@@ -74,6 +96,8 @@ enum
     PIN_FLAG_SERVICE = 1u << 3,
     PIN_FLAG_WATCH = 1u << 4,
     PIN_FLAG_DEFAULT_SELF = 1u << 5,
+    PIN_FLAG_COLOR = 1u << 6, /* RGB(A) presentation; the value remains a vector. */
+    PIN_FLAG_SETTING = 1u << 7, /* Authored configuration without a data socket. */
 };
 
 /* A descriptor pin is also the shape of an instance pin. Descriptor fields
@@ -94,6 +118,7 @@ typedef struct
     uint64_t field_source; /* retained aggregate output pin ID on the same node */
     const char *field_name;
     uint64_t declaration_id; /* Stable parameter identity in an event definition. */
+    pin_binding *binding; /* Optional authored source for an unconnected input. */
 } pin_spec;
 
 #endif

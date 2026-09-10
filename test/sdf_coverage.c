@@ -219,7 +219,7 @@ int test_sdf_coverage(app_sdf_shapes shapes)
             }
         }
     }
-    const char *capture = getenv("CBLUEPRINT_SDF_SCREENSHOT");
+    const char *capture = getenv("CHIBI_SDF_SCREENSHOT");
     if (capture && !failed) {
         CF_Image image = { SIDE, SIDE, available ? tiled : instanced };
         void *data = NULL;

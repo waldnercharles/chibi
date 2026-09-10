@@ -4,7 +4,10 @@
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
+#include <stdatomic.h>
 #include <string.h>
+
+static atomic_ullong behavior_asset_identity = 1;
 
 const char *behavior_domain_name(behavior_domain domain)
 {
@@ -19,11 +22,11 @@ const char *behavior_domain_name(behavior_domain domain)
     return "invalid";
 }
 
-static int var_name_unique(const behavior_asset *bp, const char *name, uint64_t except_id)
+static int var_name_unique(const behavior_asset *asset, const char *name, uint64_t except_id)
 {
-    for (int i = 0; i < acount(bp->variables); i++) {
-        if (bp->variables[i].id != except_id &&
-            strcmp(bp->variables[i].name, name) == 0) {
+    for (int i = 0; i < acount(asset->variables); i++) {
+        if (asset->variables[i].id != except_id &&
+            strcmp(asset->variables[i].name, name) == 0) {
             return 0;
         }
     }
@@ -32,86 +35,94 @@ static int var_name_unique(const behavior_asset *bp, const char *name, uint64_t 
 
 behavior_asset *behavior_asset_new(const char *name)
 {
-    behavior_asset *bp = (behavior_asset *)xcalloc(1, sizeof *bp);
-    bp->graph = (graph *)xcalloc(1, sizeof *bp->graph);
-    graph_init(bp->graph);
-    bp->graph->owner = bp;
-    bp->graph->graph_id = 0;
-    bp->graph->shared_id_counter = &bp->graph->id_counter;
-    apush(bp->graphs, bp->graph);
-    bp->name = graph_own_str(bp->graph, name ? name : "", name ? strlen(name) : 0);
-    bp->description = graph_own_str(bp->graph, "", 0);
-    return bp;
+    behavior_asset *asset = (behavior_asset *)xcalloc(1, sizeof *asset);
+    asset->identity = atomic_fetch_add_explicit(&behavior_asset_identity, 1, memory_order_relaxed);
+    if (!asset->identity) {
+        asset->identity = atomic_fetch_add_explicit(&behavior_asset_identity, 1, memory_order_relaxed);
+    }
+    asset->graph = (graph *)xcalloc(1, sizeof *asset->graph);
+    graph_init(asset->graph);
+    asset->graph->owner = asset;
+    asset->graph->graph_id = 0;
+    asset->graph->shared_id_counter = &asset->graph->id_counter;
+    apush(asset->graphs, asset->graph);
+    asset->name = graph_own_str(asset->graph, name ? name : "", name ? strlen(name) : 0);
+    asset->description = graph_own_str(asset->graph, "", 0);
+    return asset;
 }
 
-void behavior_asset_free(behavior_asset *bp)
+void behavior_asset_free(behavior_asset *asset)
 {
-    if (!bp) {
+    if (!asset) {
         return;
     }
-    afree(bp->variables);
-    for (int i = 0; i < acount(bp->graphs); i++) {
-        graph_free(bp->graphs[i]);
-        free(bp->graphs[i]);
+    afree(asset->variables);
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph_free(asset->graphs[i]);
+        free(asset->graphs[i]);
     }
-    afree(bp->graphs);
-    free(bp);
+    afree(asset->graphs);
+    free(asset);
 }
 
-graph *behavior_asset_add_graph(behavior_asset *bp, graph_kind kind, const char *name)
+graph *behavior_asset_add_graph(behavior_asset *asset, graph_kind kind, const char *name)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !name || !name[0]) {
+    if (!asset || !behavior_asset_mutable(asset) || !name || !name[0]) {
         return NULL;
     }
-    if (behavior_asset_find_graph_by_name(bp, name)) {
+    if (behavior_asset_find_graph_by_name(asset, name)) {
         return NULL;
     }
     graph *g = (graph *)xcalloc(1, sizeof *g);
     graph_init(g);
-    g->owner = bp;
+    g->owner = asset;
     g->kind = kind;
-    g->graph_id = graph_alloc_id(bp->graph);
-    g->shared_id_counter = &bp->graph->id_counter;
-    g->id_counter = bp->graph->id_counter;
+    g->graph_id = graph_alloc_id(asset->graph);
+    g->shared_id_counter = &asset->graph->id_counter;
+    g->id_counter = asset->graph->id_counter;
     g->name = graph_own_str(g, name, strlen(name));
     g->description = graph_own_str(g, "", 0);
-    apush(bp->graphs, g);
+    apush(asset->graphs, g);
     return g;
 }
 
-graph *behavior_asset_find_graph(const behavior_asset *bp, uint64_t graph_id)
+graph *behavior_asset_find_graph(const behavior_asset *asset, uint64_t graph_id)
 {
-    if (!bp) {
+    if (!asset) {
         return NULL;
     }
     if (graph_id == 0) {
-        return bp->graph;
+        return asset->graph;
     }
-    for (int i = 0; i < acount(bp->graphs); i++) {
-        if (bp->graphs[i]->graph_id == graph_id) {
-            return bp->graphs[i];
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        if (asset->graphs[i]->graph_id == graph_id) {
+            return asset->graphs[i];
         }
     }
     return NULL;
 }
 
-graph *behavior_asset_find_graph_by_name(const behavior_asset *bp, const char *name)
+graph *behavior_asset_find_graph_by_name(const behavior_asset *asset, const char *name)
 {
-    if (!bp || !name) {
+    if (!asset || !name) {
         return NULL;
     }
-    for (int i = 0; i < acount(bp->graphs); i++) {
-        if (bp->graphs[i]->name && strcmp(bp->graphs[i]->name, name) == 0) {
-            return bp->graphs[i];
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        if (asset->graphs[i]->name && strcmp(asset->graphs[i]->name, name) == 0) {
+            return asset->graphs[i];
         }
     }
     return NULL;
 }
 
-static void behavior_asset_refresh_graph_references(behavior_asset *bp, uint64_t graph_id, const char *name)
+static void behavior_asset_refresh_graph_references(
+    behavior_asset *asset,
+    uint64_t graph_id,
+    const char *name
+)
 {
-    for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
-        graph *g = bp->graphs[graph_index];
+    for (int graph_index = 0; graph_index < acount(asset->graphs); graph_index++) {
+        graph *g = asset->graphs[graph_index];
         for (int node_index = 0; node_index < acount(g->nodes); node_index++) {
             node *n = g->nodes[node_index];
             if (n->reference_asset || n->reference_id != graph_id ||
@@ -124,32 +135,33 @@ static void behavior_asset_refresh_graph_references(behavior_asset *bp, uint64_t
     }
 }
 
-int behavior_asset_rename_graph(behavior_asset *bp, uint64_t graph_id, const char *name)
+int behavior_asset_rename_graph(behavior_asset *asset, uint64_t graph_id, const char *name)
 {
-    if (!bp || !behavior_asset_mutable(bp) || graph_id == 0 || !name || !name[0]) {
+    if (!asset || !behavior_asset_mutable(asset) || graph_id == 0 || !name ||
+        !name[0]) {
         return -1;
     }
-    graph *g = behavior_asset_find_graph(bp, graph_id);
-    graph *same = behavior_asset_find_graph_by_name(bp, name);
+    graph *g = behavior_asset_find_graph(asset, graph_id);
+    graph *same = behavior_asset_find_graph_by_name(asset, name);
     if (!g || (same && same != g)) {
         return -1;
     }
     if (graph_set_metadata(g, name, g->description ? g->description : "") != 0) {
         return -1;
     }
-    behavior_asset_refresh_graph_references(bp, graph_id, name);
+    behavior_asset_refresh_graph_references(asset, graph_id, name);
     return 0;
 }
 
-int behavior_asset_delete_graph(behavior_asset *bp, uint64_t graph_id)
+int behavior_asset_delete_graph(behavior_asset *asset, uint64_t graph_id)
 {
-    if (!bp || !behavior_asset_mutable(bp) || graph_id == 0) {
+    if (!asset || !behavior_asset_mutable(asset) || graph_id == 0) {
         return -1;
     }
-    for (int i = 1; i < acount(bp->graphs); i++) {
-        if (bp->graphs[i]->graph_id == graph_id) {
-            graph *g = bp->graphs[i];
-            adel(bp->graphs, i);
+    for (int i = 1; i < acount(asset->graphs); i++) {
+        if (asset->graphs[i]->graph_id == graph_id) {
+            graph *g = asset->graphs[i];
+            adel(asset->graphs, i);
             graph_free(g);
             free(g);
             return 0;
@@ -158,54 +170,72 @@ int behavior_asset_delete_graph(behavior_asset *bp, uint64_t graph_id)
     return -1;
 }
 
-int behavior_asset_mutable(const behavior_asset *bp)
+int behavior_asset_mutable(const behavior_asset *asset)
 {
-    return bp && bp->graph && bp->graph->flow_pause_count == 0;
+    return asset && asset->graph && asset->graph->flow_pause_count == 0;
 }
 
-int behavior_asset_set_name(behavior_asset *bp, const char *name)
+int behavior_asset_set_name(behavior_asset *asset, const char *name)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !name) {
+    if (!asset || !behavior_asset_mutable(asset) || !name) {
         return -1;
     }
-    char *copy = graph_own_str(bp->graph, name, strlen(name));
+    const char *old_name = asset->name;
+    char *copy = graph_own_str(asset->graph, name, strlen(name));
     if (!copy) {
         return -1;
     }
-    bp->name = copy;
+    asset->name = copy;
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        graph *target = asset->graphs[g];
+        for (int i = 0; i < acount(target->nodes); i++) {
+            node *n = target->nodes[i];
+            for (int p = 0; p < n->input_count; p++) {
+                const pin_binding *binding = n->input_pins[p].binding;
+                if (!binding || binding->kind != PIN_BINDING_VARIABLE ||
+                    (binding->source_asset && old_name &&
+                     strcmp(binding->source_asset, old_name) != 0)) {
+                    continue;
+                }
+                pin_binding updated = *binding;
+                updated.source_asset = copy;
+                graph_set_pin_binding(target, n, 0, p, &updated);
+            }
+        }
+    }
     return 0;
 }
 
-void behavior_asset_set_description(behavior_asset *bp, const char *description)
+void behavior_asset_set_description(behavior_asset *asset, const char *description)
 {
-    if (!bp) {
+    if (!asset) {
         return;
     }
     char *copy = graph_own_str(
-        bp->graph,
+        asset->graph,
         description ? description : "",
         description ? strlen(description) : 0
     );
     if (copy) {
-        bp->description = copy;
+        asset->description = copy;
     }
 }
 
-int behavior_asset_set_owner_type(behavior_asset *bp, const char *type_name)
+int behavior_asset_set_owner_type(behavior_asset *asset, const char *type_name)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !type_name || !type_name[0]) {
+    if (!asset || !behavior_asset_mutable(asset) || !type_name || !type_name[0]) {
         return -1;
     }
-    char *copy = graph_own_str(bp->graph, type_name, strlen(type_name));
+    char *copy = graph_own_str(asset->graph, type_name, strlen(type_name));
     if (!copy) {
         return -1;
     }
-    bp->owner_type_name = copy;
+    asset->owner_type_name = copy;
     return 0;
 }
 
 behavior_variable *behavior_asset_add_variable(
-    behavior_asset *bp,
+    behavior_asset *asset,
     const char *name,
     pin_type type,
     const char *type_name,
@@ -214,21 +244,22 @@ behavior_variable *behavior_asset_add_variable(
     const char *category
 )
 {
-    if (!bp || !behavior_asset_mutable(bp) || !name || !name[0]) {
+    if (!asset || !behavior_asset_mutable(asset) || !name || !name[0]) {
         return NULL;
     }
-    if (!var_name_unique(bp, name, 0)) {
+    if (!var_name_unique(asset, name, 0)) {
         return NULL;
     }
     behavior_variable v = { 0 };
-    v.id = graph_alloc_id(bp->graph);
-    v.name = graph_own_str(bp->graph, name, strlen(name));
+    v.id = graph_alloc_id(asset->graph);
+    v.name = graph_own_str(asset->graph, name, strlen(name));
     v.type = type;
-    v.type_name = type_name ? graph_own_str(bp->graph, type_name, strlen(type_name))
-                            : NULL;
+    v.type_name = type_name
+                    ? graph_own_str(asset->graph, type_name, strlen(type_name))
+                    : NULL;
     v.container = container;
     v.category = category && category[0]
-                   ? graph_own_str(bp->graph, category, strlen(category))
+                   ? graph_own_str(asset->graph, category, strlen(category))
                    : NULL;
     if (default_value) {
         v.default_value = *default_value;
@@ -237,7 +268,7 @@ behavior_variable *behavior_asset_add_variable(
         v.default_value.type_name = v.type_name;
         if (container >= PIN_CONTAINER_ARRAY && default_value->ptr) {
             v.default_value.ptr = pin_array_clone_to_graph(
-                bp->graph,
+                asset->graph,
                 (const pin_array *)default_value->ptr
             );
             if (!v.default_value.ptr) {
@@ -246,7 +277,7 @@ behavior_variable *behavior_asset_add_variable(
         }
         if ((type == PIN_STR || type == PIN_NAME) && v.default_value.str) {
             v.default_value.str = graph_own_str(
-                bp->graph,
+                asset->graph,
                 v.default_value.str,
                 strlen(v.default_value.str)
             );
@@ -259,41 +290,41 @@ behavior_variable *behavior_asset_add_variable(
             v.default_value.str = "";
         }
     }
-    apush(bp->variables, v);
-    return &bp->variables[acount(bp->variables) - 1];
+    apush(asset->variables, v);
+    return &asset->variables[acount(asset->variables) - 1];
 }
 
-behavior_variable *behavior_asset_find_variable_by_name(const behavior_asset *bp, const char *name)
+behavior_variable *behavior_asset_find_variable_by_name(const behavior_asset *asset, const char *name)
 {
-    if (!bp || !name) {
+    if (!asset || !name) {
         return NULL;
     }
-    for (int i = 0; i < acount(bp->variables); i++) {
-        if (strcmp(bp->variables[i].name, name) == 0) {
-            return &bp->variables[i];
+    for (int i = 0; i < acount(asset->variables); i++) {
+        if (strcmp(asset->variables[i].name, name) == 0) {
+            return &asset->variables[i];
         }
     }
     return NULL;
 }
 
-behavior_variable *behavior_asset_find_variable_by_id(const behavior_asset *bp, uint64_t id)
+behavior_variable *behavior_asset_find_variable_by_id(const behavior_asset *asset, uint64_t id)
 {
-    if (!bp) {
+    if (!asset) {
         return NULL;
     }
-    for (int i = 0; i < acount(bp->variables); i++) {
-        if (bp->variables[i].id == id) {
-            return &bp->variables[i];
+    for (int i = 0; i < acount(asset->variables); i++) {
+        if (asset->variables[i].id == id) {
+            return &asset->variables[i];
         }
     }
     return NULL;
 }
 
-static void refresh_reference_display(behavior_asset *bp, uint64_t id, char *display_name)
+static void refresh_reference_display(behavior_asset *asset, uint64_t id, char *display_name)
 {
-    for (int g = 0; g < acount(bp->graphs); g++) {
-        for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
-            node *n = bp->graphs[g]->nodes[i];
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+            node *n = asset->graphs[g]->nodes[i];
             if (n->reference_id != id) {
                 continue;
             }
@@ -304,36 +335,37 @@ static void refresh_reference_display(behavior_asset *bp, uint64_t id, char *dis
     }
 }
 
-int behavior_asset_rename_variable(behavior_asset *bp, uint64_t id, const char *new_name)
+int behavior_asset_rename_variable(behavior_asset *asset, uint64_t id, const char *new_name)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !new_name || !new_name[0]) {
+    if (!asset || !behavior_asset_mutable(asset) || !new_name || !new_name[0]) {
         return -1;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
-    if (!v || !var_name_unique(bp, new_name, id)) {
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
+    if (!v || !var_name_unique(asset, new_name, id)) {
         return -1;
     }
-    char *copy = graph_own_str(bp->graph, new_name, strlen(new_name));
+    char *copy = graph_own_str(asset->graph, new_name, strlen(new_name));
     if (!copy) {
         return -1;
     }
     v->name = copy;
     /* VAR-5: referencing nodes keep their reference ID; only display updates. */
-    refresh_reference_display(bp, id, copy);
+    refresh_reference_display(asset, id, copy);
     return 0;
 }
 
-int behavior_asset_retype_variable(behavior_asset *bp, uint64_t id, pin_type type, const char *type_name)
+int behavior_asset_retype_variable(behavior_asset *asset, uint64_t id, pin_type type, const char *type_name)
 {
-    if (!bp || !behavior_asset_mutable(bp)) {
+    if (!asset || !behavior_asset_mutable(asset)) {
         return -1;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
     if (!v) {
         return -1;
     }
-    char *copy = type_name ? graph_own_str(bp->graph, type_name, strlen(type_name))
-                           : NULL;
+    char *copy = type_name
+                   ? graph_own_str(asset->graph, type_name, strlen(type_name))
+                   : NULL;
     if (type_name && !copy) {
         return -1;
     }
@@ -342,9 +374,9 @@ int behavior_asset_retype_variable(behavior_asset *bp, uint64_t id, pin_type typ
     v->default_value = (pin_value){ .type = type,
                                     .container = v->container,
                                     .type_name = copy };
-    for (int g = 0; g < acount(bp->graphs); g++) {
-        for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
-            graph *target = bp->graphs[g];
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+            graph *target = asset->graphs[g];
             node *n = target->nodes[i];
             if (n->reference_id != id) {
                 continue;
@@ -360,25 +392,25 @@ int behavior_asset_retype_variable(behavior_asset *bp, uint64_t id, pin_type typ
     return 0;
 }
 
-int behavior_asset_set_variable_container(behavior_asset *bp, uint64_t id, pin_container container)
+int behavior_asset_set_variable_container(behavior_asset *asset, uint64_t id, pin_container container)
 {
-    if (!bp || !behavior_asset_mutable(bp) ||
+    if (!asset || !behavior_asset_mutable(asset) ||
         container < PIN_CONTAINER_SINGLE || container > PIN_CONTAINER_MAP) {
         return -1;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
     if (!v) {
         return -1;
     }
     v->container = container;
     v->default_value.container = container;
-    for (int g = 0; g < acount(bp->graphs); g++) {
-        for (int i = 0; i < acount(bp->graphs[g]->nodes); i++) {
-            node *n = bp->graphs[g]->nodes[i];
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+            node *n = asset->graphs[g]->nodes[i];
             if (n->reference_id != id) {
                 continue;
             }
-            graph *target = bp->graphs[g];
+            graph *target = asset->graphs[g];
             if (n->desc == &NODE_GetVariable) {
                 graph_set_pin_container(target, n, 1, 0, container);
             } else if (n->desc == &NODE_SetVariable) {
@@ -390,28 +422,28 @@ int behavior_asset_set_variable_container(behavior_asset *bp, uint64_t id, pin_c
     return 0;
 }
 
-int behavior_asset_set_variable_category(behavior_asset *bp, uint64_t id, const char *category)
+int behavior_asset_set_variable_category(behavior_asset *asset, uint64_t id, const char *category)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !category) {
+    if (!asset || !behavior_asset_mutable(asset) || !category) {
         return -1;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
     if (!v) {
         return -1;
     }
-    v->category = graph_own_str(bp->graph, category, strlen(category));
+    v->category = graph_own_str(asset->graph, category, strlen(category));
     return v->category ? 0 : -1;
 }
 
 behavior_variable *behavior_asset_promote_pin_to_variable(
-    behavior_asset *bp,
+    behavior_asset *asset,
     node *n,
     int output,
     int index,
     const char *name
 )
 {
-    if (!bp || !n || !behavior_asset_mutable(bp) || !name || !name[0]) {
+    if (!asset || !n || !behavior_asset_mutable(asset) || !name || !name[0]) {
         return NULL;
     }
     pin_spec *pins = output ? n->output_pins : n->input_pins;
@@ -420,7 +452,7 @@ behavior_variable *behavior_asset_promote_pin_to_variable(
         return NULL;
     }
     behavior_variable *v = behavior_asset_add_variable(
-        bp,
+        asset,
         name,
         pins[index].type,
         pins[index].type_name,
@@ -431,41 +463,41 @@ behavior_variable *behavior_asset_promote_pin_to_variable(
     if (!v) {
         return NULL;
     }
-    node *access = output ? behavior_asset_add_get_node(bp, v->id)
-                          : behavior_asset_add_set_node(bp, v->id);
+    node *access = output ? behavior_asset_add_get_node(asset, v->id)
+                          : behavior_asset_add_set_node(asset, v->id);
     if (!access) {
         return v;
     }
     if (output) {
-        graph_connect_data(bp->graph, access, 0, n, index);
+        graph_connect_data(asset->graph, access, 0, n, index);
     } else {
-        graph_connect_data(bp->graph, n, index, access, 1);
+        graph_connect_data(asset->graph, n, index, access, 1);
     }
     return v;
 }
 
-int behavior_asset_delete_variable(behavior_asset *bp, uint64_t id)
+int behavior_asset_delete_variable(behavior_asset *asset, uint64_t id)
 {
-    if (!bp || !behavior_asset_mutable(bp)) {
+    if (!asset || !behavior_asset_mutable(asset)) {
         return -1;
     }
-    for (int i = 0; i < acount(bp->variables); i++) {
-        if (bp->variables[i].id == id) {
+    for (int i = 0; i < acount(asset->variables); i++) {
+        if (asset->variables[i].id == id) {
             /* VAR-7: referencing nodes keep their reference ID and become
              * orphaned; evaluation reports the lost variable. */
-            adel(bp->variables, i);
+            adel(asset->variables, i);
             return 0;
         }
     }
     return -1;
 }
 
-int behavior_asset_set_variable_default(behavior_asset *bp, uint64_t id, const pin_value *value)
+int behavior_asset_set_variable_default(behavior_asset *asset, uint64_t id, const pin_value *value)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !value) {
+    if (!asset || !behavior_asset_mutable(asset) || !value) {
         return -1;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, id);
     if (!v || value->type != v->type) {
         return -1;
     }
@@ -473,62 +505,65 @@ int behavior_asset_set_variable_default(behavior_asset *bp, uint64_t id, const p
     v->default_value.container = v->container;
     v->default_value.type_name = v->type_name;
     if (v->container >= PIN_CONTAINER_ARRAY && value->ptr) {
-        v->default_value
-            .ptr = pin_array_clone_to_graph(bp->graph, (const pin_array *)value->ptr);
+        v->default_value.ptr = pin_array_clone_to_graph(
+            asset->graph,
+            (const pin_array *)value->ptr
+        );
     }
     if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
-        v->default_value.str = graph_own_str(bp->graph, value->str, strlen(value->str));
+        v->default_value
+            .str = graph_own_str(asset->graph, value->str, strlen(value->str));
     }
     return 0;
 }
 
-node *behavior_asset_add_get_node(behavior_asset *bp, uint64_t variable_id)
+node *behavior_asset_add_get_node(behavior_asset *asset, uint64_t variable_id)
 {
-    if (!bp || !behavior_asset_mutable(bp)) {
+    if (!asset || !behavior_asset_mutable(asset)) {
         return NULL;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, variable_id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, variable_id);
     if (!v) {
         return NULL;
     }
-    node *n = graph_add_node(bp->graph, &NODE_GetVariable);
+    node *n = graph_add_node(asset->graph, &NODE_GetVariable);
     if (!n) {
         return NULL;
     }
-    graph_set_node_reference(bp->graph, n, v->id, v->name);
-    graph_set_pin_type(bp->graph, n, 1, 0, v->type, v->type_name);
+    graph_set_node_reference(asset->graph, n, v->id, v->name);
+    graph_set_pin_type(asset->graph, n, 1, 0, v->type, v->type_name);
     return n;
 }
 
-node *behavior_asset_add_set_node(behavior_asset *bp, uint64_t variable_id)
+node *behavior_asset_add_set_node(behavior_asset *asset, uint64_t variable_id)
 {
-    if (!bp || !behavior_asset_mutable(bp)) {
+    if (!asset || !behavior_asset_mutable(asset)) {
         return NULL;
     }
-    behavior_variable *v = behavior_asset_find_variable_by_id(bp, variable_id);
+    behavior_variable *v = behavior_asset_find_variable_by_id(asset, variable_id);
     if (!v) {
         return NULL;
     }
-    node *n = graph_add_node(bp->graph, &NODE_SetVariable);
+    node *n = graph_add_node(asset->graph, &NODE_SetVariable);
     if (!n) {
         return NULL;
     }
-    graph_set_node_reference(bp->graph, n, v->id, v->name);
-    graph_set_pin_type(bp->graph, n, 0, 1, v->type, v->type_name);
-    graph_set_pin_type(bp->graph, n, 1, 1, v->type, v->type_name);
+    graph_set_node_reference(asset->graph, n, v->id, v->name);
+    graph_set_pin_type(asset->graph, n, 0, 1, v->type, v->type_name);
+    graph_set_pin_type(asset->graph, n, 1, 1, v->type, v->type_name);
     return n;
 }
 
-node *behavior_asset_add_self_node(behavior_asset *bp)
+node *behavior_asset_add_self_node(behavior_asset *asset)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !bp->owner_type_name) {
+    if (!asset || !behavior_asset_mutable(asset) || !asset->owner_type_name) {
         return NULL;
     }
-    node *n = graph_add_node(bp->graph, &NODE_Self);
+    node *n = graph_add_node(asset->graph, &NODE_Self);
     if (!n) {
         return NULL;
     }
-    graph_set_pin_type(bp->graph, n, 1, 0, PIN_HANDLE, bp->owner_type_name);
+    graph_set_pin_type(asset->graph, n, 1, 0, PIN_HANDLE, asset->owner_type_name);
     return n;
 }
 
@@ -557,10 +592,11 @@ static int behavior_asset_add_call_pin(graph *caller, node *call, int output, co
     return graph_add_pin(caller, call, output, &pin) < 0 ? -1 : 0;
 }
 
-static node *behavior_asset_add_call_node(behavior_asset *bp, graph *caller, graph *target, graph_kind kind)
+static node *behavior_asset_add_call_node(behavior_asset *asset, graph *caller, graph *target, graph_kind kind)
 {
-    if (!bp || !behavior_asset_mutable(bp) || !caller || caller->owner != bp || !target ||
-        (target->owner != bp &&
+    if (!asset || !behavior_asset_mutable(asset) || !caller ||
+        caller->owner != asset || !target ||
+        (target->owner != asset &&
          (!target->owner || (target->owner->domain != BEHAVIOR_DOMAIN_LIBRARY &&
                              target->owner->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY))) ||
         target->kind != kind) {
@@ -593,7 +629,7 @@ static node *behavior_asset_add_call_node(behavior_asset *bp, graph *caller, gra
         graph_remove_pin(caller, call, 0, 0);
         graph_remove_pin(caller, call, 1, 0);
     }
-    if (target->owner != bp) {
+    if (target->owner != asset) {
         call->reference_asset = graph_own_str(
             caller,
             target->owner->name,
@@ -618,29 +654,29 @@ static node *behavior_asset_add_call_node(behavior_asset *bp, graph *caller, gra
     return call;
 }
 
-node *behavior_asset_add_function_call_node_to_graph(behavior_asset *bp, graph *caller, graph *function_graph)
+node *behavior_asset_add_function_call_node_to_graph(behavior_asset *asset, graph *caller, graph *function_graph)
 {
-    return behavior_asset_add_call_node(bp, caller, function_graph, GRAPH_FUNCTION);
+    return behavior_asset_add_call_node(asset, caller, function_graph, GRAPH_FUNCTION);
 }
 
-node *behavior_asset_add_macro_call_node_to_graph(behavior_asset *bp, graph *caller, graph *macro_graph)
+node *behavior_asset_add_macro_call_node_to_graph(behavior_asset *asset, graph *caller, graph *macro_graph)
 {
-    return behavior_asset_add_call_node(bp, caller, macro_graph, GRAPH_MACRO);
+    return behavior_asset_add_call_node(asset, caller, macro_graph, GRAPH_MACRO);
 }
 
-node *behavior_asset_add_function_call_node(behavior_asset *bp, graph *function_graph)
+node *behavior_asset_add_function_call_node(behavior_asset *asset, graph *function_graph)
 {
-    return behavior_asset_add_function_call_node_to_graph(bp, bp ? bp->graph : NULL, function_graph);
+    return behavior_asset_add_function_call_node_to_graph(asset, asset ? asset->graph : NULL, function_graph);
 }
 
-node *behavior_asset_add_macro_call_node(behavior_asset *bp, graph *macro_graph)
+node *behavior_asset_add_macro_call_node(behavior_asset *asset, graph *macro_graph)
 {
-    return behavior_asset_add_macro_call_node_to_graph(bp, bp ? bp->graph : NULL, macro_graph);
+    return behavior_asset_add_macro_call_node_to_graph(asset, asset ? asset->graph : NULL, macro_graph);
 }
 
-graph *behavior_asset_add_function(behavior_asset *bp, const char *name, int pure)
+graph *behavior_asset_add_function(behavior_asset *asset, const char *name, int pure)
 {
-    graph *g = behavior_asset_add_graph(bp, GRAPH_FUNCTION, name);
+    graph *g = behavior_asset_add_graph(asset, GRAPH_FUNCTION, name);
     if (!g) {
         return NULL;
     }
@@ -660,9 +696,9 @@ graph *behavior_asset_add_function(behavior_asset *bp, const char *name, int pur
     return g;
 }
 
-graph *behavior_asset_add_macro(behavior_asset *bp, const char *name)
+graph *behavior_asset_add_macro(behavior_asset *asset, const char *name)
 {
-    graph *g = behavior_asset_add_graph(bp, GRAPH_MACRO, name);
+    graph *g = behavior_asset_add_graph(asset, GRAPH_MACRO, name);
     if (!g) {
         return NULL;
     }

@@ -150,7 +150,7 @@ game_live_world *game_live_world_new(ecs_world *ecs)
     }
     world->entities = game_entities_new(ecs, world->behaviors);
     game_behavior_bind_entities(world->behaviors, world->entities);
-    world->contacts = game_contacts_new(ecs, world->entities);
+    world->physics = game_physics_new(ecs, world->entities);
     world->particles = game_particles_new();
     game_behavior_bind_particles(world->behaviors, world->particles);
     return world;
@@ -162,7 +162,7 @@ void game_live_world_free(game_live_world *world)
         return;
     }
     render_shader_clear_world(world->ecs);
-    game_contacts_free(world->contacts);
+    game_physics_free(world->physics);
     game_entities_free(world->entities);
     game_behavior_world_free(world->behaviors);
     game_particles_free(world->particles);
@@ -224,37 +224,52 @@ static bool validate_shader(const behavior_asset *asset, char *message, size_t s
     return true;
 }
 
+static int registration_error(game_live_definition *definition, const char *message)
+{
+    compile_diagnostic diagnostic = { .severity = CMPL_ERROR };
+    snprintf(diagnostic.message, sizeof diagnostic.message, "%s", message);
+    apush(definition->diagnostics.items, diagnostic);
+    definition->diagnostics.error_count++;
+    return -1;
+}
+
 int game_live_add_definition(game_live_world *world, game_live_definition *definition)
 {
-    if (!world || !definition || definition->world ||
-        find_definition(world, definition->name)) {
+    if (!world || !definition) {
         return -1;
+    }
+    compile_report_free(&definition->diagnostics);
+    compile_report_init(&definition->diagnostics);
+    if (definition->world || find_definition(world, definition->name)) {
+        return registration_error(definition, "A definition with this name is already registered.");
     }
     if (definition->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION &&
         graph_event_host_name(definition->working->name)) {
-        return -1;
+        return registration_error(definition, "This event name is reserved by the host.");
     }
     if (definition->working->domain == BEHAVIOR_DOMAIN_EVENT) {
-        behavior_asset *linked = linked_snapshot(world, definition->working, NULL, NULL, 0);
+        char message[256];
+        behavior_asset *linked = linked_snapshot(world, definition->working, NULL, message, sizeof message);
         if (!linked) {
-            return -1;
+            return registration_error(definition, message[0] ? message : graph_last_error());
         }
         if (game_behavior_register_asset(world->behaviors, definition->name, linked) != 0) {
             behavior_asset_free(linked);
-            return -1;
+            return registration_error(definition, "A runtime behavior with this name is already registered.");
         }
         behavior_asset_free(definition->applied);
         definition->applied = linked;
     }
     if (shader_domain(definition->working->domain)) {
-        behavior_asset *linked = linked_snapshot(world, definition->working, NULL, NULL, 0);
+        char message[256];
+        behavior_asset *linked = linked_snapshot(world, definition->working, NULL, message, sizeof message);
         if (!linked) {
-            return -1;
+            return registration_error(definition, message[0] ? message : graph_last_error());
         }
         shader_error error = { 0 };
         if (!render_shader_upsert(linked, &error)) {
             behavior_asset_free(linked);
-            return -1;
+            return registration_error(definition, error.message);
         }
         behavior_asset_free(definition->applied);
         definition->applied = linked;

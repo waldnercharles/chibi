@@ -1,0 +1,2202 @@
+{
+  "version": 3,
+  "name": "ArenaImpactFeedback",
+  "id_counter": 606,
+  "description": "Accepted hits energize nearby floor cells. Death emits fragments and a wider rose floor pulse. Pulses are ordinary prototypes with an authored lifetime.",
+  "owner_type": "ecs.entity",
+  "variables": [
+    {
+      "id": 70,
+      "name": "Death Handled",
+      "type": 1,
+      "type_name": "bool",
+      "container": 0,
+      "category": "State",
+      "default": false
+    }
+  ],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 22,
+          "type": "Event",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 19,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 20,
+              "name": "Amount",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int",
+              "declaration_id": 2
+            },
+            {
+              "id": 21,
+              "name": "Source",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity",
+              "declaration_id": 3
+            }
+          ],
+          "reference_name": "Damaged"
+        },
+        {
+          "id": 24,
+          "type": "Get_GameHealth",
+          "x": 0,
+          "y": 260,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 23,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameHealth"
+            },
+            {
+              "id": 25,
+              "name": "current",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int",
+              "field_source": 23,
+              "field_name": "current"
+            }
+          ]
+        },
+        {
+          "id": 29,
+          "type": "Integer Greater",
+          "x": 0,
+          "y": 450,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 26,
+              "name": "A",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int"
+            },
+            {
+              "id": 27,
+              "name": "B",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 28,
+              "name": "Result",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 34,
+          "type": "Branch",
+          "x": 270,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 30,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 31,
+              "name": "Condition",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 32,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 33,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 36,
+          "type": "Get_GameTransform",
+          "x": 0,
+          "y": 640,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 35,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "type": "Call Function",
+          "x": 540,
+          "y": 0,
+          "reference_id": 1,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 37,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 38,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "ArenaHitPulse",
+              "type_name": "name",
+              "declaration_id": 3
+            },
+            {
+              "id": 39,
+              "name": "Position",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform",
+              "declaration_id": 4
+            }
+          ],
+          "outputs": [
+            {
+              "id": 40,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "reference_name": "Spawn Surface Pulse"
+        },
+        {
+          "id": 44,
+          "type": "Event",
+          "x": 810,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 42,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 43,
+              "name": "Source",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity",
+              "declaration_id": 3
+            }
+          ],
+          "reference_name": "Died"
+        },
+        {
+          "id": 69,
+          "type": "Call Function",
+          "x": 1350,
+          "y": 0,
+          "reference_id": 1,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 65,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 66,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "ArenaDeathPulse",
+              "type_name": "name",
+              "declaration_id": 3
+            },
+            {
+              "id": 67,
+              "name": "Position",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform",
+              "declaration_id": 4
+            }
+          ],
+          "outputs": [
+            {
+              "id": 68,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "reference_name": "Spawn Surface Pulse"
+        },
+        {
+          "id": 72,
+          "type": "Get Variable",
+          "x": 0,
+          "y": 830,
+          "reference_id": 70,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 71,
+              "name": "Value",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 77,
+          "type": "Branch",
+          "x": 1620,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 73,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 74,
+              "name": "Condition",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 75,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 76,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 82,
+          "type": "Set Variable",
+          "x": 1890,
+          "y": 0,
+          "reference_id": 70,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 78,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 79,
+              "name": "Value",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": true,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 80,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 81,
+              "name": "Value",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 84,
+          "type": "Has_GameEncounterMember",
+          "x": 270,
+          "y": 260,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 83,
+              "name": "Result",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 89,
+          "type": "Branch",
+          "x": 2160,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 85,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 86,
+              "name": "Condition",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 87,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 88,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 91,
+          "type": "Get_GameEncounterMember",
+          "x": 270,
+          "y": 450,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 90,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameEncounterMember"
+            },
+            {
+              "id": 92,
+              "name": "role",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int",
+              "field_source": 90,
+              "field_name": "role"
+            }
+          ]
+        },
+        {
+          "id": 96,
+          "type": "Integer Equal",
+          "x": 270,
+          "y": 640,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 93,
+              "name": "A",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "type_name": "int"
+            },
+            {
+              "id": 94,
+              "name": "B",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 1,
+              "type_name": "int"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 95,
+              "name": "Result",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ]
+        },
+        {
+          "id": 101,
+          "type": "Branch",
+          "x": 2430,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 97,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 98,
+              "name": "Condition",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false,
+              "type_name": "bool"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 99,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 100,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 117,
+          "type": "Call Function",
+          "x": 2700,
+          "y": 0,
+          "reference_id": 543,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 111,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 112,
+              "name": "Position",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform",
+              "declaration_id": 545
+            },
+            {
+              "id": 113,
+              "name": "Appearance",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameGeometry3D",
+              "declaration_id": 546
+            },
+            {
+              "id": 114,
+              "name": "Material",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameShader",
+              "declaration_id": 547
+            },
+            {
+              "id": 115,
+              "name": "Orientation",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation",
+              "declaration_id": 548
+            },
+            {
+              "id": 595,
+              "name": "Visual",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameVisualTransform",
+              "declaration_id": 594
+            }
+          ],
+          "outputs": [
+            {
+              "id": 116,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "reference_name": "Prepare Enemy Experience"
+        },
+        {
+          "id": 119,
+          "type": "Get_GameTransform",
+          "x": 270,
+          "y": 830,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 118,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 121,
+          "type": "Get_GameGeometry3D",
+          "x": 540,
+          "y": 260,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 120,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameGeometry3D"
+            }
+          ]
+        },
+        {
+          "id": 123,
+          "type": "Get_GameShader",
+          "x": 540,
+          "y": 450,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 122,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameShader"
+            }
+          ]
+        },
+        {
+          "id": 125,
+          "type": "Get_GameOrientation",
+          "x": 540,
+          "y": 640,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 124,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation"
+            }
+          ]
+        },
+        {
+          "id": 597,
+          "type": "Get_GameVisualTransform",
+          "x": 540,
+          "y": 830,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 596,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameVisualTransform"
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 22,
+          "from_pin": 19,
+          "to": 34,
+          "to_pin": 30,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 24,
+          "from_pin": 25,
+          "to": 29,
+          "to_pin": 26,
+          "kind": "data"
+        },
+        {
+          "from": 29,
+          "from_pin": 28,
+          "to": 34,
+          "to_pin": 31,
+          "kind": "data"
+        },
+        {
+          "from": 34,
+          "from_pin": 32,
+          "to": 41,
+          "to_pin": 37,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 36,
+          "from_pin": 35,
+          "to": 41,
+          "to_pin": 39,
+          "kind": "data"
+        },
+        {
+          "from": 36,
+          "from_pin": 35,
+          "to": 69,
+          "to_pin": 67,
+          "kind": "data"
+        },
+        {
+          "from": 72,
+          "from_pin": 71,
+          "to": 77,
+          "to_pin": 74,
+          "kind": "data"
+        },
+        {
+          "from": 44,
+          "from_pin": 42,
+          "to": 77,
+          "to_pin": 73,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 77,
+          "from_pin": 76,
+          "to": 82,
+          "to_pin": 78,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 82,
+          "from_pin": 80,
+          "to": 89,
+          "to_pin": 85,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 84,
+          "from_pin": 83,
+          "to": 89,
+          "to_pin": 86,
+          "kind": "data"
+        },
+        {
+          "from": 91,
+          "from_pin": 92,
+          "to": 96,
+          "to_pin": 93,
+          "kind": "data"
+        },
+        {
+          "from": 96,
+          "from_pin": 95,
+          "to": 101,
+          "to_pin": 98,
+          "kind": "data"
+        },
+        {
+          "from": 89,
+          "from_pin": 87,
+          "to": 101,
+          "to_pin": 97,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 101,
+          "from_pin": 99,
+          "to": 117,
+          "to_pin": 111,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 119,
+          "from_pin": 118,
+          "to": 117,
+          "to_pin": 112,
+          "kind": "data"
+        },
+        {
+          "from": 121,
+          "from_pin": 120,
+          "to": 117,
+          "to_pin": 113,
+          "kind": "data"
+        },
+        {
+          "from": 123,
+          "from_pin": 122,
+          "to": 117,
+          "to_pin": 114,
+          "kind": "data"
+        },
+        {
+          "from": 125,
+          "from_pin": 124,
+          "to": 117,
+          "to_pin": 115,
+          "kind": "data"
+        },
+        {
+          "from": 89,
+          "from_pin": 88,
+          "to": 69,
+          "to_pin": 65,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 101,
+          "from_pin": 100,
+          "to": 69,
+          "to_pin": 65,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 597,
+          "from_pin": 596,
+          "to": 117,
+          "to_pin": 595,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "kind": "function",
+      "name": "Spawn Surface Pulse",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 5,
+          "type": "Function Entry",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 3,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "ArenaHitPulse",
+              "type_name": "name"
+            },
+            {
+              "id": 4,
+              "name": "Position",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "Spawn Prototype",
+          "x": 270,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 6,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 7,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "ArenaHitPulse",
+              "type_name": "name"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 8,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 9,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "SetEntity_GameTransform",
+          "x": 540,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 11,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 12,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 13,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 14,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 15,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "Return",
+          "x": 810,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 17,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "edges": [
+        {
+          "from": 5,
+          "from_pin": 2,
+          "to": 10,
+          "to_pin": 6,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 5,
+          "from_pin": 3,
+          "to": 10,
+          "to_pin": 7,
+          "kind": "data"
+        },
+        {
+          "from": 10,
+          "from_pin": 8,
+          "to": 16,
+          "to_pin": 11,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 10,
+          "from_pin": 9,
+          "to": 16,
+          "to_pin": 12,
+          "kind": "data"
+        },
+        {
+          "from": 5,
+          "from_pin": 4,
+          "to": 16,
+          "to_pin": 13,
+          "kind": "data"
+        },
+        {
+          "from": 16,
+          "from_pin": 14,
+          "to": 18,
+          "to_pin": 17,
+          "kind": "exec",
+          "order": 0
+        }
+      ],
+      "id": 1,
+      "call_depth_limit": 64,
+      "entry_id": 5,
+      "return_id": 18
+    },
+    {
+      "kind": "function",
+      "name": "Prepare Enemy Experience",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 549,
+          "type": "Function Entry",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 544,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 545,
+              "name": "Position",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            },
+            {
+              "id": 546,
+              "name": "Appearance",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameGeometry3D"
+            },
+            {
+              "id": 547,
+              "name": "Material",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameShader"
+            },
+            {
+              "id": 548,
+              "name": "Orientation",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation"
+            },
+            {
+              "id": 594,
+              "name": "Visual",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameVisualTransform"
+            }
+          ]
+        },
+        {
+          "id": 551,
+          "type": "Return",
+          "x": 270,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 550,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 556,
+          "type": "Spawn Prototype",
+          "x": 540,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 552,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 553,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "ArenaExperience",
+              "type_name": "name"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 554,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 555,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ]
+        },
+        {
+          "id": 562,
+          "type": "SetEntity_GameTransform",
+          "x": 810,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 557,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 558,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 559,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 560,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 561,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 568,
+          "type": "SetEntity_GameGeometry3D",
+          "x": 1080,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 563,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 564,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 565,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameGeometry3D"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 566,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 567,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameGeometry3D"
+            }
+          ]
+        },
+        {
+          "id": 574,
+          "type": "SetEntity_GameShader",
+          "x": 1350,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 569,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 570,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 571,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameShader"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 572,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 573,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameShader"
+            }
+          ]
+        },
+        {
+          "id": 580,
+          "type": "SetEntity_GameOrientation",
+          "x": 1620,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 575,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 576,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 577,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 578,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 579,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation"
+            }
+          ]
+        },
+        {
+          "id": 592,
+          "type": "Set_GamePickup_state",
+          "x": 2160,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 587,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 588,
+              "name": "Value",
+              "type": 6,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 3,
+              "type_name": "int"
+            },
+            {
+              "id": 589,
+              "name": "Target",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 32,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 590,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 591,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GamePickup"
+            }
+          ]
+        },
+        {
+          "id": 603,
+          "type": "SetEntity_GameVisualTransform",
+          "x": 2430,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 598,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 599,
+              "name": "Entity",
+              "type": 14,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "ecs.entity"
+            },
+            {
+              "id": 600,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameVisualTransform"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 601,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 602,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameVisualTransform"
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 549,
+          "from_pin": 544,
+          "to": 556,
+          "to_pin": 552,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 556,
+          "from_pin": 554,
+          "to": 562,
+          "to_pin": 557,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 556,
+          "from_pin": 555,
+          "to": 562,
+          "to_pin": 558,
+          "kind": "data"
+        },
+        {
+          "from": 549,
+          "from_pin": 545,
+          "to": 562,
+          "to_pin": 559,
+          "kind": "data"
+        },
+        {
+          "from": 562,
+          "from_pin": 560,
+          "to": 568,
+          "to_pin": 563,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 556,
+          "from_pin": 555,
+          "to": 568,
+          "to_pin": 564,
+          "kind": "data"
+        },
+        {
+          "from": 549,
+          "from_pin": 546,
+          "to": 568,
+          "to_pin": 565,
+          "kind": "data"
+        },
+        {
+          "from": 568,
+          "from_pin": 566,
+          "to": 574,
+          "to_pin": 569,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 556,
+          "from_pin": 555,
+          "to": 574,
+          "to_pin": 570,
+          "kind": "data"
+        },
+        {
+          "from": 549,
+          "from_pin": 547,
+          "to": 574,
+          "to_pin": 571,
+          "kind": "data"
+        },
+        {
+          "from": 574,
+          "from_pin": 572,
+          "to": 580,
+          "to_pin": 575,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 556,
+          "from_pin": 555,
+          "to": 580,
+          "to_pin": 576,
+          "kind": "data"
+        },
+        {
+          "from": 549,
+          "from_pin": 548,
+          "to": 580,
+          "to_pin": 577,
+          "kind": "data"
+        },
+        {
+          "from": 556,
+          "from_pin": 555,
+          "to": 592,
+          "to_pin": 589,
+          "kind": "data"
+        },
+        {
+          "from": 592,
+          "from_pin": 590,
+          "to": 551,
+          "to_pin": 550,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 580,
+          "from_pin": 578,
+          "to": 603,
+          "to_pin": 598,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 556,
+          "from_pin": 555,
+          "to": 603,
+          "to_pin": 599,
+          "kind": "data"
+        },
+        {
+          "from": 549,
+          "from_pin": 594,
+          "to": 603,
+          "to_pin": 600,
+          "kind": "data"
+        },
+        {
+          "from": 603,
+          "from_pin": 601,
+          "to": 592,
+          "to_pin": 587,
+          "kind": "exec",
+          "order": 0
+        }
+      ],
+      "id": 543,
+      "call_depth_limit": 64,
+      "entry_id": 549,
+      "return_id": 551
+    }
+  ]
+}

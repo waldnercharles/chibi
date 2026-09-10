@@ -1,4 +1,4 @@
-# c-blueprints
+# Chibi
 
 A C23 visual programming editor for authored game behaviors, prototypes, and scenes.
 
@@ -21,7 +21,7 @@ dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
 
 `make dev ARGS="--fps 60"` starts the native development host. Save a source file
-to build a new generation. Build diagnostics go to `.blueprints/build.log`.
+to build a new generation. Build diagnostics go to `.chibi/build.log`.
 A failed build or rejected import leaves the current generation running. A
 successful import replaces the editor and runtime together. Host, framework,
 font, and shader changes request a manual restart: close the editor and run `make dev` again.
@@ -35,13 +35,13 @@ The workspace checkpoint preserves unsaved scene, prototype and graph edits,
 Undo/Redo, selection, graph views, navigation, docking and native window geometry. Play restarts from the
 authored scene with its previous running or paused intent. Live simulation
 memory and in-progress pointer gestures are recreated. Checkpoints live in
-`.blueprints/workspace.json`; source documents are saved only through editor Save.
+`.chibi/workspace.json`; source documents are saved only through editor Save.
 
 ## Code map
 
 | Location | Responsibility |
 | --- | --- |
-| `include/blueprints` | Versioned application lifecycle contract shared with the host |
+| `include/chibi` | Versioned application lifecycle contract shared with the host |
 | `src/host` | Window lifetime, module replacement, checkpoint files, native source watching |
 | `src/editor` | Workspace, documents, graph canvas, panels and native UI |
 | `src/graph` | Graph model, node catalog, documents, compilation and execution |

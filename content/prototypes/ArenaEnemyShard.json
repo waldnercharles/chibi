@@ -1,0 +1,39 @@
+{
+  "name": "ArenaEnemyShard",
+  "components": {
+    "GameTransform": {
+      "x": 0,
+      "y": 0
+    },
+    "GameVelocity": {
+      "x": 0,
+      "y": 0
+    },
+    "GameGeometry3D": {
+      "primitive": 0,
+      "width": 1,
+      "depth": 1,
+      "height": 1,
+      "elevation": 12
+    },
+    "GameShader": {
+      "material": "ArenaEnemy",
+      "shape": "",
+      "parameters": "{}",
+      "bounds_x": 0,
+      "bounds_y": 0
+    },
+    "GameOrientation": {
+      "radians": 0
+    },
+    "GameVisualTransform": {
+      "pitch": 0,
+      "yaw": 0,
+      "roll": 0,
+      "scale": 1
+    }
+  },
+  "behaviors": [
+    "ArenaShardBehavior"
+  ]
+}

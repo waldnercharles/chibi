@@ -1,13 +1,13 @@
-#ifndef CBLUEPRINT_MATH_H
-#define CBLUEPRINT_MATH_H
+#ifndef CHIBI_MATH_H
+#define CHIBI_MATH_H
 
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-/* Scalar helpers and one shared float vec2 adapted from the scalar portion of
- * cute_framework's cute_math.h (Randy Gaul, dual-licensed zlib/Unlicense).
- * Host-specific vector, matrix, and collision geometry types stay out. */
+/* This is the editor/core math boundary. Cute owns runtime vectors, matrices,
+ * and collision geometry; editor layout and graph presentation need a small
+ * independent vec2 plus generic scalar/easing helpers, so they stay here. */
 
 typedef struct vec2
 {

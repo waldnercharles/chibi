@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_SDF_SHAPES_H
-#define CBLUEPRINT_APP_SDF_SHAPES_H
+#ifndef CHIBI_APP_SDF_SHAPES_H
+#define CHIBI_APP_SDF_SHAPES_H
 
 #include "platform/cute.h"
 #include "runtime/components.h"

@@ -5,6 +5,8 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/event_fixture.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -28,7 +30,7 @@ static char *read_file(const char *path)
 static game_prototype *prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "content/prototypes/%s.json", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.json", name);
     char *text = read_file(path);
     game_prototype *result = game_prototype_load(text, registry, error, sizeof error);
     free(text);
@@ -39,11 +41,15 @@ static game_prototype *prototype(const char *name, const game_prototype_registry
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    const char *root = !strcmp(name, "WaveBehavior")
+                         ? "test/fixtures/content/behaviors"
+                         : "content/behaviors";
+    snprintf(path, sizeof path, "%s/%s.json", root, name);
     char *text = read_file(path);
     behavior_asset *asset = behavior_asset_load_json(text);
     free(text);
     assert(asset);
+    asset = link_test_libraries(asset);
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
@@ -61,6 +67,7 @@ typedef struct
     game_live_world *live;
     engine *runtime;
     game_prototype_preview *preview;
+    simulation_fixture simulation;
 } host;
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
@@ -70,12 +77,7 @@ static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 
 static void tick(host *h, double time)
 {
-    for (int i = 0; i < 3; i++) {
-        assert(
-            (h->preview ? game_prototype_preview_tick(h->preview, time)
-                        : engine_frame(h->runtime, time)) >= 0
-        );
-    }
+    simulation_advance(&h->simulation, time);
 }
 
 static int enemies(host *h, ecs_entity *latest)
@@ -118,12 +120,14 @@ static void run(
 {
     host h = { 0 };
     h.preview = isolated ? game_prototype_preview_new(registry) : NULL;
+    register_test_preview_catalog(h.preview);
     h.world = h.preview ? game_prototype_preview_world(h.preview) : ecs_world_new();
     if (!isolated) {
         for (int i = 0; i < registry->component_count; i++) {
             assert(ecs_world_register_component(h.world, registry->components[i], NULL) == ECS_OK);
         }
         h.live = game_live_world_new(h.world);
+        register_damage_event(h.live);
         h.runtime = engine_new(h.world, h.live);
     }
     const char *names[] = { "WaveBehavior", "EnemyBehavior", "HealthBehavior" };
@@ -162,6 +166,7 @@ static void run(
             );
             assert(engine_set_playing(h.runtime, true) == 0);
         }
+        h.simulation = simulation_fixture_new(h.runtime, h.preview);
         tick(&h, 0);
         tick(&h, 10);
         assert(enemies(&h, NULL) == 0);
@@ -170,7 +175,8 @@ static void run(
         *GAME_GameTransform_get(h.world, target) = (GameTransform){ 100, 25 };
         tick(&h, 11.49);
         assert(enemies(&h, NULL) == 0);
-        tick(&h, 11.5);
+        /* Float-authored elapsed time crosses 1.5 on tick 91. */
+        tick(&h, 11.5 + ENGINE_FIXED_SECONDS);
         ecs_entity latest;
         int first_count = enemies(&h, &latest);
         if (first_count != 1) {
@@ -195,7 +201,7 @@ static void run(
         assert(first_count == 1);
         position(&h, latest, -160, 25);
         /* The spawned authored Enemy really begins pursuing the player. */
-        tick(&h, 11.6);
+        tick(&h, 11.6 + ENGINE_FIXED_SECONDS);
         position(&h, latest, -151, 25);
         GAME_GameMovement_get(h.world, latest)->speed = 0;
         if (launch || restarted) {
@@ -204,27 +210,22 @@ static void run(
         *GAME_GameTransform_get(h.world, target) = (GameTransform){ 200, -40 };
         tick(&h, 12.99);
         assert(enemies(&h, NULL) == 1);
-        tick(&h, 13);
+        tick(&h, 13 + ENGINE_FIXED_SECONDS);
         assert(enemies(&h, &latest) == 2);
         position(&h, latest, 460, -40);
         GAME_GameMovement_get(h.world, latest)->speed = 0;
-        if (h.preview) {
-            assert(game_prototype_preview_idle(h.preview, 100) >= 0);
-        } else {
-            assert(engine_set_playing(h.runtime, false) == 0);
-            tick(&h, 100);
-        }
+        engine *runtime = h.simulation.runtime;
+        assert(engine_set_playing(runtime, false) == 0);
+        simulation_frame(&h.simulation, 100);
         assert(enemies(&h, NULL) == 2);
-        if (!h.preview) {
-            assert(engine_step(h.runtime) == 0);
-        }
-        tick(&h, 101.5);
+        assert(engine_step(runtime) == 0);
+        simulation_frame(&h.simulation, 101.5);
+        assert(enemies(&h, NULL) == 2); /* Step advances 1/60, regardless of wall time. */
+        assert(engine_set_playing(runtime, true) == 0);
+        tick(&h, 101.5 + 89 * ENGINE_FIXED_SECONDS);
         assert(enemies(&h, &latest) == 3);
         position(&h, latest, -60, -40);
         GAME_GameMovement_get(h.world, latest)->speed = 0;
-        if (!h.preview) {
-            assert(engine_set_playing(h.runtime, true) == 0);
-        }
         tick(&h, 110.5);
         assert(enemies(&h, NULL) == 8);
         tick(&h, 130.5);

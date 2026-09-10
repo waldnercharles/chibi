@@ -34,6 +34,9 @@ static uint64_t declaration_fingerprint(const struct_info *s)
         const field_info *field = &s->fields[i];
         hash = hash_string(hash, field->name);
         hash = hash_string(hash, field->spelling);
+        if (field->handle) {
+            hash = hash_string(hash, field->handle);
+        }
         hash = hash_bytes(hash, &field->offset, sizeof field->offset);
         hash = hash_bytes(hash, &field->size, sizeof field->size);
     }

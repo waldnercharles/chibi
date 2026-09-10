@@ -1,0 +1,183 @@
+diff --git a/libraries/imgui/dcimgui.h b/libraries/imgui/dcimgui.h
+index b142663c..67a0b412 100644
+--- a/libraries/imgui/dcimgui.h
++++ b/libraries/imgui/dcimgui.h
+@@ -2122,5 +2122,6 @@ typedef enum
+     ImGuiStyleVar_SeparatorTextBorderSize,      // float     SeparatorTextBorderSize
+     ImGuiStyleVar_SeparatorTextAlign,           // ImVec2    SeparatorTextAlign
+     ImGuiStyleVar_SeparatorTextPadding,         // ImVec2    SeparatorTextPadding
++    ImGuiStyleVar_ScrollSmooth,                 // float     ScrollSmooth
+     ImGuiStyleVar_DockingSeparatorSize,         // float     DockingSeparatorSize
+     ImGuiStyleVar_COUNT,
+@@ -2599,5 +2600,7 @@ struct ImGuiStyle_t
+     ImGuiHoveredFlags  HoverFlagsForTooltipMouse;         // Default flags when using IsItemHovered(ImGuiHoveredFlags_ForTooltip) or BeginItemTooltip()/SetItemTooltip() while using mouse.
+     ImGuiHoveredFlags  HoverFlagsForTooltipNav;           // Default flags when using IsItemHovered(ImGuiHoveredFlags_ForTooltip) or BeginItemTooltip()/SetItemTooltip() while using keyboard/gamepad.
+ 
++    float              ScrollSmooth;                     // Smooth scrolling amount. 1.0f is an immediate jump; larger values ease toward the target.
++
+     // [Internal]
+     float              _MainScale;                        // FIXME-WIP: Reference scale, as applied by ScaleAllSizes(). PLEASE DO NOT USE THIS FOR NOW.
+diff --git a/libraries/imgui/dcimgui_internal.h b/libraries/imgui/dcimgui_internal.h
+index 75c16708..300023a9 100644
+--- a/libraries/imgui/dcimgui_internal.h
++++ b/libraries/imgui/dcimgui_internal.h
+@@ -2868,5 +2868,6 @@ struct ImGuiWindow_t
+     ImGuiID                  ChildId;                                         // ID of corresponding item in parent window (for navigation to return from child window to parent window)
+     ImGuiID                  PopupId;                                         // ID in the popup stack when this window is used as a popup/menu (because we use generic Name/ID for recycling)
+     ImVec2                   Scroll;
++    ImVec2                   ScrollExpected;                                  // Target scroll position used by the scrollbar and public scroll queries.
+     ImVec2                   ScrollMax;
+     ImVec2                   ScrollTarget;                                    // target scroll position. stored as cursor position with scrolling canceled out, so the highest point is always 0.0f. (FLT_MAX for no change)
+diff --git a/libraries/imgui/imgui.cpp b/libraries/imgui/imgui.cpp
+index 306ca570..3f6041a1 100644
+--- a/libraries/imgui/imgui.cpp
++++ b/libraries/imgui/imgui.cpp
+@@ -1516,4 +1516,5 @@ ImGuiStyle::ImGuiStyle()
+     ScrollbarSize               = 14.0f;            // Width of the vertical scrollbar, Height of the horizontal scrollbar
+     ScrollbarRounding           = 9.0f;             // Radius of grab corners rounding for scrollbar
+     ScrollbarPadding            = 2.0f;             // Padding of scrollbar grab within its frame (same for both axes)
++    ScrollSmooth                = 1.0f;             // Smooth scrolling amount. 1.0f is an immediate jump.
+     GrabMinSize                 = 12.0f;            // Minimum width/height of a grab box for slider/scrollbar
+@@ -3706,4 +3707,5 @@ static const ImGuiStyleVarInfo GStyleVarsInfo[] =
+     { 1, ImGuiDataType_Float, (ImU32)offsetof(ImGuiStyle, ScrollbarSize) },             // ImGuiStyleVar_ScrollbarSize
+     { 1, ImGuiDataType_Float, (ImU32)offsetof(ImGuiStyle, ScrollbarRounding) },         // ImGuiStyleVar_ScrollbarRounding
+     { 1, ImGuiDataType_Float, (ImU32)offsetof(ImGuiStyle, ScrollbarPadding) },          // ImGuiStyleVar_ScrollbarPadding
++    { 1, ImGuiDataType_Float, (ImU32)offsetof(ImGuiStyle, ScrollSmooth) },               // ImGuiStyleVar_ScrollSmooth
+     { 1, ImGuiDataType_Float, (ImU32)offsetof(ImGuiStyle, GrabMinSize) },               // ImGuiStyleVar_GrabMinSize
+@@ -4674,4 +4676,5 @@ ImGuiWindow::ImGuiWindow(ImGuiContext* ctx, const char* name) : DrawListInst(NULL)
+     MoveId = GetID("#MOVE");
+     TabId = GetID("#TAB");
+     ScrollTarget = ImVec2(FLT_MAX, FLT_MAX);
++    ScrollExpected = ImVec2(0.0f, 0.0f);
+     ScrollTargetCenterRatio = ImVec2(0.5f, 0.5f);
+@@ -10997,7 +11000,7 @@ void ImGui::UpdateMouseWheel()
+                 LockWheelingWindow(window, wheel.x);
+                 float max_step = window->InnerRect.GetWidth() * 0.67f;
+                 float scroll_step = ImTrunc(ImMin(2 * window->FontRefSize, max_step));
+-                SetScrollX(window, window->Scroll.x - wheel.x * scroll_step);
++                SetScrollX(window, window->ScrollExpected.x - wheel.x * scroll_step);
+                 g.WheelingWindowScrolledFrame = g.FrameCount;
+             }
+             if (do_scroll[ImGuiAxis_Y])
+@@ -11005,7 +11008,7 @@ void ImGui::UpdateMouseWheel()
+                 LockWheelingWindow(window, wheel.y);
+                 float max_step = window->InnerRect.GetHeight() * 0.67f;
+                 float scroll_step = ImTrunc(ImMin(5 * window->FontRefSize, max_step));
+-                SetScrollY(window, window->Scroll.y - wheel.y * scroll_step);
++                SetScrollY(window, window->ScrollExpected.y - wheel.y * scroll_step);
+                 g.WheelingWindowScrolledFrame = g.FrameCount;
+             }
+         }
+@@ -12453,3 +12456,4 @@ static float CalcScrollEdgeSnap(float target, float snap_min, float snap_max, float snap_threshold, float center_ratio)
+ static ImVec2 CalcNextScrollFromScrollTargetAndClamp(ImGuiWindow* window)
+ {
++    ImGuiContext& g = *GImGui;
+     ImVec2 scroll = window->Scroll;
+@@ -12467,11 +12471,29 @@ static ImVec2 CalcNextScrollFromScrollTargetAndClamp(ImGuiWindow* window)
+                 float snap_max = window->ScrollMax[axis] + window->SizeFull[axis] - decoration_size[axis];
+                 scroll_target = CalcScrollEdgeSnap(scroll_target, snap_min, snap_max, window->ScrollTargetEdgeSnapDist[axis], center_ratio);
+             }
+-            scroll[axis] = scroll_target - center_ratio * (window->SizeFull[axis] - decoration_size[axis]);
++            window->ScrollExpected[axis] = scroll_target - center_ratio * (window->SizeFull[axis] - decoration_size[axis]);
+         }
+-        scroll[axis] = ImRound64(ImMax(scroll[axis], 0.0f));
++        window->ScrollExpected[axis] = ImRound64(ImMax(window->ScrollExpected[axis], 0.0f));
+         if (!window->Collapsed && !window->SkipItems)
+-            scroll[axis] = ImMin(scroll[axis], window->ScrollMax[axis]);
++            window->ScrollExpected[axis] = ImMin(window->ScrollExpected[axis], window->ScrollMax[axis]);
++        if (window->ScrollExpected[axis] != scroll[axis])
++        {
++            if (g.Style.ScrollSmooth <= 1.0f)
++                scroll[axis] = window->ScrollExpected[axis];
++            else
++            {
++                float frame_factor = ImPow(
++                    1.0f - 1.0f / g.Style.ScrollSmooth,
++                    g.IO.DeltaTime * 60.0f
++                );
++                scroll[axis] = ImLinearSweep(
++                    scroll[axis],
++                    window->ScrollExpected[axis],
++                    ImFabs(window->ScrollExpected[axis] - scroll[axis]) *
++                        (1.0f - frame_factor)
++                );
++            }
++        }
+     }
+     return scroll;
+ }
+@@ -12564,11 +12579,11 @@ ImVec2 ImGui::ScrollToRectEx(ImGuiWindow* window, const ImRect& item_rect, ImGuiScrollFlags flags)
+ float ImGui::GetScrollX()
+ {
+     ImGuiWindow* window = GImGui->CurrentWindow;
+-    return window->Scroll.x;
++    return window->ScrollExpected.x;
+ }
+ 
+ float ImGui::GetScrollY()
+ {
+     ImGuiWindow* window = GImGui->CurrentWindow;
+-    return window->Scroll.y;
++    return window->ScrollExpected.y;
+ }
+diff --git a/libraries/imgui/imgui.h b/libraries/imgui/imgui.h
+index 7bf34c84..4be88da7 100644
+--- a/libraries/imgui/imgui.h
++++ b/libraries/imgui/imgui.h
+@@ -1943,4 +1943,5 @@ enum ImGuiStyleVar_
+     ImGuiStyleVar_SeparatorTextBorderSize,  // float     SeparatorTextBorderSize
+     ImGuiStyleVar_SeparatorTextAlign,       // ImVec2    SeparatorTextAlign
+     ImGuiStyleVar_SeparatorTextPadding,     // ImVec2    SeparatorTextPadding
++    ImGuiStyleVar_ScrollSmooth,             // float     ScrollSmooth
+     ImGuiStyleVar_DockingSeparatorSize,     // float     DockingSeparatorSize
+@@ -2447,5 +2448,7 @@ struct ImGuiStyle
+     ImGuiHoveredFlags HoverFlagsForTooltipMouse;// Default flags when using IsItemHovered(ImGuiHoveredFlags_ForTooltip) or BeginItemTooltip()/SetItemTooltip() while using mouse.
+     ImGuiHoveredFlags HoverFlagsForTooltipNav;  // Default flags when using IsItemHovered(ImGuiHoveredFlags_ForTooltip) or BeginItemTooltip()/SetItemTooltip() while using keyboard/gamepad.
+ 
++    float       ScrollSmooth;                 // Smooth scrolling amount. 1.0f is an immediate jump; larger values ease toward the target.
++
+     // [Internal]
+     float       _MainScale;                 // FIXME-WIP: Reference scale, as applied by ScaleAllSizes(). PLEASE DO NOT USE THIS FOR NOW.
+diff --git a/libraries/imgui/imgui_internal.h b/libraries/imgui/imgui_internal.h
+index 9f532abc..21e81211 100644
+--- a/libraries/imgui/imgui_internal.h
++++ b/libraries/imgui/imgui_internal.h
+@@ -2892,4 +2892,5 @@ struct IMGUI_API ImGuiWindow
+     ImGuiID                 ChildId;                            // ID of corresponding item in parent window (for navigation to return from child window to parent window)
+     ImGuiID                 PopupId;                            // ID in the popup stack when this window is used as a popup/menu (because we use generic Name/ID for recycling)
+     ImVec2                  Scroll;
++    ImVec2                  ScrollExpected;                     // Target scroll position used by the scrollbar and public scroll queries.
+     ImVec2                  ScrollMax;
+diff --git a/libraries/imgui/imgui_tables.cpp b/libraries/imgui/imgui_tables.cpp
+index 9b523bf3..b8712aa8 100644
+--- a/libraries/imgui/imgui_tables.cpp
++++ b/libraries/imgui/imgui_tables.cpp
+@@ -1496,4 +1496,5 @@ void    ImGui::EndTable()
+     if ((table->Flags & ImGuiTableFlags_ScrollX) == 0 && inner_window != outer_window)
+     {
+         inner_window->Scroll.x = 0.0f;
++        inner_window->ScrollExpected.x = 0.0f;
+     }
+diff --git a/libraries/imgui/imgui_widgets.cpp b/libraries/imgui/imgui_widgets.cpp
+index b404d391..28c9e5d9 100644
+--- a/libraries/imgui/imgui_widgets.cpp
++++ b/libraries/imgui/imgui_widgets.cpp
+@@ -1010,9 +1010,9 @@ void ImGui::Scrollbar(ImGuiAxis axis)
+     ImDrawFlags rounding_corners = CalcRoundingFlagsForRectInRect(bb, host_rect, g.Style.WindowBorderSize);
+     float size_visible = window->InnerRect.Max[axis] - window->InnerRect.Min[axis];
+     float size_contents = window->ContentSize[axis] + window->WindowPadding[axis] * 2.0f;
+-    ImS64 scroll = (ImS64)window->Scroll[axis];
++    ImS64 scroll = (ImS64)window->ScrollExpected[axis];
+     ScrollbarEx(bb, id, axis, &scroll, (ImS64)size_visible, (ImS64)size_contents, rounding_corners);
+-    window->Scroll[axis] = (float)scroll;
++    window->ScrollExpected[axis] = (float)scroll;
+ }
+ 
+ // Vertical/Horizontal scrollbar
+@@ -5551,5 +5551,6 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_size, const ImVec2& size_arg, ImGuiInputTextFlags flags, ImGuiInputTextCallback callback, void* user_data)
+             scroll_y = ImClamp(new_scroll_y, 0.0f, scroll_max_y);
+             draw_pos.y += (draw_window->Scroll.y - scroll_y);   // Manipulate cursor pos immediately avoid a frame of lag
+             draw_window->Scroll.y = scroll_y;
++            draw_window->ScrollExpected.y = scroll_y;
+             CalcClipRectVisibleItemsY(clip_rect, draw_pos, g.FontSize, &line_visible_n0, &line_visible_n1);
+             line_visible_n1 = ImMin(line_visible_n1, line_count);

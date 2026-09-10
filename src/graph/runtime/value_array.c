@@ -1,6 +1,7 @@
 #include "graph/runtime/value_array.h"
 
 #include "graph/model/graph.h"
+#include "graph/model/registry.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
 
@@ -230,6 +231,27 @@ int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src)
     }
     if (value_string(src->type) && src->str) {
         dst->str = graph_string(g, src->str);
+    }
+    if (src->type == PIN_STRUCT && src->ptr) {
+        const type_desc *type = registry_type_by_name(src->type_name);
+        if (!type || !type->size) {
+            return -1;
+        }
+        void *copy = graph_own_block(g, type->size);
+        memcpy(copy, src->ptr, type->size);
+        for (int i = 0; i < type->field_count; i++) {
+            const type_field *field = &type->fields[i];
+            if (field->type != PIN_STRUCT && !value_string(field->type)) {
+                continue;
+            }
+            pin_value member, owned;
+            pin_read_field(src->ptr, field, &member);
+            if (pin_value_copy_to_graph(g, &owned, &member)) {
+                return -1;
+            }
+            pin_write_field(copy, field, owned);
+        }
+        dst->ptr = copy;
     }
     return 0;
 }

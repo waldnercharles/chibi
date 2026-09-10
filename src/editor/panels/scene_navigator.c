@@ -246,20 +246,27 @@ static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
         if (ImGui_IsItemClicked()) {
             select_content_entry(scene, entry);
         }
-        if (!entry->directory && ImGui_IsItemHovered(0) &&
+        if (!entry->directory && !entry->image && ImGui_IsItemHovered(0) &&
             ImGui_IsMouseDoubleClicked(0)) {
             open_content_entry(scene, entry);
         }
         if (prototype_index >= 0 && ImGui_BeginDragDropSource(0)) {
             const char *name = scene->prototypes[prototype_index].prototype->name;
-            ImGui_SetDragDropPayload("CBLUEPRINT_PROTOTYPE", name, strlen(name) + 1, 0);
+            ImGui_SetDragDropPayload("CHIBI_PROTOTYPE", name, strlen(name) + 1, 0);
             ImGui_Text("Place %s in Scene", name);
             ImGui_EndDragDropSource();
         }
+        if (entry->image && ImGui_BeginDragDropSource(0)) {
+            ImGui_SetDragDropPayload("CHIBI_IMAGE", entry->path, strlen(entry->path) + 1, 0);
+            ImGui_TextUnformatted(content_basename(entry->path));
+            ImGui_EndDragDropSource();
+        }
         if (!entry->directory && ImGui_BeginPopupContextItemEx("asset_actions", 1)) {
+            ImGui_BeginDisabled(entry->image);
             if (ImGui_MenuItem("Open")) {
                 open_content_entry(scene, entry);
             }
+            ImGui_EndDisabled();
             if (prototype_index >= 0 && ImGui_MenuItem("Add to Scene")) {
                 app_scene_authoring_add_instance(
                     scene,
@@ -314,17 +321,19 @@ static void draw_files(app_scene_authoring *scene)
         editor_ui_track_item("content.new_prototype");
         ImGui_EndPopup();
     }
-    ImGui_SameLine();
-    ImGui_SetNextItemWidth(fmaxf(1, ImGui_GetContentRegionAvail().x));
-    editor_ui_search_field("content.search", scene->asset_search, sizeof scene->asset_search, "Search files");
-    ImGui_Separator();
-    if (ImGui_BeginChild("content_tree", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
-        if (!draw_content_tree(scene, scene->content_root)) {
-            ImGui_TextUnformatted(scene->asset_search[0] ? "No Results" : "No Files");
-            editor_ui_track_item("content.empty");
+    bool folders = editor_ui_disclosure("Folders", "content.folders");
+    editor_ui_track_item("content.folders");
+    if (folders) {
+        if (ImGui_BeginChild("content_tree", (ImVec2){ 0.0f, 160.0f }, 0, 0)) {
+            if (!draw_content_tree(scene, scene->content_root)) {
+                ImGui_TextUnformatted(scene->asset_search[0] ? "No Results" : "No Files");
+                editor_ui_track_item("content.empty");
+            }
         }
+        ImGui_EndChild();
+        ImGui_TreePop();
     }
-    ImGui_EndChild();
+    draw_asset_catalog(scene);
 }
 
 static void draw_prototype_outline(app_scene_authoring *scene)
@@ -347,6 +356,14 @@ static void draw_prototype_outline(app_scene_authoring *scene)
             focus_prototype_behavior(scene, name);
         }
     }
+    const asset_index *index = app_scene_authoring_asset_index(scene);
+    int position = index ? asset_index_find_name(
+                               index,
+                               ASSET_INDEX_PROTOTYPE,
+                               asset->prototype->name
+                           )
+                         : -1;
+    draw_asset_references(scene, position);
 }
 
 void draw_navigator(app_scene_authoring *scene)
@@ -384,10 +401,33 @@ void draw_navigator(app_scene_authoring *scene)
         draw_prototype_outline(scene);
 
     } else {
-        const behavior_asset *asset = editor_behavior_asset(scene->graph_editor);
-        ImGui_TextUnformatted(asset->name);
-        editor_ui_track_item("navigator.document.outline");
         editor_draw_outline(scene->graph_editor);
+        const behavior_asset *asset = editor_behavior_asset(scene->graph_editor);
+        if (asset && (asset->domain == BEHAVIOR_DOMAIN_EVENT ||
+                      asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                      asset->domain == BEHAVIOR_DOMAIN_SHAPE)) {
+            asset_index_kind kind = asset->domain == BEHAVIOR_DOMAIN_MATERIAL
+                                      ? ASSET_INDEX_MATERIAL
+                                  : asset->domain == BEHAVIOR_DOMAIN_SHAPE
+                                      ? ASSET_INDEX_SHAPE
+                                      : ASSET_INDEX_BEHAVIOR;
+            const asset_index *index = app_scene_authoring_asset_index(scene);
+            draw_asset_references(
+                scene,
+                index ? asset_index_find_name(index, kind, asset->name) : -1
+            );
+            if (asset->domain == BEHAVIOR_DOMAIN_EVENT) {
+                draw_asset_binding_usages(
+                    scene,
+                    index ? asset_index_find_name(
+                                index,
+                                ASSET_INDEX_BEHAVIOR,
+                                asset->name
+                            )
+                          : -1
+                );
+            }
+        }
     }
     editor_ui_end_navigator();
 }

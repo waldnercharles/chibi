@@ -1,5 +1,5 @@
 # Publish a complete sibling file, leaving unchanged outputs and their timestamps alone.
-function(bp_write_generated path content)
+function(chibi_write_generated path content)
     get_filename_component(directory "${path}" DIRECTORY)
     file(MAKE_DIRECTORY "${directory}")
     file(LOCK "${path}.lock" GUARD FUNCTION TIMEOUT 60)
@@ -20,7 +20,7 @@ function(bp_write_generated path content)
     endif()
 endfunction()
 
-function(bp_json_string output value)
+function(chibi_json_string output value)
     string(REPLACE "\\" "\\\\" value "${value}")
     string(REPLACE "\"" "\\\"" value "${value}")
     string(REPLACE "\n" "\\n" value "${value}")

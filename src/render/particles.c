@@ -83,6 +83,12 @@ int game_particles_emit(game_particles *particles, const game_particle_burst *bu
             .velocity = { cosf(angle) * speed, sinf(angle) * speed },
             .color = burst->color,
             .lifetime = burst->lifetime,
+            .end_color = burst->color & 0xffffff00u,
+            .size = 1.4f + speed * .015f,
+            .size_exponent = .65f,
+            .emission = 1.2f,
+            .angle = angle,
+            .shape = GAME_PARTICLE_STREAK,
         };
         apush(particles->items, particle);
     }
@@ -112,8 +118,9 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
         !range(spray->lifetime_min, spray->lifetime_max) ||
         spray->lifetime_min <= 0 || !range(spray->size_min, spray->size_max) ||
         spray->size_min <= 0 || !range(spray->drag_min, spray->drag_max) ||
-        !range(spray->emission_min, spray->emission_max) ||
-        !range(0, spray->spread) || !range(0, spray->size_exponent)) {
+        !range(spray->emission_min, spray->emission_max) || !range(0, spray->spread) ||
+        !range(0, spray->size_exponent) || !isfinite(spray->elevation) ||
+        spray->shape < 0 || spray->shape >= GAME_PARTICLE_SHAPE_COUNT) {
         return -1;
     }
     int count = GAME_PARTICLE_LIMIT - acount(particles->items);
@@ -138,10 +145,42 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
             .size_exponent = spray->size_exponent,
             .drag = sample(particles, spray->drag_min, spray->drag_max),
             .emission = sample(particles, spray->emission_min, spray->emission_max),
+            .elevation = spray->elevation,
+            .shape = spray->shape,
+            .angle = angle,
         };
         apush(particles->items, particle);
     }
     return count;
+}
+
+int game_particles_emit_particle(game_particles *particles, const game_particle *particle)
+{
+    assert(particles && particle);
+    double remaining = (double)particle->lifetime - particle->age;
+    if (!isfinite(particle->position.x) || !isfinite(particle->position.y) ||
+        !isfinite(particle->velocity.x) || !isfinite(particle->velocity.y) ||
+        !isfinite(particle->elevation) ||
+        !isfinite(particle->elevation_velocity) || !isfinite(particle->age) ||
+        particle->age < 0 || !isfinite(particle->lifetime) || remaining <= 0 ||
+        !isfinite(particle->size) || particle->size <= 0 ||
+        !range(0, particle->size_exponent) || !range(0, particle->drag) ||
+        !range(0, particle->emission) || !isfinite(particle->angle) ||
+        particle->shape < 0 || particle->shape >= GAME_PARTICLE_SHAPE_COUNT ||
+        fabs((double)particle->position.x) + fabs((double)particle->velocity.x) * remaining >
+            FLT_MAX ||
+        fabs((double)particle->position.y) + fabs((double)particle->velocity.y) * remaining >
+            FLT_MAX ||
+        fabs((double)particle->elevation) +
+                fabs((double)particle->elevation_velocity) * remaining >
+            FLT_MAX) {
+        return -1;
+    }
+    if (acount(particles->items) == GAME_PARTICLE_LIMIT) {
+        return 0;
+    }
+    apush(particles->items, *particle);
+    return 1;
 }
 
 int game_particles_tick(game_particles *particles, double delta)
@@ -161,15 +200,22 @@ int game_particles_tick(game_particles *particles, double delta)
             continue;
         }
         particle.age = (float)age;
+        double travel = delta;
+        float decay = 1;
         if (particle.drag > 0) {
-            float decay = (float)exp(-(double)particle.drag * delta);
-            particle.velocity.x *= decay;
-            particle.velocity.y *= decay;
+            double exponent = -(double)particle.drag * delta;
+            decay = (float)exp(exponent);
+            travel = -expm1(exponent) / particle.drag;
         }
         particle.position.x = (float)(particle.position.x +
-                                      (double)particle.velocity.x * delta);
+                                      (double)particle.velocity.x * travel);
         particle.position.y = (float)(particle.position.y +
-                                      (double)particle.velocity.y * delta);
+                                      (double)particle.velocity.y * travel);
+        particle.elevation = (float)(particle.elevation +
+                                     (double)particle.elevation_velocity * travel);
+        particle.velocity.x *= decay;
+        particle.velocity.y *= decay;
+        particle.elevation_velocity *= decay;
         particles->items[keep++] = particle;
     }
     asetlen(particles->items, keep);

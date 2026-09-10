@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define FLOW_TRAVERSAL_MAX 256
 
@@ -105,15 +106,7 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
 
 static int graph_has_node(const graph *g, const node *n)
 {
-    if (!g || !n) {
-        return 0;
-    }
-    for (int i = 0; i < acount(g->nodes); i++) {
-        if (g->nodes[i] == n) {
-            return 1;
-        }
-    }
-    return 0;
+    return g && n && graph_node_by_id(g, n->id) == n;
 }
 
 static void flow_fail(flow_run *run, int code, node *n, const char *message)
@@ -160,14 +153,12 @@ static void record_traversal(
      * child waits and after completed children are pruned or recycled. */
     for (; run; run = run->parent) {
         if (acount(run->traversals) >= FLOW_TRAVERSAL_MAX) {
-            memmove(
-                run->traversals,
-                run->traversals + 1,
-                (size_t)(FLOW_TRAVERSAL_MAX - 1) * sizeof *run->traversals
-            );
-            asetlen(run->traversals, FLOW_TRAVERSAL_MAX - 1);
+            run->traversals[run->traversal_head] = traversal;
+            run->traversal_head = (run->traversal_head + 1) % FLOW_TRAVERSAL_MAX;
+        } else {
+            apush(run->traversals, traversal);
         }
-        apush(run->traversals, traversal);
+        run->traversal_view_dirty = true;
     }
 }
 
@@ -185,36 +176,21 @@ static int schedule_output(flow_context *ctx, int output_pin)
 
     node *target = NULL;
     int target_pin = -1;
-    uint64_t to_id = 0;
-    uint64_t to_pin_id = 0;
-    int found = 0;
-    for (int i = 0; i < acount(run->graph->edges); i++) {
-        const edge *e = &run->graph->edges[i];
-        if (e->kind != GRAPH_EDGE_EXEC || e->from_id != ctx->node->id ||
-            e->from_pin_id != ctx->node->output_pins[output_pin].id) {
-            continue;
-        }
-        if (found) {
-            return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "EXEC output has ambiguous fan-out");
-        }
-        found = 1;
-        to_id = e->to_id;
-        to_pin_id = e->to_pin_id;
-        target = graph_node_by_id(run->graph, e->to_id);
-        int is_out = 0;
-        if (!target ||
-            !graph_pin_by_id(target, e->to_pin_id, &is_out, &target_pin) || is_out) {
-            target = NULL;
-            target_pin = -1;
-        }
+    const edge *e = NULL;
+    int found = graph_exec_output_edges(run->graph, ctx->node, output_pin, &e);
+    if (found > 1) {
+        return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "EXEC output has ambiguous fan-out");
     }
     if (!found) {
         return FLOW_OK;
     }
-    if (!target || target_pin < 0 || target->input_pins[target_pin].kind != PIN_EXEC) {
+    target = graph_node_by_id(run->graph, e->to_id);
+    int is_out = 0;
+    if (!target || !graph_pin_by_id(target, e->to_pin_id, &is_out, &target_pin) ||
+        is_out || target->input_pins[target_pin].kind != PIN_EXEC) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "invalid EXEC target");
     }
-    record_traversal(run, ctx->node->id, ctx->node->output_pins[output_pin].id, to_id, to_pin_id, GRAPH_EDGE_EXEC);
+    record_traversal(run, ctx->node->id, ctx->node->output_pins[output_pin].id, e->to_id, e->to_pin_id, GRAPH_EDGE_EXEC);
     apush(
         run->frames,
         (flow_frame){
@@ -311,7 +287,7 @@ static int flow_run_advance_child(flow_run *run)
     }
     run->active_child = NULL;
     run->call_node = NULL;
-    flow_watch_capture(run, call);
+    flow_watch_capture_outputs(run, call);
     int output = 0;
     if (call->desc == &NODE_CallMacro) {
         int ordinal = 0;
@@ -421,7 +397,7 @@ static int flow_run_activate(flow_run *run)
     if (frame.kind == FLOW_FRAME_LOOP || frame.kind == FLOW_FRAME_FOREACH) {
         if (frame.kind == FLOW_FRAME_FOREACH) {
             if (frame.break_requested || !frame.array || frame.current > frame.last) {
-                flow_watch_capture(run, frame.node);
+                flow_watch_capture_outputs(run, frame.node);
                 pin_array_free(frame.array);
                 return schedule_output_for_node(run, frame.node, frame.completed_output);
             }
@@ -435,18 +411,26 @@ static int flow_run_activate(flow_run *run)
                 .i = index,
             };
             outputs[frame.index_output].container = PIN_CONTAINER_SINGLE;
-            outputs[frame.value_output] = frame.array->items[index];
+            if (flow_copy_input(
+                    &run->scratch,
+                    &outputs[frame.value_output],
+                    &frame.array->items[index]
+                )) {
+                pin_array_free(frame.array);
+                flow_fail(run, FLOW_ERR_NODE, frame.node, "ForEach element copy failed");
+                return FLOW_ERR_NODE;
+            }
             if (frame.current < frame.last) {
                 frame.current++;
             } else {
                 frame.current = frame.last + 1;
             }
             apush(run->frames, frame);
-            flow_watch_capture(run, frame.node);
+            flow_watch_capture_outputs(run, frame.node);
             return schedule_output_for_node(run, frame.node, frame.body_output);
         }
         if (frame.break_requested || frame.current == frame.last) {
-            flow_watch_capture(run, frame.node);
+            flow_watch_capture_outputs(run, frame.node);
             return schedule_output_for_node(run, frame.node, frame.completed_output);
         }
         frame.current += frame.current < frame.last ? 1 : -1;
@@ -457,7 +441,7 @@ static int flow_run_activate(flow_run *run)
         outputs[frame.index_output].type_name = "int";
         outputs[frame.index_output].i = frame.current;
         apush(run->frames, frame);
-        flow_watch_capture(run, frame.node);
+        flow_watch_capture_outputs(run, frame.node);
         return schedule_output_for_node(run, frame.node, frame.body_output);
     }
 
@@ -499,7 +483,11 @@ static int flow_run_activate(flow_run *run)
         }
         return run->error.code;
     }
-    flow_watch_capture(run, n);
+    if (ctx.inputs_unchanged) {
+        flow_watch_capture_outputs(run, n);
+    } else {
+        flow_watch_capture(run, n);
+    }
     if (run->active_child) {
         return run->state == FLOW_PAUSED ? FLOW_PAUSED_RESULT : FLOW_SUSPENDED_RESULT;
     }
@@ -517,7 +505,7 @@ static int flow_run_activate(flow_run *run)
     return FLOW_OK;
 }
 
-static int flow_run_execute(flow_run *run)
+static int execute(flow_run *run)
 {
     if (flow_run_check_topology(run)) {
         return FLOW_ERR_TOPOLOGY;
@@ -554,6 +542,48 @@ static int flow_run_execute(flow_run *run)
         run->state = FLOW_COMPLETED;
     }
     return run->state == FLOW_FAILED ? run->error.code : FLOW_OK;
+}
+
+typedef struct profile_scope
+{
+    struct profile_scope *parent;
+    uint64_t children;
+} profile_scope;
+
+static _Thread_local profile_scope *active_profile;
+
+static uint64_t profile_now()
+{
+    struct timespec now;
+    int result = clock_gettime(CLOCK_MONOTONIC, &now);
+    assert(result == 0);
+    (void)result;
+    return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+}
+
+static int flow_run_execute(flow_run *run)
+{
+    behavior_instance *instance = run->instance;
+    const flow_run *leaf = flow_run_active_leaf(run);
+    bool waiting = (leaf->host_request && leaf->host_request->state == FLOW_HOST_PENDING) ||
+                   (leaf->waiting_node && run->current_time < leaf->wake_time);
+    if (run->parent || !instance || !instance->profile || waiting) {
+        return execute(run);
+    }
+    profile_scope scope = { .parent = active_profile };
+    active_profile = &scope;
+    bool first = !run->profile_started;
+    run->profile_started = true;
+    uint64_t start = profile_now();
+    int result = execute(run);
+    uint64_t elapsed = profile_now() - start;
+    active_profile = scope.parent;
+    if (scope.parent) {
+        scope.parent->children += elapsed;
+    }
+    assert(elapsed >= scope.children);
+    instance->profile(run->event_name, elapsed - scope.children, first, instance->profile_user);
+    return result;
 }
 
 flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_options *options, flow_error *error)
@@ -630,6 +660,7 @@ flow_run *flow_run_start_reuse(
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
+    run->profile_started = false;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;
     run->input_user_data = inputs.user_data;
@@ -687,6 +718,8 @@ int flow_run_recycle(flow_run *run)
     }
     flow_run_stop(run);
     aclear(run->traversals);
+    run->traversal_head = 0;
+    run->traversal_view_dirty = false;
     arena_reset(&run->input_arena);
     arena_reset(&run->scratch);
     run->input_count = 0;
@@ -902,6 +935,9 @@ int flow_run_reset(flow_run *run)
     run->runtime = NULL;
     flow_watch_clear(run);
     afree(run->traversals);
+    afree(run->traversal_view);
+    run->traversal_head = 0;
+    run->traversal_view_dirty = false;
     run->steps = 0;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
@@ -991,7 +1027,26 @@ const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
     if (count) {
         *count = run ? acount(run->traversals) : 0;
     }
-    return run ? run->traversals : NULL;
+    if (!run || !run->traversal_head) {
+        return run ? run->traversals : NULL;
+    }
+    flow_run *mutable_run = (flow_run *)run;
+    if (run->traversal_view_dirty) {
+        int tail = FLOW_TRAVERSAL_MAX - run->traversal_head;
+        asetlen(mutable_run->traversal_view, FLOW_TRAVERSAL_MAX);
+        memcpy(
+            mutable_run->traversal_view,
+            run->traversals + run->traversal_head,
+            (size_t)tail * sizeof *run->traversals
+        );
+        memcpy(
+            mutable_run->traversal_view + tail,
+            run->traversals,
+            (size_t)run->traversal_head * sizeof *run->traversals
+        );
+        mutable_run->traversal_view_dirty = false;
+    }
+    return run->traversal_view;
 }
 
 const node *flow_run_current_node(const flow_run *run)
@@ -1141,6 +1196,7 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
                 return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion has no function");
             }
             *out = conversion->fn(out, 1, &ctx->run->scratch);
+            pin_coerce(out, spec);
             if (out->type != spec->type || (out->type == PIN_STRUCT && !out->ptr)) {
                 return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion failed");
             }
@@ -1152,23 +1208,17 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         }
         return FLOW_OK;
     }
-    if ((spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
-        assert(spec->type == PIN_HANDLE);
-        pin_value owner = behavior_instance_owner(ctx->run->instance);
-        if (owner.type != PIN_HANDLE || !owner.type_name || !spec->type_name ||
-            strcmp(owner.type_name, spec->type_name) != 0) {
-            return flow_context_fail(ctx, FLOW_ERR_NODE, "Target requires Self or an explicit entity");
-        }
-        *flow_context_input_value(ctx, input_pin) = owner;
-        *out = owner;
-        return FLOW_OK;
+    const char *error = eval_context_resolve_input(
+        &ctx->run->eval,
+        spec,
+        spec->binding,
+        &ctx->run->scratch,
+        out
+    );
+    if (error) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, error);
     }
-    *flow_context_input_value(ctx, input_pin) = spec->default_value;
-    *out = *flow_context_input_value(ctx, input_pin);
-    if (out->type != spec->type && !pin_coerce(out, spec)) {
-        return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "data input has wrong type");
-    }
-    out->type_name = spec->type_name;
+    *flow_context_input_value(ctx, input_pin) = *out;
     return FLOW_OK;
 }
 
@@ -1270,6 +1320,7 @@ int flow_context_break(struct flow_context *ctx)
             continue;
         }
         frame->break_requested = 1;
+        ctx->inputs_unchanged = true;
         return FLOW_OK;
     }
     return flow_context_fail(ctx, FLOW_ERR_STATE, "Break is outside a loop");
@@ -1352,7 +1403,16 @@ int flow_context_foreach(
         pin_array_free(array);
         return flow_context_continue(ctx, completed_output);
     }
-    runtime_node_outputs(state)[value_output] = array->items[0];
+    /* Published values can be read by delayed Completed consumers after the
+     * iteration array has been released. Keep their data in the run arena. */
+    if (flow_copy_input(
+            &ctx->run->scratch,
+            &runtime_node_outputs(state)[value_output],
+            &array->items[0]
+        )) {
+        pin_array_free(array);
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "ForEach element copy failed");
+    }
     runtime_node_outputs(state)[index_output] = (pin_value){ .type = PIN_I32,
                                                              .type_name = "int",
                                                              .i = 0 };

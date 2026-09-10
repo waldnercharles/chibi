@@ -166,7 +166,7 @@ void test_graph_navigation()
     expect_graph(editor, replacement.macro, false);
     assert(editor_graph_back(editor) == -1);
     behavior_asset_free(replacement.asset);
-    char path[] = "/tmp/c-blueprints-navigation-XXXXXX";
+    char path[] = "/tmp/chibi-navigation-XXXXXX";
     int file = mkstemp(path);
     assert(file >= 0 && close(file) == 0);
     assert(editor_save(editor, path) == 0);

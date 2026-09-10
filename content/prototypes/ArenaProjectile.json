@@ -1,0 +1,120 @@
+{
+  "name": "ArenaProjectile",
+  "components": {
+    "GameTransform": {
+      "x": 0,
+      "y": 0
+    },
+    "GameProjectile": {
+      "speed": 480,
+      "lifetime": 1.6,
+      "damage": 10,
+      "age": 0
+    },
+    "GameCollider": {
+      "radius": 4,
+      "category": 4,
+      "mask": 10,
+      "shape": 0,
+      "width": 0,
+      "height": 0,
+      "sensor": true,
+      "ignore_entity": null
+    },
+    "GameOrientation": {
+      "radians": 0.0
+    },
+    "GameGeometry3D": {
+      "primitive": 0,
+      "width": 6,
+      "depth": 6,
+      "height": 6,
+      "elevation": 12
+    },
+    "GameShader": {
+      "material": "ArenaProjectile",
+      "shape": "",
+      "parameters": "{}",
+      "bounds_x": 0,
+      "bounds_y": 0
+    },
+    "GameBody": {
+      "type": 2,
+      "continuous": true
+    },
+    "GameVelocity": {
+      "x": 480,
+      "y": 0
+    },
+    "GamePointLight": {
+      "color": 1659240447,
+      "intensity": 0.35,
+      "radius": 24,
+      "elevation": 14
+    },
+    "GameSurfaceInfluence": {
+      "color": 1659240447,
+      "strength": 0.35,
+      "radius": 17,
+      "linger": 0.22
+    },
+    "GameVisualTransform": {
+      "pitch": 0,
+      "yaw": 0,
+      "roll": 0,
+      "scale": 1
+    },
+    "GameVisualMotion": {
+      "rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "angular_velocity": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "speed": 6.283185307179586,
+      "rest_elevation": 12,
+      "reaction_rotation": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "reaction_lift": 0,
+      "reaction_age": 0,
+      "reaction_duration": 0.32
+    },
+    "GameParticleEmitter": {
+      "shape": 1,
+      "color": 2162421452,
+      "end_color": 595435520,
+      "rate": 85,
+      "lifetime": 0.18,
+      "speed": 8,
+      "size": 1.8,
+      "spread": 0.5,
+      "drag": 2,
+      "emission": 0.45,
+      "size_exponent": 1,
+      "velocity_inherit": 0,
+      "offset": {
+        "x": -6.5,
+        "y": 0,
+        "z": 0
+      },
+      "direction": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "heading_only": true
+    }
+  },
+  "behaviors": [
+    "ProjectileBehavior",
+    "ProjectileHitBehavior",
+    "ArenaProjectileVisualBehavior"
+  ]
+}

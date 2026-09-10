@@ -5,6 +5,8 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/event_fixture.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -35,9 +37,9 @@ static behavior_asset *read_behavior(const char *name)
     free(text);
     assert(asset);
     if (strcmp(name, "EnemyBehavior") == 0) {
-        assert(acount(asset->graphs) == 2 && acount(asset->graph->nodes) == 9);
+        assert(acount(asset->graphs) == 2 && acount(asset->graph->nodes) == 10);
         graph *motion = asset->graphs[1];
-        assert(motion->kind == GRAPH_FUNCTION && strcmp(motion->name, "Move Toward") == 0);
+        assert(motion->kind == GRAPH_FUNCTION && strcmp(motion->name, "Pursuit Velocity") == 0);
         node *entry = graph_node_by_id(motion, motion->entry_id);
         node *result = graph_node_by_id(motion, motion->return_id);
         assert(entry && result && entry->output_count == 5 && result->input_count == 1);
@@ -75,6 +77,7 @@ static ecs_entity target_at(ecs_world *world, float x, float y)
     ecs_entity entity = ecs_world_create_entity(world);
     assert(GAME_GameTransform_add(world, entity, 0) == ECS_OK);
     assert(GAME_GameCollider_add(world, entity, 0) == ECS_OK);
+    assert(GAME_GameBody_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameTransform_get(world, entity) = (GameTransform){ x, y };
     *GAME_GameCollider_get(world, entity) = (GameCollider){ .radius = 12,
@@ -99,18 +102,11 @@ static void expect_position(ecs_world *world, ecs_entity entity, float x, float 
     assert(position && fabsf(position->x - x) < 0.001f && fabsf(position->y - y) < 0.001f);
 }
 
-static void tick(engine *runtime, game_prototype_preview *preview, double time)
-{
-    int result = preview ? game_prototype_preview_tick(preview, time)
-                         : engine_frame(runtime, time);
-    assert(result >= 0);
-}
-
 void test_pursuit()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_content("content/prototypes/Enemy.json");
+    char *text = read_content("test/fixtures/content/prototypes/Enemy.json");
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
     free(text);
@@ -123,6 +119,7 @@ void test_pursuit()
                                    : ecs_world_new();
         game_live_world *live = NULL;
         engine *runtime = NULL;
+        register_test_preview_catalog(preview);
         if (!isolated) {
             for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
                 assert(
@@ -130,6 +127,7 @@ void test_pursuit()
                 );
             }
             live = game_live_world_new(world);
+            register_damage_event(live);
             runtime = engine_new(world, live);
         }
         const char *names[] = { "EnemyBehavior", "HealthBehavior" };
@@ -163,29 +161,30 @@ void test_pursuit()
         }
         assert(GAME_GameMovement_get_const(world, enemy)->speed == 90.0f);
         *GAME_GameTransform_get(world, enemy) = (GameTransform){ 0 };
-        tick(runtime, preview, 0.0);
-        tick(runtime, preview, 0.1);
+        simulation_fixture clock = simulation_fixture_new(runtime, preview);
+        simulation_advance(&clock, 0.0);
+        simulation_advance(&clock, 0.1);
         expect_position(world, enemy, 0, 0);
         ecs_entity first = target_at(world, 30, 40);
-        tick(runtime, preview, 0.2);
+        simulation_advance(&clock, 0.2);
         expect_position(world, enemy, 5.4f, 7.2f);
         *GAME_GameTransform_get(world, first) = *GAME_GameTransform_get(world, enemy);
-        tick(runtime, preview, 0.3);
+        simulation_advance(&clock, 0.3);
         expect_position(world, enemy, 5.4f, 7.2f);
         *GAME_GameTransform_get(world, first) = (GameTransform){ 3000, 7.2f };
-        tick(runtime, preview, 0.4);
+        simulation_advance(&clock, 0.4);
         expect_position(world, enemy, 5.4f, 7.2f);
         *GAME_GameTransform_get(world, first) = (GameTransform){ 100, 7.2f };
         ecs_entity nearer = target_at(world, -4.6f, 7.2f);
-        tick(runtime, preview, 0.5);
+        simulation_advance(&clock, 0.5);
         expect_position(world, enemy, -3.6f, 7.2f);
-        tick(runtime, preview, 0.6);
+        simulation_advance(&clock, 0.6);
         expect_position(world, enemy, -4.6f, 7.2f);
         assert(ecs_world_destroy_entity(world, nearer) == ECS_OK);
-        tick(runtime, preview, 0.7);
+        simulation_advance(&clock, 0.7);
         expect_position(world, enemy, 4.4f, 7.2f);
         assert(ecs_world_destroy_entity(world, first) == ECS_OK);
-        tick(runtime, preview, 0.8);
+        simulation_advance(&clock, 0.8);
         expect_position(world, enemy, 4.4f, 7.2f);
         if (isolated) {
             game_prototype_preview_free(preview);

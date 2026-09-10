@@ -28,6 +28,16 @@ static const char *pin_name(const pin_spec *p)
     return p && p->name ? p->name : "?";
 }
 
+static const type_desc *component_type_by_key(const char *key)
+{
+    const type_desc *type = registry_type_by_name(key);
+    if (type || !key) {
+        return type;
+    }
+    const char *dot = strrchr(key, '.');
+    return dot && dot[1] ? registry_type_by_name(dot + 1) : NULL;
+}
+
 static void emit(
     compile_report *out,
     int severity,
@@ -67,16 +77,32 @@ static void effect_add(uint64_t **values, uint64_t id)
     apush(*values, id);
 }
 
-static void build_effects(compile_report *out, const behavior_asset *bp)
+static void build_effects(compile_report *out, const behavior_asset *asset)
 {
     compile_effects *effects = &out->effects;
     effects->parallel_eligible = 1;
-    effects->topology_revision = graph_topology_revision(bp->graph);
-    for (int g = 0; g < acount(bp->graphs); g++) {
-        const graph *graph = bp->graphs[g];
+    effects->topology_revision = graph_topology_revision(asset->graph);
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        const graph *graph = asset->graphs[g];
         for (int i = 0; i < acount(graph->nodes); i++) {
             const node *n = graph->nodes[i];
             const node_access *access = n->desc ? n->desc->access : NULL;
+            for (int p = 0; p < n->input_count; p++) {
+                node *source = NULL;
+                int source_pin = -1;
+                if (n->input_pins[p].binding &&
+                    !graph_input_source(graph, n, p, &source, &source_pin) &&
+                    (n->input_pins[p].binding->kind == PIN_BINDING_COMPONENT_FIELD ||
+                     n->input_pins[p].binding->kind == PIN_BINDING_COMPONENT)) {
+                    effects->flags |= NODE_EFFECT_WORLD_READ;
+                    effects->parallel_eligible = 0;
+                    if (!effects->blocking_node_id) {
+                        effects->blocking_node_id = n->id;
+                        effects->blocking_reason = "component input binding "
+                                                   "reads world state";
+                    }
+                }
+            }
             if (!access) {
                 effects->all_writes = 1;
                 effects->parallel_eligible = 0;
@@ -208,6 +234,7 @@ const char *cmpl_rule_name(int rule)
         case CMPL_RULE_SYSTEM_HOST_WAIT: return "CMPL-21";
         case CMPL_RULE_FIELD_PROJECTION: return "CMPL-22";
         case CMPL_RULE_CALL_SIGNATURE: return "CMPL-23";
+        case CMPL_RULE_INPUT_BINDING: return "CMPL-24";
         default: return "CMPL-?";
     }
 }
@@ -441,10 +468,10 @@ static bool call_signature_matches(const node *call, const graph *target)
 
 /* CMPL-7: a reference to a retired or missing variable, function, or macro.
  * Get/Set reference variables; Function and macro references use graph IDs. */
-static void pass_references(compile_report *out, const behavior_asset *bp)
+static void pass_references(compile_report *out, const behavior_asset *asset, bool system)
 {
-    for (int graph_index = 0; graph_index < acount(bp->graphs); graph_index++) {
-        const graph *g = bp->graphs[graph_index];
+    for (int graph_index = 0; graph_index < acount(asset->graphs); graph_index++) {
+        const graph *g = asset->graphs[graph_index];
         compile_graph_id = g->graph_id;
         for (int i = 0; i < acount(g->nodes); i++) {
             const node *n = g->nodes[i];
@@ -452,7 +479,7 @@ static void pass_references(compile_report *out, const behavior_asset *bp)
                 continue;
             }
             if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
-                if (!behavior_asset_find_variable_by_id(bp, n->reference_id)) {
+                if (!behavior_asset_find_variable_by_id(asset, n->reference_id)) {
                     emit(
                         out,
                         CMPL_ERROR,
@@ -466,7 +493,7 @@ static void pass_references(compile_report *out, const behavior_asset *bp)
             } else if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallMacro) {
                 const graph *target = n->reference_asset
                                         ? NULL
-                                        : behavior_asset_find_graph(bp, n->reference_id);
+                                        : behavior_asset_find_graph(asset, n->reference_id);
                 int valid = target && ((n->desc == &NODE_CallMacro &&
                                         target->kind == GRAPH_MACRO) ||
                                        (n->desc != &NODE_CallMacro &&
@@ -493,17 +520,140 @@ static void pass_references(compile_report *out, const behavior_asset *bp)
                     );
                 }
             }
+            for (int p = 0; p < n->input_count; p++) {
+                const pin_spec *pin = &n->input_pins[p];
+                const pin_binding *binding = pin->binding;
+                if (!binding) {
+                    continue;
+                }
+                node *source = NULL;
+                int source_pin = -1;
+                if (graph_input_source(g, n, p, &source, &source_pin)) {
+                    continue;
+                }
+                if (system) {
+                    emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input bindings are unavailable in Systems until query lowering is supported");
+                    continue;
+                }
+                if (asset->domain == BEHAVIOR_DOMAIN_LIBRARY ||
+                    asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+                    emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input bindings are unavailable in this asset domain");
+                    continue;
+                }
+                if (binding->kind == PIN_BINDING_VARIABLE) {
+                    behavior_variable *variable = behavior_asset_find_variable_by_id(
+                        asset,
+                        binding->variable_id
+                    );
+                    if (!variable ||
+                        (binding->source_asset &&
+                         (!asset->name ||
+                          strcmp(binding->source_asset, asset->name) != 0))) {
+                        emit(
+                            out,
+                            CMPL_ERROR,
+                            n->id,
+                            pin->id,
+                            CMPL_RULE_INPUT_BINDING,
+                            "input binding references a missing variable (id "
+                            "%llu)",
+                            (unsigned long long)binding->variable_id
+                        );
+                    } else {
+                        pin_spec source = { .type = variable->type,
+                                            .type_name = variable->type_name,
+                                            .container = variable->container,
+                                            .kind = PIN_DATA };
+                        if (!pin_compatible(&source, pin)) {
+                            emit(
+                                out,
+                                CMPL_ERROR,
+                                n->id,
+                                pin->id,
+                                CMPL_RULE_INPUT_BINDING,
+                                "input binding variable '%s' is incompatible "
+                                "with '%s'",
+                                variable->name,
+                                pin_name(pin)
+                            );
+                        }
+                    }
+                } else if (binding->kind == PIN_BINDING_DELTA_TIME) {
+                    if (pin->container != PIN_CONTAINER_SINGLE ||
+                        (pin->type != PIN_F32 && pin->type != PIN_F64)) {
+                        emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "Delta Time requires a scalar real input");
+                    }
+                } else if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
+                    const type_desc *type = component_type_by_key(binding->component_key);
+                    const type_field *field = NULL;
+                    if (type) {
+                        for (int f = 0; f < type->field_count; f++) {
+                            if (type->fields[f].name && binding->field_name &&
+                                !strcmp(type->fields[f].name, binding->field_name)) {
+                                field = &type->fields[f];
+                                break;
+                            }
+                        }
+                    }
+                    if (!field) {
+                        emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input binding references a missing component field");
+                    } else {
+                        pin_spec source = { .type = field->type,
+                                            .type_name = field->type_name,
+                                            .container = PIN_CONTAINER_SINGLE,
+                                            .kind = PIN_DATA };
+                        if (!pin_compatible(&source, pin)) {
+                            emit(
+                                out,
+                                CMPL_ERROR,
+                                n->id,
+                                pin->id,
+                                CMPL_RULE_INPUT_BINDING,
+                                "component field '%s.%s' is incompatible with "
+                                "'%s'",
+                                binding->component_key,
+                                binding->field_name,
+                                pin_name(pin)
+                            );
+                        }
+                    }
+                } else if (binding->kind == PIN_BINDING_COMPONENT) {
+                    const type_desc *type = component_type_by_key(binding->component_key);
+                    if (!type) {
+                        emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input binding references a missing component");
+                    } else {
+                        pin_spec source = { .type = PIN_STRUCT,
+                                            .type_name = type->name,
+                                            .container = PIN_CONTAINER_SINGLE,
+                                            .kind = PIN_DATA };
+                        if (!pin_compatible(&source, pin)) {
+                            emit(
+                                out,
+                                CMPL_ERROR,
+                                n->id,
+                                pin->id,
+                                CMPL_RULE_INPUT_BINDING,
+                                "component '%s' is incompatible with '%s'",
+                                binding->component_key,
+                                pin_name(pin)
+                            );
+                        }
+                    }
+                } else {
+                    emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input binding has an unknown source kind");
+                }
+            }
         }
     }
-    compile_graph_id = bp->graph->graph_id;
+    compile_graph_id = asset->graph->graph_id;
 }
 
 /* CMPL-8: a duplicate event name, a duplicate name within one parameter
  * list, or a duplicate variable name in one scope. Each duplicate pair
  * reports once, on the later element. */
-static void pass_duplicates(compile_report *out, const behavior_asset *bp)
+static void pass_duplicates(compile_report *out, const behavior_asset *asset)
 {
-    const graph *g = bp->graph;
+    const graph *g = asset->graph;
     for (int i = 0; i < acount(g->nodes); i++) {
         const node *n = g->nodes[i];
         if (n->disabled || n->desc->flow_kind != NODE_FLOW_EVENT) {
@@ -552,13 +702,14 @@ static void pass_duplicates(compile_report *out, const behavior_asset *bp)
             }
         }
     }
-    for (int i = 0; i < acount(bp->variables); i++) {
-        const char *name = bp->variables[i].name;
+    for (int i = 0; i < acount(asset->variables); i++) {
+        const char *name = asset->variables[i].name;
         if (!name) {
             continue;
         }
         for (int j = 0; j < i; j++) {
-            if (bp->variables[j].name && strcmp(bp->variables[j].name, name) == 0) {
+            if (asset->variables[j].name &&
+                strcmp(asset->variables[j].name, name) == 0) {
                 emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_DUPLICATE_NAME, "duplicate variable name '%s'", name);
                 break;
             }
@@ -762,7 +913,7 @@ static void pass_unconnected_data(compile_report *out, const graph *g)
             node *source = NULL;
             int source_pin = -1;
             if (pin->kind == PIN_DATA &&
-                !graph_input_source(g, n, p, &source, &source_pin)) {
+                !graph_input_source(g, n, p, &source, &source_pin) && !pin->binding) {
                 emit(
                     out,
                     CMPL_WARNING,
@@ -920,17 +1071,17 @@ static void pass_field_projections(compile_report *out, const graph *g)
     }
 }
 
-static int compile_asset(const behavior_asset *bp, compile_report *out, bool system)
+static int compile_asset(const behavior_asset *asset, compile_report *out, bool system)
 {
-    assert(bp && bp->graph && out);
+    assert(asset && asset->graph && out);
     compile_report_free(out);
     compile_report_init(out);
-    const graph *g = bp->graph;
-    build_effects(out, bp);
+    const graph *g = asset->graph;
+    build_effects(out, asset);
     arena tmp;
     arena_init(&tmp, 8192);
-    for (int i = 0; i < acount(bp->graphs); i++) {
-        g = bp->graphs[i];
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        g = asset->graphs[i];
         compile_graph_id = g->graph_id;
         pass_disabled(out, g);
         pass_unconnected_exec(out, g);
@@ -945,33 +1096,34 @@ static int compile_asset(const behavior_asset *bp, compile_report *out, bool sys
             pass_system_host_wait(out, g);
         }
     }
-    compile_graph_id = bp->graph->graph_id;
-    pass_references(out, bp);
-    pass_duplicates(out, bp);
-    sort_diagnostics(out, bp->graph);
+    compile_graph_id = asset->graph->graph_id;
+    pass_references(out, asset, system);
+    pass_duplicates(out, asset);
+    sort_diagnostics(out, asset->graph);
     arena_free(&tmp);
     return out->error_count;
 }
 
-int behavior_asset_compile(const behavior_asset *bp, compile_report *out)
+int behavior_asset_compile(const behavior_asset *asset, compile_report *out)
 {
-    if (bp->domain == BEHAVIOR_DOMAIN_MATERIAL || bp->domain == BEHAVIOR_DOMAIN_SHAPE) {
+    if (asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+        asset->domain == BEHAVIOR_DOMAIN_SHAPE) {
         compile_report_free(out);
         compile_report_init(out);
         shader_graph shader;
         shader_graph_init(&shader);
         shader_error error = { 0 };
-        if (!shader_graph_from_graph(bp->graph, &shader, &error)) {
-            compile_graph_id = bp->graph->graph_id;
+        if (!shader_graph_from_graph(asset->graph, &shader, &error)) {
+            compile_graph_id = asset->graph->graph_id;
             emit(out, CMPL_ERROR, error.node, 0, CMPL_RULE_OPERATOR, "%s", error.message);
         }
         shader_graph_free(&shader);
         return out->error_count;
     }
-    return compile_asset(bp, out, false);
+    return compile_asset(asset, out, false);
 }
 
-int behavior_asset_compile_for_system(const behavior_asset *bp, compile_report *out)
+int behavior_asset_compile_for_system(const behavior_asset *asset, compile_report *out)
 {
-    return compile_asset(bp, out, true);
+    return compile_asset(asset, out, true);
 }

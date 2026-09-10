@@ -50,14 +50,14 @@ static void *ed_font_copy(const unsigned char *data, size_t size, ImFontConfig *
 
 static ImFont *ed_load_icon_font(void)
 {
-    ImFont *existing = ed_find_font("Blueprints Body");
+    ImFont *existing = ed_find_font("Chibi Body");
     if (existing) {
         return existing;
     }
     ImFontAtlas *atlas = ImGui_GetIO()->Fonts;
     ImFontConfig text_config = { 0 };
     text_config.FontDataOwnedByAtlas = true;
-    strcpy(text_config.Name, "Blueprints Body");
+    strcpy(text_config.Name, "Chibi Body");
     text_config.GlyphMaxAdvanceX = FLT_MAX;
     text_config.RasterizerMultiply = 1.0f;
     text_config.RasterizerDensity = 1.0f;
@@ -104,13 +104,13 @@ static ImFont *ed_load_icon_font(void)
 
 static ImFont *ed_load_math_font(void)
 {
-    ImFont *existing = ed_find_font("Blueprints Math");
+    ImFont *existing = ed_find_font("Chibi Math");
     if (existing) {
         return existing;
     }
     ImFontConfig config = { 0 };
     config.FontDataOwnedByAtlas = true;
-    strcpy(config.Name, "Blueprints Math");
+    strcpy(config.Name, "Chibi Math");
     const ImWchar ranges[] = { 0x0020, 0x00FF, 0x2212, 0x2212, 0x2260, 0x2265, 0 };
     config.GlyphRanges = ranges;
     config.GlyphMaxAdvanceX = FLT_MAX;

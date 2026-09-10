@@ -1,0 +1,12 @@
+{
+  "name": "chibi-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP adapter for the Chibi editor",
+  "type": "module",
+  "bin": {
+    "chibi-mcp": "./server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,5 +1,5 @@
-#ifndef BLUEPRINTS_HOST_WATCH_INTERNAL_H
-#define BLUEPRINTS_HOST_WATCH_INTERNAL_H
+#ifndef CHIBI_HOST_WATCH_INTERNAL_H
+#define CHIBI_HOST_WATCH_INTERNAL_H
 
 #include "host/watch.h"
 
@@ -10,11 +10,11 @@ typedef struct
 {
     char *path;
     bool directory;
-} bp_watch_root;
+} chibi_watch_root;
 
-struct bp_watch
+struct chibi_watch
 {
-    bp_watch_root *roots;
+    chibi_watch_root *roots;
     int count;
     char **suffixes;
     int suffix_count;
@@ -22,9 +22,9 @@ struct bp_watch
     void *backend;
 };
 
-bool bp_watch_start(bp_watch *watch);
-void bp_watch_stop(bp_watch *watch);
-bool bp_watch_excluded(const char *path);
-bool bp_watch_matches(bp_watch *watch, const char *path, bool directory);
+bool chibi_watch_start(chibi_watch *watch);
+void chibi_watch_stop(chibi_watch *watch);
+bool chibi_watch_excluded(const char *path);
+bool chibi_watch_matches(chibi_watch *watch, const char *path, bool directory);
 
 #endif

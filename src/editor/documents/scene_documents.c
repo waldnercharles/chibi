@@ -301,6 +301,10 @@ static int save_behavior_definition(
         );
         return -1;
     }
+    if (scene_tabs_path_in_use(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, path)) {
+        snprintf(scene->message, sizeof scene->message, "Behavior path is already open.");
+        return -1;
+    }
     char *json = behavior_asset_save_json(definition->working);
     if (!json) {
         return -1;
@@ -310,6 +314,11 @@ static int save_behavior_definition(
     if (result == 0) {
         game_live_definition_set_path(definition, path);
         definition->unsaved = false;
+        scene_tabs_mark_document_saved(
+            scene,
+            APP_EDITOR_DOCUMENT_BEHAVIOR,
+            definition->name
+        );
     }
     return result;
 }
@@ -514,12 +523,8 @@ void select_content_entry(app_scene_authoring *scene, const scene_content_entry 
     }
 }
 
-int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
+int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload)
 {
-    char *json = read_scene_file(path);
-    if (!json) {
-        return -1;
-    }
     char error[256] = { 0 };
     game_system_document *document = game_system_document_load(
         json,
@@ -528,13 +533,18 @@ int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
         error,
         sizeof error
     );
-    free(json);
     if (!document) {
         snprintf(scene->message, sizeof scene->message, "Could not open System: %s", error);
         return -1;
     }
+    if (!scene->tabs_transitioning &&
+        scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM && scene->system_document &&
+        (!scene->system_path || strcmp(scene->system_path, path) != 0)) {
+        scene_tabs_sync_current(scene);
+    }
     const behavior_asset *source = game_system_document_behavior_asset(document);
     graph *graph = behavior_asset_find_graph((behavior_asset *)source, 0);
+    char *document_name = source ? xstrdup(source->name) : NULL;
     int opened = !graph ? -1
                : reload ? editor_reload_behavior_asset(
                               scene->graph_editor,
@@ -550,24 +560,46 @@ int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
                           );
     if (opened != 0) {
         game_system_document_free(document);
+        free(document_name);
         return -1;
     }
+    bool was_transitioning = scene->tabs_transitioning;
+    scene->tabs_transitioning = true;
     char *saved_path = xstrdup(path);
     game_system_document_free(scene->system_document);
     free(scene->system_path);
     scene->system_document = document;
     scene->system_path = saved_path;
     scene->editor_working = editor_behavior_asset(scene->graph_editor);
-    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SYSTEM, source->name);
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SYSTEM, document_name);
+    scene_tabs_sync_current(scene);
+    scene->tabs_transitioning = was_transitioning;
+    scene_document_tab *tab = scene->active_tab >= 0 ? &scene->tabs[scene->active_tab]
+                                                     : NULL;
+    if (tab && !tab->system_saved) {
+        tab->system_saved = xstrdup(json);
+    }
     editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
     editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     snprintf(
         scene->message,
         sizeof scene->message,
         "Editing System asset %s.",
-        source->name
+        scene->document.id
     );
+    free(document_name);
     return 0;
+}
+
+int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
+{
+    char *json = read_scene_file(path);
+    if (!json) {
+        return -1;
+    }
+    int result = load_system_document_json(scene, json, path, reload);
+    free(json);
+    return result;
 }
 
 int open_system_asset(app_scene_authoring *scene, const char *path)
@@ -599,8 +631,7 @@ void open_content_entry(app_scene_authoring *scene, const scene_content_entry *e
         return;
     }
     if (content_path_in_folder(scene, entry->path, "scenes")) {
-        if (app_scene_authoring_load(scene, entry->path) == 0) {
-            scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+        if (scene_tabs_open_scene(scene, entry->path) == 0) {
             editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
         }
         return;
@@ -614,6 +645,10 @@ void open_content_entry(app_scene_authoring *scene, const scene_content_entry *e
 
 static int save_system_document(app_scene_authoring *scene, const char *path)
 {
+    if (scene_tabs_path_in_use(scene, APP_EDITOR_DOCUMENT_SYSTEM, path)) {
+        snprintf(scene->message, sizeof scene->message, "System path is already open.");
+        return -1;
+    }
     char *graph_json = behavior_asset_save_json(editor_behavior_asset(scene->graph_editor));
     behavior_asset *graph = graph_json ? behavior_asset_load_json(graph_json) : NULL;
     free(graph_json);
@@ -637,6 +672,12 @@ static int save_system_document(app_scene_authoring *scene, const char *path)
         char *saved_path = xstrdup(path);
         free(scene->system_path);
         scene->system_path = saved_path;
+        scene_tabs_sync_current(scene);
+        scene_tabs_mark_document_saved(
+            scene,
+            APP_EDITOR_DOCUMENT_SYSTEM,
+            scene->document.id
+        );
     }
     return result;
 }

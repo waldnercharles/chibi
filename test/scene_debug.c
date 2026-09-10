@@ -1,5 +1,7 @@
 #include "editor/workspace/scene_debug.h"
 
+#include "editor/workspace/editor_internal.h"
+#include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 
@@ -7,8 +9,166 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static behavior_asset *debug_copy(const behavior_asset *source)
+{
+    char *json = behavior_asset_save_json(source);
+    assert(json);
+    behavior_asset *copy = behavior_asset_load_json(json);
+    free(json);
+    assert(copy);
+    return copy;
+}
+
+static void linked_pin_metadata()
+{
+    behavior_asset *working = behavior_asset_new("LinkedPinMetadata");
+    node *value = graph_add_node(working->graph, registry_node_by_name("Normalize Vector 2"));
+    assert(value);
+    value->input_pins[0].type_name = "GameVelocity";
+    value->output_pins[0].type_name = "GameVelocity";
+    behavior_asset *applied = debug_copy(working);
+    node *linked = graph_node_by_id(applied->graph, value->id);
+    linked->input_pins[0].type_name = "CF_V2";
+    linked->output_pins[0].type_name = "CF_V2";
+    linked->input_pins[0].group = 2;
+    linked->output_pins[0].group = 3;
+    assert(scene_debug_matches(working, applied));
+    linked->output_pins[0].type_name = "CF_V3";
+    assert(!scene_debug_matches(working, applied));
+    behavior_asset_free(working);
+    behavior_asset_free(applied);
+}
+
+static void compatibility_cache()
+{
+    behavior_asset *working = behavior_asset_new("DebugCache");
+    assert(behavior_asset_set_owner_type(working, "ecs.entity") == 0);
+    graph *g = working->graph;
+    node *value = graph_add_node(g, registry_node_by_name("Integer"));
+    node *begin = graph_add_node(g, registry_node_by_name("Event"));
+    node *delay = graph_add_node(g, registry_node_by_name("Delay"));
+    assert(value && begin && delay);
+    uint64_t value_id = value->id;
+    assert(graph_set_event_name(g, begin, "Begin") == 0);
+    assert(graph_set_pin_default(g, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 0.1 }) == 0);
+    assert(graph_connect_exec(g, begin, 0, delay, 0, 0) == 0);
+    behavior_asset *applied = debug_copy(working);
+    ecs_world *world = ecs_world_new();
+    game_behavior_world *behaviors = game_behavior_world_new(world);
+    assert(game_behavior_register_asset(behaviors, "DebugCache", applied) == 0);
+    ecs_entity entity = ecs_world_create_entity(world);
+    assert(game_behavior_attach(behaviors, entity, "DebugCache") == 0);
+    game_behavior_attachment_info info;
+    assert(game_behavior_attachment_info_at(behaviors, entity, 0, &info) == 0);
+    editor *e = editor_new(working);
+    editor_tick(e, 0);
+    game_live_world live = { .behaviors = behaviors };
+    app_scene_authoring scene = {
+        .world = world,
+        .live = &live,
+        .graph_editor = e,
+        .graph_document_kind = APP_EDITOR_DOCUMENT_BEHAVIOR,
+        .graph_document_id = "DebugCache",
+        .debug_pinned = true,
+        .debug_target = APP_RUNTIME_SCENE,
+        .debug_sessions = { [APP_RUNTIME_SCENE] = 7 },
+    };
+    scene_debug_select(&scene.debug, &info, 7);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE && e->inspection_run);
+    int trace_count = e->inspection_trace_count;
+
+    /* The host pump releases completed runs into the instance trace. Inspection
+     * must refresh both outputs even while semantic compatibility is cached. */
+    assert(game_behavior_pump(behaviors, 0.2) >= FLOW_OK);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE && !e->inspection_run);
+    assert(e->inspection_trace_count > trace_count);
+
+    /* A UI mutation happens before editor_tick advances the revision. */
+    unsigned revision = editor_edit_revision(e);
+    pin_value changed = { .type = PIN_I32, .i = 17 };
+    assert(
+        editor_command_apply(
+            e,
+            (editor_command){
+                .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                .data.set_pin_default = { .node_id = value_id, .value = &changed },
+            }
+        ) == 0
+    );
+    assert(editor_edit_revision(e) == revision && editor_has_pending_edits(e));
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_STALE && !e->inspection_instance);
+    editor_tick(e, 0.2);
+    assert(editor_edit_revision(e) != revision && !editor_has_pending_edits(e));
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_STALE);
+
+    editor_undo(e);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+    editor_tick(e, 0.3);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+
+    /* The same snapshot path used by node dragging records an Undoable layout edit. */
+    ed_snapshot_before(e);
+    value = graph_node_by_id(editor_active_graph(e), value_id);
+    value->x += 140;
+    value->y -= 80;
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+    editor_tick(e, 0.4);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+    editor_undo(e);
+    editor_tick(e, 0.5);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+
+    /* Hot apply preserves the attachment while replacing its immutable definition. */
+    behavior_asset *replacement = debug_copy(editor_behavior_asset(e));
+    value = graph_node_by_id(replacement->graph, value_id);
+    assert(graph_set_pin_default(replacement->graph, value, 0, 0, &changed) == 0);
+    behavior_asset *old = NULL;
+    assert(
+        game_behavior_preview_asset(behaviors, "DebugCache", replacement, &old) == INSTANCE_UPDATE_READY
+    );
+    behavior_asset_free(old);
+    applied = replacement;
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_STALE);
+    replacement = debug_copy(editor_behavior_asset(e));
+    assert(
+        game_behavior_preview_asset(behaviors, "DebugCache", replacement, &old) == INSTANCE_UPDATE_READY
+    );
+    behavior_asset_free(old);
+    applied = replacement;
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+
+    scene.debug_sessions[APP_RUNTIME_SCENE] = 8;
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_UNAVAILABLE && !e->inspection_instance);
+    assert(game_behavior_attachment_info_at(behaviors, entity, 0, &info) == 0);
+    scene_debug_select(&scene.debug, &info, 8);
+    assert(!scene.debug.comparison.valid);
+    sync_editor_inspection(&scene);
+    assert(scene.debug_status == APP_DEBUG_AVAILABLE);
+
+    scene_debug_clear(&scene.debug);
+    editor_set_inspection_blocked(e, true);
+    editor_free(e);
+    game_behavior_world_free(behaviors);
+    behavior_asset_free(applied);
+    ecs_world_free(world);
+}
+
 void test_scene_debug()
 {
+    linked_pin_metadata();
+    compatibility_cache();
     ecs_world *world = ecs_world_new();
     game_behavior_world *behaviors = game_behavior_world_new(world);
     behavior_asset *asset = behavior_asset_new("DebugIdentity");
@@ -50,6 +210,9 @@ void test_scene_debug()
     behavior_asset *applied = behavior_asset_load_json(json);
     free(json);
     assert(applied && scene_debug_matches(working, applied));
+    node *grouped = graph_node_by_id(applied->graph, value->id);
+    grouped->output_pins[0].group = 3;
+    assert(scene_debug_matches(working, applied));
     value->x = 140;
     value->y = -80;
     assert(scene_debug_matches(working, applied));

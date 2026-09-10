@@ -1,6 +1,6 @@
-# 3D SDF asset creation for c-blueprints
+# 3D SDF asset creation for Chibi
 
-**Audience:** c-blueprints creator
+**Audience:** Chibi creator
 **Date:** 2026-09-07
 **Scope:** whether and how to introduce an AI-assisted 3D signed-distance-field (SDF)
 workflow to the current C23 editor and Neon-Swarm-like game.
@@ -78,7 +78,7 @@ Animation divides cleanly:
 
 The glTF specification stores mesh data, PBR materials, skins, articulated
 animations, and morph-target animation. It deliberately leaves playback policy
-to the engine, which maps well to c-blueprints behaviors.
+to the engine, which maps well to Chibi behaviors.
 [Khronos glTF 2.0 specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html)
 
 ## Existing formats and software
@@ -91,7 +91,7 @@ on which representation needs to be editable at runtime.
 | Runtime mesh interchange | **GLB/glTF** | normal game assets, PBR, skins, clips, cameras | editable SDF source |
 | Sparse voxel/level-set interchange | **OpenVDB (.vdb)** | offline VFX, simulation cache, SDF/volume processing | a small universal game asset |
 | GPU-friendly sparse VDB payload | **NanoVDB (.nvdb)** | experimental static volume/SDF ray marching or collision | a mutable authoring graph |
-| Procedural editable source | c-blueprints JSON graph | compact analytic functions and named parameters | general DCC exchange |
+| Procedural editable source | Chibi JSON graph | compact analytic functions and named parameters | general DCC exchange |
 | low-cost DCC | Blender | mesh cleanup, retopology, baking, conversion, look development | a complete game runtime |
 | procedural/VFX DCC | Houdini | VDB CSG, fracture, fluid, SDF morphs, baking | a reason to require every game asset to be a volume |
 
@@ -139,7 +139,7 @@ creativity over direct text conditioning.
 
 ## Fit with the current project
 
-c-blueprints is a 2D game/editor today. The active design document calls a 3D
+Chibi is a 2D game/editor today. The active design document calls a 3D
 SDF renderer deferred work, while the current gameplay scope is movement,
 projectiles, enemies, and particles. The current renderer already has GPU-readback
 coverage for 2D SDF geometry and radiance cascades.

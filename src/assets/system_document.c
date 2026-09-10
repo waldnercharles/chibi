@@ -12,6 +12,7 @@ struct game_system_document
 {
     behavior_asset *behavior_asset;
     ecs_query_expr *query;
+    unsigned revision;
 };
 
 static void set_error(char *error, size_t size, const char *message)
@@ -78,7 +79,13 @@ int game_system_document_set_query(game_system_document *document, const ecs_que
     ecs_query_expr *copy = expression ? ecs_query_expr_clone(expression) : NULL;
     ecs_query_expr_free(document->query);
     document->query = copy;
+    document->revision++;
     return 0;
+}
+
+unsigned game_system_document_revision(const game_system_document *document)
+{
+    return document ? document->revision : 0;
 }
 
 static ecs_query_expr *query_from_root(

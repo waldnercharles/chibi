@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_FLOW_VISUAL_H
-#define CBLUEPRINT_FLOW_VISUAL_H
+#ifndef CHIBI_FLOW_VISUAL_H
+#define CHIBI_FLOW_VISUAL_H
 
 /* Host-independent UE-style flow envelope. The editor may sample this from
  * elapsed time; it never depends on frame count or evaluator callbacks. */

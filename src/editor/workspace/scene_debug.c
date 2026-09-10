@@ -1,6 +1,7 @@
 #include "editor/workspace/scene_debug.h"
 
 #include "graph/document/serialize.h"
+#include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -49,6 +50,30 @@ bool scene_debug_resolve(
     return false;
 }
 
+static void normalize_pins(yyjson_mut_doc *doc, yyjson_mut_val *pins)
+{
+    size_t index, count;
+    yyjson_mut_val *pin;
+    yyjson_mut_arr_foreach(pins, index, count, pin)
+    {
+        yyjson_mut_obj_remove_key(pin, "group");
+        const char *name = yyjson_mut_get_str(yyjson_mut_obj_get(pin, "type_name"));
+        if (!name) {
+            continue;
+        }
+        /* Linking resolves aliases; their spelling does not change execution. */
+        for (int depth = 0; depth < 16; depth++) {
+            const type_desc *type = registry_type_by_name(name);
+            if (!type || !type->alias_of || !strcmp(type->alias_of, name)) {
+                break;
+            }
+            name = type->alias_of;
+        }
+        yyjson_mut_obj_remove_key(pin, "type_name");
+        yyjson_mut_obj_add_strcpy(doc, pin, "type_name", name);
+    }
+}
+
 static yyjson_mut_doc *execution_json(const behavior_asset *asset)
 {
     char *json = behavior_asset_save_json(asset);
@@ -81,6 +106,8 @@ static yyjson_mut_doc *execution_json(const behavior_asset *asset)
         yyjson_mut_val *node;
         yyjson_mut_arr_foreach(nodes, j, node_count, node)
         {
+            normalize_pins(doc, yyjson_mut_obj_get(node, "inputs"));
+            normalize_pins(doc, yyjson_mut_obj_get(node, "outputs"));
             yyjson_mut_obj_remove_key(node, "x");
             yyjson_mut_obj_remove_key(node, "y");
             uint64_t target_id = yyjson_mut_get_uint(yyjson_mut_obj_get(node, "reference_id"));
@@ -123,4 +150,22 @@ bool scene_debug_matches(const behavior_asset *working, const behavior_asset *ap
     yyjson_mut_doc_free(authored);
     yyjson_mut_doc_free(runtime);
     return matches;
+}
+
+bool scene_debug_matches_cached(
+    scene_debug *debug,
+    const behavior_asset *working,
+    unsigned revision,
+    const behavior_asset *applied
+)
+{
+    if (!debug->comparison.valid || debug->comparison.working != working ||
+        debug->comparison.revision != revision || debug->comparison.applied != applied) {
+        debug->comparison.matches = scene_debug_matches(working, applied);
+        debug->comparison.working = working;
+        debug->comparison.applied = applied;
+        debug->comparison.revision = revision;
+        debug->comparison.valid = true;
+    }
+    return debug->comparison.matches;
 }

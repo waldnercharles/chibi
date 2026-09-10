@@ -42,7 +42,7 @@ void ed_draw_toolbar(editor *e)
         return;
     }
     ImVec2 saved = ImGui_GetCursorScreenPos();
-    int buttons = e->ui_context == EDITOR_UI_CONTEXT_SYSTEM ? 6 : 7;
+    int buttons = e->ui_context == EDITOR_UI_CONTEXT_SYSTEM ? 7 : 8;
     int columns = (int)((e->canvas_size.x - 34.0f) / 38.0f);
     if (columns < 1) {
         columns = 1;
@@ -88,18 +88,33 @@ void ed_draw_toolbar(editor *e)
             for (int i = overflow ? 1 : 0; i < 4; i++) {
                 ed_draw_transport_button(i, columns);
             }
+            if (editor_ui_icon_button_sized(
+                    "graph.arrange",
+                    EDITOR_ICON_FA_SITEMAP,
+                    acount(e->active_graph->nodes) > 0,
+                    32.0f
+                )) {
+                ed_auto_arrange(e);
+            }
+            editor_ui_track_item("graph.arrange");
+            if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui_SetTooltip("Arrange nodes");
+            }
+            if (5 % columns) {
+                ImGui_SameLine();
+            }
             if (editor_ui_icon_button_sized("graph_actions_button", EDITOR_ICON_FA_ELLIPSIS_V, true, 32.0f)) {
                 editor_ui_open_popup("graph_actions");
             }
             editor_ui_track_item("graph.actions");
             if (editor_ui_begin_popup("graph_actions")) {
                 const char *reason = behavior_asset_can_extract_function(
-                    e->bp,
+                    e->asset,
                     e->active_graph,
                     e->selected,
                     acount(e->selected)
                 );
-                if (ImGui_MenuItemEx("Extract Function...", NULL, false, !reason)) {
+                if (ImGui_MenuItemEx("Extract Function...", NULL, false, !reason && e->ui_context != EDITOR_UI_CONTEXT_SYSTEM)) {
                     ed_request_extraction(e);
                 }
                 editor_ui_track_item("graph.extract");
@@ -107,15 +122,6 @@ void ed_draw_toolbar(editor *e)
                 if (ImGui_MenuItem("Compile")) {
                     ed_compile(e);
                 }
-                if (ImGui_MenuItemEx(
-                        "Arrange nodes",
-                        NULL,
-                        false,
-                        acount(e->active_graph->nodes) > 0
-                    )) {
-                    ed_auto_arrange(e);
-                }
-                editor_ui_track_item("graph.arrange");
                 if (ImGui_MenuItemEx(
                         "Fit graph",
                         NULL,
@@ -135,7 +141,7 @@ void ed_draw_toolbar(editor *e)
                 editor_ui_track_item("graph.redo");
                 editor_ui_end_popup();
             }
-            if (5 % columns) {
+            if (6 % columns) {
                 ImGui_SameLine();
             }
             if (editor_ui_icon_button_sized(
@@ -148,7 +154,7 @@ void ed_draw_toolbar(editor *e)
             }
             editor_ui_track_item("graph.fit");
             if (e->ui_context != EDITOR_UI_CONTEXT_SYSTEM) {
-                if (6 % columns) {
+                if (7 % columns) {
                     ImGui_SameLine();
                 }
                 if (editor_ui_icon_button_sized("graph_debug_button", EDITOR_ICON_FA_BUG, true, 32.0f)) {

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_OPERATOR_H
-#define CBLUEPRINT_OPERATOR_H
+#ifndef CHIBI_OPERATOR_H
+#define CHIBI_OPERATOR_H
 
 #include "graph/model/pin.h"
 

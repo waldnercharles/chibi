@@ -1,7 +1,8 @@
-#ifndef CBLUEPRINT_RENDER_MATERIAL_RASTER_H
-#define CBLUEPRINT_RENDER_MATERIAL_RASTER_H
+#ifndef CHIBI_RENDER_MATERIAL_RASTER_H
+#define CHIBI_RENDER_MATERIAL_RASTER_H
 
-#include <cute_graphics.h>
+#include "platform/cute.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -60,6 +61,7 @@ typedef struct render_material_raster render_material_raster;
  * No commands may still reference its old textures when resizing/freeing. */
 render_material_raster *render_material_raster_new();
 void render_material_raster_free(render_material_raster *raster);
+const char *render_material_raster_error(const render_material_raster *raster);
 bool render_material_raster_resize(render_material_raster *raster, int width, int height);
 bool render_material_raster_draw(
     render_material_raster *raster,

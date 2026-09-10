@@ -2,13 +2,13 @@
 
 behavior_asset *make_live_behavior_asset(void)
 {
-    behavior_asset *bp = behavior_asset_new("LiveWorking");
-    if (!bp || behavior_asset_set_owner_type(bp, "ecs.entity") != 0) {
-        behavior_asset_free(bp);
+    behavior_asset *asset = behavior_asset_new("LiveWorking");
+    if (!asset || behavior_asset_set_owner_type(asset, "ecs.entity") != 0) {
+        behavior_asset_free(asset);
         return NULL;
     }
     behavior_variable *counter = behavior_asset_add_variable(
-        bp,
+        asset,
         "Counter",
         PIN_I32,
         "int",
@@ -16,22 +16,22 @@ behavior_asset *make_live_behavior_asset(void)
         &(pin_value){ .type = PIN_I32, .i = 0 },
         "Live"
     );
-    node *begin = graph_add_node(bp->graph, registry_node_by_name("Event"));
-    node *tick = graph_add_node(bp->graph, registry_node_by_name("Event"));
-    node *input = graph_add_node(bp->graph, registry_node_by_name("Event"));
-    node *set = counter ? behavior_asset_add_set_node(bp, counter->id) : NULL;
+    node *begin = graph_add_node(asset->graph, registry_node_by_name("Event"));
+    node *tick = graph_add_node(asset->graph, registry_node_by_name("Event"));
+    node *input = graph_add_node(asset->graph, registry_node_by_name("Event"));
+    node *set = counter ? behavior_asset_add_set_node(asset, counter->id) : NULL;
     pin_value one = { .type = PIN_I32, .type_name = "int", .i = 1 };
     if (!counter || !begin || !tick || !input || !set ||
-        graph_set_event_name(bp->graph, begin, "Begin") != 0 ||
-        graph_set_event_name(bp->graph, tick, "Tick") != 0 ||
-        graph_set_event_name(bp->graph, input, "Input") != 0 ||
-        graph_set_pin_default(bp->graph, set, 0, 1, &one) != 0 ||
-        graph_connect_exec(bp->graph, begin, 0, set, 0, 0) != 0 ||
-        graph_connect_exec(bp->graph, tick, 0, set, 0, 1) != 0) {
-        behavior_asset_free(bp);
+        graph_set_event_name(asset->graph, begin, "Begin") != 0 ||
+        graph_set_event_name(asset->graph, tick, "Tick") != 0 ||
+        graph_set_event_name(asset->graph, input, "Input") != 0 ||
+        graph_set_pin_default(asset->graph, set, 0, 1, &one) != 0 ||
+        graph_connect_exec(asset->graph, begin, 0, set, 0, 0) != 0 ||
+        graph_connect_exec(asset->graph, tick, 0, set, 0, 1) != 0) {
+        behavior_asset_free(asset);
         return NULL;
     }
-    return bp;
+    return asset;
 }
 
 void run_live_preview_checks(void)
@@ -58,11 +58,16 @@ void run_live_preview_checks(void)
     graph_set_pin_default(definition->working->graph, set, 0, 1, &value);
     game_live_mark_dirty(definition);
     behavior_asset *before = definition->applied;
-    flow_run *pending = behavior_instance_enqueue(two, two->bp->graph->nodes[2], (flow_inputs){ 0 }, NULL);
+    flow_run *pending = behavior_instance_enqueue(
+        two,
+        two->asset->graph->nodes[2],
+        (flow_inputs){ 0 },
+        NULL
+    );
     char message[256];
     test_check(
         pending && game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_BUSY &&
-            one->bp == before && two->bp == before,
+            one->asset == before && two->asset == before,
         "one queued activation defers preview for every affected instance "
         "atomically"
     );
@@ -71,7 +76,7 @@ void run_live_preview_checks(void)
         game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_READY &&
             one == game_behavior_instance(world->behaviors, first, "preview") &&
             two == game_behavior_instance(world->behaviors, second, "preview") &&
-            one->bp == definition->applied && two->bp == definition->applied &&
+            one->asset == definition->applied && two->asset == definition->applied &&
             behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 37,
         "preview updates both definitions without recreating instances or "
         "resetting variables"
@@ -96,7 +101,7 @@ void run_live_preview_checks(void)
     before = definition->applied;
     test_check(
         added && game_live_preview(world, definition, message, sizeof message) == INSTANCE_UPDATE_RESTART &&
-            definition->applied == before && one->bp == before,
+            definition->applied == before && one->asset == before,
         "state schema changes require explicit restart and leave the running "
         "version intact"
     );
@@ -159,7 +164,7 @@ void run_prototype_live_checks()
     );
     pin_value value;
     flow_error error = { 0 };
-    behavior_instance_enqueue(instance, instance->bp->graph->nodes[2], (flow_inputs){ 0 }, &error);
+    behavior_instance_enqueue(instance, instance->asset->graph->nodes[2], (flow_inputs){ 0 }, &error);
     test_check(
         game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
             INSTANCE_UPDATE_BUSY,
@@ -176,6 +181,7 @@ void run_prototype_live_checks()
     );
     test_check(
         game_prototype_preview_tick(preview, 2.0) >= 0 &&
+            game_prototype_preview_tick(preview, 2.0 + ENGINE_FIXED_SECONDS) >= 0 &&
             behavior_instance_get_variable(instance, counter, &value) == 0 &&
             value.i == 7,
         "prototype preview executes the edited graph on its next tick"
@@ -212,7 +218,7 @@ void run_prototype_live_checks()
     test_check(
         game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) <
                 0 &&
-            game_prototype_preview_tick(preview, 3.0) >= 0 &&
+            game_prototype_preview_tick(preview, 2.0 + 2 * ENGINE_FIXED_SECONDS) >= 0 &&
             behavior_instance_get_variable(instance, counter, &value) == 0 &&
             value.i == 7,
         "invalid prototype edits leave the last valid graph running"
@@ -285,8 +291,8 @@ void run_live_checks(void)
     behavior_instance *live_after = game_behavior_instance(behaviors, e1, "live");
     behavior_instance *other_after = game_behavior_instance(behaviors, e1, "other");
     test_check(
-        live_after && live_after->bp == definition->applied &&
-            live_after->bp != applied_before,
+        live_after && live_after->asset == definition->applied &&
+            live_after->asset != applied_before,
         "applying replaces the changed definition's instances as one "
         "operation"
     );

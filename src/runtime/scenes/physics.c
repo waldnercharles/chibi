@@ -1,0 +1,717 @@
+#include "runtime/scenes/physics.h"
+
+#include "graph/runtime/eval.h"
+#include "graph/runtime/value_array.h"
+#include "runtime/behaviors/entities.h"
+#include "runtime/generated.h"
+#include "support/arena.h"
+#include "support/array.h"
+#include "support/xalloc.h"
+
+#include <assert.h>
+#include <box2d/box2d.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct
+{
+    ecs_entity entity;
+    b2BodyId body;
+    b2ShapeId shape;
+    b2ShapeProxy geometry;
+    b2Transform start, end;
+    b2AABB tree_bounds;
+    GameCollider collider;
+    GameBody settings;
+    int proxy;
+    float angle, stop_fraction;
+    bool seen;
+} physics_body;
+
+typedef struct
+{
+    uint64_t first, second;
+} contact_pair;
+
+struct game_physics
+{
+    ecs_world *world;
+    game_entities *entities;
+    b2WorldId simulation;
+    b2DynamicTree sweeps;
+    physics_body *bodies;
+    contact_pair *previous, *current;
+    b2ContactData *contacts;
+    char error[256];
+};
+
+static bool same_entity(ecs_entity a, ecs_entity b)
+{
+    return ecs_entity_to_u64(a) == ecs_entity_to_u64(b);
+}
+
+static bool eligible(const physics_body *a, const physics_body *b)
+{
+    return !same_entity(a->entity, b->entity) &&
+           (a->collider.category & b->collider.mask) &&
+           (b->collider.category & a->collider.mask) &&
+           a->collider.ignore_entity != ecs_entity_to_u64(b->entity) &&
+           b->collider.ignore_entity != ecs_entity_to_u64(a->entity);
+}
+
+static physics_body *shape_body(game_physics *physics, b2ShapeId shape)
+{
+    return &physics->bodies[(uintptr_t)b2Shape_GetUserData(shape)];
+}
+
+static bool collision_filter(b2ShapeId first, b2ShapeId second, void *user)
+{
+    game_physics *physics = user;
+    return eligible(shape_body(physics, first), shape_body(physics, second));
+}
+
+static void create_world(game_physics *physics)
+{
+    b2WorldDef def = b2DefaultWorldDef();
+    def.gravity = (b2Vec2){ 0 };
+    physics->simulation = b2CreateWorld(&def);
+    physics->sweeps = b2DynamicTree_Create();
+    b2World_SetCustomFilterCallback(physics->simulation, collision_filter, physics);
+}
+
+game_physics *game_physics_new(ecs_world *world, game_entities *entities)
+{
+    assert(world && entities);
+    /* Box2D's unit configuration is process-wide, and precedes all defaults. */
+    static bool initialized;
+    if (!initialized) {
+        b2SetLengthUnitsPerMeter(GAME_UNITS_PER_METER);
+        initialized = true;
+    }
+    game_physics *physics = xcalloc(1, sizeof *physics);
+    physics->world = world;
+    physics->entities = entities;
+    create_world(physics);
+    return physics;
+}
+
+void game_physics_free(game_physics *physics)
+{
+    if (!physics) {
+        return;
+    }
+    b2DestroyWorld(physics->simulation);
+    b2DynamicTree_Destroy(&physics->sweeps);
+    afree(physics->bodies);
+    afree(physics->previous);
+    afree(physics->current);
+    afree(physics->contacts);
+    free(physics);
+}
+
+void game_physics_reset(game_physics *physics)
+{
+    b2DestroyWorld(physics->simulation);
+    b2DynamicTree_Destroy(&physics->sweeps);
+    aclear(physics->bodies);
+    aclear(physics->previous);
+    aclear(physics->current);
+    physics->error[0] = 0;
+    create_world(physics);
+}
+
+const char *game_physics_error(const game_physics *physics)
+{
+    return physics->error;
+}
+
+bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out)
+{
+    assert(out && isfinite(alpha));
+    if (!entity.slot || entity.slot >= (unsigned)acount(physics->bodies) ||
+        !ecs_entity_is_alive(physics->world, entity) ||
+        game_entities_is_retiring(physics->entities, entity)) {
+        return false;
+    }
+    const physics_body *body = &physics->bodies[entity.slot];
+    if (!body->body.index1 || !same_entity(body->entity, entity)) {
+        return false;
+    }
+    const GameTransform *authored = GAME_GameTransform_get_const(physics->world, entity);
+    if (!authored) {
+        return false;
+    }
+    if (authored->x != body->end.p.x || authored->y != body->end.p.y) {
+        *out = *authored;
+        return true;
+    }
+    b2Vec2 position = b2Lerp(body->start.p, body->end.p, fminf(1, fmaxf(0, alpha)));
+    *out = (GameTransform){ position.x, position.y };
+    return true;
+}
+
+static bool valid(
+    const GameTransform *position,
+    float angle,
+    const GameCollider *shape,
+    const GameBody *body,
+    CF_V2 velocity
+)
+{
+    /* Match Box2D's large-coordinate bound before creating any proxies. */
+    float maximum = 100000 * GAME_UNITS_PER_METER;
+    float extent = shape->shape == GAME_COLLIDER_CIRCLE
+                     ? shape->radius
+                     : fmaxf(shape->width, shape->height);
+    return isfinite(position->x) && isfinite(position->y) && isfinite(angle) &&
+           fabsf(position->x) + extent < maximum &&
+           fabsf(position->y) + extent < maximum && isfinite(velocity.x) &&
+           isfinite(velocity.y) && body->type >= GAME_BODY_STATIC &&
+           body->type <= GAME_BODY_KINEMATIC &&
+           ((shape->shape == GAME_COLLIDER_CIRCLE && isfinite(shape->radius) &&
+             shape->radius >= 0) ||
+            (shape->shape == GAME_COLLIDER_BOX && isfinite(shape->width) &&
+             shape->width > 0 && isfinite(shape->height) && shape->height > 0));
+}
+
+static bool same_configuration(const physics_body *body, const GameCollider *shape, const GameBody *settings)
+{
+    const GameCollider *old = &body->collider;
+    return body->settings.type == settings->type &&
+           body->settings.continuous == settings->continuous &&
+           old->shape == shape->shape && old->radius == shape->radius &&
+           old->width == shape->width && old->height == shape->height &&
+           old->category == shape->category && old->mask == shape->mask &&
+           old->sensor == shape->sensor && old->ignore_entity == shape->ignore_entity;
+}
+
+static void remove_body(game_physics *physics, physics_body *body)
+{
+    b2DestroyBody(body->body);
+    b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
+    *body = (physics_body){ 0 };
+}
+
+static b2AABB bounds(const physics_body *body, b2Transform transform)
+{
+    b2Vec2 p = b2TransformPoint(transform, body->geometry.points[0]);
+    b2AABB result = { p, p };
+    for (int i = 1; i < body->geometry.count; i++) {
+        p = b2TransformPoint(transform, body->geometry.points[i]);
+        result.lowerBound = b2Min(result.lowerBound, p);
+        result.upperBound = b2Max(result.upperBound, p);
+    }
+    b2Vec2 radius = { body->geometry.radius, body->geometry.radius };
+    result.lowerBound = b2Sub(result.lowerBound, radius);
+    result.upperBound = b2Add(result.upperBound, radius);
+    return result;
+}
+
+static b2AABB swept_bounds(const physics_body *body)
+{
+    b2AABB start = bounds(body, body->start), end = bounds(body, body->end);
+    return (b2AABB){ b2Min(start.lowerBound, end.lowerBound),
+                     b2Max(start.upperBound, end.upperBound) };
+}
+
+static void create_body(game_physics *physics, physics_body *body, b2Vec2 position, float angle)
+{
+    b2BodyDef def = b2DefaultBodyDef();
+    switch (body->settings.type) {
+        case GAME_BODY_STATIC: def.type = b2_staticBody; break;
+        case GAME_BODY_DYNAMIC: def.type = b2_dynamicBody; break;
+        case GAME_BODY_KINEMATIC: def.type = b2_kinematicBody; break;
+    }
+    def.position = position;
+    def.rotation = b2MakeRot(angle);
+    def.fixedRotation = true;
+    /* Box2D excludes bullet targets from CCD, so static/kinematic colliders
+     * must stay eligible even when their authored Continuous flag is set. */
+    def.isBullet = body->settings.type == GAME_BODY_DYNAMIC &&
+                   body->settings.continuous && !body->collider.sensor;
+    body->body = b2CreateBody(physics->simulation, &def);
+    b2ShapeDef shape = b2DefaultShapeDef();
+    shape.userData = (void *)(uintptr_t)body->entity.slot;
+    shape.material.friction = 0;
+    shape.material.restitution = 0;
+    shape.density = 1.0f / (GAME_UNITS_PER_METER * GAME_UNITS_PER_METER);
+    shape.filter.categoryBits = body->collider.category;
+    shape.filter.maskBits = body->collider.mask;
+    shape.isSensor = body->collider.sensor;
+    shape.enableSensorEvents = true;
+    shape.enableContactEvents = true;
+    if (body->collider.shape == GAME_COLLIDER_CIRCLE) {
+        b2Circle circle = { .radius = body->collider.radius };
+        body->shape = b2CreateCircleShape(body->body, &shape, &circle);
+        body->geometry = b2MakeProxy(&circle.center, 1, circle.radius);
+    } else {
+        b2Polygon box = b2MakeBox(body->collider.width * .5f, body->collider.height * .5f);
+        body->shape = b2CreatePolygonShape(body->body, &shape, &box);
+        body->geometry = b2MakeProxy(box.vertices, box.count, box.radius);
+    }
+    body->start = body->end = b2Body_GetTransform(body->body);
+    body->tree_bounds = bounds(body, body->start);
+    body->proxy = b2DynamicTree_CreateProxy(
+        &physics->sweeps,
+        body->tree_bounds,
+        body->collider.category,
+        body->entity.slot
+    );
+}
+
+static int sync_entity(game_physics *physics, ecs_entity entity)
+{
+    ecs_world *world = physics->world;
+    GameTransform position = *GAME_GameTransform_get_const(world, entity);
+    GameCollider collider = *GAME_GameCollider_get_const(world, entity);
+    const GameBody *authored = GAME_GameBody_get_const(world, entity);
+    GameBody settings = authored ? *authored : (GameBody){ .type = GAME_BODY_STATIC };
+    const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
+    float angle = orientation ? orientation->radians : 0;
+    const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
+    CF_V2 movement = velocity ? *velocity : (CF_V2){ 0 };
+    if (!valid(&position, angle, &collider, &settings, movement)) {
+        snprintf(
+            physics->error,
+            sizeof physics->error,
+            "Invalid Body, Collider, Transform or Velocity on entity %u.",
+            entity.slot
+        );
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (entity.slot >= (unsigned)acount(physics->bodies)) {
+        int previous = acount(physics->bodies);
+        asetlen(physics->bodies, (int)entity.slot + 1);
+        memset(
+            physics->bodies + previous,
+            0,
+            (size_t)(acount(physics->bodies) - previous) * sizeof *physics->bodies
+        );
+    }
+    physics_body *body = &physics->bodies[entity.slot];
+    if (body->body.index1 && (!same_entity(body->entity, entity) ||
+                              !same_configuration(body, &collider, &settings))) {
+        remove_body(physics, body);
+    }
+    body->entity = entity;
+    body->collider = collider;
+    body->settings = settings;
+    body->seen = true;
+    b2Vec2 point = { position.x, position.y };
+    if (!body->body.index1) {
+        create_body(physics, body, point, angle);
+    } else if (position.x != body->end.p.x || position.y != body->end.p.y || angle != body->angle) {
+        b2Body_SetTransform(body->body, point, b2MakeRot(angle));
+    }
+    body->angle = angle;
+    body->stop_fraction = 1;
+    b2Body_SetLinearVelocity(body->body, (b2Vec2){ movement.x, movement.y });
+    body->start = b2Body_GetTransform(body->body);
+    return FLOW_OK;
+}
+
+static int synchronize(game_physics *physics)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics->bodies[i].seen = false;
+    }
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameCollider.id };
+    int result = FLOW_OK;
+    if (ecs_world_component(physics->world, required[0]) &&
+        ecs_world_component(physics->world, required[1])) {
+        ecs_query query;
+        result = ecs_query_begin(physics->world, &query, required, 2);
+        if (result != ECS_OK) {
+            return result;
+        }
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (game_entities_is_retiring(physics->entities, entity)) {
+                continue;
+            }
+            result = sync_entity(physics, entity);
+            if (result < 0) {
+                break;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (body->body.index1 && !body->seen) {
+            remove_body(physics, body);
+        }
+    }
+    return result;
+}
+
+static void add_pair(game_physics *physics, const physics_body *a, const physics_body *b)
+{
+    uint64_t first = ecs_entity_to_u64(a->entity),
+             second = ecs_entity_to_u64(b->entity);
+    apush(
+        physics->current,
+        ((contact_pair){ first < second ? first : second, first < second ? second : first })
+    );
+}
+
+static bool continuous_sensor(const physics_body *body)
+{
+    return body->settings.continuous && body->collider.sensor;
+}
+
+static float distance(const physics_body *a, b2Transform first, const physics_body *b, b2Transform second)
+{
+    b2DistanceInput input = { .proxyA = a->geometry,
+                              .proxyB = b->geometry,
+                              .transformA = first,
+                              .transformB = second,
+                              .useRadii = true };
+    b2SimplexCache cache = { 0 };
+    return b2ShapeDistance(&input, &cache, NULL, 0).distance;
+}
+
+static bool read_geometry(ecs_world *world, ecs_entity entity, physics_body *body)
+{
+    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+    const GameCollider *collider = GAME_GameCollider_get_const(world, entity);
+    const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
+    float angle = orientation ? orientation->radians : 0;
+    if (!position || !collider ||
+        !valid(position, angle, collider, &(GameBody){ 0 }, (CF_V2){ 0 })) {
+        return false;
+    }
+    body->entity = entity;
+    body->collider = *collider;
+    body->end = (b2Transform){ { position->x, position->y }, b2MakeRot(angle) };
+    if (collider->shape == GAME_COLLIDER_CIRCLE) {
+        b2Vec2 center = { 0 };
+        body->geometry = b2MakeProxy(&center, 1, collider->radius);
+        return true;
+    }
+    b2Polygon box = b2MakeBox(collider->width * .5f, collider->height * .5f);
+    body->geometry = b2MakeProxy(box.vertices, box.count, box.radius);
+    return true;
+}
+
+int game_physics_contact_entities(
+    ecs_world *world,
+    game_entities *entities,
+    ecs_entity entity,
+    unsigned categories,
+    ecs_entity **out
+)
+{
+    aclear(*out);
+    if (!categories || !ecs_entity_is_alive(world, entity) ||
+        game_entities_is_retiring(entities, entity)) {
+        return FLOW_OK;
+    }
+    physics_body source = { 0 };
+    if (!read_geometry(world, entity, &source)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameCollider.id };
+    ecs_query query;
+    int result = ecs_query_begin(world, &query, required, 2);
+    if (result != ECS_OK) {
+        return result;
+    }
+    ecs_entity candidate;
+    while (ecs_query_next(&query, &candidate)) {
+        if (same_entity(entity, candidate) ||
+            game_entities_is_retiring(entities, candidate)) {
+            continue;
+        }
+        const GameCollider *collider = GAME_GameCollider_get_const(world, candidate);
+        if (!(collider->category & categories)) {
+            continue;
+        }
+        physics_body target = { 0 };
+        if (!read_geometry(world, candidate, &target)) {
+            result = FLOW_ERR_ARGUMENT;
+            break;
+        }
+        if (!eligible(&source, &target)) {
+            continue;
+        }
+        /* Match Box2D's speculative solid contact distance. The query is rare
+         * and reads ECS directly to include unsynchronized spawns/teleports. */
+        float tolerance = source.collider.sensor || target.collider.sensor
+                            ? 0
+                            : .02f * GAME_UNITS_PER_METER;
+        if (distance(&source, source.end, &target, target.end) <= tolerance) {
+            apush(*out, candidate);
+        }
+    }
+    ecs_query_end(&query);
+    if (result < 0) {
+        aclear(*out);
+    }
+    return result;
+}
+
+static const char *contact_entities(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *a,
+    pin_value *out
+)
+{
+    ecs_world *world = eval_context_service(ctx, "ecs.world");
+    game_entities *entities = eval_context_service(ctx, "game.entities");
+    if (!world || !entities) {
+        return "Get Contact Entities requires a game world";
+    }
+    ecs_entity *handles = NULL;
+    int result = game_physics_contact_entities(
+        world,
+        entities,
+        ecs_entity_from_u64(inputs[0].u64),
+        inputs[1].u,
+        &handles
+    );
+    if (result < 0) {
+        afree(handles);
+        return "Get Contact Entities requires valid Collider and Transform "
+               "components";
+    }
+    pin_array *array = arena_alloc(a, sizeof *array);
+    *array = (pin_array){ .element_type = PIN_HANDLE,
+                          .type_name = "ecs.entity",
+                          .count = acount(handles),
+                          .capacity = acount(handles) };
+    if (array->count) {
+        array->items = arena_alloc(a, (size_t)array->count * sizeof *array->items);
+        for (int i = 0; i < array->count; i++) {
+            array->items[i] = (pin_value){ .type = PIN_HANDLE,
+                                           .type_name = "ecs.entity",
+                                           .u64 = ecs_entity_to_u64(handles[i]) };
+        }
+    }
+    afree(handles);
+    *out = (pin_value){ .type = PIN_HANDLE,
+                        .type_name = "ecs.entity",
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = array };
+    return NULL;
+}
+
+static pin_spec CONTACT_IN[] = {
+    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Categories", .type = PIN_U32, .type_name = "unsigned int" },
+};
+static pin_spec CONTACT_OUT[] = {
+    { .name = "Entities", .type = PIN_HANDLE, .type_name = "ecs.entity", .container = PIN_CONTAINER_ARRAY },
+};
+static const node_access CONTACT_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+node_desc GAME_NODE_GetContactEntities = {
+    .name = "Get Contact Entities",
+    .input_count = 2,
+    .inputs = CONTACT_IN,
+    .output_count = 1,
+    .outputs = CONTACT_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = contact_entities,
+    .category = "Physics",
+    .keywords = "contact overlap touching collider entities query categories",
+    .access = &CONTACT_ACCESS,
+};
+
+typedef struct
+{
+    game_physics *physics;
+    physics_body *body, *nearest;
+    float fraction;
+} pair_query;
+
+static bool overlap_candidate(int, uint64_t slot, void *user)
+{
+    pair_query *query = user;
+    physics_body *a = query->body, *b = &query->physics->bodies[slot];
+    if (slot <= a->entity.slot || continuous_sensor(b) || !eligible(a, b)) {
+        return true;
+    }
+    if (distance(a, a->end, b, b->end) == 0) {
+        add_pair(query->physics, a, b);
+    }
+    return true;
+}
+
+static bool sweep_candidate(int, uint64_t slot, void *user)
+{
+    pair_query *query = user;
+    physics_body *a = query->body, *b = &query->physics->bodies[slot];
+    if (!eligible(a, b)) {
+        return true;
+    }
+    float fraction = 0;
+    if (distance(a, a->start, b, b->start) > 0) {
+        b2ShapeCastPairInput input = { .proxyA = b->geometry,
+                                       .proxyB = a->geometry,
+                                       .transformA = b->start,
+                                       .transformB = a->start,
+                                       .translationB = b2Sub(
+                                           b2Sub(a->end.p, a->start.p),
+                                           b2Sub(b->end.p, b->start.p)
+                                       ),
+                                       .maxFraction = query->fraction };
+        b2CastOutput cast = b2ShapeCast(&input);
+        if (!cast.hit) {
+            return true;
+        }
+        fraction = cast.fraction;
+    }
+    if (fraction < query->fraction ||
+        (fraction == query->fraction &&
+         (!query->nearest || ecs_entity_to_u64(b->entity) <
+                                 ecs_entity_to_u64(query->nearest->entity)))) {
+        query->fraction = fraction;
+        query->nearest = b;
+    }
+    return true;
+}
+
+static void collect_pairs(game_physics *physics, bool solved)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1) {
+            continue;
+        }
+        pair_query query = { .physics = physics, .body = body, .fraction = 1 };
+        bool swept = continuous_sensor(body);
+        b2DynamicTree_Query(
+            &physics->sweeps,
+            swept ? swept_bounds(body) : bounds(body, body->end),
+            body->collider.mask,
+            swept ? sweep_candidate : overlap_candidate,
+            &query
+        );
+        if (query.nearest) {
+            add_pair(physics, body, query.nearest);
+            body->stop_fraction = query.fraction;
+        }
+        if (!solved || swept || body->collider.sensor) {
+            continue;
+        }
+        /* Solved solid contacts can have a small separation within Box2D's
+         * contact tolerance. Keep those pairs active instead of retriggering. */
+        int capacity = b2Shape_GetContactCapacity(body->shape);
+        asetlen(physics->contacts, capacity);
+        int count = b2Shape_GetContactData(body->shape, physics->contacts, capacity);
+        for (int j = 0; j < count; j++) {
+            b2ContactData contact = physics->contacts[j];
+            physics_body *a = shape_body(physics, contact.shapeIdA),
+                         *b = shape_body(physics, contact.shapeIdB);
+            if (eligible(a, b) && !continuous_sensor(a) && !continuous_sensor(b)) {
+                add_pair(physics, a, b);
+            }
+        }
+    }
+}
+
+static int compare_pairs(const void *left, const void *right)
+{
+    const contact_pair *a = left, *b = right;
+    if (a->first != b->first) {
+        return (a->first > b->first) - (a->first < b->first);
+    }
+    return (a->second > b->second) - (a->second < b->second);
+}
+
+static int queue_contact(game_physics *physics, uint64_t target, uint64_t other)
+{
+    pin_value value = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = other };
+    return game_entities_request_event(
+        physics->entities,
+        ecs_entity_from_u64(target),
+        "Contact Begin",
+        (flow_inputs){ .values = &value, .count = 1 }
+    );
+}
+
+static int dispatch_pairs(game_physics *physics)
+{
+    if (acount(physics->current) > 1) {
+        qsort(
+            physics->current,
+            (size_t)acount(physics->current),
+            sizeof *physics->current,
+            compare_pairs
+        );
+    }
+    int count = 0, result = FLOW_OK;
+    for (int i = 0; i < acount(physics->current); i++) {
+        contact_pair pair = physics->current[i];
+        if (count && !compare_pairs(&pair, &physics->current[count - 1])) {
+            continue;
+        }
+        physics->current[count++] = pair;
+        if (acount(physics->previous) &&
+            bsearch(&pair, physics->previous, (size_t)acount(physics->previous), sizeof pair, compare_pairs)) {
+            continue;
+        }
+        int first = queue_contact(physics, pair.first, pair.second),
+            second = queue_contact(physics, pair.second, pair.first);
+        if (first < 0 || second < 0) {
+            result = first < 0 ? first : second;
+        }
+    }
+    asetlen(physics->current, count);
+    contact_pair *previous = physics->previous;
+    physics->previous = physics->current;
+    physics->current = previous;
+    aclear(physics->current);
+    return result;
+}
+
+int game_physics_tick(game_physics *physics, float delta_seconds)
+{
+    physics->error[0] = 0;
+    if (!isfinite(delta_seconds) || delta_seconds < 0) {
+        snprintf(physics->error, sizeof physics->error, "Physics delta must be finite and nonnegative.");
+        return FLOW_ERR_ARGUMENT;
+    }
+    int result = synchronize(physics);
+    if (result < 0) {
+        return result;
+    }
+    b2World_Step(physics->simulation, delta_seconds, 4);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (body->body.index1) {
+            body->end = b2Body_GetTransform(body->body);
+            b2AABB next = swept_bounds(body);
+            if (memcmp(&next, &body->tree_bounds, sizeof next)) {
+                b2DynamicTree_MoveProxy(&physics->sweeps, body->proxy, next);
+                body->tree_bounds = next;
+            }
+        }
+    }
+    collect_pairs(physics, delta_seconds > 0);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1) {
+            continue;
+        }
+        if (body->stop_fraction < 1) {
+            body->end.p = b2Lerp(body->start.p, body->end.p, body->stop_fraction);
+            b2Body_SetTransform(body->body, body->end.p, body->end.q);
+        }
+        *GAME_GameTransform_get(physics->world, body->entity) = (GameTransform){
+            body->end.p.x,
+            body->end.p.y
+        };
+        GameVelocity *velocity = GAME_GameVelocity_get(physics->world, body->entity);
+        if (velocity) {
+            b2Vec2 solved = b2Body_GetLinearVelocity(body->body);
+            *velocity = (GameVelocity){ solved.x, solved.y };
+        }
+    }
+    return dispatch_pairs(physics);
+}

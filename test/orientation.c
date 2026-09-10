@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -30,7 +31,10 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.json", name);
+    const char *root = !strcmp(name, "InputBehavior")
+                         ? "test/fixtures/content/behaviors"
+                         : "content/behaviors";
+    snprintf(path, sizeof path, "%s/%s.json", root, name);
     char *text = read_content(path);
     behavior_asset *asset = behavior_asset_load_json(text);
     if (asset) {
@@ -61,20 +65,14 @@ static void check_heading(ecs_world *world, ecs_entity entity, float expected)
     assert(fabsf(heading->radians - expected) < 0.0001f);
 }
 
-static void tick(engine *runtime, game_prototype_preview *preview, double time)
-{
-    int result = preview ? game_prototype_preview_tick(preview, time)
-                         : engine_frame(runtime, time);
-    assert(result >= 0);
-}
-
 static void headings(bool isolated, bool projectile)
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     const char *name = projectile ? "ProjectileBehavior" : "InputBehavior";
     char *text = read_content(
-        projectile ? "content/prototypes/Projectile.json" : "content/prototypes/Player.json"
+        projectile ? "test/fixtures/content/prototypes/Projectile.json"
+                   : "test/fixtures/content/prototypes/Player.json"
     );
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
@@ -127,20 +125,23 @@ static void headings(bool isolated, bool projectile)
                                        ? game_prototype_preview_behaviors(preview)
                                        : live->behaviors;
     check_heading(world, entity, 0);
-    tick(runtime, preview, 0);
+    simulation_fixture clock = simulation_fixture_new(runtime, preview);
+    simulation_advance(&clock, 0);
     const CF_V2 directions[] = { { 1, 1 },  { -1, 1 }, { -1, -1 },
                                  { 1, -1 }, { 0, 1 },  { 0, -1 },
                                  { -1, 0 }, { 1, 0 },  { -3, 4 } };
-    double time = 0;
     for (int i = 0; i < (int)(sizeof directions / sizeof directions[0]); i++) {
         CF_V2 direction = directions[i];
-        float expected = atan2f(-direction.y, direction.x);
+        float expected = atan2f(direction.y, direction.x);
         for (int idle = 0; idle < 2; idle++) {
             CF_V2 input = idle ? (CF_V2){ 0 } : direction;
+            GameTransform before = *GAME_GameTransform_get_const(world, entity);
             if (projectile) {
                 GameProjectile *shot = GAME_GameProjectile_get(world, entity);
-                shot->direction_x = input.x;
-                shot->direction_y = input.y;
+                *GAME_GameVelocity_get(world, entity) = (GameVelocity){
+                    input.x * shot->speed,
+                    input.y * shot->speed
+                };
             } else {
                 pin_value value = { .type = PIN_STRUCT,
                                     .type_name = "CF_V2",
@@ -150,9 +151,17 @@ static void headings(bool isolated, bool projectile)
                     0
                 );
             }
-            time += 0.01;
-            tick(runtime, preview, time);
+            simulation_step(&clock);
             check_heading(world, entity, expected);
+            if (projectile && !idle) {
+                const GameTransform *after = GAME_GameTransform_get_const(world, entity);
+                float dx = after->x - before.x, dy = after->y - before.y;
+                float distance = hypotf(dx, dy);
+                assert(distance > 0);
+                const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+                assert(fabsf(dx / distance - cosf(heading->radians)) < .0001f);
+                assert(fabsf(dy / distance - sinf(heading->radians)) < .0001f);
+            }
         }
     }
     if (preview) {

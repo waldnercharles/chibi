@@ -41,7 +41,7 @@ static int make_editor_save_path(char *path, size_t path_size)
     }
     return 0;
 #else
-    static const char template[] = "cblueprints-editor-XXXXXX";
+    static const char template[] = "chibi-editor-XXXXXX";
     if (path_size < sizeof template) {
         return -1;
     }
@@ -83,11 +83,11 @@ static void search_popup_insert(editor *e, const char *query)
 
 static void check_search_catalog()
 {
-    behavior_asset *bp = behavior_asset_new("Search catalog");
-    graph *function = behavior_asset_add_function(bp, "ComputeVelocity", 1);
-    graph *macro = behavior_asset_add_macro(bp, "RepeatStep");
+    behavior_asset *asset = behavior_asset_new("Search catalog");
+    graph *function = behavior_asset_add_function(asset, "ComputeVelocity", 1);
+    graph *macro = behavior_asset_add_macro(asset, "RepeatStep");
     behavior_variable *variable = behavior_asset_add_variable(
-        bp,
+        asset,
         "TrailBudget",
         PIN_F64,
         NULL,
@@ -101,7 +101,7 @@ static void check_search_catalog()
     behavior_asset *event_definition = behavior_asset_new("Impact");
     event_definition->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     behavior_asset_add_variable(event_definition, "Strength", PIN_F64, NULL, PIN_CONTAINER_SINGLE, NULL, NULL);
-    editor *e = editor_new(bp);
+    editor *e = editor_new(asset);
     const behavior_asset *assets[] = { library, event_definition };
     const char *prototypes[] = { "TrailParticle" };
     editor_set_asset_catalog(e, assets, 2);
@@ -153,26 +153,26 @@ static void check_search_catalog()
         }
         afree(matches);
     }
-    node *source = graph_add_node(bp->graph, &g_editor_float_desc);
-    node *sink = graph_add_node(bp->graph, &g_editor_float_sink_desc);
+    node *source = graph_add_node(asset->graph, &g_editor_float_desc);
+    node *sink = graph_add_node(asset->graph, &g_editor_float_sink_desc);
     ImGuiIO *io = ImGui_GetIO();
     io->DisplaySize = (ImVec2){ 800, 600 };
     io->DeltaTime = 1.0f / 60.0f;
     ImFontAtlas_Build(io->Fonts);
     ImGui_NewFrame();
-    ImVec2 disconnected = ed_node_dimensions(e, bp->graph, sink);
-    graph_connect(bp->graph, source, 0, sink, 0);
-    ImVec2 connected = ed_node_dimensions(e, bp->graph, sink);
+    ImVec2 disconnected = ed_node_dimensions(e, asset->graph, sink);
+    graph_connect(asset->graph, source, 0, sink, 0);
+    ImVec2 connected = ed_node_dimensions(e, asset->graph, sink);
     test_check(
         disconnected.x == connected.x && disconnected.y == connected.y,
         "connecting an input preserves node dimensions and pin locations"
     );
     ImGui_EndFrame();
     for (int i = 0; i < 9; i++) {
-        int count = acount(bp->graph->nodes);
+        int count = acount(asset->graph->nodes);
         search_popup_insert(e, queries[i]);
-        node *inserted = acount(bp->graph->nodes) == count + 1
-                           ? bp->graph->nodes[count]
+        node *inserted = acount(asset->graph->nodes) == count + 1
+                           ? asset->graph->nodes[count]
                            : NULL;
         test_check(
             inserted && expected[i] && inserted->desc == expected[i]->desc &&
@@ -181,7 +181,7 @@ static void check_search_catalog()
             "inserts the selected symbol once"
         );
     }
-    node *event = graph_add_node(bp->graph, &NODE_Event);
+    node *event = graph_add_node(asset->graph, &NODE_Event);
     ed_snapshot_before(e);
     e->spawn_link_pending = true;
     e->spawn_link_pin = (ed_pin_view){ event, ED_PIN_OUTPUT, 0, { 0, 0 } };
@@ -192,16 +192,16 @@ static void check_search_catalog()
     }
     test_check(!has_pure, "exec pin search excludes a pure function with no exec input");
     afree(pure_matches);
-    int edge_count = acount(bp->graph->edges);
+    int edge_count = acount(asset->graph->edges);
     search_popup_insert(e, "Repeat Step");
-    test_check(acount(bp->graph->edges) == edge_count + 1, "pin-drag popup searches macros and connects the compatible execution input");
+    test_check(acount(asset->graph->edges) == edge_count + 1, "pin-drag popup searches macros and connects the compatible execution input");
     const editor_event_param input_params[] = { { "Move", PIN_F64, NULL } };
     const editor_event_signature host_events[] = { { "Input", input_params, 1 } };
     editor_set_event_catalog(e, host_events, 1);
-    int host_count = acount(bp->graph->nodes);
+    int host_count = acount(asset->graph->nodes);
     search_popup_insert(e, "On Input");
-    node *input = acount(bp->graph->nodes) == host_count + 1
-                    ? bp->graph->nodes[host_count]
+    node *input = acount(asset->graph->nodes) == host_count + 1
+                    ? asset->graph->nodes[host_count]
                     : NULL;
     test_check(
         input && input->desc == &NODE_Event && input->reference_name &&
@@ -212,7 +212,7 @@ static void check_search_catalog()
     behavior_asset *shader_library = behavior_asset_new("ShaderMath");
     shader_library->domain = BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     graph *pulse = behavior_asset_add_function(shader_library, "Pulse", 1);
-    bp->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
     const behavior_asset *shader_assets[] = { shader_library };
     editor_set_asset_catalog(e, shader_assets, 1);
     ed_search_match *shader_matches = ed_search_matches(e, "ShaderMath / Pulse");
@@ -285,14 +285,14 @@ void run_editor_command_checks(void)
         ImGui_DestroyContext(context);
         return;
     }
-    behavior_asset *bp = behavior_asset_new("Editor command test");
-    node *source = graph_add_node(bp->graph, &g_editor_float_desc);
-    node *sink = graph_add_node(bp->graph, &g_editor_int_desc);
-    node *float_sink = graph_add_node(bp->graph, &g_editor_float_sink_desc);
-    editor *e = editor_new(bp);
+    behavior_asset *asset = behavior_asset_new("Editor command test");
+    node *source = graph_add_node(asset->graph, &g_editor_float_desc);
+    node *sink = graph_add_node(asset->graph, &g_editor_int_desc);
+    node *float_sink = graph_add_node(asset->graph, &g_editor_float_sink_desc);
+    editor *e = editor_new(asset);
     test_check(e != NULL, "editor command seam constructs a headless editor");
     if (!e) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         remove(save_path);
         ImGui_DestroyContext(context);
         return;
@@ -308,7 +308,7 @@ void run_editor_command_checks(void)
     };
     test_check(editor_command_apply(e, invalid_connect) == -1, "an invalid connection is rejected by the command seam");
     editor_query_state(e, &state);
-    test_check(!state.dirty && acount(bp->graph->edges) == 0, "a rejected connection leaves no dirty or history edit");
+    test_check(!state.dirty && acount(asset->graph->edges) == 0, "a rejected connection leaves no dirty or history edit");
     unsigned revision = editor_edit_revision(e);
     editor_undo(e);
     editor_tick(e, 1.0);
@@ -326,7 +326,7 @@ void run_editor_command_checks(void)
     );
     test_check(
         editor_edit_revision(e) == revision_before_invalid_spawn &&
-            acount(bp->graph->nodes) == 3,
+            acount(asset->graph->nodes) == 3,
         "a rejected spawn leaves no undo revision or node"
     );
     pin_value float_value = { .type = PIN_F32, .f = 1.0f };
@@ -374,7 +374,7 @@ void run_editor_command_checks(void)
         .data.connect = { source->id, 0, float_sink->id, 0 },
     };
     test_check(editor_command_apply(e, valid_connect) == 0, "a valid typed connection uses the editor mutation path");
-    test_check(acount(bp->graph->edges) == 1, "valid command connections update graph topology");
+    test_check(acount(asset->graph->edges) == 1, "valid command connections update graph topology");
 
     editor_command create_graph = {
         .kind = EDITOR_COMMAND_CREATE_GRAPH,
@@ -400,7 +400,7 @@ void run_editor_command_checks(void)
         "a rejected graph creation leaves no dirty or history edit"
     );
     test_check(editor_command_apply(e, create_graph) == 0, "the command seam creates a graph");
-    graph *worker = behavior_asset_find_graph_by_name(bp, "Worker");
+    graph *worker = behavior_asset_find_graph_by_name(asset, "Worker");
     test_check(worker != NULL, "created graphs remain discoverable by name");
     test_check(
         worker && acount(worker->nodes) == 2 &&
@@ -440,9 +440,9 @@ void run_editor_command_checks(void)
     test_check(editor_command_apply(e, rename_graph) == 0, "the command seam renames a graph");
     /* The local seam fixtures are not registry descriptors, so remove them
      * before exercising the file round trip. */
-    graph_remove_node(bp->graph, source);
-    graph_remove_node(bp->graph, sink);
-    graph_remove_node(bp->graph, float_sink);
+    graph_remove_node(asset->graph, source);
+    graph_remove_node(asset->graph, sink);
+    graph_remove_node(asset->graph, float_sink);
     editor_query_state(e, &state);
     test_check(state.dirty, "authored graph changes are observable as dirty");
     test_check(

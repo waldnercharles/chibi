@@ -1,0 +1,210 @@
+{
+  "version": 3,
+  "name": "DirectionMath",
+  "domain": "library",
+  "id_counter": 100,
+  "description": "Shared direction calculations.",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "Events",
+      "nodes": [],
+      "edges": [],
+      "comment_boxes": [],
+      "breakpoints_enabled": true
+    },
+    {
+      "id": 1,
+      "kind": "function",
+      "name": "Direction Orientation",
+      "entry_id": 2,
+      "return_id": 3,
+      "call_depth_limit": 64,
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 2,
+          "type": "Function Entry",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 4,
+              "name": "X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float"
+            },
+            {
+              "id": 5,
+              "name": "Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0,
+              "type_name": "float"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "Return",
+          "x": 780,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 6,
+              "name": "Orientation",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameOrientation"
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 75,
+          "type": "Atan2",
+          "x": 260,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 72,
+              "name": "Y",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 73,
+              "name": "X",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 74,
+              "name": "Result",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ]
+        },
+        {
+          "id": 78,
+          "type": "Make_GameOrientation",
+          "x": 520,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 76,
+              "name": "radians",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 77,
+              "name": "GameOrientation",
+              "type": 15,
+              "type_name": "GameOrientation",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 2,
+          "from_pin": 4,
+          "to": 75,
+          "to_pin": 73,
+          "kind": "data"
+        },
+        {
+          "from": 2,
+          "from_pin": 5,
+          "to": 75,
+          "to_pin": 72,
+          "kind": "data"
+        },
+        {
+          "from": 75,
+          "from_pin": 74,
+          "to": 78,
+          "to_pin": 76,
+          "kind": "data"
+        },
+        {
+          "from": 78,
+          "from_pin": 77,
+          "to": 3,
+          "to_pin": 6,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

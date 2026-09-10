@@ -37,12 +37,11 @@ bool behavior_library_node_allowed(behavior_domain domain, const node_desc *desc
         return desc == &NODE_FunctionEntry || desc == &NODE_Return ||
                desc == &NODE_CallPureFunction ||
                (desc->category && !strncmp(desc->category, "Shader", 6) &&
-                strcmp(desc->name, "Shader Material Output") &&
+                strcmp(desc->name, "Shader Surface Output") &&
                 strcmp(desc->name, "Shader Shape Output") &&
                 strcmp(desc->name, "Shader Parameter"));
     }
-    if (desc->latent ||
-        (desc->access && (desc->access->flags & NODE_EFFECT_ENTITY_SCOPED)) ||
+    if ((desc->access && (desc->access->flags & NODE_EFFECT_ENTITY_SCOPED)) ||
         desc == &NODE_Event || desc == &NODE_GetVariable ||
         desc == &NODE_SetVariable || desc == &NODE_Self || desc == &NODE_CallMacro) {
         return false;

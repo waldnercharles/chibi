@@ -1,7 +1,9 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/scene_authoring.h"
+#include "graph/model/registry.h"
 #include "runtime/generated.h"
+#include "support/array.h"
 
 #include <assert.h>
 #include <cute_defines.h>
@@ -94,6 +96,115 @@ static void first_attachment_redo_after_prototype_gain(app_scene_authoring *scen
     puts("instance retention PASS: Undo first attachment inherits later prototype additions; Redo restores authored values and later manual detachment remains distinct");
 }
 
+static ecs_entity spawn_registered_child(game_live_world *live, ecs_entity owner)
+{
+    assert(
+        game_behavior_dispatch(live->behaviors, owner, "SpawnRegistered", (flow_inputs){ 0 }, NULL) == 1
+    );
+    assert(game_entities_flush_initializers(live->entities, 0) == 0);
+    ecs_entity *spawned = NULL;
+    game_entities_copy_live(live->entities, &spawned);
+    assert(acount(spawned) > 0);
+    ecs_entity entity = spawned[acount(spawned) - 1];
+    afree(spawned);
+    return entity;
+}
+
+static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world *live, ecs_world *world)
+{
+    behavior_asset *asset = behavior_asset_new("PrototypeRefreshSpawner");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    graph *g = asset->graph;
+    node *spawn = graph_add_node(g, registry_node_by_name("Spawn Prototype"));
+    assert(
+        spawn &&
+        graph_set_pin_default(g, spawn, 0, 1, &(pin_value){ .type = PIN_NAME, .str = "RuntimeRefreshChild" }) ==
+            0
+    );
+    const char *events[] = { "Begin", "SpawnRegistered" };
+    for (int i = 0; i < 2; i++) {
+        node *event = graph_add_node(g, registry_node_by_name("Event"));
+        assert(event && graph_set_event_name(g, event, events[i]) == 0);
+        assert(graph_connect_exec(g, event, 0, spawn, 0, 0) == 0);
+    }
+    assert(
+        game_live_add_definition(live, game_live_definition_new("PrototypeRefreshSpawner", asset)) == 0
+    );
+    behavior_asset *child_behavior = behavior_asset_new("RefreshedChild");
+    assert(behavior_asset_set_owner_type(child_behavior, "ecs.entity") == 0);
+    assert(
+        game_live_add_definition(live, game_live_definition_new("RefreshedChild", child_behavior)) == 0
+    );
+    assert(
+        app_scene_authoring_register_prototype(scene, "{\"name\":\"RuntimeRefreshChild\",\"components\":{\"GameHealth\":{\"current\":73,\"maximum\":100}}}", NULL) ==
+        0
+    );
+    assert(
+        app_scene_authoring_register_prototype(scene, "{\"name\":\"RuntimeRefreshSpawner\",\"components\":{},\"behaviors\":[\"PrototypeRefreshSpawner\"]}", NULL) ==
+        0
+    );
+    ecs_entity owner = ecs_world_create_entity(world);
+    assert(game_behavior_attach(live->behaviors, owner, "PrototypeRefreshSpawner") == 0);
+    ecs_entity original = spawn_registered_child(live, owner);
+    assert(GAME_GameHealth_get_const(world, original)->current == 73);
+    for (int pass = 0; pass < 6; pass++) {
+        int expected = pass == 0 || pass == 2 ? 73 : 19;
+        if (pass == 1) {
+            assert(
+                app_scene_authoring_set_prototype_field(
+                    scene,
+                    "RuntimeRefreshChild",
+                    "GameHealth",
+                    "current",
+                    (pin_value){ .type = PIN_I32, .i = expected }
+                ) == 0
+            );
+        }
+        if (pass == 2) {
+            assert(app_scene_authoring_open_prototype(scene, "RuntimeRefreshChild") == 0);
+            assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+        }
+        if (pass == 3) {
+            assert(app_scene_authoring_open_prototype(scene, "RuntimeRefreshChild") == 0);
+            assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+        }
+        if (pass == 4) {
+            assert(
+                app_scene_authoring_attach_prototype_behavior(scene, "RuntimeRefreshChild", "RefreshedChild") ==
+                0
+            );
+        }
+        if (pass == 5) {
+            assert(
+                app_scene_authoring_detach_prototype_behavior(scene, "RuntimeRefreshChild", "RefreshedChild") ==
+                0
+            );
+        }
+        /* Spawn before any editor frame: mutations update the runtime snapshot immediately. */
+        ecs_entity child = spawn_registered_child(live, owner);
+        assert(GAME_GameHealth_get_const(world, child)->current == expected);
+        assert(
+            (game_behavior_instance(live->behaviors, child, "RefreshedChild") !=
+             NULL) == (pass == 4)
+        );
+        assert(GAME_GameHealth_get_const(world, original)->current == 73);
+        assert(app_scene_authoring_preview_prototype(scene, "RuntimeRefreshSpawner") == 0);
+        assert(app_scene_authoring_frame(scene, (double)pass) == FLOW_OK);
+        const ecs_world *preview = app_scene_authoring_preview_world(scene);
+        ecs_component_id health = GAME_COMPONENT_GameHealth.id;
+        ecs_query query;
+        assert(ecs_query_begin((ecs_world *)preview, &query, &health, 1) == ECS_OK);
+        assert(ecs_query_next(&query, &child));
+        assert(GAME_GameHealth_get_const(preview, child)->current == expected);
+        assert(!ecs_query_next(&query, &child));
+        ecs_query_end(&query);
+        app_scene_authoring_stop_prototype_preview(scene);
+    }
+    assert(game_behavior_destroy_entity(live->behaviors, owner) == 0);
+    game_entities_reset(live->entities);
+    puts("prototype spawn refresh PASS: initial registration, edits, Undo/Redo and behavior attachment changes reach the next scene/preview spawn without changing earlier instances");
+}
+
 void test_navigation_runtime()
 {
     ImGuiContext *previous = ImGui_GetCurrentContext();
@@ -166,6 +277,7 @@ void test_navigation_runtime()
     assert(GAME_GameHealth_get_const(world, replacement)->current == health);
     assert(app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     first_attachment_redo_after_prototype_gain(scene, world);
+    prototype_spawn_refresh(scene, live, world);
     app_scene_authoring_free(scene);
     engine_free(runtime);
     game_live_world_free(live);

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SERIALIZE_INTERNAL_H
-#define CBLUEPRINT_SERIALIZE_INTERNAL_H
+#ifndef CHIBI_SERIALIZE_INTERNAL_H
+#define CHIBI_SERIALIZE_INTERNAL_H
 
 #include "graph/document/serialize.h"
 
@@ -16,7 +16,7 @@ void serialize_write_value(
     const char *type_name,
     const pin_value *v
 );
-int serialize_read_value(pin_type t, yyjson_val *v, pin_value *out, graph *g);
+int serialize_read_value(pin_type t, const char *type_name, yyjson_val *v, pin_value *out, graph *g);
 int serialize_read_array(
     pin_type element_type,
     const char *type_name,

@@ -1,5 +1,5 @@
-#ifndef BLUEPRINTS_PLATFORM_CUTE_H
-#define BLUEPRINTS_PLATFORM_CUTE_H
+#ifndef CHIBI_PLATFORM_CUTE_H
+#define CHIBI_PLATFORM_CUTE_H
 
 /* Cute exports ckit short array macros. Isolate them from project arrays: the
  * two allocators have different headers. Use project arrays in application code.

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_STACKTRACE_H
-#define CBLUEPRINT_STACKTRACE_H
+#ifndef CHIBI_STACKTRACE_H
+#define CHIBI_STACKTRACE_H
 
 #include <stdbool.h>
 

@@ -1,7 +1,57 @@
+#include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
+
+static void evaluation_lifetime_checks()
+{
+    graph g;
+    eval_context context;
+    eval_context_init(&context);
+    bool fresh = true;
+    for (int i = 1; i <= 64; i++) {
+        graph_init(&g);
+        arena storage;
+        arena_init(&storage, 1024);
+        node *value = graph_add_node(&g, registry_node_by_name("Integer"));
+        graph_set_pin_default(&g, value, 0, 0, &(pin_value){ .type = PIN_I32, .i = i });
+        pin_value result = { 0 };
+        fresh &= graph_eval_output(&g, value, 0, &storage, &result, &context) == 0 &&
+                 result.type == PIN_I32 && result.i == i;
+        graph_free(&g);
+        arena_free(&storage);
+    }
+    eval_context_free(&context);
+    test_check(fresh, "one evaluator never reuses memo values after a graph is recreated at the same address");
+
+    graph_init(&g);
+    node *value = graph_add_node(&g, registry_node_by_name("Integer"));
+    uint64_t lifetime = g.lifetime_id;
+    runtime_store *borrowed = runtime_store_create(&g);
+    runtime_store_node(borrowed, value);
+    graph_set_pin_default(&g, value, 0, 0, &(pin_value){ .type = PIN_I32, .i = 7 });
+    char *json = graph_save_json(&g);
+    graph *copy = graph_load_json(json);
+    test_check(
+        g.lifetime_id == lifetime && runtime_store_matches_graph(borrowed, &g) &&
+            copy && copy->lifetime_id != lifetime &&
+            !runtime_store_matches_graph(borrowed, copy) &&
+            !strstr(json, "lifetime_id"),
+        "graph edits retain runtime identity while loaded copies receive a "
+        "distinct nonserialized lifetime"
+    );
+    graph_free(copy);
+    free(copy);
+    free(json);
+    graph_free(&g);
+    graph_init(&g);
+    value = graph_add_node(&g, registry_node_by_name("Integer"));
+    test_check(!runtime_store_matches_graph(borrowed, &g) && !runtime_store_node_const(borrowed, value), "a borrowed runtime store refuses a different graph lifetime at the same address");
+    runtime_store_free(borrowed);
+    graph_free(&g);
+}
 
 void run_graph_conversion_checks()
 {
+    evaluation_lifetime_checks();
     eval_context eval_ctx;
     eval_context_init(&eval_ctx);
     /* TYPE-7 / CAT-26 / UI-22: explicit conversion nodes. conversion_for()
@@ -30,9 +80,27 @@ void run_graph_conversion_checks()
         test_check(conversion_for(PIN_F64, PIN_STR) == &NODE_To_String, "Real to String has an explicit conversion");
         test_check(conversion_for(PIN_BOOL, PIN_STR) == &NODE_To_String, "Bool to String has an explicit conversion");
         test_check(conversion_for(PIN_NAME, PIN_STR) == &NODE_To_String, "Name to String has an explicit conversion");
+        test_check(conversion_for(PIN_STR, PIN_NAME) == &NODE_To_Name, "String to Name supports authored prototype references");
         test_check(conversion_for(PIN_STR, PIN_F64) == NULL, "String to Real is not a permitted conversion");
         test_check(conversion_for(PIN_F64, PIN_I32) == &NODE_To_Integer, "Real to Integer uses explicit saturating truncation");
         test_check(conversion_for(PIN_I64, PIN_I32) == NULL, "Integer64 to Integer narrowing is not offered");
+    }
+
+    {
+        char text[768];
+        memset(text, 'a', sizeof text - 1);
+        text[sizeof text - 1] = 0;
+        arena storage;
+        arena_init(&storage, 4096);
+        pin_value input = { .type = PIN_STR, .type_name = "const char *", .str = text };
+        pin_value name = NODE_To_Name.fn(&input, 1, &storage);
+        text[0] = 'b';
+        test_check(
+            name.type == PIN_NAME && !strcmp(name.type_name, "name") &&
+                strlen(name.str) == sizeof text - 1 && name.str[0] == 'a',
+            "To Name preserves complete text and owns its conversion result"
+        );
+        arena_free(&storage);
     }
 
     /* CAT-26: each conversion converts correctly headless, with the input

@@ -69,6 +69,9 @@ static int revert_instance_components(app_scene_authoring *scene, scene_actor *a
     bool changed = scene_history_push_fields(scene->history, actor->entity, edits, acount(edits));
     afree(edits);
     scene->scene_dirty |= changed;
+    if (changed) {
+        asset_index_invalidate(scene);
+    }
     return changed;
 }
 
@@ -130,14 +133,16 @@ static bool draw_instance_field(
             changed = property_number(label, ImGuiDataType_U16, &value.u16, overridden);
             break;
         case PIN_I32:
-        case PIN_ENUM:
-            if (appearance_shape_field(component->desc->type, field)) {
+        case PIN_ENUM: {
+            const editor_choices *choices = property_choices(component->desc->type, field);
+            if (choices) {
                 editor_ui_property_label(label, overridden ? 28.0f : 0.0f);
             }
-            changed = appearance_shape_field(component->desc->type, field)
-                        ? editor_choices_draw("instance.shape", &value.i, &APPEARANCE_SHAPES)
+            changed = choices
+                        ? editor_choices_draw("instance.shape", &value.i, choices)
                         : property_number(label, ImGuiDataType_S32, &value.i, overridden);
             break;
+        }
         case PIN_U32:
             if (appearance_color_field(component->desc->type, field)) {
                 bool first_change;
@@ -173,6 +178,10 @@ static bool draw_instance_field(
             changed = property_number(label, ImGuiDataType_U64, &value.u64, overridden);
             break;
         case PIN_F32:
+            if (component->desc->id == GAME_COMPONENT_GameEnvironment.id) {
+                changed = property_environment(label, field, &value.f, overridden);
+                break;
+            }
             changed = position_field
                         ? editor_ui_axis_float(
                               field_label,
@@ -187,6 +196,18 @@ static bool draw_instance_field(
             break;
         case PIN_NAME:
         case PIN_STR:
+            if (component->desc->id == GAME_COMPONENT_GameMeshParts.id) {
+                snprintf(
+                    shader_text,
+                    sizeof shader_text,
+                    "%s",
+                    value.str ? value.str : ""
+                );
+                changed = property_mesh_parts(shader_text, sizeof shader_text);
+                value.str = shader_text;
+                draw_component_asset_links(scene, shader_text, "instance.mesh");
+                break;
+            }
             if (component->desc->id == GAME_COMPONENT_GameShader.id) {
                 snprintf(
                     shader_text,
@@ -207,8 +228,45 @@ static bool draw_instance_field(
             property_text(label, pin_value_to_string(&value));
             break;
         case PIN_HANDLE:
+            if (value.type_name && !strcmp(value.type_name, "ecs.entity")) {
+                property_text(
+                    label,
+                    value.u64
+                        ? runtime_entity_label(scene, ecs_entity_from_u64(value.u64))
+                        : "None"
+                );
+                break;
+            }
+            property_text(label, pin_value_to_string(&value));
+            break;
         case PIN_STRUCT:
         case PIN_FLOW: property_text(label, pin_value_to_string(&value)); break;
+    }
+    if (component->desc->id == GAME_COMPONENT_GameShader.id &&
+        (!strcmp(field->name, "material") || !strcmp(field->name, "shape")) &&
+        value.str && value.str[0]) {
+        asset_index_kind kind = !strcmp(field->name, "material")
+                                  ? ASSET_INDEX_MATERIAL
+                                  : ASSET_INDEX_SHAPE;
+        const asset_index *index = app_scene_authoring_asset_index(scene);
+        int position = asset_index_find_name(index, kind, value.str);
+        const asset_index_asset *indexed = asset_index_asset_at(index, position);
+        ImGui_SameLine();
+        bool enabled = indexed && !indexed->unresolved;
+        ImGui_BeginDisabled(!enabled);
+        if (ImGui_SmallButton("Open") && enabled) {
+            app_scene_authoring_open_asset(scene, position);
+        }
+        ImGui_EndDisabled();
+        char open_id[192];
+        snprintf(
+            open_id,
+            sizeof open_id,
+            "instance.field.open.%s.%s",
+            component->desc->name,
+            field->name
+        );
+        editor_ui_track_item(open_id);
     }
     bool field_active = color_active || ImGui_IsItemActive();
     char item_id[192];
@@ -288,6 +346,7 @@ static bool draw_instance_field(
     if (result == ECS_OK) {
         ecs_component_read_field(scene->world, actor->entity, component->desc->id, field_index, &value);
         scene->scene_dirty = true;
+        asset_index_invalidate(scene);
         if (!position_field) {
             scene->property_edit.after = value;
         }
@@ -339,6 +398,9 @@ static void draw_instance_components(app_scene_authoring *scene, scene_actor *ac
         finish_transform_edit(scene, false);
         int result = revert_instance_components(scene, actor);
         scene->scene_dirty |= result > 0;
+        if (result > 0) {
+            asset_index_invalidate(scene);
+        }
         if (result < 0) {
             snprintf(
                 scene->message,
@@ -396,6 +458,18 @@ static void draw_instance_components(app_scene_authoring *scene, scene_actor *ac
                 }
                 for (int field = 0; field < component->desc->type->field_count;
                      field++) {
+                    const void *data = ecs_component_data_const(
+                        scene->world,
+                        actor->entity,
+                        component->desc->id
+                    );
+                    if (!property_field_visible(
+                            component->desc,
+                            &component->desc->type->fields[field],
+                            data
+                        )) {
+                        continue;
+                    }
                     if (advanced_material_field(
                             component->desc,
                             &component->desc->type->fields[field]

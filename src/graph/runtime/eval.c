@@ -1,11 +1,174 @@
 #include "graph/runtime/eval.h"
 
 #include "graph/model/pin_conv.h"
+#include "graph/model/registry.h"
 #include "graph/nodes/nodes.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
+#include "graph/runtime/value_array.h"
+#include "support/arena.h"
 
 #include <string.h>
+
+static int eval_copy_struct(arena *a, pin_value *value)
+{
+    if (value->type != PIN_STRUCT || value->container != PIN_CONTAINER_SINGLE ||
+        !value->ptr) {
+        return 0;
+    }
+    const type_desc *type = value->type_name ? registry_type_by_name(value->type_name)
+                                             : NULL;
+    if (!type || !type->size) {
+        return -1;
+    }
+    void *copy = arena_alloc(a, type->size);
+    if (!copy) {
+        return -1;
+    }
+    memcpy(copy, value->ptr, type->size);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type != PIN_STRUCT && field->type != PIN_STR &&
+            field->type != PIN_NAME) {
+            continue;
+        }
+        pin_value member;
+        pin_read_field(value->ptr, field, &member);
+        if (pin_value_copy_to_arena(a, &member, &member) ||
+            eval_copy_struct(a, &member)) {
+            return -1;
+        }
+        pin_write_field(copy, field, member);
+    }
+    value->ptr = copy;
+    return 0;
+}
+
+static int eval_value_matches(pin_value *value, const pin_spec *spec)
+{
+    pin_spec source = {
+        .type = value->type,
+        .type_name = value->type_name,
+        .container = value->container,
+        .kind = PIN_DATA,
+    };
+    if (!pin_compatible(&source, spec)) {
+        return 0;
+    }
+    pin_coerce(value, spec);
+    value->type_name = spec->type_name;
+    value->container = spec->container;
+    return 1;
+}
+
+static const char *eval_resolve_component(
+    const eval_context *ctx,
+    const pin_spec *spec,
+    const pin_binding *binding,
+    arena *a,
+    pin_value *out
+)
+{
+    if (!binding->component_key || !binding->component_key[0] ||
+        (binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+         (!binding->field_name || !binding->field_name[0]))) {
+        return "component binding has incomplete identity";
+    }
+    eval_component_reader *reader = eval_context_service(ctx, EVAL_COMPONENT_READER_SERVICE);
+    if (!reader || !reader->read || !ctx->instance) {
+        return "component binding requires a component reader and behavior "
+               "instance";
+    }
+    pin_value owner = behavior_instance_owner(ctx->instance);
+    if (owner.type != PIN_HANDLE || !owner.u64) {
+        return "component binding requires a live Self entity";
+    }
+    const char *field_name = binding->kind == PIN_BINDING_COMPONENT
+                               ? NULL
+                               : binding->field_name;
+    int result = reader->read(reader->user, owner.u64, binding->component_key, field_name, out);
+    if (result == EVAL_COMPONENT_READ_MISSING_COMPONENT) {
+        return "Self does not have the bound component";
+    }
+    if (result == EVAL_COMPONENT_READ_MISSING_FIELD) {
+        return "component binding references a missing field";
+    }
+    if (result == EVAL_COMPONENT_READ_INVALID_OWNER) {
+        return "Self does not have the bound component";
+    }
+    if (result != EVAL_COMPONENT_READ_OK) {
+        return "component binding read failed";
+    }
+    if (pin_value_copy_to_arena(a, out, out) || eval_copy_struct(a, out)) {
+        return "component binding value could not be copied";
+    }
+    if (!eval_value_matches(out, spec)) {
+        return "component binding type is incompatible with the input";
+    }
+    return NULL;
+}
+
+const char *eval_context_resolve_input(
+    const eval_context *ctx,
+    const pin_spec *spec,
+    const pin_binding *binding,
+    arena *a,
+    pin_value *out
+)
+{
+    if (!ctx || !spec || !a || !out) {
+        return "invalid input binding arguments";
+    }
+    if (!binding) {
+        if ((spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
+            if (!ctx->instance) {
+                return "Self requires an instance";
+            }
+            pin_value owner = behavior_instance_owner(ctx->instance);
+            if (!eval_value_matches(&owner, spec)) {
+                return "Target requires Self or an explicit entity";
+            }
+            *out = owner;
+            return NULL;
+        }
+        *out = spec->default_value;
+        return NULL;
+    }
+    switch (binding->kind) {
+        case PIN_BINDING_VARIABLE:
+            if (!ctx->instance) {
+                return "variable binding requires an instance";
+            }
+            if (binding->source_asset &&
+                (!ctx->instance->asset || !ctx->instance->asset->name ||
+                 strcmp(binding->source_asset, ctx->instance->asset->name) != 0)) {
+                return "variable binding belongs to another behavior";
+            }
+            if (behavior_instance_copy_variable(ctx->instance, binding->variable_id, a, out) !=
+                0) {
+                return "variable binding references a lost variable";
+            }
+            return eval_value_matches(out, spec)
+                     ? NULL
+                     : "variable binding type is incompatible with the input";
+        case PIN_BINDING_COMPONENT_FIELD:
+        case PIN_BINDING_COMPONENT:
+            return eval_resolve_component(ctx, spec, binding, a, out);
+        case PIN_BINDING_DELTA_TIME:
+            if (spec->container != PIN_CONTAINER_SINGLE ||
+                (spec->type != PIN_F32 && spec->type != PIN_F64)) {
+                return "Delta Time is only available for real inputs";
+            }
+            *out = (pin_value){ .type = PIN_F32,
+                                .container = PIN_CONTAINER_SINGLE,
+                                .type_name = "float",
+                                .f = (float)ctx->delta_seconds };
+            return eval_value_matches(out, spec)
+                     ? NULL
+                     : "Delta Time type is incompatible with the input";
+        default: return "unknown input binding kind";
+    }
+}
 
 void *eval_context_service(const eval_context *ctx, const char *type_name)
 {
@@ -72,15 +235,7 @@ const eval_status *eval_context_status(const eval_context *ctx)
 
 static int graph_has_node(const graph *g, const node *n)
 {
-    if (!g || !n) {
-        return 0;
-    }
-    for (int i = 0; i < acount(g->nodes); i++) {
-        if (g->nodes[i] == n) {
-            return 1;
-        }
-    }
-    return 0;
+    return g && n && graph_node_by_id(g, n->id) == n;
 }
 
 static runtime_node *runtime_state(eval_context *ctx, node *n)
@@ -99,7 +254,6 @@ static int fail(eval_context *ctx, node *n, int pin, int code, const char *messa
         runtime_node *state = runtime_state(ctx, n);
         if (state) {
             runtime_node_set_visiting(state, 0);
-            runtime_node_error(state, code, message);
         }
     }
     return code;
@@ -110,7 +264,7 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
     if (!ctx->instance) {
         return fail(ctx, n, 0, NODE_EVAL_INVALID, "pure function requires an instance");
     }
-    graph *target = behavior_asset_find_graph(ctx->instance->bp, n->reference_id);
+    graph *target = behavior_asset_find_graph(ctx->instance->asset, n->reference_id);
     if (!target || target->kind != GRAPH_FUNCTION) {
         return fail(ctx, n, 0, NODE_EVAL_INVALID, "pure function graph is missing");
     }
@@ -163,7 +317,7 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
         }
         node *source = NULL;
         int source_pin = -1;
-        pin_value value = ret->input_pins[i].default_value;
+        pin_value value;
         if (graph_input_source(target, ret, i, &source, &source_pin)) {
             if (ctx->on_data_edge) {
                 ctx->on_data_edge(source, source_pin, ret, i, ctx->on_data_edge_user);
@@ -174,6 +328,18 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
                 goto done;
             }
             pin_coerce(&value, &ret->input_pins[i]);
+        } else {
+            const char *error = eval_context_resolve_input(
+                &nested,
+                &ret->input_pins[i],
+                ret->input_pins[i].binding,
+                a,
+                &value
+            );
+            if (error) {
+                result = fail(ctx, n, i, NODE_EVAL_INVALID, error);
+                goto done;
+            }
         }
         return_inputs[i] = value;
         while (output < n->output_count && (n->output_pins[output].kind != PIN_DATA ||
@@ -228,6 +394,7 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
                     return fail(ctx, n, i, NODE_EVAL_INVALID, "edge conversion has no function");
                 }
                 inputs[i] = conversion->fn(&inputs[i], 1, a);
+                pin_coerce(&inputs[i], &n->input_pins[i]);
                 if (inputs[i].type != n->input_pins[i].type ||
                     (inputs[i].type == PIN_STRUCT && !inputs[i].ptr)) {
                     runtime_node_set_visiting(state, 0);
@@ -236,7 +403,17 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             }
             pin_coerce(&inputs[i], &n->input_pins[i]);
         } else {
-            inputs[i] = n->input_pins[i].default_value;
+            const char *error = eval_context_resolve_input(
+                ctx,
+                &n->input_pins[i],
+                n->input_pins[i].binding,
+                a,
+                &inputs[i]
+            );
+            if (error) {
+                runtime_node_set_visiting(state, 0);
+                return fail(ctx, n, i, NODE_EVAL_INVALID, error);
+            }
         }
     }
     /* Reflected wrappers pass structs by value and dereference ptr. */
@@ -278,6 +455,9 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             break;
         case NODE_PURE_CALL:
             node_eval_call(n, state, a);
+            if (n->output_count > 0 && outputs[0].type == PIN_FLOW) {
+                return fail(ctx, n, 0, NODE_EVAL_INVALID, "data function produced an invalid result");
+            }
             if (n->output_count > 0 && n->output_pins[0].type == PIN_STRUCT &&
                 !outputs[0].ptr) {
                 return fail(ctx, n, 0, NODE_EVAL_ALLOCATION, "arena allocation failed");
@@ -359,7 +539,7 @@ int graph_eval_output(graph *g, node *n, int out_pin, arena *a, pin_value *out, 
     if (!ctx->runtime) {
         ctx->runtime = runtime_store_create(g);
         ctx->runtime_owned = 1;
-    } else if (runtime_store_graph(ctx->runtime) != g) {
+    } else if (!runtime_store_matches_graph(ctx->runtime, g)) {
         if (!ctx->runtime_owned) {
             return fail(ctx, n, out_pin, NODE_EVAL_INVALID, "evaluation context graph mismatch");
         }

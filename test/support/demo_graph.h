@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_DEMO_GRAPH_H
-#define CBLUEPRINT_DEMO_GRAPH_H
+#ifndef CHIBI_DEMO_GRAPH_H
+#define CHIBI_DEMO_GRAPH_H
 
 #include "graph/model/behavior_asset.h"
 

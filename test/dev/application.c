@@ -1,11 +1,11 @@
-#include "blueprints/application.h"
+#include "chibi/application.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
-static bp_host allocator;
-static void *create(const bp_host *host, const char *text, char *error, size_t size)
+static chibi_host allocator;
+static void *create(const chibi_host *host, const char *text, char *error, size_t size)
 {
     (void)error;
     (void)size;
@@ -36,14 +36,14 @@ static void destroy(void *state)
 {
     allocator.release(state);
 }
-BP_APPLICATION_EXPORT const bp_application_api *blueprints_application(void)
+CHIBI_APPLICATION_EXPORT const chibi_application_api *chibi_application(void)
 {
-    static const bp_application_api api = { .abi = BLUEPRINTS_APPLICATION_ABI,
-                                            .create = create,
-                                            .checkpoint = checkpoint,
-                                            .activate = activate,
-                                            .deactivate = activate,
-                                            .frame = frame,
-                                            .destroy = destroy };
+    static const chibi_application_api api = { .abi = CHIBI_APPLICATION_ABI,
+                                               .create = create,
+                                               .checkpoint = checkpoint,
+                                               .activate = activate,
+                                               .deactivate = activate,
+                                               .frame = frame,
+                                               .destroy = destroy };
     return &api;
 }

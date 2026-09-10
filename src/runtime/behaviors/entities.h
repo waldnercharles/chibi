@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_ENTITIES_H
-#define CBLUEPRINT_GAME_ENTITIES_H
+#ifndef CHIBI_GAME_ENTITIES_H
+#define CHIBI_GAME_ENTITIES_H
 
 #include "assets/prototype.h"
 #include "runtime/behaviors/behavior.h"
@@ -16,17 +16,21 @@ void game_entities_reset(game_entities *entities);
 int game_entities_register(game_entities *entities, const game_prototype *prototype);
 int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity);
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity);
+bool game_entities_is_retiring(const game_entities *entities, ecs_entity entity);
 /* Queue copied scalar payloads. Structs, containers, and user_data are
  * rejected. Delivery is deferred; dead or retiring targets are skipped. */
 int game_entities_request_event(game_entities *entities, ecs_entity target, const char *name, flow_inputs inputs);
 /* Dispatch one bounded batch while simulation is playing or stepping. Events
  * submitted by handlers remain queued for the next dispatch boundary. */
 int game_entities_dispatch_events(game_entities *entities);
-/* Process one bounded batch outside all queries. Positive means initialization
- * is held by the debugger; ordinary simulation must wait. */
+int game_entities_pending_events(const game_entities *entities);
+/* Process one bounded batch outside all queries. Positive means a started
+ * initializer is still pending; ordinary simulation must wait. */
 int game_entities_flush(game_entities *entities);
 bool game_entities_initializing(const game_entities *entities);
-/* Advance only pending spawn initializers; does not dispatch ordinary events. */
-int game_entities_tick_initializers(game_entities *entities, double monotonic_time);
+/* Drain ready spawn continuations at the same simulation time. Positive means
+ * waiting on authored time or the debugger; a runaway chain returns a budget
+ * error. Does not dispatch ordinary events. */
+int game_entities_flush_initializers(game_entities *entities, double monotonic_time);
 
 #endif

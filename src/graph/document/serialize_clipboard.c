@@ -24,6 +24,23 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     if (!tmp) {
         return -1;
     }
+    for (int i = 0; i < acount(tmp->nodes); i++) {
+        node *n = tmp->nodes[i];
+        for (int p = 0; p < n->input_count; p++) {
+            const pin_binding *binding = n->input_pins[p].binding;
+            if (!binding || binding->kind != PIN_BINDING_VARIABLE) {
+                continue;
+            }
+            if (!tmp->clipboard_owner_id || !g->owner || !g->owner->name ||
+                tmp->clipboard_owner_id != g->owner->identity || !binding->source_asset ||
+                strcmp(binding->source_asset, g->owner->name) != 0) {
+                serialize_error_set("cannot paste a variable binding without matching asset ownership");
+                graph_free(tmp);
+                free(tmp);
+                return -1;
+            }
+        }
+    }
     int node_count = acount(tmp->nodes);
     int id_count = node_count;
     for (int i = 0; i < node_count; i++) {
@@ -119,8 +136,7 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     afree(tmp->edges);
     afree(tmp->strings);
     afree(tmp->blocks);
-    afree(tmp->id_table);
-    afree(tmp->comment_boxes);
+    graph_free(tmp);
     free(tmp);
     return 0;
 }

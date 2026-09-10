@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_MOVEMENT_INPUT_H
-#define CBLUEPRINT_APP_MOVEMENT_INPUT_H
+#ifndef CHIBI_APP_MOVEMENT_INPUT_H
+#define CHIBI_APP_MOVEMENT_INPUT_H
 
 #include <math.h>
 #include <stdbool.h>

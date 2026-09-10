@@ -24,13 +24,16 @@ static bool same_text(const char *a, const char *b)
 
 static bool same_location(const scene_location *a, const scene_location *b)
 {
+    bool same_scene_identity = a->scene_key && b->scene_key;
+    bool same_document_identity = a->document_key && b->document_key;
     if (a->kind != b->kind || a->tab != b->tab ||
         ecs_entity_to_u64(a->entity) != ecs_entity_to_u64(b->entity) ||
         a->graph.graph_id != b->graph.graph_id ||
         a->graph.node_count != b->graph.node_count ||
-        !same_text(a->document, b->document) ||
-        !same_text(a->scene_path, b->scene_path) ||
-        !same_text(a->system_path, b->system_path) ||
+        !same_text(a->document, b->document) || !same_text(a->scene_key, b->scene_key) ||
+        !same_text(a->document_key, b->document_key) ||
+        (!same_scene_identity && !same_text(a->scene_path, b->scene_path)) ||
+        (!same_document_identity && !same_text(a->system_path, b->system_path)) ||
         !same_text(a->prototype, b->prototype) || !same_text(a->content, b->content) ||
         !same_text(a->attachment, b->attachment)) {
         return false;
@@ -46,6 +49,8 @@ static bool same_location(const scene_location *a, const scene_location *b)
 static void free_location(scene_location *location)
 {
     free((char *)location->document);
+    free((char *)location->document_key);
+    free((char *)location->scene_key);
     free((char *)location->scene_path);
     free((char *)location->system_path);
     free((char *)location->prototype);
@@ -58,6 +63,8 @@ static scene_location copy_location(const scene_location *source)
 {
     scene_location copy = *source;
     copy.document = source->document ? xstrdup(source->document) : NULL;
+    copy.document_key = source->document_key ? xstrdup(source->document_key) : NULL;
+    copy.scene_key = source->scene_key ? xstrdup(source->scene_key) : NULL;
     copy.scene_path = source->scene_path ? xstrdup(source->scene_path) : NULL;
     copy.system_path = source->system_path ? xstrdup(source->system_path) : NULL;
     copy.prototype = source->prototype ? xstrdup(source->prototype) : NULL;
@@ -107,6 +114,32 @@ void scene_navigation_record(scene_navigation *navigation, const scene_location 
         free_location(&navigation->locations[0]);
         adel(navigation->locations, 0);
         navigation->cursor--;
+    }
+}
+
+void scene_navigation_remap_entities(
+    scene_navigation *navigation,
+    const char *scene_key,
+    const uint64_t *before,
+    const uint64_t *after,
+    int count
+)
+{
+    if (!scene_key || !before || !after || count <= 0) {
+        return;
+    }
+    for (int i = 0; i < acount(navigation->locations); i++) {
+        scene_location *location = &navigation->locations[i];
+        if (!location->scene_key || strcmp(location->scene_key, scene_key) != 0) {
+            continue;
+        }
+        uint64_t entity = ecs_entity_to_u64(location->entity);
+        for (int j = 0; j < count; j++) {
+            if (entity == before[j]) {
+                location->entity = ecs_entity_from_u64(after[j]);
+                break;
+            }
+        }
     }
 }
 
@@ -231,6 +264,8 @@ char *scene_navigation_checkpoint(const scene_navigation *navigation)
             ecs_entity_to_u64(location->entity)
         );
         checkpoint_text(doc, object, "document", location->document);
+        checkpoint_text(doc, object, "document_key", location->document_key);
+        checkpoint_text(doc, object, "scene_key", location->scene_key);
         checkpoint_text(doc, object, "scene", location->scene_path);
         checkpoint_text(doc, object, "system", location->system_path);
         checkpoint_text(doc, object, "prototype", location->prototype);
@@ -292,6 +327,8 @@ bool scene_navigation_restore_checkpoint(
             count
         );
         location->document = checkpoint_copy_text(object, "document");
+        location->document_key = checkpoint_copy_text(object, "document_key");
+        location->scene_key = checkpoint_copy_text(object, "scene_key");
         location->scene_path = checkpoint_copy_text(object, "scene");
         location->system_path = checkpoint_copy_text(object, "system");
         location->prototype = checkpoint_copy_text(object, "prototype");

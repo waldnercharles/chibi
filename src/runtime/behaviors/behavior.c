@@ -1,14 +1,25 @@
 #include "runtime/behaviors/behavior.h"
 
+#include "graph/runtime/eval.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define GAME_BEHAVIOR_LOG_MAX 256
+
+typedef struct
+{
+    char *behavior;
+    char *event;
+    _Atomic uint64_t nanoseconds;
+    _Atomic uint64_t starts;
+    _Atomic uint64_t resumes;
+} behavior_profile_record;
 
 typedef struct
 {
@@ -22,6 +33,7 @@ typedef struct
     game_behavior_world *world;
     ecs_entity entity;
     const char *asset_name;
+    behavior_profile_record **profile;
 } behavior_sink_context;
 
 typedef struct
@@ -37,6 +49,7 @@ typedef struct
 struct game_behavior_world
 {
     ecs_world *ecs;
+    eval_component_reader component_reader;
     struct game_entities *entities;
     struct game_particles *particles;
     behavior_asset_record *assets;
@@ -51,9 +64,110 @@ struct game_behavior_world
     int *pump_results;
     int pump_result_capacity;
     uint64_t next_sequence;
+    double current_time;
+    double delta_seconds;
+    behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
+    int profile_count;
+    behavior_profile_record profile_overflow;
+    game_behavior_profile_frame profile_view;
 };
 
 static void destroy_asset_pool(behavior_asset_record *asset);
+
+static behavior_profile_record *profile_record(
+    game_behavior_world *world,
+    const char *behavior,
+    const char *event
+)
+{
+    for (int i = 0; i < world->profile_count; i++) {
+        behavior_profile_record *record = &world->profile[i];
+        if (!strcmp(record->behavior, behavior) && !strcmp(record->event, event)) {
+            return record;
+        }
+    }
+    if (world->profile_count == GAME_BEHAVIOR_PROFILE_MAX) {
+        return &world->profile_overflow;
+    }
+    behavior_profile_record *record = &world->profile[world->profile_count++];
+    record->behavior = xstrdup(behavior);
+    record->event = xstrdup(event);
+    return record;
+}
+
+static void profile_instance(behavior_instance *instance)
+{
+    behavior_sink_context *context = instance->sink_user;
+    aclear(context->profile);
+    graph *graph = instance->asset->graph;
+    for (int i = 0; i < acount(graph->nodes); i++) {
+        const node *entry = graph->nodes[i];
+        if (entry->desc->flow_kind == NODE_FLOW_EVENT && entry->reference_name) {
+            apush(
+                context->profile,
+                profile_record(context->world, context->asset_name, entry->reference_name)
+            );
+        }
+    }
+}
+
+static void record_profile(const char *event, uint64_t nanoseconds, bool first, void *user)
+{
+    behavior_sink_context *context = user;
+    behavior_profile_record *record = &context->world->profile_overflow;
+    for (int i = 0; i < acount(context->profile); i++) {
+        behavior_profile_record *candidate = context->profile[i];
+        if (candidate->event && event && !strcmp(candidate->event, event)) {
+            record = candidate;
+            break;
+        }
+    }
+    atomic_fetch_add_explicit(&record->nanoseconds, nanoseconds, memory_order_relaxed);
+    atomic_fetch_add_explicit(first ? &record->starts : &record->resumes, 1, memory_order_relaxed);
+}
+
+void game_behavior_profile_begin(game_behavior_world *world)
+{
+    for (int i = 0; i <= world->profile_count; i++) {
+        behavior_profile_record *record = i < world->profile_count
+                                            ? &world->profile[i]
+                                            : &world->profile_overflow;
+        atomic_store_explicit(&record->nanoseconds, 0, memory_order_relaxed);
+        atomic_store_explicit(&record->starts, 0, memory_order_relaxed);
+        atomic_store_explicit(&record->resumes, 0, memory_order_relaxed);
+    }
+}
+
+const game_behavior_profile_frame *game_behavior_profile(const game_behavior_world *world)
+{
+    game_behavior_profile_frame *view = &((game_behavior_world *)world)->profile_view;
+    view->count = 0;
+    view->cpu_ms = 0;
+    view->overflow = (game_behavior_profile_row){ .behavior = "Other behaviors",
+                                                  .event = "Profile capacity" };
+    for (int i = 0; i <= world->profile_count; i++) {
+        const behavior_profile_record *record = i < world->profile_count
+                                                  ? &world->profile[i]
+                                                  : &world->profile_overflow;
+        game_behavior_profile_row row = {
+            .behavior = record->behavior,
+            .event = record->event,
+            .starts = atomic_load_explicit(&record->starts, memory_order_relaxed),
+            .resumes = atomic_load_explicit(&record->resumes, memory_order_relaxed),
+            .cpu_ms = atomic_load_explicit(&record->nanoseconds, memory_order_relaxed) /
+                      1000000.0,
+        };
+        view->cpu_ms += row.cpu_ms;
+        if (i == world->profile_count) {
+            view->overflow.starts = row.starts;
+            view->overflow.resumes = row.resumes;
+            view->overflow.cpu_ms = row.cpu_ms;
+        } else if (row.starts || row.resumes) {
+            view->rows[view->count++] = row;
+        }
+    }
+    return view;
+}
 
 static behavior_asset_record *find_asset(game_behavior_world *world, const char *name)
 {
@@ -124,8 +238,15 @@ static behavior_instance *acquire_instance(
     if (!instance) {
         return NULL;
     }
+    instance->current_time = world->current_time;
+    behavior_instance_set_delta_seconds(instance, world->delta_seconds);
     if (behavior_instance_set_activation_pool(instance, 1) != 0 ||
-        behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0) {
+        behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0 ||
+        behavior_instance_bind_service(
+            instance,
+            EVAL_COMPONENT_READER_SERVICE,
+            &world->component_reader
+        ) != 0) {
         behavior_instance_destroy(instance);
         return NULL;
     }
@@ -141,11 +262,16 @@ static behavior_instance *acquire_instance(
     context->asset_name = asset->name;
     instance->sink = behavior_sink;
     instance->sink_user = context;
+    instance->profile = record_profile;
+    instance->profile_user = context;
+    profile_instance(instance);
     return instance;
 }
 
 static void release_instance(behavior_asset_record *asset, behavior_instance *instance)
 {
+    behavior_sink_context *context = instance->sink_user;
+    afree(context->profile);
     free(instance->sink_user);
     instance->sink = NULL;
     instance->sink_user = NULL;
@@ -176,6 +302,7 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     }
     game_behavior_world *result = (game_behavior_world *)xcalloc(1, sizeof *result);
     result->ecs = world;
+    ecs_eval_component_reader_init(&result->component_reader, world);
     result->next_sequence = 1;
     return result;
 }
@@ -233,6 +360,10 @@ void game_behavior_world_free(game_behavior_world *world)
     afree(world->assets);
     afree(world->attachments);
     afree(world->logs);
+    for (int i = 0; i < world->profile_count; i++) {
+        free(world->profile[i].behavior);
+        free(world->profile[i].event);
+    }
     free(world->pump_results);
     free(world);
 }
@@ -441,6 +572,7 @@ int game_behavior_preview_asset(
         behavior_attachment *attachment = &world->attachments[i];
         if (attachment->asset == asset) {
             behavior_instance_update(attachment->instance, definition);
+            profile_instance(attachment->instance);
         }
     }
     *old_definition = asset->definition;
@@ -789,6 +921,25 @@ int game_behavior_dispatch_all(
     return dispatched;
 }
 
+bool game_behavior_has_event(const game_behavior_world *world, const char *event_name)
+{
+    if (!world || !event_name || !event_name[0]) {
+        return false;
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        const behavior_attachment *attachment = &world->attachments[i];
+        const graph *graph = attachment->instance->asset->graph;
+        for (int j = 0; j < acount(graph->nodes); j++) {
+            const node *event = graph->nodes[j];
+            if (event->desc->flow_kind == NODE_FLOW_EVENT && event->reference_name &&
+                !strcmp(event->reference_name, event_name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 typedef struct
 {
     game_behavior_world *world;
@@ -797,13 +948,13 @@ typedef struct
 
 static int instance_breakpoints_active(const behavior_instance *instance)
 {
-    if (!instance || !instance->bp || !instance->bp->graph) {
+    if (!instance || !instance->asset || !instance->asset->graph) {
         return 0;
     }
     if (instance->breakpoints_override) {
         return instance->breakpoints_enabled;
     }
-    const graph *graph = instance->bp->graph;
+    const graph *graph = instance->asset->graph;
     if (!graph->breakpoints_enabled) {
         return 0;
     }
@@ -834,6 +985,7 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
     if (!world) {
         return FLOW_ERR_ARGUMENT;
     }
+    game_behavior_set_time(world, monotonic_time);
     int count = acount(world->attachments);
     int breakpoints_enabled = world->breakpoints_enabled;
     for (int i = 0; i < count && !breakpoints_enabled; i++) {
@@ -868,11 +1020,33 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
     return result;
 }
 
+void game_behavior_set_time(game_behavior_world *world, double simulation_time)
+{
+    world->current_time = simulation_time;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        world->attachments[i].instance->current_time = simulation_time;
+    }
+}
+
+bool game_behavior_paused(const game_behavior_world *world)
+{
+    for (int i = 0; i < acount(world->attachments); i++) {
+        const behavior_instance *instance = world->attachments[i].instance;
+        for (int j = 0; j < acount(instance->activations); j++) {
+            if (flow_run_status(instance->activations[j]) == FLOW_PAUSED) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds)
 {
     if (!world) {
         return;
     }
+    world->delta_seconds = delta_seconds;
     for (int i = 0; i < acount(world->attachments); i++) {
         behavior_instance_set_delta_seconds(world->attachments[i].instance, delta_seconds);
     }

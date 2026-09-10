@@ -86,6 +86,7 @@ int add_actor(app_scene_authoring *scene, const char *name, const char *prototyp
     };
     apush(scene->actors, actor);
     scene->scene_dirty = true;
+    asset_index_invalidate(scene);
     scene->selected = acount(scene->actors) - 1;
     select_prototype(scene, prototype_index(scene, prototype_name));
     select_instance(scene, scene->selected);
@@ -117,6 +118,7 @@ static int remove_actor_at(app_scene_authoring *scene, int index)
     );
     asetlen(scene->actors, count - 1);
     scene->scene_dirty = true;
+    asset_index_invalidate(scene);
     scene->selected_attachment = -1;
     scene->selected = index < count - 1 ? index : count - 2;
     if (scene->selected >= 0) {
@@ -317,6 +319,7 @@ int app_scene_authoring_set_instance_behavior(app_scene_authoring *scene, const 
             assert(recorded);
             scene->selected_attachment = -1;
             scene->scene_dirty = true;
+            asset_index_invalidate(scene);
             scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
             sync_editor_inspection(scene);
         }
@@ -478,6 +481,7 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         }
         scene_history_complete_actor(scene->history, redo, replacement);
         scene->scene_dirty = true;
+        asset_index_invalidate(scene);
         return 0;
     }
     const scene_component_edit *
@@ -531,6 +535,7 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         assert(restored == 0);
         scene_history_complete_component(scene->history, redo);
         scene->scene_dirty = true;
+        asset_index_invalidate(scene);
         for (int i = 0; i < acount(scene->actors); i++) {
             if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
                 select_instance(scene, i);
@@ -554,6 +559,7 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         }
         scene_history_complete_behaviors(scene->history, redo);
         scene->scene_dirty = true;
+        asset_index_invalidate(scene);
         for (int i = 0; i < acount(scene->actors); i++) {
             if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
                 select_instance(scene, i);
@@ -568,6 +574,7 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
                       : scene_history_undo(scene->history, scene->world, &entity);
     if (result > 0) {
         scene->scene_dirty = true;
+        asset_index_invalidate(scene);
         for (int i = 0; i < acount(scene->actors); i++) {
             if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
                 select_instance(scene, i);

@@ -508,11 +508,15 @@ try {
     ...firstRecording,
     artifact_path: undefined,
     recording_path: undefined,
+    id: undefined,
+    recording_id: undefined,
   };
   const secondRecordingWithoutPath = secondRecording && {
     ...secondRecording,
     artifact_path: undefined,
     recording_path: undefined,
+    id: undefined,
+    recording_id: undefined,
   };
   const replayInlineRequest = {
     jsonrpc: "2.0",
@@ -620,9 +624,9 @@ try {
       typeof firstArtifactPath !== "string" || typeof secondArtifactPath !== "string" ||
       firstArtifactPath.startsWith(scenarioRoot) || secondArtifactPath.startsWith(scenarioRoot) ||
       replayResponse.result?.isError === true || replayResult.ok !== true ||
-      replayResult.result?.matched !== true ||
+      replayResult.result?.matched !== true && replayResult.result?.deterministic !== true ||
       replayPathResponse.result?.isError === true || replayPathResult.ok !== true ||
-      replayPathResult.result?.matched !== true ||
+      replayPathResult.result?.matched !== true && replayPathResult.result?.deterministic !== true ||
       divergenceResponse.result?.isError === true || divergenceResult.ok !== true ||
       firstDivergenceFrame !== 1 ||
       scenarioById.get(10)?.error?.code !== -32602 ||

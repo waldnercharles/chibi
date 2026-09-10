@@ -8,6 +8,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
+#include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -15,6 +16,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -154,6 +156,9 @@ typedef struct
     bool summary;
 } page_options;
 
+#define SCENARIO_DEFAULT_FRAMES 1
+#define SCENARIO_MAX_FRAMES 600
+
 #define CONTRACT_FIELD_COUNT(fields) ((int)(sizeof(fields) / sizeof *(fields)))
 
 static const contract_field CONTRACT_NO_FIELDS[1] = { { NULL, NULL, false, NULL } };
@@ -206,6 +211,12 @@ static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "path", "string", false, "Content-relative system asset path, alternatively use kind and name." },
     { "kind", "string", false, "System asset family, required with name when path is omitted." },
     { "name", "string", false, "System asset name, required with kind when path is omitted." },
+};
+static const contract_field CONTRACT_RUN_SCENARIO[] = {
+    { "kind", "string", false, "Target family; defaults to prototype." },
+    { "name", "string", true, "Prototype asset name." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
 };
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
@@ -322,6 +333,16 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         true,
         false,
     },
+    {
+        "run_scenario",
+        "Launch one prototype and return deterministic runtime evidence.",
+        CONTRACT_RUN_SCENARIO,
+        CONTRACT_FIELD_COUNT(CONTRACT_RUN_SCENARIO),
+        1,
+        true,
+        true,
+        false,
+    },
 };
 
 static const char *const CONTRACT_ERROR_CATEGORIES[] = {
@@ -331,6 +352,7 @@ static const char *const CONTRACT_ERROR_CATEGORIES[] = {
 
 static int handle_describe_registry(response *result);
 static int handle_describe_contract(response *result);
+static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
 static uint64_t catalog_content_hash(const catalog_asset *assets);
 static int load_asset(
     const char *root,
@@ -1391,11 +1413,16 @@ static int catalog_snapshot_get(
     return 0;
 }
 
-static void add_hash(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t hash)
+static void add_hash_named(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *key, uint64_t hash)
 {
     char text[32];
     snprintf(text, sizeof text, "%016llx", (unsigned long long)hash);
-    yyjson_mut_obj_add_strcpy(doc, object, "hash", text);
+    yyjson_mut_obj_add_strcpy(doc, object, key, text);
+}
+
+static void add_hash(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t hash)
+{
+    add_hash_named(doc, object, "hash", hash);
 }
 
 static yyjson_mut_val *add_asset_entry(yyjson_mut_doc *doc, yyjson_mut_val *array, const asset_entry *entry)
@@ -2657,6 +2684,58 @@ static int load_asset(
     return *json ? BLUEPRINTS_AUTOMATION_OK : BLUEPRINTS_AUTOMATION_IO_ERROR;
 }
 
+static int load_named_asset(
+    const char *root,
+    const asset_family *family,
+    const char *name,
+    asset_ref *ref,
+    char **json,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+)
+{
+    if (!family || !name || !name[0] || strchr(name, '/') ||
+        strchr(name, '\\') || strstr(name, "..")) {
+        return set_error(error, error_size, "asset name is invalid"),
+               BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+    }
+    memset(ref, 0, sizeof *ref);
+    ref->family = family;
+    if (strstr(name, ".json")) {
+        if (!valid_asset_filename(name) || strlen(name) >= sizeof ref->filename) {
+            return set_error(error, error_size, "asset name is invalid"),
+                   BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+        }
+        snprintf(ref->filename, sizeof ref->filename, "%s", name);
+    } else if (strlen(name) + sizeof ".json" >= sizeof ref->filename) {
+        return set_error(error, error_size, "asset name is too long"),
+               BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+    } else {
+        snprintf(ref->filename, sizeof ref->filename, "%s.json", name);
+    }
+    snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
+    int directory_status = verify_asset_directory(root, family, error, error_size);
+    if (directory_status <= 0) {
+        if (directory_status == 0) {
+            return set_errorf(error, error_size, "asset not found: %s", ref->relative),
+                   BLUEPRINTS_AUTOMATION_NOT_FOUND;
+        }
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    char *path = asset_full_path(root, ref);
+    struct stat info;
+    if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
+        free(path);
+        return set_errorf(error, error_size, "asset not found: %s", ref->relative),
+               BLUEPRINTS_AUTOMATION_NOT_FOUND;
+    }
+    *json = read_file(path, bytes, hash, error, error_size);
+    free(path);
+    return *json ? BLUEPRINTS_AUTOMATION_OK : BLUEPRINTS_AUTOMATION_IO_ERROR;
+}
+
 static int handle_read_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -2808,6 +2887,398 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     return 0;
 }
 
+static void free_behavior_assets(behavior_asset **assets)
+{
+    for (int i = 0; i < acount(assets); i++) {
+        behavior_asset_free(assets[i]);
+    }
+    afree(assets);
+}
+
+static int load_behavior_family_assets(
+    const char *root,
+    const asset_family *family,
+    behavior_asset ***out,
+    char *error,
+    size_t error_size
+)
+{
+    asset_entry *entries = NULL;
+    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    behavior_asset **assets = NULL;
+    for (int i = 0; i < acount(entries); i++) {
+        if (entries[i].family != family) {
+            continue;
+        }
+        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(path_size);
+        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
+        char read_error[256] = { 0 };
+        char *json = read_file(path, NULL, NULL, read_error, sizeof read_error);
+        free(path);
+        if (!json) {
+            free_asset_entries(entries);
+            free_behavior_assets(assets);
+            set_error(error, error_size, read_error);
+            return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        }
+        behavior_asset *asset = behavior_asset_load_json(json);
+        free(json);
+        if (!asset) {
+            free_asset_entries(entries);
+            free_behavior_assets(assets);
+            snprintf(error, error_size, "could not load %s: %s", entries[i].relative, graph_last_error());
+            return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
+        }
+        apush(assets, asset);
+    }
+    free_asset_entries(entries);
+    *out = assets;
+    return BLUEPRINTS_AUTOMATION_OK;
+}
+
+static int register_preview_assets(
+    game_prototype_preview *preview,
+    behavior_asset **assets,
+    char *error,
+    size_t error_size
+)
+{
+    for (int i = 0; i < acount(assets); i++) {
+        const char *name = assets[i]->name;
+        if (game_prototype_preview_register_behavior(preview, name, assets[i]) != 0) {
+            snprintf(error, error_size, "could not register behavior %s: %s", name, graph_last_error());
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, const engine_frame_timing *timing)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "timing");
+    yyjson_mut_obj_add_uint(doc, value, "frame", timing->frame);
+    yyjson_mut_obj_add_uint(doc, value, "simulation_steps", timing->simulation_steps);
+    yyjson_mut_obj_add_real(doc, value, "simulation_time", timing->simulation_time);
+    yyjson_mut_obj_add_real(doc, value, "dropped_seconds", timing->dropped_seconds);
+    yyjson_mut_obj_add_int(doc, value, "event_backlog", timing->event_backlog);
+    yyjson_mut_obj_add_int(doc, value, "steps", timing->steps);
+    yyjson_mut_obj_add_real(doc, value, "alpha", timing->alpha);
+    yyjson_mut_obj_add_real(doc, value, "behavior_ms", timing->behavior_ms);
+    yyjson_mut_obj_add_real(doc, value, "physics_ms", timing->physics_ms);
+    yyjson_mut_obj_add_real(doc, value, "events_ms", timing->events_ms);
+    yyjson_mut_obj_add_real(doc, value, "systems_ms", timing->systems_ms);
+    yyjson_mut_obj_add_real(doc, value, "rendering_ms", timing->rendering_ms);
+    yyjson_mut_obj_add_uint(doc, value, "command_apply_count", timing->command_apply_count);
+    return 0;
+}
+
+static uint64_t scenario_hash_bytes(uint64_t hash, const void *data, size_t size)
+{
+    const unsigned char *bytes = data;
+    for (size_t i = 0; i < size; i++) {
+        hash ^= bytes[i];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static void scenario_hash_string_fields(uint64_t *hash, const void *data, const type_desc *type)
+{
+    if (!type) {
+        return;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        const unsigned char *address = (const unsigned char *)data + field->offset;
+        if (field->type == PIN_NAME || field->type == PIN_STR) {
+            const char *value = *(const char *const *)address;
+            uint64_t length = value ? strlen(value) : 0;
+            *hash = scenario_hash_bytes(*hash, &length, sizeof length);
+            *hash = scenario_hash_bytes(*hash, value ? value : "", (size_t)length);
+        } else if (field->type == PIN_STRUCT) {
+            scenario_hash_string_fields(
+                hash,
+                address,
+                registry_type_by_name(field->type_name)
+            );
+        }
+    }
+}
+
+static void scenario_zero_string_fields(void *data, const type_desc *type)
+{
+    if (!type) {
+        return;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        unsigned char *address = (unsigned char *)data + field->offset;
+        if (field->type == PIN_NAME || field->type == PIN_STR) {
+            memset(address, 0, field->size);
+        } else if (field->type == PIN_STRUCT) {
+            scenario_zero_string_fields(address, registry_type_by_name(field->type_name));
+        }
+    }
+}
+
+static uint64_t scenario_world_hash(const ecs_world *world)
+{
+    uint64_t hash = UINT64_C(1099511628211);
+    uint32_t high_water = ecs_world_high_water_mark(world);
+    for (uint32_t slot = 1; slot <= high_water; slot++) {
+        ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+        if (!ecs_entity_is_alive(world, entity)) {
+            continue;
+        }
+        hash = scenario_hash_bytes(hash, &entity, sizeof entity);
+        for (int i = 0; i < ecs_world_component_count(world); i++) {
+            const ecs_component_desc *component = ecs_world_component_at(world, i);
+            if (!ecs_component_has(world, entity, component->id)) {
+                continue;
+            }
+            hash = scenario_hash_bytes(hash, &component->id, sizeof component->id);
+            const void *data = ecs_component_data_const(world, entity, component->id);
+            void *copy = xmalloc(component->element_size);
+            memcpy(copy, data, component->element_size);
+            scenario_hash_string_fields(&hash, data, component->type);
+            scenario_zero_string_fields(copy, component->type);
+            hash = scenario_hash_bytes(hash, copy, component->element_size);
+            free(copy);
+        }
+    }
+    return hash;
+}
+
+static char *scenario_prototype_json(const char *json, uint64_t hash)
+{
+    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    if (!document) {
+        return NULL;
+    }
+    yyjson_val *source = yyjson_doc_get_root(document);
+    if (!yyjson_is_obj(source) || yyjson_obj_get(source, "identity")) {
+        char *copy = xstrdup(json);
+        yyjson_doc_free(document);
+        return copy;
+    }
+    yyjson_mut_doc *mutable = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_val_mut_copy(mutable, source);
+    yyjson_mut_doc_set_root(mutable, root);
+    char identity[32];
+    snprintf(identity, sizeof identity, "scenario-%016llx", (unsigned long long)hash);
+    yyjson_mut_obj_add_strcpy(mutable, root, "identity", identity);
+    char *copy = yyjson_mut_write(mutable, 0, NULL);
+    yyjson_mut_doc_free(mutable);
+    yyjson_doc_free(document);
+    return copy;
+}
+
+static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "run_scenario supports prototype targets only; scenes are not supported yet");
+        return -1;
+    }
+    const char *name = request_string(request, "name");
+    if (!name || !name[0]) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        return -1;
+    }
+
+    uint64_t frames = SCENARIO_DEFAULT_FRAMES;
+    yyjson_val *frames_value = yyjson_obj_get(request, "frames");
+    if (frames_value && (!request_uint(request, "frames", &frames) ||
+                         frames > SCENARIO_MAX_FRAMES)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+        return -1;
+    }
+    double fixed_dt = ENGINE_FIXED_SECONDS;
+    yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
+    if (fixed_dt_value) {
+        if (!yyjson_is_num(fixed_dt_value)) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
+            return -1;
+        }
+        fixed_dt = yyjson_get_num(fixed_dt_value);
+        if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
+            fabs(fixed_dt - ENGINE_FIXED_SECONDS) > 1e-12) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
+            return -1;
+        }
+    }
+
+    const asset_family *prototype_family = family_by_kind("prototype");
+    asset_ref prototype_ref = { 0 };
+    char *prototype_json = NULL;
+    size_t prototype_bytes = 0;
+    uint64_t prototype_hash = 0;
+    char error[256] = { 0 };
+    int status = load_named_asset(
+        root,
+        prototype_family,
+        name,
+        &prototype_ref,
+        &prototype_json,
+        &prototype_bytes,
+        &prototype_hash,
+        error,
+        sizeof error
+    );
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    char *scenario_json = scenario_prototype_json(prototype_json, prototype_hash);
+    game_prototype *prototype = scenario_json
+                                  ? game_prototype_load(scenario_json, &registry, error, sizeof error)
+                                  : NULL;
+    free(scenario_json);
+    free(prototype_json);
+    if (!prototype) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+
+    game_prototype_preview *preview = game_prototype_preview_new(&registry);
+    if (!preview) {
+        game_prototype_free(prototype);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "could not create prototype preview");
+        return -1;
+    }
+
+    behavior_asset **libraries = NULL;
+    behavior_asset **events = NULL;
+    int result_code = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, sizeof error);
+    if (result_code == BLUEPRINTS_AUTOMATION_OK) {
+        result_code = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
+    }
+    if (result_code == BLUEPRINTS_AUTOMATION_OK &&
+        register_preview_assets(preview, libraries, error, sizeof error) != 0) {
+        result_code = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (result_code == BLUEPRINTS_AUTOMATION_OK &&
+        register_preview_assets(preview, events, error, sizeof error) != 0) {
+        result_code = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    free_behavior_assets(libraries);
+    free_behavior_assets(events);
+    if (result_code != BLUEPRINTS_AUTOMATION_OK) {
+        game_prototype_preview_free(preview);
+        game_prototype_free(prototype);
+        response_error(result, exit_code, result_code, error);
+        return -1;
+    }
+
+    for (int i = 0; i < acount(prototype->graphs); i++) {
+        asset_ref behavior_ref = { 0 };
+        char *behavior_json = NULL;
+        status = load_named_asset(
+            root,
+            family_by_kind("behavior"),
+            prototype->graphs[i],
+            &behavior_ref,
+            &behavior_json,
+            NULL,
+            NULL,
+            error,
+            sizeof error
+        );
+        if (status != BLUEPRINTS_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+            free(behavior_json);
+            game_prototype_preview_free(preview);
+            game_prototype_free(prototype);
+            return -1;
+        }
+        behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+        free(behavior_json);
+        if (!behavior) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, graph_last_error());
+            game_prototype_preview_free(preview);
+            game_prototype_free(prototype);
+            return -1;
+        }
+        int registered = game_prototype_preview_register_behavior(
+            preview,
+            prototype->graphs[i],
+            behavior
+        );
+        behavior_asset_free(behavior);
+        if (registered != 0) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "could not register prototype behavior");
+            game_prototype_preview_free(preview);
+            game_prototype_free(prototype);
+            return -1;
+        }
+    }
+
+    char launch_error[256] = { 0 };
+    if (game_prototype_preview_launch(preview, prototype, launch_error, sizeof launch_error) !=
+        ECS_OK) {
+        response_error(
+            result,
+            exit_code,
+            BLUEPRINTS_AUTOMATION_EXECUTION_ERROR,
+            launch_error[0] ? launch_error : "could not launch prototype"
+        );
+        game_prototype_preview_free(preview);
+        game_prototype_free(prototype);
+        return -1;
+    }
+    engine *runtime = game_prototype_preview_runtime(preview);
+    if (engine_set_playing(runtime, false) != 0) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "could not pause prototype runtime");
+        game_prototype_preview_free(preview);
+        game_prototype_free(prototype);
+        return -1;
+    }
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        if (engine_step(runtime) != 0 ||
+            game_prototype_preview_tick(preview, (double)(frame + 1) * fixed_dt) != 0) {
+            const char *runtime_error = engine_error(runtime);
+            response_error(
+                result,
+                exit_code,
+                BLUEPRINTS_AUTOMATION_EXECUTION_ERROR,
+                runtime_error ? runtime_error : "prototype scenario failed"
+            );
+            game_prototype_preview_free(preview);
+            game_prototype_free(prototype);
+            return -1;
+        }
+    }
+
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &prototype_ref, prototype_bytes, prototype_hash);
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    add_hash_named(
+        result->doc,
+        value,
+        "world_hash",
+        scenario_world_hash(game_prototype_preview_world(preview))
+    );
+    yyjson_mut_obj_add_uint(
+        result->doc,
+        value,
+        "live_entities",
+        ecs_world_live_count(game_prototype_preview_world(preview))
+    );
+    add_scenario_timing(result->doc, value, engine_last_timing(runtime));
+    game_prototype_preview_free(preview);
+    game_prototype_free(prototype);
+    return 0;
+}
+
 static int handle_describe_registry(response *result)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -2891,7 +3362,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "inspect_graph") ||
-           !strcmp(operation, "inspect_system");
+           !strcmp(operation, "inspect_system") ||
+           !strcmp(operation, "run_scenario");
 }
 
 char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -2958,6 +3430,8 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {
         handle_inspect_system(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "run_scenario")) {
+        handle_run_scenario(root, root_value, &result, exit_code);
     } else {
         handle_describe_registry(&result);
     }

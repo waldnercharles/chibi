@@ -418,7 +418,7 @@ set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 add_executable(blueprints_ctl tools/blueprints_ctl/main.c ${APP_REGISTRY})
 add_dependencies(blueprints_ctl generate_runtime_registry)
 target_include_directories(blueprints_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(blueprints_ctl PRIVATE automation runtime_support core)
+target_link_libraries(blueprints_ctl PRIVATE automation runtime_support core engine)
 set_target_properties(blueprints_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
 find_program(NODE_EXECUTABLE node)

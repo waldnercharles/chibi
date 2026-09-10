@@ -520,7 +520,11 @@ function rawToolDefinitions() {
       events: {
         type: "array",
         maxItems: 600,
-        items: { type: "object", additionalProperties: true },
+        items: {
+          type: "array",
+          maxItems: 32,
+          items: { type: "object", additionalProperties: true },
+        },
       },
       observations: {
         type: "array",
@@ -539,6 +543,11 @@ function rawToolDefinitions() {
         type: "array",
         maxItems: 600,
         items: { type: "string", maxLength: 128 },
+      },
+      live_entities: {
+        type: "array",
+        maxItems: 600,
+        items: { type: "integer", minimum: 0 },
       },
       world_hash: { type: "string", maxLength: 128 },
       artifact_path: { type: "string", maxLength: 1024 },

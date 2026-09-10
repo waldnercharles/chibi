@@ -3765,7 +3765,6 @@ static int apply_scenario_input(
     size_t error_size
 )
 {
-    ecs_world *world = game_prototype_preview_world(context->preview);
     ecs_entity entity = game_prototype_preview_entity(context->preview);
     game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
     CF_V2 movement = { (float)input->movement_x, (float)input->movement_y };
@@ -3784,25 +3783,6 @@ static int apply_scenario_input(
         ) < 0) {
         snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario movement input failed");
         return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (ecs_world_component(world, GAME_COMPONENT_GameAim.id)) {
-        GameAim *aim = GAME_GameAim_get(world, entity);
-        if (aim) {
-            CF_V2 direction = { (float)input->aim_x, (float)input->aim_y };
-            if (input->aim_point &&
-                ecs_world_component(world, GAME_COMPONENT_GameTransform.id)) {
-                const GameTransform *position = GAME_GameTransform_get_const(world, entity);
-                if (position) {
-                    direction.x -= position->x;
-                    direction.y -= position->y;
-                }
-            }
-            float length = hypotf(direction.x, direction.y);
-            if (length > 0.0001f) {
-                aim->direction = (CF_V2){ direction.x / length, direction.y / length };
-            }
-            aim->firing = input->aim_firing;
-        }
     }
     const char *actions[] = { "Fire", "Dash" };
     const bool pressed[] = { input->fire_pressed, input->dash_pressed };

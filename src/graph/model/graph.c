@@ -1313,7 +1313,9 @@ int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin)
     pin_spec **pins = output ? &n->output_pins : &n->input_pins;
     int next = *count + 1;
     pin_spec *grown_pins = (pin_spec *)xmalloc((size_t)next * sizeof *grown_pins);
-    memcpy(grown_pins, *pins, (size_t)*count * sizeof *grown_pins);
+    if (*count) {
+        memcpy(grown_pins, *pins, (size_t)*count * sizeof *grown_pins);
+    }
     free(*pins);
     *pins = grown_pins;
     init_pin(&(*pins)[*count], template_pin, g);

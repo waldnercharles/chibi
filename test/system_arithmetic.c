@@ -276,6 +276,18 @@ static void vectors(
         check_run(system, mode, operation, false);
         GameTransform wanted = unavailable(system, mode) ? before : expected;
         const GameTransform *actual = GAME_GameTransform_get_const(world, entity);
+        if (actual->x != wanted.x || actual->y != wanted.y) {
+            fprintf(
+                stderr,
+                "%s vector mode %d: got (%g, %g), expected (%g, %g)\n",
+                name,
+                mode,
+                actual->x,
+                actual->y,
+                wanted.x,
+                wanted.y
+            );
+        }
         assert(actual->x == wanted.x && actual->y == wanted.y);
     }
     game_system_free(system);

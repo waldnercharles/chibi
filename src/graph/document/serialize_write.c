@@ -195,6 +195,9 @@ static void write_nodes(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
     if (node_total && !ordered_nodes) {
         return;
     }
+    if (!node_total) {
+        return;
+    }
     if (!subset) {
         memcpy(ordered_nodes, g->nodes, (size_t)node_total * sizeof *ordered_nodes);
     } else {
@@ -236,7 +239,9 @@ static void write_edges(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
         }
         ordered_edges[edge_total++] = *e;
     }
-    qsort(ordered_edges, (size_t)edge_total, sizeof *ordered_edges, compare_edges);
+    if (edge_total) {
+        qsort(ordered_edges, (size_t)edge_total, sizeof *ordered_edges, compare_edges);
+    }
     for (int i = 0; i < edge_total; i++) {
         write_edge(doc, arr, &ordered_edges[i]);
     }

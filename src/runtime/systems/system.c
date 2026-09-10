@@ -802,9 +802,9 @@ static int compile_value(system_program *program, const node *target, int output
             event_input_index(target, output) != 0) {
             return -1;
         }
-        program->event_delta = result;
+        program->aliases[result] = program->event_delta;
         program->node_state[index] = 2;
-        return result;
+        return program->event_delta;
     }
     if (node_named(target, "Get_")) {
         if (node_has_exec_pins(target)) {
@@ -1260,7 +1260,6 @@ static system_program *program_new(const behavior_asset *definition, const node 
     system_program *program = (system_program *)xcalloc(1, sizeof *program);
     graph_program_init(&program->shared);
     program->graph = definition->graph;
-    program->event_delta = 0;
     int output_total = 0;
     for (int i = 0; i < acount(program->graph->nodes); i++) {
         program->node_base = (int *)
@@ -1298,6 +1297,8 @@ static system_program *program_new(const behavior_asset *definition, const node 
             }
         }
     }
+    pin_spec delta_pin = { .type = PIN_F32, .type_name = "float", .kind = PIN_DATA };
+    program->event_delta = new_register(program, &delta_pin);
     int found = 0;
     const node *next = exec_target(program->graph, tick, &found);
     int compile_result = found ? (next ? compile_exec(program, next) : -1)

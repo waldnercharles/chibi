@@ -1129,6 +1129,7 @@ static int emit_register_instruction(
                     );
                 }
             }
+#if defined(__aarch64__)
             if (kind == 3 && registers->simd) {
                 int transform;
                 int scale;
@@ -1161,6 +1162,7 @@ static int emit_register_instruction(
                     return alias_location(registers, instruction->output, transform);
                 }
             }
+#endif
             sljit_value_location output;
             sljit_value_kind output_kind = value_location_kind(
                 &values[instruction->output]
@@ -1208,6 +1210,7 @@ static int emit_register_instruction(
                     0
                 );
             }
+#if defined(__aarch64__)
             if (output.kind == SJLIT_VALUE_SIMD2) {
                 if (kind == 2) {
                     if (emit_simd_scalar_op(
@@ -1232,7 +1235,9 @@ static int emit_register_instruction(
                 } else {
                     return -1;
                 }
-            } else if (kind == 2) {
+            } else
+#endif
+                if (kind == 2) {
                 if (emit_fop2(
                         registers->builder,
                         SLJIT_MUL_F32,

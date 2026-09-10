@@ -112,7 +112,171 @@ typedef struct
     bool ok;
 } response;
 
+typedef struct
+{
+    const char *name;
+    const char *type;
+    bool required;
+    const char *description;
+} contract_field;
+
+typedef struct
+{
+    const char *name;
+    const char *summary;
+    const contract_field *fields;
+    int field_count;
+    int response_version;
+    bool read_only;
+    bool idempotent;
+    bool destructive;
+} operation_descriptor;
+
+#define CONTRACT_FIELD_COUNT(fields) ((int)(sizeof(fields) / sizeof *(fields)))
+
+static const contract_field CONTRACT_NO_FIELDS[1] = { { NULL, NULL, false, NULL } };
+static const contract_field CONTRACT_PROJECT_ROOT[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+};
+static const contract_field CONTRACT_ASSET_REFERENCE[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
+    { "kind", "string", false, "Asset family, required with name when path is omitted." },
+    { "name", "string", false, "Asset name, required with kind when path is omitted." },
+};
+static const contract_field CONTRACT_SEARCH_ASSETS[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "query", "string", false, "Case-insensitive text matched against asset metadata." },
+    { "kinds", "string[]", false, "Asset families to include in the search." },
+};
+static const contract_field CONTRACT_ASSET_DEPENDENCIES[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", true, "Known asset family." },
+    { "name", "string", true, "Asset name." },
+    { "direction", "string", false, "Traversal direction; defaults to outgoing." },
+    { "transitive", "boolean", false, "Traverse beyond direct dependencies; defaults to false." },
+};
+static const contract_field CONTRACT_INSPECT_GRAPH[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "path", "string", false, "Content-relative graph asset path, alternatively use kind and name." },
+    { "kind", "string", false, "Graph asset family, required with name when path is omitted." },
+    { "name", "string", false, "Graph asset name, required with kind when path is omitted." },
+    { "graph_id", "uint64", false, "Select one graph by its stable authored ID." },
+    { "graph_name", "string", false, "Select one graph by its authored name." },
+};
+
+static const operation_descriptor CONTRACT_OPERATIONS[] = {
+    {
+        "describe_contract",
+        "Describe the native automation contract and reflected capabilities.",
+        CONTRACT_NO_FIELDS,
+        0,
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "status",
+        "Return project, asset, reflection, and operation summary information.",
+        CONTRACT_PROJECT_ROOT,
+        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "list_assets",
+        "List authored JSON assets and their stable content identities.",
+        CONTRACT_PROJECT_ROOT,
+        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "read_asset",
+        "Read one authored asset as normalized JSON data.",
+        CONTRACT_ASSET_REFERENCE,
+        CONTRACT_FIELD_COUNT(CONTRACT_ASSET_REFERENCE),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "validate_asset",
+        "Load and validate one authored asset.",
+        CONTRACT_ASSET_REFERENCE,
+        CONTRACT_FIELD_COUNT(CONTRACT_ASSET_REFERENCE),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "describe_registry",
+        "Return reflected graph, type, service, operator, and component "
+        "metadata.",
+        CONTRACT_NO_FIELDS,
+        0,
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "catalog",
+        "Return the semantic asset catalog and reflected registry summary.",
+        CONTRACT_PROJECT_ROOT,
+        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "search_assets",
+        "Search the semantic asset catalog by metadata and family.",
+        CONTRACT_SEARCH_ASSETS,
+        CONTRACT_FIELD_COUNT(CONTRACT_SEARCH_ASSETS),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "asset_dependencies",
+        "Inspect direct or transitive asset dependency relationships.",
+        CONTRACT_ASSET_DEPENDENCIES,
+        CONTRACT_FIELD_COUNT(CONTRACT_ASSET_DEPENDENCIES),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "inspect_graph",
+        "Inspect normalized graph nodes, pins, edges, calls, effects, and "
+        "diagnostics.",
+        CONTRACT_INSPECT_GRAPH,
+        CONTRACT_FIELD_COUNT(CONTRACT_INSPECT_GRAPH),
+        1,
+        true,
+        true,
+        false,
+    },
+};
+
+static const char *const CONTRACT_ERROR_CATEGORIES[] = {
+    "invalid_request", "io_error",         "validation_failed",
+    "asset_not_found", "execution_failed",
+};
+
 static int handle_describe_registry(response *result);
+static int handle_describe_contract(response *result);
 static int load_asset(
     const char *root,
     yyjson_val *request,
@@ -227,6 +391,18 @@ static char *response_finish(response *result)
     char *json = yyjson_mut_write(result->doc, 0, NULL);
     yyjson_mut_doc_free(result->doc);
     return json ? json : xstrdup("{\"contract\":1,\"ok\":false}");
+}
+
+static const operation_descriptor *operation_by_name(const char *name)
+{
+    for (int i = 0;
+         i < (int)(sizeof CONTRACT_OPERATIONS / sizeof *CONTRACT_OPERATIONS);
+         i++) {
+        if (!strcmp(name, CONTRACT_OPERATIONS[i].name)) {
+            return &CONTRACT_OPERATIONS[i];
+        }
+    }
+    return NULL;
 }
 
 static char *read_file(const char *path, size_t *bytes, uint64_t *hash, char *error, size_t error_size)
@@ -1051,6 +1227,54 @@ static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
     yyjson_mut_obj_add_int(doc, object, "services", registry_service_count());
     yyjson_mut_obj_add_int(doc, object, "operators", registry_operator_count());
     yyjson_mut_obj_add_int(doc, object, "components", GAME_REGISTRY_COMPONENT_COUNT);
+}
+
+static int handle_describe_contract(response *result)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_uint(result->doc, value, "contract_version", BLUEPRINTS_AUTOMATION_CONTRACT);
+    yyjson_mut_obj_add_int(result->doc, value, "response_version", 1);
+    yyjson_mut_val *errors = yyjson_mut_obj_add_arr(result->doc, value, "error_categories");
+    for (int i = 0;
+         i < (int)(sizeof CONTRACT_ERROR_CATEGORIES / sizeof *CONTRACT_ERROR_CATEGORIES);
+         i++) {
+        yyjson_mut_arr_add_strcpy(result->doc, errors, CONTRACT_ERROR_CATEGORIES[i]);
+    }
+    yyjson_mut_val *operations = yyjson_mut_obj_add_arr(result->doc, value, "operations");
+    for (int i = 0;
+         i < (int)(sizeof CONTRACT_OPERATIONS / sizeof *CONTRACT_OPERATIONS);
+         i++) {
+        const operation_descriptor *operation = &CONTRACT_OPERATIONS[i];
+        yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, operations);
+        yyjson_mut_obj_add_strcpy(result->doc, object, "name", operation->name);
+        yyjson_mut_obj_add_strcpy(result->doc, object, "summary", operation->summary);
+        yyjson_mut_obj_add_int(
+            result->doc,
+            object,
+            "response_version",
+            operation->response_version
+        );
+        yyjson_mut_obj_add_bool(result->doc, object, "read_only", operation->read_only);
+        yyjson_mut_obj_add_bool(result->doc, object, "idempotent", operation->idempotent);
+        yyjson_mut_obj_add_bool(result->doc, object, "destructive", operation->destructive);
+        yyjson_mut_val *fields = yyjson_mut_obj_add_arr(result->doc, object, "request_fields");
+        for (int field_index = 0; field_index < operation->field_count; field_index++) {
+            const contract_field *field = &operation->fields[field_index];
+            yyjson_mut_val *field_value = yyjson_mut_arr_add_obj(result->doc, fields);
+            yyjson_mut_obj_add_strcpy(result->doc, field_value, "name", field->name);
+            yyjson_mut_obj_add_strcpy(result->doc, field_value, "type", field->type);
+            yyjson_mut_obj_add_bool(result->doc, field_value, "required", field->required);
+            yyjson_mut_obj_add_strcpy(
+                result->doc,
+                field_value,
+                "description",
+                field->description
+            );
+        }
+    }
+    yyjson_mut_val *reflection = yyjson_mut_obj_add_obj(result->doc, value, "reflection");
+    add_registry(result->doc, reflection);
+    return 0;
 }
 
 static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const compile_diagnostic *diagnostic)
@@ -1919,13 +2143,14 @@ static int handle_status(const char *root, response *result, int *exit_code)
     yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
     add_registry(result->doc, registry);
     yyjson_mut_val *operations = yyjson_mut_obj_add_arr(result->doc, value, "operations");
-    const char *const names[] = {
-        "status",         "list_assets",        "read_asset",
-        "validate_asset", "describe_registry",  "catalog",
-        "search_assets",  "asset_dependencies", "inspect_graph",
-    };
-    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
-        yyjson_mut_arr_add_strcpy(result->doc, operations, names[i]);
+    for (int i = 0;
+         i < (int)(sizeof CONTRACT_OPERATIONS / sizeof *CONTRACT_OPERATIONS);
+         i++) {
+        yyjson_mut_arr_add_strcpy(
+            result->doc,
+            operations,
+            CONTRACT_OPERATIONS[i].name
+        );
     }
     free_asset_entries(entries);
     return 0;
@@ -2207,11 +2432,7 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         yyjson_doc_free(document);
         return response_finish(&result);
     }
-    if (strcmp(operation, "describe_registry") && strcmp(operation, "status") &&
-        strcmp(operation, "list_assets") && strcmp(operation, "read_asset") &&
-        strcmp(operation, "validate_asset") && strcmp(operation, "catalog") &&
-        strcmp(operation, "search_assets") && strcmp(operation, "asset_dependencies") &&
-        strcmp(operation, "inspect_graph")) {
+    if (!operation_by_name(operation)) {
         response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "unknown operation");
         yyjson_doc_free(document);
         return response_finish(&result);
@@ -2226,7 +2447,9 @@ char *blueprints_automation_handle(const char *request, const char *default_root
             return response_finish(&result);
         }
     }
-    if (!strcmp(operation, "status")) {
+    if (!strcmp(operation, "describe_contract")) {
+        handle_describe_contract(&result);
+    } else if (!strcmp(operation, "status")) {
         handle_status(root, &result, exit_code);
     } else if (!strcmp(operation, "list_assets")) {
         handle_list_assets(root, &result, exit_code);

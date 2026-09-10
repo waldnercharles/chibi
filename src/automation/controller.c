@@ -143,11 +143,24 @@ typedef struct
     bool destructive;
 } operation_descriptor;
 
+typedef struct
+{
+    uint64_t cursor;
+    uint64_t limit;
+    bool has_limit;
+    bool summary;
+} page_options;
+
 #define CONTRACT_FIELD_COUNT(fields) ((int)(sizeof(fields) / sizeof *(fields)))
 
 static const contract_field CONTRACT_NO_FIELDS[1] = { { NULL, NULL, false, NULL } };
 static const contract_field CONTRACT_PROJECT_ROOT[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
+};
+static const contract_field CONTRACT_LIST_ASSETS[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
+    { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
 };
 static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -159,6 +172,15 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "query", "string", false, "Case-insensitive text matched against asset metadata." },
     { "kinds", "string[]", false, "Asset families to include in the search." },
+    { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
+    { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
+    { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
+};
+static const contract_field CONTRACT_CATALOG[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
+    { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
+    { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
 };
 static const contract_field CONTRACT_ASSET_DEPENDENCIES[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -200,8 +222,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     {
         "list_assets",
         "List authored JSON assets and their stable content identities.",
-        CONTRACT_PROJECT_ROOT,
-        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        CONTRACT_LIST_ASSETS,
+        CONTRACT_FIELD_COUNT(CONTRACT_LIST_ASSETS),
         1,
         true,
         true,
@@ -241,8 +263,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     {
         "catalog",
         "Return the semantic asset catalog and reflected registry summary.",
-        CONTRACT_PROJECT_ROOT,
-        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        CONTRACT_CATALOG,
+        CONTRACT_FIELD_COUNT(CONTRACT_CATALOG),
         1,
         true,
         true,
@@ -365,6 +387,51 @@ static bool request_uint(yyjson_val *root, const char *key, uint64_t *out)
         return true;
     }
     return false;
+}
+
+static void response_error(response *result, int *exit_code, int code, const char *message);
+
+static bool request_page(yyjson_val *request, page_options *page, response *result, int *exit_code)
+{
+    *page = (page_options){ 0 };
+    yyjson_val *cursor = yyjson_obj_get(request, "cursor");
+    if (cursor && !request_uint(request, "cursor", &page->cursor)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "cursor must be a non-negative integer");
+        return false;
+    }
+    yyjson_val *limit = yyjson_obj_get(request, "limit");
+    if (limit) {
+        if (!request_uint(request, "limit", &page->limit) || page->limit == 0) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "limit must be a positive integer");
+            return false;
+        }
+        page->has_limit = true;
+    }
+    yyjson_val *summary = yyjson_obj_get(request, "summary");
+    if (summary) {
+        if (!yyjson_is_bool(summary)) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "summary must be a boolean");
+            return false;
+        }
+        page->summary = yyjson_get_bool(summary);
+    }
+    return true;
+}
+
+static void add_page_metadata(yyjson_mut_doc *doc, yyjson_mut_val *object, int total, uint64_t cursor, uint64_t count)
+{
+    uint64_t total_value = (uint64_t)total;
+    uint64_t start = cursor < total_value ? cursor : total_value;
+    uint64_t page_count = count < total_value - start ? count : total_value - start;
+    bool has_more = start + page_count < total_value;
+    yyjson_mut_obj_add_uint(doc, object, "total", total_value);
+    yyjson_mut_obj_add_uint(doc, object, "count", page_count);
+    yyjson_mut_obj_add_bool(doc, object, "has_more", has_more);
+    if (has_more) {
+        yyjson_mut_obj_add_uint(doc, object, "next_cursor", start + page_count);
+    } else {
+        yyjson_mut_obj_add_null(doc, object, "next_cursor");
+    }
 }
 
 static response response_new(const char *operation)
@@ -1478,7 +1545,8 @@ static yyjson_mut_val *add_catalog_asset(
     yyjson_mut_val *array,
     const catalog_asset *asset,
     const catalog_asset *assets,
-    int count
+    int count,
+    bool summary
 )
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
@@ -1490,6 +1558,12 @@ static yyjson_mut_val *add_catalog_asset(
     add_hash(doc, object, asset->asset.hash);
     if (asset->description) {
         yyjson_mut_obj_add_strcpy(doc, object, "description", asset->description);
+    }
+    if (summary) {
+        yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
+        yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
+        yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
+        return object;
     }
     yyjson_mut_val *members = yyjson_mut_obj_add_arr(doc, object, "members");
     for (int i = 0; i < acount(asset->members); i++) {
@@ -1602,8 +1676,12 @@ static bool catalog_search_match(yyjson_val *request, const catalog_asset *asset
     return false;
 }
 
-static int handle_catalog(const char *root, response *result, int *exit_code)
+static int handle_catalog(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
+    page_options page;
+    if (!request_page(request, &page, result, exit_code)) {
+        return -1;
+    }
     catalog_asset *assets = NULL;
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
@@ -1620,22 +1698,35 @@ static int handle_catalog(const char *root, response *result, int *exit_code)
     yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
     yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", root);
+    yyjson_mut_obj_add_bool(result->doc, value, "summary", page.summary);
+    uint64_t total = (uint64_t)acount(assets);
+    uint64_t start = page.cursor < total ? page.cursor : total;
+    uint64_t count = total - start;
+    if (page.has_limit && page.limit < count) {
+        count = page.limit;
+    }
+    add_page_metadata(result->doc, value, acount(assets), start, count);
     yyjson_mut_val *asset_array = yyjson_mut_obj_add_arr(result->doc, value, "assets");
-    for (int i = 0; i < acount(assets); i++) {
-        add_catalog_asset(result->doc, asset_array, &assets[i], assets, acount(assets));
+    for (uint64_t i = 0; i < count; i++) {
+        add_catalog_asset(result->doc, asset_array, &assets[start + i], assets, acount(assets), page.summary);
     }
-    response registry = response_new("describe_registry");
-    handle_describe_registry(&registry);
-    yyjson_mut_val *registry_value = yyjson_mut_obj_get(registry.root, "result");
-    if (registry_value) {
-        yyjson_mut_obj_add_val(
-            result->doc,
-            value,
-            "registry",
-            yyjson_mut_val_mut_copy(result->doc, registry_value)
-        );
+    if (page.summary) {
+        yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
+        add_registry(result->doc, registry);
+    } else {
+        response registry = response_new("describe_registry");
+        handle_describe_registry(&registry);
+        yyjson_mut_val *registry_value = yyjson_mut_obj_get(registry.root, "result");
+        if (registry_value) {
+            yyjson_mut_obj_add_val(
+                result->doc,
+                value,
+                "registry",
+                yyjson_mut_val_mut_copy(result->doc, registry_value)
+            );
+        }
+        yyjson_mut_doc_free(registry.doc);
     }
-    yyjson_mut_doc_free(registry.doc);
     return 0;
 }
 
@@ -1644,6 +1735,10 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     yyjson_val *kinds = yyjson_obj_get(request, "kinds");
     if (kinds && !yyjson_is_arr(kinds)) {
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "kinds must be an array");
+        return -1;
+    }
+    page_options page;
+    if (!request_page(request, &page, result, exit_code)) {
         return -1;
     }
     catalog_asset *assets = NULL;
@@ -1662,13 +1757,27 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
     const char *query = request_string(request, "query");
     yyjson_mut_obj_add_strcpy(result->doc, value, "query", query ? query : "");
+    yyjson_mut_obj_add_bool(result->doc, value, "summary", page.summary);
+    int total = 0;
+    for (int i = 0; i < acount(assets); i++) {
+        total += catalog_search_match(request, &assets[i]);
+    }
+    uint64_t start = page.cursor < (uint64_t)total ? page.cursor : (uint64_t)total;
+    uint64_t count = (uint64_t)total - start;
+    if (page.has_limit && page.limit < count) {
+        count = page.limit;
+    }
+    add_page_metadata(result->doc, value, total, start, count);
     yyjson_mut_val *matches = yyjson_mut_obj_add_arr(result->doc, value, "assets");
+    uint64_t match_index = 0;
     for (int i = 0; i < acount(assets); i++) {
         if (catalog_search_match(request, &assets[i])) {
-            add_catalog_asset(result->doc, matches, &assets[i], assets, acount(assets));
+            if (match_index >= start && match_index < start + count) {
+                add_catalog_asset(result->doc, matches, &assets[i], assets, acount(assets), page.summary);
+            }
+            match_index++;
         }
     }
-    yyjson_mut_obj_add_int(result->doc, value, "count", yyjson_mut_arr_size(matches));
     return 0;
 }
 
@@ -2295,21 +2404,38 @@ static int handle_status(const char *root, response *result, int *exit_code)
     return 0;
 }
 
-static int handle_list_assets(const char *root, response *result, int *exit_code)
+static int handle_list_assets(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
-    asset_entry *entries = NULL;
+    page_options page;
+    if (!request_page(request, &page, result, exit_code)) {
+        return -1;
+    }
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0;
+    uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (enumerate_assets(root, &entries, error, sizeof error) != 0) {
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
+        0) {
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", root);
-    yyjson_mut_val *assets = yyjson_mut_obj_add_arr(result->doc, value, "assets");
-    for (int i = 0; i < acount(entries); i++) {
-        add_asset_entry(result->doc, assets, &entries[i]);
+    char content_hash[32];
+    snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)content_hash_value);
+    yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
+    uint64_t total = (uint64_t)acount(assets);
+    uint64_t start = page.cursor < total ? page.cursor : total;
+    uint64_t count = total - start;
+    if (page.has_limit && page.limit < count) {
+        count = page.limit;
     }
-    free_asset_entries(entries);
+    add_page_metadata(result->doc, value, acount(assets), start, count);
+    yyjson_mut_val *asset_array = yyjson_mut_obj_add_arr(result->doc, value, "assets");
+    for (uint64_t i = 0; i < count; i++) {
+        add_asset_entry(result->doc, asset_array, &assets[start + i].asset);
+    }
     return 0;
 }
 
@@ -2591,13 +2717,13 @@ char *blueprints_automation_handle(const char *request, const char *default_root
     } else if (!strcmp(operation, "status")) {
         handle_status(root, &result, exit_code);
     } else if (!strcmp(operation, "list_assets")) {
-        handle_list_assets(root, &result, exit_code);
+        handle_list_assets(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "read_asset")) {
         handle_read_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "validate_asset")) {
         handle_validate_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "catalog")) {
-        handle_catalog(root, &result, exit_code);
+        handle_catalog(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "search_assets")) {
         handle_search_assets(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "asset_dependencies")) {
@@ -2646,6 +2772,13 @@ static char *legacy_request(const yyjson_val *input, const char *operation, cons
     const char *path = params ? request_string((yyjson_val *)params, "path") : NULL;
     if (path) {
         yyjson_mut_obj_add_strcpy(doc, object, "path", path);
+    }
+    static const char *const page_fields[] = { "cursor", "limit", "summary" };
+    for (int i = 0; i < (int)(sizeof page_fields / sizeof *page_fields); i++) {
+        yyjson_val *value = params ? yyjson_obj_get(params, page_fields[i]) : NULL;
+        if (value) {
+            yyjson_mut_obj_add_val(doc, object, page_fields[i], yyjson_val_mut_copy(doc, value));
+        }
     }
     char *request = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);

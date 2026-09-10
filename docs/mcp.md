@@ -81,12 +81,14 @@ selection. The operation is read-only and does not write authored content.
 
 `record_scenario` uses the same fixed-step runtime path while accepting at most
 600 frames of normalized input. Each frame may include bounded `movement` and
-`aim` vectors with `x` and `y` values in `[-1, 1]`, plus at most 32 named action
+`aim` vectors with `x` and `y` values in `[-1, 1]`, plus at most two named action
 transitions. The result includes a versioned recording with contract and
 content hashes, normalized inputs, events, fixed timing, and per-frame world
 hashes. The native controller writes the recording artifact outside authored
-content and returns its path. Repeated recordings of unchanged content and
-inputs should have the same deterministic hashes and recording payload.
+content and returns its bounded `recording_id` and path. Clients can inspect a
+recording through `blueprints://recording/{id}` without opening a filesystem
+path. Repeated recordings of unchanged content and inputs should have the same
+deterministic hashes and recording payload.
 
 `replay_scenario` accepts exactly one of the returned recording object or its
 bounded `recording_path`. It validates the recording and content revisions

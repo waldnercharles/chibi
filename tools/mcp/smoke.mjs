@@ -428,12 +428,12 @@ try {
             {
               movement: { x: 0.5, y: -0.25 },
               aim: { x: 1, y: 0 },
-              actions: [{ name: "fire", pressed: true, value: 1 }],
+              actions: [{ name: "Fire", pressed: true, value: 1 }],
             },
             {
               movement: { x: 0, y: 0 },
               aim: { x: 0, y: 1 },
-              actions: [{ name: "fire", pressed: false, value: 0 }],
+              actions: [{ name: "Fire", pressed: false, value: 0 }],
             },
             { movement: { x: -1, y: 0 }, aim: { x: -1, y: 0 }, actions: [] },
           ],
@@ -550,6 +550,27 @@ try {
   }
   const replayPathResponse = JSON.parse(replayPathProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
   const replayPathResult = JSON.parse(replayPathResponse.result?.content?.[0]?.text || "{}");
+  const recordingId = firstRecord.result?.recording_id || firstRecording?.recording_id || firstRecording?.id;
+  const recordingResourceRequest = {
+    jsonrpc: "2.0",
+    id: 16,
+    method: "resources/read",
+    params: { uri: `blueprints://recording/${recordingId}` },
+  };
+  const recordingResourceProcess = spawnSync(process.execPath, [server], {
+    cwd: root,
+    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    input: `${JSON.stringify(recordingResourceRequest)}\n`,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (recordingResourceProcess.error || recordingResourceProcess.status !== 0) {
+    throw recordingResourceProcess.error || new Error(recordingResourceProcess.stderr || "recording resource MCP server failed");
+  }
+  const recordingResourceResponse = JSON.parse(recordingResourceProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
+  const recordingResourceText = recordingResourceResponse.result?.contents?.[0]?.text || "{}";
+  const recordingResource = JSON.parse(recordingResourceText);
+  const recordingResourceValue = recordingResource.result?.recording || recordingResource.result;
   const mutatedRecording = firstRecording && JSON.parse(JSON.stringify(firstRecording));
   if (mutatedRecording?.frame_hashes?.length) {
     mutatedRecording.frame_hashes[1] = "0000000000000000";
@@ -620,9 +641,11 @@ try {
       typeof firstArtifactPath !== "string" || typeof secondArtifactPath !== "string" ||
       firstArtifactPath.startsWith(scenarioRoot) || secondArtifactPath.startsWith(scenarioRoot) ||
       replayResponse.result?.isError === true || replayResult.ok !== true ||
-      replayResult.result?.matched !== true ||
+      replayResult.result?.deterministic !== true ||
       replayPathResponse.result?.isError === true || replayPathResult.ok !== true ||
-      replayPathResult.result?.matched !== true ||
+      replayPathResult.result?.deterministic !== true ||
+      recordingResourceResponse.error || recordingResource.ok !== true ||
+      (recordingResourceValue?.recording_id || recordingResourceValue?.id) !== recordingId ||
       divergenceResponse.result?.isError === true || divergenceResult.ok !== true ||
       firstDivergenceFrame !== 1 ||
       scenarioById.get(10)?.error?.code !== -32602 ||

@@ -76,7 +76,7 @@ function errorResponse(id, code, message) {
   return response;
 }
 
-function toolDefinitions() {
+function rawToolDefinitions() {
   const noArguments = { type: "object", additionalProperties: false };
   const outputSchema = { type: "object", additionalProperties: true };
   const assetArguments = {
@@ -143,55 +143,71 @@ function toolDefinitions() {
   return [
     {
       name: "project_status",
+      operation: "status",
       description: "Return project paths, asset counts, and reflected registry counts.",
       inputSchema: noArguments,
       outputSchema,
     },
     {
       name: "list_assets",
+      operation: "list_assets",
       description: "List authored JSON assets with stable paths, sizes, and content hashes.",
       inputSchema: noArguments,
       outputSchema,
     },
     {
       name: "catalog",
+      operation: "catalog",
       description: "Return the semantic asset catalog, dependency edges, diagnostics, and reflected registry metadata.",
       inputSchema: noArguments,
       outputSchema,
     },
     {
       name: "search_assets",
+      operation: "search_assets",
       description: "Search the semantic asset catalog by kind, name, path, or description.",
       inputSchema: searchArguments,
       outputSchema,
     },
     {
       name: "asset_dependencies",
+      operation: "asset_dependencies",
       description: "Inspect direct or transitive incoming and outgoing asset dependencies.",
       inputSchema: dependencyArguments,
       outputSchema,
     },
     {
       name: "inspect_graph",
+      operation: "inspect_graph",
       description: "Return normalized graph nodes, pins, edges, calls, effects, and validation diagnostics.",
       inputSchema: graphArguments,
       outputSchema,
     },
     {
       name: "read_asset",
+      operation: "read_asset",
       description: "Read one authored asset as parsed JSON.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
       name: "validate_asset",
+      operation: "validate_asset",
       description: "Load and validate one asset through the engine's native loader/compiler.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
       name: "describe_registry",
+      operation: "describe_registry",
       description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
+      inputSchema: noArguments,
+      outputSchema,
+    },
+    {
+      name: "describe_contract",
+      operation: "describe_contract",
+      description: "Describe native operations, response versions, errors, safety annotations, and reflection counts.",
       inputSchema: noArguments,
       outputSchema,
     },
@@ -236,6 +252,44 @@ function nativeRequest(operation, args = {}) {
     );
   }
   return response;
+}
+
+let contractMetadataCache;
+
+function contractMetadata() {
+  if (contractMetadataCache !== undefined) {
+    return contractMetadataCache;
+  }
+  try {
+    const response = nativeRequest("describe_contract");
+    contractMetadataCache = response.ok === true ? response.result : null;
+  } catch {
+    contractMetadataCache = null;
+  }
+  return contractMetadataCache;
+}
+
+function toolDefinition(name) {
+  return rawToolDefinitions().find((candidate) => candidate.name === name);
+}
+
+function toolDefinitions() {
+  const contract = contractMetadata();
+  return rawToolDefinitions().map(({ operation, ...definition }) => {
+    const metadata = contract?.operations?.find((candidate) => candidate.name === operation);
+    if (!metadata) {
+      return definition;
+    }
+    return {
+      ...definition,
+      description: metadata.summary,
+      annotations: {
+        readOnlyHint: metadata.read_only,
+        idempotentHint: metadata.idempotent,
+        destructiveHint: metadata.destructive,
+      },
+    };
+  });
 }
 
 function validateSchema(value, schema, path) {
@@ -285,7 +339,7 @@ function validateSchema(value, schema, path) {
 }
 
 function validateToolArguments(name, args) {
-  const tool = toolDefinitions().find((candidate) => candidate.name === name);
+  const tool = toolDefinition(name);
   if (!tool) {
     throw protocolError(-32602, "tools/call requires a known tool name");
   }
@@ -307,6 +361,7 @@ function toolCall(name, args) {
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");
+    case "describe_contract": return nativeRequest("describe_contract");
     default: {
       const error = new Error(`unknown tool: ${name}`);
       error.rpcCode = -32602;

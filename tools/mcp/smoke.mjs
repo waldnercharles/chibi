@@ -43,6 +43,7 @@ const requests = [
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
+  { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describe_contract", arguments: {} } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
   { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "blueprints://project/status" } },
@@ -81,6 +82,10 @@ if (responseById.get(1)?.result?.serverInfo?.name !== "c-blueprints" ||
 if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "validate_asset" && tool.outputSchema)) {
   throw new Error("tools/list did not expose validate_asset");
 }
+if (!responseById.get(2)?.result?.tools?.some((tool) =>
+  tool.name === "describe_contract" && tool.annotations?.readOnlyHint === true)) {
+  throw new Error("tools/list did not expose the reflected contract metadata");
+}
 if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" && tool.outputSchema) ||
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "search_assets" && tool.inputSchema?.required?.includes("query")) ||
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "asset_dependencies" && tool.inputSchema?.required?.includes("kind")) ||
@@ -99,6 +104,7 @@ const libraryGraph = JSON.parse(responseById.get(20).result.content[0].text);
 const read = JSON.parse(responseById.get(5).result.content[0].text);
 const validation = JSON.parse(responseById.get(6).result.content[0].text);
 const registry = JSON.parse(responseById.get(7).result.content[0].text);
+const contract = JSON.parse(responseById.get(27).result.content[0].text);
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -109,7 +115,10 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     libraryGraph.ok !== true || libraryGraph.result?.name !== "DirectionMath" ||
     libraryGraph.result?.graph?.name !== "Direction Orientation" ||
     read.result?.name !== "HealthBehavior" || validation.result?.valid !== true ||
-    registry.result?.nodes?.length < 1) {
+    registry.result?.nodes?.length < 1 ||
+    contract.ok !== true ||
+    !contract.result?.operations?.some((operation) => operation.name === "describe_contract") ||
+    contract.result?.reflection?.nodes < 1) {
   throw new Error("native MCP operations failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>

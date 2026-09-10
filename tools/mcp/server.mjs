@@ -30,6 +30,10 @@ function resourceTemplates() {
     uriTemplate: "blueprints://asset/{kind}/{name}/dependencies",
     name: "c-blueprints asset dependencies",
     mimeType: "application/json",
+  }, {
+    uriTemplate: "blueprints://asset/{kind}/{name}/graph/{graph_id}",
+    name: "c-blueprints normalized graph",
+    mimeType: "application/json",
   }];
 }
 
@@ -106,6 +110,21 @@ function toolDefinitions() {
       },
     },
   };
+  const graphArguments = {
+    ...assetArguments,
+    properties: {
+      ...assetArguments.properties,
+      graph_id: {
+        type: "integer",
+        minimum: 0,
+        description: "Optional stable graph identifier within the asset.",
+      },
+      graph_name: {
+        type: "string",
+        description: "Optional graph name selector. Omit both selectors to inspect all graphs and select the first graph.",
+      },
+    },
+  };
   return [
     {
       name: "project_status",
@@ -135,6 +154,12 @@ function toolDefinitions() {
       name: "asset_dependencies",
       description: "Inspect direct or transitive incoming and outgoing asset dependencies.",
       inputSchema: dependencyArguments,
+      outputSchema,
+    },
+    {
+      name: "inspect_graph",
+      description: "Return normalized graph nodes, pins, edges, calls, effects, and validation diagnostics.",
+      inputSchema: graphArguments,
       outputSchema,
     },
     {
@@ -195,6 +220,7 @@ function toolCall(name, args) {
     case "catalog": return nativeRequest("catalog");
     case "search_assets": return nativeRequest("search_assets", args || {});
     case "asset_dependencies": return nativeRequest("asset_dependencies", args || {});
+    case "inspect_graph": return nativeRequest("inspect_graph", args || {});
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");
@@ -221,11 +247,23 @@ function resourceRead(uri) {
   } else if (uri === "blueprints://catalog") {
     response = nativeRequest("catalog");
   } else {
+    const graphMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
+    if (graphMatch) {
+      const graphId = Number(decodeURIComponent(graphMatch[3]));
+      if (!Number.isSafeInteger(graphId) || graphId < 0) {
+        throw new Error(`invalid graph resource: ${uri}`);
+      }
+      response = nativeRequest("inspect_graph", {
+        kind: decodeURIComponent(graphMatch[1]),
+        name: decodeURIComponent(graphMatch[2]),
+        graph_id: graphId,
+      });
+    }
     const dependencyMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
-    if (dependencyMatch) {
+    if (response === undefined && dependencyMatch) {
       response = nativeRequest("asset_dependencies", {
-        kind: dependencyMatch[1],
-        name: dependencyMatch[2],
+        kind: decodeURIComponent(dependencyMatch[1]),
+        name: decodeURIComponent(dependencyMatch[2]),
       });
     }
     const match = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
@@ -233,7 +271,10 @@ function resourceRead(uri) {
       throw new Error(`unknown resource: ${uri}`);
     }
     if (response === undefined) {
-      response = nativeRequest("read_asset", { kind: match[1], name: match[2] });
+      response = nativeRequest("read_asset", {
+        kind: decodeURIComponent(match[1]),
+        name: decodeURIComponent(match[2]),
+      });
     }
   }
   if (response.ok !== true) {

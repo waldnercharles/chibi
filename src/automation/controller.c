@@ -101,12 +101,28 @@ typedef struct
 
 typedef struct
 {
+    yyjson_val *value;
+    uint64_t id;
+} inspect_json_item;
+
+typedef struct
+{
     yyjson_mut_doc *doc;
     yyjson_mut_val *root;
     bool ok;
 } response;
 
 static int handle_describe_registry(response *result);
+static int load_asset(
+    const char *root,
+    yyjson_val *request,
+    asset_ref *ref,
+    char **json,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+);
 
 static const asset_family *family_by_kind(const char *kind)
 {
@@ -1481,6 +1497,398 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     return 0;
 }
 
+static uint64_t inspect_json_uint(yyjson_val *value)
+{
+    if (yyjson_is_uint(value)) {
+        return yyjson_get_uint(value);
+    }
+    if (yyjson_is_sint(value) && yyjson_get_sint(value) >= 0) {
+        return (uint64_t)yyjson_get_sint(value);
+    }
+    return 0;
+}
+
+static int compare_uint64(const void *left, const void *right)
+{
+    const uint64_t a = *(const uint64_t *)left;
+    const uint64_t b = *(const uint64_t *)right;
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+static int inspect_node_compare(const void *left, const void *right)
+{
+    const node *a = *(node *const *)left;
+    const node *b = *(node *const *)right;
+    return a->id < b->id ? -1 : a->id > b->id ? 1 : 0;
+}
+
+static int inspect_item_compare(const void *left, const void *right)
+{
+    const inspect_json_item *a = left;
+    const inspect_json_item *b = right;
+    return a->id < b->id ? -1 : a->id > b->id ? 1 : 0;
+}
+
+static int inspect_edge_compare(const void *left, const void *right)
+{
+    const yyjson_val *a = ((const inspect_json_item *)left)->value;
+    const yyjson_val *b = ((const inspect_json_item *)right)->value;
+    const char *a_kind = request_string((yyjson_val *)a, "kind");
+    const char *b_kind = request_string((yyjson_val *)b, "kind");
+    uint64_t a_from = inspect_json_uint(yyjson_obj_get(a, "from"));
+    uint64_t b_from = inspect_json_uint(yyjson_obj_get(b, "from"));
+    uint64_t a_from_pin = inspect_json_uint(yyjson_obj_get(a, "from_pin"));
+    uint64_t b_from_pin = inspect_json_uint(yyjson_obj_get(b, "from_pin"));
+    uint64_t a_to = inspect_json_uint(yyjson_obj_get(a, "to"));
+    uint64_t b_to = inspect_json_uint(yyjson_obj_get(b, "to"));
+    uint64_t a_to_pin = inspect_json_uint(yyjson_obj_get(a, "to_pin"));
+    uint64_t b_to_pin = inspect_json_uint(yyjson_obj_get(b, "to_pin"));
+    int a_order = yyjson_is_num(yyjson_obj_get(a, "order"))
+                    ? (int)yyjson_get_sint(yyjson_obj_get(a, "order"))
+                    : 0;
+    int b_order = yyjson_is_num(yyjson_obj_get(b, "order"))
+                    ? (int)yyjson_get_sint(yyjson_obj_get(b, "order"))
+                    : 0;
+#define INSPECT_CMP(left_value, right_value)                                   \
+    if ((left_value) != (right_value))                                         \
+    return (left_value) < (right_value) ? -1 : 1
+    INSPECT_CMP(a_from, b_from);
+    INSPECT_CMP(a_from_pin, b_from_pin);
+    INSPECT_CMP(a_to, b_to);
+    INSPECT_CMP(a_to_pin, b_to_pin);
+    int kind = strcmp(a_kind ? a_kind : "", b_kind ? b_kind : "");
+    if (kind) {
+        return kind;
+    }
+    INSPECT_CMP(a_order, b_order);
+    const char *a_conversion = request_string((yyjson_val *)a, "conversion");
+    const char *b_conversion = request_string((yyjson_val *)b, "conversion");
+    return strcmp(a_conversion ? a_conversion : "", b_conversion ? b_conversion : "");
+#undef INSPECT_CMP
+}
+
+static void inspect_add_sorted_array(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const char *key,
+    yyjson_val *source,
+    bool edges
+)
+{
+    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, key);
+    if (!yyjson_is_arr(source)) {
+        return;
+    }
+    int count = (int)yyjson_arr_size(source);
+    inspect_json_item *items = count ? xmalloc((size_t)count * sizeof *items) : NULL;
+    size_t index, maximum;
+    yyjson_val *item;
+    int item_count = 0;
+    yyjson_arr_foreach(source, index, maximum, item)
+    {
+        items[item_count++] = (inspect_json_item){
+            .value = item,
+            .id = edges ? inspect_json_uint(yyjson_obj_get(item, "from"))
+                        : inspect_json_uint(yyjson_obj_get(item, "id")),
+        };
+    }
+    qsort(items, (size_t)item_count, sizeof *items, edges ? inspect_edge_compare : inspect_item_compare);
+    for (int i = 0; i < item_count; i++) {
+        yyjson_mut_arr_add_val(array, yyjson_val_mut_copy(doc, items[i].value));
+    }
+    free(items);
+}
+
+static bool inspect_report_has_missing_reference(const compile_report *report, uint64_t node_id)
+{
+    for (int i = 0; i < acount(report->items); i++) {
+        if (report->items[i].rule == CMPL_RULE_MISSING_REFERENCE &&
+            report->items[i].node_id == node_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void inspect_add_calls(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const behavior_asset *asset,
+    const graph *source,
+    const compile_report *report
+)
+{
+    yyjson_mut_val *calls = yyjson_mut_obj_add_arr(doc, object, "calls");
+    int count = acount(source->nodes);
+    node **nodes = count ? xmalloc((size_t)count * sizeof *nodes) : NULL;
+    for (int i = 0; i < count; i++) {
+        nodes[i] = source->nodes[i];
+    }
+    qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    for (int i = 0; i < count; i++) {
+        const node *call = nodes[i];
+        if (!call->reference_id && !call->reference_name && !call->reference_asset) {
+            continue;
+        }
+        yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, calls);
+        yyjson_mut_obj_add_uint(doc, entry, "node_id", call->id);
+        yyjson_mut_obj_add_strcpy(doc, entry, "node_type", call->desc->name);
+        yyjson_mut_val *target = yyjson_mut_obj_add_obj(doc, entry, "target");
+        bool resolved = true;
+        if (call->reference_asset) {
+            yyjson_mut_obj_add_strcpy(doc, target, "kind", "asset");
+            yyjson_mut_obj_add_strcpy(doc, target, "asset", call->reference_asset);
+            if (call->reference_name) {
+                yyjson_mut_obj_add_strcpy(doc, target, "name", call->reference_name);
+            }
+            resolved = !inspect_report_has_missing_reference(report, call->id);
+        } else if (call->reference_id) {
+            graph *target_graph = behavior_asset_find_graph(asset, call->reference_id);
+            yyjson_mut_obj_add_strcpy(doc, target, "kind", "local");
+            yyjson_mut_obj_add_uint(doc, target, "graph_id", call->reference_id);
+            if (target_graph && target_graph->name) {
+                yyjson_mut_obj_add_strcpy(doc, target, "name", target_graph->name);
+            }
+            resolved = target_graph != NULL;
+        } else {
+            yyjson_mut_obj_add_strcpy(doc, target, "kind", "event");
+            yyjson_mut_obj_add_strcpy(doc, target, "name", call->reference_name);
+        }
+        yyjson_mut_obj_add_bool(doc, entry, "resolved", resolved);
+    }
+    free(nodes);
+}
+
+static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, const compile_report *report)
+{
+    const compile_effects *effects = compile_report_effects(report);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "effects");
+    yyjson_mut_val *reads = yyjson_mut_obj_add_arr(doc, value, "reads");
+    int read_count = acount(effects->reads);
+    uint64_t *ordered_reads = read_count
+                                ? xmalloc((size_t)read_count * sizeof *ordered_reads)
+                                : NULL;
+    for (int i = 0; i < read_count; i++) {
+        ordered_reads[i] = effects->reads[i];
+    }
+    qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    for (int i = 0; i < read_count; i++) {
+        yyjson_mut_arr_add_uint(doc, reads, ordered_reads[i]);
+    }
+    free(ordered_reads);
+    yyjson_mut_val *writes = yyjson_mut_obj_add_arr(doc, value, "writes");
+    int write_count = acount(effects->writes);
+    uint64_t *ordered_writes = write_count
+                                 ? xmalloc((size_t)write_count * sizeof *ordered_writes)
+                                 : NULL;
+    for (int i = 0; i < write_count; i++) {
+        ordered_writes[i] = effects->writes[i];
+    }
+    qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    for (int i = 0; i < write_count; i++) {
+        yyjson_mut_arr_add_uint(doc, writes, ordered_writes[i]);
+    }
+    free(ordered_writes);
+    yyjson_mut_obj_add_uint(doc, value, "flags", effects->flags);
+    yyjson_mut_obj_add_bool(doc, value, "all_writes", effects->all_writes != 0);
+    yyjson_mut_obj_add_bool(doc, value, "parallel_eligible", effects->parallel_eligible != 0);
+    yyjson_mut_obj_add_uint(doc, value, "blocking_node_id", effects->blocking_node_id);
+    if (effects->blocking_reason) {
+        yyjson_mut_obj_add_strcpy(doc, value, "blocking_reason", effects->blocking_reason);
+    } else {
+        yyjson_mut_obj_add_null(doc, value, "blocking_reason");
+    }
+    yyjson_mut_obj_add_uint(doc, value, "topology_revision", effects->topology_revision);
+}
+
+static yyjson_mut_val *inspect_graph_value(
+    yyjson_mut_doc *doc,
+    const behavior_asset *asset,
+    const graph *source,
+    const compile_report *report
+)
+{
+    char *serialized = graph_save_json(source);
+    yyjson_doc *document = serialized
+                             ? yyjson_read(serialized, strlen(serialized), 0)
+                             : NULL;
+    yyjson_mut_val *object = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_uint(doc, object, "id", source->graph_id);
+    yyjson_mut_obj_add_strcpy(doc, object, "kind", graph_kind_name(source->kind));
+    yyjson_mut_obj_add_strcpy(doc, object, "name", source->name ? source->name : "");
+    yyjson_mut_obj_add_uint(doc, object, "entry_id", source->entry_id);
+    yyjson_mut_obj_add_uint(doc, object, "return_id", source->return_id);
+    yyjson_mut_obj_add_uint(doc, object, "revision", source->topology_revision);
+    yyjson_mut_obj_add_bool(doc, object, "breakpoints_enabled", source->breakpoints_enabled != 0);
+    yyjson_mut_obj_add_bool(doc, object, "dataflow", source->dataflow != 0);
+    yyjson_mut_obj_add_int(doc, object, "call_depth_limit", source->call_depth_limit);
+    if (source->source_asset) {
+        yyjson_mut_obj_add_strcpy(doc, object, "source_asset", source->source_asset);
+        yyjson_mut_obj_add_uint(doc, object, "source_graph_id", source->source_graph_id);
+    }
+    if (source->math_expression) {
+        yyjson_mut_obj_add_strcpy(doc, object, "math_expression", source->math_expression);
+    }
+    yyjson_val *serialized_root = document ? yyjson_doc_get_root(document) : NULL;
+    const char *const keys[] = { "description", "comment_boxes" };
+    for (int i = 0; i < (int)(sizeof keys / sizeof *keys); i++) {
+        yyjson_val *value = yyjson_obj_get(serialized_root, keys[i]);
+        if (value) {
+            yyjson_mut_obj_add_val(doc, object, keys[i], yyjson_val_mut_copy(doc, value));
+        }
+    }
+    inspect_add_sorted_array(doc, object, "nodes", yyjson_obj_get(serialized_root, "nodes"), false);
+    inspect_add_sorted_array(doc, object, "edges", yyjson_obj_get(serialized_root, "edges"), true);
+    inspect_add_calls(doc, object, asset, source, report);
+    if (document) {
+        yyjson_doc_free(document);
+    }
+    free(serialized);
+    return object;
+}
+
+static void inspect_add_variables(yyjson_mut_doc *doc, yyjson_mut_val *object, yyjson_val *source)
+{
+    yyjson_mut_val *variables = yyjson_mut_obj_add_arr(doc, object, "variables");
+    if (!yyjson_is_arr(source)) {
+        return;
+    }
+    int count = (int)yyjson_arr_size(source);
+    inspect_json_item *items = count ? xmalloc((size_t)count * sizeof *items) : NULL;
+    size_t index, maximum;
+    yyjson_val *item;
+    int item_count = 0;
+    yyjson_arr_foreach(source, index, maximum, item)
+    {
+        items[item_count++] = (inspect_json_item){
+            .value = item,
+            .id = inspect_json_uint(yyjson_obj_get(item, "id")),
+        };
+    }
+    qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    for (int i = 0; i < item_count; i++) {
+        yyjson_mut_arr_add_val(variables, yyjson_val_mut_copy(doc, items[i].value));
+    }
+    free(items);
+}
+
+static void inspect_add_validation(yyjson_mut_doc *doc, yyjson_mut_val *object, const compile_report *report)
+{
+    yyjson_mut_val *validation = yyjson_mut_obj_add_obj(doc, object, "validation");
+    yyjson_mut_obj_add_bool(doc, validation, "valid", report->error_count == 0);
+    yyjson_mut_obj_add_int(doc, validation, "errors", report->error_count);
+    yyjson_mut_obj_add_int(doc, validation, "warnings", report->warning_count);
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, validation, "diagnostics");
+    for (int i = 0; i < acount(report->items); i++) {
+        add_diagnostic(doc, diagnostics, &report->items[i]);
+    }
+    inspect_add_effects(doc, validation, report);
+}
+
+static int handle_inspect_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    asset_ref ref = { 0 };
+    char *json = NULL;
+    size_t bytes = 0;
+    uint64_t hash = 0;
+    char error[256] = { 0 };
+    int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    if (ref.family->loader != ASSET_GRAPH) {
+        free(json);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
+        return -1;
+    }
+    yyjson_doc *source_document = yyjson_read(json, strlen(json), 0);
+    behavior_asset *asset = behavior_asset_load_json(json);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, hash);
+    if (!source_document || !asset) {
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+        add_load_diagnostic(result->doc, diagnostics, source_document ? graph_last_error() : "asset is not valid JSON");
+        yyjson_mut_obj_add_bool(result->doc, value, "valid", false);
+        if (source_document) {
+            yyjson_doc_free(source_document);
+        }
+        if (asset) {
+            behavior_asset_free(asset);
+        }
+        free(json);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "graph inspection failed");
+        return -1;
+    }
+    uint64_t requested_id = 0;
+    bool has_requested_id = yyjson_obj_get(request, "graph_id") != NULL;
+    if (has_requested_id && !request_uint(request, "graph_id", &requested_id)) {
+        yyjson_doc_free(source_document);
+        behavior_asset_free(asset);
+        free(json);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "graph_id must be an unsigned integer");
+        return -1;
+    }
+    const char *requested_name = request_string(request, "graph_name");
+    int selected = -1;
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *graph_value = asset->graphs[i];
+        if (has_requested_id && graph_value->graph_id != requested_id) {
+            continue;
+        }
+        if (requested_name &&
+            strcmp(graph_value->name ? graph_value->name : "", requested_name)) {
+            continue;
+        }
+        selected = i;
+        break;
+    }
+    if ((has_requested_id || requested_name) && selected < 0) {
+        yyjson_doc_free(source_document);
+        behavior_asset_free(asset);
+        free(json);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "graph not found");
+        return -1;
+    }
+    compile_report report;
+    compile_report_init(&report);
+    behavior_asset_compile(asset, &report);
+    inspect_add_variables(
+        result->doc,
+        value,
+        yyjson_obj_get(yyjson_doc_get_root(source_document), "variables")
+    );
+    yyjson_mut_val *graphs = yyjson_mut_obj_add_arr(result->doc, value, "graphs");
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        yyjson_mut_val *
+            graph_value = inspect_graph_value(result->doc, asset, asset->graphs[i], &report);
+        yyjson_mut_arr_add_val(graphs, graph_value);
+        if (selected < 0 && i == 0) {
+            selected = 0;
+        }
+    }
+    if (selected >= 0) {
+        yyjson_mut_val *selected_graph = yyjson_mut_arr_get(graphs, (size_t)selected);
+        yyjson_mut_obj_add_val(
+            result->doc,
+            value,
+            "graph",
+            yyjson_mut_val_mut_copy(result->doc, selected_graph)
+        );
+    }
+    inspect_add_validation(result->doc, value, &report);
+    int errors = report.error_count;
+    compile_report_free(&report);
+    yyjson_doc_free(source_document);
+    behavior_asset_free(asset);
+    free(json);
+    if (errors) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "graph validation failed");
+        return -1;
+    }
+    return 0;
+}
+
 static int handle_status(const char *root, response *result, int *exit_code)
 {
     asset_entry *entries = NULL;
@@ -1514,7 +1922,7 @@ static int handle_status(const char *root, response *result, int *exit_code)
     const char *const names[] = {
         "status",         "list_assets",        "read_asset",
         "validate_asset", "describe_registry",  "catalog",
-        "search_assets",  "asset_dependencies",
+        "search_assets",  "asset_dependencies", "inspect_graph",
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         yyjson_mut_arr_add_strcpy(result->doc, operations, names[i]);
@@ -1766,7 +2174,8 @@ static int operation_requires_root(const char *operation)
     return !strcmp(operation, "status") || !strcmp(operation, "list_assets") ||
            !strcmp(operation, "read_asset") || !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
-           !strcmp(operation, "asset_dependencies");
+           !strcmp(operation, "asset_dependencies") ||
+           !strcmp(operation, "inspect_graph");
 }
 
 char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -1801,8 +2210,8 @@ char *blueprints_automation_handle(const char *request, const char *default_root
     if (strcmp(operation, "describe_registry") && strcmp(operation, "status") &&
         strcmp(operation, "list_assets") && strcmp(operation, "read_asset") &&
         strcmp(operation, "validate_asset") && strcmp(operation, "catalog") &&
-        strcmp(operation, "search_assets") &&
-        strcmp(operation, "asset_dependencies")) {
+        strcmp(operation, "search_assets") && strcmp(operation, "asset_dependencies") &&
+        strcmp(operation, "inspect_graph")) {
         response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "unknown operation");
         yyjson_doc_free(document);
         return response_finish(&result);
@@ -1831,6 +2240,8 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         handle_search_assets(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "asset_dependencies")) {
         handle_asset_dependencies(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "inspect_graph")) {
+        handle_inspect_graph(root, root_value, &result, exit_code);
     } else {
         handle_describe_registry(&result);
     }

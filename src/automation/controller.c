@@ -2793,7 +2793,6 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         } else {
             yyjson_mut_obj_add_strcpy(result->doc, value, "scene_name", scene->name);
             yyjson_mut_obj_add_int(result->doc, value, "entities", acount(scene->entities));
-            yyjson_mut_obj_add_bool(result->doc, value, "perspective", scene->perspective);
             game_scene_document_free(scene);
         }
     }

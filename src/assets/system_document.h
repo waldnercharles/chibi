@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_SYSTEM_DOCUMENT_H
-#define CBLUEPRINT_GAME_SYSTEM_DOCUMENT_H
+#ifndef CHIBI_GAME_SYSTEM_DOCUMENT_H
+#define CHIBI_GAME_SYSTEM_DOCUMENT_H
 
 #include "runtime/systems/query.h"
 #include "runtime/systems/system.h"
@@ -23,6 +23,7 @@ behavior_asset *game_system_document_behavior_asset_mutable(game_system_document
 int game_system_document_replace_behavior_asset(game_system_document *document, behavior_asset *definition);
 const ecs_query_expr *game_system_document_query(const game_system_document *document);
 int game_system_document_set_query(game_system_document *document, const ecs_query_expr *expression);
+unsigned game_system_document_revision(const game_system_document *document);
 char *game_system_document_save(
     const game_system_document *document,
     game_query_component_resolver resolve,

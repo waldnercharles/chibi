@@ -144,6 +144,7 @@ static void checkpoint_navigation()
     scene_location first = {
         .kind = 2,
         .document = "First",
+        .scene_key = "scene:unsaved-1",
         .entity = old,
         .camera = { 10, 20, 300, 200 },
         .graph = { .graph_id = 5,
@@ -162,6 +163,7 @@ static void checkpoint_navigation()
     assert(scene_navigation_restore_checkpoint(restored, json, &before, &after, 1));
     const scene_location *location = scene_navigation_step(restored, false);
     assert(location && !strcmp(location->document, "First"));
+    assert(location->scene_key && !strcmp(location->scene_key, "scene:unsaved-1"));
     assert(ecs_entity_to_u64(location->entity) == after);
     assert(location->graph.nodes[0] == 9 && location->graph.callers[0].node_id == 3);
     assert(location->camera.center_x == 10 && location->graph.pan_x == 123);

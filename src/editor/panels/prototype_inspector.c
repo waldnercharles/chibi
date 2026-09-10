@@ -45,14 +45,16 @@ static bool draw_prototype_field(
             changed = property_number(label, ImGuiDataType_U16, &value.u16, false);
             break;
         case PIN_I32:
-        case PIN_ENUM:
-            if (appearance_shape_field(component->desc->type, field)) {
+        case PIN_ENUM: {
+            const editor_choices *choices = property_choices(component->desc->type, field);
+            if (choices) {
                 editor_ui_property_label(label, 0.0f);
             }
-            changed = appearance_shape_field(component->desc->type, field)
-                        ? editor_choices_draw("prototype.shape", &value.i, &APPEARANCE_SHAPES)
+            changed = choices
+                        ? editor_choices_draw("prototype.shape", &value.i, choices)
                         : property_number(label, ImGuiDataType_S32, &value.i, false);
             break;
+        }
         case PIN_U32:
             if (color) {
                 char color_id[192];
@@ -86,6 +88,10 @@ static bool draw_prototype_field(
             changed = property_number(label, ImGuiDataType_U64, &value.u64, false);
             break;
         case PIN_F32:
+            if (component->desc->id == GAME_COMPONENT_GameEnvironment.id) {
+                changed = property_environment(label, field, &value.f, false);
+                break;
+            }
             changed = component->desc->id == GAME_COMPONENT_GameTransform.id
                         ? editor_ui_axis_float(
                               label,
@@ -100,6 +106,18 @@ static bool draw_prototype_field(
             break;
         case PIN_NAME:
         case PIN_STR:
+            if (component->desc->id == GAME_COMPONENT_GameMeshParts.id) {
+                snprintf(
+                    shader_text,
+                    sizeof shader_text,
+                    "%s",
+                    value.str ? value.str : ""
+                );
+                changed = property_mesh_parts(shader_text, sizeof shader_text);
+                value.str = shader_text;
+                draw_component_asset_links(scene, shader_text, "prototype.mesh");
+                break;
+            }
             if (component->desc->id == GAME_COMPONENT_GameShader.id) {
                 snprintf(
                     shader_text,
@@ -114,8 +132,40 @@ static bool draw_prototype_field(
             property_text(label, pin_value_to_string(&value));
             break;
         case PIN_HANDLE:
+            if (value.type_name && !strcmp(value.type_name, "ecs.entity")) {
+                property_text(label, value.u64 ? "Runtime entity" : "None");
+                break;
+            }
+            property_text(label, pin_value_to_string(&value));
+            break;
         case PIN_STRUCT:
         case PIN_FLOW: property_text(label, pin_value_to_string(&value)); break;
+    }
+    if (component->desc->id == GAME_COMPONENT_GameShader.id &&
+        (!strcmp(field->name, "material") || !strcmp(field->name, "shape")) &&
+        value.str && value.str[0]) {
+        asset_index_kind kind = !strcmp(field->name, "material")
+                                  ? ASSET_INDEX_MATERIAL
+                                  : ASSET_INDEX_SHAPE;
+        const asset_index *index = app_scene_authoring_asset_index(scene);
+        int position = asset_index_find_name(index, kind, value.str);
+        const asset_index_asset *indexed = asset_index_asset_at(index, position);
+        ImGui_SameLine();
+        bool enabled = indexed && !indexed->unresolved;
+        ImGui_BeginDisabled(!enabled);
+        if (ImGui_SmallButton("Open") && enabled) {
+            app_scene_authoring_open_asset(scene, position);
+        }
+        ImGui_EndDisabled();
+        char open_id[192];
+        snprintf(
+            open_id,
+            sizeof open_id,
+            "prototype.field.open.%s.%s",
+            component->desc->name,
+            field->name
+        );
+        editor_ui_track_item(open_id);
     }
     if (!changed) {
         return false;
@@ -150,12 +200,14 @@ static void draw_prototype_preview_controls(app_scene_authoring *scene, scene_pr
     }
     ecs_world *world = prototype_still_world(scene->still_preview);
     ecs_entity entity = prototype_still_entity(scene->still_preview);
-    if (!GAME_GameAppearance_get_const(world, entity) ||
+    bool perspective = GAME_GameGeometry3D_has(world, entity);
+    if ((!perspective && !GAME_GameAppearance_has(world, entity)) ||
         !GAME_GameTransform_get_const(world, entity)) {
         ImGui_TextDisabled("No visual component");
         return;
     }
     engine_viewport *viewport = prototype_still_viewport(scene->still_preview);
+    engine_viewport_set_perspective(viewport, perspective);
     if (updated) {
         fit_scene_view(viewport, world, entity);
     }
@@ -272,6 +324,13 @@ static void draw_prototype_components(app_scene_authoring *scene, scene_prototyp
                 }
                 for (int field = 0; field < component->desc->type->field_count;
                      field++) {
+                    if (!property_field_visible(
+                            component->desc,
+                            &component->desc->type->fields[field],
+                            component->data
+                        )) {
+                        continue;
+                    }
                     if (advanced_material_field(
                             component->desc,
                             &component->desc->type->fields[field]

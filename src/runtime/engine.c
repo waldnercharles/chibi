@@ -1,14 +1,17 @@
 #include "runtime/engine.h"
 
-#include "graph/model/registry.h"
+#include "graph/document/events.h"
 #include "render/sdf_motion.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
-#include "runtime/scenes/gameplay.h"
+#include "runtime/engine_input.h"
+#include "runtime/scenes/physics.h"
+#include "runtime/visual_motion.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
 typedef struct
@@ -16,6 +19,13 @@ typedef struct
     engine_system_fn fn;
     void *user;
 } engine_system;
+
+typedef enum
+{
+    STEP_IDLE,
+    STEP_BEHAVIORS,
+    STEP_CONTACTS
+} step_phase;
 
 struct engine
 {
@@ -27,10 +37,14 @@ struct engine
     engine_focus focus;
     bool playing;
     bool step_requested;
+    engine_input *input;
+    step_phase phase;
     engine_frame_timing timing;
     double last_time;
-    double delta_seconds;
-    int has_time;
+    double accumulator;
+    bool has_time;
+    bool debug_paused;
+    char error[256];
 };
 
 static double elapsed_ms(struct timespec start, struct timespec end)
@@ -54,6 +68,10 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     result->world = world;
     result->live = live;
     result->playing = true;
+    result->input = engine_input_new(world, live ? live->behaviors : NULL);
+    if (live) {
+        game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
+    }
     return result;
 }
 
@@ -63,6 +81,7 @@ void engine_free(engine *engine)
         return;
     }
     afree(engine->systems);
+    engine_input_free(engine->input);
     free(engine);
 }
 
@@ -84,10 +103,31 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
     engine->render_user = user;
 }
 
+void engine_reset(engine *engine)
+{
+    engine->timing = (engine_frame_timing){ .alpha = 1 };
+    engine->last_time = 0;
+    engine->accumulator = 0;
+    engine->has_time = false;
+    engine->debug_paused = false;
+    engine->step_requested = false;
+    engine->phase = STEP_IDLE;
+    engine->error[0] = 0;
+    engine_input_reset(engine->input);
+    if (engine->live) {
+        game_behavior_set_time(engine->live->behaviors, 0);
+        game_behavior_set_delta_seconds(engine->live->behaviors, ENGINE_FIXED_SECONDS);
+        game_physics_reset(engine->live->physics);
+    }
+}
+
 int engine_set_focus(engine *engine, engine_focus focus)
 {
     if (!engine || focus < ENGINE_FOCUS_NONE || focus > ENGINE_FOCUS_CANVAS) {
         return -1;
+    }
+    if (engine->focus == ENGINE_FOCUS_VIEWPORT && focus != ENGINE_FOCUS_VIEWPORT) {
+        engine_input_clear(engine->input);
     }
     engine->focus = focus;
     return 0;
@@ -100,11 +140,7 @@ engine_focus engine_get_focus(const engine *engine)
 
 int engine_route_escape(engine *engine)
 {
-    if (!engine) {
-        return -1;
-    }
-    engine->focus = ENGINE_FOCUS_NONE;
-    return 0;
+    return engine_set_focus(engine, ENGINE_FOCUS_NONE);
 }
 
 int engine_set_playing(engine *engine, bool playing)
@@ -112,9 +148,16 @@ int engine_set_playing(engine *engine, bool playing)
     if (!engine) {
         return -1;
     }
+    if (engine->playing == playing) {
+        return 0;
+    }
     engine->playing = playing;
-    if (playing) {
-        engine->step_requested = false;
+    engine->timing.alpha = 1;
+    engine->accumulator = 0;
+    engine->has_time = false;
+    engine->step_requested = false;
+    if (!playing) {
+        engine_input_clear(engine->input);
     }
     return 0;
 }
@@ -126,142 +169,357 @@ bool engine_is_playing(const engine *engine)
 
 int engine_step(engine *engine)
 {
-    if (!engine) {
-        return -1;
+    if (!engine || engine->playing) {
+        return FLOW_ERR_STATE;
     }
     engine->step_requested = true;
     return 0;
 }
 
-static void legacy_input_delta(const char *action, double value, double *x, double *y)
-{
-    *x = 0.0;
-    *y = 0.0;
-    if (strcmp(action, "MoveLeft") == 0 || strcmp(action, "MoveRight") == 0) {
-        *x = value;
-    }
-    if (strcmp(action, "MoveUp") == 0 || strcmp(action, "MoveDown") == 0) {
-        *y = value;
-    }
-}
-
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error)
 {
-    if (!engine || !action || engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing) {
+    if (error) {
+        *error = (flow_error){ 0 };
+    }
+    if (!engine || !action || !isfinite(value)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->live) {
         return FLOW_ERR_STATE;
     }
-    double x;
-    double y;
-    legacy_input_delta(action, pressed ? value : 0.0, &x, &y);
-    CF_V2 delta = { (float)x, (float)y };
-    pin_value inputs[] = {
-        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &delta },
-    };
-    const flow_inputs dispatch = registry_type_by_name("CF_V2")
-                                   ? (flow_inputs){ inputs, 1, NULL }
-                                   : (flow_inputs){ 0 };
+    int result = engine_input_action(engine->input, action, pressed != 0);
+    if (result < 0 && error) {
+        *error = (flow_error){ .code = result, .message = "Unknown local input action." };
+    }
+    return result;
+}
+
+int engine_sample_movement(engine *engine, float x, float y)
+{
+    if (!engine || !isfinite(x) || !isfinite(y)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->live) {
+        return FLOW_ERR_STATE;
+    }
+    engine_input_movement(engine->input, (CF_V2){ x, y });
+    return FLOW_OK;
+}
+
+int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point)
+{
+    if (!engine || !isfinite(aim.x) || !isfinite(aim.y)) {
+        return FLOW_ERR_ARGUMENT;
+    }
     if (!engine->live) {
         return FLOW_ERR_STATE;
     }
-    if (strcmp(action, "Fire") == 0) {
-        return pressed
-                 ? game_behavior_dispatch_all(engine->live->behaviors, "Fire", (flow_inputs){ 0 }, error)
-                 : 0;
-    }
-    return game_behavior_dispatch_all(engine->live->behaviors, "Input", dispatch, error);
+    bool active = engine->playing && engine->focus == ENGINE_FOCUS_VIEWPORT;
+    engine_input_aim(engine->input, active ? aim : (CF_V2){ 0 }, active && firing, active && point);
+    return FLOW_OK;
 }
 
-int engine_frame(engine *engine, double monotonic_time)
+static int flush_initializers(engine *engine)
 {
-    if (!engine) {
-        return FLOW_ERR_ARGUMENT;
+    if (!engine->live) {
+        return FLOW_OK;
     }
-    struct timespec start;
-    struct timespec end;
-    if (clock_now(&start) != 0) {
-        return FLOW_ERR_STATE;
+    int result = game_entities_flush_initializers(
+        engine->live->entities,
+        engine->timing.simulation_time
+    );
+    if (result == FLOW_ERR_STEP_BUDGET) {
+        snprintf(engine->error, sizeof engine->error, "Spawn initialization exceeded its work budget.");
     }
-    int result = 0;
-    double delta_seconds = engine->has_time ? monotonic_time - engine->last_time : 0.0;
-    if (delta_seconds < 0.0) {
-        delta_seconds = 0.0;
-    }
-    engine->last_time = monotonic_time;
-    engine->delta_seconds = delta_seconds;
-    engine->has_time = 1;
-    bool simulate = engine->playing || engine->step_requested;
-    int boundary = engine->live ? game_entities_flush(engine->live->entities) : 0;
-    if (boundary < 0) {
-        return boundary;
-    }
-    bool initializing = boundary > 0;
-    if (simulate && initializing) {
-        result = game_entities_tick_initializers(engine->live->entities, monotonic_time);
-        boundary = game_entities_flush(engine->live->entities);
-        if (result < 0 || boundary < 0) {
-            return result < 0 ? result : boundary;
+    return result;
+}
+
+static int pump_events(engine *engine)
+{
+    game_entities *entities = engine->live->entities;
+    int result = FLOW_OK;
+    for (int batch = 0; batch < ENGINE_EVENT_BATCHES_MAX; batch++) {
+        if (!game_entities_pending_events(entities)) {
+            break;
         }
-        initializing = boundary > 0;
-    }
-    if (simulate && engine->live && !initializing) {
-        result = game_particles_tick(engine->live->particles, delta_seconds);
+        result = game_entities_dispatch_events(entities);
         if (result < 0) {
             return result;
         }
-        result = game_sdf_motion_tick(engine->world, delta_seconds);
-        if (result < 0) {
-            return result;
-        }
-        game_behavior_set_delta_seconds(engine->live->behaviors, delta_seconds);
-        result = game_entities_dispatch_events(engine->live->entities);
-        if (result >= 0) {
-            result = game_behavior_dispatch_all(engine->live->behaviors, "Tick", (flow_inputs){ 0 }, NULL);
-        }
-        if (result >= 0) {
-            result = game_behavior_pump(engine->live->behaviors, monotonic_time);
-        }
-        if (result >= 0) {
-            result = game_entities_dispatch_events(engine->live->entities);
-        }
-        boundary = game_entities_flush(engine->live->entities);
-        if (boundary < 0) {
-            result = boundary;
-        }
-        initializing = boundary > 0;
-        if (result >= 0 && !initializing) {
-            result = game_contacts_tick(engine->live->contacts);
+        result = flush_initializers(engine);
+        if (result != 0 || game_behavior_paused(engine->live->behaviors)) {
+            return result < 0 ? result : FLOW_PAUSED_RESULT;
         }
     }
-    simulate = simulate && !initializing;
-    engine->step_requested = false;
-    if (clock_now(&end) != 0) {
-        return FLOW_ERR_STATE;
-    }
-    engine->timing.behavior_ms = elapsed_ms(start, end);
+    engine->timing.event_backlog = game_entities_pending_events(entities);
+    return FLOW_OK;
+}
+
+static int update_visual_motion(engine *engine, float delta)
+{
+    int result = game_visual_motion_tick(engine->world, delta);
     if (result < 0) {
-        return result;
+        snprintf(
+            engine->error,
+            sizeof engine->error,
+            "%s",
+            result == FLOW_ERR_STATE
+                ? "Visual Motion requires Visual Transform and 3D Geometry."
+                : "Visual Motion requires finite values and nonnegative speed "
+                  "and timing."
+        );
     }
-    if (simulate) {
+    return result;
+}
+
+static int finish_systems(engine *engine)
+{
+    int result = FLOW_OK;
+    if (engine->live) {
+        if (engine->phase == STEP_BEHAVIORS) {
+            struct timespec start, end;
+            if (clock_now(&start) != 0) {
+                return FLOW_ERR_STATE;
+            }
+            result = game_physics_tick(engine->live->physics, (float)ENGINE_FIXED_SECONDS);
+            if (clock_now(&end) != 0) {
+                return FLOW_ERR_STATE;
+            }
+            engine->timing.physics_ms += elapsed_ms(start, end);
+            if (result < 0) {
+                snprintf(
+                    engine->error,
+                    sizeof engine->error,
+                    "%s",
+                    game_physics_error(engine->live->physics)
+                );
+                return result;
+            }
+            engine->phase = STEP_CONTACTS;
+        }
+        struct timespec start, end;
         if (clock_now(&start) != 0) {
             return FLOW_ERR_STATE;
         }
-        result = ecs_world_apply_commands(engine->world);
-        engine->timing.command_apply_count++;
+        result = pump_events(engine);
         if (clock_now(&end) != 0) {
             return FLOW_ERR_STATE;
         }
-        engine->timing.systems_ms = elapsed_ms(start, end);
-        if (result != ECS_OK) {
-            return result;
+        engine->timing.events_ms += elapsed_ms(start, end);
+        if (result != 0) {
+            return result < 0 ? result : FLOW_OK;
         }
+    }
+    result = ecs_world_apply_commands(engine->world);
+    engine->timing.command_apply_count++;
+    if (result != ECS_OK) {
+        return result;
+    }
+    for (int i = 0; i < acount(engine->systems); i++) {
+        engine->systems[i]
+            .fn(engine->world,
+                engine->timing.simulation_time,
+                engine->systems[i].user);
+    }
+    /* Begin and reactions can change motion after integration. Resolve those
+       authored values before presentation without advancing their clocks. */
+    if (engine->live && (result = update_visual_motion(engine, 0)) < 0) {
+        return result;
+    }
+    engine->phase = STEP_IDLE;
+    return FLOW_OK;
+}
+
+static int finish_step(engine *engine)
+{
+    struct timespec start, end;
+    if (clock_now(&start) != 0) {
+        return FLOW_ERR_STATE;
+    }
+    int result = finish_systems(engine);
+    if (clock_now(&end) != 0) {
+        return FLOW_ERR_STATE;
+    }
+    engine->timing.systems_ms += elapsed_ms(start, end);
+    return result;
+}
+
+static int continue_step(engine *engine)
+{
+    game_live_world *live = engine->live;
+    if (!live) {
+        return finish_step(engine);
+    }
+    game_behavior_set_time(live->behaviors, engine->timing.simulation_time);
+    game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
+    int result = flush_initializers(engine);
+    if (result != 0) {
+        return result < 0 ? result : FLOW_OK;
+    }
+    if (engine->phase == STEP_IDLE) {
+        struct timespec start, end;
         if (clock_now(&start) != 0) {
             return FLOW_ERR_STATE;
         }
-        for (int i = 0; i < acount(engine->systems); i++) {
-            engine->systems[i]
-                .fn(engine->world, monotonic_time, engine->systems[i].user);
+        result = game_particles_tick(live->particles, ENGINE_FIXED_SECONDS);
+        if (result >= 0) {
+            result = game_sdf_motion_tick(engine->world, ENGINE_FIXED_SECONDS);
+        }
+        if (result >= 0) {
+            result = update_visual_motion(engine, (float)ENGINE_FIXED_SECONDS);
+        }
+        if (clock_now(&end) != 0) {
+            return FLOW_ERR_STATE;
+        }
+        engine->timing.systems_ms += elapsed_ms(start, end);
+        if (result >= 0) {
+            result = engine_input_apply(engine->input);
+        }
+        if (result >= 0) {
+            result = game_entities_dispatch_events(live->entities);
+        }
+        if (result >= 0) {
+            result = game_behavior_dispatch_all(
+                live->behaviors,
+                graph_host_event_name(GRAPH_HOST_EVENT_TICK),
+                (flow_inputs){ 0 },
+                NULL
+            );
+        }
+        if (result >= 0) {
+            result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
+        }
+        if (result >= 0) {
+            result = game_entities_dispatch_events(live->entities);
+        }
+        engine->phase = STEP_BEHAVIORS;
+    } else {
+        /* Resume a held activation before completing its remaining step stages. */
+        result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
+    }
+    if (result < 0) {
+        return result;
+    }
+    result = flush_initializers(engine);
+    if (result != 0 || game_behavior_paused(live->behaviors)) {
+        return result < 0 ? result : FLOW_OK;
+    }
+    return finish_step(engine);
+}
+
+static int fixed_step(engine *engine)
+{
+    engine->timing.simulation_steps++;
+    engine->timing.simulation_time = engine->timing.simulation_steps * ENGINE_FIXED_SECONDS;
+    engine->timing.steps++;
+    return continue_step(engine);
+}
+
+static void discard_backlog(engine *engine)
+{
+    double whole = floor((engine->accumulator + 1e-10) / ENGINE_FIXED_SECONDS) *
+                   ENGINE_FIXED_SECONDS;
+    engine->timing.dropped_seconds += whole;
+    engine->accumulator = fmax(0, engine->accumulator - whole);
+}
+
+static int advance_frame(engine *engine, double monotonic_time)
+{
+    if (!engine || !isfinite(monotonic_time)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    struct timespec start, end;
+    if (clock_now(&start) != 0) {
+        return FLOW_ERR_STATE;
+    }
+    double elapsed = engine->has_time ? fmax(0, monotonic_time - engine->last_time)
+                                      : 0;
+    if (!isfinite(elapsed)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    engine->last_time = engine->has_time ? fmax(engine->last_time, monotonic_time)
+                                         : monotonic_time;
+    engine->has_time = true;
+    engine->timing.steps = 0;
+    engine->timing.behavior_ms = 0;
+    engine->timing.rendering_ms = 0;
+    engine->timing.systems_ms = 0;
+    engine->timing.physics_ms = 0;
+    engine->timing.events_ms = 0;
+    if (engine->live) {
+        game_behavior_profile_begin(engine->live->behaviors);
+    }
+    int result = engine->live ? game_entities_flush(engine->live->entities) : FLOW_OK;
+    if (result < 0) {
+        return result;
+    }
+    bool paused = engine->live && game_behavior_paused(engine->live->behaviors);
+    if (!paused && engine->debug_paused) {
+        engine->timing.dropped_seconds += elapsed + engine->accumulator;
+        engine->accumulator = 0;
+        elapsed = 0;
+    }
+    if (!paused &&
+        (engine->playing || engine->step_requested || engine->phase != STEP_IDLE)) {
+        result = flush_initializers(engine);
+        if (result < 0) {
+            return result;
+        }
+        paused = engine->live && game_behavior_paused(engine->live->behaviors);
+        if (!result && !paused && engine->phase != STEP_IDLE) {
+            result = continue_step(engine);
+            if (result < 0) {
+                return result;
+            }
+            paused = game_behavior_paused(engine->live->behaviors);
         }
     }
+    if (!paused && (engine->playing || engine->step_requested)) {
+        if (engine->playing) {
+            engine->timing.dropped_seconds += fmax(0, elapsed - ENGINE_FRAME_SECONDS_MAX);
+            engine->accumulator += fmin(elapsed, ENGINE_FRAME_SECONDS_MAX);
+        }
+        int count = engine->step_requested
+                      ? 1
+                      : (int)floor((engine->accumulator + 1e-10) / ENGINE_FIXED_SECONDS);
+        if (count > ENGINE_STEPS_MAX) {
+            count = ENGINE_STEPS_MAX;
+        }
+        for (int i = 0; i < count; i++) {
+            result = fixed_step(engine);
+            if (engine->playing) {
+                engine->accumulator = fmax(0, engine->accumulator - ENGINE_FIXED_SECONDS);
+            }
+            engine->step_requested = false;
+            if (result < 0) {
+                return result;
+            }
+            if (engine->live && game_behavior_paused(engine->live->behaviors)) {
+                break;
+            }
+        }
+        discard_backlog(engine);
+    } else if (paused) {
+        engine->timing.dropped_seconds += elapsed + engine->accumulator;
+        engine->accumulator = 0;
+    }
+    engine->debug_paused = engine->live &&
+                           game_behavior_paused(engine->live->behaviors);
+    engine->timing.alpha = engine->playing && !engine->debug_paused
+                             ? (float)(engine->accumulator / ENGINE_FIXED_SECONDS)
+                             : 1;
+    if (clock_now(&end) != 0) {
+        return FLOW_ERR_STATE;
+    }
+    engine->timing.systems_ms = fmax(
+        0,
+        engine->timing.systems_ms - engine->timing.physics_ms - engine->timing.events_ms
+    );
+    engine->timing.behavior_ms = fmax(
+        0,
+        elapsed_ms(start, end) - engine->timing.systems_ms - engine->timing.physics_ms
+    );
+    start = end;
     if (engine->render) {
         engine->render(engine->render_user);
     }
@@ -273,7 +531,41 @@ int engine_frame(engine *engine, double monotonic_time)
     return FLOW_OK;
 }
 
+int engine_frame(engine *engine, double monotonic_time)
+{
+    if (!engine) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    engine->error[0] = 0;
+    int result = advance_frame(engine, monotonic_time);
+    if (result < 0 && !engine->error[0]) {
+        snprintf(engine->error, sizeof engine->error, "Simulation step failed (%d).", result);
+    }
+    return result;
+}
+
+const char *engine_error(const engine *engine)
+{
+    return engine->error[0] ? engine->error : NULL;
+}
+
 const engine_frame_timing *engine_last_timing(const engine *engine)
 {
     return engine ? &engine->timing : NULL;
+}
+
+const game_behavior_profile_frame *engine_behavior_profile(const engine *engine)
+{
+    return engine->live ? game_behavior_profile(engine->live->behaviors) : NULL;
+}
+
+bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out)
+{
+    return engine && engine->live &&
+           game_physics_interpolate(
+               engine->live->physics,
+               entity,
+               engine->timing.alpha,
+               out
+           );
 }

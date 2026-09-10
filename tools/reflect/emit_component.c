@@ -3,6 +3,29 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void emit_retained_strings(FILE *out, const struct_info *s, const char *target, const char *world)
+{
+    for (int i = 0; i < acount(s->fields); i++) {
+        const field_info *field = &s->fields[i];
+        char path[1024];
+        snprintf(path, sizeof path, "%s.%s", target, field->name);
+        if (!strcmp(field->pin, "PIN_STR") || !strcmp(field->pin, "PIN_NAME")) {
+            fprintf(out, "    %s = ecs_world_intern_string(%s, %s);\n", path, world, path);
+            continue;
+        }
+        if (strcmp(field->pin, "PIN_STRUCT")) {
+            continue;
+        }
+        for (int j = 0; j < acount(g_collection->structs); j++) {
+            const struct_info *nested = &g_collection->structs[j];
+            if (!strcmp(nested->name, field->spelling)) {
+                emit_retained_strings(out, nested, path, world);
+                break;
+            }
+        }
+    }
+}
+
 static int pin_value_number(const char *pin)
 {
     static const char *names[] = {
@@ -36,6 +59,9 @@ static uint64_t component_layout_hash(const struct_info *s)
         hash = hash_bytes(hash, &field_size, sizeof field_size);
         hash = hash_bytes(hash, &pin, sizeof pin);
         hash = hash_string(hash, field->spelling);
+        if (field->handle) {
+            hash = hash_string(hash, field->handle);
+        }
     }
     return hash;
 }
@@ -59,7 +85,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         out,
         "    pin_value result = { .type = %s, .type_name = \"%s\" };\n",
         field->pin,
-        field->spelling
+        field_type_name(field)
     );
     if (strcmp(field->pin, "PIN_STRUCT") == 0) {
         fprintf(
@@ -97,7 +123,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         s->name
     );
     fprintf(out, "static pin_spec %s_%s_unwrap_outputs[] = {\n", g_prefix, s->name);
-    emit_pin_spec(out, field->name, field->pin, field->spelling);
+    emit_pin_spec(out, field->name, field->pin, field_type_name(field));
     fputs("};\n", out);
     fprintf(out, "static const node_access %s_%s_unwrap_access = { .flags = NODE_EFFECT_PURE };\n", g_prefix, s->name);
     fprintf(out, "node_desc %s_NODE_Unwrap_%s = {\n", g_prefix, s->name);
@@ -112,12 +138,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         s->name
     );
     fprintf(out, "    .pure_kind = NODE_PURE_CALL, .fn = __unwrap_%s_%s,\n", g_prefix, s->name);
-    fprintf(
-        out,
-        "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n",
-        s->name,
-        field->spelling
-    );
+    fprintf(out, "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n", s->name, field_type_name(field));
     fputs("    .display_class = NODE_DISPLAY_PURE, .category = \"Conversion\",\n", out);
     fprintf(out, "    .access = &%s_%s_unwrap_access,\n};\n\n", g_prefix, s->name);
 }
@@ -146,6 +167,7 @@ void emit_component_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    %s *__value = %s_%s_get(__world, __entity);\n", name, g_prefix, name);
     fputs("    if (!__value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    memcpy(__value, __input.ptr, sizeof(%s));\n", name);
+    emit_retained_strings(out, s, "(*__value)", "__world");
     fprintf(out, "    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
     fprintf(out, "    __out->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
     fputs("    if (!__out->ptr) return FLOW_ERR_NODE;\n", out);
@@ -227,6 +249,7 @@ void emit_component_entity_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    %s *value = %s_%s_get(world, entity);\n", name, g_prefix, name);
     fputs("    if (!value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"entity lacks component\");\n", out);
     fprintf(out, "    memcpy(value, input.ptr, sizeof(%s));\n", name);
+    emit_retained_strings(out, s, "(*value)", "world");
     fprintf(out, "    pin_value *output = flow_context_output_value(ctx, 1);\n    *output = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
     fprintf(out, "    output->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
     fputs("    if (!output->ptr) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Set allocation failed\");\n", out);
@@ -291,7 +314,7 @@ void emit_component_field_nodes(FILE *out, const struct_info *s)
         fputs("    return flow_context_continue(ctx, 0);\n}\n", out);
         fprintf(out, "static pin_spec %s_inputs[] = {\n", symbol);
         fputs("    { \"Exec\", PIN_FLOW, NULL, PIN_EXEC },\n", out);
-        emit_pin_spec(out, "Value", field->pin, field->spelling);
+        emit_pin_spec(out, "Value", field->pin, field_type_name(field));
         fputs("    { .name = \"Target\", .type = PIN_HANDLE, .type_name = \"ecs.entity\", .flags = PIN_FLAG_DEFAULT_SELF },\n};\n", out);
         fprintf(out, "node_desc %s_NODE_Set_%s_%s = {\n", g_prefix, name, field->name);
         fprintf(
@@ -412,6 +435,12 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
 void emit_component_nodes_desc(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
+    /* Retaining strings writes shared world storage. These aggregate setters
+     * must serialize even when their component target is the owner. */
+    bool entity_scoped = true;
+    for (int i = 0; i < acount(s->fields); i++) {
+        entity_scoped &= component_field_settable(&s->fields[i]);
+    }
     fprintf(
         out,
         "static const node_access %s_%s_get_access = { .reads = "
@@ -426,11 +455,12 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         out,
         "static const node_access %s_%s_set_access = { .writes = "
         "&%s_COMPONENT_%s.id, .write_count = 1, .flags = "
-        "NODE_EFFECT_ENTITY_SCOPED };\n",
+        "%s };\n",
         g_prefix,
         name,
         g_prefix,
-        name
+        name,
+        entity_scoped ? "NODE_EFFECT_ENTITY_SCOPED" : "0"
     );
     fprintf(
         out,

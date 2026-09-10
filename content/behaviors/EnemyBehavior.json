@@ -1,8 +1,8 @@
 {
   "version": 3,
   "name": "EnemyBehavior",
-  "id_counter": 73,
-  "description": "Moves toward the nearest player within range, stopping at the target without overshooting.",
+  "id_counter": 89,
+  "description": "Pursue the nearest player with a velocity that slows for arrival; stop when no target is in range.",
   "owner_type": "ecs.entity",
   "variables": [],
   "graphs": [
@@ -66,7 +66,7 @@
           "id": 5,
           "type": "Self",
           "x": 0,
-          "y": 340,
+          "y": 330,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -90,7 +90,7 @@
         {
           "id": 7,
           "type": "Find Nearest Entity",
-          "x": 240,
+          "x": 260,
           "y": 180,
           "reference_id": 0,
           "disabled": false,
@@ -200,7 +200,7 @@
         {
           "id": 16,
           "type": "Branch",
-          "x": 510,
+          "x": 750,
           "y": 0,
           "reference_id": 0,
           "disabled": false,
@@ -259,7 +259,7 @@
         {
           "id": 28,
           "type": "Get_GameMovement",
-          "x": 0,
+          "x": 260,
           "y": 560,
           "reference_id": 0,
           "disabled": false,
@@ -282,34 +282,9 @@
           ]
         },
         {
-          "id": 33,
-          "type": "Delta Time",
-          "x": 240,
-          "y": 710,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
-          "outputs": [
-            {
-              "id": 34,
-              "name": "Seconds",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0,
-              "type_name": "float"
-            }
-          ]
-        },
-        {
           "id": 52,
-          "type": "Set_GameTransform",
-          "x": 1430,
+          "type": "Set_GameVelocity",
+          "x": 1020,
           "y": 0,
           "reference_id": 0,
           "disabled": false,
@@ -337,7 +312,7 @@
               "flags": 0,
               "group": 0,
               "default": null,
-              "type_name": "GameTransform"
+              "type_name": "GameVelocity"
             }
           ],
           "outputs": [
@@ -362,15 +337,15 @@
               "flags": 0,
               "group": 0,
               "default": null,
-              "type_name": "GameTransform"
+              "type_name": "GameVelocity"
             }
           ]
         },
         {
           "id": 66,
           "type": "Call Pure Function",
-          "x": 720,
-          "y": 180,
+          "x": 750,
+          "y": 200,
           "reference_id": 57,
           "disabled": false,
           "breakpoint": false,
@@ -422,7 +397,7 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.0
+              "default": 0
             },
             {
               "id": 71,
@@ -434,15 +409,15 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.0
+              "default": 0
             }
           ],
           "outputs": [
             {
               "id": 72,
-              "name": "Position",
+              "name": "Velocity",
               "type": 15,
-              "type_name": "CF_V2",
+              "type_name": "GameVelocity",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
@@ -451,7 +426,95 @@
               "default": null
             }
           ],
-          "reference_name": "Move Toward"
+          "reference_name": "Pursuit Velocity"
+        },
+        {
+          "id": 73,
+          "type": "Set_GameVelocity",
+          "x": 1020,
+          "y": 430,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 74,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 75,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameVelocity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ],
+          "outputs": [
+            {
+              "id": 76,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 77,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameVelocity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 78,
+          "type": "Delta Time",
+          "x": 260,
+          "y": 720,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 79,
+              "name": "Seconds",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
         }
       ],
       "edges": [
@@ -515,8 +578,23 @@
           "conversion": "Unwrap_GameMovement"
         },
         {
-          "from": 33,
-          "from_pin": 34,
+          "from": 66,
+          "from_pin": 72,
+          "to": 52,
+          "to_pin": 54,
+          "kind": "data"
+        },
+        {
+          "from": 16,
+          "from_pin": 20,
+          "to": 73,
+          "to_pin": 74,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 78,
+          "from_pin": 79,
           "to": 66,
           "to_pin": 70,
           "kind": "data"
@@ -527,20 +605,13 @@
           "to": 66,
           "to_pin": 71,
           "kind": "data"
-        },
-        {
-          "from": 66,
-          "from_pin": 72,
-          "to": 52,
-          "to_pin": 54,
-          "kind": "data"
         }
       ]
     },
     {
       "id": 57,
       "kind": "function",
-      "name": "Move Toward",
+      "name": "Pursuit Velocity",
       "breakpoints_enabled": true,
       "comment_boxes": [],
       "entry_id": 58,
@@ -604,7 +675,7 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.0
+              "default": 0
             },
             {
               "id": 63,
@@ -616,15 +687,15 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": 0.0
+              "default": 0
             }
           ]
         },
         {
           "id": 21,
           "type": "Subtract",
-          "x": 220,
-          "y": 160,
+          "x": 260,
+          "y": 0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -673,8 +744,8 @@
         {
           "id": 25,
           "type": "Normalize Vector 2",
-          "x": 440,
-          "y": 160,
+          "x": 520,
+          "y": 0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -709,122 +780,10 @@
           ]
         },
         {
-          "id": 35,
-          "type": "Multiply",
-          "x": 660,
-          "y": 160,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 36,
-              "name": "A",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0,
-              "type_name": "float"
-            },
-            {
-              "id": 37,
-              "name": "B",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
-              "default": 0,
-              "type_name": "float"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 38,
-              "name": "Result",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0,
-              "type_name": "float"
-            }
-          ]
-        },
-        {
-          "id": 39,
-          "type": "Clamp",
-          "x": 880,
-          "y": 160,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 40,
-              "name": "Value",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0,
-              "type_name": "float"
-            },
-            {
-              "id": 41,
-              "name": "Min",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
-              "default": 0,
-              "type_name": "float"
-            },
-            {
-              "id": 42,
-              "name": "Max",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 3,
-              "default": 0,
-              "type_name": "float"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 43,
-              "name": "Result",
-              "type": 10,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0,
-              "type_name": "float"
-            }
-          ]
-        },
-        {
           "id": 44,
           "type": "Multiply",
-          "x": 1100,
-          "y": 160,
+          "x": 780,
+          "y": 0,
           "reference_id": 0,
           "disabled": false,
           "breakpoint": false,
@@ -871,59 +830,9 @@
           ]
         },
         {
-          "id": 48,
-          "type": "Add",
-          "x": 1320,
-          "y": 160,
-          "reference_id": 0,
-          "disabled": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 49,
-              "name": "A",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": null,
-              "type_name": "CF_V2"
-            },
-            {
-              "id": 50,
-              "name": "B",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 2,
-              "default": null,
-              "type_name": "CF_V2"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 51,
-              "name": "Result",
-              "type": 15,
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": null,
-              "type_name": "CF_V2"
-            }
-          ]
-        },
-        {
           "id": 64,
           "type": "Return",
-          "x": 1540,
+          "x": 1040,
           "y": 0,
           "reference_id": 0,
           "disabled": false,
@@ -932,9 +841,9 @@
           "inputs": [
             {
               "id": 65,
-              "name": "Position",
+              "name": "Velocity",
               "type": 15,
-              "type_name": "CF_V2",
+              "type_name": "GameVelocity",
               "kind": "data",
               "container": 0,
               "split_parent": 0,
@@ -944,6 +853,118 @@
             }
           ],
           "outputs": []
+        },
+        {
+          "id": 80,
+          "type": "Divide",
+          "x": 260,
+          "y": 240,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 81,
+              "name": "A",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 82,
+              "name": "B",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 83,
+              "name": "Result",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
+        },
+        {
+          "id": 84,
+          "type": "Clamp",
+          "x": 520,
+          "y": 240,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 85,
+              "name": "Value",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 86,
+              "name": "Min",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 87,
+              "name": "Max",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 88,
+              "name": "Result",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
         }
       ],
       "edges": [
@@ -955,32 +976,11 @@
           "from": 21
         },
         {
-          "from_pin": 38,
-          "to": 39,
-          "to_pin": 40,
-          "kind": "data",
-          "from": 35
-        },
-        {
           "from_pin": 27,
           "to": 44,
           "to_pin": 45,
           "kind": "data",
           "from": 25
-        },
-        {
-          "from_pin": 43,
-          "to": 44,
-          "to_pin": 46,
-          "kind": "data",
-          "from": 39
-        },
-        {
-          "from_pin": 47,
-          "to": 48,
-          "to_pin": 50,
-          "kind": "data",
-          "from": 44
         },
         {
           "from": 58,
@@ -997,38 +997,45 @@
           "kind": "data"
         },
         {
-          "from": 58,
-          "from_pin": 61,
-          "to": 35,
-          "to_pin": 36,
-          "kind": "data"
-        },
-        {
-          "from": 58,
-          "from_pin": 62,
-          "to": 35,
-          "to_pin": 37,
+          "from": 44,
+          "from_pin": 47,
+          "to": 64,
+          "to_pin": 65,
           "kind": "data"
         },
         {
           "from": 58,
           "from_pin": 63,
-          "to": 39,
-          "to_pin": 42,
+          "to": 80,
+          "to_pin": 81,
           "kind": "data"
         },
         {
           "from": 58,
-          "from_pin": 59,
-          "to": 48,
-          "to_pin": 49,
+          "from_pin": 62,
+          "to": 80,
+          "to_pin": 82,
           "kind": "data"
         },
         {
-          "from": 48,
-          "from_pin": 51,
-          "to": 64,
-          "to_pin": 65,
+          "from": 58,
+          "from_pin": 61,
+          "to": 84,
+          "to_pin": 85,
+          "kind": "data"
+        },
+        {
+          "from": 80,
+          "from_pin": 83,
+          "to": 84,
+          "to_pin": 87,
+          "kind": "data"
+        },
+        {
+          "from": 84,
+          "from_pin": 88,
+          "to": 44,
+          "to_pin": 46,
           "kind": "data"
         }
       ]

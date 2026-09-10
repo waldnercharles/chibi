@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_COMPILE_H
-#define CBLUEPRINT_COMPILE_H
+#ifndef CHIBI_COMPILE_H
+#define CHIBI_COMPILE_H
 
 #include "graph/model/behavior_asset.h"
 
@@ -44,6 +44,7 @@ enum
     CMPL_RULE_OPERATOR = 19,         /* CMPL-19 */
     CMPL_RULE_FIELD_PROJECTION = 22, /* Output fields retain their aggregate source. */
     CMPL_RULE_CALL_SIGNATURE = 23, /* Calls match nonprojected signature parameters. */
+    CMPL_RULE_INPUT_BINDING = 24, /* Authored input source is missing or incompatible. */
 };
 
 #define CMPL_MESSAGE_MAX 192
@@ -91,9 +92,9 @@ const compile_diagnostic *compile_report_first_error(const compile_report *out);
  * Diagnostics are ordered by graph id, then node position (canvas y, then
  * x, then node id), then rule code, then pin id (CMPL-16). Returns the
  * error count. */
-int behavior_asset_compile(const behavior_asset *bp, compile_report *out);
+int behavior_asset_compile(const behavior_asset *asset, compile_report *out);
 /* Systems cannot retain per-entity structural host-operation continuations. */
-int behavior_asset_compile_for_system(const behavior_asset *bp, compile_report *out);
+int behavior_asset_compile_for_system(const behavior_asset *asset, compile_report *out);
 
 /* Stable rule code spelling, e.g. "CMPL-4". */
 const char *cmpl_rule_name(int rule);

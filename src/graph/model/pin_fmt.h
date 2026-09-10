@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_PIN_FMT_H
-#define CBLUEPRINT_PIN_FMT_H
+#ifndef CHIBI_PIN_FMT_H
+#define CHIBI_PIN_FMT_H
 
 #include "graph/model/pin.h"
 

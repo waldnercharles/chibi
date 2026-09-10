@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_CORE_H
-#define CBLUEPRINT_CORE_H
+#ifndef CHIBI_CORE_H
+#define CHIBI_CORE_H
 
 #include "graph/model/annotate.h" /* IWYU pragma: keep */
 #include "graph/model/node.h"     /* IWYU pragma: keep */

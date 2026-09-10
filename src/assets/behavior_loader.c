@@ -5,15 +5,22 @@
 #include "support/xalloc.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
+static void load_error(const char *path, const char *stage, const char *message)
+{
+    fprintf(stderr, "Could not load graph asset %s (%s): %s\n", path, stage, message);
+}
+
 static char *read_file(const char *path)
 {
     FILE *file = fopen(path, "rb");
     if (!file || fseek(file, 0, SEEK_END) != 0) {
+        load_error(path, "read", strerror(errno));
         if (file) {
             fclose(file);
         }
@@ -21,6 +28,7 @@ static char *read_file(const char *path)
     }
     long size = ftell(file);
     if (size < 0 || fseek(file, 0, SEEK_SET) != 0) {
+        load_error(path, "read", strerror(errno));
         fclose(file);
         return NULL;
     }
@@ -28,6 +36,7 @@ static char *read_file(const char *path)
     size_t read = fread(json, 1, (size_t)size, file);
     fclose(file);
     if (read != (size_t)size) {
+        load_error(path, "read", "incomplete file read");
         free(json);
         return NULL;
     }
@@ -82,6 +91,9 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     for (int i = 0; i < acount(paths); i++) {
         char *json = read_file(paths[i]);
         behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+        if (json && !asset) {
+            load_error(paths[i], "deserialize", graph_last_error());
+        }
         free(json);
         game_live_definition *definition = asset
                                              ? game_live_definition_new(asset->name, asset)
@@ -90,6 +102,9 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
             game_live_definition_set_path(definition, paths[i]);
             apush(pending, definition);
         } else {
+            if (asset) {
+                load_error(paths[i], "create editable definition", graph_last_error());
+            }
             behavior_asset_free(asset);
         }
         free(paths[i]);
@@ -111,6 +126,10 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
                 continue;
             }
             if (game_live_add_definition(world, definition) != 0) {
+                const compile_diagnostic *error = compile_report_first_error(
+                    &definition->diagnostics
+                );
+                load_error(definition->path, "register", error ? error->message : "definition rejected");
                 continue;
             }
             pending[i] = NULL;
@@ -119,6 +138,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
                                definition->name,
                                definition->working
                            ) != 0) {
+                load_error(definition->path, "preview", "registration rejected; see preview diagnostic above");
                 game_live_remove_definition(world, definition->name);
                 continue;
             }

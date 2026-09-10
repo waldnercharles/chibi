@@ -8,5 +8,5 @@ execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${DEV_CONFIG}" "-DRESUL
     "-DSKIP_BUILD=${SKIP_BUILD}" "-DJOBS=${JOBS}" "-DFORCE_REBUILD=${FORCE_REBUILD}" -P "${CMAKE_CURRENT_LIST_DIR}/dev_build_worker.cmake"
     RESULT_VARIABLE result)
 if(NOT result EQUAL 0)
-    bp_write_generated("${RESULT}" "{\"status\":\"failed\"}\n")
+    chibi_write_generated("${RESULT}" "{\"status\":\"failed\"}\n")
 endif()

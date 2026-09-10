@@ -22,6 +22,7 @@ char *scene_authoring_scene_json(app_scene_authoring *scene)
         return NULL;
     }
     game_behavior_world *behaviors = scene->live->behaviors;
+    document->perspective = scene->perspective;
     for (int i = 0; i < acount(scene->actors); i++) {
         const scene_actor *actor = &scene->actors[i];
         const game_prototype *snapshot = scene->runtime_snapshot_valid
@@ -89,6 +90,10 @@ int app_scene_authoring_save(app_scene_authoring *scene, const char *path)
     if (!scene || !path) {
         return -1;
     }
+    if (scene_tabs_path_in_use(scene, APP_EDITOR_DOCUMENT_SCENE, path)) {
+        snprintf(scene->message, sizeof scene->message, "Scene path is already open.");
+        return -1;
+    }
     char *json = scene_authoring_scene_json(scene);
     if (!json) {
         return -1;
@@ -100,6 +105,7 @@ int app_scene_authoring_save(app_scene_authoring *scene, const char *path)
         free(scene->scene_path);
         scene->scene_path = saved_path;
         scene->scene_dirty = false;
+        scene_tabs_sync_current(scene);
     }
     return result;
 }
@@ -364,7 +370,7 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
     app_scene_authoring_stop_prototype_preview(scene);
     invalidate_runtime_snapshot(scene);
     game_entities_reset(scene->live->entities);
-    game_contacts_reset(scene->live->contacts);
+    game_physics_reset(scene->live->physics);
     game_particles_clear(scene->live->particles);
     app_scene_renderer_reset(scene->renderer);
     while (acount(scene->actors)) {
@@ -399,11 +405,13 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
             }
         }
     }
+    scene->perspective = document->perspective;
     game_scene_document_free(document);
     char *saved_path = path ? xstrdup(path) : NULL;
     free(scene->scene_path);
     scene->scene_path = saved_path;
     scene->scene_dirty = false;
+    scene_tabs_document_selected(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     snprintf(
         scene->message,
         sizeof scene->message,

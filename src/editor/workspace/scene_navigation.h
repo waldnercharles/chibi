@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_SCENE_NAVIGATION_H
-#define CBLUEPRINT_APP_SCENE_NAVIGATION_H
+#ifndef CHIBI_APP_SCENE_NAVIGATION_H
+#define CHIBI_APP_SCENE_NAVIGATION_H
 
 #include "editor/workspace/editor.h"
 #include "runtime/engine.h"
@@ -11,6 +11,8 @@ typedef struct
 {
     int kind;
     const char *document;
+    const char *document_key;
+    const char *scene_key;
     const char *scene_path;
     const char *system_path;
     const char *prototype;
@@ -25,6 +27,13 @@ typedef struct
 scene_navigation *scene_navigation_new();
 void scene_navigation_free(scene_navigation *navigation);
 void scene_navigation_record(scene_navigation *navigation, const scene_location *location);
+void scene_navigation_remap_entities(
+    scene_navigation *navigation,
+    const char *scene_key,
+    const uint64_t *before,
+    const uint64_t *after,
+    int count
+);
 bool scene_navigation_can_move(const scene_navigation *navigation, bool forward);
 const scene_location *scene_navigation_step(scene_navigation *navigation, bool forward);
 void scene_navigation_discard_current(scene_navigation *navigation, bool forward);

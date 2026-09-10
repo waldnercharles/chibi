@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GRAPH_H
-#define CBLUEPRINT_GRAPH_H
+#ifndef CHIBI_GRAPH_H
+#define CHIBI_GRAPH_H
 
 #include "graph/model/node.h"
 #include "support/array.h" // IWYU pragma: keep (graph fields are dyna arrays)
@@ -71,6 +71,7 @@ typedef struct graph
 {
     node **nodes;
     uint64_t graph_id;
+    uint64_t lifetime_id; /* Process-local identity; never serialized or edited. */
     graph_kind kind;
     behavior_asset *owner; /* borrowed; NULL for a standalone graph */
     uint64_t entry_id;
@@ -78,6 +79,7 @@ typedef struct graph
     int call_depth_limit;
     node **id_table; /* id -> node*, NULL after removal; O(1) lookup */
     edge *edges;
+    struct graph_edge_index *edge_index; /* Shared lazy edge index; never serialized. */
     graph_comment_box *comment_boxes;
     char **strings;
     void **blocks;
@@ -87,6 +89,7 @@ typedef struct graph
     char *description;
     char *source_asset; /* linked library source, graph-owned; runtime only */
     uint64_t source_graph_id;
+    uint64_t clipboard_owner_id; /* transient source ownership for pasted graph JSON */
     char *math_expression; /* graph-owned source for generated scalar functions */
     unsigned long long topology_revision;
     unsigned flow_pause_count;
@@ -132,6 +135,10 @@ int graph_remove_node(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
+/* A presentation hint for folding a pure source into its single downstream
+ * data consumer. The node and edge remain ordinary graph data. */
+bool graph_node_is_inline(const graph *g, const node *n);
+int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
 int graph_exec_input_source_at(
@@ -145,18 +152,24 @@ int graph_exec_input_source_at(
 );
 int graph_exec_input_count(const graph *g, const node *n, int pin);
 int graph_exec_output_target(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
+/* Counts all edges, including invalid fan-out; first is borrowed until mutation. */
+int graph_exec_output_edges(const graph *g, const node *n, int pin, const edge **first);
 int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin);
 
 node *graph_node_by_id(const graph *g, uint64_t id);
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index);
 void graph_reindex(graph *g); /* rebuild id_table from g->nodes */
 uint64_t graph_alloc_id(graph *g);
+/* Copies the value and owns its strings, arrays and registered struct data. */
 int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_value *value);
 int graph_set_pin_name(graph *g, node *n, int output, int index, const char *name);
 int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, const char *type_name);
 int graph_set_pin_container(graph *g, node *n, int output, int index, pin_container container);
+const pin_binding *graph_pin_binding(const graph *g, const node *n, int output, int index);
+int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_binding *binding);
 int graph_move_pin(graph *g, node *n, int output, int index, int target_index);
 int graph_set_node_disabled(graph *g, node *n, int disabled);
+int graph_set_node_inline(graph *g, node *n, int enabled);
 int graph_set_breakpoint(graph *g, node *n, int enabled);
 int graph_set_all_breakpoints(graph *g, int enabled);
 int graph_set_pin_watch(graph *g, node *n, int output, int index, int enabled);

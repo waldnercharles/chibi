@@ -335,7 +335,7 @@ static int flow_execute_function(node *n, flow_context *ctx, int macro)
     if (!bi) {
         return flow_context_fail(ctx, FLOW_ERR_STATE, "function call requires an instance");
     }
-    graph *target = behavior_asset_find_graph(bi->bp, n->reference_id);
+    graph *target = behavior_asset_find_graph(bi->asset, n->reference_id);
     if (!target ||
         (macro ? target->kind != GRAPH_MACRO : target->kind != GRAPH_FUNCTION)) {
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "function graph reference is missing");

@@ -1,15 +1,14 @@
-#ifndef CBLUEPRINT_GAME_GAMEPLAY_H
-#define CBLUEPRINT_GAME_GAMEPLAY_H
+#ifndef CHIBI_GAME_GAMEPLAY_H
+#define CHIBI_GAME_GAMEPLAY_H
 
 #include "ecs/ecs.h"
 
-struct game_entities;
-typedef struct game_contacts game_contacts;
+#include <cute_math.h>
 
-game_contacts *game_contacts_new(ecs_world *world, struct game_entities *entities);
-void game_contacts_free(game_contacts *contacts);
-void game_contacts_reset(game_contacts *contacts);
-/* Snapshot overlaps, then queue Contact Begin for both participants. */
-int game_contacts_tick(game_contacts *contacts);
+struct game_behavior_world;
+
+/* Deliver a sampled direction only to current GameInput members. Held movement
+ * fires once per sample; zero fires once when a member stops moving. */
+int game_movement_dispatch(ecs_world *world, struct game_behavior_world *behaviors, CF_V2 direction);
 
 #endif

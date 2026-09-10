@@ -31,15 +31,15 @@ int main(int argc, char **argv)
     if (count < 1 || count > PROCESS_LIMIT) {
         return 2;
     }
-    char directory[] = "/tmp/blueprints-concurrent-XXXXXX";
+    char directory[] = "/tmp/chibi-concurrent-XXXXXX";
     char cwd[PATH_MAX];
     assert(mkdtemp(directory) && getcwd(cwd, sizeof cwd));
-    bp_process processes[PROCESS_LIMIT] = { 0 };
+    chibi_process processes[PROCESS_LIMIT] = { 0 };
     char logs[PROCESS_LIMIT][PATH_MAX];
     int started = 0, result = 0;
     for (int i = 0; i < count; i++) {
         snprintf(logs[i], sizeof logs[i], "%s/%d.log", directory, i);
-        if (!bp_process_start(&processes[i], (const char *const *)(argv + 2), cwd, logs[i])) {
+        if (!chibi_process_start(&processes[i], (const char *const *)(argv + 2), cwd, logs[i])) {
             perror("spawn concurrent command");
             result = 1;
             break;
@@ -55,9 +55,9 @@ int main(int argc, char **argv)
         }
         for (int i = 0; i < started; i++) {
             if (result && !processes[i].finished) {
-                bp_process_stop(&processes[i]);
+                chibi_process_stop(&processes[i]);
             }
-            if (!bp_process_poll(&processes[i])) {
+            if (!chibi_process_poll(&processes[i])) {
                 pending++;
             } else if (processes[i].status) {
                 result = 1;

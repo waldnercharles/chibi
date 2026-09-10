@@ -29,18 +29,18 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
  * valid for the instance's lifetime. */
 static int instance_blocked(behavior_instance *bi, flow_error *error)
 {
-    unsigned long long rev = graph_topology_revision(bi->bp->graph);
+    unsigned long long rev = graph_topology_revision(bi->asset->graph);
     if (bi->compile_revision != rev) {
         compile_report_free(&bi->compile);
         compile_report_init(&bi->compile);
-        behavior_asset_compile(bi->bp, &bi->compile);
+        behavior_asset_compile(bi->asset, &bi->compile);
         bi->compile_revision = rev;
     }
     if (!compile_report_blocked(&bi->compile)) {
         return 0;
     }
     const compile_diagnostic *d = compile_report_first_error(&bi->compile);
-    set_error(error, FLOW_ERR_COMPILE, graph_node_by_id(bi->bp->graph, d->node_id), d->message);
+    set_error(error, FLOW_ERR_COMPILE, graph_node_by_id(bi->asset->graph, d->node_id), d->message);
     return 1;
 }
 
@@ -144,7 +144,7 @@ static void instance_clear_values(behavior_instance *bi)
 
 static void instance_init_values(behavior_instance *bi)
 {
-    int count = acount(bi->bp->variables);
+    int count = acount(bi->asset->variables);
     instance_clear_values(bi);
     if (count != bi->variable_count) {
         free(bi->variables);
@@ -158,7 +158,7 @@ static void instance_init_values(behavior_instance *bi)
         memset(bi->variables, 0, (size_t)count * sizeof *bi->variables);
     }
     for (int i = 0; i < count; i++) {
-        int result = instance_store_value(bi, i, &bi->bp->variables[i].default_value);
+        int result = instance_store_value(bi, i, &bi->asset->variables[i].default_value);
         assert(result == 0);
     }
 }
@@ -166,61 +166,76 @@ static void instance_init_values(behavior_instance *bi)
 static void instance_set_owner(behavior_instance *bi, const pin_value *owner)
 {
     bi->owner = (pin_value){ .type = PIN_FLOW };
-    if (bi->bp->owner_type_name) {
+    if (bi->asset->owner_type_name) {
         bi->owner = (pin_value){
             .type = PIN_HANDLE,
             .u64 = owner ? owner->u64 : 0,
-            .type_name = bi->bp->owner_type_name,
+            .type_name = bi->asset->owner_type_name,
         };
     }
 }
 
 static void instance_trace_clear(behavior_instance *bi)
 {
-    for (int i = 0; i < acount(bi->trace); i++) {
-        free(bi->trace[i].event_name);
+    for (int i = 0; i < acount(bi->trace_names); i++) {
+        free(bi->trace_names[i]);
     }
+    aclear(bi->trace_names);
     aclear(bi->trace);
+    aclear(bi->trace_view);
+    bi->trace_head = 0;
+    bi->trace_view_dirty = false;
 }
 
-static void instance_trace_push(behavior_instance *bi, const flow_run *run, const flow_traversal *traversal)
+static const char *instance_trace_name(behavior_instance *bi, const char *name)
 {
-    if (!bi->trace_enabled) {
+    /* Event names are fixed by the guarded definition; clearing history also
+     * clears this table on hot apply and instance reuse. */
+    name = name ? name : "";
+    for (int i = 0; i < acount(bi->trace_names); i++) {
+        if (!strcmp(bi->trace_names[i], name)) {
+            return bi->trace_names[i];
+        }
+    }
+    char *copy = xstrdup(name);
+    apush(bi->trace_names, copy);
+    return copy;
+}
+
+static void instance_trace_push(behavior_instance *bi, behavior_instance_trace_entry entry)
+{
+    bi->trace_view_dirty = true;
+    if (acount(bi->trace) == BEHAVIOR_ASSET_INSTANCE_TRACE_MAX) {
+        bi->trace[bi->trace_head] = entry;
+        bi->trace_head = (bi->trace_head + 1) % BEHAVIOR_ASSET_INSTANCE_TRACE_MAX;
         return;
     }
-    if (acount(bi->trace) == BEHAVIOR_ASSET_INSTANCE_TRACE_MAX) {
-        free(bi->trace[0].event_name);
-        memmove(
-            bi->trace,
-            bi->trace + 1,
-            (size_t)(BEHAVIOR_ASSET_INSTANCE_TRACE_MAX - 1) * sizeof *bi->trace
-        );
-        asetlen(bi->trace, BEHAVIOR_ASSET_INSTANCE_TRACE_MAX - 1);
-    }
-    const node *current = flow_run_current_node(run);
-    const flow_error *error = flow_run_error(run);
-    behavior_instance_trace_entry entry = {
-        .traversal = traversal ? *traversal : (flow_traversal){
-            .timestamp = bi->current_time,
-        },
-        .event_name = xstrdup(flow_run_event_name(run) ? flow_run_event_name(run) : ""),
-        .current_node_id = current ? current->id : 0,
-        .state = flow_run_status(run),
-        .error_code = error ? error->code : FLOW_OK,
-    };
     apush(bi->trace, entry);
 }
 
 static void instance_trace_run(behavior_instance *bi, const flow_run *run)
 {
+    if (!bi->trace_enabled) {
+        return;
+    }
     int count = 0;
     const flow_traversal *traversals = flow_run_traversals(run, &count);
+    const node *current = flow_run_current_node(run);
+    const flow_error *error = flow_run_error(run);
+    behavior_instance_trace_entry entry = {
+        .event_name = instance_trace_name(bi, flow_run_event_name(run)),
+        .current_node_id = current ? current->id : 0,
+        .state = flow_run_status(run),
+        .error_code = error ? error->code : FLOW_OK,
+    };
     if (!count) {
-        instance_trace_push(bi, run, NULL);
+        entry.traversal.timestamp = bi->current_time;
+        instance_trace_push(bi, entry);
         return;
     }
     for (int i = 0; i < count; i++) {
-        instance_trace_push(bi, run, &traversals[i]);
+        entry.traversal = traversals[i];
+        instance_trace_push(bi, entry);
     }
 }
 
@@ -247,17 +262,17 @@ static int scheduler_pump(behavior_instance *bi)
 }
 
 behavior_instance *behavior_instance_create(
-    behavior_asset *bp,
+    behavior_asset *asset,
     const pin_value *owner,
     flow_clock_fn now,
     void *now_user
 )
 {
-    if (!bp) {
+    if (!asset) {
         return NULL;
     }
     behavior_instance *bi = (behavior_instance *)xcalloc(1, sizeof *bi);
-    bi->bp = bp;
+    bi->asset = asset;
     bi->next_delegate_id = 1;
     bi->alive = 1;
     bi->trace_enabled = 1;
@@ -268,7 +283,7 @@ behavior_instance *behavior_instance_create(
     instance_set_owner(bi, owner);
     /* EXEC-19 / RUN-20: the instance holds the definition's mutation guard
      * for its whole lifetime. */
-    graph_flow_pause(bp->graph);
+    graph_flow_pause(asset->graph);
     return bi;
 }
 
@@ -277,8 +292,8 @@ static node *instance_event_by_id(behavior_instance *bi, uint64_t event_id)
     if (!bi || !bi->alive) {
         return NULL;
     }
-    for (int i = 0; i < acount(bi->bp->graph->nodes); i++) {
-        node *n = bi->bp->graph->nodes[i];
+    for (int i = 0; i < acount(bi->asset->graph->nodes); i++) {
+        node *n = bi->asset->graph->nodes[i];
         if (n->id == event_id && n->desc->flow_kind == NODE_FLOW_EVENT) {
             return n;
         }
@@ -420,7 +435,28 @@ const behavior_instance_trace_entry *behavior_instance_trace(const behavior_inst
     if (count) {
         *count = bi ? acount(bi->trace) : 0;
     }
-    return bi ? bi->trace : NULL;
+    if (!bi || !bi->trace_head) {
+        return bi ? bi->trace : NULL;
+    }
+    /* Inspection is logically const; only its ordered view is refreshed. */
+    behavior_instance *view = (behavior_instance *)bi;
+    if (view->trace_view_dirty) {
+        int length = acount(bi->trace);
+        int tail = length - bi->trace_head;
+        asetlen(view->trace_view, length);
+        memcpy(
+            view->trace_view,
+            bi->trace + bi->trace_head,
+            (size_t)tail * sizeof *bi->trace
+        );
+        memcpy(
+            view->trace_view + tail,
+            bi->trace,
+            (size_t)bi->trace_head * sizeof *bi->trace
+        );
+        view->trace_view_dirty = false;
+    }
+    return bi->trace_view;
 }
 
 static void instance_detach_bindings(behavior_instance *bi)
@@ -454,6 +490,8 @@ int behavior_instance_pool_release(behavior_instance *bi)
     }
     aclear(bi->activations);
     aclear(bi->services);
+    bi->profile = NULL;
+    bi->profile_user = NULL;
     instance_trace_clear(bi);
     instance_clear_values(bi);
     aclear(bi->scratch);
@@ -463,19 +501,19 @@ int behavior_instance_pool_release(behavior_instance *bi)
     bi->breakpoints_override = 0;
     bi->breakpoints_enabled = 0;
     bi->owner = (pin_value){ .type = PIN_FLOW };
-    graph_flow_resume(bi->bp->graph);
+    graph_flow_resume(bi->asset->graph);
     return 0;
 }
 
 behavior_instance *behavior_instance_pool_reuse(
     behavior_instance *bi,
-    behavior_asset *bp,
+    behavior_asset *asset,
     const pin_value *owner,
     flow_clock_fn now,
     void *now_user
 )
 {
-    if (!bi || !bp || bi->alive || bi->bp != bp) {
+    if (!bi || !asset || bi->alive || bi->asset != asset) {
         return NULL;
     }
     bi->alive = 1;
@@ -486,7 +524,7 @@ behavior_instance *behavior_instance_pool_reuse(
     bi->next_delegate_id = 1;
     instance_init_values(bi);
     instance_set_owner(bi, owner);
-    graph_flow_pause(bp->graph);
+    graph_flow_pause(asset->graph);
     return bi;
 }
 
@@ -495,20 +533,20 @@ static bool same_type_name(const char *a, const char *b)
     return strcmp(a ? a : "", b ? b : "") == 0;
 }
 
-static int variable_index(const behavior_asset *bp, uint64_t id)
+static int variable_index(const behavior_asset *asset, uint64_t id)
 {
-    for (int i = 0; i < acount(bp->variables); i++) {
-        if (bp->variables[i].id == id) {
+    for (int i = 0; i < acount(asset->variables); i++) {
+        if (asset->variables[i].id == id) {
             return i;
         }
     }
     return -1;
 }
 
-static const node *asset_node(const behavior_asset *bp, uint64_t id)
+static const node *asset_node(const behavior_asset *asset, uint64_t id)
 {
-    for (int i = 0; i < acount(bp->graphs); i++) {
-        const node *n = graph_node_by_id(bp->graphs[i], id);
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const node *n = graph_node_by_id(asset->graphs[i], id);
         if (n) {
             return n;
         }
@@ -533,18 +571,18 @@ static bool value_borrows_struct(const pin_value *value)
 instance_update_status behavior_instance_can_update(const behavior_instance *bi, const behavior_asset *next)
 {
     assert(bi && bi->alive && next);
-    if (!same_type_name(bi->bp->owner_type_name, next->owner_type_name) ||
-        acount(bi->bp->variables) != acount(next->variables) ||
+    if (!same_type_name(bi->asset->owner_type_name, next->owner_type_name) ||
+        acount(bi->asset->variables) != acount(next->variables) ||
         acount(bi->delegates) || acount(bi->delegate_incoming)) {
         return INSTANCE_UPDATE_RESTART;
     }
     for (int i = 0; i < acount(next->variables); i++) {
         const behavior_variable *v = &next->variables[i];
-        int old = variable_index(bi->bp, v->id);
+        int old = variable_index(bi->asset, v->id);
         if (old < 0) {
             return INSTANCE_UPDATE_RESTART;
         }
-        const behavior_variable *previous = &bi->bp->variables[old];
+        const behavior_variable *previous = &bi->asset->variables[old];
         if (v->type != previous->type || v->container != previous->container ||
             !same_type_name(v->type_name, previous->type_name) ||
             value_borrows_struct(&bi->variables[old])) {
@@ -552,7 +590,7 @@ instance_update_status behavior_instance_can_update(const behavior_instance *bi,
         }
     }
     for (int i = 0; i < acount(bi->scratch); i++) {
-        const node *old = asset_node(bi->bp, bi->scratch[i].node_id);
+        const node *old = asset_node(bi->asset, bi->scratch[i].node_id);
         const node *replacement = asset_node(next, bi->scratch[i].node_id);
         if (!old || !replacement || old->desc != replacement->desc ||
             old->reference_id != replacement->reference_id ||
@@ -575,7 +613,7 @@ void behavior_instance_update(behavior_instance *bi, behavior_asset *next)
                       ? xmalloc((size_t)bi->variable_count * sizeof *arenas)
                       : NULL;
     for (int i = 0; i < bi->variable_count; i++) {
-        int old = variable_index(bi->bp, next->variables[i].id);
+        int old = variable_index(bi->asset, next->variables[i].id);
         values[i] = bi->variables[old];
         arenas[i] = bi->variable_arenas[old];
     }
@@ -599,8 +637,8 @@ void behavior_instance_update(behavior_instance *bi, behavior_asset *next)
     compile_report_free(&bi->compile);
     compile_report_init(&bi->compile);
     bi->compile_revision = 0;
-    graph_flow_resume(bi->bp->graph);
-    bi->bp = next;
+    graph_flow_resume(bi->asset->graph);
+    bi->asset = next;
     bi->owner.type_name = next->owner_type_name;
     graph_flow_pause(next->graph);
 }
@@ -617,6 +655,8 @@ void behavior_instance_destroy(behavior_instance *bi)
     afree(bi->activation_pool);
     instance_trace_clear(bi);
     afree(bi->trace);
+    afree(bi->trace_view);
+    afree(bi->trace_names);
     free(bi->variables);
     free(bi->variable_arenas);
     afree(bi->activations);
@@ -801,9 +841,9 @@ flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inp
     };
     flow_run *act = NULL;
     if (bi->pool_enabled && acount(bi->activation_pool)) {
-        act = flow_run_start_reuse(apop(bi->activation_pool), bi->bp->graph, entry, inputs, &opts, error);
+        act = flow_run_start_reuse(apop(bi->activation_pool), bi->asset->graph, entry, inputs, &opts, error);
     } else {
-        act = flow_run_start(bi->bp->graph, entry, inputs, &opts, error);
+        act = flow_run_start(bi->asset->graph, entry, inputs, &opts, error);
     }
     if (!act) {
         return NULL;
@@ -825,8 +865,8 @@ flow_run *behavior_instance_dispatch(
         return NULL;
     }
     node *found = NULL;
-    for (int i = 0; i < acount(bi->bp->graph->nodes); i++) {
-        node *n = bi->bp->graph->nodes[i];
+    for (int i = 0; i < acount(bi->asset->graph->nodes); i++) {
+        node *n = bi->asset->graph->nodes[i];
         if (n->desc->flow_kind != NODE_FLOW_EVENT || !n->reference_name ||
             strcmp(n->reference_name, name) != 0) {
             continue;
@@ -875,8 +915,8 @@ int behavior_instance_get_variable(behavior_instance *bi, uint64_t id, pin_value
     if (!bi || !out) {
         return -1;
     }
-    for (int i = 0; i < acount(bi->bp->variables); i++) {
-        if (bi->bp->variables[i].id == id) {
+    for (int i = 0; i < acount(bi->asset->variables); i++) {
+        if (bi->asset->variables[i].id == id) {
             *out = bi->variables[i];
             return 0;
         }
@@ -898,8 +938,8 @@ int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin
     if (!bi || !value) {
         return -1;
     }
-    for (int i = 0; i < acount(bi->bp->variables); i++) {
-        if (bi->bp->variables[i].id == id) {
+    for (int i = 0; i < acount(bi->asset->variables); i++) {
+        if (bi->asset->variables[i].id == id) {
             return instance_store_value(bi, i, value);
         }
     }
@@ -942,11 +982,11 @@ void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enable
 
 int behavior_instance_breakpoints_enabled(const behavior_instance *bi)
 {
-    if (!bi || !bi->bp || !bi->bp->graph) {
+    if (!bi || !bi->asset || !bi->asset->graph) {
         return 0;
     }
     return bi->breakpoints_override ? bi->breakpoints_enabled
-                                    : bi->bp->graph->breakpoints_enabled != 0;
+                                    : bi->asset->graph->breakpoints_enabled != 0;
 }
 
 pin_value *behavior_instance_scratch(behavior_instance *bi, uint64_t node_id)

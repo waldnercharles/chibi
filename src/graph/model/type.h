@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_TYPE_H
-#define CBLUEPRINT_TYPE_H
+#ifndef CHIBI_TYPE_H
+#define CHIBI_TYPE_H
 
 #include "graph/model/pin.h"
 
@@ -11,7 +11,7 @@ typedef struct
     pin_type type;
     size_t offset;
     size_t size; /* byte size of the field (needed to copy PIN_STRUCT fields) */
-    const char *type_name; /* C type spelling, e.g. "float", "Vec3", "const char *" */
+    const char *type_name; /* C spelling, or a nominal handle type such as "ecs.entity". */
 } type_field;
 
 typedef struct

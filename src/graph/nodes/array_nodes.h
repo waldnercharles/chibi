@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_ARRAY_NODES_H
-#define CBLUEPRINT_ARRAY_NODES_H
+#ifndef CHIBI_ARRAY_NODES_H
+#define CHIBI_ARRAY_NODES_H
 
 #include "graph/model/node.h"
 

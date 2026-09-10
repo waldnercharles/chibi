@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_REGISTRY_H
-#define CBLUEPRINT_REGISTRY_H
+#ifndef CHIBI_REGISTRY_H
+#define CHIBI_REGISTRY_H
 
 #include "graph/model/node.h"
 #include "graph/nodes/operator.h"

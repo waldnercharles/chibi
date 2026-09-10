@@ -11,9 +11,16 @@
 
 static scene_location current_location(app_scene_authoring *scene)
 {
+    const char *document_key = NULL;
+    if (scene->active_tab >= 0 && scene->active_tab < acount(scene->tabs) &&
+        (int)scene->tabs[scene->active_tab].kind == (int)scene->document.kind) {
+        document_key = scene->tabs[scene->active_tab].key;
+    }
     scene_location location = {
         .kind = scene->document.kind,
         .document = scene->document.id,
+        .document_key = document_key,
+        .scene_key = scene_tabs_current_scene_key(scene),
         .scene_path = scene->scene_path,
         .system_path = scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM
                          ? scene->system_path
@@ -51,6 +58,10 @@ static scene_location current_location(app_scene_authoring *scene)
 void app_scene_authoring_navigation_sync(app_scene_authoring *scene)
 {
     if (scene->navigation_replaying) {
+        return;
+    }
+    if (scene->active_tab < 0 || scene->active_tab >= acount(scene->tabs) ||
+        (int)scene->tabs[scene->active_tab].kind != (int)scene->document.kind) {
         return;
     }
     scene_location location = current_location(scene);
@@ -92,8 +103,66 @@ static int location_attachment(app_scene_authoring *scene, const scene_location 
     return -1;
 }
 
+static int location_tab_index(const app_scene_authoring *scene, const scene_location *location)
+{
+    if (!location->document_key) {
+        return -1;
+    }
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        if ((int)scene->tabs[i].kind == location->kind && scene->tabs[i].key &&
+            strcmp(scene->tabs[i].key, location->document_key) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool location_document_active(const app_scene_authoring *scene, const scene_location *location)
+{
+    int index = location_tab_index(scene, location);
+    return index >= 0 && index == scene->active_tab;
+}
+
 static bool location_available(app_scene_authoring *scene, const scene_location *location)
 {
+    if (location->scene_key) {
+        bool found = false;
+        for (int i = 0; i < acount(scene->tabs); i++) {
+            if (scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE &&
+                scene->tabs[i].key &&
+                strcmp(scene->tabs[i].key, location->scene_key) == 0) {
+                found = true;
+                if (scene->active_tab != i && scene_tabs_activate(scene, i) != 0) {
+                    return false;
+                }
+                break;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+    int document_tab = location_tab_index(scene, location);
+    if (location->document_key) {
+        if (document_tab < 0) {
+            return false;
+        }
+        if (scene->active_tab != document_tab) {
+            bool same_underlying_scene = scene->tabs[document_tab].kind ==
+                                             APP_EDITOR_DOCUMENT_SCENE &&
+                                         location->scene_key &&
+                                         scene_tabs_current_scene_key(scene) &&
+                                         !strcmp(
+                                             scene_tabs_current_scene_key(scene),
+                                             location->scene_key
+                                         );
+            if (same_underlying_scene) {
+                scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+            } else if (scene_tabs_activate(scene, document_tab) != 0) {
+                return false;
+            }
+        }
+    }
     if (location->prototype && prototype_index(scene, location->prototype) < 0) {
         return false;
     }
@@ -111,7 +180,8 @@ static bool location_available(app_scene_authoring *scene, const scene_location 
     }
     switch (location->kind) {
         case APP_EDITOR_DOCUMENT_SCENE:
-            return same_scene_path(location->scene_path, scene->scene_path);
+            return location->scene_key ||
+                   same_scene_path(location->scene_path, scene->scene_path);
         case APP_EDITOR_DOCUMENT_PROTOTYPE:
             return prototype_index(scene, location->document) >= 0;
         case APP_EDITOR_DOCUMENT_BEHAVIOR: {
@@ -126,16 +196,19 @@ static bool location_available(app_scene_authoring *scene, const scene_location 
         }
         case APP_EDITOR_DOCUMENT_SYSTEM: {
             struct stat info;
-            const behavior_asset
-                *source = scene->system_document &&
-                                  same_scene_path(scene->system_path, location->system_path)
-                            ? game_system_document_behavior_asset(scene->system_document)
-                            : NULL;
-            return location->system_path && stat(location->system_path, &info) == 0 &&
+            const char *path = location->document_key ? scene->system_path
+                                                      : location->system_path;
+            const behavior_asset *
+                source = scene->system_document &&
+                                 (location->document_key ||
+                                  same_scene_path(scene->system_path, location->system_path))
+                           ? game_system_document_behavior_asset(scene->system_document)
+                           : NULL;
+            return path && stat(path, &info) == 0 &&
                    editor_can_visit_location(
                        scene->graph_editor,
                        source,
-                       location->system_path,
+                       path,
                        &location->graph
                    );
         }
@@ -148,20 +221,27 @@ static int restore_location(app_scene_authoring *scene, const scene_location *lo
     if (!location_available(scene, location)) {
         return -1;
     }
+    bool document_active = location_document_active(scene, location);
     switch (location->kind) {
         case APP_EDITOR_DOCUMENT_SCENE:
-            scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+            if (!document_active) {
+                scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+            }
             break;
         case APP_EDITOR_DOCUMENT_PROTOTYPE:
-            open_prototype(scene, prototype_index(scene, location->document));
+            if (!document_active) {
+                open_prototype(scene, prototype_index(scene, location->document));
+            }
             break;
         case APP_EDITOR_DOCUMENT_BEHAVIOR:
-            if (open_behavior_asset(scene, location->document) != 0) {
+            if (!document_active &&
+                open_behavior_asset(scene, location->document) != 0) {
                 return -1;
             }
             break;
         case APP_EDITOR_DOCUMENT_SYSTEM:
-            if (open_system_asset(scene, location->system_path) != 0) {
+            if (!document_active &&
+                open_system_asset(scene, location->system_path) != 0) {
                 return -1;
             }
             break;

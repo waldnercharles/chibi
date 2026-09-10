@@ -1,6 +1,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/value_array.h"
+#include "support/xalloc.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -28,9 +29,46 @@ static const type_desc *watch_type(const flow_run *run, const node *n, int outpu
     return type;
 }
 
+static unsigned watch_hash(uint64_t node_id, uint64_t pin_id, int output)
+{
+    uint64_t hash = node_id * UINT64_C(0x9e3779b97f4a7c15) ^ pin_id ^ (uint64_t)output;
+    hash ^= hash >> 33;
+    hash *= UINT64_C(0xff51afd7ed558ccd);
+    return (unsigned)(hash ^ (hash >> 32));
+}
+
+static int watch_slot(const flow_run *run, uint64_t node_id, uint64_t pin_id, int output)
+{
+    int slot = (int)(watch_hash(node_id, pin_id, output) &
+                     (unsigned)(run->watch_capacity - 1));
+    while (run->watch_index[slot]) {
+        const flow_watch *watch = &run->watches[run->watch_index[slot] - 1];
+        if (watch->node_id == node_id && watch->pin_id == pin_id &&
+            watch->output == output) {
+            break;
+        }
+        slot = (slot + 1) & (run->watch_capacity - 1);
+    }
+    return slot;
+}
+
+static void watch_reserve(flow_run *run)
+{
+    if ((acount(run->watches) + 1) * 2 <= run->watch_capacity) {
+        return;
+    }
+    free(run->watch_index);
+    run->watch_capacity = run->watch_capacity ? run->watch_capacity * 2 : 32;
+    run->watch_index = xcalloc((size_t)run->watch_capacity, sizeof *run->watch_index);
+    for (int i = 0; i < acount(run->watches); i++) {
+        const flow_watch *watch = &run->watches[i];
+        run->watch_index[watch_slot(run, watch->node_id, watch->pin_id, watch->output)] = i + 1;
+    }
+}
+
 static const flow_watch *watch_find(const flow_run *run, const node *n, int output, int pin)
 {
-    if (!n || pin < 0) {
+    if (!n || pin < 0 || !run->watch_capacity) {
         return NULL;
     }
     int count = output ? n->output_count : n->input_count;
@@ -38,14 +76,8 @@ static const flow_watch *watch_find(const flow_run *run, const node *n, int outp
         return NULL;
     }
     uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
-    for (int i = 0; i < acount(run->watches); i++) {
-        const flow_watch *watch = &run->watches[i];
-        if (watch->node_id == n->id && watch->output == output &&
-            watch->pin_id == pin_id) {
-            return watch;
-        }
-    }
-    return NULL;
+    int index = run->watch_index[watch_slot(run, n->id, pin_id, output)];
+    return index ? &run->watches[index - 1] : NULL;
 }
 
 static void watch_release(flow_watch *watch)
@@ -72,6 +104,7 @@ int flow_watch_store(flow_run *run, const node *n, int output, int pin, const pi
     flow_watch *watch = (flow_watch *)watch_find(run, n, output, pin);
     if (!watch) {
         uint64_t pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id;
+        watch_reserve(run);
         apush(
             run->watches,
             (flow_watch){
@@ -84,6 +117,19 @@ int flow_watch_store(flow_run *run, const node *n, int output, int pin, const pi
             }
         );
         watch = &run->watches[acount(run->watches) - 1];
+        run->watch_index[watch_slot(run, n->id, pin_id, output)] = acount(run->watches);
+    }
+    if (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
+        value->ptr) {
+        const type_desc *type = watch_type(run, n, output, pin);
+        if (type && watch->owned && watch->value.type == PIN_STRUCT &&
+            watch->value.container == PIN_CONTAINER_SINGLE &&
+            watch->owned_size == type->size) {
+            memmove(watch->owned, value->ptr, type->size);
+            watch->value = *value;
+            watch->value.ptr = watch->owned;
+            return 0;
+        }
     }
     watch_release(watch);
     watch->value = *value;
@@ -106,11 +152,7 @@ int flow_watch_store(flow_run *run, const node *n, int output, int pin, const pi
             watch->value = (pin_value){ .type = PIN_FLOW };
             return -1;
         }
-        watch->owned = malloc(type->size);
-        if (!watch->owned) {
-            watch->value = (pin_value){ .type = PIN_FLOW };
-            return -1;
-        }
+        watch->owned = xmalloc(type->size);
         memcpy(watch->owned, value->ptr, type->size);
         watch->owned_size = type->size;
         watch->value.ptr = watch->owned;
@@ -125,12 +167,18 @@ void flow_watch_capture(flow_run *run, node *n)
     }
     const runtime_node *state = runtime_store_node(run->runtime, n);
     const pin_value *inputs = runtime_node_inputs_const(state);
-    const pin_value *outputs = runtime_node_outputs_const(state);
     for (int i = 0; i < n->input_count; i++) {
         if (n->input_pins[i].kind == PIN_DATA) {
             (void)flow_watch_store(run, n, 0, i, &inputs[i]);
         }
     }
+    flow_watch_capture_outputs(run, n);
+}
+
+void flow_watch_capture_outputs(flow_run *run, node *n)
+{
+    const runtime_node *state = runtime_store_node(run->runtime, n);
+    const pin_value *outputs = runtime_node_outputs_const(state);
     for (int i = 0; i < n->output_count; i++) {
         if (n->output_pins[i].kind != PIN_DATA) {
             continue;
@@ -156,6 +204,9 @@ void flow_watch_clear(flow_run *run)
         watch_release(&run->watches[i]);
     }
     afree(run->watches);
+    free(run->watch_index);
+    run->watch_index = NULL;
+    run->watch_capacity = 0;
 }
 
 static int flow_run_watch_get(const flow_run *run, const node *n, int output, int pin, pin_value *out)

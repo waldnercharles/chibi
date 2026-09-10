@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_MATH_NODES_H
-#define CBLUEPRINT_MATH_NODES_H
+#ifndef CHIBI_MATH_NODES_H
+#define CHIBI_MATH_NODES_H
 
 #include "graph/model/node.h"
 
@@ -14,9 +14,15 @@
     X(Exponential)                                                             \
     X(Logarithm)                                                               \
     X(Logarithm10)                                                             \
-    X(Floor) X(Ceiling) X(Round) X(Power) X(ArcTangent2) X(RandomReal)
+    X(Floor)                                                                   \
+    X(Ceiling) X(Round) X(Power) X(ArcTangent2) X(RandomReal) X(RandomRangeReal)
+#define MATH_OPERATION_NODES(X)                                                \
+    X(Advance_Damped_Spring)                                                   \
+    X(Quantize_Angle)                                                          \
+    X(Smooth_Step)
 #define MATH_DECLARE(name) extern node_desc NODE_##name;
 MATH_EXPRESSION_NODES(MATH_DECLARE)
+MATH_OPERATION_NODES(MATH_DECLARE)
 #undef MATH_DECLARE
 
 #endif

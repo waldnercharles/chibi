@@ -21,11 +21,31 @@ struct prototype_still
 static void render(void *user)
 {
     prototype_still *still = user;
+    if (engine_viewport_perspective(still->viewport)) {
+        engine_viewport_camera frame;
+        engine_viewport_get_camera(still->viewport, &frame);
+        render_arena_camera camera = render_arena_camera_make(
+            frame.center_x,
+            frame.center_y,
+            frame.span_width,
+            frame.span_height
+        );
+        app_scene_renderer_draw3d(
+            still->renderer,
+            still->world,
+            still->particles,
+            &camera,
+            still->viewport,
+            NULL
+        );
+        return;
+    }
     app_scene_renderer_draw(
         still->renderer,
         still->world,
         still->particles,
-        still->viewport
+        still->viewport,
+        NULL
     );
 }
 

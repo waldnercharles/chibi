@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_APP_SCENE_HISTORY_H
-#define CBLUEPRINT_APP_SCENE_HISTORY_H
+#ifndef CHIBI_APP_SCENE_HISTORY_H
+#define CHIBI_APP_SCENE_HISTORY_H
 
 #include "ecs/ecs.h"
 #include "runtime/components.h"

@@ -1,5 +1,7 @@
 #include "graph/shader/shader_graph.h"
 
+#include "graph/shader/shader_effects.h"
+#include "graph/shader/shader_image.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -39,20 +41,62 @@ static const char *const names[] = { "Constant",
                                      "Y",
                                      "Z",
                                      "W",
-                                     "WorldPosition" };
+                                     "WorldPosition",
+                                     "Vector3",
+                                     "Normalize",
+                                     "Clamp",
+                                     "Saturate",
+                                     "Step",
+                                     "Smoothstep",
+                                     "Noise",
+                                     "UV",
+                                     "ObjectPosition",
+                                     "Normal",
+                                     "ViewDirection",
+                                     "Mapping",
+                                     "Mapping3D",
+                                     "Fresnel",
+                                     "Remap",
+                                     "Gradient",
+                                     "Fractal Noise",
+                                     "Voronoi",
+                                     "Voronoi Color",
+                                     "Color Ramp",
+                                     "Color Ramp Alpha",
+                                     "Image Texture",
+                                     "Image Texture Alpha",
+                                     "Surface Influence",
+                                     "Beat Phase",
+                                     "Beat Pulse" };
+_Static_assert(sizeof names / sizeof *names == SHADER_OP_COUNT, "shader operation names");
 const char *shader_op_name(shader_op op)
 {
     return op >= 0 && op < SHADER_OP_COUNT ? names[op] : "Invalid";
 }
 int shader_op_inputs(shader_op op)
 {
-    if (op <= SHADER_TIME || op == SHADER_WORLD_POSITION) {
+    if (op <= SHADER_TIME || op == SHADER_WORLD_POSITION ||
+        op == SHADER_BEAT_PHASE || op == SHADER_BEAT_PULSE ||
+        (op >= SHADER_UV && op <= SHADER_VIEW_DIRECTION)) {
         return 0;
     }
-    if ((op >= SHADER_ABS && op <= SHADER_LENGTH) || op >= SHADER_X) {
+    if (op >= SHADER_MAPPING && op <= SHADER_FRACTAL_NOISE) {
+        return 4;
+    }
+    if (op == SHADER_VORONOI || op == SHADER_VORONOI_COLOR) {
+        return 3;
+    }
+    if (op == SHADER_COLOR_RAMP || op == SHADER_COLOR_RAMP_ALPHA) {
+        return 2;
+    }
+    if ((op >= SHADER_ABS && op <= SHADER_LENGTH) ||
+        (op >= SHADER_X && op <= SHADER_W) || op == SHADER_NORMALIZE ||
+        op == SHADER_SATURATE || op == SHADER_IMAGE_TEXTURE ||
+        op == SHADER_IMAGE_TEXTURE_ALPHA || op == SHADER_SURFACE_INFLUENCE) {
         return 1;
     }
-    if (op == SHADER_MIX || op == SHADER_SELECT || op == SHADER_SMOOTH_UNION) {
+    if (op == SHADER_MIX || op == SHADER_SELECT || op == SHADER_SMOOTH_UNION ||
+        op == SHADER_VECTOR3 || op == SHADER_CLAMP || op == SHADER_SMOOTHSTEP) {
         return 3;
     }
     if (op == SHADER_VECTOR4) {
@@ -77,12 +121,19 @@ void shader_graph_init(shader_graph *g)
 }
 void shader_graph_free(shader_graph *g)
 {
+    for (int i = 0; i < acount(g->nodes); i++) {
+        afree(g->nodes[i].ramp);
+    }
+    for (int i = 0; i < acount(g->images); i++) {
+        free(g->images[i].key);
+    }
+    afree(g->images);
     afree(g->nodes);
     shader_graph_init(g);
 }
 int shader_graph_add(shader_graph *g, shader_op op, int width)
 {
-    shader_node n = { .op = op, .width = width, .input = { -1, -1, -1, -1 } };
+    shader_node n = { .op = op, .width = width, .input = { -1, -1, -1, -1 }, .image = -1 };
     apush(g->nodes, n);
     return acount(g->nodes) - 1;
 }
@@ -116,11 +167,21 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
         int a = shader_op_inputs(n->op) > 0 ? g->nodes[n->input[0]].width : 0;
         int b = shader_op_inputs(n->op) > 1 ? g->nodes[n->input[1]].width : 0;
         int c = shader_op_inputs(n->op) > 2 ? g->nodes[n->input[2]].width : 0;
+        int d = shader_op_inputs(n->op) > 3 ? g->nodes[n->input[3]].width : 0;
         bool valid = true;
         switch (n->op) {
             case SHADER_POSITION:
-            case SHADER_WORLD_POSITION: valid = n->width == 2; break;
-            case SHADER_TIME: valid = n->width == 1; break;
+            case SHADER_UV: valid = n->width == 2; break;
+            case SHADER_WORLD_POSITION:
+            case SHADER_OBJECT_POSITION:
+            case SHADER_NORMAL:
+            case SHADER_VIEW_DIRECTION: valid = n->width == 3; break;
+            case SHADER_SURFACE_INFLUENCE:
+                valid = n->width == 3 && a == 3;
+                break;
+            case SHADER_TIME:
+            case SHADER_BEAT_PHASE:
+            case SHADER_BEAT_PULSE: valid = n->width == 1; break;
             case SHADER_LENGTH: valid = n->width == 1; break;
             case SHADER_DOT: valid = n->width == 1 && a == b; break;
             case SHADER_CIRCLE:
@@ -138,6 +199,9 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
             case SHADER_VECTOR2:
                 valid = n->width == 2 && a == 1 && b == 1;
                 break;
+            case SHADER_VECTOR3:
+                valid = n->width == 3 && a == 1 && b == 1 && c == 1;
+                break;
             case SHADER_VECTOR4:
                 valid = n->width == 4 && a == 1 && b == 1 && c == 1 &&
                         g->nodes[n->input[3]].width == 1;
@@ -150,6 +214,53 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
                 break;
             case SHADER_CONSTANT:
             case SHADER_PARAMETER: break;
+            case SHADER_NORMALIZE:
+            case SHADER_SATURATE: valid = n->width == a; break;
+            case SHADER_CLAMP:
+            case SHADER_SMOOTHSTEP:
+                valid = n->width == a && b == 1 && c == 1;
+                break;
+            case SHADER_STEP: valid = n->width == a && b == 1; break;
+            case SHADER_NOISE: valid = n->width == 1 && a <= 3 && b == 1; break;
+            case SHADER_MAPPING:
+                valid = n->width == 2 && a == 2 && b == 2 && c == 1 && d == 2;
+                break;
+            case SHADER_MAPPING3D:
+                valid = n->width == 3 && a == 3 && b == 3 && c == 3 && d == 3;
+                break;
+            case SHADER_FRESNEL:
+                valid = n->width == 1 && a == 3 && b == 3 && c == 1 && d == 1;
+                break;
+            case SHADER_REMAP:
+                valid = n->width == a && b == 2 && c == 2 && d == 1;
+                break;
+            case SHADER_GRADIENT:
+                valid = n->width == 1 && a == 2 && b == 1 && c == 1 && d == 1;
+                break;
+            case SHADER_FRACTAL_NOISE:
+                valid = n->width == 1 && a <= 3 && b == 1 && c == 1 && d == 1;
+                break;
+            case SHADER_VORONOI:
+            case SHADER_VORONOI_COLOR:
+                valid = n->width == (n->op == SHADER_VORONOI ? 1 : 3) &&
+                        a >= 2 && a <= 3 && b == 1 && c == 1;
+                break;
+            case SHADER_COLOR_RAMP:
+            case SHADER_COLOR_RAMP_ALPHA:
+                if (!shader_ramp_valid(n->ramp, acount(n->ramp))) {
+                    return fail(error, n->source_id, "Color Ramp needs 2 to 16 ordered, finite stops in [0,1]");
+                }
+                valid = n->width == (n->op == SHADER_COLOR_RAMP ? 3 : 1) &&
+                        a == 1 && b == 1;
+                break;
+            case SHADER_IMAGE_TEXTURE:
+            case SHADER_IMAGE_TEXTURE_ALPHA:
+                if (n->image < 0 || n->image >= acount(g->images) ||
+                    !shader_image_source_valid(&g->images[n->image])) {
+                    return fail(error, n->source_id, "Image Texture needs an image and valid sampling settings");
+                }
+                valid = n->width == (n->op == SHADER_IMAGE_TEXTURE ? 3 : 1) && a == 2;
+                break;
             default:
                 valid = (a == 1 || a == n->width) &&
                         (!b || b == 1 || b == n->width) &&
@@ -179,11 +290,17 @@ static float smooth_union(float a, float b, float k)
     float h = fmaxf(0, fminf(1, 0.5f + 0.5f * (b - a) / k));
     return b + (a - b) * h - k * h * (1 - h);
 }
+static float smoothstep(float value, float low, float high)
+{
+    if (low == high) {
+        return value >= low;
+    }
+    float t = fmaxf(0, fminf(1, (value - low) / (high - low)));
+    return t * t * (3 - 2 * t);
+}
 bool shader_graph_eval_outputs(
     const shader_graph *g,
-    const float p[2],
-    const float world[2],
-    float time,
+    const shader_sample_context *sample,
     const float (*params)[4],
     float result[SHADER_OUTPUT_MAX][4],
     shader_error *error
@@ -207,16 +324,84 @@ bool shader_graph_eval_outputs(
                 c[j] = component(g, v, n->input[2], j);
             }
         }
+        if (n->op == SHADER_BEAT_PHASE || n->op == SHADER_BEAT_PULSE) {
+            v[i][0] = n->op == SHADER_BEAT_PHASE ? sample->beat_phase
+                                                 : sample->beat_pulse;
+            continue;
+        }
+        if (n->op == SHADER_SURFACE_INFLUENCE) {
+            if (sample->resolve_influence) {
+                sample->resolve_influence(sample->influence_userdata, a, v[i]);
+            }
+            continue;
+        }
+        if (n->op == SHADER_IMAGE_TEXTURE || n->op == SHADER_IMAGE_TEXTURE_ALPHA) {
+            const shader_image_source *source = &g->images[n->image];
+            shader_image_view image = { 0 };
+            float pixel[4];
+            if (!sample->resolve_image ||
+                !sample->resolve_image(sample->image_userdata, source, &image) ||
+                !shader_image_sample(source, &image, a, pixel)) {
+                char message[128];
+                snprintf(
+                    message,
+                    sizeof message,
+                    "Image Texture could not resolve '%s'",
+                    source->key
+                );
+                free(v);
+                return fail(error, n->source_id, message);
+            }
+            memcpy(
+                v[i],
+                pixel + (n->op == SHADER_IMAGE_TEXTURE_ALPHA ? 3 : 0),
+                (size_t)n->width * sizeof(float)
+            );
+            continue;
+        }
+        if (n->op >= SHADER_MAPPING && n->op <= SHADER_COLOR_RAMP_ALPHA) {
+            shader_effect_eval(g, n, (const float (*)[4])v, v[i]);
+            continue;
+        }
+        if (n->op == SHADER_NOISE) {
+            v[i][0] = shader_noise(v[n->input[0]], g->nodes[n->input[0]].width, b[0]);
+            continue;
+        }
+        if (n->op == SHADER_NORMALIZE) {
+            float scale = 0, length = 0;
+            for (int j = 0; j < n->width; j++) {
+                scale = fmaxf(scale, fabsf(a[j]));
+            }
+            if (scale == 0) {
+                continue;
+            }
+            for (int j = 0; j < n->width; j++) {
+                a[j] /= scale;
+                length += a[j] * a[j];
+            }
+            for (int j = 0; j < n->width; j++) {
+                v[i][j] = a[j] / sqrtf(length);
+            }
+            continue;
+        }
         for (int j = 0; j < n->width; j++) {
             switch (n->op) {
                 case SHADER_CONSTANT: v[i][j] = n->value[j]; break;
                 case SHADER_PARAMETER:
                     v[i][j] = params ? params[n->parameter][j] : n->value[j];
                     break;
-                case SHADER_POSITION: v[i][j] = j < 2 ? p[j] : 0; break;
-                case SHADER_TIME: v[i][j] = time; break;
+                case SHADER_POSITION: v[i][j] = sample->position[j]; break;
+                case SHADER_UV: v[i][j] = sample->uv[j]; break;
+                case SHADER_TIME: v[i][j] = sample->time; break;
                 case SHADER_WORLD_POSITION:
-                    v[i][j] = j < 2 ? world[j] : 0;
+                    v[i][j] = sample->world_position[j];
+                    break;
+                case SHADER_OBJECT_POSITION:
+                    v[i][j] = sample->object_position[j];
+                    break;
+                case SHADER_NORMAL: v[i][j] = sample->normal[j]; break;
+                case SHADER_VIEW_DIRECTION:
+                    v[i][j] = sample->view_direction[j];
                     break;
                 case SHADER_ADD: v[i][j] = a[j] + b[j]; break;
                 case SHADER_SUBTRACT: v[i][j] = a[j] - b[j]; break;
@@ -235,6 +420,14 @@ bool shader_graph_eval_outputs(
                 case SHADER_FRACT: v[i][j] = a[j] - floorf(a[j]); break;
                 case SHADER_MIX: v[i][j] = a[j] + (b[j] - a[j]) * c[j]; break;
                 case SHADER_SELECT: v[i][j] = c[0] != 0 ? b[j] : a[j]; break;
+                case SHADER_CLAMP:
+                    v[i][j] = fmaxf(fminf(b[0], c[0]), fminf(a[j], fmaxf(b[0], c[0])));
+                    break;
+                case SHADER_SATURATE: v[i][j] = fmaxf(0, fminf(1, a[j])); break;
+                case SHADER_STEP: v[i][j] = a[j] >= b[0]; break;
+                case SHADER_SMOOTHSTEP:
+                    v[i][j] = smoothstep(a[j], b[0], c[0]);
+                    break;
                 case SHADER_LENGTH: {
                     float sum = 0;
                     for (int k = 0; k < g->nodes[n->input[0]].width; k++) {
@@ -261,12 +454,15 @@ bool shader_graph_eval_outputs(
                     v[i][j] = smooth_union(a[0], b[0], c[0]);
                     break;
                 case SHADER_VECTOR2: v[i][j] = j ? b[0] : a[0]; break;
+                case SHADER_VECTOR3:
                 case SHADER_VECTOR4: v[i][j] = v[n->input[j]][0]; break;
                 case SHADER_X:
                 case SHADER_Y:
                 case SHADER_Z:
                 case SHADER_W: v[i][j] = a[n->op - SHADER_X]; break;
-                case SHADER_OP_COUNT: assert(false);
+                case SHADER_NORMALIZE:
+                case SHADER_NOISE:
+                default: assert(false);
             }
         }
     }
@@ -289,7 +485,123 @@ static void append(char **s, const char *fmt, ...)
     va_end(b);
     asetlen(*s, old + n);
 }
-char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_error *error)
+int shader_graph_ramp_vec4_count(const shader_graph *g)
+{
+    int count = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i].op == SHADER_COLOR_RAMP ||
+            g->nodes[i].op == SHADER_COLOR_RAMP_ALPHA) {
+            count += 2 * acount(g->nodes[i].ramp);
+        }
+    }
+    return count;
+}
+
+void shader_graph_ramp_payload(const shader_graph *g, float (*payload)[4])
+{
+    int offset = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        const shader_node *n = &g->nodes[i];
+        if (n->op != SHADER_COLOR_RAMP && n->op != SHADER_COLOR_RAMP_ALPHA) {
+            continue;
+        }
+        for (int j = 0; j < acount(n->ramp); j++) {
+            payload[offset][0] = n->ramp[j].position;
+            payload[offset][1] = payload[offset][2] = payload[offset][3] = 0;
+            memcpy(payload[offset + 1], n->ramp[j].color, sizeof n->ramp[j].color);
+            offset += 2;
+        }
+    }
+}
+
+static int ramp_offset(const shader_graph *g, int node, int base)
+{
+    if (base < 0) {
+        return -1;
+    }
+    for (int i = 0; i < node; i++) {
+        if (g->nodes[i].op == SHADER_COLOR_RAMP ||
+            g->nodes[i].op == SHADER_COLOR_RAMP_ALPHA) {
+            base += 2 * acount(g->nodes[i].ramp);
+        }
+    }
+    return base;
+}
+
+static void ramp_glsl(char **text, const shader_node *n, const char *prefix, int id, int offset)
+{
+    append(text, "vec4 %s_ramp_%d(float factor,float interpolation) {\n", prefix, id);
+    const shader_ramp_stop *first = &n->ramp[0];
+    if (offset < 0) {
+        append(
+            text,
+            "if(factor<=%.9e)return vec4(%.9e,%.9e,%.9e,%.9e);\n",
+            first->position,
+            first->color[0],
+            first->color[1],
+            first->color[2],
+            first->color[3]
+        );
+    } else {
+        append(text, "if(factor<=sg_ramp_data[%d].x)return sg_ramp_data[%d];\n", offset, offset + 1);
+    }
+    for (int i = 1; i < acount(n->ramp); i++) {
+        const shader_ramp_stop *a = &n->ramp[i - 1], *b = &n->ramp[i];
+        if (offset < 0) {
+            append(
+                text,
+                "if(factor<%.9e) { float t=clamp((factor-%.9e)/%.9e,0.0,1.0); "
+                "int "
+                "mode=int(clamp(interpolation,0.0,2.0)); if(mode==1)t=0.0; "
+                "if(mode==2)t=t*t*(3.0-2.0*t); return "
+                "mix(vec4(%.9e,%.9e,%.9e,%.9e),vec4(%.9e,%.9e,%.9e,%.9e),t); "
+                "}\n",
+                b->position,
+                a->position,
+                b->position - a->position,
+                a->color[0],
+                a->color[1],
+                a->color[2],
+                a->color[3],
+                b->color[0],
+                b->color[1],
+                b->color[2],
+                b->color[3]
+            );
+        } else {
+            int left = offset + 2 * (i - 1), right = offset + 2 * i;
+            append(
+                text,
+                "if(factor<sg_ramp_data[%d].x) { float t=clamp((factor-"
+                "sg_ramp_data[%d].x)/"
+                "(sg_ramp_data[%d].x-sg_ramp_data[%d].x),0.0,1.0); int "
+                "mode=int(clamp(interpolation,0.0,2.0)); if(mode==1)t=0.0; "
+                "if(mode==2)t=t*t*(3.0-2.0*t); return "
+                "mix(sg_ramp_data[%d],sg_ramp_data[%d],t); }\n",
+                right,
+                left,
+                right,
+                left,
+                left + 1,
+                right + 1
+            );
+        }
+    }
+    const shader_ramp_stop *last = &n->ramp[acount(n->ramp) - 1];
+    if (offset < 0) {
+        append(
+            text,
+            "return vec4(%.9e,%.9e,%.9e,%.9e); }\n",
+            last->color[0],
+            last->color[1],
+            last->color[2],
+            last->color[3]
+        );
+    } else {
+        append(text, "return sg_ramp_data[%d]; }\n", offset + 2 * (acount(n->ramp) - 1) + 1);
+    }
+}
+char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, int ramp_base, shader_error *error)
 {
     if (!shader_graph_validate(g, error)) {
         return NULL;
@@ -305,12 +617,28 @@ char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_
         }
     }
     char *s = NULL;
-    append(&s, "void %s(vec2 sg_position, vec2 sg_world_position, float sg_time, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i].op == SHADER_NOISE ||
+            (g->nodes[i].op >= SHADER_MAPPING &&
+             g->nodes[i].op <= SHADER_COLOR_RAMP_ALPHA)) {
+            append(&s, "%s", shader_effects_glsl());
+            break;
+        }
+    }
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i].op == SHADER_COLOR_RAMP ||
+            g->nodes[i].op == SHADER_COLOR_RAMP_ALPHA) {
+            ramp_glsl(&s, &g->nodes[i], prefix, i, ramp_offset(g, i, ramp_base));
+        }
+    }
+    append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
+    append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
+    append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
     for (int i = 0; i < acount(g->nodes); i++) {
         const shader_node *n = &g->nodes[i];
-        char a[32] = "", b[32] = "", c[32] = "";
-        char *args[] = { a, b, c };
-        for (int j = 0; j < 3 && j < shader_op_inputs(n->op); j++) {
+        char a[32] = "", b[32] = "", c[32] = "", d[32] = "";
+        char *args[] = { a, b, c, d };
+        for (int j = 0; j < 4 && j < shader_op_inputs(n->op); j++) {
             snprintf(args[j], 32, "v%d%s", n->input[j], g->nodes[n->input[j]].width == 1 ? ".xxxx" : "");
         }
         append(&s, "vec4 v%d = ", i);
@@ -329,11 +657,28 @@ char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_
                 append(&s, "sg_params[%d]", n->parameter);
                 break;
             case SHADER_POSITION:
-                append(&s, "vec4(sg_position,0.0,0.0)");
+                append(&s, "vec4(sg_sample.position,0.0,0.0)");
                 break;
-            case SHADER_TIME: append(&s, "vec4(sg_time)"); break;
+            case SHADER_UV: append(&s, "vec4(sg_sample.uv,0.0,0.0)"); break;
+            case SHADER_TIME: append(&s, "vec4(sg_sample.time)"); break;
+            case SHADER_BEAT_PHASE:
+                append(&s, "vec4(sg_scene_beat_phase())");
+                break;
+            case SHADER_BEAT_PULSE:
+                append(&s, "vec4(sg_scene_beat_pulse())");
+                break;
             case SHADER_WORLD_POSITION:
-                append(&s, "vec4(sg_world_position,0.0,0.0)");
+                append(&s, "vec4(sg_sample.world_position,0.0)");
+                break;
+            case SHADER_SURFACE_INFLUENCE:
+                append(&s, "vec4(sg_scene_influence(%s.xyz),0.0)", a);
+                break;
+            case SHADER_OBJECT_POSITION:
+                append(&s, "vec4(sg_sample.object_position,0.0)");
+                break;
+            case SHADER_NORMAL: append(&s, "vec4(sg_sample.normal,0.0)"); break;
+            case SHADER_VIEW_DIRECTION:
+                append(&s, "vec4(sg_sample.view_direction,0.0)");
                 break;
             case SHADER_ADD:
             case SHADER_SUBTRACT:
@@ -389,6 +734,121 @@ char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_
             case SHADER_SELECT:
                 append(&s, "(%s.x != 0.0 ? %s : %s)", c, b, a);
                 break;
+            case SHADER_CLAMP:
+                append(&s, "clamp(%s,min(%s,%s),max(%s,%s))", a, b, c, b, c);
+                break;
+            case SHADER_SATURATE: append(&s, "clamp(%s,0.0,1.0)", a); break;
+            case SHADER_STEP: append(&s, "step(%s,%s)", b, a); break;
+            case SHADER_SMOOTHSTEP:
+                append(
+                    &s,
+                    "(%s.x==%s.x?step(%s,%s):clamp((%s-%s)/(%s-%s),0.0,1.0));\n"
+                    "v%d=v%d*v%d*(3.0-2.0*v%d)",
+                    b,
+                    c,
+                    b,
+                    a,
+                    a,
+                    b,
+                    c,
+                    b,
+                    i,
+                    i,
+                    i,
+                    i
+                );
+                break;
+            case SHADER_NORMALIZE: {
+                const char *pad[] = { "", ".x,0.0,0.0,0.0", ".xy,0.0,0.0", ".xyz,0.0", "" };
+                append(
+                    &s,
+                    "vec4(v%d%s);\n"
+                    "float "
+                    "scale%d=max(max(abs(v%d.x),abs(v%d.y)),max(abs(v%d.z),abs("
+                    "v%d.w)));\n"
+                    "if(scale%d>0.0) {v%d/=scale%d; v%d/=length(v%d);}\n",
+                    n->input[0],
+                    pad[n->width],
+                    i,
+                    i,
+                    i,
+                    i,
+                    i,
+                    i,
+                    i,
+                    i,
+                    i,
+                    i
+                );
+                continue;
+            }
+            case SHADER_NOISE: {
+                const char *pad[] = { "", ".x,0.0,0.0", ".xy,0.0", ".xyz" };
+                append(
+                    &s,
+                    "vec4(sgx_noise(vec3(v%d%s)*%s.x))",
+                    n->input[0],
+                    pad[g->nodes[n->input[0]].width],
+                    b
+                );
+                break;
+            }
+            case SHADER_MAPPING:
+                append(&s, "vec4(sgx_mapping(%s.xy,%s.xy,%s.x,%s.xy),0.0,0.0)", a, b, c, d);
+                break;
+            case SHADER_MAPPING3D:
+                append(&s, "vec4(sgx_mapping3d(%s.xyz,%s.xyz,%s.xyz,%s.xyz),0.0)", a, b, c, d);
+                break;
+            case SHADER_FRESNEL:
+                append(&s, "vec4(sgx_fresnel(%s.xyz,%s.xyz,%s.x,%s.x))", a, b, c, d);
+                break;
+            case SHADER_REMAP:
+                append(&s, "sgx_remap(%s,%s.xy,%s.xy,%s.x)", a, b, c, d);
+                break;
+            case SHADER_GRADIENT:
+                append(&s, "vec4(sgx_gradient(%s.xy,%s.x,%s.x,%s.x))", a, b, c, d);
+                break;
+            case SHADER_FRACTAL_NOISE: {
+                const char *pad[] = { "", ".x,0.0,0.0", ".xy,0.0", ".xyz" };
+                append(
+                    &s,
+                    "vec4(sgx_fbm(vec3(v%d%s),%s.x,%s.x,%s.x))",
+                    n->input[0],
+                    pad[g->nodes[n->input[0]].width],
+                    b,
+                    c,
+                    d
+                );
+                break;
+            }
+            case SHADER_VORONOI:
+            case SHADER_VORONOI_COLOR: {
+                int width = g->nodes[n->input[0]].width;
+                append(
+                    &s,
+                    "vec4(sgx_voronoi(vec3(v%d%s)*%s.x,%d,%s.x).%s%s)",
+                    n->input[0],
+                    width == 2 ? ".xy,0.0" : ".xyz",
+                    b,
+                    width,
+                    c,
+                    n->op == SHADER_VORONOI ? "x" : "yzw",
+                    n->op == SHADER_VORONOI ? "" : ",0.0"
+                );
+                break;
+            }
+            case SHADER_COLOR_RAMP:
+                append(&s, "vec4(%s_ramp_%d(%s.x,%s.x).rgb,0.0)", prefix, i, a, b);
+                break;
+            case SHADER_COLOR_RAMP_ALPHA:
+                append(&s, "vec4(%s_ramp_%d(%s.x,%s.x).a)", prefix, i, a, b);
+                break;
+            case SHADER_IMAGE_TEXTURE:
+                append(&s, "vec4(%s_image_%d(%s.xy).rgb,0.0)", prefix, n->image, a);
+                break;
+            case SHADER_IMAGE_TEXTURE_ALPHA:
+                append(&s, "vec4(%s_image_%d(%s.xy).a)", prefix, n->image, a);
+                break;
             case SHADER_CIRCLE:
                 append(&s, "vec4(length(%s.xy)-%s.x)", a, b);
                 break;
@@ -426,6 +886,9 @@ char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_
             case SHADER_VECTOR2:
                 append(&s, "vec4(%s.x,%s.x,0.0,0.0)", a, b);
                 break;
+            case SHADER_VECTOR3:
+                append(&s, "vec4(%s.x,%s.x,%s.x,0.0)", a, b, c);
+                break;
             case SHADER_VECTOR4:
                 append(
                     &s,
@@ -458,4 +921,9 @@ char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_
     memcpy(result, s, (size_t)acount(s) + 1);
     afree(s);
     return result;
+}
+
+char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_error *error)
+{
+    return shader_graph_glsl_named_ramps(g, prefix, -1, error);
 }

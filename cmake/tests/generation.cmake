@@ -34,7 +34,7 @@ endif()
 # destination and its contents must survive; no publication temporary may leak.
 file(MAKE_DIRECTORY "${TEST_DIR}/blocked")
 file(WRITE "${TEST_DIR}/blocked/sentinel" "previous output")
-file(WRITE "${TEST_DIR}/failure.cmake" "include([==[${ROOT}/cmake/generated_file.cmake]==])\nbp_write_generated([==[${TEST_DIR}/blocked]==] replacement)\n")
+file(WRITE "${TEST_DIR}/failure.cmake" "include([==[${ROOT}/cmake/generated_file.cmake]==])\nchibi_write_generated([==[${TEST_DIR}/blocked]==] replacement)\n")
 execute_process(COMMAND "${CMAKE_COMMAND}" -P "${TEST_DIR}/failure.cmake" RESULT_VARIABLE result OUTPUT_QUIET ERROR_QUIET)
 if(result EQUAL 0)
     message(FATAL_ERROR "Publication onto a nonempty directory unexpectedly succeeded")

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_LIBRARY_H
-#define CBLUEPRINT_LIBRARY_H
+#ifndef CHIBI_LIBRARY_H
+#define CHIBI_LIBRARY_H
 
 #include "graph/model/behavior_asset.h"
 

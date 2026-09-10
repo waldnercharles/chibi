@@ -74,12 +74,12 @@ static behavior_asset *make_behavior_asset(void)
         fail("variable descriptors do not match the registry descriptors");
     }
 
-    behavior_asset *bp = behavior_asset_new("Activation benchmark");
-    if (!bp) {
+    behavior_asset *asset = behavior_asset_new("Activation benchmark");
+    if (!asset) {
         return NULL;
     }
     behavior_variable *counter = behavior_asset_add_variable(
-        bp,
+        asset,
         "Counter",
         PIN_I32,
         "int",
@@ -88,7 +88,7 @@ static behavior_asset *make_behavior_asset(void)
         "Benchmark"
     );
     behavior_variable *ticked = behavior_asset_add_variable(
-        bp,
+        asset,
         "Ticked",
         PIN_BOOL,
         "bool",
@@ -97,36 +97,36 @@ static behavior_asset *make_behavior_asset(void)
         "Benchmark"
     );
     if (!counter || !ticked) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
 
-    graph *g = bp->graph;
+    graph *g = asset->graph;
     node *event = graph_add_node(g, event_desc);
     node *branch = graph_add_node(g, branch_desc);
-    node *set = behavior_asset_add_set_node(bp, ticked->id);
-    node *get = behavior_asset_add_get_node(bp, counter->id);
+    node *set = behavior_asset_add_set_node(asset, ticked->id);
+    node *get = behavior_asset_add_get_node(asset, counter->id);
     node *reroute_a = graph_add_node(g, reroute_desc);
     node *reroute_b = graph_add_node(g, reroute_desc);
     node *select = graph_add_node(g, select_desc);
     node *truth = graph_add_node(g, bool_desc);
     if (!event || !branch || !set || !get || !reroute_a || !reroute_b ||
         !select || !truth) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
     if (graph_set_event_name(g, event, "Tick") != 0) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
     pin_spec delta = { "DeltaSeconds", PIN_F64, "double", PIN_DATA };
     if (graph_add_pin(g, event, 1, &delta) < 0) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
     if (graph_set_pin_default(g, truth, 0, 0, &(pin_value){ .type = PIN_BOOL, .b = true }) !=
         0) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
     if (graph_connect_exec(g, event, 0, branch, 0, 0) != 0 ||
@@ -137,11 +137,11 @@ static behavior_asset *make_behavior_asset(void)
         graph_connect_data(g, truth, 0, select, 1) != 0 ||
         graph_connect_data(g, select, 0, branch, 1) != 0 ||
         graph_connect_data(g, select, 0, set, 1) != 0) {
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         return NULL;
     }
     assert(acount(g->nodes) == GRAPH_NODE_COUNT);
-    return bp;
+    return asset;
 }
 
 static void check_queues_empty(behavior_instance **instances, int count)
@@ -207,12 +207,12 @@ static void print_compile_errors(const compile_report *report)
     }
 }
 
-static uint64_t run_variant(behavior_asset *bp, int instance_count, int frame_count, int pooled)
+static uint64_t run_variant(behavior_asset *asset, int instance_count, int frame_count, int pooled)
 {
     behavior_instance **instances = (behavior_instance **)
         xcalloc((size_t)instance_count, sizeof *instances);
     for (int i = 0; i < instance_count; i++) {
-        instances[i] = behavior_instance_create(bp, NULL, NULL, NULL);
+        instances[i] = behavior_instance_create(asset, NULL, NULL, NULL);
         if (!instances[i]) {
             fail("could not create benchmark instance");
         }
@@ -244,7 +244,7 @@ static uint64_t run_variant(behavior_asset *bp, int instance_count, int frame_co
         fail("clock_gettime end failed");
     }
 
-    behavior_variable *ticked_variable = behavior_asset_find_variable_by_name(bp, "Ticked");
+    behavior_variable *ticked_variable = behavior_asset_find_variable_by_name(asset, "Ticked");
     pin_value ticked;
     if (!ticked_variable ||
         behavior_instance_get_variable(instances[0], ticked_variable->id, &ticked) != 0 ||
@@ -275,16 +275,16 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    behavior_asset *bp = make_behavior_asset();
-    if (!bp) {
+    behavior_asset *asset = make_behavior_asset();
+    if (!asset) {
         fail("could not construct benchmark behavior_asset");
     }
     compile_report report;
     compile_report_init(&report);
-    if (behavior_asset_compile(bp, &report) != 0) {
+    if (behavior_asset_compile(asset, &report) != 0) {
         print_compile_errors(&report);
         compile_report_free(&report);
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         fail("benchmark behavior_asset did not compile");
     }
     compile_report_free(&report);
@@ -297,8 +297,8 @@ int main(int argc, char **argv)
     }
     printf("\n");
     printf("resolution=registry_node_by_name(name) returned non-NULL for every descriptor\n");
-    run_variant(bp, instance_count, frame_count, 0);
-    run_variant(bp, instance_count, frame_count, 1);
-    behavior_asset_free(bp);
+    run_variant(asset, instance_count, frame_count, 0);
+    run_variant(asset, instance_count, frame_count, 1);
+    behavior_asset_free(asset);
     return EXIT_SUCCESS;
 }

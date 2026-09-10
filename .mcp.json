@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "c-blueprints": {
+    "chibi": {
       "command": "node",
       "args": ["tools/mcp/server.mjs"],
       "env": {
-        "CBLUEPRINTS_ROOT": "."
+        "CHIBI_ROOT": "."
       }
     }
   }

@@ -77,7 +77,7 @@ static bool add_tree(linux_watch *backend, const char *path, bool recursive)
     struct dirent *entry;
     while ((entry = readdir(directory))) {
         if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") ||
-            bp_watch_excluded(entry->d_name)) {
+            chibi_watch_excluded(entry->d_name)) {
             continue;
         }
         char *child = join(path, entry->d_name);
@@ -91,7 +91,7 @@ static bool add_tree(linux_watch *backend, const char *path, bool recursive)
     return ok;
 }
 
-static bool reconcile(bp_watch *watch)
+static bool reconcile(chibi_watch *watch)
 {
     linux_watch *backend = watch->backend;
     /* Paths of moved watches may now refer to a different subtree. Remove all
@@ -117,7 +117,7 @@ static bool reconcile(bp_watch *watch)
 
 static void *run(void *context)
 {
-    bp_watch *watch = context;
+    chibi_watch *watch = context;
     linux_watch *backend = watch->backend;
     struct pollfd descriptors[] = { { backend->events, POLLIN, 0 },
                                     { backend->wake[0], POLLIN, 0 } };
@@ -162,7 +162,7 @@ static void *run(void *context)
                 bool contents = tree_changed ||
                                 (event->mask & (IN_MODIFY | IN_CLOSE_WRITE));
                 bool matches = (directory ? tree_changed : contents) &&
-                               bp_watch_matches(watch, path, directory);
+                               chibi_watch_matches(watch, path, directory);
                 changed |= matches;
                 topology |= matches && directory && tree_changed;
                 free(path);
@@ -185,7 +185,7 @@ static void *run(void *context)
     return NULL;
 }
 
-bool bp_watch_start(bp_watch *watch)
+bool chibi_watch_start(chibi_watch *watch)
 {
     linux_watch *backend = xcalloc(1, sizeof *backend);
     backend->events = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
@@ -221,7 +221,7 @@ bool bp_watch_start(bp_watch *watch)
     return true;
 }
 
-void bp_watch_stop(bp_watch *watch)
+void chibi_watch_stop(chibi_watch *watch)
 {
     linux_watch *backend = watch->backend;
     char byte = 1;

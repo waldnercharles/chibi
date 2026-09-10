@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GRAPH_JIT_SJLIT_H
-#define CBLUEPRINT_GRAPH_JIT_SJLIT_H
+#ifndef CHIBI_GRAPH_JIT_SJLIT_H
+#define CHIBI_GRAPH_JIT_SJLIT_H
 
 #include "graph/compiler/graph_ir.h"
 #include "graph/compiler/jit_abi.h"

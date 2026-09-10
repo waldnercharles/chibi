@@ -1,8 +1,374 @@
 #include "test/suite_internal.h"
 
+#include <stdatomic.h>
+
+static int input_matches(
+    const graph *g,
+    const node *target,
+    int pin,
+    const node *expected,
+    int expected_pin,
+    const node_desc *conversion
+)
+{
+    node *source = NULL;
+    int source_pin = -1;
+    int connected = graph_input_source(g, target, pin, &source, &source_pin);
+    return (expected ? connected && source == expected && source_pin == expected_pin
+                     : !connected) &&
+           graph_input_conversion(g, target, pin) == conversion;
+}
+
+static void input_index_edits()
+{
+    graph g = { 0 };
+    node *first = graph_add_node(&g, registry_node_by_name("Real"));
+    node *second = graph_add_node(&g, registry_node_by_name("Real"));
+    node *integer = graph_add_node(&g, registry_node_by_name("Integer"));
+    node *target = graph_add_node(&g, registry_node_by_name("add_floats"));
+    test_check(input_matches(&g, target, 0, NULL, 0, NULL), "empty input lookup has no driver");
+    test_check(
+        graph_connect(&g, first, 0, target, 0) == 0 &&
+            graph_connect_data_conversion(&g, integer, 0, target, 1, &NODE_To_Real) == 0 &&
+            input_matches(&g, target, 0, first, 0, NULL) &&
+            input_matches(&g, target, 1, integer, 0, &NODE_To_Real),
+        "input lookup resolves independent plain and converted drivers"
+    );
+    test_check(
+        graph_connect(&g, second, 0, target, 0) == 0 &&
+            input_matches(&g, target, 0, second, 0, NULL),
+        "replacing a driver invalidates a warmed input lookup"
+    );
+    test_check(
+        graph_remove_edge(&g, second, 0, target, 0) == 0 &&
+            input_matches(&g, target, 0, NULL, 0, NULL) &&
+            input_matches(&g, target, 1, integer, 0, &NODE_To_Real),
+        "disconnecting an input preserves the edge swapped into its old slot"
+    );
+
+    char *json = graph_save_json(&g);
+    graph *copy = json ? graph_load_json(json) : NULL;
+    node *copy_target = copy ? graph_node_by_id(copy, target->id) : NULL;
+    node *copy_integer = copy ? graph_node_by_id(copy, integer->id) : NULL;
+    test_check(
+        copy && copy_target && copy_integer &&
+            input_matches(copy, copy_target, 1, copy_integer, 0, &NODE_To_Real) &&
+            graph_remove_edge(copy, copy_integer, 0, copy_target, 1) == 0 &&
+            input_matches(copy, copy_target, 1, NULL, 0, NULL) &&
+            input_matches(&g, target, 1, integer, 0, &NODE_To_Real),
+        "a deserialized graph owns an independent input lookup"
+    );
+    if (copy) {
+        graph_free(copy);
+        free(copy);
+    }
+    free(json);
+
+    pin_spec extra = { "Extra", PIN_F64, "double", PIN_DATA };
+    test_check(
+        graph_connect(&g, first, 0, target, 0) == 0 &&
+            input_matches(&g, target, 0, first, 0, NULL) &&
+            graph_add_pin(&g, first, 1, &extra) == 1 &&
+            graph_move_pin(&g, first, 1, 0, 1) == 1 &&
+            graph_move_pin(&g, target, 0, 0, 1) == 1 &&
+            input_matches(&g, target, 1, first, 1, NULL) &&
+            input_matches(&g, target, 0, integer, 0, &NODE_To_Real),
+        "input lookup follows stable IDs when both endpoint pin arrays move"
+    );
+    test_check(
+        graph_remove_pin(&g, first, 1, 0) == 0 &&
+            input_matches(&g, target, 1, first, 0, NULL) &&
+            graph_remove_pin(&g, target, 0, 0) == 0 &&
+            input_matches(&g, target, 0, first, 0, NULL),
+        "removing dynamic pins preserves the remaining connection"
+    );
+
+    /* Imports remap stable IDs directly, then rebuild the graph's indexes. */
+    for (int i = 0; i < acount(g.nodes); i++) {
+        node *n = g.nodes[i];
+        n->id += 1000;
+        for (int p = 0; p < n->input_count; p++) {
+            n->input_pins[p].id += 1000;
+        }
+        for (int p = 0; p < n->output_count; p++) {
+            n->output_pins[p].id += 1000;
+        }
+    }
+    for (int i = 0; i < acount(g.edges); i++) {
+        g.edges[i].from_id += 1000;
+        g.edges[i].from_pin_id += 1000;
+        g.edges[i].to_id += 1000;
+        g.edges[i].to_pin_id += 1000;
+    }
+    g.id_counter += 1000;
+    graph_reindex(&g);
+    test_check(input_matches(&g, target, 0, first, 0, NULL), "reindex invalidates warmed input IDs after remapping");
+    test_check(
+        graph_remove_node(&g, first) == 0 &&
+            input_matches(&g, target, 0, NULL, 0, NULL) &&
+            graph_connect(&g, second, 0, target, 0) == 0 &&
+            input_matches(&g, target, 0, second, 0, NULL),
+        "input lookup survives deleting the source and reconnecting after the "
+        "graph became empty"
+    );
+    graph_free(&g);
+}
+
+typedef struct input_readers
+{
+    graph *g;
+    node *source;
+    node *event;
+    node *target;
+    int inputs;
+    atomic_bool start;
+} input_readers;
+
+static int read_shared_inputs(void *user)
+{
+    input_readers *readers = user;
+    while (!atomic_load_explicit(&readers->start, memory_order_acquire)) {
+    }
+    for (int repeat = 0; repeat < 64; repeat++) {
+        const edge *first = NULL;
+        if (graph_exec_output_edges(readers->g, readers->event, 0, &first) != 1 ||
+            !first || first->to_id != readers->target->id) {
+            return -1;
+        }
+        for (int i = 1; i <= readers->inputs; i++) {
+            if (!input_matches(readers->g, readers->g->nodes[i], 0, readers->source, 0, &NODE_To_Real)) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+static void concurrent_input_readers()
+{
+    graph g;
+    graph_init(&g);
+    node *source = graph_add_node(&g, registry_node_by_name("Integer"));
+    for (int i = 0; i < 128; i++) {
+        node *target = graph_add_node(&g, registry_node_by_name("Real"));
+        test_check(
+            graph_connect_data_conversion(&g, source, 0, target, 0, &NODE_To_Real) == 0,
+            "shared graph input connects"
+        );
+    }
+    node *event = graph_add_node(&g, registry_node_by_name("Event"));
+    node *target = graph_add_node(&g, registry_node_by_name("Branch"));
+    test_check(graph_connect_exec(&g, event, 0, target, 0, 3) == 0, "shared graph EXEC output connects");
+    input_readers readers = { .g = &g,
+                              .source = source,
+                              .event = event,
+                              .target = target,
+                              .inputs = 128 };
+    atomic_init(&readers.start, false);
+    CF_Thread *threads[4];
+    for (int i = 0; i < 4; i++) {
+        threads[i] = cf_thread_create(read_shared_inputs, "graph-input-reader", &readers);
+        test_check(threads[i] != NULL, "create concurrent graph reader");
+    }
+    atomic_store_explicit(&readers.start, true, memory_order_release);
+    for (int i = 0; i < 4; i++) {
+        test_check(cf_thread_wait(threads[i]).code == 0, "concurrent first readers share a complete input index");
+    }
+    graph_free(&g);
+}
+
+static int exec_matches(const graph *g, const node *source, int pin, const node *expected, int expected_pin, int order)
+{
+    const edge *first = NULL;
+    int count = graph_exec_output_edges(g, source, pin, &first);
+    if (!expected) {
+        return count == 0 && !first;
+    }
+    node *target = NULL;
+    int target_pin = -1;
+    return count == 1 && first && first->to_id == expected->id &&
+           first->exec_order == order &&
+           graph_exec_output_target(g, source, pin, order, &target, &target_pin) &&
+           target == expected && target_pin == expected_pin;
+}
+
+static void pasted_edge_indexes()
+{
+    graph source;
+    graph_init(&source);
+    node *value = graph_add_node(&source, registry_node_by_name("Integer"));
+    node *sum = graph_add_node(&source, registry_node_by_name("Add"));
+    node *event = graph_add_node(&source, registry_node_by_name("Event"));
+    node *branch = graph_add_node(&source, registry_node_by_name("Branch"));
+    test_check(
+        graph_set_event_name(&source, event, "Pasted") == 0 &&
+            graph_connect_data(&source, value, 0, sum, 0) == 0 &&
+            graph_connect_exec(&source, event, 0, branch, 0, 0) == 0,
+        "paste fixture contains both data and EXEC edges"
+    );
+    char *json = graph_save_json(&source);
+    graph target;
+    graph_init(&target);
+    for (int pass = 0; pass < 3; pass++) {
+        test_check(
+            json && graph_append_json(&target, json, pass * 100.0f, 0) == 0,
+            pass ? "append into a graph with warm edge indexes" : "append into an empty graph"
+        );
+        /* Read before any mutation helper can initialize or invalidate the
+         * cache on behalf of paste. Recheck earlier copies after each append. */
+        for (int copy = 0; copy <= pass; copy++) {
+            node **nodes = target.nodes + copy * 4;
+            test_check(
+                input_matches(&target, nodes[1], 0, nodes[0], 0, NULL) &&
+                    exec_matches(&target, nodes[2], 0, nodes[3], 0, 0),
+                "pasted data and EXEC lookups follow remapped IDs and preserve "
+                "previous copies"
+            );
+        }
+    }
+    free(json);
+    graph_free(&target);
+    graph_free(&source);
+}
+
+static void exec_index_edits()
+{
+    graph g;
+    graph_init(&g);
+    node *event = graph_add_node(&g, registry_node_by_name("Event"));
+    node *sequence = graph_add_node(&g, registry_node_by_name("Sequence"));
+    node *a = graph_add_node(&g, &g_sink_a_desc);
+    node *b = graph_add_node(&g, &g_sink_b_desc);
+    graph_set_event_name(&g, event, "Indexed Exec");
+    test_check(
+        graph_connect_exec(&g, event, 0, sequence, 0, 7) == 0 &&
+            graph_connect_exec(&g, sequence, 0, a, 0, 9) == 0 &&
+            graph_connect_exec(&g, sequence, 1, b, 0, 4) == 0 &&
+            exec_matches(&g, sequence, 0, a, 0, 9) &&
+            exec_matches(&g, sequence, 1, b, 0, 4),
+        "indexed EXEC outputs retain independent targets and explicit orders"
+    );
+    flow_log_reset();
+    flow_error error = { 0 };
+    flow_run *run = graph_run_event(&g, "Indexed Exec", (flow_inputs){ 0 }, &error);
+    test_check(run && flow_run_status(run) == FLOW_COMPLETED && !strcmp(g_flow_log, "AB"), "indexed scheduling follows Sequence pin order rather than edge order values");
+    flow_run_free(run);
+    node *unused = NULL;
+    int unused_pin = -1;
+    test_check(
+        graph_connect_exec(&g, sequence, 0, a, 0, 12) == 0 &&
+            exec_matches(&g, sequence, 0, a, 0, 12) &&
+            !graph_exec_output_target(&g, sequence, 0, 9, &unused, &unused_pin),
+        "changing EXEC order invalidates the warmed output lookup"
+    );
+    test_check(
+        graph_remove_edge(&g, sequence, 0, a, 0) == 0 &&
+            exec_matches(&g, sequence, 0, NULL, 0, 0) &&
+            exec_matches(&g, sequence, 1, b, 0, 4),
+        "EXEC disconnect preserves an edge swapped into the removed slot"
+    );
+    pin_spec extra = { "Extra", PIN_FLOW, NULL, PIN_EXEC };
+    test_check(
+        graph_connect_exec(&g, sequence, 0, a, 0, 12) == 0 &&
+            graph_move_pin(&g, sequence, 1, 0, 1) == 1 &&
+            graph_add_pin(&g, a, 0, &extra) == 2 &&
+            graph_move_pin(&g, a, 0, 0, 1) == 1 &&
+            exec_matches(&g, sequence, 0, b, 0, 4) &&
+            exec_matches(&g, sequence, 1, a, 1, 12),
+        "EXEC lookup follows source and target pins after dynamic reordering"
+    );
+    uint64_t old = sequence->output_pins[1].id;
+    sequence->output_pins[1].id = graph_alloc_id(&g);
+    for (int i = 0; i < acount(g.edges); i++) {
+        if (g.edges[i].from_pin_id == old) {
+            g.edges[i].from_pin_id = sequence->output_pins[1].id;
+        }
+    }
+    graph_reindex(&g);
+    test_check(exec_matches(&g, sequence, 1, a, 1, 12), "reindex invalidates remapped EXEC output IDs");
+    test_check(
+        graph_remove_pin(&g, a, 0, 0) == 0 &&
+            exec_matches(&g, sequence, 1, a, 0, 12) && graph_remove_node(&g, a) == 0 &&
+            exec_matches(&g, sequence, 1, NULL, 0, 0) &&
+            graph_remove_pin(&g, sequence, 1, 1) == 0 &&
+            exec_matches(&g, sequence, 0, b, 0, 4),
+        "EXEC lookup survives pin and target deletion without stale edges"
+    );
+    graph_free(&g);
+}
+
+static void expect_exec_error(graph *g, const char *message)
+{
+    flow_error error = { 0 };
+    flow_run *run = graph_run_event(g, "Invalid Exec", (flow_inputs){ 0 }, &error);
+    const flow_error *failure = flow_run_error(run);
+    test_check(
+        run && flow_run_status(run) == FLOW_FAILED && failure &&
+            failure->code == FLOW_ERR_INVALID_GRAPH && failure->message &&
+            !strcmp(failure->message, message),
+        message
+    );
+    flow_run_free(run);
+}
+
+static void invalid_exec_index()
+{
+    graph g;
+    graph_init(&g);
+    node *event = graph_add_node(&g, registry_node_by_name("Event"));
+    node *a = graph_add_node(&g, registry_node_by_name("Branch"));
+    node *b = graph_add_node(&g, registry_node_by_name("Branch"));
+    graph_set_event_name(&g, event, "Invalid Exec");
+    graph_connect_exec(&g, event, 0, a, 0, 7);
+    test_check(exec_matches(&g, event, 0, a, 0, 7), "warm EXEC lookup before malformed edge injection");
+    edge duplicate = g.edges[0];
+    duplicate.to_id = b->id;
+    duplicate.to_pin_id = b->input_pins[0].id;
+    apush(g.edges, duplicate);
+    graph_reindex(&g);
+    const edge *first = NULL;
+    node *target = NULL;
+    int target_pin = -1;
+    test_check(
+        graph_exec_output_edges(&g, event, 0, &first) == 2 && first == &g.edges[0] &&
+            graph_exec_output_target(&g, event, 0, 7, &target, &target_pin) &&
+            target == a,
+        "invalid EXEC fan-out counts every edge and preserves the first "
+        "authored match"
+    );
+    g.edges[1].exec_order = 3;
+    graph_reindex(&g);
+    test_check(
+        graph_exec_output_target(&g, event, 0, 3, &target, &target_pin) && target == b,
+        "ordered EXEC lookup can still inspect each edge of invalid fan-out"
+    );
+    g.edges[0].to_id = g.id_counter + 100;
+    graph_reindex(&g);
+    expect_exec_error(&g, "EXEC output has ambiguous fan-out");
+    asetlen(g.edges, 1);
+    graph_reindex(&g);
+    expect_exec_error(&g, "invalid EXEC target");
+    g.edges[0].to_id = a->id;
+    g.edges[0].to_pin_id = a->input_pins[1].id;
+    graph_reindex(&g);
+    expect_exec_error(&g, "invalid EXEC target");
+    g.edges[0].to_pin_id = a->output_pins[0].id;
+    graph_reindex(&g);
+    expect_exec_error(&g, "invalid EXEC target");
+    g.edges[0].to_pin_id = a->input_pins[0].id;
+    graph_reindex(&g);
+    test_check(exec_matches(&g, event, 0, a, 0, 7), "repairing malformed EXEC edges refreshes the same shared index");
+    graph_free(&g);
+}
+
 void run_graph_model_checks()
 {
     g_watch_desc.type = registry_type_by_name("Vec3");
+    input_index_edits();
+    concurrent_input_readers();
+    pasted_edge_indexes();
+    exec_index_edits();
+    invalid_exec_index();
     test_check(editor_preview_allowed(FLOW_IDLE), "idle preview is allowed");
     test_check(
         !editor_preview_allowed(FLOW_RUNNING) &&
@@ -61,6 +427,22 @@ void run_graph_model_checks()
     test_check(registry_node_count() > 0, "the parity surface is a classified registry, not a fixed count claim");
     test_check(PIN_BOOL != PIN_I32 && PIN_F32 != PIN_F64, "the complete primitive pin set is distinct");
     test_check(operator_resolve("missing", PIN_I32, PIN_I32) == NULL, "operator resolution has no implicit C fallback");
+
+    {
+        graph defaults;
+        graph_init(&defaults);
+        node *reader = graph_add_node(&defaults, brk);
+        float source[] = { 2, 3, 5 };
+        pin_value value = { .type = PIN_STRUCT, .type_name = "Vec3", .ptr = source };
+        test_check(graph_set_pin_default(&defaults, reader, 0, 0, &value) == 0, "struct defaults accept temporary source values");
+        source[0] = source[1] = source[2] = -100;
+        const float *stored = reader->input_pins[0].default_value.ptr;
+        test_check(
+            stored != source && stored[0] == 2 && stored[1] == 3 && stored[2] == 5,
+            "graph owns struct defaults independently of caller storage"
+        );
+        graph_free(&defaults);
+    }
 
     /* 1. two constants -> add call node */
     node *c1 = make_const(&g, 2.0f);

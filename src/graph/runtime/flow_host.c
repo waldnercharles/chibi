@@ -117,7 +117,7 @@ bool flow_host_complete(flow_host_request *request, int output_pin, pin_value va
             return false;
         }
         runtime_node_outputs(runtime_store_node(run->runtime, n))[output_pin] = copy;
-        flow_watch_capture(run, n);
+        flow_watch_capture_outputs(run, n);
     }
     request->state = FLOW_HOST_READY;
     return true;

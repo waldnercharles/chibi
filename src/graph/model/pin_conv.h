@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_PIN_CONV_H
-#define CBLUEPRINT_PIN_CONV_H
+#ifndef CHIBI_PIN_CONV_H
+#define CHIBI_PIN_CONV_H
 
 #include "graph/model/pin.h" /* pin_type_name() via the PIN_TYPE_LIST X-macro */
 

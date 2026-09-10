@@ -7,7 +7,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-bool bp_watch_excluded(const char *path)
+bool chibi_watch_excluded(const char *path)
 {
     for (const char *part = path; *part;) {
         if (*part == '/') {
@@ -16,7 +16,7 @@ bool bp_watch_excluded(const char *path)
         }
         size_t size = strcspn(part, "/");
         if ((size == 4 && !strncmp(part, ".git", size)) ||
-            (size == 11 && !strncmp(part, ".blueprints", size)) ||
+            (size == 6 && !strncmp(part, ".chibi", size)) ||
             (size == 10 && !strncmp(part, "CMakeFiles", size)) ||
             (size == 11 && !strncmp(part, "__pycache__", size)) ||
             (size >= 5 && !strncmp(part, "build", 5) && (size == 5 || part[5] == '-'))) {
@@ -27,7 +27,7 @@ bool bp_watch_excluded(const char *path)
     return false;
 }
 
-static bool relevant(bp_watch *watch, const char *path)
+static bool relevant(chibi_watch *watch, const char *path)
 {
     const char *name = strrchr(path, '/');
     name = name ? name + 1 : path;
@@ -43,16 +43,16 @@ static bool relevant(bp_watch *watch, const char *path)
     return false;
 }
 
-bool bp_watch_matches(bp_watch *watch, const char *path, bool directory)
+bool chibi_watch_matches(chibi_watch *watch, const char *path, bool directory)
 {
     for (int i = 0; i < watch->count; i++) {
-        bp_watch_root *root = &watch->roots[i];
+        chibi_watch_root *root = &watch->roots[i];
         if (!strcmp(root->path, path)) {
             return true;
         }
         size_t size = strlen(root->path);
         if (root->directory && !strncmp(root->path, path, size) &&
-            (size == 1 || path[size] == '/') && !bp_watch_excluded(path + size) &&
+            (size == 1 || path[size] == '/') && !chibi_watch_excluded(path + size) &&
             (directory || relevant(watch, path))) {
             return true;
         }
@@ -60,10 +60,10 @@ bool bp_watch_matches(bp_watch *watch, const char *path, bool directory)
     return false;
 }
 
-bp_watch *bp_watch_create(const char *const *paths, int count, const char *const *suffixes, int suffix_count)
+chibi_watch *chibi_watch_create(const char *const *paths, int count, const char *const *suffixes, int suffix_count)
 {
     assert(paths && count > 0 && suffix_count >= 0 && (suffixes || suffix_count == 0));
-    bp_watch *watch = xcalloc(1, sizeof *watch);
+    chibi_watch *watch = xcalloc(1, sizeof *watch);
     atomic_init(&watch->revision, 0);
     watch->suffixes = xcalloc((size_t)suffix_count, sizeof *watch->suffixes);
     watch->suffix_count = suffix_count;
@@ -77,33 +77,33 @@ bp_watch *bp_watch_create(const char *const *paths, int count, const char *const
         if (!path || stat(path, &info) != 0) {
             int error = errno;
             free(path);
-            bp_watch_free(watch);
+            chibi_watch_free(watch);
             errno = error;
             return NULL;
         }
-        watch->roots[watch->count++] = (bp_watch_root){ path, S_ISDIR(info.st_mode) };
+        watch->roots[watch->count++] = (chibi_watch_root){ path, S_ISDIR(info.st_mode) };
     }
-    if (!bp_watch_start(watch)) {
+    if (!chibi_watch_start(watch)) {
         int error = errno;
-        bp_watch_free(watch);
+        chibi_watch_free(watch);
         errno = error;
         return NULL;
     }
     return watch;
 }
 
-uint64_t bp_watch_revision(bp_watch *watch)
+uint64_t chibi_watch_revision(chibi_watch *watch)
 {
     return atomic_load_explicit(&watch->revision, memory_order_relaxed);
 }
 
-void bp_watch_free(bp_watch *watch)
+void chibi_watch_free(chibi_watch *watch)
 {
     if (!watch) {
         return;
     }
     if (watch->backend) {
-        bp_watch_stop(watch);
+        chibi_watch_stop(watch);
     }
     for (int i = 0; i < watch->count; i++) {
         free(watch->roots[i].path);

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_NODE_H
-#define CBLUEPRINT_NODE_H
+#ifndef CHIBI_NODE_H
+#define CHIBI_NODE_H
 
 #include "graph/model/pin.h"
 #include "graph/model/type.h"
@@ -171,6 +171,7 @@ struct node
     char *reference_asset; /* NULL for local calls; graph-owned library identity */
     float x, y;
     unsigned disabled;
+    bool inline_source;
     unsigned breakpoint;
     unsigned breakpoint_enabled;
     bool show_advanced;

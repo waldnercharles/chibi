@@ -19,6 +19,34 @@ static bool selected(node *const *selection, int count, uint64_t id)
     return false;
 }
 
+static node **expand_inline_selection(const graph *g, node *const *selection, int count, int *expanded_count)
+{
+    int capacity = count + acount(g->nodes);
+    node **expanded = xmalloc((size_t)(capacity > 0 ? capacity : 1) * sizeof *expanded);
+    int total = count;
+    for (int i = 0; i < count; i++) {
+        expanded[i] = selection[i];
+    }
+    for (int i = 0; i < count; i++) {
+        node *target = selection[i];
+        if (!target || graph_node_by_id(g, target->id) != target) {
+            continue;
+        }
+        for (int pin = 0; pin < target->input_count; pin++) {
+            node *source = NULL;
+            int source_pin = -1;
+            if (!graph_inline_source(g, target, pin, &source, &source_pin) ||
+                selected(expanded, total, source->id)) {
+                continue;
+            }
+            assert(total < capacity);
+            expanded[total++] = source;
+        }
+    }
+    *expanded_count = total;
+    return expanded;
+}
+
 static bool has_split(const node *n)
 {
     for (int output = 0; output < 2; output++) {
@@ -148,7 +176,7 @@ static const char *execution_boundary(const graph *g, node *const *selection, in
     return NULL;
 }
 
-const char *behavior_asset_can_extract_function(
+static const char *can_extract_function_selection(
     const behavior_asset *asset,
     const graph *source,
     node *const *selection,
@@ -173,8 +201,9 @@ const char *behavior_asset_can_extract_function(
                 return "The selection contains the same node twice.";
             }
         }
+        bool inline_source = graph_node_is_inline(source, n);
         if (n->disabled ||
-            (!exec &&
+            (!exec && !inline_source &&
              (n->desc->flow_kind != NODE_FLOW_NONE || n->desc->latent ||
               n->desc->pure_kind == NODE_PURE_GET || n->desc->pure_kind == NODE_PURE_SELF ||
               n->desc->pure_kind == NODE_PURE_READ || n->desc->pure_kind == NODE_PURE_FUNCTION ||
@@ -210,12 +239,80 @@ const char *behavior_asset_can_extract_function(
     return NULL;
 }
 
+const char *behavior_asset_can_extract_function(
+    const behavior_asset *asset,
+    const graph *source,
+    node *const *selection,
+    int count
+)
+{
+    if (!asset || !source || source->owner != asset ||
+        behavior_asset_find_graph(asset, source->graph_id) != source ||
+        count <= 0 || !selection) {
+        return can_extract_function_selection(asset, source, selection, count);
+    }
+    int expanded_count = count;
+    node **expanded = expand_inline_selection(source, selection, count, &expanded_count);
+    const char *error = can_extract_function_selection(asset, source, expanded, expanded_count);
+    free(expanded);
+    return error;
+}
+
 typedef struct boundary_port
 {
     uint64_t node_id;
     uint64_t pin_id;
     int index;
 } boundary_port;
+
+typedef struct binding_port
+{
+    uint64_t node_id;
+    uint64_t pin_id;
+    int index;
+} binding_port;
+
+static int same_binding(
+    const pin_binding *left,
+    const pin_binding *right,
+    const pin_spec *expected_left,
+    const pin_spec *expected_right
+)
+{
+    return left && right && left->kind == right->kind &&
+           left->variable_id == right->variable_id &&
+           !strcmp(
+               left->source_asset ? left->source_asset : "",
+               right->source_asset ? right->source_asset : ""
+           ) &&
+           !strcmp(
+               left->component_key ? left->component_key : "",
+               right->component_key ? right->component_key : ""
+           ) &&
+           !strcmp(
+               left->field_name ? left->field_name : "",
+               right->field_name ? right->field_name : ""
+           ) &&
+           expected_left->type == expected_right->type &&
+           expected_left->container == expected_right->container &&
+           !strcmp(
+               expected_left->type_name ? expected_left->type_name : "",
+               expected_right->type_name ? expected_right->type_name : ""
+           );
+}
+
+static bool same_optional_binding(
+    const pin_binding *left,
+    const pin_binding *right,
+    const pin_spec *expected_left,
+    const pin_spec *expected_right
+)
+{
+    if (!left || !right) {
+        return !left && !right;
+    }
+    return same_binding(left, right, expected_left, expected_right);
+}
 
 static int port_index(boundary_port *ports, const edge *e)
 {
@@ -268,6 +365,7 @@ static int add_port(graph *g, node *boundary, int output, const pin_spec *source
     pin.split_type_name = NULL;
     pin.field_source = 0;
     pin.field_name = NULL;
+    pin.binding = NULL;
     return graph_add_pin(g, boundary, output, &pin);
 }
 
@@ -291,7 +389,9 @@ static node *copied_node(graph *function, node **ordered, int count, uint64_t or
 static int pin_index(const node *n, uint64_t id)
 {
     int index = -1;
-    assert(graph_pin_by_id(n, id, NULL, &index));
+    bool found = graph_pin_by_id(n, id, NULL, &index);
+    assert(found);
+    (void)found;
     return index;
 }
 
@@ -322,8 +422,11 @@ static const char *build_function(
     node *entry = graph_node_by_id(function, function->entry_id);
     node *result = graph_node_by_id(function, function->return_id);
     boundary_port *inputs = NULL, *outputs = NULL;
+    binding_port *bindings = NULL;
     edge *boundary = NULL;
     edge exec_in = { 0 }, exec_out = { 0 };
+    node *call = NULL;
+    const char *error = NULL;
     for (int i = 0; i < acount(source->edges); i++) {
         edge e = source->edges[i];
         bool from = selected(ordered, count, e.from_id),
@@ -354,14 +457,133 @@ static const char *build_function(
         assert(at >= 0);
         apush(*ports, ((boundary_port){ e.from_id, e.from_pin_id, at }));
     }
-    node *call = behavior_asset_add_function_call_node_to_graph(asset, source, function);
-    const char *error = call ? NULL : "Could not create the function call.";
+    if (!exec) {
+        /* A single function input can represent one dormant binding. Reject a
+         * producer fanout whose selected consumers authored different fallbacks
+         * rather than silently applying one fallback to all consumers. */
+        for (int i = 0; i < acount(inputs) && !error; i++) {
+            boundary_port p = inputs[i];
+            const pin_binding *binding = NULL;
+            const pin_spec *binding_pin = NULL;
+            bool first = true;
+            for (int b = 0; b < acount(boundary); b++) {
+                const edge *crossing = &boundary[b];
+                if (crossing->kind != GRAPH_EDGE_DATA ||
+                    selected(ordered, count, crossing->from_id) ||
+                    crossing->from_id != p.node_id ||
+                    crossing->from_pin_id != p.pin_id) {
+                    continue;
+                }
+                node *consumer = graph_node_by_id(source, crossing->to_id);
+                int consumer_pin_index = consumer
+                                           ? pin_index(consumer, crossing->to_pin_id)
+                                           : -1;
+                const pin_spec *consumer_pin = consumer && consumer_pin_index >= 0
+                                                 ? &consumer->input_pins[consumer_pin_index]
+                                                 : NULL;
+                if (!consumer_pin) {
+                    error = "Could not inspect a function input boundary.";
+                    break;
+                }
+                if (first) {
+                    binding = consumer_pin->binding;
+                    binding_pin = consumer_pin;
+                    first = false;
+                } else if (!same_optional_binding(binding, consumer_pin->binding, binding_pin, consumer_pin)) {
+                    error = "Cannot extract a fanout with different input "
+                            "bindings.";
+                    break;
+                }
+            }
+        }
+    }
+    if (!exec) {
+        for (int i = 0; i < count && !error; i++) {
+            const node *original = ordered[i];
+            for (int p = 0; p < original->input_count; p++) {
+                const pin_spec *pin = &original->input_pins[p];
+                node *driver = NULL;
+                int driver_pin = -1;
+                if (pin->kind != PIN_DATA || !pin->binding ||
+                    graph_input_source(source, original, p, &driver, &driver_pin)) {
+                    continue;
+                }
+                int existing = -1;
+                for (int b = 0; b < acount(bindings); b++) {
+                    const binding_port *candidate = &bindings[b];
+                    const node
+                        *candidate_node = graph_node_by_id(source, candidate->node_id);
+                    int candidate_pin_index = candidate_node ? pin_index(
+                                                                   candidate_node,
+                                                                   candidate->pin_id
+                                                               )
+                                                             : -1;
+                    const pin_spec *candidate_pin = candidate_node &&
+                                                            candidate_pin_index >= 0
+                                                      ? &candidate_node->input_pins[candidate_pin_index]
+                                                      : NULL;
+                    if (candidate_pin &&
+                        same_binding(pin->binding, candidate_pin->binding, pin, candidate_pin)) {
+                        existing = candidate->index;
+                        break;
+                    }
+                }
+                if (existing < 0) {
+                    existing = add_port(function, entry, 1, pin, pin->name);
+                    if (existing < 0) {
+                        error = "Could not preserve an input binding.";
+                        break;
+                    }
+                    apush(bindings, ((binding_port){ original->id, pin->id, existing }));
+                }
+            }
+        }
+    }
+    if (!error) {
+        call = behavior_asset_add_function_call_node_to_graph(asset, source, function);
+        error = call ? NULL : "Could not create the function call.";
+    }
     for (int i = 0; !error && i < acount(inputs); i++) {
         boundary_port p = inputs[i];
         node *producer = graph_node_by_id(source, p.node_id);
         if (graph_connect_data(source, producer, pin_index(producer, p.pin_id), call, p.index) !=
             0) {
             error = "Could not preserve a function input.";
+        }
+        if (!error && !exec) {
+            for (int b = 0; b < acount(boundary); b++) {
+                const edge *crossing = &boundary[b];
+                if (crossing->kind != GRAPH_EDGE_DATA ||
+                    selected(ordered, count, crossing->from_id) ||
+                    crossing->from_id != p.node_id ||
+                    crossing->from_pin_id != p.pin_id) {
+                    continue;
+                }
+                node *consumer = graph_node_by_id(source, crossing->to_id);
+                const pin_spec
+                    *consumer_pin = consumer
+                                      ? &consumer->input_pins
+                                             [pin_index(consumer, crossing->to_pin_id)]
+                                      : NULL;
+                if (consumer_pin && consumer_pin->binding &&
+                    graph_set_pin_binding(source, call, 0, p.index, consumer_pin->binding) !=
+                        0) {
+                    error = "Could not preserve a dormant input binding.";
+                }
+                break;
+            }
+        }
+    }
+    for (int i = 0; !error && i < acount(bindings); i++) {
+        const binding_port *port = &bindings[i];
+        node *original = graph_node_by_id(source, port->node_id);
+        node *copy = copied_node(function, ordered, count, port->node_id);
+        int original_pin = pin_index(original, port->pin_id);
+        const pin_binding *binding = original->input_pins[original_pin].binding;
+        if (graph_connect_data(function, entry, port->index, copy, original_pin) != 0 ||
+            graph_set_pin_binding(function, copy, 0, original_pin, NULL) != 0 ||
+            graph_set_pin_binding(source, call, 0, port->index, binding) != 0) {
+            error = "Could not preserve an input binding.";
         }
     }
     for (int i = 0; !error && i < acount(outputs); i++) {
@@ -397,14 +619,19 @@ static const char *build_function(
         } else {
             node *consumer = graph_node_by_id(source, e.to_id);
             node *copy = copied_node(function, ordered, count, e.to_id);
+            int consumer_pin = pin_index(consumer, e.to_pin_id);
             rc = graph_connect_data_conversion(
                 function,
                 entry,
                 inputs[port_index(inputs, &e)].index,
                 copy,
-                pin_index(consumer, e.to_pin_id),
+                consumer_pin,
                 e.conversion
             );
+            if (!exec && rc == 0 &&
+                graph_set_pin_binding(function, copy, 0, consumer_pin, NULL) != 0) {
+                rc = -1;
+            }
         }
         if (rc != 0) {
             error = "Could not preserve a connection across the function "
@@ -459,13 +686,24 @@ static const char *build_function(
         entry->y = call->y;
         result->x = call->x + 260;
         result->y = call->y;
+        uint64_t *ordered_ids = xmalloc((size_t)count * sizeof *ordered_ids);
         for (int i = 0; i < count; i++) {
-            assert(graph_remove_node(source, ordered[i]) == 0);
+            ordered_ids[i] = ordered[i]->id;
         }
+        for (int i = 0; i < count; i++) {
+            node *original = graph_node_by_id(source, ordered_ids[i]);
+            if (original) {
+                int removed = graph_remove_node(source, original);
+                assert(removed == 0);
+                (void)removed;
+            }
+        }
+        free(ordered_ids);
         *call_id = call->id;
     }
     afree(inputs);
     afree(outputs);
+    afree(bindings);
     afree(boundary);
     return error;
 }
@@ -483,39 +721,59 @@ const char *behavior_asset_extract_function(
     assert(out_asset && out_call_id);
     *out_asset = NULL;
     *out_call_id = 0;
-    const char *error = behavior_asset_can_extract_function(asset, source, selection, count);
+    int expanded_count = count;
+    node **expanded = NULL;
+    if (asset && source && source->owner == asset && count > 0 && selection) {
+        expanded = expand_inline_selection(source, selection, count, &expanded_count);
+    }
+    const char *error = can_extract_function_selection(
+        asset,
+        source,
+        expanded ? expanded : selection,
+        expanded ? expanded_count : count
+    );
     if (error) {
+        free(expanded);
         return error;
     }
     bool visible = false;
     if (!name) {
+        free(expanded);
         return "Enter a function name.";
     }
     for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
         if (iscntrl(*c)) {
+            free(expanded);
             return "Use a function name without control characters.";
         }
         visible |= !isspace(*c);
     }
     if (!visible) {
+        free(expanded);
         return "Enter a function name.";
     }
     if (behavior_asset_find_graph_by_name(asset, name)) {
+        free(expanded);
         return "A graph with that name already exists.";
     }
     char *json = behavior_asset_save_json(asset);
     behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
     free(json);
     if (!copy) {
+        free(expanded);
         return "Could not copy the behavior asset.";
     }
     graph *caller = behavior_asset_find_graph(copy, source->graph_id);
-    node **ordered = xmalloc((size_t)count * sizeof *ordered);
-    for (int i = 0; i < count; i++) {
-        ordered[i] = graph_node_by_id(caller, selection[i]->id);
+    int selected_count = expanded ? expanded_count : count;
+    node *const *effective_selection = expanded ? expanded : selection;
+    node **ordered = xmalloc((size_t)selected_count * sizeof *ordered);
+    for (int i = 0; i < selected_count; i++) {
+        ordered[i] = graph_node_by_id(caller, effective_selection[i]->id);
     }
-    qsort(ordered, (size_t)count, sizeof *ordered, compare_node_ids);
-    error = build_function(copy, caller, ordered, count, name, out_call_id);
+    free(expanded);
+    expanded = NULL;
+    qsort(ordered, (size_t)selected_count, sizeof *ordered, compare_node_ids);
+    error = build_function(copy, caller, ordered, selected_count, name, out_call_id);
     free(ordered);
     if (error) {
         behavior_asset_free(copy);

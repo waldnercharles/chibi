@@ -167,7 +167,18 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
     CXType t = clang_getCursorType(c);
     f.name = cxstr(clang_getCursorSpelling(c));
     f.spelling = cxstr(clang_getTypeSpelling(t));
+    f.handle = annotation_value(c, "node:handle:");
     f.pin = pin_name(t);
+    if (f.handle) {
+        if (!f.pin || strcmp(f.pin, "PIN_U64") || !f.handle[0]) {
+            reflect_error(c, "handle fields require uint64_t storage and a nominal type");
+            free(f.name);
+            free(f.spelling);
+            free(f.handle);
+            return CXChildVisit_Continue;
+        }
+        f.pin = "PIN_HANDLE";
+    }
     if (!f.pin) {
         reflect_error(c, "unsupported field type");
         free(f.name);
@@ -180,12 +191,14 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
         reflect_error(c, "field size is unavailable");
         free(f.name);
         free(f.spelling);
+        free(f.handle);
         return CXChildVisit_Continue;
     }
     if (clang_Cursor_isBitField(c)) {
         reflect_error(c, "bit-fields are unsupported");
         free(f.name);
         free(f.spelling);
+        free(f.handle);
         return CXChildVisit_Continue;
     }
     if (!strcmp(f.pin, "PIN_ENUM") &&
@@ -193,6 +206,7 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
         reflect_error(c, "enum fields must use a 32-bit representation");
         free(f.name);
         free(f.spelling);
+        free(f.handle);
         return CXChildVisit_Continue;
     }
     apush(*l, f);
@@ -208,6 +222,13 @@ static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor, CXClientData 
     CXType raw = clang_getCursorType(c);
     int output = has_annotate(c, "node:out");
     char *service = annotation_value(c, "node:service:");
+    char *label = annotation_value(c, "node:pin-name:");
+    if (output && raw.kind != CXType_Pointer) {
+        reflect_error(c, "explicit output parameters must be pointers");
+        free(service);
+        free(label);
+        return CXChildVisit_Continue;
+    }
     CXType graph_type = output && raw.kind == CXType_Pointer
                           ? clang_getPointeeType(raw)
                           : raw;
@@ -217,9 +238,11 @@ static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor, CXClientData 
          clang_Type_getSizeOf(clang_getCanonicalType(graph_type)) != sizeof(int32_t))) {
         reflect_error(c, "unsupported parameter type or missing explicit output annotation");
         free(service);
+        free(label);
         return CXChildVisit_Continue;
     }
     apush(f->pname, cxstr(clang_getCursorSpelling(c)));
+    apush(f->plabel, label);
     apush(f->ptype, cxstr(clang_getTypeSpelling(raw)));
     apush(f->ppin, service ? "PIN_HANDLE" : pin);
     apush(f->pout, output);
@@ -308,9 +331,10 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
         }
     } else if (k == CXCursor_FunctionDecl) {
         int pure = has_annotate(c, "node:fn");
+        int read = has_annotate(c, "node:read");
         int exec = has_annotate(c, "node:exec");
-        if (pure || exec) {
-            if (pure && exec) {
+        if (pure || read || exec) {
+            if (pure + read + exec > 1) {
                 reflect_error(c, "a function must choose exactly one node contract");
                 return CXChildVisit_Recurse;
             }
@@ -319,16 +343,34 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             f.ret = cxstr(clang_getTypeSpelling(clang_getCursorResultType(c)));
             f.ret_void = clang_getCursorResultType(c).kind == CXType_Void;
             f.ret_pin = f.ret_void ? NULL : pin_name(clang_getCursorResultType(c));
+            f.read = read;
             f.exec = exec;
-            if (!f.ret_void && (!f.ret_pin || (!strcmp(f.ret_pin, "PIN_ENUM") &&
-                                               clang_Type_getSizeOf(clang_getCanonicalType(
-                                                   clang_getCursorResultType(c)
-                                               )) != sizeof(int32_t)))) {
+            if (read) {
+                f.effect_flags |= 1u << 3;
+            }
+            CXType result_type = clang_getCursorResultType(c);
+            int read_error = result_type.kind != CXType_Pointer ||
+                             !clang_isConstQualifiedType(clang_getPointeeType(result_type));
+            if (read &&
+                (read_error || !f.ret_pin || strcmp(f.ret_pin, "PIN_STR") != 0)) {
+                reflect_error(c, "read nodes must return const char * errors");
+                free(f.name);
+                free(f.ret);
+                return CXChildVisit_Recurse;
+            }
+            if (!read && !f.ret_void &&
+                (!f.ret_pin || (!strcmp(f.ret_pin, "PIN_ENUM") &&
+                                clang_Type_getSizeOf(clang_getCanonicalType(
+                                    clang_getCursorResultType(c)
+                                )) != sizeof(int32_t)))) {
                 reflect_error(c, "unsupported return type");
                 free(f.name);
                 free(f.ret);
                 return CXChildVisit_Recurse;
             }
+            f.display_name = annotation_value(c, "node:name:");
+            f.category = annotation_value(c, "node:category:");
+            f.keywords = annotation_value(c, "node:keywords:");
             f.operator_name = annotation_value(c, "node:operator:");
             f.jit_kind = annotation_value(c, "node:jit:");
             if (f.jit_kind && strcmp(f.jit_kind, "v2-scale") != 0 &&
@@ -365,6 +407,18 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 f.effect_flags |= 1u << 2;
             }
             clang_visitChildren(c, param_visitor, &f);
+            if (read) {
+                int output_count = 0;
+                for (int i = 0; i < acount(f.pname); i++) {
+                    output_count += f.pout[i];
+                    if (f.pservice[i]) {
+                        reflect_error(c, "read nodes cannot use service parameters");
+                    }
+                }
+                if (!output_count) {
+                    reflect_error(c, "read nodes need at least one NODE_OUT parameter");
+                }
+            }
             apush(ctx->fns, f);
         }
     }
@@ -391,6 +445,7 @@ static void dispose_fields(field_info *fields)
     for (int i = 0; i < acount(fields); i++) {
         free(fields[i].name);
         free(fields[i].spelling);
+        free(fields[i].handle);
     }
     afree(fields);
 }
@@ -409,12 +464,16 @@ void reflect_dispose(collect_ctx *ctx)
         free(f->name);
         free(f->ret);
         free_strings(f->pname);
+        free_strings(f->plabel);
         free_strings(f->ptype);
         afree(f->ppin);
         afree(f->pout);
         afree(f->pservice);
         free_strings(f->pservice_type);
         free_strings(f->pout_type);
+        free(f->display_name);
+        free(f->category);
+        free(f->keywords);
         free_strings(f->reads);
         free_strings(f->writes);
         free(f->operator_name);

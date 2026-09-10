@@ -4,21 +4,21 @@ void run_runtime_catalog_checks()
 {
     /* Phase 7/8: stateful flow, catalog families, and breakpoints. */
     {
-        behavior_asset *bp = behavior_asset_new("Stateful");
-        node *event = graph_add_node(bp->graph, &NODE_Event);
-        graph_set_event_name(bp->graph, event, "Go");
-        node *once = graph_add_node(bp->graph, registry_node_by_name("DoOnce"));
-        node *sink = graph_add_node(bp->graph, &g_sink_a_desc);
-        graph_connect_exec(bp->graph, event, 0, once, 0, 0);
-        graph_connect_exec(bp->graph, once, 0, sink, 0, 0);
-        behavior_instance *bi = behavior_instance_create(bp, NULL, NULL, NULL);
+        behavior_asset *asset = behavior_asset_new("Stateful");
+        node *event = graph_add_node(asset->graph, &NODE_Event);
+        graph_set_event_name(asset->graph, event, "Go");
+        node *once = graph_add_node(asset->graph, registry_node_by_name("DoOnce"));
+        node *sink = graph_add_node(asset->graph, &g_sink_a_desc);
+        graph_connect_exec(asset->graph, event, 0, once, 0, 0);
+        graph_connect_exec(asset->graph, once, 0, sink, 0, 0);
+        behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
         flow_error state_error = { 0 };
         flow_log_reset();
         behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
         behavior_instance_dispatch(bi, "Go", (flow_inputs){ 0 }, &state_error);
         test_check(strcmp(g_flow_log, "A") == 0, "DoOnce state persists on one instance");
         behavior_instance_destroy(bi);
-        behavior_asset_free(bp);
+        behavior_asset_free(asset);
         graph g_break;
         graph_init(&g_break);
         node *break_event = graph_add_node(&g_break, &NODE_Event);
@@ -122,27 +122,27 @@ void run_runtime_catalog_checks()
             strcmp(cmpl_rule_name(CMPL_RULE_MACRO_RECURSION), "CMPL-11") == 0,
             "recursive macro expansion has a stable diagnostic rule"
         );
-        behavior_asset *macro_bp = behavior_asset_new("Macros");
-        graph *macro = behavior_asset_add_macro(macro_bp, "Macro");
+        behavior_asset *macro_asset = behavior_asset_new("Macros");
+        graph *macro = behavior_asset_add_macro(macro_asset, "Macro");
         test_check(macro && macro->kind == GRAPH_MACRO, "macro graphs have an explicit exec shape");
         test_check(
-            behavior_asset_add_macro_call_node(macro_bp, macro) != NULL,
+            behavior_asset_add_macro_call_node(macro_asset, macro) != NULL,
             "macro calls carry a graph reference for expansion"
         );
         test_check(macro->kind == GRAPH_MACRO, "macro recursion is checked at the graph boundary");
         test_check(macro->kind == GRAPH_MACRO, "macro wildcard resolution is per call graph");
         test_check(
-            behavior_asset_add_function(macro_bp, "Collapsed", 0) != NULL,
+            behavior_asset_add_function(macro_asset, "Collapsed", 0) != NULL,
             "the editor has a collapse target for selected nodes"
         );
-        graph *caller = behavior_asset_add_function(macro_bp, "Caller", 0);
+        graph *caller = behavior_asset_add_function(macro_asset, "Caller", 0);
         node *caller_macro = caller
-                               ? behavior_asset_add_macro_call_node_to_graph(macro_bp, caller, macro)
+                               ? behavior_asset_add_macro_call_node_to_graph(macro_asset, caller, macro)
                                : NULL;
         uint64_t macro_id = macro ? macro->graph_id : 0;
         test_check(caller_macro && caller_macro->reference_id == macro_id, "a reusable call can be placed in a non-default graph");
         test_check(
-            behavior_asset_rename_graph(macro_bp, macro_id, "RenamedMacro") == 0 &&
+            behavior_asset_rename_graph(macro_asset, macro_id, "RenamedMacro") == 0 &&
                 strcmp(macro->name, "RenamedMacro") == 0 && caller_macro->reference_name &&
                 strcmp(caller_macro->reference_name, "RenamedMacro") == 0,
             "renaming a graph refreshes its call labels"
@@ -156,20 +156,20 @@ void run_runtime_catalog_checks()
             registry_node_by_name("Set Members in Struct") != NULL,
             "struct split/set-member surfaces are available from the pin model"
         );
-        test_check(acount(macro_bp->graphs) >= 3, "graph-level authored entities have detail surfaces");
+        test_check(acount(macro_asset->graphs) >= 3, "graph-level authored entities have detail surfaces");
         test_check(
-            behavior_asset_delete_graph(macro_bp, macro_id) == 0 &&
-                behavior_asset_find_graph(macro_bp, macro_id) == NULL,
+            behavior_asset_delete_graph(macro_asset, macro_id) == 0 &&
+                behavior_asset_find_graph(macro_asset, macro_id) == NULL,
             "a user-created macro can be removed without deleting "
             "EventGraph"
         );
         uint64_t caller_id = caller ? caller->graph_id : 0;
         test_check(
-            behavior_asset_delete_graph(macro_bp, caller_id) == 0 &&
-                behavior_asset_find_graph(macro_bp, caller_id) == NULL,
+            behavior_asset_delete_graph(macro_asset, caller_id) == 0 &&
+                behavior_asset_find_graph(macro_asset, caller_id) == NULL,
             "a user-created function graph can be removed"
         );
-        behavior_asset_free(macro_bp);
+        behavior_asset_free(macro_asset);
         graph comment_graph;
         graph_init(&comment_graph);
         graph_comment_box *box = graph_add_comment_box(&comment_graph, "Notes", 1, 2, 100, 80);

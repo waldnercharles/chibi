@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_ARRANGE_H
-#define CBLUEPRINT_ARRANGE_H
+#ifndef CHIBI_ARRANGE_H
+#define CHIBI_ARRANGE_H
 
 #include "support/math.h"
 

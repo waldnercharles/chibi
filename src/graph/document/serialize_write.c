@@ -1,5 +1,7 @@
 #include "graph/document/serialize_internal.h"
+#include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -29,6 +31,29 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
     }
     yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
     yyjson_mut_obj_add_int(doc, o, "group", p->group);
+    if (p->binding) {
+        const char *kind = p->binding->kind == PIN_BINDING_VARIABLE ? "variable"
+                         : p->binding->kind == PIN_BINDING_COMPONENT_FIELD
+                             ? "component_field"
+                         : p->binding->kind == PIN_BINDING_COMPONENT
+                             ? "component"
+                             : "delta_time";
+        yyjson_mut_val *binding = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_str(doc, binding, "kind", kind);
+        if (p->binding->variable_id) {
+            yyjson_mut_obj_add_uint(doc, binding, "variable_id", p->binding->variable_id);
+        }
+        if (p->binding->source_asset) {
+            yyjson_mut_obj_add_str(doc, binding, "source_asset", p->binding->source_asset);
+        }
+        if (p->binding->component_key) {
+            yyjson_mut_obj_add_str(doc, binding, "component", p->binding->component_key);
+        }
+        if (p->binding->field_name) {
+            yyjson_mut_obj_add_str(doc, binding, "field", p->binding->field_name);
+        }
+        yyjson_mut_obj_add_val(doc, o, "binding", binding);
+    }
     serialize_write_value(doc, o, "default", p->type, p->type_name, &p->default_value);
     yyjson_mut_arr_add_val(arr, o);
 }
@@ -81,6 +106,9 @@ static void write_node(yyjson_mut_doc *doc, yyjson_mut_val *arr, const node *n)
         yyjson_mut_obj_add_str(doc, o, "reference_asset", n->reference_asset);
     }
     yyjson_mut_obj_add_bool(doc, o, "disabled", n->disabled != 0);
+    if (n->inline_source) {
+        yyjson_mut_obj_add_bool(doc, o, "inline_source", true);
+    }
     yyjson_mut_obj_add_bool(doc, o, "show_advanced", n->show_advanced);
     yyjson_mut_obj_add_bool(doc, o, "breakpoint", n->breakpoint != 0);
     yyjson_mut_obj_add_bool(doc, o, "breakpoint_enabled", n->breakpoint_enabled != 0);
@@ -119,6 +147,43 @@ static int compare_edges(const void *a, const void *b)
     CMP_FIELD(exec_order);
 #undef CMP_FIELD
     return 0;
+}
+
+static int subset_contains(node *const *subset, int count, const node *candidate)
+{
+    for (int i = 0; i < count; i++) {
+        if (subset[i] == candidate) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static node **expand_inline_subset(const graph *g, node *const *subset, int count, int *expanded_count)
+{
+    int capacity = count + acount(g->nodes);
+    node **expanded = xmalloc((size_t)(capacity > 0 ? capacity : 1) * sizeof *expanded);
+    int total = count;
+    for (int i = 0; i < count; i++) {
+        expanded[i] = subset[i];
+    }
+    for (int i = 0; i < count; i++) {
+        node *target = subset[i];
+        if (!target) {
+            continue;
+        }
+        for (int pin = 0; pin < target->input_count; pin++) {
+            node *source = NULL;
+            int source_pin = -1;
+            if (graph_inline_source(g, target, pin, &source, &source_pin) &&
+                !subset_contains(expanded, total, source)) {
+                assert(total < capacity);
+                expanded[total++] = source;
+            }
+        }
+    }
+    *expanded_count = total;
+    return expanded;
 }
 
 static void write_nodes(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g, node *const *subset, int count)
@@ -204,10 +269,20 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     }
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
+    node **expanded = NULL;
+    int expanded_count = count;
+    if (subset) {
+        expanded = expand_inline_subset(g, subset, count, &expanded_count);
+        subset = expanded;
+        count = expanded_count;
+    }
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
     yyjson_mut_obj_add_uint(doc, root, "id_counter", g->id_counter);
     yyjson_mut_obj_add_str(doc, root, "name", g->name ? g->name : "");
     yyjson_mut_obj_add_str(doc, root, "description", g->description ? g->description : "");
+    if (g->owner) {
+        yyjson_mut_obj_add_uint(doc, root, "binding_owner_id", g->owner->identity);
+    }
     yyjson_mut_obj_add_bool(doc, root, "breakpoints_enabled", g->breakpoints_enabled != 0);
     if (g->dataflow) {
         yyjson_mut_obj_add_bool(doc, root, "dataflow", true);
@@ -221,6 +296,7 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     write_edges(doc, edges, g, subset, count);
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
+    free(expanded);
     return out;
 }
 
@@ -292,9 +368,9 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
 /* FMT-1/FMT-2/FMT-16/FMT-18: the version-3 Behavior Asset document carries the
  * schema version, Behavior Asset name, ID counter, description, optional owner
  * handle type, variable list, and every graph. Runtime state never appears. */
-char *behavior_asset_save_json(const behavior_asset *bp)
+char *behavior_asset_save_json(const behavior_asset *asset)
 {
-    if (!bp || !bp->graph) {
+    if (!asset || !asset->graph) {
         return NULL;
     }
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
@@ -304,26 +380,26 @@ char *behavior_asset_save_json(const behavior_asset *bp)
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_uint(doc, root, "version", GRAPH_SCHEMA_VERSION);
-    yyjson_mut_obj_add_str(doc, root, "name", bp->name ? bp->name : "");
-    yyjson_mut_obj_add_str(doc, root, "domain", behavior_domain_name(bp->domain));
-    if (bp->domain == BEHAVIOR_DOMAIN_SHAPE) {
-        yyjson_mut_obj_add_real(doc, root, "bounds_x", bp->bounds[0]);
-        yyjson_mut_obj_add_real(doc, root, "bounds_y", bp->bounds[1]);
+    yyjson_mut_obj_add_str(doc, root, "name", asset->name ? asset->name : "");
+    yyjson_mut_obj_add_str(doc, root, "domain", behavior_domain_name(asset->domain));
+    if (asset->domain == BEHAVIOR_DOMAIN_SHAPE) {
+        yyjson_mut_obj_add_real(doc, root, "bounds_x", asset->bounds[0]);
+        yyjson_mut_obj_add_real(doc, root, "bounds_y", asset->bounds[1]);
     }
-    yyjson_mut_obj_add_uint(doc, root, "id_counter", bp->graph->id_counter);
-    yyjson_mut_obj_add_str(doc, root, "description", bp->description ? bp->description : "");
-    if (bp->owner_type_name) {
-        yyjson_mut_obj_add_str(doc, root, "owner_type", bp->owner_type_name);
+    yyjson_mut_obj_add_uint(doc, root, "id_counter", asset->graph->id_counter);
+    yyjson_mut_obj_add_str(doc, root, "description", asset->description ? asset->description : "");
+    if (asset->owner_type_name) {
+        yyjson_mut_obj_add_str(doc, root, "owner_type", asset->owner_type_name);
     }
     yyjson_mut_val *vars = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "variables", vars);
-    for (int i = 0; i < acount(bp->variables); i++) {
-        write_variable(doc, vars, &bp->variables[i]);
+    for (int i = 0; i < acount(asset->variables); i++) {
+        write_variable(doc, vars, &asset->variables[i]);
     }
     yyjson_mut_val *graphs = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "graphs", graphs);
-    for (int i = 0; i < acount(bp->graphs); i++) {
-        write_behavior_asset_graph(doc, graphs, bp->graphs[i]);
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        write_behavior_asset_graph(doc, graphs, asset->graphs[i]);
     }
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);

@@ -26,6 +26,8 @@ static void expect_component(const char *name, const char *expected)
 void test_labels()
 {
     expect_component("GameTransform", "Transform");
+    expect_component("GameGeometry3D", "3D Geometry");
+    expect_component("GameAppearance", "2D Appearance");
     expect_component("GameSdfMotion", "SDF Motion");
     expect_component("GameMaterial", "Material");
     expect_component("GameHTTPResponse", "HTTP Response");
@@ -52,6 +54,8 @@ void test_labels()
     expect_node("Make_GameProjectile", "Make Projectile");
     expect_node("Break_GameInput", "Break Input");
     expect_node("Make_CF_V2", "Make CF V2");
+    expect_node("Shader Color Ramp", "Color Ramp");
+    expect_node("Shader Surface Output", "Surface Output");
     char label[128];
     editor_identifier_label("GameOver", label, sizeof label);
     assert(strcmp(label, "Game Over") == 0);

@@ -1,0 +1,278 @@
+{
+  "version": 3,
+  "name": "WeaponBehavior",
+  "id_counter": 36,
+  "description": "Spawns a projectile beside the owning entity when Fire is dispatched.",
+  "owner_type": "ecs.entity",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Event",
+          "x": 0,
+          "y": 0,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "reference_name": "Fire"
+        },
+        {
+          "id": 8,
+          "type": "Get_GameTransform",
+          "x": 0,
+          "y": 180,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 9,
+              "name": "Value",
+              "type": 15,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "type_name": "GameTransform"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "Get_GameWeapon",
+          "x": 0,
+          "y": 380,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 22,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameWeapon",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 23,
+              "name": "damage",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0,
+              "field_source": 22,
+              "field_name": "damage"
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "type": "Call Function",
+          "x": 320,
+          "y": 0,
+          "reference_id": 173,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 25,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 26,
+              "name": "Origin",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 27,
+              "name": "Direction",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 1,
+                "y": 0
+              }
+            },
+            {
+              "id": 28,
+              "name": "Damage",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 29,
+              "name": "Prototype",
+              "type": 12,
+              "type_name": "name",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "Projectile",
+              "declaration_id": 220
+            },
+            {
+              "id": 33,
+              "name": "Shooter",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null,
+              "declaration_id": 255
+            }
+          ],
+          "outputs": [
+            {
+              "id": 30,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 31,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "reference_name": "Fire Projectile",
+          "reference_asset": "WeaponActions"
+        },
+        {
+          "id": 34,
+          "type": "Self",
+          "x": 320,
+          "y": 360,
+          "reference_id": 0,
+          "disabled": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 35,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "from_pin": 2,
+          "to": 24,
+          "to_pin": 25,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 8,
+          "from_pin": 9,
+          "to": 24,
+          "to_pin": 26,
+          "kind": "data"
+        },
+        {
+          "from": 21,
+          "from_pin": 23,
+          "to": 24,
+          "to_pin": 28,
+          "kind": "data"
+        },
+        {
+          "from": 34,
+          "from_pin": 35,
+          "to": 24,
+          "to_pin": 33,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_UI_SHELL_H
-#define CBLUEPRINT_EDITOR_UI_SHELL_H
+#ifndef CHIBI_EDITOR_UI_SHELL_H
+#define CHIBI_EDITOR_UI_SHELL_H
 
 #include "editor/ui/icons.h"
 
@@ -67,6 +67,7 @@ typedef enum editor_ui_pane
     EDITOR_UI_PANE_SCENE,
     EDITOR_UI_PANE_COMPILER_RESULTS,
     EDITOR_UI_PANE_OUTPUT_LOG,
+    EDITOR_UI_PANE_PERFORMANCE,
     EDITOR_UI_PANE_COUNT,
 } editor_ui_pane;
 
@@ -113,6 +114,11 @@ bool editor_ui_begin_navigator(editor_ui_pane *outline, bool has_document, edito
 /* Workspace history buttons; request is -1 Back, +1 Forward, 0 none. */
 void editor_ui_set_navigation_available(bool back, bool forward);
 int editor_ui_take_navigation();
+void editor_ui_request_navigation(int direction);
+void editor_ui_set_document_bar_visible(bool visible);
+/* Pair with ImGui_End(), even when the contents are clipped. */
+bool editor_ui_begin_document_bar();
+bool editor_ui_navigator_visible(void);
 editor_ui_pane editor_ui_navigator_tab(editor_ui_pane outline);
 void editor_ui_restore_navigator_tab(editor_ui_pane tab);
 void editor_ui_end_navigator();
@@ -160,6 +166,7 @@ bool editor_ui_section_header(const char *label, const char *action_id);
 /* Register the last rendered item by a stable semantic ID. Queries describe
  * the last frame, never trigger actions, and use ImGui input coordinates. */
 void editor_ui_track_item(const char *id);
+void editor_ui_track_rect(const char *id, editor_ui_rect rect);
 bool editor_ui_item_center(const char *id, float *x, float *y);
 bool editor_ui_item_rect(const char *id, editor_ui_rect *out);
 
@@ -179,7 +186,7 @@ bool editor_ui_right_icon_button(const char *id, editor_icon glyph);
 /* Tracks id and id.clear; clearing returns true and restores input focus. */
 bool editor_ui_search_field(const char *id, char *buffer, size_t buffer_size, const char *hint);
 
-/* Host-owned copies contain ImGui layout and Blueprints workspace preferences.
+/* Host-owned copies contain ImGui layout and Chibi workspace preferences.
  * Import and handler rebinding run only when the candidate becomes active. */
 char *editor_ui_checkpoint();
 bool editor_ui_restore_checkpoint(const char *ini);

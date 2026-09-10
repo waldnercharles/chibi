@@ -3,6 +3,7 @@
 #include "graph/compiler/graph_ir.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/compiler/program.h"
+#include "graph/document/events.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/math_nodes.h"
@@ -161,7 +162,7 @@ static void build_query(game_system *system)
     for (int i = 0; i < acount(graph->nodes); i++) {
         node *current = graph->nodes[i];
         if (current->desc && current->desc->flow_kind == NODE_FLOW_EVENT &&
-            current->reference_name && strcmp(current->reference_name, "Tick") == 0) {
+            graph_host_event_is(current->reference_name, GRAPH_HOST_EVENT_TICK)) {
             if (system->tick) {
                 system->tick = NULL;
             } else {
@@ -354,6 +355,86 @@ static void set_slot(system_slot *slot, const pin_spec *pin)
                                                : NULL,
         .size = pin_storage_size(pin),
     };
+}
+
+static bool slot_matches_pin(const system_slot *slot, const pin_spec *pin)
+{
+    pin_spec actual = {
+        .type = slot->type,
+        .type_name = slot->type_name,
+        .container = slot->container,
+    };
+    return slot->type == pin->type && pin_compatible(&actual, pin);
+}
+
+static bool slot_is_float_pair(const system_slot *slot)
+{
+    const type_desc *type = slot->description;
+    if (slot->container != PIN_CONTAINER_SINGLE || !type ||
+        type->size != 2 * sizeof(float) || type->field_count != 2) {
+        return false;
+    }
+    for (int i = 0; i < 2; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type != PIN_F32 || field->size != sizeof(float) ||
+            field->offset != (size_t)i * sizeof(float)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool call_has_fast_signature(const system_program *program, const system_instruction *call)
+{
+    const node_desc *desc = call->node->desc;
+    const system_slot *output = &program->slots[call->output];
+    if (call->input_count != desc->input_count || desc->output_count != 1) {
+        return false;
+    }
+    bool scale = desc == &NODE_Multiply || desc == &NODE_Divide;
+    bool pair = desc == &NODE_Add || desc == &NODE_Subtract || desc == &NODE_Min ||
+                desc == &NODE_Max || desc == &NODE_Modulo || desc == &NODE_Clamp;
+    if (scale || pair) {
+        /* These wildcard descriptors carry two-float adapters, not adapters
+         * for their default scalar pins. Generic structs also match by field
+         * name, so equal byte sizes alone do not establish the same operation. */
+        const system_slot *first = &program->slots[call->inputs[0]];
+        if (!slot_is_float_pair(first) || !slot_is_float_pair(output) ||
+            !slot_matches_pin(output, &call->node->input_pins[0])) {
+            return false;
+        }
+        for (int i = 1; i < call->input_count; i++) {
+            const system_slot *input = &program->slots[call->inputs[i]];
+            if (scale) {
+                if (input->type != PIN_F32 || input->container != PIN_CONTAINER_SINGLE) {
+                    return false;
+                }
+                continue;
+            }
+            if (!slot_is_float_pair(input)) {
+                return false;
+            }
+            for (int field = 0; field < 2; field++) {
+                if (strcmp(
+                        first->description->fields[field].name,
+                        input->description->fields[field].name
+                    ) != 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    if (!slot_matches_pin(output, &desc->outputs[0])) {
+        return false;
+    }
+    for (int i = 0; i < call->input_count; i++) {
+        if ((desc->inputs[i].flags & PIN_FLAG_WILDCARD) ||
+            !slot_matches_pin(&program->slots[call->inputs[i]], &desc->inputs[i])) {
+            return false;
+        }
+    }
+    return !(desc->outputs[0].flags & PIN_FLAG_WILDCARD);
 }
 
 static int new_register(system_program *program, const pin_spec *pin)
@@ -843,13 +924,15 @@ static int compile_value(system_program *program, const node *target, int output
             }
             instruction = add_instruction(program, SYSTEM_OP_CALL, target);
             instruction->fn = desc->fn;
-            instruction->fast = desc->fast;
-            instruction->direct = desc->direct;
-            instruction->direct_count = desc->direct_count;
             instruction->output = result;
             instruction->input_count = target->input_count;
             for (int i = 0; i < instruction->input_count; i++) {
                 instruction->inputs[i] = call_inputs[i];
+            }
+            if (call_has_fast_signature(program, instruction)) {
+                instruction->fast = desc->fast;
+                instruction->direct = desc->direct;
+                instruction->direct_count = desc->direct_count;
             }
             break;
         default: ok = 0; break;
@@ -1335,7 +1418,7 @@ static int program_run_generic(system_program *program, ecs_entity entity, doubl
     memset(program->values, 0, (size_t)program->value_count * sizeof *program->values);
     program->values[program->event_delta] = (pin_value){
         .type = PIN_F32,
-        .type_name = "float",
+        .type_name = pin_type_name(PIN_F32),
         .f = (float)delta,
     };
     for (int i = 0; i < acount(program->instructions); i++) {
@@ -1407,6 +1490,10 @@ static int program_run_generic(system_program *program, ecs_entity entity, doubl
                     instruction->input_count,
                     &program->arena
                 );
+                if (program->values[instruction->output].type == PIN_FLOW) {
+                    set_error(error, FLOW_ERR_NODE, instruction->node, "data function produced an invalid result");
+                    return FLOW_ERR_NODE;
+                }
                 break;
             }
         }
@@ -1603,12 +1690,14 @@ static int rebuild(game_system *system)
         }
         ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
         if (system->query_expression) {
-            assert(
-                ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression)) == ECS_OK
-            );
+            int added = ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression));
+            assert(added == ECS_OK);
+            (void)added;
         }
         for (int i = 0; i < acount(system->query); i++) {
-            assert(ecs_query_expr_add(query, ecs_query_expr_has(system->query[i])) == ECS_OK);
+            int added = ecs_query_expr_add(query, ecs_query_expr_has(system->query[i]));
+            assert(added == ECS_OK);
+            (void)added;
         }
         system->compiled_query_expression = query;
         return 0;
@@ -1622,12 +1711,14 @@ static int rebuild(game_system *system)
     if (system->instance) {
         ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
         if (system->query_expression) {
-            assert(
-                ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression)) == ECS_OK
-            );
+            int added = ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression));
+            assert(added == ECS_OK);
+            (void)added;
         }
         for (int i = 0; i < acount(system->query); i++) {
-            assert(ecs_query_expr_add(query, ecs_query_expr_has(system->query[i])) == ECS_OK);
+            int added = ecs_query_expr_add(query, ecs_query_expr_has(system->query[i]));
+            assert(added == ECS_OK);
+            (void)added;
         }
         system->compiled_query_expression = query;
     }
@@ -1702,7 +1793,7 @@ static int run_interpreted(game_system *system, ecs_entity entity, double now, d
     pin_value tick_delta = {
         .type = PIN_F32,
         .f = (float)delta,
-        .type_name = "float",
+        .type_name = pin_type_name(PIN_F32),
     };
     flow_inputs inputs = { &tick_delta, 1, NULL };
     if (behavior_instance_rebind(system->instance, &owner) != 0) {

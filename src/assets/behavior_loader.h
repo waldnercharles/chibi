@@ -1,11 +1,13 @@
-#ifndef CBLUEPRINT_APP_BEHAVIOR_FIXTURES_H
-#define CBLUEPRINT_APP_BEHAVIOR_FIXTURES_H
+#ifndef CHIBI_APP_BEHAVIOR_FIXTURES_H
+#define CHIBI_APP_BEHAVIOR_FIXTURES_H
 
 #include "runtime/behaviors/live.h"
 #include "runtime/scenes/prototype_preview.h"
 
 /* Loads the canonical behavior fixtures used by the shipped app and headless
- * authoring sessions. Paths are visited in lexical order. */
+ * authoring sessions. Paths are visited in lexical order. Rejected paths and
+ * their failure details are written to stderr; other assets remain available.
+ * Returns the number loaded, or -1 for invalid arguments. */
 int app_behavior_fixtures_load(
     game_live_world *world,
     game_prototype_preview *preview,

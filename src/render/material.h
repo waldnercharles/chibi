@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_MATERIAL_H
-#define CBLUEPRINT_GAME_MATERIAL_H
+#ifndef CHIBI_GAME_MATERIAL_H
+#define CHIBI_GAME_MATERIAL_H
 
 #include "runtime/components.h"
 

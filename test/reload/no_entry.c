@@ -1,7 +1,7 @@
-#include <blueprints/application.h>
+#include <chibi/application.h>
 
 /* A valid shared library without the application lifecycle entry point. */
-BP_APPLICATION_EXPORT int unrelated_entry()
+CHIBI_APPLICATION_EXPORT int unrelated_entry()
 {
     return 42;
 }

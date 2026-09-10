@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdlib.h>
 
 static pin_value normalize(const pin_value *inputs, int count, arena *memory)
 {
@@ -28,6 +29,7 @@ static pin_spec outputs[] = {
     { .name = "Result", .type = PIN_STRUCT, .type_name = "CF_V2" },
 };
 static const node_access pure = { .flags = NODE_EFFECT_PURE };
+static const node_access random_access = { .flags = NODE_EFFECT_HOST_SINK };
 
 node_desc NODE_Normalize_Vector_2 = {
     .name = "Normalize Vector 2",
@@ -100,4 +102,73 @@ node_desc NODE_Atan2 = {
     .category = "Math/Vector",
     .keywords = "angle direction rotation radians",
     .access = &pure,
+};
+
+static CF_V3 random_range_vector_min = { 0, 0, 0 };
+static CF_V3 random_range_vector_max = { 1, 1, 1 };
+
+static pin_spec random_range_vector_inputs[] = {
+    { .name = "Min",
+      .type = PIN_STRUCT,
+      .type_name = "CF_V3",
+      .default_value = { .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &random_range_vector_min } },
+    { .name = "Max",
+      .type = PIN_STRUCT,
+      .type_name = "CF_V3",
+      .default_value = { .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &random_range_vector_max } },
+};
+static pin_spec random_range_vector_outputs[] = {
+    { .name = "Result", .type = PIN_STRUCT, .type_name = "CF_V3" },
+};
+
+static pin_value random_range_vector(const pin_value *inputs, int count, arena *memory)
+{
+    assert(
+        count == 2 && inputs[0].type == PIN_STRUCT && inputs[0].ptr &&
+        inputs[1].type == PIN_STRUCT && inputs[1].ptr
+    );
+    CF_V3 min = *(const CF_V3 *)inputs[0].ptr;
+    CF_V3 max = *(const CF_V3 *)inputs[1].ptr;
+    if (!isfinite(min.x) || !isfinite(min.y) || !isfinite(min.z) ||
+        !isfinite(max.x) || !isfinite(max.y) || !isfinite(max.z)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    if (max.x < min.x) {
+        float swap = min.x;
+        min.x = max.x;
+        max.x = swap;
+    }
+    if (max.y < min.y) {
+        float swap = min.y;
+        min.y = max.y;
+        max.y = swap;
+    }
+    if (max.z < min.z) {
+        float swap = min.z;
+        min.z = max.z;
+        max.z = swap;
+    }
+    double x = (double)rand() / ((double)RAND_MAX + 1);
+    double y = (double)rand() / ((double)RAND_MAX + 1);
+    double z = (double)rand() / ((double)RAND_MAX + 1);
+    CF_V3 *result = arena_alloc(memory, sizeof *result);
+    *result = (CF_V3){
+        (float)((double)min.x * (1 - x) + (double)max.x * x),
+        (float)((double)min.y * (1 - y) + (double)max.y * y),
+        (float)((double)min.z * (1 - z) + (double)max.z * z),
+    };
+    return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = result };
+}
+
+node_desc NODE_Random_Range_Vector = {
+    .name = "Random Range Vector",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = random_range_vector_inputs,
+    .outputs = random_range_vector_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = random_range_vector,
+    .category = "Math/Random",
+    .keywords = "rand random range vector min max sample",
+    .access = &random_access,
 };

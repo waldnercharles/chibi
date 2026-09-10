@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 
 const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
-const controller = resolve(root, "build/blueprints_ctl");
+const controller = resolve(root, "build/chibi_ctl");
 
 function nativeRequestAt(projectRoot, operation, args = {}) {
   const result = spawnSync(controller, ["--project-root", projectRoot], {
@@ -21,7 +21,7 @@ function nativeRequestAt(projectRoot, operation, args = {}) {
   }
   const line = result.stdout.trim().split("\n").filter(Boolean).at(-1);
   if (!line) {
-    throw new Error(result.stderr.trim() || "blueprints_ctl returned no response");
+    throw new Error(result.stderr.trim() || "chibi_ctl returned no response");
   }
   return { response: JSON.parse(line), status: result.status };
 }
@@ -56,17 +56,17 @@ const requests = [
   { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "catalog", arguments: { cursor: 1, limit: 1, summary: true } } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
-  { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "blueprints://project/status" } },
-  { jsonrpc: "2.0", id: 17, method: "resources/read", params: { uri: "blueprints://catalog" } },
-  { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "blueprints://asset/behavior/HealthBehavior" } },
-  { jsonrpc: "2.0", id: 18, method: "resources/read", params: { uri: "blueprints://asset/behavior/HealthBehavior/dependencies" } },
-  { jsonrpc: "2.0", id: 21, method: "resources/read", params: { uri: "blueprints://asset/library/DirectionMath/graph/1" } },
+  { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "chibi://project/status" } },
+  { jsonrpc: "2.0", id: 17, method: "resources/read", params: { uri: "chibi://catalog" } },
+  { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "chibi://asset/behavior/HealthBehavior" } },
+  { jsonrpc: "2.0", id: 18, method: "resources/read", params: { uri: "chibi://asset/behavior/HealthBehavior/dependencies" } },
+  { jsonrpc: "2.0", id: 21, method: "resources/read", params: { uri: "chibi://asset/library/DirectionMath/graph/1" } },
   { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "missing_tool", arguments: {} } },
-  { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "blueprints://asset/behavior/nope" } },
+  { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "chibi://asset/behavior/nope" } },
   { jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior" } } },
   { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior", direction: "sideways" } } },
-  { jsonrpc: "2.0", id: 24, method: "resources/read", params: { uri: "blueprints://asset/behavior/%ZZ" } },
-  { jsonrpc: "2.0", id: 25, method: "resources/read", params: { uri: "blueprints://missing" } },
+  { jsonrpc: "2.0", id: 24, method: "resources/read", params: { uri: "chibi://asset/behavior/%ZZ" } },
+  { jsonrpc: "2.0", id: 25, method: "resources/read", params: { uri: "chibi://missing" } },
   { jsonrpc: "2.0", id: 26, method: "resources/read", params: {} },
   { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "catalog", arguments: { limit: 0 } } },
   { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "catalog", arguments: { cursor: "1" } } },
@@ -87,9 +87,9 @@ if (responses.length !== expectedResponses) {
   throw new Error(`expected ${expectedResponses} responses, got ${responses.length}`);
 }
 const responseById = new Map(responses.map((response) => [response.id, response]));
-if (responseById.get(1)?.result?.serverInfo?.name !== "c-blueprints" ||
+if (responseById.get(1)?.result?.serverInfo?.name !== "chibi" ||
     responseById.get(1)?.result?.protocolVersion !== "2025-06-18") {
-  throw new Error("initialize did not identify c-blueprints");
+  throw new Error("initialize did not identify chibi");
 }
 if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "validate_asset" && tool.outputSchema)) {
   throw new Error("tools/list did not expose validate_asset");
@@ -163,15 +163,15 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
   throw new Error("native MCP operations failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
-  template.uriTemplate === "blueprints://asset/{kind}/{name}")) {
+  template.uriTemplate === "chibi://asset/{kind}/{name}")) {
   throw new Error("resources/templates/list did not expose the asset template");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
-  template.uriTemplate === "blueprints://asset/{kind}/{name}/dependencies")) {
+  template.uriTemplate === "chibi://asset/{kind}/{name}/dependencies")) {
   throw new Error("resources/templates/list did not expose the dependency template");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
-  template.uriTemplate === "blueprints://asset/{kind}/{name}/graph/{graph_id}")) {
+  template.uriTemplate === "chibi://asset/{kind}/{name}/graph/{graph_id}")) {
   throw new Error("resources/templates/list did not expose the graph template");
 }
 if (responseById.get(9)?.error || responseById.get(10)?.error || responseById.get(17)?.error ||
@@ -197,7 +197,7 @@ if (responseById.get(22)?.error?.code !== -32602 ||
 }
 
 const cleanEnvironment = { ...process.env };
-delete cleanEnvironment.CBLUEPRINTS_ROOT;
+delete cleanEnvironment.CHIBI_ROOT;
 const cwdIndependent = spawnSync(process.execPath, [server], {
   cwd: "/tmp",
   env: cleanEnvironment,
@@ -255,7 +255,7 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
   throw new Error("native controller smoke checks failed");
 }
 
-const systemRoot = mkdtempSync(join(tmpdir(), "c-blueprints-system-"));
+const systemRoot = mkdtempSync(join(tmpdir(), "chibi-system-"));
 try {
   const systemDirectory = join(systemRoot, "content", "systems");
   mkdirSync(systemDirectory, { recursive: true });
@@ -287,7 +287,7 @@ try {
   rmSync(systemRoot, { recursive: true, force: true });
 }
 
-const scenarioRoot = mkdtempSync(join(tmpdir(), "c-blueprints-scenario-"));
+const scenarioRoot = mkdtempSync(join(tmpdir(), "chibi-scenario-"));
 try {
   const prototypeDirectory = join(scenarioRoot, "content", "prototypes");
   mkdirSync(prototypeDirectory, { recursive: true });
@@ -379,7 +379,7 @@ try {
   ];
   const scenarioProcess = spawnSync(process.execPath, [server], {
     cwd: root,
-    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    env: { ...process.env, CHIBI_ROOT: scenarioRoot, CHIBI_CTL: controller },
     input: `${scenarioRequests.map((request) => JSON.stringify(request)).join("\n")}\n`,
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,

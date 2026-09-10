@@ -3,3 +3,5 @@
 #include "runtime/interface.h"
 
 typedef NODE_EXTERNAL_TYPE(CF_V2) CF_V2 game_reflected_cf_v2;
+
+typedef NODE_EXTERNAL_TYPE(CF_V3) CF_V3 game_reflected_cf_v3;

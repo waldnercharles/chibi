@@ -7,6 +7,7 @@
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/simulation_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -20,6 +21,7 @@ typedef struct
     engine *engine;
     game_prototype_preview *preview;
     ecs_entity player;
+    simulation_fixture clock;
 } host;
 
 static char *read_file(const char *path)
@@ -115,17 +117,13 @@ static host create(bool isolated, const game_prototype_registry *registry, const
         }
     }
     launch(&h, player);
+    h.clock = simulation_fixture_new(h.engine, h.preview);
     return h;
 }
 
 static void tick(host *h, double time)
 {
-    for (int i = 0; i < 3; i++) {
-        assert(
-            (h->preview ? game_prototype_preview_tick(h->preview, time)
-                        : engine_frame(h->engine, time)) >= 0
-        );
-    }
+    simulation_advance(&h->clock, fmax(time, h->clock.time + ENGINE_FIXED_SECONDS));
 }
 
 static void health(host *h, int expected)
@@ -139,10 +137,14 @@ static ecs_entity body(host *h, unsigned category, int health)
     ecs_entity entity = ecs_world_create_entity(h->world);
     assert(GAME_GameTransform_add(h->world, entity, 0) == ECS_OK);
     assert(GAME_GameCollider_add(h->world, entity, 0) == ECS_OK);
+    assert(GAME_GameBody_add(h->world, entity, 0) == ECS_OK);
     assert(GAME_GameHealth_add(h->world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(h->world) == ECS_OK);
     *GAME_GameTransform_get(h->world, entity) = (GameTransform){ 0 };
-    *GAME_GameCollider_get(h->world, entity) = (GameCollider){ 12, category, 1 };
+    *GAME_GameCollider_get(h->world, entity) = (GameCollider){ .radius = 12,
+                                                               .category = category,
+                                                               .mask = 1,
+                                                               .sensor = true };
     *GAME_GameHealth_get(h->world, entity) = (GameHealth){ health, health };
     return entity;
 }
@@ -222,7 +224,7 @@ static void attacks(bool isolated, const game_prototype_registry *registry, cons
         game_prototype_preview_stop(h.preview);
     } else {
         assert(engine_set_playing(h.engine, false) == 0);
-        game_contacts_reset(h.live->contacts);
+        engine_reset(h.engine);
     }
     launch(&h, player);
     tick(&h, 10);
@@ -243,7 +245,7 @@ void test_enemy_attack()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_file("content/prototypes/Player.json");
+    char *text = read_file("test/fixtures/content/prototypes/Player.json");
     char error[256];
     game_prototype *player = game_prototype_load(text, &registry, error, sizeof error);
     free(text);

@@ -41,6 +41,37 @@ static void invalid_inputs(game_particles *particles, game_particle_burst burst)
 
 void test_particles()
 {
+    game_particles *one_step = game_particles_new(),
+                   *many_steps = game_particles_new();
+    game_particle spatial = { .position = { 3, 4 },
+                              .elevation = 8,
+                              .velocity = { 20, -10 },
+                              .elevation_velocity = 5,
+                              .size = 2,
+                              .size_exponent = 1,
+                              .lifetime = 1,
+                              .drag = 3,
+                              .shape = GAME_PARTICLE_TRIANGLE };
+    assert(game_particles_emit_particle(one_step, &spatial) == 1);
+    assert(game_particles_emit_particle(many_steps, &spatial) == 1);
+    assert(game_particles_tick(one_step, .5) == 0);
+    for (int i = 0; i < 10; i++) {
+        assert(game_particles_tick(many_steps, .05) == 0);
+    }
+    const game_particle *a = game_particles_data(one_step),
+                        *b = game_particles_data(many_steps);
+    assert(
+        fabsf(a->position.x - b->position.x) < .00001f &&
+        fabsf(a->position.y - b->position.y) < .00001f
+    );
+    assert(fabsf(a->elevation - b->elevation) < .00001f && a->shape == GAME_PARTICLE_TRIANGLE);
+    spatial.shape = GAME_PARTICLE_SHAPE_COUNT;
+    assert(
+        game_particles_emit_particle(one_step, &spatial) == -1 &&
+        game_particles_count(one_step) == 1
+    );
+    game_particles_free(one_step);
+    game_particles_free(many_steps);
     game_particles *particles = game_particles_new();
     assert(game_particles_count(particles) == 0);
     assert(game_particles_tick(particles, 1) == 0);

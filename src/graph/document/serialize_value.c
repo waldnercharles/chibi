@@ -105,42 +105,81 @@ int serialize_read_array(
     graph *g
 )
 {
-    if (!yyjson_is_arr(json)) {
+    if (!yyjson_is_arr(json) || yyjson_arr_size(json) > INT_MAX) {
+        serialize_error_set("invalid array default");
         return -1;
     }
     int count = (int)yyjson_arr_size(json);
-    pin_array *array = pin_array_new(element_type, type_name, count);
-    yyjson_arr_iter it;
-    yyjson_arr_iter_init(json, &it);
-    yyjson_val *item;
-    int i = 0;
-    while ((item = yyjson_arr_iter_next(&it))) {
-        if (serialize_read_value(element_type, item, &array->items[i], g)) {
-            free(array->items);
-            free(array);
+    pin_array *array = graph_own_block(g, sizeof *array + (size_t)count * sizeof(pin_value));
+    *array = (pin_array){
+        .element_type = element_type,
+        .type_name = type_name ? graph_own_str(g, type_name, strlen(type_name)) : NULL,
+        .count = count,
+        .capacity = count,
+        .items = (pin_value *)(array + 1)
+    };
+    for (int i = 0; i < count; i++) {
+        if (serialize_read_value(
+                element_type,
+                array->type_name,
+                yyjson_arr_get(json, (size_t)i),
+                &array->items[i],
+                g
+            )) {
+            if (element_type != PIN_STRUCT) {
+                serialize_error_set("invalid array item %d", i);
+            }
             return -1;
         }
-        array->items[i].container = PIN_CONTAINER_SINGLE;
-        i++;
-    }
-    array->count = count;
-    pin_array *owned = pin_array_clone_to_graph(g, array);
-    free(array->items);
-    free(array);
-    if (!owned) {
-        return -1;
     }
     *out = (pin_value){ .type = element_type,
                         .container = PIN_CONTAINER_ARRAY,
-                        .type_name = type_name,
-                        .ptr = owned };
+                        .type_name = array->type_name,
+                        .ptr = array };
     return 0;
 }
 
-int serialize_read_value(pin_type t, yyjson_val *v, pin_value *out, graph *g)
+static int read_struct(const char *type_name, yyjson_val *json, pin_value *out, graph *g)
+{
+    const type_desc *type = registry_type_by_name(type_name);
+    if (!type || !type->size || !yyjson_is_obj(json)) {
+        serialize_error_set("invalid struct default for %s", type_name ? type_name : "unknown type");
+        return -1;
+    }
+    void *block = graph_own_block(g, type->size);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        yyjson_val *value = yyjson_obj_get(json, field->name);
+        if (!value) {
+            serialize_error_set("missing struct field %s.%s", type->name, field->name);
+            return -1;
+        }
+        if (field->type == PIN_STRUCT && !yyjson_is_obj(value)) {
+            serialize_error_set("invalid struct field %s.%s", type->name, field->name);
+            return -1;
+        }
+        pin_value member;
+        if (serialize_read_value(field->type, field->type_name, value, &member, g)) {
+            if (field->type != PIN_STRUCT) {
+                serialize_error_set(
+                    "invalid struct field %s.%s",
+                    type->name,
+                    field->name
+                );
+            }
+            return -1;
+        }
+        pin_write_field(block, field, member);
+    }
+    *out = (pin_value){ .type = PIN_STRUCT, .type_name = type_name, .ptr = block };
+    return 0;
+}
+
+int serialize_read_value(pin_type t, const char *type_name, yyjson_val *v, pin_value *out, graph *g)
 {
     memset(out, 0, sizeof *out);
     out->type = t;
+    out->type_name = type_name;
     switch (t) {
         case PIN_BOOL:
             if (!yyjson_is_bool(v)) {
@@ -233,6 +272,7 @@ int serialize_read_value(pin_type t, yyjson_val *v, pin_value *out, graph *g)
             }
             break;
         case PIN_STRUCT:
+            return yyjson_is_null(v) ? 0 : read_struct(type_name, v, out, g);
         case PIN_FLOW:
         case PIN_HANDLE:
             if (!yyjson_is_null(v)) {

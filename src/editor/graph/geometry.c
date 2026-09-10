@@ -1,9 +1,11 @@
 #include "editor/graph/eval_view.h"
+#include "editor/panels/shader_inline.h"
 #include "editor/ui/labels.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/math_nodes.h"
+#include "graph/shader/shader_graph.h"
 #include "support/math.h"
 
 #include <imgui/dcimgui.h>
@@ -87,8 +89,13 @@ static int ed_input_connected(const graph *g, const node *n, int pin)
 
 bool ed_pin_visible(const graph *g, const node *n, int kind, int pin)
 {
+    const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
+                                                : &n->output_pins[pin];
+    if (spec->flags & PIN_FLAG_SETTING) {
+        return false;
+    }
     return kind != ED_PIN_INPUT || n->show_advanced ||
-           !(n->input_pins[pin].flags & PIN_FLAG_ADVANCED) ||
+           !(n->input_pins[pin].flags & PIN_FLAG_ADVANCED) || spec->binding ||
            ed_input_connected(g, n, pin);
 }
 
@@ -101,6 +108,15 @@ static int visible_inputs(const graph *g, const node *n)
     return count;
 }
 
+static bool editable_output(const node *n)
+{
+    if (n->desc->category && !strncmp(n->desc->category, "Shader", 6)) {
+        return !strcmp(n->desc->name, "Shader Constant") ||
+               !strcmp(n->desc->name, "Shader Parameter");
+    }
+    return n->desc->pure_kind == NODE_PURE_CONST;
+}
+
 int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
 {
     if (g->math_expression || !ed_pin_visible(g, n, kind, pin)) {
@@ -108,11 +124,17 @@ int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
     }
     const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
                                                 : &n->output_pins[pin];
-    if (spec->kind != PIN_DATA || spec->field_source || spec->type == PIN_HANDLE) {
+    node *source = NULL;
+    int source_pin = -1;
+    if (kind == ED_PIN_INPUT &&
+        (spec->binding || graph_inline_source(g, n, pin, &source, &source_pin))) {
+        return 1;
+    }
+    if (spec->kind != PIN_DATA || spec->field_source) {
         return 0;
     }
     return kind == ED_PIN_INPUT ? !ed_input_connected(g, n, pin)
-                                : n->desc->pure_kind == NODE_PURE_CONST;
+                                : editable_output(n);
 }
 
 void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap)
@@ -137,23 +159,57 @@ void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap)
     }
 }
 
-float ed_pin_value_width(const node *n, int kind, int pin)
+int ed_vector_width(const pin_spec *pin)
 {
+    if (pin->type != PIN_STRUCT || pin->container != PIN_CONTAINER_SINGLE ||
+        !pin->type_name) {
+        return 0;
+    }
+    if (!strcmp(pin->type_name, "ShaderVec2") || !strcmp(pin->type_name, "CF_V2")) {
+        return 2;
+    }
+    if (!strcmp(pin->type_name, "ShaderVec3") || !strcmp(pin->type_name, "CF_V3")) {
+        return 3;
+    }
+    if (!strcmp(pin->type_name, "ShaderVec4")) {
+        return 4;
+    }
+    return 0;
+}
+
+float ed_pin_value_width(const graph *g, const node *n, int kind, int pin)
+{
+    static const float binding_width = 128.0f;
     const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
                                                 : &n->output_pins[pin];
     bool control = kind == ED_PIN_INPUT ? !spec->field_source && spec->type != PIN_HANDLE
-                                        : n->desc->pure_kind == NODE_PURE_CONST;
+                                        : editable_output(n);
+    node *source = NULL;
+    int source_pin = -1;
+    if (kind == ED_PIN_INPUT &&
+        (spec->binding || graph_inline_source(g, n, pin, &source, &source_pin))) {
+        return binding_width;
+    }
+    int vector = ed_vector_width(spec);
+    if (control && vector && !(spec->flags & PIN_FLAG_COLOR)) {
+        float width = 40.0f * vector + 20;
+        const char *context = NULL;
+        if (kind == ED_PIN_INPUT) {
+            shader_node_input_context(n, pin, &context);
+        }
+        return context ? ed_max(width, ImGui_CalcTextSize(context).x + 16) : width;
+    }
     return control ? ED_VALUE_WIDTH : ED_PREVIEW_WIDTH;
 }
 
-static float ed_pin_text_width(const node *n, int kind, int pin)
+static float ed_pin_text_width(const graph *g, const node *n, int kind, int pin)
 {
     const pin_spec *spec = kind == ED_PIN_INPUT ? &n->input_pins[pin]
                                                 : &n->output_pins[pin];
     char label[256];
     ed_pin_label(n, spec, label, sizeof label);
     return ImGui_CalcTextSize(label).x +
-           (spec->kind == PIN_DATA ? ed_pin_value_width(n, kind, pin) + 16.0f : 0.0f);
+           (spec->kind == PIN_DATA ? ed_pin_value_width(g, n, kind, pin) + 16.0f : 0.0f);
 }
 
 int ed_field_output(const node *n)
@@ -254,10 +310,10 @@ ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n)
         if (!ed_pin_visible(g, n, ED_PIN_INPUT, p)) {
             continue;
         }
-        left = ed_max(left, ed_pin_text_width(n, ED_PIN_INPUT, p));
+        left = ed_max(left, ed_pin_text_width(g, n, ED_PIN_INPUT, p));
     }
     for (int p = 0; p < n->output_count; p++) {
-        right = ed_max(right, ed_pin_text_width(n, ED_PIN_OUTPUT, p));
+        right = ed_max(right, ed_pin_text_width(g, n, ED_PIN_OUTPUT, p));
     }
 
     char node_title[256];
@@ -269,6 +325,7 @@ ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n)
                       left + right + 28.0f
                   ) +
                   2.0f * ED_PAD;
+    width = ed_max(width, ed_shader_inline_width(n) + 2.0f * ED_PAD);
     float line = ImGui_GetTextLineHeight();
     float row_height = ed_row_height(n);
     float title_height = ed_node_appearance(n->desc).symbol
@@ -276,7 +333,8 @@ ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n)
                            : line + 2.0f * ed_node_title_padding(n);
     int input_rows = visible_inputs(g, n);
     int rows = input_rows > n->output_count ? input_rows : n->output_count;
-    float height = title_height + 2.0f * ed_node_body_padding(n) + rows * row_height;
+    float height = title_height + 2.0f * ed_node_body_padding(n) +
+                   rows * row_height + ed_shader_inline_height(n);
     return (ImVec2){ width, height };
 }
 
@@ -291,8 +349,12 @@ void ed_build_layout(editor *e)
 
     const float line = ImGui_GetTextLineHeight();
     int pin_at = 0;
+    int view_at = 0;
     for (int i = 0; i < acount(e->active_graph->nodes); i++) {
         node *n = e->active_graph->nodes[i];
+        if (graph_node_is_inline(e->active_graph, n)) {
+            continue;
+        }
         ImVec2 dimensions = ed_node_dimensions(e, e->active_graph, n);
         float title_height = ed_node_appearance(n->desc).symbol
                                ? 0
@@ -302,7 +364,7 @@ void ed_build_layout(editor *e)
 
         ImVec2 max = ed_add(min, ed_scale(dimensions, e->zoom));
 
-        ed_node_view *v = &e->views[i];
+        ed_node_view *v = &e->views[view_at++];
         v->n = n;
         v->id = n->id;
         v->draw_frame = -1;
@@ -332,7 +394,7 @@ void ed_build_layout(editor *e)
             e->pins[pin_at++] = (ed_pin_view){ n, ED_PIN_OUTPUT, p, { max.x, y } };
         }
     }
-    asetlen(e->views, acount(e->active_graph->nodes));
+    asetlen(e->views, view_at);
     asetlen(e->pins, pin_at);
 }
 
@@ -382,6 +444,9 @@ ed_pin_view *ed_hit_pin(editor *e, ImVec2 p)
     float radius = ed_max(ED_PIN_RADIUS * e->zoom + 4.0f, 6.0f);
     for (int i = acount(e->pins) - 1; i >= 0; i--) {
         ed_pin_view *pin = &e->pins[i];
+        if (graph_node_is_inline(e->active_graph, pin->n)) {
+            continue;
+        }
         if (!ed_pin_visible(e->active_graph, pin->n, pin->kind, pin->index)) {
             continue;
         }
@@ -396,6 +461,9 @@ ed_node_view *ed_hit_node(editor *e, ImVec2 p)
 {
     for (int i = acount(e->views) - 1; i >= 0; i--) {
         ed_node_view *v = &e->views[i];
+        if (graph_node_is_inline(e->active_graph, v->n)) {
+            continue;
+        }
         if (ed_point_in_rect(p, v->min, v->max)) {
             return v;
         }
@@ -516,6 +584,10 @@ int ed_link_curve(const editor *e, const edge *ed, ImVec2 *p0, ImVec2 *p1, ImVec
 {
     node *from_node = graph_node_by_id(e->active_graph, ed->from_id);
     node *to_node = graph_node_by_id(e->active_graph, ed->to_id);
+    if ((from_node && graph_node_is_inline(e->active_graph, from_node)) ||
+        (to_node && graph_node_is_inline(e->active_graph, to_node))) {
+        return 0;
+    }
     int from_pin = -1, to_pin = -1, fo = 0, to_out = 0;
     if (!from_node ||
         !graph_pin_by_id(from_node, ed->from_pin_id, &fo, &from_pin) || !fo) {

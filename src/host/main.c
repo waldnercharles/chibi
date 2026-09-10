@@ -1,7 +1,7 @@
-#include "blueprints/application.h"
+#include "chibi/application.h"
 #include "host/stacktrace.h"
 #include "module.h"
-#ifdef BP_DEVELOPMENT_HOST
+#ifdef CHIBI_DEVELOPMENT_HOST
 #include "dev.h"
 #endif
 #include "platform/cute.h"
@@ -14,16 +14,17 @@
 #include <unistd.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 static volatile sig_atomic_t stop_requested;
 static bool closing;
-#ifdef BP_DEVELOPMENT_HOST
-static bp_dev *development;
+#ifdef CHIBI_DEVELOPMENT_HOST
+static chibi_dev *development;
 #endif
-static bp_module application;
-static bp_host host;
-#ifndef BP_STATIC_APPLICATION
+static chibi_module application;
+static chibi_host host;
+#ifndef CHIBI_STATIC_APPLICATION
 static const char *manifest;
 #endif
 static const char *checkpoint_path;
@@ -78,8 +79,8 @@ static bool checkpoint()
     cf_app_get_size(&width, &height);
     char window[128];
     snprintf(window, sizeof window, "%d %d %d %d", x, y, width, height);
-    bool ok = json && bp_write_file(window_path, window) &&
-              bp_write_file(checkpoint_path, json);
+    bool ok = json && chibi_write_file(window_path, window) &&
+              chibi_write_file(checkpoint_path, json);
     free(json);
     if (!ok) {
         fprintf(stderr, "Could not preserve workspace: %s\n", checkpoint_path);
@@ -116,10 +117,10 @@ static bool preserve_rejected_checkpoint(const char *reason)
 
 static void finish()
 {
-    bp_module_close(&application);
+    chibi_module_close(&application);
     free(last_generation);
-#ifdef BP_DEVELOPMENT_HOST
-    bp_dev_free(development);
+#ifdef CHIBI_DEVELOPMENT_HOST
+    chibi_dev_free(development);
 #endif
     free(window_path);
     cf_destroy_app();
@@ -132,14 +133,14 @@ static bool close_frame()
         if (!checkpoint()) {
             result = 1;
         }
-#ifdef BP_DEVELOPMENT_HOST
+#ifdef CHIBI_DEVELOPMENT_HOST
         if (development) {
-            bp_dev_stop(development);
+            chibi_dev_stop(development);
         }
 #endif
     }
-#ifdef BP_DEVELOPMENT_HOST
-    if (development && !bp_dev_stopped(development)) {
+#ifdef CHIBI_DEVELOPMENT_HOST
+    if (development && !chibi_dev_stopped(development)) {
         cf_sleep(10);
         return false;
     }
@@ -147,14 +148,14 @@ static bool close_frame()
     return true;
 }
 
-#ifndef BP_STATIC_APPLICATION
+#ifndef CHIBI_STATIC_APPLICATION
 static void replace_application(const char *generation)
 {
     char error[1024] = { 0 };
-    bool loaded = bp_module_replace(&application, generation, &host, NULL, error, sizeof error);
-#ifdef BP_DEVELOPMENT_HOST
+    bool loaded = chibi_module_replace(&application, generation, &host, NULL, error, sizeof error);
+#ifdef CHIBI_DEVELOPMENT_HOST
     if (development) {
-        bp_dev_accept(development, loaded);
+        chibi_dev_accept(development, loaded);
     }
 #endif
     fprintf(
@@ -170,17 +171,17 @@ static bool frame()
     if (stop_requested || closing) {
         return close_frame();
     }
-#ifndef BP_STATIC_APPLICATION
-#ifdef BP_DEVELOPMENT_HOST
+#ifndef CHIBI_STATIC_APPLICATION
+#ifdef CHIBI_DEVELOPMENT_HOST
     if (development) {
-        const char *candidate = bp_dev_poll(development);
+        const char *candidate = chibi_dev_poll(development);
         if (candidate) {
             replace_application(candidate);
         }
     }
 #endif
     if (manifest) {
-        char *generation = bp_read_file(manifest);
+        char *generation = chibi_read_file(manifest);
         if (generation) {
             generation[strcspn(generation, "\r\n")] = 0;
             if (*generation &&
@@ -203,6 +204,10 @@ static bool frame()
 }
 
 #ifdef __EMSCRIPTEN__
+EM_JS(void, web_startup_error, (const char *message), {
+    Module['showError'](UTF8ToString(message));
+})
+
 static void web_frame()
 {
     if (frame()) {
@@ -216,22 +221,29 @@ int main(int argc, char **argv)
 {
     if (flag(argc, argv, "--help")) {
         puts(
-            "c-blueprints [--headless] [--frames N] [--fps N] [--screenshot "
+            "chibi [--headless] [--frames N] [--fps N] [--screenshot "
             "PATH]\n"
+            "             [--play] [--scene PATH] [--fixed-dt SECONDS]\n"
             "             [--checkpoint PATH]\n"
+            "Play: Escape pauses, Enter resumes, R restarts, Q quits while "
+            "paused.\n"
             "Development: --bootstrap RESULT, or --module MANIFEST."
         );
         return 0;
     }
-#ifdef BP_DEVELOPMENT_HOST
+#ifdef CHIBI_DEVELOPMENT_HOST
     const char *bootstrap = option(argc, argv, "--bootstrap");
     if (bootstrap) {
-        return bp_dev_bootstrap(argc, argv, bootstrap);
+        return chibi_dev_bootstrap(argc, argv, bootstrap);
     }
     const char *config = option(argc, argv, "--dev-config");
     if (config) {
         const char *jobs = option(argc, argv, "--jobs");
-        development = bp_dev_create(config, option(argc, argv, "--generation"), jobs ? atoi(jobs) : 0);
+        development = chibi_dev_create(
+            config,
+            option(argc, argv, "--generation"),
+            jobs ? atoi(jobs) : 0
+        );
         if (!development) {
             return 1;
         }
@@ -240,19 +252,19 @@ int main(int argc, char **argv)
     stacktrace_init(argv[0]);
 
     cf_set_assert_handler(stacktrace_assert_handler);
-    host = (bp_host){ argc, argv, allocate, free };
-#ifndef BP_STATIC_APPLICATION
+    host = (chibi_host){ argc, argv, allocate, free };
+#ifndef CHIBI_STATIC_APPLICATION
     manifest = option(argc, argv, "--module");
-#ifdef BP_DEVELOPMENT_HOST
+#ifdef CHIBI_DEVELOPMENT_HOST
     if (development) {
         manifest = NULL;
     }
 #endif
 #endif
     checkpoint_path = option(argc, argv, "--checkpoint");
-#ifdef BP_DEVELOPMENT_HOST
-    if (development && !checkpoint_path) {
-        checkpoint_path = bp_dev_checkpoint_path(development);
+#ifdef CHIBI_DEVELOPMENT_HOST
+    if (development && !checkpoint_path && !flag(argc, argv, "--play")) {
+        checkpoint_path = chibi_dev_checkpoint_path(development);
     }
 #endif
 
@@ -263,7 +275,7 @@ int main(int argc, char **argv)
         size_t size = strlen(checkpoint_path) + sizeof ".window";
         window_path = allocate(size);
         snprintf(window_path, size, "%s.window", checkpoint_path);
-        char *window = bp_read_file(window_path);
+        char *window = chibi_read_file(window_path);
         int saved_x, saved_y, saved_width, saved_height;
         if (window &&
             sscanf(window, "%d %d %d %d", &saved_x, &saved_y, &saved_width, &saved_height) ==
@@ -277,8 +289,18 @@ int main(int argc, char **argv)
         }
         free(window);
     }
+#ifdef __EMSCRIPTEN__
+    // SDL tracks subsequent browser resizes from this CSS-sized canvas.
+    double canvas_width, canvas_height;
+    if (emscripten_get_element_css_size("#canvas", &canvas_width, &canvas_height) ==
+            EMSCRIPTEN_RESULT_SUCCESS &&
+        canvas_width >= 1 && canvas_height >= 1) {
+        width = (int)canvas_width;
+        height = (int)canvas_height;
+    }
+#endif
     CF_Result made = cf_make_app(
-        "c-blueprints",
+        flag(argc, argv, "--play") ? "Chibi | Play" : "Chibi",
         0,
         x,
         y,
@@ -291,25 +313,28 @@ int main(int argc, char **argv)
     );
     if (cf_is_error(made)) {
         fprintf(stderr, "%s\n", made.details);
-#ifdef BP_DEVELOPMENT_HOST
-        bp_dev_free(development);
+#ifdef __EMSCRIPTEN__
+        web_startup_error(made.details);
+#endif
+#ifdef CHIBI_DEVELOPMENT_HOST
+        chibi_dev_free(development);
 #endif
         free(window_path);
         return 1;
     }
+    cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
     if (cf_query_backend() != CF_BACKEND_TYPE_GLES3) {
-        cf_fs_mount(CBLUEPRINT_RENDER_SHADER_DIR, "/cblueprint-render", true);
-        cf_shader_directory("/cblueprint-render");
+        cf_shader_directory("/chibi-render");
     }
     cf_app_init_imgui();
     const char *fps = option(argc, argv, "--fps");
     if (fps && atoi(fps) > 0) {
         cf_set_target_framerate(atoi(fps));
     }
-    char *saved = checkpoint_path ? bp_read_file(checkpoint_path) : NULL;
+    char *saved = checkpoint_path ? chibi_read_file(checkpoint_path) : NULL;
     char error[1024] = { 0 };
-#ifdef BP_STATIC_APPLICATION
-    application.api = blueprints_application();
+#ifdef CHIBI_STATIC_APPLICATION
+    application.api = chibi_application();
     application.state = application.api->create(&host, saved, error, sizeof error);
     if (!application.state && saved && preserve_rejected_checkpoint(error)) {
         error[0] = 0;
@@ -319,40 +344,40 @@ int main(int argc, char **argv)
         application.api->activate(application.state);
     }
 #else
-#ifdef BP_DEVELOPMENT_HOST
+#ifdef CHIBI_DEVELOPMENT_HOST
     if (development) {
-        last_generation = strdup(bp_dev_initial_application(development));
+        last_generation = strdup(chibi_dev_initial_application(development));
     }
 #endif
     if (!last_generation && manifest) {
-        last_generation = bp_read_file(manifest);
+        last_generation = chibi_read_file(manifest);
     }
 
     if (last_generation) {
         last_generation[strcspn(last_generation, "\r\n")] = 0;
     }
     bool loaded = last_generation &&
-                  bp_module_replace(&application, last_generation, &host, saved, error, sizeof error);
+                  chibi_module_replace(&application, last_generation, &host, saved, error, sizeof error);
     if (!loaded && last_generation && saved && preserve_rejected_checkpoint(error)) {
         error[0] = 0;
-        loaded = bp_module_replace(&application, last_generation, &host, NULL, error, sizeof error);
+        loaded = chibi_module_replace(&application, last_generation, &host, NULL, error, sizeof error);
     }
     if (!loaded) {
         fprintf(stderr, "Could not load application: %s\n", *error ? error : "missing --module manifest");
         free(saved);
         free(last_generation);
-#ifdef BP_DEVELOPMENT_HOST
-        bp_dev_free(development);
+#ifdef CHIBI_DEVELOPMENT_HOST
+        chibi_dev_free(development);
 #endif
         free(window_path);
         cf_destroy_app();
         return 1;
     }
 #endif
-#ifndef BP_STATIC_APPLICATION
-#ifdef BP_DEVELOPMENT_HOST
+#ifndef CHIBI_STATIC_APPLICATION
+#ifdef CHIBI_DEVELOPMENT_HOST
     if (development) {
-        bp_dev_accept(development, true);
+        chibi_dev_accept(development, true);
     }
 #endif
     fprintf(stderr, "Loaded application %s\n", last_generation);
@@ -360,8 +385,11 @@ int main(int argc, char **argv)
     free(saved);
     if (!application.state) {
         fprintf(stderr, "%s\n", error);
-#ifdef BP_DEVELOPMENT_HOST
-        bp_dev_free(development);
+#ifdef __EMSCRIPTEN__
+        web_startup_error(error);
+#endif
+#ifdef CHIBI_DEVELOPMENT_HOST
+        chibi_dev_free(development);
 #endif
         free(window_path);
         cf_destroy_app();

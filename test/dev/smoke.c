@@ -12,7 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
-static bp_process host;
+static chibi_process host;
 static char directory[PATH_MAX];
 static char host_log[PATH_MAX];
 static const char *cmake;
@@ -51,9 +51,9 @@ static void failed(const char *message)
         fputs(log, stderr);
         free(log);
     }
-    if (host.pid && !bp_process_poll(&host)) {
-        bp_process_stop(&host);
-        while (!bp_process_poll(&host)) {
+    if (host.pid && !chibi_process_poll(&host)) {
+        chibi_process_stop(&host);
+        while (!chibi_process_poll(&host)) {
             pause_poll();
         }
     }
@@ -61,19 +61,19 @@ static void failed(const char *message)
 }
 static void run(const char *const *args)
 {
-    bp_process process = { 0 };
+    chibi_process process = { 0 };
     char log[PATH_MAX];
     snprintf(log, sizeof log, "%s/command.log", directory);
-    if (!bp_process_start(&process, args, directory, log)) {
+    if (!chibi_process_start(&process, args, directory, log)) {
         failed("could not start command");
     }
     int ticks = 0;
-    while (!bp_process_poll(&process) && ticks++ < 12000) {
+    while (!chibi_process_poll(&process) && ticks++ < 12000) {
         pause_poll();
     }
     if (!process.finished) {
-        bp_process_stop(&process);
-        while (!bp_process_poll(&process)) {
+        chibi_process_stop(&process);
+        while (!chibi_process_poll(&process)) {
             pause_poll();
         }
     }
@@ -98,7 +98,7 @@ static int occurrences(const char *text, const char *needle)
 static void await_file_log(const char *path, const char *needle, int count)
 {
     for (int i = 0; i < 12000; i++) {
-        if (bp_process_poll(&host)) {
+        if (chibi_process_poll(&host)) {
             failed("host exited while waiting for log");
         }
         char *text = read_file(path);
@@ -120,7 +120,7 @@ static void close_host()
     if (kill(host.pid, SIGINT)) {
         failed("could not close host");
     }
-    for (int i = 0; i < 1000 && !bp_process_poll(&host); i++) {
+    for (int i = 0; i < 1000 && !chibi_process_poll(&host); i++) {
         pause_poll();
     }
     if (!host.finished || host.status) {
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     }
     bool controller = !strcmp(argv[4], "controller");
     cmake = argv[3];
-    snprintf(directory, sizeof directory, "/tmp/blueprints-dev-%s-XXXXXX", argv[4]);
+    snprintf(directory, sizeof directory, "/tmp/chibi-dev-%s-XXXXXX", argv[4]);
     assert(mkdtemp(directory));
     snprintf(host_log, sizeof host_log, "%s/host.log", directory);
     char root_arg[PATH_MAX], build_arg[PATH_MAX], test_arg[PATH_MAX], script[PATH_MAX];
@@ -192,12 +192,7 @@ int main(int argc, char **argv)
     assert(setenv("MallocNanoZone", "0", 1) == 0);
     snprintf(manifest, sizeof manifest, "%s/module.txt", directory);
     snprintf(generation, sizeof generation, "%s/generation.json", directory);
-    snprintf(
-        checkpoint,
-        sizeof checkpoint,
-        controller ? "%s/.blueprints/workspace.json" : "%s/workspace.json",
-        directory
-    );
+    snprintf(checkpoint, sizeof checkpoint, controller ? "%s/.chibi/workspace.json" : "%s/workspace.json", directory);
     char window[PATH_MAX];
     snprintf(window, sizeof window, "%s.window", checkpoint);
     const char
@@ -215,7 +210,7 @@ int main(int argc, char **argv)
                              "--fps",
                              "60",
                              NULL };
-    if (!bp_process_start(&host, launch, argv[1], host_log)) {
+    if (!chibi_process_start(&host, launch, argv[1], host_log)) {
         failed("could not launch host");
     }
     pid_t initial_pid = host.pid;
@@ -248,7 +243,7 @@ int main(int argc, char **argv)
         changed = malloc(length + 256);
         assert(changed);
         char build_log[PATH_MAX];
-        snprintf(build_log, sizeof build_log, "%s/.blueprints/build.log", directory);
+        snprintf(build_log, sizeof build_log, "%s/.chibi/build.log", directory);
         unlink(build_log);
         snprintf(
             changed,
@@ -313,10 +308,10 @@ int main(int argc, char **argv)
         free(geometry);
     }
     if (controller) {
-        snprintf(path, sizeof path, "%s/.blueprints/build.log", directory);
+        snprintf(path, sizeof path, "%s/.chibi/build.log", directory);
         unlink(path);
     }
-    if (!bp_process_start(&host, launch, argv[1], host_log)) {
+    if (!chibi_process_start(&host, launch, argv[1], host_log)) {
         failed("could not restart host");
     }
     await_log("Loaded application ", 1);
@@ -333,7 +328,7 @@ int main(int argc, char **argv)
         assert(fclose(file) == 0);
         free(source);
         char build_log[PATH_MAX];
-        snprintf(build_log, sizeof build_log, "%s/.blueprints/build.log", directory);
+        snprintf(build_log, sizeof build_log, "%s/.chibi/build.log", directory);
         await_log("Building application;", 1);
         await_file_log(build_log, "Fixture build pause", 1);
     }
@@ -346,9 +341,9 @@ int main(int argc, char **argv)
     free(libraries);
     const char *cleanup[] = { cmake, "-E", "remove_directory", directory, NULL };
     /* The cleanup child needs a cwd outside the directory it removes. */
-    bp_process cleanup_process = { 0 };
-    assert(bp_process_start(&cleanup_process, cleanup, "/tmp", "/dev/null"));
-    while (!bp_process_poll(&cleanup_process)) {
+    chibi_process cleanup_process = { 0 };
+    assert(chibi_process_start(&cleanup_process, cleanup, "/tmp", "/dev/null"));
+    while (!chibi_process_poll(&cleanup_process)) {
         pause_poll();
     }
     assert(cleanup_process.status == 0);

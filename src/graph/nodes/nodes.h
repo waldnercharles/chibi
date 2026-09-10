@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_NODES_H
-#define CBLUEPRINT_NODES_H
+#ifndef CHIBI_NODES_H
+#define CHIBI_NODES_H
 
 #include "graph/model/node.h"
 #include "graph/runtime/runtime.h"

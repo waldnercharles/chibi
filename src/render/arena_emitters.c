@@ -1,0 +1,346 @@
+#include "render/arena_emitters.h"
+
+#include "runtime/engine.h"
+#include "runtime/generated.h"
+#include "runtime/visual_transform.h"
+#include "support/xalloc.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+enum
+{
+    EMITTER_LIMIT = 64
+};
+typedef struct
+{
+    ecs_entity entity;
+    CF_V3 position, direction;
+    double time;
+    double phase;
+    uint32_t random;
+    bool seen;
+} emitter_source;
+
+struct arena_emitters
+{
+    const ecs_world *world;
+    double time, simulation_time;
+    game_particles *particles;
+    emitter_source sources[EMITTER_LIMIT];
+    game_particle heads[EMITTER_LIMIT];
+    int head_count;
+    bool reported_capacity;
+};
+
+arena_emitters *render_arena_emitters_new()
+{
+    arena_emitters *emitters = xcalloc(1, sizeof *emitters);
+    emitters->particles = game_particles_new();
+    return emitters;
+}
+
+void render_arena_emitters_reset(arena_emitters *emitters)
+{
+    game_particles *particles = emitters->particles;
+    game_particles_clear(particles);
+    memset(emitters, 0, sizeof *emitters);
+    emitters->particles = particles;
+}
+
+void render_arena_emitters_free(arena_emitters *emitters)
+{
+    game_particles_free(emitters->particles);
+    free(emitters);
+}
+
+static bool valid(const GameParticleEmitter *style)
+{
+    return style->shape >= 0 && style->shape < GAME_PARTICLE_SHAPE_COUNT &&
+           isfinite(
+               style->rate + style->lifetime + style->speed + style->size +
+               style->spread + style->drag + style->emission +
+               style->size_exponent + style->velocity_inherit +
+               style->offset.x + style->offset.y + style->offset.z +
+               style->direction.x + style->direction.y + style->direction.z
+           ) &&
+           style->rate >= 0 && style->lifetime > 0 && style->speed >= 0 &&
+           style->size > 0 && style->spread >= 0 && style->spread <= 6.2831853072f &&
+           style->drag >= 0 && style->emission >= 0 &&
+           style->size_exponent >= 0 && style->velocity_inherit >= 0 &&
+           cf_dot_v3(style->direction, style->direction) > 0;
+}
+
+static emitter_source *source_for(arena_emitters *emitters, ecs_entity entity)
+{
+    emitter_source *empty = NULL;
+    for (int i = 0; i < EMITTER_LIMIT; i++) {
+        emitter_source *source = &emitters->sources[i];
+        if (ecs_entity_to_u64(source->entity) == ecs_entity_to_u64(entity)) {
+            return source;
+        }
+        if (!source->entity.slot && !empty) {
+            empty = source;
+        }
+    }
+    if (empty) {
+        *empty = (emitter_source){ .entity = entity,
+                                   .random = UINT32_C(0x9e3779b9) ^
+                                             (uint32_t)ecs_entity_to_u64(entity),
+                                   .time = -1 };
+        if (!empty->random) {
+            empty->random = 1;
+        }
+    }
+    return empty;
+}
+
+static float random_unit(emitter_source *source)
+{
+    uint32_t value = source->random;
+    value ^= value << 13;
+    value ^= value >> 17;
+    value ^= value << 5;
+    source->random = value;
+    return (float)(value >> 8) / 16777216;
+}
+
+static CF_V3 cone_direction(emitter_source *source, CF_V3 direction, float spread)
+{
+    CF_V3 axis = fabsf(direction.y) < .9f ? (CF_V3){ 0, 1, 0 } : (CF_V3){ 1, 0, 0 };
+    CF_V3 right = cf_norm_v3(cf_cross_v3(direction, axis));
+    CF_V3 up = cf_cross_v3(right, direction);
+    float angle = random_unit(source) * spread * .5f;
+    float azimuth = random_unit(source) * 6.2831853072f;
+    return cf_add_v3(
+        cf_mul_v3_f(direction, cosf(angle)),
+        cf_mul_v3_f(cf_add_v3(cf_mul_v3_f(right, cosf(azimuth)), cf_mul_v3_f(up, sinf(azimuth))), sinf(angle))
+    );
+}
+
+static game_particle particle_at(const GameParticleEmitter *style, CF_V3 position, CF_V3 velocity, float angle)
+{
+    return (game_particle){ .position = { position.x, position.z },
+                            .velocity = { velocity.x, velocity.z },
+                            .elevation = position.y,
+                            .elevation_velocity = velocity.y,
+                            .angle = angle,
+                            .shape = style->shape,
+                            .color = style->color,
+                            .end_color = style->end_color,
+                            .lifetime = style->lifetime,
+                            .size = style->size,
+                            .size_exponent = style->size_exponent,
+                            .drag = style->drag,
+                            .emission = style->emission };
+}
+
+static bool emit_source(
+    arena_emitters *emitters,
+    emitter_source *source,
+    const GameParticleEmitter *style,
+    CF_V3 position,
+    CF_V3 direction,
+    CF_V3 inherited_velocity,
+    double time
+)
+{
+    source->seen = true;
+    if (source->time < 0) {
+        source->position = position;
+        source->direction = direction;
+        source->time = time;
+    }
+    double delta = time - source->time;
+    double births = delta * style->rate + source->phase;
+    int count = (int)fmin(floor(births), GAME_PARTICLE_LIMIT);
+    source->phase = births - floor(births);
+    bool turned = cf_dot_v3(source->direction, direction) < .8660254f;
+    /* Chronological births keep random samples identical across display rates. */
+    for (int i = count - 1; i >= 0; i--) {
+        float age = (float)((source->phase + i) / style->rate);
+        if (age >= style->lifetime) {
+            continue;
+        }
+        /* A chord between sharply rotated nozzles can pass through the source hull. */
+        float fraction = !turned && delta > 0 ? (float)fmax(0, 1 - age / delta) : 1;
+        CF_V3 origin = cf_lerp_v3(source->position, position, fraction);
+        CF_V3 forward = cf_lerp_v3(source->direction, direction, fraction);
+        forward = cf_dot_v3(forward, forward) > .00001f ? cf_norm_v3(forward) : direction;
+        CF_V3 velocity = cf_add_v3(
+            cf_mul_v3_f(cone_direction(source, forward, style->spread), style->speed),
+            inherited_velocity
+        );
+        float decay = style->drag > 0 ? expf(-style->drag * age) : 1;
+        float travel = style->drag > 0 ? -expm1f(-style->drag * age) / style->drag
+                                       : age;
+        origin = cf_add_v3(origin, cf_mul_v3_f(velocity, travel));
+        velocity = cf_mul_v3_f(velocity, decay);
+        game_particle particle = particle_at(
+            style,
+            origin,
+            velocity,
+            atan2f(forward.z, forward.x)
+        );
+        particle.age = age;
+        int emitted = game_particles_emit_particle(emitters->particles, &particle);
+        if (emitted < 0) {
+            return false;
+        }
+        if (!emitted) {
+            break;
+        }
+    }
+    game_particle head = particle_at(
+        style,
+        position,
+        (CF_V3){ 0 },
+        atan2f(direction.z, direction.x)
+    );
+    head.size *= .65f;
+    emitters->heads[emitters->head_count++] = head;
+    if (delta > 0) {
+        source->position = position;
+        source->direction = direction;
+        source->time = time;
+    }
+    return true;
+}
+
+bool render_arena_emitters_collect(
+    arena_emitters *emitters,
+    ecs_world *world,
+    const engine *runtime,
+    double time,
+    char *error,
+    size_t error_size
+)
+{
+    if (!isfinite(time) || time < 0) {
+        snprintf(error, error_size, "Particle emitters need finite nonnegative simulation time.");
+        return false;
+    }
+    double simulation_time = time;
+    if (runtime) {
+        const engine_frame_timing *timing = engine_last_timing(runtime);
+        simulation_time = timing->simulation_time;
+        time = fmax(0, simulation_time - (1 - timing->alpha) * ENGINE_FIXED_SECONDS);
+    }
+    if (emitters->world != world || simulation_time < emitters->simulation_time) {
+        render_arena_emitters_reset(emitters);
+    }
+    /* Pause presents the solved pose (alpha=1). Resuming interpolation can
+     * briefly lag that pose; retain its tail until presentation catches up. */
+    time = fmax(time, emitters->time);
+    game_particles_tick(emitters->particles, time - emitters->time);
+    emitters->world = world;
+    emitters->time = time;
+    emitters->simulation_time = simulation_time;
+    emitters->head_count = 0;
+    for (int i = 0; i < EMITTER_LIMIT; i++) {
+        emitters->sources[i].seen = false;
+    }
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameParticleEmitter.id };
+    ecs_query query;
+    bool ok = true;
+    if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            const GameParticleEmitter *style = GAME_GameParticleEmitter_get_const(world, entity);
+            if (!valid(style)) {
+                snprintf(error, error_size, "Particle Emitter needs finite ranges, a valid shape and a nonzero direction.");
+                ok = false;
+                break;
+            }
+            if (style->rate == 0) {
+                continue;
+            }
+            GameTransform position = *GAME_GameTransform_get_const(world, entity);
+            if (runtime) {
+                engine_render_position(runtime, entity, &position);
+            }
+            const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
+            const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+            const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+            float scale = visual ? visual->scale : 1;
+            if (scale == 0) {
+                continue;
+            }
+            CF_V3 rotation = visual && !style->heading_only
+                               ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
+                               : (CF_V3){ 0 };
+            float yaw = heading ? heading->radians : 0,
+                  elevation = shape ? shape->elevation : 0;
+            if (scale < 0 || !isfinite(
+                                 scale + yaw + elevation + position.x +
+                                 position.y + rotation.x + rotation.y + rotation.z
+                             )) {
+                snprintf(error, error_size, "Particle Emitter source needs a finite visual transform and nonnegative scale.");
+                ok = false;
+                break;
+            }
+            CF_M4x4 frame = cf_m4_from_trs(
+                (CF_V3){ position.x, elevation, position.y },
+                game_visual_rotation(yaw, rotation),
+                (CF_V3){ scale, scale, scale }
+            );
+            CF_V3 origin = cf_m4_transform_point(frame, style->offset);
+            CF_V3 direction = cf_norm_v3(cf_m4_transform_dir(frame, style->direction));
+            emitter_source *source = source_for(emitters, entity);
+            if (!source) {
+                if (!emitters->reported_capacity) {
+                    fprintf(stderr, "Particle emitters: %d-source budget full; remaining sources omitted.\n", EMITTER_LIMIT);
+                    emitters->reported_capacity = true;
+                }
+                continue;
+            }
+            const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
+            CF_V3 inherited = velocity ? (CF_V3){ velocity->x, 0, velocity->y }
+                                       : (CF_V3){ 0 };
+            if (!velocity && source->time >= 0 && time > source->time) {
+                inherited = cf_mul_v3_f(
+                    cf_sub_v3(origin, source->position),
+                    1 / (time - source->time)
+                );
+            }
+            if (!isfinite(
+                    origin.x + origin.y + origin.z + direction.x + direction.y +
+                    direction.z + inherited.x + inherited.y + inherited.z
+                ) ||
+                !emit_source(
+                    emitters,
+                    source,
+                    style,
+                    origin,
+                    direction,
+                    cf_mul_v3_f(inherited, style->velocity_inherit),
+                    time
+                )) {
+                snprintf(error, error_size, "Particle Emitter pose or velocity exceeds finite particle bounds.");
+                ok = false;
+                break;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    for (int i = 0; i < EMITTER_LIMIT; i++) {
+        if (!emitters->sources[i].seen) {
+            emitters->sources[i] = (emitter_source){ 0 };
+        }
+    }
+    return ok;
+}
+
+const game_particles *render_arena_emitters_particles(const arena_emitters *emitters)
+{
+    return emitters->particles;
+}
+
+const game_particle *render_arena_emitters_heads(const arena_emitters *emitters, int *count)
+{
+    *count = emitters->head_count;
+    return emitters->heads;
+}

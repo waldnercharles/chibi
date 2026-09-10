@@ -25,21 +25,21 @@ static void write_file(const char *path)
     assert(fclose(file) == 0);
 }
 
-static void await_change(bp_watch *watch, uint64_t before)
+static void await_change(chibi_watch *watch, uint64_t before)
 {
-    for (int i = 0; i < 300 && bp_watch_revision(watch) == before; i++) {
+    for (int i = 0; i < 300 && chibi_watch_revision(watch) == before; i++) {
         pause_events();
     }
-    assert(bp_watch_revision(watch) > before);
+    assert(chibi_watch_revision(watch) > before);
 }
 
-static uint64_t settled(bp_watch *watch)
+static uint64_t settled(chibi_watch *watch)
 {
-    uint64_t revision = bp_watch_revision(watch);
+    uint64_t revision = chibi_watch_revision(watch);
     int quiet = 0;
     for (int i = 0; i < 300 && quiet < 30; i++) {
         pause_events();
-        uint64_t next = bp_watch_revision(watch);
+        uint64_t next = chibi_watch_revision(watch);
         quiet = next == revision ? quiet + 1 : 0;
         revision = next;
     }
@@ -53,18 +53,18 @@ void test_dev_watch()
     unsigned metadata = kFSEventStreamEventFlagItemChangeOwner |
                         kFSEventStreamEventFlagItemInodeMetaMod |
                         kFSEventStreamEventFlagItemXattrMod;
-    assert(!bp_watch_macos_content_event(metadata | kFSEventStreamEventFlagItemIsFile));
-    assert(!bp_watch_macos_content_event(
+    assert(!chibi_watch_macos_content_event(metadata | kFSEventStreamEventFlagItemIsFile));
+    assert(!chibi_watch_macos_content_event(
         metadata | kFSEventStreamEventFlagItemIsDir | kFSEventStreamEventFlagItemCreated
     ));
-    assert(bp_watch_macos_content_event(metadata | kFSEventStreamEventFlagItemModified));
-    assert(bp_watch_macos_content_event(kFSEventStreamEventFlagItemCreated));
-    assert(bp_watch_macos_content_event(
+    assert(chibi_watch_macos_content_event(metadata | kFSEventStreamEventFlagItemModified));
+    assert(chibi_watch_macos_content_event(kFSEventStreamEventFlagItemCreated));
+    assert(chibi_watch_macos_content_event(
         kFSEventStreamEventFlagItemRemoved | kFSEventStreamEventFlagItemIsDir
     ));
-    assert(bp_watch_macos_content_event(kFSEventStreamEventFlagItemRenamed));
+    assert(chibi_watch_macos_content_event(kFSEventStreamEventFlagItemRenamed));
 #endif
-    char root[] = "/tmp/blueprints-watch-XXXXXX";
+    char root[] = "/tmp/chibi-watch-XXXXXX";
     assert(mkdtemp(root));
     char source[512], nested[512], file[512], ignored[512], single[512], other[512];
     snprintf(source, sizeof source, "%s/src", root);
@@ -82,7 +82,7 @@ void test_dev_watch()
     assert(mkdir(build, 0700) == 0 && mkdir(dependency, 0700) == 0);
     const char *paths[] = { source, single, dependency };
     const char *suffixes[] = { ".c", ".h" };
-    bp_watch *watch = bp_watch_create(paths, 3, suffixes, 2);
+    chibi_watch *watch = chibi_watch_create(paths, 3, suffixes, 2);
     assert(watch);
     uint64_t revision = settled(watch);
     /* Explicit dependency roots remain observable inside a build directory. */
@@ -104,8 +104,8 @@ void test_dev_watch()
     write_file(ignored);
     write_file(other);
     assert(settled(watch) == revision);
-    const char *exclusions[] = { ".git",        ".blueprints", "build",
-                                 "build-debug", "CMakeFiles",  "__pycache__" };
+    const char *exclusions[] = { ".git",        ".chibi",     "build",
+                                 "build-debug", "CMakeFiles", "__pycache__" };
     for (size_t i = 0; i < sizeof exclusions / sizeof *exclusions; i++) {
         char directory[512], excluded[512];
         snprintf(directory, sizeof directory, "%s/src/%s", root, exclusions[i]);
@@ -140,7 +140,7 @@ void test_dev_watch()
     write_file(replacement);
     await_change(watch, revision);
     assert(unlink(replacement) == 0 && rmdir(source) == 0 && rename(moved, source) == 0);
-    bp_watch_free(watch);
+    chibi_watch_free(watch);
     assert(unlink(dependency_code) == 0 && rmdir(dependency) == 0 && rmdir(build) == 0);
     assert(unlink(file) == 0);
     assert(unlink(ignored) == 0);

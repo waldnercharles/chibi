@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_GAME_QUERY_H
-#define CBLUEPRINT_GAME_QUERY_H
+#ifndef CHIBI_GAME_QUERY_H
+#define CHIBI_GAME_QUERY_H
 
 #include "ecs/ecs.h"
 

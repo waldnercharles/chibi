@@ -159,11 +159,12 @@ typedef struct
 
 #define SCENARIO_DEFAULT_FRAMES 1
 #define SCENARIO_MAX_FRAMES 600
+#define SCENARIO_MAX_ACTIONS 32
 #define SCENARIO_DEFAULT_FIXED_DT (1.0 / 60.0)
 #define SCENARIO_RECORDING_VERSION 1
-#define SCENARIO_RECORDING_FORMAT "c-blueprints.scenario-recording"
+#define SCENARIO_RECORDING_FORMAT "chibi.scenario-recording"
 #define SCENARIO_RECORDING_MAX_BYTES (1024 * 1024)
-#define SCENARIO_RECORDING_PATH_PREFIX "/tmp/c-blueprints-recording-"
+#define SCENARIO_RECORDING_PATH_PREFIX "/tmp/chibi-recording-"
 
 #define CONTRACT_FIELD_COUNT(fields) ((int)(sizeof(fields) / sizeof *(fields)))
 
@@ -543,13 +544,13 @@ static bool request_page(yyjson_val *request, page_options *page, response *resu
     *page = (page_options){ 0 };
     yyjson_val *cursor = yyjson_obj_get(request, "cursor");
     if (cursor && !request_uint(request, "cursor", &page->cursor)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "cursor must be a non-negative integer");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "cursor must be a non-negative integer");
         return false;
     }
     yyjson_val *limit = yyjson_obj_get(request, "limit");
     if (limit) {
         if (!request_uint(request, "limit", &page->limit) || page->limit == 0) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "limit must be a positive integer");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "limit must be a positive integer");
             return false;
         }
         page->has_limit = true;
@@ -557,7 +558,7 @@ static bool request_page(yyjson_val *request, page_options *page, response *resu
     yyjson_val *summary = yyjson_obj_get(request, "summary");
     if (summary) {
         if (!yyjson_is_bool(summary)) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "summary must be a boolean");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "summary must be a boolean");
             return false;
         }
         page->summary = yyjson_get_bool(summary);
@@ -586,7 +587,7 @@ static response response_new(const char *operation)
     response result = { .doc = yyjson_mut_doc_new(NULL), .ok = true };
     result.root = yyjson_mut_obj(result.doc);
     yyjson_mut_doc_set_root(result.doc, result.root);
-    yyjson_mut_obj_add_uint(result.doc, result.root, "contract", BLUEPRINTS_AUTOMATION_CONTRACT);
+    yyjson_mut_obj_add_uint(result.doc, result.root, "contract", CHIBI_AUTOMATION_CONTRACT);
     yyjson_mut_obj_add_strcpy(result.doc, result.root, "operation", operation ? operation : "");
     return result;
 }
@@ -599,14 +600,14 @@ static void response_error(response *result, int *exit_code, int code, const cha
         result->doc,
         error,
         "code",
-        code == BLUEPRINTS_AUTOMATION_INVALID_REQUEST    ? "invalid_request"
-        : code == BLUEPRINTS_AUTOMATION_IO_ERROR         ? "io_error"
-        : code == BLUEPRINTS_AUTOMATION_VALIDATION_ERROR ? "validation_failed"
-        : code == BLUEPRINTS_AUTOMATION_NOT_FOUND        ? "asset_not_found"
-                                                         : "execution_failed"
+        code == CHIBI_AUTOMATION_INVALID_REQUEST    ? "invalid_request"
+        : code == CHIBI_AUTOMATION_IO_ERROR         ? "io_error"
+        : code == CHIBI_AUTOMATION_VALIDATION_ERROR ? "validation_failed"
+        : code == CHIBI_AUTOMATION_NOT_FOUND        ? "asset_not_found"
+                                                    : "execution_failed"
     );
     yyjson_mut_obj_add_strcpy(result->doc, error, "message", message ? message : "unknown error");
-    if (exit_code && *exit_code == BLUEPRINTS_AUTOMATION_OK) {
+    if (exit_code && *exit_code == CHIBI_AUTOMATION_OK) {
         *exit_code = code;
     }
 }
@@ -1607,7 +1608,7 @@ static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
 static int handle_describe_contract(response *result)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    yyjson_mut_obj_add_uint(result->doc, value, "contract_version", BLUEPRINTS_AUTOMATION_CONTRACT);
+    yyjson_mut_obj_add_uint(result->doc, value, "contract_version", CHIBI_AUTOMATION_CONTRACT);
     yyjson_mut_obj_add_int(result->doc, value, "response_version", 1);
     yyjson_mut_val *errors = yyjson_mut_obj_add_arr(result->doc, value, "error_categories");
     for (int i = 0;
@@ -1871,7 +1872,7 @@ static int handle_catalog(const char *root, yyjson_val *request, response *resul
     char error[256] = { 0 };
     if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
         0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -1917,7 +1918,7 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
 {
     yyjson_val *kinds = yyjson_obj_get(request, "kinds");
     if (kinds && !yyjson_is_arr(kinds)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "kinds must be an array");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "kinds must be an array");
         return -1;
     }
     page_options page;
@@ -1930,7 +1931,7 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     char error[256] = { 0 };
     if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
         0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -2004,7 +2005,7 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     const char *kind = request_string(request, "kind");
     const char *name = request_string(request, "name");
     if (!kind || !name || !name[0] || !family_by_kind(kind)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "asset_dependencies requires a known kind and name");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset_dependencies requires a known kind and name");
         return -1;
     }
     const char *direction = request_string(request, "direction");
@@ -2013,14 +2014,14 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     }
     if (strcmp(direction, "outgoing") && strcmp(direction, "incoming") &&
         strcmp(direction, "both")) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "direction must be outgoing, incoming, or both");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "direction must be outgoing, incoming, or both");
         return -1;
     }
     bool transitive = false;
     yyjson_val *transitive_value = yyjson_obj_get(request, "transitive");
     if (transitive_value) {
         if (!yyjson_is_bool(transitive_value)) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "transitive must be a boolean");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "transitive must be a boolean");
             return -1;
         }
         transitive = yyjson_get_bool(transitive_value);
@@ -2031,13 +2032,13 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     char error[256] = { 0 };
     if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
         0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     int count = acount(assets);
     int root_index = catalog_asset_index(assets, count, family_by_kind(kind)->kind, name);
     if (root_index < 0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "asset not found");
+        response_error(result, exit_code, CHIBI_AUTOMATION_NOT_FOUND, "asset not found");
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -2448,13 +2449,13 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     uint64_t hash = 0;
     char error[256] = { 0 };
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     if (ref.family->loader != ASSET_GRAPH) {
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
         return -1;
     }
     yyjson_doc *source_document = yyjson_read(json, strlen(json), 0);
@@ -2472,7 +2473,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
             behavior_asset_free(asset);
         }
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "graph inspection failed");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "graph inspection failed");
         return -1;
     }
     uint64_t requested_id = 0;
@@ -2481,7 +2482,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         yyjson_doc_free(source_document);
         behavior_asset_free(asset);
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "graph_id must be an unsigned integer");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "graph_id must be an unsigned integer");
         return -1;
     }
     const char *requested_name = request_string(request, "graph_name");
@@ -2502,7 +2503,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         yyjson_doc_free(source_document);
         behavior_asset_free(asset);
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "graph not found");
+        response_error(result, exit_code, CHIBI_AUTOMATION_NOT_FOUND, "graph not found");
         return -1;
     }
     compile_report report;
@@ -2538,7 +2539,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     behavior_asset_free(asset);
     free(json);
     if (errors) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "graph validation failed");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "graph validation failed");
         return -1;
     }
     return 0;
@@ -2578,13 +2579,13 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
     uint64_t hash = 0;
     char error[256] = { 0 };
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     if (ref.family->loader != ASSET_SYSTEM) {
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "asset is not a system");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset is not a system");
         return -1;
     }
 
@@ -2602,7 +2603,7 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
         add_load_diagnostic(result->doc, diagnostics, error);
         yyjson_mut_obj_add_bool(result->doc, value, "valid", false);
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "system inspection failed");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "system inspection failed");
         return -1;
     }
 
@@ -2641,7 +2642,7 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
     game_system_document_free(document);
     free(json);
     if (errors) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "system validation failed");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "system validation failed");
         return -1;
     }
     return 0;
@@ -2652,7 +2653,7 @@ static int handle_status(const char *root, response *result, int *exit_code)
     asset_entry *entries = NULL;
     char error[256] = { 0 };
     if (enumerate_assets(root, &entries, error, sizeof error) != 0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -2702,7 +2703,7 @@ static int handle_list_assets(const char *root, yyjson_val *request, response *r
     char error[256] = { 0 };
     if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
         0) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -2739,27 +2740,27 @@ static int load_asset(
 {
     int ref_status = resolve_asset_ref(request, ref, error, error_size);
     if (ref_status != 0) {
-        return ref_status == -2 ? BLUEPRINTS_AUTOMATION_NOT_FOUND
-                                : BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+        return ref_status == -2 ? CHIBI_AUTOMATION_NOT_FOUND
+                                : CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     int directory_status = verify_asset_directory(root, ref->family, error, error_size);
     if (directory_status <= 0) {
         if (directory_status == 0) {
             set_errorf(error, error_size, "asset not found: %s", ref->relative);
-            return BLUEPRINTS_AUTOMATION_NOT_FOUND;
+            return CHIBI_AUTOMATION_NOT_FOUND;
         }
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     char *path = asset_full_path(root, ref);
     struct stat info;
     if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
         free(path);
         return set_errorf(error, error_size, "asset not found: %s", ref->relative),
-               BLUEPRINTS_AUTOMATION_NOT_FOUND;
+               CHIBI_AUTOMATION_NOT_FOUND;
     }
     *json = read_file(path, bytes, hash, error, error_size);
     free(path);
-    return *json ? BLUEPRINTS_AUTOMATION_OK : BLUEPRINTS_AUTOMATION_IO_ERROR;
+    return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
 }
 
 static int load_named_asset(
@@ -2777,19 +2778,19 @@ static int load_named_asset(
     if (!family || !name || !name[0] || strchr(name, '/') ||
         strchr(name, '\\') || strstr(name, "..")) {
         return set_error(error, error_size, "asset name is invalid"),
-               BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+               CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     memset(ref, 0, sizeof *ref);
     ref->family = family;
     if (strstr(name, ".json")) {
         if (!valid_asset_filename(name) || strlen(name) >= sizeof ref->filename) {
             return set_error(error, error_size, "asset name is invalid"),
-                   BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+                   CHIBI_AUTOMATION_INVALID_REQUEST;
         }
         snprintf(ref->filename, sizeof ref->filename, "%s", name);
     } else if (strlen(name) + sizeof ".json" >= sizeof ref->filename) {
         return set_error(error, error_size, "asset name is too long"),
-               BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+               CHIBI_AUTOMATION_INVALID_REQUEST;
     } else {
         snprintf(ref->filename, sizeof ref->filename, "%s.json", name);
     }
@@ -2798,20 +2799,20 @@ static int load_named_asset(
     if (directory_status <= 0) {
         if (directory_status == 0) {
             return set_errorf(error, error_size, "asset not found: %s", ref->relative),
-                   BLUEPRINTS_AUTOMATION_NOT_FOUND;
+                   CHIBI_AUTOMATION_NOT_FOUND;
         }
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     char *path = asset_full_path(root, ref);
     struct stat info;
     if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
         free(path);
         return set_errorf(error, error_size, "asset not found: %s", ref->relative),
-               BLUEPRINTS_AUTOMATION_NOT_FOUND;
+               CHIBI_AUTOMATION_NOT_FOUND;
     }
     *json = read_file(path, bytes, hash, error, error_size);
     free(path);
-    return *json ? BLUEPRINTS_AUTOMATION_OK : BLUEPRINTS_AUTOMATION_IO_ERROR;
+    return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
 }
 
 static int handle_read_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -2822,14 +2823,14 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     uint64_t hash = 0;
     char error[256] = { 0 };
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     yyjson_doc *document = yyjson_read(json, strlen(json), 0);
     if (!document) {
         free(json);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "asset is not valid JSON");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset is not valid JSON");
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -2853,7 +2854,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     uint64_t hash = 0;
     char error[256] = { 0 };
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
@@ -2958,7 +2959,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     yyjson_mut_obj_add_int(result->doc, value, "warnings", warnings);
     free(json);
     if (errors) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "asset validation failed");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset validation failed");
         return -1;
     }
     return 0;
@@ -2982,7 +2983,7 @@ static int load_behavior_family_assets(
 {
     asset_entry *entries = NULL;
     if (enumerate_assets(root, &entries, error, error_size) != 0) {
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     behavior_asset **assets = NULL;
     for (int i = 0; i < acount(entries); i++) {
@@ -2999,7 +3000,7 @@ static int load_behavior_family_assets(
             free_asset_entries(entries);
             free_behavior_assets(assets);
             set_error(error, error_size, read_error);
-            return BLUEPRINTS_AUTOMATION_IO_ERROR;
+            return CHIBI_AUTOMATION_IO_ERROR;
         }
         behavior_asset *asset = behavior_asset_load_json(json);
         free(json);
@@ -3009,13 +3010,13 @@ static int load_behavior_family_assets(
             free_asset_entries(entries);
             free_behavior_assets(assets);
             snprintf(error, error_size, "could not load %s: %s", relative, graph_last_error());
-            return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
         }
         apush(assets, asset);
     }
     free_asset_entries(entries);
     *out = assets;
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int register_preview_assets(
@@ -3232,7 +3233,7 @@ static int prepare_scenario(
         error,
         error_size
     );
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         return status;
     }
 
@@ -3251,33 +3252,33 @@ static int prepare_scenario(
         if (!error[0]) {
             set_error(error, error_size, "prototype validation failed");
         }
-        return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
 
     context->preview = game_prototype_preview_new(&context->registry);
     if (!context->preview) {
         scenario_context_free(context);
         set_error(error, error_size, "could not create prototype preview");
-        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
 
     behavior_asset **libraries = NULL;
     behavior_asset **events = NULL;
     int result = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
-    if (result == BLUEPRINTS_AUTOMATION_OK) {
+    if (result == CHIBI_AUTOMATION_OK) {
         result = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
     }
-    if (result == BLUEPRINTS_AUTOMATION_OK &&
+    if (result == CHIBI_AUTOMATION_OK &&
         register_preview_assets(context->preview, libraries, error, error_size) != 0) {
-        result = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        result = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    if (result == BLUEPRINTS_AUTOMATION_OK &&
+    if (result == CHIBI_AUTOMATION_OK &&
         register_preview_assets(context->preview, events, error, error_size) != 0) {
-        result = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        result = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     free_behavior_assets(libraries);
     free_behavior_assets(events);
-    if (result != BLUEPRINTS_AUTOMATION_OK) {
+    if (result != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return result;
     }
@@ -3296,7 +3297,7 @@ static int prepare_scenario(
             error,
             error_size
         );
-        if (status != BLUEPRINTS_AUTOMATION_OK) {
+        if (status != CHIBI_AUTOMATION_OK) {
             free(behavior_json);
             scenario_context_free(context);
             return status;
@@ -3306,7 +3307,7 @@ static int prepare_scenario(
         if (!behavior) {
             set_error(error, error_size, graph_last_error());
             scenario_context_free(context);
-            return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
         }
         int registered = game_prototype_preview_register_behavior(
             context->preview,
@@ -3317,22 +3318,22 @@ static int prepare_scenario(
         if (registered != 0) {
             set_error(error, error_size, "could not register prototype behavior");
             scenario_context_free(context);
-            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
     }
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *kind = request_string(request, "kind");
     if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "run_scenario supports prototype targets only; scenes are not supported yet");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "run_scenario supports prototype targets only; scenes are not supported yet");
         return -1;
     }
     const char *name = request_string(request, "name");
     if (!name || !name[0]) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype name is required");
         return -1;
     }
 
@@ -3340,20 +3341,20 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
     yyjson_val *frames_value = yyjson_obj_get(request, "frames");
     if (frames_value && (!request_uint(request, "frames", &frames) ||
                          frames > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
         return -1;
     }
     double fixed_dt = SCENARIO_FIXED_DT;
     yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
     if (fixed_dt_value) {
         if (!yyjson_is_num(fixed_dt_value)) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
             return -1;
         }
         fixed_dt = yyjson_get_num(fixed_dt_value);
         if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
             fabs(fixed_dt - SCENARIO_FIXED_DT) > 1e-12) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
             return -1;
         }
     }
@@ -3375,7 +3376,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         error,
         sizeof error
     );
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
@@ -3391,34 +3392,34 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
     free(scenario_json);
     free(prototype_json);
     if (!prototype) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
     }
 
     game_prototype_preview *preview = game_prototype_preview_new(&registry);
     if (!preview) {
         game_prototype_free(prototype);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "could not create prototype preview");
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, "could not create prototype preview");
         return -1;
     }
 
     behavior_asset **libraries = NULL;
     behavior_asset **events = NULL;
     int result_code = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, sizeof error);
-    if (result_code == BLUEPRINTS_AUTOMATION_OK) {
+    if (result_code == CHIBI_AUTOMATION_OK) {
         result_code = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
     }
-    if (result_code == BLUEPRINTS_AUTOMATION_OK &&
+    if (result_code == CHIBI_AUTOMATION_OK &&
         register_preview_assets(preview, libraries, error, sizeof error) != 0) {
-        result_code = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        result_code = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    if (result_code == BLUEPRINTS_AUTOMATION_OK &&
+    if (result_code == CHIBI_AUTOMATION_OK &&
         register_preview_assets(preview, events, error, sizeof error) != 0) {
-        result_code = BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        result_code = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     free_behavior_assets(libraries);
     free_behavior_assets(events);
-    if (result_code != BLUEPRINTS_AUTOMATION_OK) {
+    if (result_code != CHIBI_AUTOMATION_OK) {
         game_prototype_preview_free(preview);
         game_prototype_free(prototype);
         response_error(result, exit_code, result_code, error);
@@ -3439,7 +3440,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
             error,
             sizeof error
         );
-        if (status != BLUEPRINTS_AUTOMATION_OK) {
+        if (status != CHIBI_AUTOMATION_OK) {
             response_error(result, exit_code, status, error);
             free(behavior_json);
             game_prototype_preview_free(preview);
@@ -3449,7 +3450,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         behavior_asset *behavior = behavior_asset_load_json(behavior_json);
         free(behavior_json);
         if (!behavior) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, graph_last_error());
+            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, graph_last_error());
             game_prototype_preview_free(preview);
             game_prototype_free(prototype);
             return -1;
@@ -3461,7 +3462,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         );
         behavior_asset_free(behavior);
         if (registered != 0) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "could not register prototype behavior");
+            response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, "could not register prototype behavior");
             game_prototype_preview_free(preview);
             game_prototype_free(prototype);
             return -1;
@@ -3474,7 +3475,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
         response_error(
             result,
             exit_code,
-            BLUEPRINTS_AUTOMATION_EXECUTION_ERROR,
+            CHIBI_AUTOMATION_EXECUTION_ERROR,
             launch_error[0] ? launch_error : "could not launch prototype"
         );
         game_prototype_preview_free(preview);
@@ -3483,7 +3484,7 @@ static int handle_run_scenario(const char *root, yyjson_val *request, response *
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
         if (game_prototype_preview_tick(preview, (double)(frame + 1) * fixed_dt) != 0) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_EXECUTION_ERROR, "prototype scenario failed");
+            response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, "prototype scenario failed");
             game_prototype_preview_free(preview);
             game_prototype_free(prototype);
             return -1;
@@ -3546,17 +3547,23 @@ static int advance_scenario(
     if (game_prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error) !=
         ECS_OK) {
         set_error(error, error_size, launch_error[0] ? launch_error : "could not launch prototype");
-        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
         if (game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
             0) {
             set_error(error, error_size, "prototype scenario failed");
-            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
     }
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
+
+typedef struct
+{
+    const char *name;
+    bool pressed;
+} scenario_action;
 
 typedef struct
 {
@@ -3566,8 +3573,8 @@ typedef struct
     double aim_y;
     bool aim_firing;
     bool aim_point;
-    bool fire_pressed;
-    bool dash_pressed;
+    scenario_action actions[SCENARIO_MAX_ACTIONS];
+    int action_count;
 } scenario_input;
 
 typedef struct
@@ -3606,29 +3613,34 @@ static bool scenario_input_bool(yyjson_val *object, const char *key, bool *out, 
     return true;
 }
 
-static bool scenario_action(
+static bool add_scenario_action(
+    scenario_input *input,
     yyjson_val *value,
     const char *name,
-    bool *pressed,
-    bool *seen,
     char *error,
     size_t error_size
 )
 {
-    if (strcmp(name, "Fire") && strcmp(name, "Dash")) {
-        snprintf(error, error_size, "unsupported scenario action: %s", name);
+    if (!name || !name[0]) {
+        snprintf(error, error_size, "scenario action name is required");
         return false;
     }
-    if (*seen) {
-        snprintf(error, error_size, "scenario action is repeated: %s", name);
+    if (input->action_count == SCENARIO_MAX_ACTIONS) {
+        snprintf(error, error_size, "scenario inputs support at most %d actions", SCENARIO_MAX_ACTIONS);
         return false;
     }
-    bool value_pressed = false;
+    for (int i = 0; i < input->action_count; i++) {
+        if (!strcmp(input->actions[i].name, name)) {
+            snprintf(error, error_size, "scenario action is repeated: %s", name);
+            return false;
+        }
+    }
+    bool pressed = false;
     if (yyjson_is_bool(value)) {
-        value_pressed = yyjson_get_bool(value);
+        pressed = yyjson_get_bool(value);
     } else if (yyjson_is_obj(value)) {
         if (!yyjson_obj_get(value, "pressed") ||
-            !scenario_input_bool(value, "pressed", &value_pressed, error, error_size)) {
+            !scenario_input_bool(value, "pressed", &pressed, error, error_size)) {
             snprintf(error, error_size, "scenario action %s must contain pressed", name);
             return false;
         }
@@ -3636,23 +3648,46 @@ static bool scenario_action(
         snprintf(error, error_size, "scenario action %s must contain pressed", name);
         return false;
     }
-    *pressed = value_pressed;
-    *seen = true;
+    input->actions[input->action_count++] = (scenario_action){ name, pressed };
     return true;
 }
 
-static const char *scenario_action_name(const char *name)
+static bool parse_scenario_action_array(yyjson_val *actions, scenario_input *input, char *error, size_t error_size)
 {
-    if (!name) {
-        return NULL;
+    if (yyjson_arr_size(actions) > SCENARIO_MAX_ACTIONS) {
+        snprintf(error, error_size, "scenario inputs support at most %d actions", SCENARIO_MAX_ACTIONS);
+        return false;
     }
-    if (!strcmp(name, "Fire") || !strcmp(name, "fire")) {
-        return "Fire";
+    size_t count = yyjson_arr_size(actions);
+    for (size_t i = 0; i < count; i++) {
+        yyjson_val *action = yyjson_arr_get(actions, i);
+        const char *name = action && yyjson_is_obj(action)
+                             ? request_string(action, "name")
+                             : NULL;
+        yyjson_val *pressed = action && yyjson_is_obj(action)
+                                ? yyjson_obj_get(action, "pressed")
+                                : NULL;
+        if (!name || !pressed ||
+            !add_scenario_action(input, pressed, name, error, error_size)) {
+            if (!error[0]) {
+                snprintf(error, error_size, "scenario actions require name and pressed");
+            }
+            return false;
+        }
     }
-    if (!strcmp(name, "Dash") || !strcmp(name, "dash")) {
-        return "Dash";
+    return true;
+}
+
+static bool parse_scenario_action_object(yyjson_val *actions, scenario_input *input, char *error, size_t error_size)
+{
+    yyjson_obj_iter iter = yyjson_obj_iter_with(actions);
+    yyjson_val *key;
+    while ((key = yyjson_obj_iter_next(&iter))) {
+        if (!add_scenario_action(input, yyjson_obj_iter_get_val(key), yyjson_get_str(key), error, error_size)) {
+            return false;
+        }
     }
-    return NULL;
+    return true;
 }
 
 static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *error, size_t error_size)
@@ -3685,44 +3720,12 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         return false;
     }
     yyjson_val *actions = yyjson_obj_get(value, "actions");
-    bool fire_seen = false;
-    bool dash_seen = false;
     if (actions && yyjson_is_arr(actions)) {
-        if (yyjson_arr_size(actions) > 2) {
-            snprintf(error, error_size, "scenario inputs support at most Fire and Dash actions");
+        if (!parse_scenario_action_array(actions, out, error, error_size)) {
             return false;
         }
-        size_t count = yyjson_arr_size(actions);
-        for (size_t i = 0; i < count; i++) {
-            yyjson_val *action = yyjson_arr_get(actions, i);
-            const char *name = action && yyjson_is_obj(action)
-                                 ? scenario_action_name(request_string(action, "name"))
-                                 : NULL;
-            yyjson_val *pressed = action && yyjson_is_obj(action)
-                                    ? yyjson_obj_get(action, "pressed")
-                                    : NULL;
-            if (!name || !pressed ||
-                !scenario_action(
-                    pressed,
-                    name,
-                    !strcmp(name, "Fire") ? &out->fire_pressed : &out->dash_pressed,
-                    !strcmp(name, "Fire") ? &fire_seen : &dash_seen,
-                    error,
-                    error_size
-                )) {
-                if (!error[0]) {
-                    snprintf(error, error_size, "scenario actions require name and pressed");
-                }
-                return false;
-            }
-        }
     } else if (actions && yyjson_is_obj(actions)) {
-        yyjson_val *fire = yyjson_obj_get(actions, "Fire");
-        yyjson_val *dash = yyjson_obj_get(actions, "Dash");
-        if ((fire &&
-             !scenario_action(fire, "Fire", &out->fire_pressed, &fire_seen, error, error_size)) ||
-            (dash &&
-             !scenario_action(dash, "Dash", &out->dash_pressed, &dash_seen, error, error_size))) {
+        if (!parse_scenario_action_object(actions, out, error, error_size)) {
             return false;
         }
     } else if (actions) {
@@ -3749,12 +3752,11 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
     yyjson_mut_obj_add_bool(doc, aim, "firing", input->aim_firing);
     yyjson_mut_obj_add_bool(doc, aim, "point", input->aim_point);
     yyjson_mut_val *actions = yyjson_mut_obj_add_arr(doc, object, "actions");
-    yyjson_mut_val *fire = yyjson_mut_arr_add_obj(doc, actions);
-    yyjson_mut_obj_add_strcpy(doc, fire, "name", "Fire");
-    yyjson_mut_obj_add_bool(doc, fire, "pressed", input->fire_pressed);
-    yyjson_mut_val *dash = yyjson_mut_arr_add_obj(doc, actions);
-    yyjson_mut_obj_add_strcpy(doc, dash, "name", "Dash");
-    yyjson_mut_obj_add_bool(doc, dash, "pressed", input->dash_pressed);
+    for (int i = 0; i < input->action_count; i++) {
+        yyjson_mut_val *action = yyjson_mut_arr_add_obj(doc, actions);
+        yyjson_mut_obj_add_strcpy(doc, action, "name", input->actions[i].name);
+        yyjson_mut_obj_add_bool(doc, action, "pressed", input->actions[i].pressed);
+    }
     return object;
 }
 
@@ -3765,59 +3767,40 @@ static int apply_scenario_input(
     size_t error_size
 )
 {
-    ecs_world *world = game_prototype_preview_world(context->preview);
-    ecs_entity entity = game_prototype_preview_entity(context->preview);
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
-    CF_V2 movement = { (float)input->movement_x, (float)input->movement_y };
-    pin_value movement_value = {
-        .type = PIN_STRUCT,
-        .type_name = "CF_V2",
-        .ptr = &movement,
-    };
+    int result = game_prototype_preview_sample_movement(
+        context->preview,
+        (float)input->movement_x,
+        (float)input->movement_y
+    );
+    if (result < 0) {
+        snprintf(error, error_size, "scenario movement input failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    result = game_prototype_preview_sample_aim(
+        context->preview,
+        (CF_V2){ (float)input->aim_x, (float)input->aim_y },
+        input->aim_firing,
+        input->aim_point
+    );
+    if (result < 0) {
+        snprintf(error, error_size, "scenario aim input failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
     flow_error flow = { 0 };
-    if (game_behavior_dispatch(
-            behaviors,
-            entity,
-            "Input",
-            (flow_inputs){ .values = &movement_value, .count = 1 },
-            &flow
-        ) < 0) {
-        snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario movement input failed");
-        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (ecs_world_component(world, GAME_COMPONENT_GameAim.id)) {
-        GameAim *aim = GAME_GameAim_get(world, entity);
-        if (aim) {
-            CF_V2 direction = { (float)input->aim_x, (float)input->aim_y };
-            if (input->aim_point &&
-                ecs_world_component(world, GAME_COMPONENT_GameTransform.id)) {
-                const GameTransform *position = GAME_GameTransform_get_const(world, entity);
-                if (position) {
-                    direction.x -= position->x;
-                    direction.y -= position->y;
-                }
-            }
-            float length = hypotf(direction.x, direction.y);
-            if (length > 0.0001f) {
-                aim->direction = (CF_V2){ direction.x / length, direction.y / length };
-            }
-            aim->firing = input->aim_firing;
-        }
-    }
-    const char *actions[] = { "Fire", "Dash" };
-    const bool pressed[] = { input->fire_pressed, input->dash_pressed };
-    for (int i = 0; i < 2; i++) {
-        if (!pressed[i]) {
-            continue;
-        }
+    for (int i = 0; i < input->action_count; i++) {
         flow = (flow_error){ 0 };
-        if (game_behavior_dispatch(behaviors, entity, actions[i], (flow_inputs){ 0 }, &flow) <
-            0) {
+        if (game_prototype_preview_input(
+                context->preview,
+                input->actions[i].name,
+                input->actions[i].pressed ? 1 : 0,
+                input->actions[i].pressed ? 1 : 0,
+                &flow
+            ) < 0) {
             snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario action failed");
-            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
     }
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int run_scenario_inputs(
@@ -3834,21 +3817,21 @@ static int run_scenario_inputs(
     if (game_prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error) !=
         ECS_OK) {
         snprintf(error, error_size, "%s", launch_error[0] ? launch_error : "could not launch prototype");
-        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     if (game_prototype_preview_tick(context->preview, 0) != 0) {
         snprintf(error, error_size, "could not initialize prototype clock");
-        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
         if (apply_scenario_input(context, &inputs[frame], error, error_size) !=
-                BLUEPRINTS_AUTOMATION_OK ||
+                CHIBI_AUTOMATION_OK ||
             game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
                 0) {
             if (!error[0]) {
                 snprintf(error, error_size, "prototype scenario failed");
             }
-            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
         observations->world_hash[frame] = scenario_world_hash(
             game_prototype_preview_world(context->preview)
@@ -3858,7 +3841,7 @@ static int run_scenario_inputs(
         );
     }
     observations->has_live_entities = true;
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static bool safe_recording_path(const char *path)
@@ -3888,15 +3871,15 @@ static int create_recording_path(char *path, size_t path_size, char *error, size
     int fd = mkstemp(template);
     if (fd < 0) {
         snprintf(error, error_size, "could not create recording artifact: %s", strerror(errno));
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     close(fd);
     if (snprintf(path, path_size, "%s", template) >= (int)path_size) {
         unlink(template);
         snprintf(error, error_size, "recording artifact path is too long");
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int write_recording_artifact(const char *path, yyjson_mut_val *recording, char *error, size_t error_size)
@@ -3907,14 +3890,14 @@ static int write_recording_artifact(const char *path, yyjson_mut_val *recording,
         free(json);
         unlink(path);
         snprintf(error, error_size, "recording artifact exceeds the supported size");
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     FILE *file = fopen(path, "wb");
     if (!file) {
         free(json);
         unlink(path);
         snprintf(error, error_size, "could not write recording artifact: %s", strerror(errno));
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     bool ok = fwrite(json, 1, bytes, file) == bytes;
     if (fclose(file) != 0) {
@@ -3924,9 +3907,9 @@ static int write_recording_artifact(const char *path, yyjson_mut_val *recording,
     if (!ok) {
         unlink(path);
         snprintf(error, error_size, "could not write recording artifact");
-        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
-    return BLUEPRINTS_AUTOMATION_OK;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static yyjson_doc *read_recording_artifact(const char *path, char *error, size_t error_size)
@@ -3981,7 +3964,7 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_obj_add_strcpy(doc, recording, "format", SCENARIO_RECORDING_FORMAT);
     yyjson_mut_obj_add_uint(doc, recording, "version", SCENARIO_RECORDING_VERSION);
     yyjson_mut_obj_add_uint(doc, recording, "recording_version", SCENARIO_RECORDING_VERSION);
-    yyjson_mut_obj_add_uint(doc, recording, "contract_version", BLUEPRINTS_AUTOMATION_CONTRACT);
+    yyjson_mut_obj_add_uint(doc, recording, "contract_version", CHIBI_AUTOMATION_CONTRACT);
     const char *id = artifact_path
                        ? artifact_path + strlen(SCENARIO_RECORDING_PATH_PREFIX)
                        : "";
@@ -4274,12 +4257,12 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
 {
     const char *kind = request_string(request, "kind");
     if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "runtime_snapshot supports prototype targets only");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "runtime_snapshot supports prototype targets only");
         return -1;
     }
     const char *name = request_string(request, "name");
     if (!name || !name[0]) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype name is required");
         return -1;
     }
 
@@ -4287,20 +4270,20 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     yyjson_val *frames_value = yyjson_obj_get(request, "frames");
     if (frames_value && (!request_uint(request, "frames", &frames) ||
                          frames > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
         return -1;
     }
     double fixed_dt = SCENARIO_FIXED_DT;
     yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
     if (fixed_dt_value) {
         if (!yyjson_is_num(fixed_dt_value)) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
             return -1;
         }
         fixed_dt = yyjson_get_num(fixed_dt_value);
         if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
             fabs(fixed_dt - SCENARIO_FIXED_DT) > 1e-12) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
             return -1;
         }
     }
@@ -4331,20 +4314,20 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
             RUNTIME_SNAPSHOT_MAX_BEHAVIORS,
             &behavior_limit
         )) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "snapshot limits must be positive integers within their supported bounds");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "snapshot limits must be positive integers within their supported bounds");
         return -1;
     }
     yyjson_val *field_selectors = yyjson_obj_get(request, "fields");
     if (field_selectors) {
         if (!yyjson_is_arr(field_selectors) || yyjson_arr_size(field_selectors) > 32) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "fields must be an array with at most 32 selectors");
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fields must be an array with at most 32 selectors");
             return -1;
         }
         size_t selector_count = yyjson_arr_size(field_selectors);
         for (size_t i = 0; i < selector_count; i++) {
             yyjson_val *selector = yyjson_arr_get(field_selectors, i);
             if (!yyjson_is_str(selector) || strlen(yyjson_get_str(selector)) > 128) {
-                response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "field selectors must be strings no longer than 128 characters");
+                response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "field selectors must be strings no longer than 128 characters");
                 return -1;
             }
         }
@@ -4353,12 +4336,12 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     scenario_context context = { 0 };
     char error[256] = { 0 };
     int status = prepare_scenario(root, name, &context, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     status = advance_scenario(&context, frames, fixed_dt, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
         return -1;
@@ -4473,33 +4456,33 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
 {
     const char *kind = request_string(request, "kind");
     if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "record_scenario supports prototype targets only");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "record_scenario supports prototype targets only");
         return -1;
     }
     const char *name = request_string(request, "name");
     if (!name || !name[0]) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype name is required");
         return -1;
     }
     char error[256] = { 0 };
     uint64_t frames = 0;
     double fixed_dt = 0;
     if (!parse_scenario_timing(request, &frames, &fixed_dt, error, sizeof error)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
         return -1;
     }
     scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
     yyjson_val *input_values = yyjson_obj_get(request, "inputs");
     if (input_values &&
         (!yyjson_is_arr(input_values) || yyjson_arr_size(input_values) > frames)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "inputs must be an array with no more entries than frames");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "inputs must be an array with no more entries than frames");
         return -1;
     }
     if (input_values) {
         size_t count = yyjson_arr_size(input_values);
         for (size_t i = 0; i < count; i++) {
             if (!parse_scenario_input(yyjson_arr_get(input_values, i), &inputs[i], error, sizeof error)) {
-                response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, error);
+                response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
                 return -1;
             }
         }
@@ -4507,13 +4490,13 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
 
     scenario_context context = { 0 };
     int status = prepare_scenario(root, name, &context, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     scenario_observations observations = { 0 };
     status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &observations, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
         return -1;
@@ -4521,7 +4504,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
 
     char artifact_path[256] = { 0 };
     status = create_recording_path(artifact_path, sizeof artifact_path, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
         return -1;
@@ -4543,7 +4526,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
     yyjson_mut_obj_add_strcpy(result->doc, value, "artifact_path", artifact_path);
     status = write_recording_artifact(artifact_path, recording, error, sizeof error);
     scenario_context_free(&context);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
@@ -4555,12 +4538,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     yyjson_val *inline_recording = yyjson_obj_get(request, "recording");
     const char *recording_path = request_string(request, "recording_path");
     if ((inline_recording && recording_path) || (!inline_recording && !recording_path)) {
-        response_error(
-            result,
-            exit_code,
-            BLUEPRINTS_AUTOMATION_INVALID_REQUEST,
-            "replay_scenario requires exactly one recording or recording_path"
-        );
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "replay_scenario requires exactly one recording or recording_path");
         return -1;
     }
     yyjson_doc *recording_doc = NULL;
@@ -4569,14 +4547,14 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     if (recording_path) {
         recording_doc = read_recording_artifact(recording_path, error, sizeof error);
         if (!recording_doc) {
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, error);
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
             return -1;
         }
         recording = yyjson_doc_get_root(recording_doc);
     }
     if (!recording || !yyjson_is_obj(recording)) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "recording must be a JSON object");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "recording must be a JSON object");
         return -1;
     }
     size_t recording_bytes = 0;
@@ -4586,7 +4564,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     free(recording_json);
     if (!recording_valid) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "recording exceeds the supported size");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "recording exceeds the supported size");
         return -1;
     }
     const char *format = request_string(recording, "format");
@@ -4600,9 +4578,9 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
          (!request_uint(recording, "recording_version", &recording_version) ||
           recording_version != SCENARIO_RECORDING_VERSION)) ||
         !request_uint(recording, "contract_version", &contract) ||
-        contract != BLUEPRINTS_AUTOMATION_CONTRACT) {
+        contract != CHIBI_AUTOMATION_CONTRACT) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording format, version, or contract is incompatible");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording format, version, or contract is incompatible");
         return -1;
     }
     yyjson_val *prototype = yyjson_obj_get(recording, "prototype");
@@ -4615,14 +4593,14 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
                       : recording_hash(recording, "content_hash", &expected_prototype_hash);
     if (!name || !name[0] || !has_hash) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording prototype identity and content hash are required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording prototype identity and content hash are required");
         return -1;
     }
     uint64_t frames = 0;
     double fixed_dt = 0;
     if (!parse_scenario_timing(recording, &frames, &fixed_dt, error, sizeof error)) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, error);
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
     }
     yyjson_val *input_values = yyjson_obj_get(recording, "inputs");
@@ -4636,7 +4614,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
         ((!object_observations || yyjson_arr_size(observation_values) != frames) &&
          (!array_observations || yyjson_arr_size(frame_hashes) != frames))) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording inputs and observations must contain exactly frames entries");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording inputs and observations must contain exactly frames entries");
         return -1;
     }
     scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
@@ -4644,7 +4622,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     for (uint64_t frame = 0; frame < frames; frame++) {
         if (!parse_scenario_input(yyjson_arr_get(input_values, frame), &inputs[frame], error, sizeof error)) {
             yyjson_doc_free(recording_doc);
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, error);
+            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
             return -1;
         }
         uint64_t live_entities = 0;
@@ -4678,7 +4656,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
         }
         if (!valid_observation) {
             yyjson_doc_free(recording_doc);
-            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording observations are invalid");
+            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording observations are invalid");
             return -1;
         }
         if (object_observations ||
@@ -4691,7 +4669,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
 
     scenario_context context = { 0 };
     int status = prepare_scenario(root, name, &context, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, status, error);
         return -1;
@@ -4699,17 +4677,12 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     if (context.prototype_hash != expected_prototype_hash) {
         scenario_context_free(&context);
         yyjson_doc_free(recording_doc);
-        response_error(
-            result,
-            exit_code,
-            BLUEPRINTS_AUTOMATION_VALIDATION_ERROR,
-            "recording prototype content hash does not match the current asset"
-        );
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording prototype content hash does not match the current asset");
         return -1;
     }
     scenario_observations actual = { 0 };
     status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &actual, error, sizeof error);
-    if (status != BLUEPRINTS_AUTOMATION_OK) {
+    if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, status, error);
@@ -4776,19 +4749,19 @@ static int handle_read_recording(yyjson_val *request, response *result, int *exi
     if (!id || !id[0] || strlen(id) > 128 ||
         strspn(id, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") !=
             strlen(id)) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "id must be a bounded generated recording identifier");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "id must be a bounded generated recording identifier");
         return -1;
     }
     char path[256] = { 0 };
     if (snprintf(path, sizeof path, "%s%s", SCENARIO_RECORDING_PATH_PREFIX, id) >=
         (int)sizeof path) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "recording identifier is too long");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "recording identifier is too long");
         return -1;
     }
     char error[256] = { 0 };
     yyjson_doc *document = read_recording_artifact(path, error, sizeof error);
     if (!document) {
-        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "recording_not_found");
+        response_error(result, exit_code, CHIBI_AUTOMATION_NOT_FOUND, "recording_not_found");
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -4892,15 +4865,15 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "replay_scenario");
 }
 
-char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
+char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code)
 {
     if (exit_code) {
-        *exit_code = BLUEPRINTS_AUTOMATION_OK;
+        *exit_code = CHIBI_AUTOMATION_OK;
     }
     yyjson_doc *document = request ? yyjson_read(request, strlen(request), 0) : NULL;
     if (!document || !yyjson_is_obj(yyjson_doc_get_root(document))) {
         response result = response_new("");
-        response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "request must be a JSON object");
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "request must be a JSON object");
         if (document) {
             yyjson_doc_free(document);
         }
@@ -4911,18 +4884,18 @@ char *blueprints_automation_handle(const char *request, const char *default_root
     const char *operation = request_string(root_value, "operation");
     response result = response_new(operation);
     if (!request_uint(root_value, "contract", &contract) ||
-        contract != BLUEPRINTS_AUTOMATION_CONTRACT) {
-        response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "unsupported or missing contract");
+        contract != CHIBI_AUTOMATION_CONTRACT) {
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "unsupported or missing contract");
         yyjson_doc_free(document);
         return response_finish(&result);
     }
     if (!operation || !operation[0]) {
-        response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "operation is required");
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "operation is required");
         yyjson_doc_free(document);
         return response_finish(&result);
     }
     if (!operation_by_name(operation)) {
-        response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "unknown operation");
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "unknown operation");
         yyjson_doc_free(document);
         return response_finish(&result);
     }
@@ -4931,7 +4904,7 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         char error[256] = { 0 };
         root = root_path(request_string(root_value, "project_root"), default_root, error, sizeof error);
         if (!root) {
-            response_error(&result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
+            response_error(&result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
             yyjson_doc_free(document);
             return response_finish(&result);
         }
@@ -4999,7 +4972,7 @@ static char *legacy_request(const yyjson_val *input, const char *operation, cons
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *object = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, object);
-    yyjson_mut_obj_add_uint(doc, object, "contract", BLUEPRINTS_AUTOMATION_CONTRACT);
+    yyjson_mut_obj_add_uint(doc, object, "contract", CHIBI_AUTOMATION_CONTRACT);
     yyjson_mut_obj_add_strcpy(doc, object, "operation", operation ? operation : "");
     if (root && root[0]) {
         yyjson_mut_obj_add_strcpy(doc, object, "project_root", root);
@@ -5027,7 +5000,7 @@ static void legacy_aliases(yyjson_mut_doc *doc, yyjson_mut_val *root, const char
     if (!result || !strcmp(method, "project.status")) {
         if (result && !strcmp(method, "project.status")) {
             yyjson_mut_val *project = yyjson_mut_obj_add_obj(doc, result, "project");
-            yyjson_mut_obj_add_strcpy(doc, project, "name", "c-blueprints");
+            yyjson_mut_obj_add_strcpy(doc, project, "name", "chibi");
             yyjson_mut_val *registry = yyjson_mut_obj_get(result, "registry");
             yyjson_mut_val *nodes = registry ? yyjson_mut_obj_get(registry, "nodes")
                                              : NULL;
@@ -5060,12 +5033,12 @@ static char *legacy_response(const char *response_json, const char *id, const ch
         return xstrdup("{\"version\":1,\"ok\":false,\"error\":{\"code\":\"execution_failed\"}}");
     }
     yyjson_mut_val *root = yyjson_mut_doc_get_root(mutable);
-    yyjson_mut_obj_add_uint(mutable, root, "version", BLUEPRINTS_AUTOMATION_CONTRACT);
+    yyjson_mut_obj_add_uint(mutable, root, "version", CHIBI_AUTOMATION_CONTRACT);
     yyjson_mut_obj_add_strcpy(mutable, root, "id", id ? id : "");
     yyjson_mut_obj_add_strcpy(mutable, root, "method", method ? method : "");
     legacy_aliases(mutable, root, method ? method : "");
     yyjson_mut_val *error = yyjson_mut_obj_get(root, "error");
-    if (error && status && *status == BLUEPRINTS_AUTOMATION_INVALID_REQUEST) {
+    if (error && status && *status == CHIBI_AUTOMATION_INVALID_REQUEST) {
         yyjson_mut_obj_remove_str(error, "code");
         yyjson_mut_obj_add_strcpy(mutable, error, "code", "invalid_json");
     }
@@ -5074,7 +5047,7 @@ static char *legacy_response(const char *response_json, const char *id, const ch
     return result ? result : xstrdup("{\"version\":1,\"ok\":false}");
 }
 
-char *blueprints_ctl_handle(const blueprints_ctl_context *context, const char *request, int *exit_code)
+char *chibi_ctl_handle(const chibi_ctl_context *context, const char *request, int *exit_code)
 {
     const char *root = context && context->root ? context->root : ".";
     yyjson_doc *document = request ? yyjson_read(request, strlen(request), 0) : NULL;
@@ -5082,7 +5055,7 @@ char *blueprints_ctl_handle(const blueprints_ctl_context *context, const char *r
         if (document) {
             yyjson_doc_free(document);
         }
-        char *response = blueprints_automation_handle(request, root, exit_code);
+        char *response = chibi_automation_handle(request, root, exit_code);
         char *legacy = legacy_response(response, "", "", exit_code);
         free(response);
         return legacy;
@@ -5093,8 +5066,8 @@ char *blueprints_ctl_handle(const blueprints_ctl_context *context, const char *r
     const char *operation = legacy_operation(method);
     char *canonical = legacy_request(input, operation, root);
     yyjson_doc_free(document);
-    int automation_status = BLUEPRINTS_AUTOMATION_OK;
-    char *response = blueprints_automation_handle(canonical, root, &automation_status);
+    int automation_status = CHIBI_AUTOMATION_OK;
+    char *response = chibi_automation_handle(canonical, root, &automation_status);
     free(canonical);
     if (exit_code) {
         *exit_code = automation_status;

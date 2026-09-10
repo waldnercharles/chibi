@@ -1,0 +1,125 @@
+{
+  "name": "ArenaPlayer",
+  "components": {
+    "GameTransform": {
+      "x": 320,
+      "y": -180
+    },
+    "GameMovement": {
+      "speed": 180
+    },
+    "GameInput": {
+      "move": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    "GameHealth": {
+      "current": 100,
+      "maximum": 100
+    },
+    "GameWeapon": {
+      "damage": 10,
+      "cooldown": 0.125
+    },
+    "GameCollider": {
+      "radius": 12,
+      "category": 1,
+      "mask": 10,
+      "shape": 0,
+      "width": 0,
+      "height": 0,
+      "sensor": false,
+      "ignore_entity": null
+    },
+    "GameOrientation": {
+      "radians": 0.0
+    },
+    "GameGeometry3D": {
+      "primitive": 7,
+      "width": 20,
+      "depth": 18,
+      "height": 18,
+      "elevation": 14
+    },
+    "GameAim": {
+      "direction": {
+        "x": 1,
+        "y": 0
+      },
+      "firing": false
+    },
+    "GameShader": {
+      "material": "ArenaPlayer",
+      "shape": "",
+      "parameters": "{}",
+      "bounds_x": 0,
+      "bounds_y": 0
+    },
+    "GameBody": {
+      "type": 1,
+      "continuous": true
+    },
+    "GameVelocity": {
+      "x": 0,
+      "y": 0
+    },
+    "GameEncounterMember": {
+      "role": 0
+    },
+    "GamePointLight": {
+      "color": 953090047,
+      "intensity": 0.65,
+      "radius": 62,
+      "elevation": 18
+    },
+    "GameSurfaceInfluence": {
+      "color": 953090047,
+      "strength": 0.19,
+      "radius": 22,
+      "linger": 0.22
+    },
+    "GameVisualTransform": {
+      "pitch": 0,
+      "yaw": 0,
+      "roll": 0,
+      "scale": 1
+    },
+    "GameExperience": {
+      "current": 0
+    },
+    "GameParticleEmitter": {
+      "shape": 0,
+      "color": 3304783871,
+      "end_color": 394308096,
+      "rate": 160,
+      "lifetime": 0.24,
+      "speed": 105,
+      "size": 2.2,
+      "spread": 0.2,
+      "drag": 1.5,
+      "emission": 1.3,
+      "size_exponent": 0.85,
+      "velocity_inherit": 1,
+      "offset": {
+        "x": -11,
+        "y": 0,
+        "z": 0
+      },
+      "direction": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      }
+    }
+  },
+  "behaviors": [
+    "TwinStickInputBehavior",
+    "TwinStickWeaponBehavior",
+    "HealthBehavior",
+    "PlayerContactBehavior",
+    "ArenaShipMotionBehavior",
+    "CombatFeedback",
+    "ArenaImpactFeedback"
+  ]
+}

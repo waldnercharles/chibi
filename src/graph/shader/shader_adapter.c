@@ -1,5 +1,6 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/shader/shader_graph.h"
+#include "graph/shader/shader_image.h"
 #include "support/array.h"
 
 #include <stdio.h>
@@ -22,6 +23,7 @@ typedef struct
 {
     shader_graph *ir;
     shader_error *error;
+    const node *parameters[SHADER_PARAMETER_MAX];
     int depth;
 } lowering;
 static int error(lowering *l, uint64_t id, const char *message)
@@ -55,6 +57,48 @@ static int width(const pin_spec *pin)
         return 4;
     }
     return 0;
+}
+int shader_node_input_context(const node *n, int pin, const char **label)
+{
+    if (label) {
+        *label = NULL;
+    }
+    if (pin < 0 || pin >= n->input_count || n->input_pins[pin].type != PIN_STRUCT ||
+        n->input_pins[pin].container != PIN_CONTAINER_SINGLE) {
+        return -1;
+    }
+    int context = -1;
+    const char *name = n->desc->name;
+    if (!strcmp(name, "Shader Fresnel") && pin < 2) {
+        context = pin == 0 ? SHADER_NORMAL : SHADER_VIEW_DIRECTION;
+    }
+    if (pin == 0) {
+        if (!strcmp(name, "Shader Mapping") || !strcmp(name, "Shader Gradient") ||
+            !strcmp(name, "Shader Image Texture")) {
+            context = SHADER_UV;
+        }
+        if (!strcmp(name, "Shader Mapping3D")) {
+            context = SHADER_OBJECT_POSITION;
+        }
+        if (!strcmp(name, "Shader Surface Influence")) {
+            context = SHADER_WORLD_POSITION;
+        }
+        if (!strcmp(name, "Shader Fractal Noise") || !strcmp(name, "Shader Voronoi")) {
+            context = width(&n->input_pins[pin]) == 2 ? SHADER_UV
+                                                      : SHADER_OBJECT_POSITION;
+        }
+    }
+    if (label) {
+        switch (context) {
+            case SHADER_UV: *label = "Surface UV"; break;
+            case SHADER_OBJECT_POSITION: *label = "Object Position"; break;
+            case SHADER_WORLD_POSITION: *label = "World Position"; break;
+            case SHADER_NORMAL: *label = "Surface Normal"; break;
+            case SHADER_VIEW_DIRECTION: *label = "View Direction"; break;
+            default: break;
+        }
+    }
+    return context;
 }
 static int literal(lowering *l, const pin_spec *pin, uint64_t id)
 {
@@ -92,7 +136,19 @@ static int input(lowering *l, scope *s, const node *n, int pin)
         }
         return output(l, s, from, from_pin);
     }
-    return literal(l, &n->input_pins[pin], n->id);
+    const pin_spec *spec = &n->input_pins[pin];
+    if (spec->binding) {
+        return error(l, n->id, "Input bindings are unavailable in shader graphs");
+    }
+    if (spec->type == PIN_STRUCT && !spec->default_value.ptr) {
+        int context = shader_node_input_context(n, pin, NULL);
+        if (context >= 0) {
+            int result = shader_graph_add(l->ir, context, width(spec));
+            l->ir->nodes[result].source_id = n->id;
+            return result;
+        }
+    }
+    return literal(l, spec, n->id);
 }
 static int call(lowering *l, scope *s, const node *n, int pin)
 {
@@ -174,6 +230,34 @@ static int operation(const node *n)
     }
     return -1;
 }
+static int image_source(lowering *l, const node *n)
+{
+    if (n->input_count != SHADER_IMAGE_INPUT_COUNT ||
+        n->input_pins[SHADER_IMAGE_INPUT_IMAGE].type != PIN_STR ||
+        n->input_pins[SHADER_IMAGE_INPUT_IMAGE].container != PIN_CONTAINER_SINGLE) {
+        return error(l, n->id, "Image Texture has an invalid image setting");
+    }
+    for (int i = SHADER_IMAGE_INPUT_COLOR_SPACE; i < SHADER_IMAGE_INPUT_COUNT; i++) {
+        if (n->input_pins[i].type != PIN_I32 ||
+            n->input_pins[i].container != PIN_CONTAINER_SINGLE) {
+            return error(l, n->id, "Image Texture settings must be integer selections");
+        }
+    }
+    const pin_spec *pins = n->input_pins;
+    shader_image_source source = {
+        .key = (char *)pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
+        .color_space = pins[SHADER_IMAGE_INPUT_COLOR_SPACE].default_value.i,
+        .filter = pins[SHADER_IMAGE_INPUT_FILTER].default_value.i,
+        .wrap = pins[SHADER_IMAGE_INPUT_WRAP].default_value.i
+    };
+    if (!source.key || !*source.key) {
+        return error(l, n->id, "Choose an image for Image Texture");
+    }
+    if (!shader_image_source_valid(&source)) {
+        return error(l, n->id, "Image Texture has an invalid color space, filter or wrap selection");
+    }
+    return shader_graph_add_image(l->ir, &source);
+}
 static int lower_node(lowering *l, scope *s, const node *n, int pin)
 {
     if (n->disabled) {
@@ -206,6 +290,45 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
         }
         return error(l, n->id, "Node is not supported in shader graphs");
     }
+    for (int j = 0; j < n->input_count && j < n->desc->input_count; j++) {
+        node *source = NULL;
+        int source_pin = 0;
+        if ((n->desc->inputs[j].flags & PIN_FLAG_SETTING) &&
+            graph_input_source(s->source, n, j, &source, &source_pin)) {
+            return error(l, n->id, "Shader settings must be authored constants");
+        }
+    }
+    if (op == SHADER_VORONOI && pin == 1) {
+        op = SHADER_VORONOI_COLOR;
+    }
+    if (op == SHADER_COLOR_RAMP && pin == 1) {
+        op = SHADER_COLOR_RAMP_ALPHA;
+    }
+    int image = -1;
+    if (op == SHADER_IMAGE_TEXTURE) {
+        image = image_source(l, n);
+        if (image < 0) {
+            return -1;
+        }
+        if (pin == 1) {
+            op = SHADER_IMAGE_TEXTURE_ALPHA;
+        }
+    }
+    shader_ramp_stop stops[SHADER_RAMP_MAX];
+    int stop_count = 0;
+    if (op == SHADER_COLOR_RAMP || op == SHADER_COLOR_RAMP_ALPHA) {
+        stop_count = shader_node_ramp_get(n, stops);
+        if (!shader_ramp_valid(stops, stop_count)) {
+            return error(l, n->id, "Color Ramp needs 2 to 16 ordered, finite stops in [0,1]");
+        }
+    }
+    int setting = op == SHADER_GRADIENT ? 1 : stop_count ? 2 : -1;
+    if (setting >= 0 &&
+        (n->input_pins[setting].type != PIN_I32 ||
+         n->input_pins[setting].default_value.i < 0 ||
+         n->input_pins[setting].default_value.i > (stop_count ? 2 : 3))) {
+        return error(l, n->id, "Invalid shader setting selection");
+    }
     int args[4] = { -1, -1, -1, -1 }, w = width(&n->output_pins[pin]);
     if (!w) {
         return error(l, n->id, "Unsupported shader output type");
@@ -214,7 +337,7 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
         if (j >= n->input_count) {
             return error(l, n->id, "Missing shader input");
         }
-        args[j] = input(l, s, n, j);
+        args[j] = input(l, s, n, stop_count && j == 1 ? 2 : j);
         if (args[j] < 0) {
             return -1;
         }
@@ -222,8 +345,22 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
     int index = shader_graph_add(l->ir, op, w);
     shader_node *ir = &l->ir->nodes[index];
     ir->source_id = n->id;
+    ir->image = image;
     memcpy(ir->input, args, sizeof args);
+    for (int i = 0; i < stop_count; i++) {
+        apush(ir->ramp, stops[i]);
+    }
     if (op == SHADER_CONSTANT || op == SHADER_PARAMETER) {
+        if (op == SHADER_PARAMETER) {
+            if (n->reference_id >= SHADER_PARAMETER_MAX) {
+                return error(l, n->id, "Parameter slot must be between 0 and 31");
+            }
+            const node *previous = l->parameters[n->reference_id];
+            if (previous && previous != n) {
+                return error(l, n->id, "Distinct Shader Parameters must use different slots");
+            }
+            l->parameters[n->reference_id] = n;
+        }
         /* literal creates one node; copy its value, then drop the temporary. */
         int value = literal(l, &n->output_pins[pin], n->id);
         if (value < 0) {
@@ -269,7 +406,7 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
     const node *root = NULL;
     for (int i = 0; i < acount(source->nodes); i++) {
         node *n = source->nodes[i];
-        if (strcmp(n->desc->name, "Shader Material Output") &&
+        if (strcmp(n->desc->name, "Shader Surface Output") &&
             strcmp(n->desc->name, "Shader Shape Output")) {
             continue;
         }
@@ -280,12 +417,19 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
         root = n;
     }
     if (!root) {
-        error(&l, 0, "Shader graph needs a Material or Shape Output node");
+        error(&l, 0, "Shader graph needs a Surface or Shape Output node");
+        goto failed;
+    }
+    bool shape = !strcmp(root->desc->name, "Shader Shape Output");
+    if (source->owner &&
+        ((source->owner->domain == BEHAVIOR_DOMAIN_MATERIAL && shape) ||
+         (source->owner->domain == BEHAVIOR_DOMAIN_SHAPE && !shape))) {
+        error(&l, root->id, "Shader output does not match the asset domain");
         goto failed;
     }
     ir.output_count = root->input_count;
-    if (ir.output_count > SHADER_OUTPUT_MAX) {
-        error(&l, root->id, "Too many shader outputs");
+    if (ir.output_count != (shape ? 1 : 7)) {
+        error(&l, root->id, "Shader output has the wrong number of inputs");
         goto failed;
     }
     for (int i = 0; i < ir.output_count; i++) {
@@ -295,7 +439,7 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
         }
     }
     for (int i = 0; i < ir.output_count; i++) {
-        int expected = ir.output_count == 1 ? 1 : 4;
+        int expected = ir.output_count == 1 || (i != 0 && i != 1 && i != 4) ? 1 : 3;
         if (ir.nodes[ir.output[i]].width != expected) {
             error(&l, root->id, "Shader output has the wrong type");
             goto failed;

@@ -53,6 +53,7 @@ static const float UI_HOVER_TIME_CONSTANT = 0.04f;
 static const float UI_PRESS_DURATION = 0.1f;
 static const float UI_POPUP_DURATION = 0.125f;
 static const float UI_CONTROLS_DURATION = 0.2f;
+static const float UI_SCROLL_SMOOTHNESS = 10.0f;
 static const int UI_PRIMARY_MOUSE_BUTTON = 0;
 static const editor_icon UI_SEARCH_GLYPH = EDITOR_ICON_FA_SEARCH;
 
@@ -71,8 +72,13 @@ static void ui_sidebar_begin(int side);
 static bool ui_navigation_back;
 static bool ui_navigation_forward;
 static int ui_navigation_request;
+static bool ui_document_bar_visible;
+static ImVec2 ui_document_bar_pos;
+static ImVec2 ui_document_bar_size;
+static const float UI_DOCUMENT_BAR_HEIGHT = 40.0f;
 
 static void ui_sidebar_heading(int side);
+static bool ui_navigator_visible(void);
 static bool ui_focus_visibility[EDITOR_UI_PANE_COUNT];
 static bool ui_reduce_motion;
 static bool ui_navigator_outline;
@@ -106,6 +112,7 @@ static void ui_set_default_visibility(void)
     }
     ui_pane_visibility[EDITOR_UI_PANE_COMPILER_RESULTS] = false;
     ui_pane_visibility[EDITOR_UI_PANE_OUTPUT_LOG] = false;
+    ui_pane_visibility[EDITOR_UI_PANE_PERFORMANCE] = false;
     ui_visibility_initialized = true;
 }
 
@@ -113,8 +120,8 @@ static void ui_ensure_visibility(void);
 
 static bool ui_load_focus;
 static const char *const UI_PANE_KEYS[EDITOR_UI_PANE_COUNT] = {
-    "Content", "Outliner", "Behavior", "Inspector",
-    "Graph",   "Scene",    "Compiler", "Log"
+    "Content", "Outliner", "Behavior", "Inspector",  "Graph",
+    "Scene",   "Compiler", "Log",      "Performance"
 };
 
 static void ui_settings_clear(ImGuiContext *, ImGuiSettingsHandler *)
@@ -183,7 +190,7 @@ static void ui_settings_apply(ImGuiContext *, ImGuiSettingsHandler *)
 
 static void ui_settings_write(ImGuiContext *, ImGuiSettingsHandler *, ImGuiTextBuffer *out)
 {
-    ImGuiTextBuffer_appendf(out, "[Blueprints][Workspace]\nFocus=%d\nReduceMotion=%d\n", ui_focus_mode, ui_reduce_motion);
+    ImGuiTextBuffer_appendf(out, "[Chibi][Workspace]\nFocus=%d\nReduceMotion=%d\n", ui_focus_mode, ui_reduce_motion);
     ImGuiTextBuffer_appendf(out, "NavigatorOutline=%d\n", ui_navigator_outline);
     ImGuiTextBuffer_appendf(
         out,
@@ -210,11 +217,11 @@ void editor_ui_initialize(bool persist)
     if (!persist) {
         ImGui_GetIO()->IniFilename = NULL;
     }
-    ImGui_RemoveSettingsHandler("Blueprints");
+    ImGui_RemoveSettingsHandler("Chibi");
     ui_ensure_visibility();
     ImGuiSettingsHandler handler = {
-        .TypeName = "Blueprints",
-        .TypeHash = cImHashStr("Blueprints"),
+        .TypeName = "Chibi",
+        .TypeHash = cImHashStr("Chibi"),
         .ClearAllFn = ui_settings_clear,
         .ReadInitFn = ui_settings_clear,
         .ReadOpenFn = ui_settings_open,
@@ -245,6 +252,9 @@ bool editor_ui_reduced_motion()
 void editor_ui_set_reduced_motion(bool enabled)
 {
     ui_reduce_motion = enabled;
+    if (ui_context) {
+        ImGui_GetStyle()->ScrollSmooth = enabled ? 1.0f : UI_SCROLL_SMOOTHNESS;
+    }
     ui_settings_changed();
 }
 
@@ -296,6 +306,7 @@ static editor_ui_focus_target ui_pane_focus(editor_ui_pane pane)
         case EDITOR_UI_PANE_COMPILER_RESULTS:
             return EDITOR_UI_FOCUS_COMPILER_RESULTS;
         case EDITOR_UI_PANE_OUTPUT_LOG: return EDITOR_UI_FOCUS_OUTPUT_LOG;
+        case EDITOR_UI_PANE_PERFORMANCE:
         case EDITOR_UI_PANE_COUNT: break;
     }
     return EDITOR_UI_FOCUS_NONE;
@@ -504,7 +515,7 @@ bool editor_ui_begin_navigator(editor_ui_pane *outline, bool has_document, edito
         editor_ui_pane pane;
         bool visible;
     } tabs[] = {
-        { "Files", "navigator.files", EDITOR_UI_PANE_CONTENT, files },
+        { "Content", "navigator.files", EDITOR_UI_PANE_CONTENT, files },
         { "Scene", "navigator.scene", EDITOR_UI_PANE_WORLD_OUTLINER, scene },
         { "Document", "navigator.document", EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, document },
     };
@@ -547,6 +558,58 @@ int editor_ui_take_navigation()
     int request = ui_navigation_request;
     ui_navigation_request = 0;
     return request;
+}
+
+void editor_ui_request_navigation(int direction)
+{
+    assert(direction == -1 || direction == 1);
+    ui_navigation_request = direction;
+}
+
+void editor_ui_set_document_bar_visible(bool visible)
+{
+    ui_document_bar_visible = visible;
+}
+
+bool editor_ui_begin_document_bar()
+{
+    assert(ui_document_bar_visible);
+    ImGui_SetNextWindowPos(ui_document_bar_pos, ImGuiCond_Always);
+    ImGui_SetNextWindowSize(ui_document_bar_size, ImGuiCond_Always);
+    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 8.0f, 8.0f });
+    bool visible = ImGui_Begin(
+        "Workspace Documents",
+        NULL,
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDocking |
+            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings
+    );
+    ImGui_PopStyleVar();
+    if (!visible) {
+        return false;
+    }
+    if (editor_ui_icon_button("workspace.back", EDITOR_ICON_FA_ARROW_LEFT, ui_navigation_back)) {
+        editor_ui_request_navigation(-1);
+    }
+    editor_ui_track_item("workspace.back");
+    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui_SetTooltip("Go back");
+    }
+    ImGui_SameLine();
+    if (editor_ui_icon_button("workspace.forward", EDITOR_ICON_FA_ARROW_RIGHT, ui_navigation_forward)) {
+        editor_ui_request_navigation(1);
+    }
+    editor_ui_track_item("workspace.forward");
+    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui_SetTooltip("Go forward");
+    }
+    ImGui_SameLine();
+    return true;
+}
+
+bool editor_ui_navigator_visible(void)
+{
+    return ui_navigator_visible();
 }
 
 editor_ui_pane editor_ui_navigator_tab(editor_ui_pane outline)
@@ -1369,6 +1432,11 @@ void editor_ui_track_item(const char *id)
     );
 }
 
+void editor_ui_track_rect(const char *id, editor_ui_rect rect)
+{
+    apush(ui_item_hits, ((ui_item_hit){ cImHashStr(id), rect }));
+}
+
 static void ui_apply_theme(void)
 {
     ImGui_StyleColorsDark(NULL);
@@ -1386,6 +1454,7 @@ static void ui_apply_theme(void)
     style->ItemSpacing = (ImVec2){ 8.0f, 6.0f };
     style->ItemInnerSpacing = (ImVec2){ 6.0f, 4.0f };
     style->IndentSpacing = 18.0f;
+    style->ScrollSmooth = ui_reduce_motion ? 1.0f : UI_SCROLL_SMOOTHNESS;
     style->ScrollbarSize = 12.0f;
     style->ScrollbarRounding = 4.0f;
     style->GrabMinSize = 10.0f;
@@ -1553,7 +1622,7 @@ static void ui_draw_menu(void)
         return;
     }
     ui_menu_bottom = ImGui_GetWindowPos().y + ImGui_GetWindowSize().y;
-    ImGui_TextColoredUnformatted(UI_ACCENT, "Blueprints");
+    ImGui_TextColoredUnformatted(UI_ACCENT, "Chibi");
     bool open = ImGui_BeginMenu("File");
     editor_ui_track_item("file.menu");
     if (open) {
@@ -1588,6 +1657,7 @@ static void ui_draw_menu(void)
         ImGui_Separator();
         ui_pane_menu_item("Compiler Results", "view.compiler_results", EDITOR_UI_PANE_COMPILER_RESULTS);
         ui_pane_menu_item("Output Log", "view.output_log", EDITOR_UI_PANE_OUTPUT_LOG);
+        ui_pane_menu_item("Performance", "view.performance", EDITOR_UI_PANE_PERFORMANCE);
         ImGui_Separator();
         if (ImGui_MenuItemEx("Reset Layout", NULL, false, true)) {
             editor_ui_reset_layout();
@@ -1764,16 +1834,6 @@ static void ui_sidebar_heading(int side)
     editor_ui_track_item(side ? "inspector.collapse" : "navigator.collapse");
     if (!side) {
         ImGui_SameLine();
-        if (editor_ui_icon_button("back", EDITOR_ICON_FA_ARROW_LEFT, ui_navigation_back)) {
-            ui_navigation_request = -1;
-        }
-        editor_ui_track_item("navigator.back");
-        ImGui_SameLine();
-        if (editor_ui_icon_button("forward", EDITOR_ICON_FA_ARROW_RIGHT, ui_navigation_forward)) {
-            ui_navigation_request = 1;
-        }
-        editor_ui_track_item("navigator.forward");
-        ImGui_SameLine();
         ImGui_TextUnformatted("Navigator");
     }
     ImGui_Separator();
@@ -1842,6 +1902,13 @@ void editor_ui_prepare(void)
         ui_workspace.WorkPos.y += inset;
         ui_workspace.WorkSize.y = fmaxf(1.0f, ui_workspace.WorkSize.y - inset);
     }
+    if (ui_document_bar_visible) {
+        ui_document_bar_pos = ui_workspace.WorkPos;
+        ui_document_bar_size = (ImVec2){ ui_workspace.WorkSize.x,
+                                         UI_DOCUMENT_BAR_HEIGHT };
+        ui_workspace.WorkPos.y += UI_DOCUMENT_BAR_HEIGHT;
+        ui_workspace.WorkSize.y = fmaxf(1.0f, ui_workspace.WorkSize.y - UI_DOCUMENT_BAR_HEIGHT);
+    }
     ui_prepare_sidebars();
     ImGuiViewport layout = ui_workspace;
     layout.WorkPos.x += ui_sidebar_size[0];
@@ -1870,7 +1937,7 @@ char *editor_ui_checkpoint()
 
 bool editor_ui_restore_checkpoint(const char *ini)
 {
-    if (!ini || !strstr(ini, "[Blueprints][Workspace]")) {
+    if (!ini || !strstr(ini, "[Chibi][Workspace]")) {
         return false;
     }
     ImGui_LoadIniSettingsFromMemory(ini, strlen(ini));
@@ -1881,7 +1948,7 @@ void editor_ui_deactivate()
 {
     ImGui_ClearActiveID();
     ImGui_ClosePopupsOverWindow(NULL, false);
-    ImGui_RemoveSettingsHandler("Blueprints");
+    ImGui_RemoveSettingsHandler("Chibi");
     ui_command_handler = NULL;
     ui_command_user = NULL;
     ui_graph_debug_header = NULL;

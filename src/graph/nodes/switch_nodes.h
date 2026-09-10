@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_SWITCH_NODES_H
-#define CBLUEPRINT_SWITCH_NODES_H
+#ifndef CHIBI_SWITCH_NODES_H
+#define CHIBI_SWITCH_NODES_H
 
 #include "graph/model/node.h"
 

@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_TEST_SUITE_INTERNAL_H
-#define CBLUEPRINT_TEST_SUITE_INTERNAL_H
+#ifndef CHIBI_TEST_SUITE_INTERNAL_H
+#define CHIBI_TEST_SUITE_INTERNAL_H
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
@@ -70,6 +70,7 @@ extern void test_flags();
 extern void test_particles();
 extern void test_labels();
 extern bool test_ui_keyboard();
+extern bool test_ui_scroll_smoothing();
 extern bool test_gameplay_keyboard();
 extern void test_math_expression();
 extern void test_behavior_math();
@@ -155,5 +156,6 @@ void run_graph_functions_checks();
 void run_runtime_arrays_checks();
 void run_runtime_catalog_checks();
 void run_support_format_checks();
+void run_content_catalog_checks();
 
 #endif

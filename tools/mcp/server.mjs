@@ -9,7 +9,7 @@ const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
 const serverVersion = "0.1.0";
 const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const configuredRoot = process.env.CBLUEPRINTS_ROOT;
+const configuredRoot = process.env.CHIBI_ROOT;
 const root = configuredRoot
   ? resolve(isAbsolute(configuredRoot) ? configuredRoot : resolve(serverRoot, configuredRoot))
   : serverRoot;
@@ -25,7 +25,7 @@ function isObject(value) {
 }
 
 function responseLimitBytes() {
-  const value = Number(process.env.CBLUEPRINTS_CTL_MAX_RESPONSE_BYTES || 32 * 1024 * 1024);
+  const value = Number(process.env.CHIBI_CTL_MAX_RESPONSE_BYTES || 32 * 1024 * 1024);
   return Number.isSafeInteger(value) && value > 0 ? value : 32 * 1024 * 1024;
 }
 
@@ -43,27 +43,27 @@ function negotiateProtocolVersion(requested) {
 
 function resourceTemplates() {
   return [{
-    uriTemplate: "blueprints://asset/{kind}/{name}",
-    name: "c-blueprints authored asset",
+    uriTemplate: "chibi://asset/{kind}/{name}",
+    name: "Chibi authored asset",
     mimeType: "application/json",
   }, {
-    uriTemplate: "blueprints://asset/{kind}/{name}/dependencies",
-    name: "c-blueprints asset dependencies",
+    uriTemplate: "chibi://asset/{kind}/{name}/dependencies",
+    name: "Chibi asset dependencies",
     mimeType: "application/json",
   }, {
-    uriTemplate: "blueprints://asset/{kind}/{name}/graph/{graph_id}",
-    name: "c-blueprints normalized graph",
+    uriTemplate: "chibi://asset/{kind}/{name}/graph/{graph_id}",
+    name: "Chibi normalized graph",
     mimeType: "application/json",
   }];
 }
 
 function controllerPath() {
   const candidates = [
-    process.env.CBLUEPRINTS_CTL,
-    resolve(root, "build", "blueprints_ctl"),
-    resolve(root, "build-release", "blueprints_ctl"),
+    process.env.CHIBI_CTL,
+    resolve(root, "build", "chibi_ctl"),
+    resolve(root, "build-release", "chibi_ctl"),
   ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "blueprints_ctl";
+  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
 }
 
 function send(message) {
@@ -105,7 +105,7 @@ class ControllerSession {
     this.child.on("exit", (code, signal) => {
       if (!this.closed) {
         const detail = signal ? `terminated by ${signal}` : `exited with status ${code}`;
-        this.fail(new Error(`blueprints_ctl ${detail}${this.stderr ? `: ${this.stderr.trim()}` : ""}`));
+        this.fail(new Error(`chibi_ctl ${detail}${this.stderr ? `: ${this.stderr.trim()}` : ""}`));
       }
     });
   }
@@ -123,7 +123,7 @@ class ControllerSession {
     }
     this.pending = this.queue.shift();
     this.timer = setTimeout(() => {
-      const error = protocolError(-32001, "blueprints_ctl request timed out");
+      const error = protocolError(-32001, "chibi_ctl request timed out");
       this.fail(error);
     }, this.pending.timeout);
     const line = `${JSON.stringify(this.pending.payload)}\n`;
@@ -137,7 +137,7 @@ class ControllerSession {
   receive(chunk) {
     this.buffer += chunk;
     if (Buffer.byteLength(this.buffer, "utf8") > this.maxResponseBytes) {
-      this.fail(protocolError(-32003, "blueprints_ctl response exceeded the configured size limit"));
+      this.fail(protocolError(-32003, "chibi_ctl response exceeded the configured size limit"));
       return;
     }
     let newline;
@@ -148,7 +148,7 @@ class ControllerSession {
         continue;
       }
       if (!this.pending) {
-        this.fail(new Error("blueprints_ctl returned an unsolicited response"));
+        this.fail(new Error("chibi_ctl returned an unsolicited response"));
         return;
       }
       const request = this.pending;
@@ -158,8 +158,8 @@ class ControllerSession {
       try {
         request.resolveRequest(JSON.parse(line));
       } catch (error) {
-        request.rejectRequest(protocolError(-32603, `blueprints_ctl returned invalid JSON: ${error.message}`));
-        this.fail(new Error("blueprints_ctl returned invalid JSON"));
+        request.rejectRequest(protocolError(-32603, `chibi_ctl returned invalid JSON: ${error.message}`));
+        this.fail(new Error("chibi_ctl returned invalid JSON"));
         return;
       }
       this.pump();
@@ -175,7 +175,7 @@ class ControllerSession {
     this.timer = null;
     const failure = error.rpcCode
       ? error
-      : protocolError(-32603, `blueprints_ctl failed: ${error.message}`);
+      : protocolError(-32603, `chibi_ctl failed: ${error.message}`);
     if (this.pending) {
       this.pending.rejectRequest(failure);
       this.pending = null;
@@ -199,7 +199,7 @@ class ControllerSession {
     this.closed = true;
     clearTimeout(this.timer);
     this.timer = null;
-    const error = protocolError(-32603, "blueprints_ctl session closed");
+    const error = protocolError(-32603, "chibi_ctl session closed");
     if (this.pending) {
       this.pending.rejectRequest(error);
       this.pending = null;
@@ -486,7 +486,7 @@ function rawToolDefinitions() {
 }
 
 async function nativeRequest(operation, args = {}) {
-  const timeoutValue = Number(process.env.CBLUEPRINTS_CTL_TIMEOUT_MS || 30000);
+  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 30000);
   const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
   if (!controllerSession || controllerSession.closed) {
     controllerSession = new ControllerSession();
@@ -648,7 +648,7 @@ async function resourceRead(uri) {
   if (typeof uri !== "string" || !uri) {
     throw protocolError(-32602, "resources/read requires a URI string");
   }
-  if (!uri.startsWith("blueprints://")) {
+  if (!uri.startsWith("chibi://")) {
     throw protocolError(-32602, `invalid resource URI: ${uri}`);
   }
   const decode = (value) => {
@@ -659,12 +659,12 @@ async function resourceRead(uri) {
     }
   };
   let response;
-  if (uri === "blueprints://project/status") {
+  if (uri === "chibi://project/status") {
       response = await nativeRequest("status");
-  } else if (uri === "blueprints://catalog") {
+  } else if (uri === "chibi://catalog") {
     response = await nativeRequest("catalog");
   } else {
-    const graphMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
+    const graphMatch = /^chibi:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
     if (graphMatch) {
       const graphId = Number(decode(graphMatch[3]));
       if (!Number.isSafeInteger(graphId) || graphId < 0) {
@@ -676,14 +676,14 @@ async function resourceRead(uri) {
         graph_id: graphId,
       });
     }
-    const dependencyMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
+    const dependencyMatch = /^chibi:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
     if (response === undefined && dependencyMatch) {
       response = await nativeRequest("asset_dependencies", {
         kind: decode(dependencyMatch[1]),
         name: decode(dependencyMatch[2]),
       });
     }
-    const match = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
+    const match = /^chibi:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
     if (response === undefined && !match) {
       throw protocolError(-32002, `resource not found: ${uri}`);
     }
@@ -722,7 +722,7 @@ async function dispatch(message) {
       result: {
         protocolVersion: negotiateProtocolVersion(message.params?.protocolVersion),
         capabilities: { tools: {}, resources: {} },
-        serverInfo: { name: "c-blueprints", version: serverVersion },
+        serverInfo: { name: "chibi", version: serverVersion },
       },
     });
   }
@@ -738,12 +738,12 @@ async function dispatch(message) {
       id: message.id,
       result: {
         resources: [{
-          uri: "blueprints://project/status",
-          name: "c-blueprints project status",
+          uri: "chibi://project/status",
+          name: "Chibi project status",
           mimeType: "application/json",
         }, {
-          uri: "blueprints://catalog",
-          name: "c-blueprints semantic asset catalog",
+          uri: "chibi://catalog",
+          name: "Chibi semantic asset catalog",
           mimeType: "application/json",
         }],
       },

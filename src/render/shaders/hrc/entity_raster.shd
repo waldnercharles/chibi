@@ -8,31 +8,19 @@
 // Dispatch: (tiles_x, tiles_y, 1)
 
 #include "entity.shd"
+#ifndef SG_ENTITY_BINDING
+#define SG_ENTITY_BINDING 0
+#define SG_COUNTS_BINDING 1
+#define SG_INDICES_BINDING 2
+#define SG_PARAMETERS_BINDING 3
+#endif
+#ifndef SG_RAMP_COUNT
+#define SG_RAMP_COUNT 512
+#endif
 #ifndef SG_GRAPHS
-void sg_dispatch(int id,vec2 p,vec2 wp,float time,vec4 values[32],out vec4 result[8]) {
+void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[8]) {
  for(int i=0;i<8;i++) result[i]=vec4(0);
 }
-#endif
-
-layout(set = 0, binding = 0) readonly buffer EntityBuf {
-    Entity entities[];
-};
-
-layout(set = 0, binding = 1) readonly buffer TileCounts {
-    uint tile_counts[];
-};
-
-layout(set = 0, binding = 2) readonly buffer TileEntities {
-    uint tile_entities[];
-};
-
-layout(set = 0, binding = 3) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
-
-layout(set = 1, binding = 0, rgba16f) uniform image2D u_scene;
-layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
-layout(set = 1, binding = 2, rgba16f) uniform image2D u_transmittance;
-layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
-
 layout(set = 2, binding = 0) uniform Params {
     int u_entity_count;
     float u_world_min_x;
@@ -43,7 +31,31 @@ layout(set = 2, binding = 0) uniform Params {
     int u_canvas_w;
     int u_canvas_h;
     int u_max_per_tile;
+    int u_first_entity;
+    int u_last_entity;
+    int u_metaball_group;
+    int u_accumulate;
+    vec4 sg_ramp_data[SG_RAMP_COUNT];
 };
+#endif
+layout(set = 0, binding = SG_ENTITY_BINDING) readonly buffer EntityBuf {
+    Entity entities[];
+};
+
+layout(set = 0, binding = SG_COUNTS_BINDING) readonly buffer TileCounts {
+    uint tile_counts[];
+};
+
+layout(set = 0, binding = SG_INDICES_BINDING) readonly buffer TileEntities {
+    uint tile_entities[];
+};
+
+layout(set = 0, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
+
+layout(set = 1, binding = 0, rgba16f) uniform image2D u_scene;
+layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
+layout(set = 1, binding = 2, rgba16f) uniform image2D u_transmittance;
+layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -128,6 +140,24 @@ float sdf_polygon_filled(vec2 p, Entity e)
     return (winding != 0.0) ? -min_d : min_d;
 }
 
+vec2 shader_half_size(Entity e)
+{
+    if (e.shape_type == SHAPE_CIRCLE)
+        return vec2(e.radius + e.thickness * 0.5);
+    if (e.shape_type == SHAPE_DIAMOND)
+        return vec2(e.radius + e.chubbiness + e.thickness * 0.5);
+    if (e.shape_type == SHAPE_BOX)
+        return abs(e.points_01.xy) + e.thickness * 0.5;
+    vec2 bounds = max(abs(e.points_01.xy), abs(e.points_01.zw));
+    if (e.shape_type == SHAPE_CAPSULE) return bounds + e.radius + e.thickness * 0.5;
+    if (e.shape_type == SHAPE_LINE) return bounds + e.thickness * 0.5;
+    vec2 points[6] = vec2[6](e.points_23.xy,e.points_23.zw,e.points_45.xy,
+                            e.points_45.zw,e.points_67.xy,e.points_67.zw);
+    int count = e.shape_type == SHAPE_TRI ? 3 : clamp(int(e.point_count),3,8);
+    for (int i = 2; i < count; i++) bounds = max(bounds, abs(points[i-2]));
+    return bounds + e.chubbiness + e.thickness * 0.5;
+}
+
 float evaluate_sdf(vec2 local_p, Entity e)
 {
     uint shape = e.shape_type;
@@ -190,10 +220,10 @@ void main()
     uint base = tile_idx * uint(u_max_per_tile);
 
     // Accumulators (initialized to canvas clear colors).
-    vec4 scene_acc = vec4(0, 0, 0, 0);
-    vec4 emission_acc = vec4(0, 0, 0, 1);
-    vec4 trans_acc = vec4(0, 0, 0, 0);
-    vec4 albedo_acc = vec4(0, 0, 0, 1);
+    vec4 scene_acc = u_accumulate != 0 ? imageLoad(u_scene, pixel) : vec4(0, 0, 0, 0);
+    vec4 emission_acc = u_accumulate != 0 ? imageLoad(u_emission, pixel) : vec4(0, 0, 0, 1);
+    vec4 trans_acc = u_accumulate != 0 ? imageLoad(u_transmittance, pixel) : vec4(0, 0, 0, 0);
+    vec4 albedo_acc = u_accumulate != 0 ? imageLoad(u_albedo, pixel) : vec4(0, 0, 0, 1);
 
     // Metaball group accumulators.
     #define MAX_METABALL_GROUPS 4
@@ -227,7 +257,9 @@ void main()
     // No workgroup barriers: partial edge tiles may safely return above.
     for (uint i = 0u; i < total; i++) {
         uint eidx = tile_entities[base + i];
+        if (eidx < uint(u_first_entity) || eidx >= uint(u_last_entity)) continue;
         Entity e = entities[eidx];
+        if (e.metaball_group != uint(u_metaball_group)) continue;
 
         // Transform pixel to entity local space.
         vec2 dp = world_pos - e.pos;
@@ -280,16 +312,17 @@ void main()
         }
 
         float sdf = evaluate_sdf(local_p, e);
+        vec2 half_size = shader_half_size(e);
         vec4 graph_output[8];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
-            sg_dispatch(int(e.reserved1), local_p, world_pos, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved1), local_p, world_pos, half_size, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
-            sg_dispatch(int(e.reserved0), local_p, world_pos, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved0), local_p, world_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.transmittance=graph_output[3];
             e.border_scene=graph_output[4]; e.border_emission=graph_output[5];

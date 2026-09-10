@@ -2,6 +2,7 @@
 
 #include "editor/ui/ui_shell.h"
 
+#include <assert.h>
 #include <imgui/dcimgui.h>
 #include <math.h>
 #include <stdio.h>
@@ -28,12 +29,20 @@ bool editor_color_draw(editor_color_state *state, const char *id, unsigned *valu
         return false;
     }
     unsigned original = *value;
+    ImVec2 picker_min = ImGui_GetCursorScreenPos();
+    float row_height = ImGui_GetFrameHeight();
     ImGui_SetNextItemWidth(240.0f);
     bool picker_changed = ImGui_ColorPicker4(
         "##rgba",
         rgba,
-        ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_NoInputs,
+        ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_DisplayRGB |
+            ImGuiColorEditFlags_DisplayHSV,
         NULL
+    );
+    ImVec2 picker_max = ImGui_GetItemRectMax();
+    editor_ui_track_rect(
+        "color.hsv",
+        (editor_ui_rect){ picker_min.x, picker_max.y - row_height, 240.0f, row_height }
     );
     editor_ui_track_item("color.picker");
     if (picker_changed) {
@@ -69,4 +78,56 @@ bool editor_color_open(const char *id)
     bool open = ImGui_IsPopupOpen("picker", 0);
     ImGui_PopID();
     return open;
+}
+
+bool editor_color_draw_float(
+    editor_color_state *state,
+    const char *id,
+    float value[4],
+    int channels,
+    bool *first_change
+)
+{
+    assert(channels == 3 || channels == 4);
+    *first_change = false;
+    ImGui_PushID(id);
+    ImVec4 swatch = { value[0], value[1], value[2], channels == 4 ? value[3] : 1 };
+    if (ImGui_ColorButtonEx(
+            "##swatch",
+            swatch,
+            ImGuiColorEditFlags_HDR,
+            (ImVec2){ ImGui_CalcItemWidth(), ImGui_GetFrameHeight() }
+        )) {
+        state->changed = false;
+        ImGui_OpenPopup("picker", 0);
+    }
+    editor_ui_track_item(id);
+    if (!ImGui_BeginPopup("picker", 0)) {
+        ImGui_PopID();
+        return false;
+    }
+    ImGui_SetNextItemWidth(260);
+    ImVec2 picker_min = ImGui_GetCursorScreenPos();
+    float row_height = ImGui_GetFrameHeight();
+    ImGuiColorEditFlags flags = ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float |
+                                ImGuiColorEditFlags_DisplayRGB |
+                                ImGuiColorEditFlags_DisplayHSV;
+    bool changed = channels == 3
+                     ? ImGui_ColorPicker3("##rgb", value, flags)
+                     : ImGui_ColorPicker4("##rgba", value, flags | ImGuiColorEditFlags_AlphaBar, NULL);
+    ImVec2 picker_max = ImGui_GetItemRectMax();
+    editor_ui_track_rect(
+        "color.hsv",
+        (editor_ui_rect){ picker_min.x, picker_max.y - row_height, 260.0f, row_height }
+    );
+    editor_ui_track_item("color.picker");
+    if (ImGui_Button("Done")) {
+        ImGui_CloseCurrentPopup();
+    }
+    editor_ui_track_item("color.done");
+    ImGui_EndPopup();
+    ImGui_PopID();
+    *first_change = changed && !state->changed;
+    state->changed |= changed;
+    return changed;
 }

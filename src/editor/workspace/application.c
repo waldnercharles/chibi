@@ -1,49 +1,59 @@
-#include "blueprints/application.h"
+#include "chibi/application.h"
 
 #include "assets/prototype.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
+#include "editor/workspace/frame_profile.h"
+#include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_authoring.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "platform/cute.h"
+#include "render/scene_renderer.h"
 #include "render/screenshot.h"
 #include "render/shader_catalog.h"
+#include "render/shader_images.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <yyjson.h>
 
-#define APP_DEFAULT_SCREENSHOT_PATH "/tmp/c-blueprints-screenshot.png"
+#define APP_DEFAULT_SCREENSHOT_PATH "/tmp/chibi-screenshot.png"
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
 
 typedef struct
 {
     editor *graph_editor;
+    editor_frame_profile profile;
     engine *runtime;
     ecs_world *world;
     game_live_world *live;
     engine_viewport *viewport;
     app_scene_authoring *authoring;
+    app_game_presentation *game;
     int frames;
     int frame;
     const char *screenshot_path;
     int capture_error;
     int headless;
     double monotonic_time;
-    const bp_host *host;
+    double fixed_dt;
+    const chibi_host *host;
     char *workspace;
 } app_loop;
 
 static void app_cleanup(app_loop *loop)
 {
+    editor_frame_profile_free(&loop->profile);
+    app_game_presentation_free(loop->game);
     app_scene_authoring_free(loop->authoring);
     engine_free(loop->runtime);
     game_live_world_free(loop->live);
@@ -60,23 +70,49 @@ static int app_frame(app_loop *loop)
     if (!cf_app_is_running()) {
         return 1;
     }
+    if (!loop->game) {
+        editor_frame_begin(&loop->profile);
+    }
     cf_app_update(NULL);
     app_input_frame();
-    if (loop->headless) {
+    if (loop->headless || loop->game) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
-    loop->monotonic_time += CF_DELTA_TIME;
-    editor_tick(loop->graph_editor, loop->monotonic_time);
-    app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
-    if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
-        fprintf(stderr, "runtime frame failed\n");
+    loop->monotonic_time += loop->fixed_dt ? loop->fixed_dt : CF_DELTA_TIME;
+    if (!loop->game) {
+        editor_frame_mark(&loop->profile, EDITOR_FRAME_INPUT);
     }
-
-    editor_prepare_docking();
-    app_scene_authoring_draw_viewport(loop->authoring, loop->viewport);
-    app_scene_authoring_draw(loop->authoring);
-    editor_draw(loop->graph_editor);
+    int status = 0;
+    if (loop->game) {
+        status = app_game_presentation_frame(loop->game, loop->monotonic_time);
+    } else {
+        editor_tick(loop->graph_editor, loop->monotonic_time);
+        app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
+        editor_frame_mark(&loop->profile, EDITOR_FRAME_DOCUMENTS);
+        if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
+            fprintf(stderr, "runtime frame failed\n");
+        }
+        editor_frame_mark(&loop->profile, EDITOR_FRAME_SIMULATION);
+        editor_prepare_docking();
+        app_scene_authoring_draw_viewport(loop->authoring, loop->viewport);
+        editor_frame_mark(&loop->profile, EDITOR_FRAME_SCENE);
+        app_scene_authoring_draw(loop->authoring);
+        editor_draw(loop->graph_editor);
+        editor_frame_profile_draw(&loop->profile);
+        editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
+    }
     cf_app_draw_onto_screen(true);
+    if (!loop->game) {
+        editor_frame_mark(&loop->profile, EDITOR_FRAME_PRESENT);
+        editor_frame_end(
+            &loop->profile,
+            app_scene_authoring_runtime_timing(loop->authoring),
+            app_scene_authoring_behavior_profile(loop->authoring)
+        );
+    }
+    if (status) {
+        return status;
+    }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
     if (finished && loop->screenshot_path) {
@@ -86,13 +122,16 @@ static int app_frame(app_loop *loop)
     return finished;
 }
 
-static void *application_create(const bp_host *host, const char *checkpoint, char *error, size_t error_size)
+static void *application_create(const chibi_host *host, const char *checkpoint, char *error, size_t error_size)
 {
     snprintf(error, error_size, "Could not initialize application");
     int argc = host->argc;
     char **argv = host->argv;
     int frames = 0;
     int headless = 0;
+    bool play = false;
+    double fixed_dt = 0;
+    const char *scene_path = NULL;
     const char *screenshot_path = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -106,12 +145,38 @@ static void *application_create(const bp_host *host, const char *checkpoint, cha
             }
         } else if (strcmp(argv[i], "--headless") == 0) {
             headless = 1;
+        } else if (strcmp(argv[i], "--play") == 0) {
+            play = true;
+        } else if (strcmp(argv[i], "--scene") == 0) {
+            if (i + 1 == argc || argv[i + 1][0] == '-') {
+                snprintf(error, error_size, "--scene requires an authored scene path");
+                return NULL;
+            }
+            scene_path = argv[++i];
+        } else if (strcmp(argv[i], "--fixed-dt") == 0) {
+            if (i + 1 == argc) {
+                snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
+                return NULL;
+            }
+            char *end;
+            fixed_dt = strtod(argv[++i], &end);
+            if (*end || !isfinite(fixed_dt) || fixed_dt <= 0) {
+                snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
+                return NULL;
+            }
         }
+    }
+    if (play && !scene_path) {
+        scene_path = "content/scenes/Arena3D.json";
     }
     if (screenshot_path && frames == 0) {
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
     }
 
+    /* The host owns shader setup; image sources must precede graph registration. */
+    if (!render_image_mount_content("content", error, error_size)) {
+        return NULL;
+    }
     registry_validate();
     behavior_asset *editor_definition = behavior_asset_new("AppBehavior");
     ecs_world *world = ecs_world_new();
@@ -158,11 +223,14 @@ static void *application_create(const bp_host *host, const char *checkpoint, cha
     );
     bool scene_ready = authoring &&
                        app_scene_authoring_load_content(authoring) == 0 &&
-                       app_scene_authoring_seed_default(authoring) == 0;
+                       (scene_path
+                            ? app_scene_authoring_load(authoring, scene_path)
+                            : app_scene_authoring_seed_default(authoring)) == 0;
     if (!scene_ready || app_scene_authoring_apply_pending(authoring) != 0) {
-        fprintf(
-            stderr,
-            "Could not initialize scene: %s\n",
+        snprintf(
+            error,
+            error_size,
+            "Could not initialize scene: %s",
             authoring ? app_scene_authoring_message(authoring) : "authoring unavailable"
         );
         app_scene_authoring_free(authoring);
@@ -175,13 +243,14 @@ static void *application_create(const bp_host *host, const char *checkpoint, cha
     }
     /* Put the shipped movement graph on screen on first launch. The graph is
      * still reachable through Files after switching documents. */
-    if (authoring && game_live_find_definition(live, "InputBehavior")) {
-        (void)app_scene_authoring_open_behavior(authoring, "InputBehavior");
+    if (!play && authoring &&
+        game_live_find_definition(live, "TwinStickInputBehavior")) {
+        (void)app_scene_authoring_open_behavior(authoring, "TwinStickInputBehavior");
         editor_set_graph_visible(graph_editor, 1);
         editor_ui_request_focus(EDITOR_UI_FOCUS_NODE_CANVAS);
     }
     /* Captures start from a known dock tree for consistent framing. */
-    if (screenshot_path) {
+    if (screenshot_path && !play) {
         editor_ui_reset_layout();
     }
     editor_set_event_catalog(
@@ -207,7 +276,17 @@ static void *application_create(const bp_host *host, const char *checkpoint, cha
         .screenshot_path = screenshot_path,
         .capture_error = 0,
         .headless = headless,
+        .fixed_dt = fixed_dt,
     };
+    if (play) {
+        loop->game = app_game_presentation_new(authoring, viewport, !headless);
+        if (!loop->game) {
+            snprintf(error, error_size, "Could not start game: %s", app_scene_authoring_message(authoring));
+            app_cleanup(loop);
+            return NULL;
+        }
+        return loop;
+    }
     if (!checkpoint) {
         return loop;
     }
@@ -216,9 +295,8 @@ static void *application_create(const bp_host *host, const char *checkpoint, cha
     const char *scene_json = yyjson_get_str(yyjson_obj_get(root, "scene"));
     const char *graph_json = yyjson_get_str(yyjson_obj_get(root, "graph"));
     const char *ui_json = yyjson_get_str(yyjson_obj_get(root, "workspace"));
-    bool valid = yyjson_get_int(yyjson_obj_get(root, "version")) == 1 &&
-                 scene_json && graph_json && ui_json &&
-                 strstr(ui_json, "[Blueprints][Workspace]");
+    bool valid = yyjson_get_int(yyjson_obj_get(root, "version")) == 1 && scene_json &&
+                 graph_json && ui_json && strstr(ui_json, "[Chibi][Workspace]");
     if (valid) {
         valid = app_scene_authoring_restore_checkpoint(authoring, scene_json) == 0 &&
                 editor_restore_checkpoint(graph_editor, graph_json);
@@ -239,6 +317,13 @@ static void *application_create(const bp_host *host, const char *checkpoint, cha
 static char *application_checkpoint(void *state)
 {
     app_loop *loop = state;
+    if (loop->game) {
+        /* Reload starts Play from authored content, with launch arguments retained by the host. */
+        const char saved[] = "{\"version\":1,\"mode\":\"play\"}";
+        char *json = loop->host->allocate(sizeof saved);
+        memcpy(json, saved, sizeof saved);
+        return json;
+    }
     char *scene = app_scene_authoring_checkpoint(loop->authoring);
     char *graph = editor_checkpoint(loop->graph_editor);
     char *workspace = editor_ui_checkpoint();
@@ -269,18 +354,18 @@ static char *application_checkpoint(void *state)
 static void application_activate(void *state)
 {
     app_loop *loop = state;
-    editor_ui_initialize(!loop->headless && !loop->screenshot_path);
+    editor_ui_initialize(!loop->game && !loop->headless && !loop->screenshot_path);
     if (loop->workspace) {
         editor_ui_restore_checkpoint(loop->workspace);
         free(loop->workspace);
         loop->workspace = NULL;
     }
-    editor_ui_set_framebuffer_target(loop->screenshot_path != NULL);
-    if (loop->headless) {
+    editor_ui_set_framebuffer_target(loop->screenshot_path != NULL || loop->game != NULL);
+    if (loop->headless || loop->game) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
 #ifndef __EMSCRIPTEN__
-    if (loop->screenshot_path) {
+    if (loop->screenshot_path || loop->game) {
         cf_app_set_imgui_render_target(cf_app_get_canvas());
     }
 #endif
@@ -297,6 +382,9 @@ static int application_frame(void *state)
 {
     app_loop *loop = state;
     int finished = app_frame(loop);
+    if (finished < 0) {
+        return -1;
+    }
     return finished ? (loop->capture_error ? -1 : 1) : 0;
 }
 
@@ -305,10 +393,10 @@ static void application_destroy(void *state)
     app_cleanup(state);
 }
 
-BP_APPLICATION_EXPORT const bp_application_api *blueprints_application()
+CHIBI_APPLICATION_EXPORT const chibi_application_api *chibi_application()
 {
-    static const bp_application_api api = {
-        .abi = BLUEPRINTS_APPLICATION_ABI,
+    static const chibi_application_api api = {
+        .abi = CHIBI_APPLICATION_ABI,
         .create = application_create,
         .checkpoint = application_checkpoint,
         .activate = application_activate,

@@ -24,7 +24,7 @@ static void changed(
     const FSEventStreamEventId[]
 )
 {
-    bp_watch *watch = context;
+    chibi_watch *watch = context;
     char **names = paths;
     for (size_t i = 0; i < count; i++) {
         bool lost = flags[i] & (kFSEventStreamEventFlagMustScanSubDirs |
@@ -34,15 +34,15 @@ static void changed(
         /* FSEvents already watches new descendants. Their file events carry
          * source changes; directory creation flags may linger on metadata-only
          * notifications from configure tools. Moves/removals affect whole trees. */
-        if (lost || (bp_watch_macos_content_event(flags[i]) &&
-                     bp_watch_matches(watch, names[i], directory))) {
+        if (lost || (chibi_watch_macos_content_event(flags[i]) &&
+                     chibi_watch_matches(watch, names[i], directory))) {
             atomic_fetch_add_explicit(&watch->revision, 1, memory_order_relaxed);
             return;
         }
     }
 }
 
-bool bp_watch_start(bp_watch *watch)
+bool chibi_watch_start(chibi_watch *watch)
 {
     mac_watch *backend = xcalloc(1, sizeof *backend);
     CFMutableArrayRef paths = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
@@ -81,7 +81,7 @@ bool bp_watch_start(bp_watch *watch)
         errno = EIO;
         return false;
     }
-    backend->queue = dispatch_queue_create("blueprints.file-events", DISPATCH_QUEUE_SERIAL);
+    backend->queue = dispatch_queue_create("chibi.file-events", DISPATCH_QUEUE_SERIAL);
     FSEventStreamSetDispatchQueue(backend->stream, backend->queue);
     if (!FSEventStreamStart(backend->stream)) {
         FSEventStreamInvalidate(backend->stream);
@@ -97,7 +97,7 @@ bool bp_watch_start(bp_watch *watch)
 
 static void drained(void *) {}
 
-void bp_watch_stop(bp_watch *watch)
+void chibi_watch_stop(chibi_watch *watch)
 {
     mac_watch *backend = watch->backend;
     FSEventStreamStop(backend->stream);

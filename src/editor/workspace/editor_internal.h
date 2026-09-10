@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_INTERNAL_H
-#define CBLUEPRINT_EDITOR_INTERNAL_H
+#ifndef CHIBI_EDITOR_INTERNAL_H
+#define CHIBI_EDITOR_INTERNAL_H
 
 #include "editor/ui/color.h"
 #include "editor/ui/ui_shell.h"
@@ -82,6 +82,7 @@ typedef struct
     char *key;
     char *json;
     char *saved;
+    uint64_t owner_identity;
     char **undo;
     char **redo;
     ed_graph_view *views;
@@ -92,10 +93,11 @@ typedef struct
 
 struct editor
 {
-    behavior_asset *bp;
+    behavior_asset *asset;
     editor_ui_context ui_context;
     bool inspector_active;
     int graph_visible;
+    char *document_title;
     editor_save_handler save_handler;
     void *save_user;
     graph *active_graph;
@@ -128,7 +130,7 @@ struct editor
     int inspection_trace_count;
     unsigned instance_generation;
     unsigned edit_revision;
-    const behavior_asset *edit_revision_bp;
+    const behavior_asset *edit_revision_asset;
     char *edit_revision_snapshot;
     char *saved_snapshot;
     int edit_revision_initialized;
@@ -200,6 +202,12 @@ struct editor
     char search[64];
     char behavior_asset_search[128];
     int search_selected;
+    node *binding_node;
+    uint64_t binding_node_id;
+    int binding_pin;
+    char binding_search[128];
+    int binding_selected;
+    bool binding_focus_search;
     float popup_x;
     float popup_y;
     node *context_node;
@@ -238,6 +246,10 @@ struct editor
     struct app_scene_renderer *shader_preview;
     struct engine_viewport *shader_viewport;
     bool shader_preview_paused;
+    uint64_t shader_ramp_node;
+    int shader_ramp_stop;
+    char shader_image_search[128];
+    char shader_image_path[1024];
 
     char **undo;
     char **redo;
@@ -335,6 +347,7 @@ ImVec2 ed_world_to_screen(const editor *e, float x, float y);
 ImVec2 ed_screen_to_world(const editor *e, ImVec2 p);
 int ed_edge_index(const editor *e, const ed_link_ref *link);
 int ed_pin_editable(const graph *g, const node *n, int kind, int pin);
+int ed_vector_width(const pin_spec *pin);
 bool ed_pin_visible(const graph *g, const node *n, int kind, int pin);
 void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap);
 int ed_field_output(const node *n);
@@ -342,7 +355,7 @@ bool ed_fields_expanded(const node *n, int output);
 void ed_request_fields(editor *e, node *n, int output);
 void ed_draw_fields_menu(editor *e, node *n);
 float ed_row_height(const node *n);
-float ed_pin_value_width(const node *n, int kind, int pin);
+float ed_pin_value_width(const graph *g, const node *n, int kind, int pin);
 ImVec2 ed_node_dimensions(const editor *e, const graph *g, const node *n);
 void ed_build_layout(editor *e);
 int ed_point_in_rect(ImVec2 p, ImVec2 min, ImVec2 max);
@@ -381,6 +394,21 @@ int ed_pin_container_combo(const char *label, pin_container *container);
 void ed_details_begin_mutation(editor *e);
 void ed_details_finish_mutation(editor *e, int changed);
 void ed_draw_details_pin(editor *e, node *n, int output, int index);
+bool ed_binding_scope_available(const editor *e);
+bool ed_source_scope_available(const editor *e);
+const char *ed_binding_label(const editor *e, const pin_binding *binding, char *buf, size_t cap);
+bool ed_inline_source_for(const editor *e, const node *target, int index, node **source, int *source_pin);
+int ed_expand_inline_source(editor *e, node *target, int index);
+int ed_clear_input_source(editor *e, node *target, int index);
+void ed_open_binding_popup(editor *e, node *n, int index);
+bool ed_binding_can_convert(const editor *e);
+bool ed_binding_can_jump(const editor *e);
+int ed_convert_binding(editor *e);
+void ed_jump_binding_source(editor *e);
+int ed_draw_bound_input(editor *e, node *n, int index, ImVec2 pos, float width);
+bool ed_binding_trigger_available(editor *e, node *n, int index);
+bool ed_draw_binding_trigger(editor *e, node *n, int index, ImVec2 pos, float size);
+void ed_draw_binding_popup(editor *e);
 void ed_draw_details_edge(editor *e, const ed_link_ref *ref);
 const char *ed_unique_variable_name(const editor *e);
 ImVec2 ed_view_center_world(const editor *e);
@@ -405,6 +433,7 @@ void ed_cancel_snapshot(editor *e);
 void ed_accept_graph_call_drop(editor *e);
 void ed_destroy_preview(editor *e);
 int ed_adopt_behavior_asset(editor *e, const char *json);
+int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t owner_identity);
 void ed_undo(editor *e);
 void ed_redo(editor *e);
 void ed_delete_selected(editor *e);
@@ -456,6 +485,7 @@ void ed_clear_connect_error(editor *e);
 void ed_draw_connect_error(const editor *e);
 int ed_link_equal(const ed_link_ref *a, const ed_link_ref *b);
 void ed_clear_selection(editor *e);
+void ed_reset_node_interaction(editor *e);
 ed_graph_view *ed_graph_view_for(editor *e, uint64_t graph_id, int create);
 void ed_save_graph_view(editor *e);
 void ed_load_graph_view(editor *e);

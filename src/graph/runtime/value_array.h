@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_VALUE_ARRAY_H
-#define CBLUEPRINT_VALUE_ARRAY_H
+#ifndef CHIBI_VALUE_ARRAY_H
+#define CHIBI_VALUE_ARRAY_H
 
 #include "graph/model/pin.h"
 
@@ -33,6 +33,7 @@ int pin_array_equal(const pin_array *a, const pin_array *b);
 /* Copy and destruction dispatch. `dst` owns copied array and string storage;
  * struct and handle payloads remain borrowed. */
 int pin_value_copy(pin_value *dst, const pin_value *src);
+/* Graph copies also own registered structs, including nested string fields. */
 int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src);
 int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src);
 void pin_value_destroy(pin_value *value);

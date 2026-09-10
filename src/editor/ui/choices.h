@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_CHOICES_H
-#define CBLUEPRINT_EDITOR_CHOICES_H
+#ifndef CHIBI_EDITOR_CHOICES_H
+#define CHIBI_EDITOR_CHOICES_H
 
 #include "graph/model/node.h"
 
@@ -10,6 +10,7 @@ typedef struct editor_choice
 {
     int value;
     const char *label;
+    const char *name; /* Stable value for PIN_NAME catalogs; NULL for integers. */
 } editor_choice;
 
 typedef struct editor_choices
@@ -25,5 +26,6 @@ typedef const editor_choices
  * remain unchanged until the user selects an item. */
 void editor_choices_format(int value, const editor_choices *choices, char *buf, size_t cap);
 bool editor_choices_draw(const char *id, int *value, const editor_choices *choices);
+bool editor_choices_draw_name(const char *id, const char **value, const editor_choices *choices);
 
 #endif

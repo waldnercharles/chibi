@@ -1,9 +1,10 @@
-#ifndef CBLUEPRINT_GAME_PROTOTYPE_PREVIEW_H
-#define CBLUEPRINT_GAME_PROTOTYPE_PREVIEW_H
+#ifndef CHIBI_GAME_PROTOTYPE_PREVIEW_H
+#define CHIBI_GAME_PROTOTYPE_PREVIEW_H
 
 #include "assets/prototype.h"
 #include "render/particles.h"
 #include "runtime/behaviors/behavior.h"
+#include "runtime/engine.h"
 
 typedef struct game_prototype_preview game_prototype_preview;
 
@@ -44,9 +45,13 @@ int game_prototype_preview_register_prototype(
 );
 void game_prototype_preview_stop(game_prototype_preview *preview);
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time);
-/* Observe paused frames so the next simulated frame excludes elapsed idle time. */
-int game_prototype_preview_idle(game_prototype_preview *preview, double monotonic_time);
-/* Sends a typed input event to the preview entity without touching the Scene Runtime. */
+/* The preview owns a normal engine; transport, timing and input use its shared pipeline. */
+engine *game_prototype_preview_runtime(game_prototype_preview *preview);
+/* Hold movement across fixed simulation steps. */
+int game_prototype_preview_sample_movement(game_prototype_preview *preview, float x, float y);
+/* Hold aim across fixed simulation steps. */
+int game_prototype_preview_sample_aim(game_prototype_preview *preview, CF_V2 aim, bool firing, bool point);
+/* Queue a local action for GameInput owners in the preview world. */
 int game_prototype_preview_input(
     game_prototype_preview *preview,
     const char *action,

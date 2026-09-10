@@ -137,6 +137,7 @@ static bool solve(
                 count,
                 (render_material_view){ -size * 0.5f, size * 0.5f, size, size }
             )) {
+            fprintf(stderr, "radiance material raster frame %d: %s\n", frame, render_material_raster_error(raster));
             cf_app_draw_onto_screen(false);
             return false;
         }
@@ -151,6 +152,7 @@ static bool solve(
         cf_draw_pop();
         cf_app_draw_onto_screen(false);
         if (!ok) {
+            fprintf(stderr, "radiance transport frame %d failed\n", frame);
             return false;
         }
     }
@@ -171,7 +173,7 @@ static double receiver_light(const CF_Pixel *pixels)
 
 static bool save_capture(const CF_Pixel *pixels)
 {
-    const char *path = getenv("CBLUEPRINT_RADIANCE_SCREENSHOT");
+    const char *path = getenv("CHIBI_RADIANCE_SCREENSHOT");
     if (!path) {
         return true;
     }
@@ -199,7 +201,7 @@ static bool material_parameter_writes(const behavior_asset *material, int id)
     ecs_entity first = ecs_world_create_entity(world),
                second = ecs_world_create_entity(world);
     GameShader binding = { .material = material->name,
-                           .parameters = "{\"Tint\":[0,1,0,1]}" };
+                           .parameters = "{\"Tint\":[0,1,0]}" };
     ok &= ecs_world_record_add(world, first, GAME_COMPONENT_GameShader.id, &binding, 0) ==
           ECS_OK;
     ok &= ecs_world_record_add(world, second, GAME_COMPONENT_GameShader.id, &binding, 0) ==
@@ -214,11 +216,11 @@ static bool material_parameter_writes(const behavior_asset *material, int id)
                          .type_name = "ecs.entity",
                          .u64 = ecs_entity_to_u64(first) };
     pin_value name = { .type = PIN_STR, .str = "Tint" };
-    float blue[4] = { 0, 0, 1, 1 };
-    pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec4", .ptr = blue };
+    float blue[3] = { 0, 0, 1 };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = blue };
     ok &= graph_set_pin_default(g, write, 0, 1, &target) == 0;
     ok &= graph_set_pin_default(g, write, 0, 2, &name) == 0;
-    ok &= graph_set_pin_type(g, write, 0, 3, PIN_STRUCT, "ShaderVec4") == 0;
+    ok &= graph_set_pin_type(g, write, 0, 3, PIN_STRUCT, "ShaderVec3") == 0;
     ok &= graph_set_pin_default(g, write, 0, 3, &value) == 0;
     ok &= graph_connect_exec(g, event, 0, write, 0, 0) == 0;
     behavior_instance *instance = behavior_instance_create(behavior, NULL, NULL, NULL);
@@ -247,11 +249,13 @@ static bool graph_material_pixels(render_material_raster *raster)
     behavior_asset *material = behavior_asset_new("GPU material regression");
     material->domain = BEHAVIOR_DOMAIN_MATERIAL;
     node *output = shader_graph_add_output(material->graph, false);
-    float color[4] = { 1, 0, 0, 1 };
-    pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec4", .ptr = color };
+    float color[3] = { 1, 0, 0 };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = color };
     node *parameter = graph_add_node(material->graph, registry_node_by_name("Shader Parameter"));
-    bool ok = graph_set_node_reference(material->graph, parameter, 0, "Tint") == 0;
-    ok &= graph_set_pin_type(material->graph, parameter, 1, 0, PIN_STRUCT, "ShaderVec4") ==
+    pin_value unlit = { .type = PIN_BOOL, .b = true };
+    bool ok = graph_set_pin_default(material->graph, output, 0, 6, &unlit) == 0;
+    ok &= graph_set_node_reference(material->graph, parameter, 0, "Tint") == 0;
+    ok &= graph_set_pin_type(material->graph, parameter, 1, 0, PIN_STRUCT, "ShaderVec3") ==
           0;
     ok &= graph_set_pin_default(material->graph, parameter, 1, 0, &value) == 0;
     ok &= graph_connect_data(material->graph, parameter, 0, output, 0) == 0;
@@ -329,14 +333,15 @@ static bool graph_material_pixels(render_material_raster *raster)
         }
         cf_destroy_canvas(canvas);
     }
-    CF_Shader fragment = render_shader_fragment_new();
-    ok &= fragment.id != 0;
-    if (fragment.id) {
+    render_programs *fragment = render_programs_new(RENDER_PROGRAM_FRAGMENT);
+    int program = render_shader_fragment_prepare(fragment, &entity, &error);
+    ok &= program != 0;
+    if (program) {
         CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(16, 16));
         cf_app_update(NULL);
         cf_draw_push();
         cf_draw_projection(cf_ortho_2d(0, 0, 16, 16));
-        render_shader_fragment_draw(fragment, &entity);
+        render_shader_fragment_draw(fragment, program, &entity);
         cf_render_to(canvas, true);
         cf_draw_pop();
         cf_app_draw_onto_screen(false);
@@ -344,8 +349,8 @@ static bool graph_material_pixels(render_material_raster *raster)
         ok &= read_pixels(canvas, pixels, 256);
         ok &= pixels[8 * 16 + 8].colors.b > 200 && pixels[0].colors.a < 5;
         cf_destroy_canvas(canvas);
-        cf_destroy_shader(fragment);
     }
+    render_programs_free(fragment);
     behavior_asset_free(shape);
     behavior_asset_free(material);
     printf("shader-material %s: graph GPU channels, hot replacement, coverage and fragment compilation\n", ok ? "PASS" : "FAIL");
@@ -359,11 +364,23 @@ int test_radiance()
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
     bool ok = raster && radiance && canvas.id;
+    if (!ok) {
+        fprintf(
+            stderr,
+            "radiance initialization: raster %d, transport %d, canvas %d\n",
+            raster != NULL,
+            radiance != NULL,
+            canvas.id != 0
+        );
+    }
     CF_Pixel open[PIXELS], blocked[PIXELS], reset[PIXELS];
     render_material_entity entities[] = { emitter(), wall() };
     if (ok) {
         ok = render_material_raster_resize(raster, SIDE, SIDE) &&
              render_radiance_resize(radiance, SIDE, SIDE);
+        if (!ok) {
+            fprintf(stderr, "radiance target resize failed\n");
+        }
     }
     if (ok) {
         ok = solve(raster, radiance, canvas, entities, 1, SIDE, open);

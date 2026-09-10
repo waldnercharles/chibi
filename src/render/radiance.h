@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_RENDER_RADIANCE_H
-#define CBLUEPRINT_RENDER_RADIANCE_H
+#ifndef CHIBI_RENDER_RADIANCE_H
+#define CHIBI_RENDER_RADIANCE_H
 #include "platform/cute.h"
 
 #include <stdbool.h>

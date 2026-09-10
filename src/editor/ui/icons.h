@@ -1,5 +1,5 @@
-#ifndef CBLUEPRINT_EDITOR_ICONS_H
-#define CBLUEPRINT_EDITOR_ICONS_H
+#ifndef CHIBI_EDITOR_ICONS_H
+#define CHIBI_EDITOR_ICONS_H
 
 /* Font-backed UI icons. Names follow the Nerd Fonts cheat sheet prefixes so
  * an agent can search the source by the published icon name or codepoint. */

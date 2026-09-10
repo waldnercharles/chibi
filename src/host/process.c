@@ -21,7 +21,7 @@ static uint64_t milliseconds()
     return (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
 }
 
-bool bp_process_start(bp_process *process, const char *const *argv, const char *cwd, const char *logpath)
+bool chibi_process_start(chibi_process *process, const char *const *argv, const char *cwd, const char *logpath)
 {
     assert(process && argv && argv[0] && cwd && logpath);
     posix_spawn_file_actions_t actions;
@@ -77,11 +77,11 @@ bool bp_process_start(bp_process *process, const char *const *argv, const char *
         errno = error;
         return false;
     }
-    *process = (bp_process){ .pid = pid };
+    *process = (chibi_process){ .pid = pid };
     return true;
 }
 
-bool bp_process_poll(bp_process *process)
+bool chibi_process_poll(chibi_process *process)
 {
     assert(process->pid > 0);
     if (process->finished) {
@@ -105,9 +105,9 @@ bool bp_process_poll(bp_process *process)
     return true;
 }
 
-void bp_process_stop(bp_process *process)
+void chibi_process_stop(chibi_process *process)
 {
-    if (bp_process_poll(process) || process->stop_started_ms) {
+    if (chibi_process_poll(process) || process->stop_started_ms) {
         return;
     }
     process->stop_started_ms = milliseconds();

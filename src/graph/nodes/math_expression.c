@@ -398,9 +398,9 @@ static behavior_asset *generate(
                 assert(symbol_pins[j] >= 0);
                 const pin_spec *old = previous_input(previous, p.symbols[j]);
                 if (old && old->type != PIN_FLOW) {
-                    assert(
-                        graph_set_pin_type(target, entry, 1, symbol_pins[j], old->type, old->type_name) == 0
-                    );
+                    int rc = graph_set_pin_type(target, entry, 1, symbol_pins[j], old->type, old->type_name);
+                    assert(rc == 0);
+                    (void)rc;
                 }
             }
         }
@@ -447,7 +447,9 @@ static behavior_asset *generate(
         return NULL;
     }
     pin_spec output = generic_pin("Result", acount(p.symbols) + 1);
-    assert(graph_add_pin(target, ret, 0, &output) == 0);
+    int rc = graph_add_pin(target, ret, 0, &output);
+    assert(rc == 0);
+    (void)rc;
     value_source *values = xmalloc((size_t)acount(p.terms) * sizeof *values);
     int *depths = xcalloc((size_t)acount(p.terms), sizeof *depths);
     int max_depth = 0;
@@ -477,18 +479,26 @@ static behavior_asset *generate(
         node *n = graph_add_node(target, term->desc ? term->desc : registry_node_by_name("Real"));
         assert(n);
         for (int j = 0; j < n->input_count; j++) {
-            assert(graph_set_pin_type(target, n, 0, j, PIN_F64, "double") == 0);
+            rc = graph_set_pin_type(target, n, 0, j, PIN_F64, "double");
+            assert(rc == 0);
+            (void)rc;
         }
-        assert(graph_set_pin_type(target, n, 1, 0, PIN_F64, "double") == 0);
+        rc = graph_set_pin_type(target, n, 1, 0, PIN_F64, "double");
+        assert(rc == 0);
+        (void)rc;
         if (!term->desc) {
             pin_value value = { .type = PIN_F64, .d = term->number };
-            assert(graph_set_pin_default(target, n, 0, 0, &value) == 0);
+            rc = graph_set_pin_default(target, n, 0, 0, &value);
+            assert(rc == 0);
+            (void)rc;
         }
 
         depths[i] = 1;
         for (int j = 0; j < term->count; j++) {
             value_source input = values[term->args[j]];
-            assert(graph_connect_data(target, input.node, input.pin, n, j) == 0);
+            rc = graph_connect_data(target, input.node, input.pin, n, j);
+            assert(rc == 0);
+            (void)rc;
             int depth = depths[term->args[j]] + 1;
             if (depth > depths[i]) {
                 depths[i] = depth;
@@ -501,7 +511,9 @@ static behavior_asset *generate(
         n->y = (float)i * 90;
         values[i] = (value_source){ n, 0 };
     }
-    assert(graph_connect_data(target, values[result].node, values[result].pin, ret, 0) == 0);
+    rc = graph_connect_data(target, values[result].node, values[result].pin, ret, 0);
+    assert(rc == 0);
+    (void)rc;
     ret->x = (float)(max_depth + 1) * 220;
     ret->y = values[result].node->y;
     free(depths);
@@ -585,7 +597,9 @@ static void synchronize_connected_inputs(behavior_asset *asset, node *call)
                                      output->type_name ? output->type_name : ""
                                  ) != 0;
         if (input->type != output->type || type_name_changed) {
-            assert(graph_set_pin_type(caller, call, 0, i, output->type, output->type_name) == 0);
+            int rc = graph_set_pin_type(caller, call, 0, i, output->type, output->type_name);
+            assert(rc == 0);
+            (void)rc;
         }
     }
 }
@@ -606,7 +620,9 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
                     !strcmp(call->input_pins[i].name, entry->output_pins[j].name);
         }
         if (!keep) {
-            assert(graph_remove_pin(caller, call, 0, i) == 0);
+            int rc = graph_remove_pin(caller, call, 0, i);
+            assert(rc == 0);
+            (void)rc;
         }
     }
     int parameter = 0;
@@ -629,10 +645,14 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
             assert(found >= 0);
         }
         if (found != parameter) {
-            assert(graph_move_pin(caller, call, 0, found, parameter) == 0);
+            int rc = graph_move_pin(caller, call, 0, found, parameter);
+            assert(rc == 0);
+            (void)rc;
         }
         if (call->input_pins[parameter].container != PIN_CONTAINER_SINGLE) {
-            assert(graph_set_pin_container(caller, call, 0, parameter, PIN_CONTAINER_SINGLE) == 0);
+            int rc = graph_set_pin_container(caller, call, 0, parameter, PIN_CONTAINER_SINGLE);
+            assert(rc == 0);
+            (void)rc;
         }
         const pin_spec *entry_pin = &entry->output_pins[i];
         call->input_pins[parameter].group = entry_pin->group;
@@ -646,16 +666,16 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
             retype = true;
         }
         if (retype) {
-            assert(
-                graph_set_pin_type(
-                    caller,
-                    call,
-                    0,
-                    parameter,
-                    entry_pin->flags & PIN_FLAG_WILDCARD ? PIN_F64 : entry_pin->type,
-                    entry_pin->flags & PIN_FLAG_WILDCARD ? "double" : entry_pin->type_name
-                ) == 0
+            int rc = graph_set_pin_type(
+                caller,
+                call,
+                0,
+                parameter,
+                entry_pin->flags & PIN_FLAG_WILDCARD ? PIN_F64 : entry_pin->type,
+                entry_pin->flags & PIN_FLAG_WILDCARD ? "double" : entry_pin->type_name
             );
+            assert(rc == 0);
+            (void)rc;
         }
         parameter++;
     }
@@ -675,9 +695,16 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
                  call->output_pins[output].type_name ? call->output_pins[output].type_name : "",
                  source->type_name ? source->type_name : ""
              ) != 0)) {
-            assert(
-                graph_set_pin_type(caller, call, 1, output, source->type, source->type_name) == 0
+            int rc = graph_set_pin_type(
+                caller,
+                call,
+                1,
+                output,
+                source->type,
+                source->type_name
             );
+            assert(rc == 0);
+            (void)rc;
         }
         output++;
     }
@@ -732,7 +759,9 @@ static void sync_expression_title(behavior_asset *asset, graph *generated, const
     if (same && same != generated) {
         return;
     }
-    assert(behavior_asset_rename_graph(asset, generated->graph_id, source) == 0);
+    int rc = behavior_asset_rename_graph(asset, generated->graph_id, source);
+    assert(rc == 0);
+    (void)rc;
 }
 
 static bool prepare_error(math_expression_error *error, const behavior_asset *asset, const char *source)

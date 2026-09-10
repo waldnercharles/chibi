@@ -16,6 +16,7 @@
 #include "support/math.h"
 
 #include <float.h>
+#include <limits.h>
 #include <string.h>
 enum
 {
@@ -72,16 +73,26 @@ static pin_value numeric_op(pin_value a, pin_value b, int operation)
                                                 : a.d + b.d;
             break;
         case PIN_I32:
+            if (operation == GENERIC_DIV &&
+                (b.i == 0 || (a.i == INT_MIN && b.i == -1))) {
+                return (pin_value){ .type = PIN_FLOW };
+            }
             result.i = operation == GENERIC_MUL ? a.i * b.i
                      : operation == GENERIC_SUB ? a.i - b.i
+                     : operation == GENERIC_DIV ? a.i / b.i
                      : operation == GENERIC_MIN ? (a.i < b.i ? a.i : b.i)
                      : operation == GENERIC_MAX ? (a.i > b.i ? a.i : b.i)
                      : operation == GENERIC_MOD ? a.i % b.i
                                                 : a.i + b.i;
             break;
         case PIN_I64:
+            if (operation == GENERIC_DIV &&
+                (b.i64 == 0 || (a.i64 == INT64_MIN && b.i64 == -1))) {
+                return (pin_value){ .type = PIN_FLOW };
+            }
             result.i64 = operation == GENERIC_MUL ? a.i64 * b.i64
                        : operation == GENERIC_SUB ? a.i64 - b.i64
+                       : operation == GENERIC_DIV ? a.i64 / b.i64
                        : operation == GENERIC_MIN ? (a.i64 < b.i64 ? a.i64 : b.i64)
                        : operation == GENERIC_MAX ? (a.i64 > b.i64 ? a.i64 : b.i64)
                        : operation == GENERIC_MOD ? a.i64 % b.i64
@@ -510,6 +521,9 @@ node_desc *const EXTRA_NODES[] = {
 #define MATH_NODE_ENTRY(name) &NODE_##name,
     MATH_EXPRESSION_NODES(MATH_NODE_ENTRY)
 #undef MATH_NODE_ENTRY
+#define MATH_NODE_ENTRY(name) &NODE_##name,
+            MATH_OPERATION_NODES(MATH_NODE_ENTRY)
+#undef MATH_NODE_ENTRY
         & NODE_Greater_Or_Equal,
     &NODE_Integer_Greater_Or_Equal,
     &NODE_Less,
@@ -532,6 +546,7 @@ node_desc *const EXTRA_NODES[] = {
     &NODE_Name,
     &NODE_String,
     &NODE_To_String,
+    &NODE_To_Name,
     &NODE_Add,
     &NODE_Multiply,
     &NODE_Subtract,

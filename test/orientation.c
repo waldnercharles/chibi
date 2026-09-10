@@ -65,7 +65,6 @@ static void check_heading(ecs_world *world, ecs_entity entity, float expected)
     assert(fabsf(heading->radians - expected) < 0.0001f);
 }
 
-
 static void headings(bool isolated, bool projectile)
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,

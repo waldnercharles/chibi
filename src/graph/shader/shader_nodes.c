@@ -12,8 +12,10 @@
     }
 #define FLOAT_DEFAULT(label, number)                                           \
     {                                                                          \
-        .name = label, .type = PIN_F32,                                        \
-        .default_value = { .type = PIN_F32, .f = number }                      \
+        .name = label, .type = PIN_F32, .default_value = {                     \
+            .type = PIN_F32,                                                   \
+            .f = number                                                        \
+        }                                                                      \
     }
 #define VECTOR_PIN(label, w)                                                   \
     {                                                                          \

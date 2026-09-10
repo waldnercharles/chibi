@@ -342,7 +342,6 @@ static ecs_entity spawn(const game_prototype *prototype, ecs_world *world, game_
     return entity;
 }
 
-
 static void authored_combat(bool isolated)
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,

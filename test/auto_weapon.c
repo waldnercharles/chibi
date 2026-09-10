@@ -153,7 +153,6 @@ static int shots(ecs_world *world, ecs_entity *latest)
     return count;
 }
 
-
 static game_prototype *read_prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];

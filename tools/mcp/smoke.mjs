@@ -401,12 +401,13 @@ try {
             {
               movement: { x: 0.5, y: -0.25 },
               aim: { x: 1, y: 0 },
-              actions: [{ name: "Fire", pressed: true, value: 1 }],
+              actions: [{ name: "Fire", pressed: true }],
+              events: [{ name: "Trace" }],
             },
             {
               movement: { x: 0, y: 0 },
               aim: { x: 0, y: 1 },
-              actions: [{ name: "Fire", pressed: false, value: 0 }],
+              actions: [{ name: "Fire", pressed: false }],
             },
             { movement: { x: -1, y: 0 }, aim: { x: -1, y: 0 }, actions: [] },
           ],
@@ -428,12 +429,13 @@ try {
             {
               movement: { x: 0.5, y: -0.25 },
               aim: { x: 1, y: 0 },
-              actions: [{ name: "Fire", pressed: true, value: 1 }],
+              actions: [{ name: "Fire", pressed: true }],
+              events: [{ name: "Trace" }],
             },
             {
               movement: { x: 0, y: 0 },
               aim: { x: 0, y: 1 },
-              actions: [{ name: "Fire", pressed: false, value: 0 }],
+              actions: [{ name: "Fire", pressed: false }],
             },
             { movement: { x: -1, y: 0 }, aim: { x: -1, y: 0 }, actions: [] },
           ],

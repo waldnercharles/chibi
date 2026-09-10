@@ -3564,10 +3564,10 @@ typedef struct
     double movement_y;
     double aim_x;
     double aim_y;
-    bool aim_firing;
-    bool aim_point;
+    bool has_aim;
     bool fire_pressed;
     bool dash_pressed;
+    yyjson_val *events;
 } scenario_input;
 
 typedef struct
@@ -3627,6 +3627,10 @@ static bool scenario_action(
     if (yyjson_is_bool(value)) {
         value_pressed = yyjson_get_bool(value);
     } else if (yyjson_is_obj(value)) {
+        if (yyjson_obj_get(value, "value")) {
+            snprintf(error, error_size, "analog scenario action values are not supported");
+            return false;
+        }
         if (!yyjson_obj_get(value, "pressed") ||
             !scenario_input_bool(value, "pressed", &value_pressed, error, error_size)) {
             snprintf(error, error_size, "scenario action %s must contain pressed", name);
@@ -3673,17 +3677,16 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         return false;
     }
     yyjson_val *aim = yyjson_obj_get(value, "aim");
-    if (aim &&
-        (!yyjson_is_obj(aim) ||
-         !scenario_input_number(aim, "x", &out->aim_x, error, error_size) ||
-         !scenario_input_number(aim, "y", &out->aim_y, error, error_size) ||
-         !scenario_input_bool(aim, "firing", &out->aim_firing, error, error_size) ||
-         !scenario_input_bool(aim, "point", &out->aim_point, error, error_size))) {
+    if (aim && (!yyjson_is_obj(aim) ||
+                !scenario_input_number(aim, "x", &out->aim_x, error, error_size) ||
+                !scenario_input_number(aim, "y", &out->aim_y, error, error_size) ||
+                yyjson_obj_get(aim, "firing") || yyjson_obj_get(aim, "point"))) {
         if (!error[0]) {
-            snprintf(error, error_size, "aim must contain numeric x and y values and boolean firing and point values");
+            snprintf(error, error_size, "aim must contain numeric x and y values");
         }
         return false;
     }
+    out->has_aim = aim != NULL;
     yyjson_val *actions = yyjson_obj_get(value, "actions");
     bool fire_seen = false;
     bool dash_seen = false;
@@ -3701,7 +3704,7 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
             yyjson_val *pressed = action && yyjson_is_obj(action)
                                     ? yyjson_obj_get(action, "pressed")
                                     : NULL;
-            if (!name || !pressed ||
+            if (!name || !pressed || (action && yyjson_obj_get(action, "value")) ||
                 !scenario_action(
                     pressed,
                     name,
@@ -3730,10 +3733,28 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         return false;
     }
     yyjson_val *events = yyjson_obj_get(value, "events");
-    if (events && (!yyjson_is_arr(events) || yyjson_arr_size(events) != 0)) {
-        snprintf(error, error_size, "scenario events are reserved and must be an empty array");
-        return false;
+    if (events) {
+        if (!yyjson_is_arr(events) || yyjson_arr_size(events) > 32) {
+            snprintf(error, error_size, "events must contain at most 32 named events");
+            return false;
+        }
+        size_t count = yyjson_arr_size(events);
+        for (size_t i = 0; i < count; i++) {
+            yyjson_val *event = yyjson_arr_get(events, i);
+            const char *name = event && yyjson_is_obj(event)
+                                 ? request_string(event, "name")
+                                 : NULL;
+            yyjson_val *values = event && yyjson_is_obj(event)
+                                   ? yyjson_obj_get(event, "values")
+                                   : NULL;
+            if (!name || !name[0] || strlen(name) > 128 ||
+                (values && (!yyjson_is_arr(values) || yyjson_arr_size(values) != 0))) {
+                snprintf(error, error_size, "events require a bounded name and no payload values");
+                return false;
+            }
+        }
     }
+    out->events = events;
     return true;
 }
 
@@ -3743,11 +3764,11 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
     yyjson_mut_val *movement = yyjson_mut_obj_add_obj(doc, object, "movement");
     yyjson_mut_obj_add_real(doc, movement, "x", input->movement_x);
     yyjson_mut_obj_add_real(doc, movement, "y", input->movement_y);
-    yyjson_mut_val *aim = yyjson_mut_obj_add_obj(doc, object, "aim");
-    yyjson_mut_obj_add_real(doc, aim, "x", input->aim_x);
-    yyjson_mut_obj_add_real(doc, aim, "y", input->aim_y);
-    yyjson_mut_obj_add_bool(doc, aim, "firing", input->aim_firing);
-    yyjson_mut_obj_add_bool(doc, aim, "point", input->aim_point);
+    if (input->has_aim) {
+        yyjson_mut_val *aim = yyjson_mut_obj_add_obj(doc, object, "aim");
+        yyjson_mut_obj_add_real(doc, aim, "x", input->aim_x);
+        yyjson_mut_obj_add_real(doc, aim, "y", input->aim_y);
+    }
     yyjson_mut_val *actions = yyjson_mut_obj_add_arr(doc, object, "actions");
     yyjson_mut_val *fire = yyjson_mut_arr_add_obj(doc, actions);
     yyjson_mut_obj_add_strcpy(doc, fire, "name", "Fire");
@@ -3755,6 +3776,14 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
     yyjson_mut_val *dash = yyjson_mut_arr_add_obj(doc, actions);
     yyjson_mut_obj_add_strcpy(doc, dash, "name", "Dash");
     yyjson_mut_obj_add_bool(doc, dash, "pressed", input->dash_pressed);
+    if (input->events && yyjson_arr_size(input->events)) {
+        yyjson_mut_obj_add_val(
+            doc,
+            object,
+            "events",
+            yyjson_val_mut_copy(doc, input->events)
+        );
+    }
     return object;
 }
 
@@ -3783,6 +3812,38 @@ static int apply_scenario_input(
         ) < 0) {
         snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario movement input failed");
         return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (input->has_aim) {
+        CF_V2 aim = { (float)input->aim_x, (float)input->aim_y };
+        pin_value aim_value = {
+            .type = PIN_STRUCT,
+            .type_name = "CF_V2",
+            .ptr = &aim,
+        };
+        flow = (flow_error){ 0 };
+        if (game_behavior_dispatch(
+                behaviors,
+                entity,
+                "Aim",
+                (flow_inputs){ .values = &aim_value, .count = 1 },
+                &flow
+            ) < 0) {
+            snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario aim input failed");
+            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        }
+    }
+    if (input->events) {
+        size_t count = yyjson_arr_size(input->events);
+        for (size_t i = 0; i < count; i++) {
+            yyjson_val *event = yyjson_arr_get(input->events, i);
+            const char *name = request_string(event, "name");
+            flow = (flow_error){ 0 };
+            if (game_behavior_dispatch(behaviors, entity, name, (flow_inputs){ 0 }, &flow) <
+                0) {
+                snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario event failed");
+                return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+            }
+        }
     }
     const char *actions[] = { "Fire", "Dash" };
     const bool pressed[] = { input->fire_pressed, input->dash_pressed };
@@ -3996,7 +4057,14 @@ static yyjson_mut_val *add_recording(
     }
     yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, recording, "events");
     for (uint64_t frame = 0; frame < frames; frame++) {
-        yyjson_mut_arr_add_arr(doc, events);
+        if (inputs[frame].events) {
+            yyjson_mut_arr_add_val(
+                events,
+                yyjson_val_mut_copy(doc, inputs[frame].events)
+            );
+        } else {
+            yyjson_mut_arr_add_arr(doc, events);
+        }
     }
     yyjson_mut_val *frame_hashes = yyjson_mut_obj_add_arr(doc, recording, "frame_hashes");
     yyjson_mut_val *live_entities = yyjson_mut_obj_add_arr(doc, recording, "live_entities");
@@ -4573,12 +4641,11 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     uint64_t version = 0;
     uint64_t recording_version = 0;
     uint64_t contract = 0;
-    if ((format && strcmp(format, SCENARIO_RECORDING_FORMAT)) ||
+    if (!format || strcmp(format, SCENARIO_RECORDING_FORMAT) ||
         !request_uint(recording, "version", &version) ||
         version != SCENARIO_RECORDING_VERSION ||
-        (yyjson_obj_get(recording, "recording_version") &&
-         (!request_uint(recording, "recording_version", &recording_version) ||
-          recording_version != SCENARIO_RECORDING_VERSION)) ||
+        !request_uint(recording, "recording_version", &recording_version) ||
+        recording_version != SCENARIO_RECORDING_VERSION ||
         !request_uint(recording, "contract_version", &contract) ||
         contract != BLUEPRINTS_AUTOMATION_CONTRACT) {
         yyjson_doc_free(recording_doc);

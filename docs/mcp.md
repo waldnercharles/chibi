@@ -62,7 +62,7 @@ printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"prototype","name
   build/blueprints_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"runtime_snapshot","kind":"prototype","name":"Player","frames":2,"entity_limit":32,"component_limit":16,"field_limit":32}' |
   build/blueprints_ctl --project-root .
-printf '%s\n' '{"contract":1,"operation":"record_scenario","kind":"prototype","name":"Player","frames":60,"fixed_dt":0.0166666666666667,"inputs":[{"movement":{"x":1,"y":0},"aim":{"x":0,"y":1},"actions":[{"name":"fire","pressed":true}]}]}' |
+printf '%s\n' '{"contract":1,"operation":"record_scenario","kind":"prototype","name":"Player","frames":60,"fixed_dt":0.0166666666666667,"inputs":[{"movement":{"x":1,"y":0},"aim":{"x":0,"y":1},"actions":[{"name":"Fire","pressed":true}],"events":[{"name":"Trace"}]}]}' |
   build/blueprints_ctl --project-root .
 ```
 
@@ -81,8 +81,11 @@ selection. The operation is read-only and does not write authored content.
 
 `record_scenario` uses the same fixed-step runtime path while accepting at most
 600 frames of normalized input. Each frame may include bounded `movement` and
-`aim` vectors with `x` and `y` values in `[-1, 1]`, plus at most two named action
-transitions. The result includes a versioned recording with contract and
+`aim` vectors with `x` and `y` values in `[-1, 1]`, at most two named digital
+action transitions, and up to 32 named zero-payload events. Aim vectors are
+dispatched through the optional `Aim` behavior event; event payload values and
+analog action values are rejected until the runtime exposes a stable typed
+input seam. The result includes a versioned recording with contract and
 content hashes, normalized inputs, events, fixed timing, and per-frame world
 hashes. The native controller writes the recording artifact outside authored
 content and returns its bounded `recording_id` and path. Clients can inspect a

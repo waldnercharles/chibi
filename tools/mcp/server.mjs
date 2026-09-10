@@ -427,14 +427,6 @@ function rawToolDefinitions() {
         maximum: 1,
         description: "Normalized vertical aim input.",
       },
-      firing: {
-        type: "boolean",
-        description: "Whether the aim input is firing during this frame.",
-      },
-      point: {
-        type: "boolean",
-        description: "Whether aim coordinates are a point relative to the prototype.",
-      },
     },
     additionalProperties: false,
   };
@@ -450,14 +442,17 @@ function rawToolDefinitions() {
         type: "boolean",
         description: "Whether the action is pressed during this frame.",
       },
-      value: {
-        type: "number",
-        minimum: -1,
-        maximum: 1,
-        description: "Optional normalized analog action value.",
-      },
     },
     required: ["name", "pressed"],
+    additionalProperties: false,
+  };
+  const normalizedEvent = {
+    type: "object",
+    properties: {
+      name: { type: "string", maxLength: 128 },
+      values: { type: "array", maxItems: 0 },
+    },
+    required: ["name"],
     additionalProperties: false,
   };
   const normalizedInput = {
@@ -474,7 +469,7 @@ function rawToolDefinitions() {
       events: {
         type: "array",
         maxItems: 32,
-        items: { type: "object", additionalProperties: true },
+        items: normalizedEvent,
         description: "Bounded normalized runtime events for this frame.",
       },
     },
@@ -523,7 +518,7 @@ function rawToolDefinitions() {
         items: {
           type: "array",
           maxItems: 32,
-          items: { type: "object", additionalProperties: true },
+          items: normalizedEvent,
         },
       },
       observations: {

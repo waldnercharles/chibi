@@ -2927,9 +2927,11 @@ static int load_behavior_family_assets(
         behavior_asset *asset = behavior_asset_load_json(json);
         free(json);
         if (!asset) {
+            char relative[512];
+            snprintf(relative, sizeof relative, "%s", entries[i].relative);
             free_asset_entries(entries);
             free_behavior_assets(assets);
-            snprintf(error, error_size, "could not load %s: %s", entries[i].relative, graph_last_error());
+            snprintf(error, error_size, "could not load %s: %s", relative, graph_last_error());
             return BLUEPRINTS_AUTOMATION_VALIDATION_ERROR;
         }
         apush(assets, asset);

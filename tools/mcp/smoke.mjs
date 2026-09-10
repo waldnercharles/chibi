@@ -106,7 +106,11 @@ if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" 
       tool.inputSchema?.properties?.graph_name?.type === "string") ||
     !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_system" &&
       tool.inputSchema?.required?.includes("kind") &&
-      tool.inputSchema?.required?.includes("name"))) {
+      tool.inputSchema?.required?.includes("name")) ||
+    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "run_scenario" &&
+      tool.inputSchema?.required?.includes("name") &&
+      tool.inputSchema?.properties?.frames?.maximum === 600 &&
+      tool.inputSchema?.properties?.fixed_dt?.type === "number")) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
 const status = JSON.parse(responseById.get(3).result.content[0].text);
@@ -277,5 +281,79 @@ try {
   }
 } finally {
   rmSync(systemRoot, { recursive: true, force: true });
+}
+
+const scenarioRoot = mkdtempSync(join(tmpdir(), "c-blueprints-scenario-"));
+try {
+  const prototypeDirectory = join(scenarioRoot, "content", "prototypes");
+  mkdirSync(prototypeDirectory, { recursive: true });
+  writeFileSync(
+    join(prototypeDirectory, "Editor2DPreview.json"),
+    readFileSync(resolve(root, "test/fixtures/content/prototypes/Editor2DPreview.json"))
+  );
+  const scenarioRequests = [
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: {},
+    },
+    {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "run_scenario",
+        arguments: { kind: "prototype", name: "Editor2DPreview", frames: 2, fixed_dt: 1 / 60 },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: {
+        name: "run_scenario",
+        arguments: { kind: "prototype", name: "Editor2DPreview", frames: 2, fixed_dt: 1 / 60 },
+      },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: {
+        name: "run_scenario",
+        arguments: { name: "Editor2DPreview", frames: 601 },
+      },
+    },
+  ];
+  const scenarioProcess = spawnSync(process.execPath, [server], {
+    cwd: root,
+    env: { ...process.env, CBLUEPRINTS_ROOT: scenarioRoot, CBLUEPRINTS_CTL: controller },
+    input: `${scenarioRequests.map((request) => JSON.stringify(request)).join("\n")}\n`,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (scenarioProcess.error || scenarioProcess.status !== 0) {
+    throw scenarioProcess.error || new Error(scenarioProcess.stderr || "scenario MCP server failed");
+  }
+  const scenarioResponses = scenarioProcess.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
+  const scenarioById = new Map(scenarioResponses.map((response) => [response.id, response]));
+  const firstScenario = JSON.parse(scenarioById.get(2)?.result?.content?.[0]?.text || "{}");
+  const secondScenario = JSON.parse(scenarioById.get(3)?.result?.content?.[0]?.text || "{}");
+  if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "run_scenario") !== true ||
+      firstScenario.ok !== true || secondScenario.ok !== true ||
+      firstScenario.result?.kind !== "prototype" ||
+      firstScenario.result?.name !== "Editor2DPreview" ||
+      firstScenario.result?.frames !== 2 ||
+      firstScenario.result?.fixed_dt !== 1 / 60 ||
+      typeof firstScenario.result?.world_hash !== "number" ||
+      typeof firstScenario.result?.live_entities !== "number" ||
+      !firstScenario.result?.timing ||
+      firstScenario.result?.world_hash !== secondScenario.result?.world_hash ||
+      scenarioById.get(4)?.error?.code !== -32602) {
+    throw new Error("deterministic scenario smoke checks failed");
+  }
+} finally {
+  rmSync(scenarioRoot, { recursive: true, force: true });
 }
 console.log("MCP protocol smoke passed");

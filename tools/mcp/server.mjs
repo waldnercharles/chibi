@@ -303,6 +303,34 @@ function rawToolDefinitions() {
       },
     },
   };
+  const scenarioArguments = {
+    type: "object",
+    properties: {
+      kind: {
+        type: "string",
+        enum: ["prototype"],
+        description: "Target asset family. Only prototype scenarios are supported currently.",
+      },
+      name: {
+        type: "string",
+        description: "Prototype asset name without the .json suffix.",
+      },
+      frames: {
+        type: "integer",
+        minimum: 0,
+        maximum: 600,
+        description: "Number of deterministic fixed steps to run.",
+      },
+      fixed_dt: {
+        type: "number",
+        minimum: 0.000001,
+        maximum: 0.25,
+        description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
+      },
+    },
+    required: ["name"],
+    additionalProperties: false,
+  };
   return [
     {
       name: "project_status",
@@ -351,6 +379,13 @@ function rawToolDefinitions() {
       operation: "inspect_system",
       description: "Inspect a typed system query, compiled graph, inferred component effects, and diagnostics.",
       inputSchema: assetArguments,
+      outputSchema,
+    },
+    {
+      name: "run_scenario",
+      operation: "run_scenario",
+      description: "Run a bounded deterministic prototype scenario and return structured runtime evidence.",
+      inputSchema: scenarioArguments,
       outputSchema,
     },
     {
@@ -461,6 +496,12 @@ function validateSchema(value, schema, path) {
   if (schema.type === "boolean" && typeof value !== "boolean") {
     throw protocolError(-32602, `${path} must be a boolean`);
   }
+  if (schema.type === "number" &&
+      (typeof value !== "number" || !Number.isFinite(value) ||
+       (schema.minimum !== undefined && value < schema.minimum) ||
+       (schema.maximum !== undefined && value > schema.maximum))) {
+    throw protocolError(-32602, `${path} must be a finite number within the supported range`);
+  }
   if (schema.type === "integer" &&
       (!Number.isSafeInteger(value) ||
        value < (schema.minimum || 0) ||
@@ -501,6 +542,7 @@ async function toolCall(name, args) {
     case "asset_dependencies": return nativeRequest("asset_dependencies", args || {});
     case "inspect_graph": return nativeRequest("inspect_graph", args || {});
     case "inspect_system": return nativeRequest("inspect_system", args || {});
+    case "run_scenario": return nativeRequest("run_scenario", args || {});
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");

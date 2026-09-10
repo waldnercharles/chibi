@@ -20,6 +20,7 @@ adapter provides these tools:
 - `asset_dependencies` — inspect incoming or outgoing direct and transitive dependencies.
 - `inspect_graph` — inspect normalized graph nodes, pins, edges, calls, effects, and diagnostics.
 - `inspect_system` — inspect a typed system query, compiled graph, inferred component effects, and diagnostics.
+- `run_scenario` — run a bounded deterministic prototype scenario and return runtime evidence.
 - `read_asset` — parsed authored JSON.
 - `validate_asset` — native asset loading and compiler diagnostics.
 - `describe_registry` — reflected nodes, pins, types, services, operators, and components.
@@ -51,7 +52,16 @@ printf '%s\n' '{"contract":1,"operation":"inspect_graph","kind":"library","name"
   build/blueprints_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"inspect_system","kind":"system","name":"MovementSystem"}' |
   build/blueprints_ctl --project-root .
+printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"prototype","name":"Player","frames":60,"fixed_dt":0.0166666666666667}' |
+  build/blueprints_ctl --project-root .
 ```
+
+`run_scenario` currently accepts prototype targets, runs at most 600 fixed steps,
+and returns the resolved asset identity, frame count, timestep, world hash, live
+entity count, and engine timing fields. The fixed timestep must match the
+engine's `1/60` second step. Each request creates an isolated preview runtime;
+the returned world hash can be compared across repeated calls to check
+deterministic behavior.
 
 Catalog, search, and asset-list responses accept a numeric `limit` and `cursor`,
 and return `total`, `count`, `has_more`, and `next_cursor`. Catalog and search

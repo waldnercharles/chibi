@@ -257,6 +257,9 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
+if(UNIX)
+    target_link_libraries(core PUBLIC m)
+endif()
 set_source_files_properties(third_party/fmt/fmt.c PROPERTIES
     COMPILE_OPTIONS "-Wno-deprecated-declarations")
 if(CHIBI_ENABLE_SJLIT)

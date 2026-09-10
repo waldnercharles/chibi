@@ -57,9 +57,12 @@ typedef struct behavior_delegate_ref
 
 struct behavior_instance
 {
-    behavior_asset *asset;  /* borrowed; must outlive the instance */
-    pin_value *variables;   /* runtime storage, parallel to asset->variables */
-    arena *variable_arenas; /* owned values; replaced atomically with each assignment */
+    /* Borrowed; must outlive the instance. */
+    behavior_asset *asset;
+    /* Runtime storage, parallel to asset->variables. */
+    pin_value *variables;
+    /* Owned values; replaced atomically with each assignment. */
+    arena *variable_arenas;
     int variable_count;
     instance_scratch_slot *scratch;
     pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */

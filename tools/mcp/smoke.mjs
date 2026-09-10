@@ -342,8 +342,9 @@ try {
           fixed_dt: 1 / 60,
           entity_limit: 4,
           component_limit: 16,
-          field_limit: 32,
+          field_limit: 1,
           behavior_limit: 8,
+          fields: ["GameTransform.x", "GameTransform.y"],
         },
       },
     },
@@ -360,8 +361,9 @@ try {
           fixed_dt: 1 / 60,
           entity_limit: 4,
           component_limit: 16,
-          field_limit: 32,
+          field_limit: 1,
           behavior_limit: 8,
+          fields: ["GameTransform.x", "GameTransform.y"],
         },
       },
     },
@@ -394,6 +396,9 @@ try {
   const entities = firstSnapshot.result?.entities;
   const components = entities?.[0]?.components;
   const fields = components?.[0]?.fields;
+  const transform = components?.find((component) => component.name === "GameTransform");
+  const transformFields = transform?.fields;
+  const xField = transformFields?.find((field) => field.name === "x");
   if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "run_scenario") !== true ||
       firstScenario.ok !== true || secondScenario.ok !== true ||
       firstScenario.result?.kind !== "prototype" ||
@@ -416,6 +421,13 @@ try {
       !Array.isArray(entities) ||
       !Array.isArray(components) ||
       !Array.isArray(fields) ||
+      !transform ||
+      !Array.isArray(transformFields) ||
+      transform.field_count !== 2 ||
+      transform.fields_truncated !== true ||
+      transformFields.length !== 1 ||
+      xField?.value !== 320 ||
+      components.some((component) => component.fields.length > 1) ||
       entities.some((entity, index) => index > 0 && entity.id <= entities[index - 1].id) ||
       components.some((component, index) => index > 0 &&
         component.name.localeCompare(components[index - 1].name) < 0) ||

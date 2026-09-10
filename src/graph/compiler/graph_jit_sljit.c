@@ -992,7 +992,7 @@ static int emit_minmax(sljit_builder *builder, int maximum, sljit_s32 output, sl
 {
     struct sljit_jump *select_right = sljit_emit_fcmp(
         builder->compiler,
-        (maximum ? SLJIT_F_LESS : SLJIT_F_GREATER),
+        (maximum ? SLJIT_F_LESS : SLJIT_F_GREATER) | SLJIT_32,
         left,
         0,
         right,

@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -158,6 +159,11 @@ typedef struct
 
 #define SCENARIO_DEFAULT_FRAMES 1
 #define SCENARIO_MAX_FRAMES 600
+#define SCENARIO_DEFAULT_FIXED_DT (1.0 / 60.0)
+#define SCENARIO_RECORDING_VERSION 1
+#define SCENARIO_RECORDING_FORMAT "c-blueprints.scenario-recording"
+#define SCENARIO_RECORDING_MAX_BYTES (1024 * 1024)
+#define SCENARIO_RECORDING_PATH_PREFIX "/tmp/c-blueprints-recording-"
 
 #define CONTRACT_FIELD_COUNT(fields) ((int)(sizeof(fields) / sizeof *(fields)))
 
@@ -228,6 +234,22 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
     { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
     { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
+};
+static const contract_field CONTRACT_RECORD_SCENARIO[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", false, "Target family; defaults to prototype." },
+    { "name", "string", true, "Prototype asset name." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
+    { "inputs", "object[]", false, "Per-frame movement, aim, action, and event input records." },
+};
+static const contract_field CONTRACT_REPLAY_SCENARIO[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "recording", "object", false, "Inline versioned scenario recording." },
+    { "recording_path", "string", false, "Path returned by record_scenario for a generated recording artifact." },
+};
+static const contract_field CONTRACT_READ_RECORDING[] = {
+    { "id", "string", true, "Generated recording identifier." },
 };
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
@@ -364,6 +386,37 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         true,
         false,
     },
+    {
+        "record_scenario",
+        "Record bounded deterministic prototype inputs and per-frame evidence.",
+        CONTRACT_RECORD_SCENARIO,
+        CONTRACT_FIELD_COUNT(CONTRACT_RECORD_SCENARIO),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "replay_scenario",
+        "Replay a versioned scenario recording and report the first "
+        "divergence.",
+        CONTRACT_REPLAY_SCENARIO,
+        CONTRACT_FIELD_COUNT(CONTRACT_REPLAY_SCENARIO),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "read_recording",
+        "Read one bounded generated recording artifact by identifier.",
+        CONTRACT_READ_RECORDING,
+        CONTRACT_FIELD_COUNT(CONTRACT_READ_RECORDING),
+        1,
+        true,
+        true,
+        false,
+    },
 };
 
 static const char *const CONTRACT_ERROR_CATEGORIES[] = {
@@ -375,6 +428,9 @@ static int handle_describe_registry(response *result);
 static int handle_describe_contract(response *result);
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_runtime_snapshot(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_record_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_replay_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_read_recording(yyjson_val *request, response *result, int *exit_code);
 static uint64_t catalog_content_hash(const catalog_asset *assets);
 static int load_asset(
     const char *root,
@@ -3502,6 +3558,519 @@ static int advance_scenario(
     return BLUEPRINTS_AUTOMATION_OK;
 }
 
+typedef struct
+{
+    double movement_x;
+    double movement_y;
+    double aim_x;
+    double aim_y;
+    bool aim_firing;
+    bool aim_point;
+    bool fire_pressed;
+    bool dash_pressed;
+} scenario_input;
+
+typedef struct
+{
+    uint64_t world_hash[SCENARIO_MAX_FRAMES];
+    uint32_t live_entities[SCENARIO_MAX_FRAMES];
+    bool has_live_entities;
+} scenario_observations;
+
+static bool scenario_input_number(yyjson_val *object, const char *key, double *out, char *error, size_t error_size)
+{
+    yyjson_val *value = yyjson_obj_get(object, key);
+    if (!value) {
+        return true;
+    }
+    if (!yyjson_is_num(value) || !isfinite(yyjson_get_num(value)) ||
+        fabs(yyjson_get_num(value)) > FLT_MAX) {
+        snprintf(error, error_size, "%s must be a finite number within float range", key);
+        return false;
+    }
+    *out = yyjson_get_num(value);
+    return true;
+}
+
+static bool scenario_input_bool(yyjson_val *object, const char *key, bool *out, char *error, size_t error_size)
+{
+    yyjson_val *value = yyjson_obj_get(object, key);
+    if (!value) {
+        return true;
+    }
+    if (!yyjson_is_bool(value)) {
+        snprintf(error, error_size, "%s must be a boolean", key);
+        return false;
+    }
+    *out = yyjson_get_bool(value);
+    return true;
+}
+
+static bool scenario_action(
+    yyjson_val *value,
+    const char *name,
+    bool *pressed,
+    bool *seen,
+    char *error,
+    size_t error_size
+)
+{
+    if (strcmp(name, "Fire") && strcmp(name, "Dash")) {
+        snprintf(error, error_size, "unsupported scenario action: %s", name);
+        return false;
+    }
+    if (*seen) {
+        snprintf(error, error_size, "scenario action is repeated: %s", name);
+        return false;
+    }
+    bool value_pressed = false;
+    if (yyjson_is_bool(value)) {
+        value_pressed = yyjson_get_bool(value);
+    } else if (yyjson_is_obj(value)) {
+        if (!yyjson_obj_get(value, "pressed") ||
+            !scenario_input_bool(value, "pressed", &value_pressed, error, error_size)) {
+            snprintf(error, error_size, "scenario action %s must contain pressed", name);
+            return false;
+        }
+    } else {
+        snprintf(error, error_size, "scenario action %s must contain pressed", name);
+        return false;
+    }
+    *pressed = value_pressed;
+    *seen = true;
+    return true;
+}
+
+static const char *scenario_action_name(const char *name)
+{
+    if (!name) {
+        return NULL;
+    }
+    if (!strcmp(name, "Fire") || !strcmp(name, "fire")) {
+        return "Fire";
+    }
+    if (!strcmp(name, "Dash") || !strcmp(name, "dash")) {
+        return "Dash";
+    }
+    return NULL;
+}
+
+static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *error, size_t error_size)
+{
+    if (!value || !yyjson_is_obj(value)) {
+        snprintf(error, error_size, "each scenario input must be an object");
+        return false;
+    }
+    *out = (scenario_input){ 0 };
+    yyjson_val *movement = yyjson_obj_get(value, "movement");
+    if (movement &&
+        (!yyjson_is_obj(movement) ||
+         !scenario_input_number(movement, "x", &out->movement_x, error, error_size) ||
+         !scenario_input_number(movement, "y", &out->movement_y, error, error_size))) {
+        if (!error[0]) {
+            snprintf(error, error_size, "movement must contain numeric x and y values");
+        }
+        return false;
+    }
+    yyjson_val *aim = yyjson_obj_get(value, "aim");
+    if (aim &&
+        (!yyjson_is_obj(aim) ||
+         !scenario_input_number(aim, "x", &out->aim_x, error, error_size) ||
+         !scenario_input_number(aim, "y", &out->aim_y, error, error_size) ||
+         !scenario_input_bool(aim, "firing", &out->aim_firing, error, error_size) ||
+         !scenario_input_bool(aim, "point", &out->aim_point, error, error_size))) {
+        if (!error[0]) {
+            snprintf(error, error_size, "aim must contain numeric x and y values and boolean firing and point values");
+        }
+        return false;
+    }
+    yyjson_val *actions = yyjson_obj_get(value, "actions");
+    bool fire_seen = false;
+    bool dash_seen = false;
+    if (actions && yyjson_is_arr(actions)) {
+        if (yyjson_arr_size(actions) > 2) {
+            snprintf(error, error_size, "scenario inputs support at most Fire and Dash actions");
+            return false;
+        }
+        size_t count = yyjson_arr_size(actions);
+        for (size_t i = 0; i < count; i++) {
+            yyjson_val *action = yyjson_arr_get(actions, i);
+            const char *name = action && yyjson_is_obj(action)
+                                 ? scenario_action_name(request_string(action, "name"))
+                                 : NULL;
+            yyjson_val *pressed = action && yyjson_is_obj(action)
+                                    ? yyjson_obj_get(action, "pressed")
+                                    : NULL;
+            if (!name || !pressed ||
+                !scenario_action(
+                    pressed,
+                    name,
+                    !strcmp(name, "Fire") ? &out->fire_pressed : &out->dash_pressed,
+                    !strcmp(name, "Fire") ? &fire_seen : &dash_seen,
+                    error,
+                    error_size
+                )) {
+                if (!error[0]) {
+                    snprintf(error, error_size, "scenario actions require name and pressed");
+                }
+                return false;
+            }
+        }
+    } else if (actions && yyjson_is_obj(actions)) {
+        yyjson_val *fire = yyjson_obj_get(actions, "Fire");
+        yyjson_val *dash = yyjson_obj_get(actions, "Dash");
+        if ((fire &&
+             !scenario_action(fire, "Fire", &out->fire_pressed, &fire_seen, error, error_size)) ||
+            (dash &&
+             !scenario_action(dash, "Dash", &out->dash_pressed, &dash_seen, error, error_size))) {
+            return false;
+        }
+    } else if (actions) {
+        snprintf(error, error_size, "actions must be an array or object");
+        return false;
+    }
+    yyjson_val *events = yyjson_obj_get(value, "events");
+    if (events && (!yyjson_is_arr(events) || yyjson_arr_size(events) != 0)) {
+        snprintf(error, error_size, "scenario events are reserved and must be an empty array");
+        return false;
+    }
+    return true;
+}
+
+static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *array, const scenario_input *input)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_val *movement = yyjson_mut_obj_add_obj(doc, object, "movement");
+    yyjson_mut_obj_add_real(doc, movement, "x", input->movement_x);
+    yyjson_mut_obj_add_real(doc, movement, "y", input->movement_y);
+    yyjson_mut_val *aim = yyjson_mut_obj_add_obj(doc, object, "aim");
+    yyjson_mut_obj_add_real(doc, aim, "x", input->aim_x);
+    yyjson_mut_obj_add_real(doc, aim, "y", input->aim_y);
+    yyjson_mut_obj_add_bool(doc, aim, "firing", input->aim_firing);
+    yyjson_mut_obj_add_bool(doc, aim, "point", input->aim_point);
+    yyjson_mut_val *actions = yyjson_mut_obj_add_arr(doc, object, "actions");
+    yyjson_mut_val *fire = yyjson_mut_arr_add_obj(doc, actions);
+    yyjson_mut_obj_add_strcpy(doc, fire, "name", "Fire");
+    yyjson_mut_obj_add_bool(doc, fire, "pressed", input->fire_pressed);
+    yyjson_mut_val *dash = yyjson_mut_arr_add_obj(doc, actions);
+    yyjson_mut_obj_add_strcpy(doc, dash, "name", "Dash");
+    yyjson_mut_obj_add_bool(doc, dash, "pressed", input->dash_pressed);
+    return object;
+}
+
+static int apply_scenario_input(
+    scenario_context *context,
+    const scenario_input *input,
+    char *error,
+    size_t error_size
+)
+{
+    ecs_world *world = game_prototype_preview_world(context->preview);
+    ecs_entity entity = game_prototype_preview_entity(context->preview);
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
+    CF_V2 movement = { (float)input->movement_x, (float)input->movement_y };
+    pin_value movement_value = {
+        .type = PIN_STRUCT,
+        .type_name = "CF_V2",
+        .ptr = &movement,
+    };
+    flow_error flow = { 0 };
+    if (game_behavior_dispatch(
+            behaviors,
+            entity,
+            "Input",
+            (flow_inputs){ .values = &movement_value, .count = 1 },
+            &flow
+        ) < 0) {
+        snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario movement input failed");
+        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (ecs_world_component(world, GAME_COMPONENT_GameAim.id)) {
+        GameAim *aim = GAME_GameAim_get(world, entity);
+        if (aim) {
+            CF_V2 direction = { (float)input->aim_x, (float)input->aim_y };
+            if (input->aim_point &&
+                ecs_world_component(world, GAME_COMPONENT_GameTransform.id)) {
+                const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+                if (position) {
+                    direction.x -= position->x;
+                    direction.y -= position->y;
+                }
+            }
+            float length = hypotf(direction.x, direction.y);
+            if (length > 0.0001f) {
+                aim->direction = (CF_V2){ direction.x / length, direction.y / length };
+            }
+            aim->firing = input->aim_firing;
+        }
+    }
+    const char *actions[] = { "Fire", "Dash" };
+    const bool pressed[] = { input->fire_pressed, input->dash_pressed };
+    for (int i = 0; i < 2; i++) {
+        if (!pressed[i]) {
+            continue;
+        }
+        flow = (flow_error){ 0 };
+        if (game_behavior_dispatch(behaviors, entity, actions[i], (flow_inputs){ 0 }, &flow) <
+            0) {
+            snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario action failed");
+            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        }
+    }
+    return BLUEPRINTS_AUTOMATION_OK;
+}
+
+static int run_scenario_inputs(
+    scenario_context *context,
+    const scenario_input *inputs,
+    uint64_t frames,
+    double fixed_dt,
+    scenario_observations *observations,
+    char *error,
+    size_t error_size
+)
+{
+    char launch_error[256] = { 0 };
+    if (game_prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error) !=
+        ECS_OK) {
+        snprintf(error, error_size, "%s", launch_error[0] ? launch_error : "could not launch prototype");
+        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (game_prototype_preview_tick(context->preview, 0) != 0) {
+        snprintf(error, error_size, "could not initialize prototype clock");
+        return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+    }
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        if (apply_scenario_input(context, &inputs[frame], error, error_size) !=
+                BLUEPRINTS_AUTOMATION_OK ||
+            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
+                0) {
+            if (!error[0]) {
+                snprintf(error, error_size, "prototype scenario failed");
+            }
+            return BLUEPRINTS_AUTOMATION_EXECUTION_ERROR;
+        }
+        observations->world_hash[frame] = scenario_world_hash(
+            game_prototype_preview_world(context->preview)
+        );
+        observations->live_entities[frame] = ecs_world_live_count(
+            game_prototype_preview_world(context->preview)
+        );
+    }
+    observations->has_live_entities = true;
+    return BLUEPRINTS_AUTOMATION_OK;
+}
+
+static bool safe_recording_path(const char *path)
+{
+    if (!path ||
+        strncmp(path, SCENARIO_RECORDING_PATH_PREFIX, strlen(SCENARIO_RECORDING_PATH_PREFIX)) !=
+            0 ||
+        !path[strlen(SCENARIO_RECORDING_PATH_PREFIX)] ||
+        strchr(path + strlen(SCENARIO_RECORDING_PATH_PREFIX), '/')) {
+        return false;
+    }
+    char *resolved = realpath(path, NULL);
+    const char *resolved_prefix = "/private" SCENARIO_RECORDING_PATH_PREFIX;
+    const char *resolved_name = resolved ? strrchr(resolved, '/') : NULL;
+    const char *path_name = strrchr(path, '/');
+    bool safe = resolved && resolved_name && path_name &&
+                (!strncmp(resolved, SCENARIO_RECORDING_PATH_PREFIX, strlen(SCENARIO_RECORDING_PATH_PREFIX)) ||
+                 !strncmp(resolved, resolved_prefix, strlen(resolved_prefix))) &&
+                !strcmp(resolved_name, path_name);
+    free(resolved);
+    return safe;
+}
+
+static int create_recording_path(char *path, size_t path_size, char *error, size_t error_size)
+{
+    char template[] = SCENARIO_RECORDING_PATH_PREFIX "XXXXXX";
+    int fd = mkstemp(template);
+    if (fd < 0) {
+        snprintf(error, error_size, "could not create recording artifact: %s", strerror(errno));
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    close(fd);
+    if (snprintf(path, path_size, "%s", template) >= (int)path_size) {
+        unlink(template);
+        snprintf(error, error_size, "recording artifact path is too long");
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    return BLUEPRINTS_AUTOMATION_OK;
+}
+
+static int write_recording_artifact(const char *path, yyjson_mut_val *recording, char *error, size_t error_size)
+{
+    size_t bytes = 0;
+    char *json = yyjson_mut_val_write(recording, 0, &bytes);
+    if (!json || bytes > SCENARIO_RECORDING_MAX_BYTES) {
+        free(json);
+        unlink(path);
+        snprintf(error, error_size, "recording artifact exceeds the supported size");
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    FILE *file = fopen(path, "wb");
+    if (!file) {
+        free(json);
+        unlink(path);
+        snprintf(error, error_size, "could not write recording artifact: %s", strerror(errno));
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    bool ok = fwrite(json, 1, bytes, file) == bytes;
+    if (fclose(file) != 0) {
+        ok = false;
+    }
+    free(json);
+    if (!ok) {
+        unlink(path);
+        snprintf(error, error_size, "could not write recording artifact");
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
+    }
+    return BLUEPRINTS_AUTOMATION_OK;
+}
+
+static yyjson_doc *read_recording_artifact(const char *path, char *error, size_t error_size)
+{
+    if (!safe_recording_path(path)) {
+        snprintf(error, error_size, "recording_path must refer to a generated /tmp recording artifact");
+        return NULL;
+    }
+    struct stat info = { 0 };
+    if (stat(path, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size <= 0 ||
+        (uintmax_t)info.st_size > SCENARIO_RECORDING_MAX_BYTES) {
+        snprintf(error, error_size, "recording artifact is missing or exceeds the supported size");
+        return NULL;
+    }
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        snprintf(error, error_size, "could not read recording artifact: %s", strerror(errno));
+        return NULL;
+    }
+    size_t bytes = (size_t)info.st_size;
+    char *json = xmalloc(bytes + 1);
+    bool ok = fread(json, 1, bytes, file) == bytes;
+    fclose(file);
+    if (!ok) {
+        free(json);
+        snprintf(error, error_size, "could not read recording artifact");
+        return NULL;
+    }
+    json[bytes] = '\0';
+    yyjson_doc *document = yyjson_read(json, bytes, 0);
+    free(json);
+    if (!document || !yyjson_is_obj(yyjson_doc_get_root(document))) {
+        yyjson_doc_free(document);
+        snprintf(error, error_size, "recording artifact is not a JSON object");
+        return NULL;
+    }
+    return document;
+}
+
+static yyjson_mut_val *add_recording(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *parent,
+    const scenario_context *context,
+    const scenario_input *inputs,
+    const scenario_observations *observations,
+    uint64_t frames,
+    double fixed_dt,
+    const char *artifact_path
+)
+{
+    yyjson_mut_val *recording = yyjson_mut_obj_add_obj(doc, parent, "recording");
+    yyjson_mut_obj_add_strcpy(doc, recording, "format", SCENARIO_RECORDING_FORMAT);
+    yyjson_mut_obj_add_uint(doc, recording, "version", SCENARIO_RECORDING_VERSION);
+    yyjson_mut_obj_add_uint(doc, recording, "recording_version", SCENARIO_RECORDING_VERSION);
+    yyjson_mut_obj_add_uint(doc, recording, "contract_version", BLUEPRINTS_AUTOMATION_CONTRACT);
+    const char *id = artifact_path
+                       ? artifact_path + strlen(SCENARIO_RECORDING_PATH_PREFIX)
+                       : "";
+    yyjson_mut_obj_add_strcpy(doc, recording, "id", id);
+    yyjson_mut_obj_add_strcpy(doc, recording, "recording_id", id);
+    yyjson_mut_obj_add_strcpy(doc, recording, "kind", "prototype");
+    size_t name_size = strlen(context->prototype_ref.filename) -
+                       (sizeof ".json" - 1) + 1;
+    char *name = xmalloc(name_size);
+    memcpy(name, context->prototype_ref.filename, name_size - 1);
+    name[name_size - 1] = '\0';
+    yyjson_mut_obj_add_strcpy(doc, recording, "name", name);
+    free(name);
+    add_hash_named(doc, recording, "content_hash", context->prototype_hash);
+    yyjson_mut_val *content_hashes = yyjson_mut_obj_add_arr(doc, recording, "content_hashes");
+    char content_hash[32];
+    snprintf(
+        content_hash,
+        sizeof content_hash,
+        "%016llx",
+        (unsigned long long)context->prototype_hash
+    );
+    yyjson_mut_arr_add_strcpy(doc, content_hashes, content_hash);
+    yyjson_mut_obj_add_uint(doc, recording, "frames", frames);
+    yyjson_mut_obj_add_real(doc, recording, "fixed_dt", fixed_dt);
+    if (artifact_path) {
+        yyjson_mut_obj_add_strcpy(doc, recording, "artifact_path", artifact_path);
+    }
+    yyjson_mut_val *input_values = yyjson_mut_obj_add_arr(doc, recording, "inputs");
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        add_scenario_input(doc, input_values, &inputs[frame]);
+    }
+    yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, recording, "events");
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        yyjson_mut_arr_add_arr(doc, events);
+    }
+    yyjson_mut_val *frame_hashes = yyjson_mut_obj_add_arr(doc, recording, "frame_hashes");
+    yyjson_mut_val *live_entities = yyjson_mut_obj_add_arr(doc, recording, "live_entities");
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        char frame_hash[32];
+        snprintf(
+            frame_hash,
+            sizeof frame_hash,
+            "%016llx",
+            (unsigned long long)observations->world_hash[frame]
+        );
+        yyjson_mut_arr_add_strcpy(doc, frame_hashes, frame_hash);
+        yyjson_mut_arr_add_uint(doc, live_entities, observations->live_entities[frame]);
+    }
+    if (frames) {
+        add_hash_named(doc, recording, "world_hash", observations->world_hash[frames - 1]);
+    } else {
+        add_hash_named(doc, recording, "world_hash", 0);
+    }
+    return recording;
+}
+
+static bool recording_hash(yyjson_val *object, const char *key, uint64_t *out)
+{
+    const char *text = request_string(object, key);
+    if (!text || !text[0]) {
+        return false;
+    }
+    char *end = NULL;
+    errno = 0;
+    unsigned long long value = strtoull(text, &end, 16);
+    if (errno || end == text || *end || strlen(text) > 16) {
+        return false;
+    }
+    *out = (uint64_t)value;
+    return true;
+}
+
+static bool recording_hash_value(yyjson_val *value, uint64_t *out)
+{
+    if (!value || !yyjson_is_str(value)) {
+        return false;
+    }
+    const char *text = yyjson_get_str(value);
+    char *end = NULL;
+    errno = 0;
+    unsigned long long hash = strtoull(text, &end, 16);
+    if (errno || end == text || *end || strlen(text) > 16) {
+        return false;
+    }
+    *out = (uint64_t)hash;
+    return true;
+}
+
 static void add_snapshot_component(
     yyjson_mut_doc *doc,
     yyjson_mut_val *array,
@@ -3868,6 +4437,371 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     return 0;
 }
 
+static bool parse_scenario_timing(
+    yyjson_val *request,
+    uint64_t *frames,
+    double *fixed_dt,
+    char *error,
+    size_t error_size
+)
+{
+    *frames = SCENARIO_DEFAULT_FRAMES;
+    yyjson_val *frames_value = yyjson_obj_get(request, "frames");
+    if (frames_value && (!request_uint(request, "frames", frames) ||
+                         *frames > SCENARIO_MAX_FRAMES)) {
+        snprintf(error, error_size, "frames must be a non-negative integer no greater than 600");
+        return false;
+    }
+    *fixed_dt = SCENARIO_DEFAULT_FIXED_DT;
+    yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
+    if (fixed_dt_value) {
+        if (!yyjson_is_num(fixed_dt_value)) {
+            snprintf(error, error_size, "fixed_dt must be a positive number");
+            return false;
+        }
+        *fixed_dt = yyjson_get_num(fixed_dt_value);
+        if (!isfinite(*fixed_dt) || *fixed_dt <= 0 || *fixed_dt > 0.25 ||
+            fabs(*fixed_dt - SCENARIO_DEFAULT_FIXED_DT) > 1e-12) {
+            snprintf(error, error_size, "fixed_dt must equal the engine fixed timestep (1/60)");
+            return false;
+        }
+    }
+    return true;
+}
+
+static int handle_record_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "record_scenario supports prototype targets only");
+        return -1;
+    }
+    const char *name = request_string(request, "name");
+    if (!name || !name[0]) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        return -1;
+    }
+    char error[256] = { 0 };
+    uint64_t frames = 0;
+    double fixed_dt = 0;
+    if (!parse_scenario_timing(request, &frames, &fixed_dt, error, sizeof error)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, error);
+        return -1;
+    }
+    scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
+    yyjson_val *input_values = yyjson_obj_get(request, "inputs");
+    if (input_values &&
+        (!yyjson_is_arr(input_values) || yyjson_arr_size(input_values) > frames)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "inputs must be an array with no more entries than frames");
+        return -1;
+    }
+    if (input_values) {
+        size_t count = yyjson_arr_size(input_values);
+        for (size_t i = 0; i < count; i++) {
+            if (!parse_scenario_input(yyjson_arr_get(input_values, i), &inputs[i], error, sizeof error)) {
+                response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, error);
+                return -1;
+            }
+        }
+    }
+
+    scenario_context context = { 0 };
+    int status = prepare_scenario(root, name, &context, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    scenario_observations observations = { 0 };
+    status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &observations, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        scenario_context_free(&context);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+
+    char artifact_path[256] = { 0 };
+    status = create_recording_path(artifact_path, sizeof artifact_path, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        scenario_context_free(&context);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_val *recording = add_recording(
+        result->doc,
+        value,
+        &context,
+        inputs,
+        &observations,
+        frames,
+        fixed_dt,
+        artifact_path
+    );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "recording_path", artifact_path);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "artifact_path", artifact_path);
+    status = write_recording_artifact(artifact_path, recording, error, sizeof error);
+    scenario_context_free(&context);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    return 0;
+}
+
+static int handle_replay_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *inline_recording = yyjson_obj_get(request, "recording");
+    const char *recording_path = request_string(request, "recording_path");
+    if ((inline_recording && recording_path) || (!inline_recording && !recording_path)) {
+        response_error(
+            result,
+            exit_code,
+            BLUEPRINTS_AUTOMATION_INVALID_REQUEST,
+            "replay_scenario requires exactly one recording or recording_path"
+        );
+        return -1;
+    }
+    yyjson_doc *recording_doc = NULL;
+    yyjson_val *recording = inline_recording;
+    char error[256] = { 0 };
+    if (recording_path) {
+        recording_doc = read_recording_artifact(recording_path, error, sizeof error);
+        if (!recording_doc) {
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, error);
+            return -1;
+        }
+        recording = yyjson_doc_get_root(recording_doc);
+    }
+    if (!recording || !yyjson_is_obj(recording)) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "recording must be a JSON object");
+        return -1;
+    }
+    size_t recording_bytes = 0;
+    char *recording_json = yyjson_val_write(recording, 0, &recording_bytes);
+    bool recording_valid = recording_json &&
+                           recording_bytes <= SCENARIO_RECORDING_MAX_BYTES;
+    free(recording_json);
+    if (!recording_valid) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "recording exceeds the supported size");
+        return -1;
+    }
+    const char *format = request_string(recording, "format");
+    uint64_t version = 0;
+    uint64_t recording_version = 0;
+    uint64_t contract = 0;
+    if ((format && strcmp(format, SCENARIO_RECORDING_FORMAT)) ||
+        !request_uint(recording, "version", &version) ||
+        version != SCENARIO_RECORDING_VERSION ||
+        (yyjson_obj_get(recording, "recording_version") &&
+         (!request_uint(recording, "recording_version", &recording_version) ||
+          recording_version != SCENARIO_RECORDING_VERSION)) ||
+        !request_uint(recording, "contract_version", &contract) ||
+        contract != BLUEPRINTS_AUTOMATION_CONTRACT) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording format, version, or contract is incompatible");
+        return -1;
+    }
+    yyjson_val *prototype = yyjson_obj_get(recording, "prototype");
+    const char *name = prototype && yyjson_is_obj(prototype)
+                         ? request_string(prototype, "name")
+                         : request_string(recording, "name");
+    uint64_t expected_prototype_hash = 0;
+    bool has_hash = prototype && yyjson_is_obj(prototype)
+                      ? recording_hash(prototype, "hash", &expected_prototype_hash)
+                      : recording_hash(recording, "content_hash", &expected_prototype_hash);
+    if (!name || !name[0] || !has_hash) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording prototype identity and content hash are required");
+        return -1;
+    }
+    uint64_t frames = 0;
+    double fixed_dt = 0;
+    if (!parse_scenario_timing(recording, &frames, &fixed_dt, error, sizeof error)) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    yyjson_val *input_values = yyjson_obj_get(recording, "inputs");
+    yyjson_val *observation_values = yyjson_obj_get(recording, "observations");
+    yyjson_val *frame_hashes = yyjson_obj_get(recording, "frame_hashes");
+    yyjson_val *live_entities_values = yyjson_obj_get(recording, "live_entities");
+    bool object_observations = observation_values && yyjson_is_arr(observation_values);
+    bool array_observations = frame_hashes && yyjson_is_arr(frame_hashes);
+    if (!input_values || !yyjson_is_arr(input_values) ||
+        yyjson_arr_size(input_values) != frames ||
+        ((!object_observations || yyjson_arr_size(observation_values) != frames) &&
+         (!array_observations || yyjson_arr_size(frame_hashes) != frames))) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording inputs and observations must contain exactly frames entries");
+        return -1;
+    }
+    scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
+    scenario_observations expected = { 0 };
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        if (!parse_scenario_input(yyjson_arr_get(input_values, frame), &inputs[frame], error, sizeof error)) {
+            yyjson_doc_free(recording_doc);
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, error);
+            return -1;
+        }
+        uint64_t live_entities = 0;
+        bool valid_observation = false;
+        if (object_observations) {
+            yyjson_val *observation = yyjson_arr_get(observation_values, frame);
+            uint64_t recorded_frame = 0;
+            valid_observation = observation && yyjson_is_obj(observation) &&
+                                request_uint(observation, "frame", &recorded_frame) &&
+                                recorded_frame == frame &&
+                                recording_hash(
+                                    observation,
+                                    "world_hash",
+                                    &expected.world_hash[frame]
+                                ) &&
+                                request_uint(observation, "live_entities", &live_entities) &&
+                                live_entities <= UINT32_MAX;
+        } else {
+            valid_observation = recording_hash_value(
+                yyjson_arr_get(frame_hashes, frame),
+                &expected.world_hash[frame]
+            );
+            if (live_entities_values && yyjson_is_arr(live_entities_values) &&
+                yyjson_arr_size(live_entities_values) == frames) {
+                yyjson_val *live_value = yyjson_arr_get(live_entities_values, frame);
+                valid_observation = valid_observation && yyjson_is_uint(live_value);
+                if (valid_observation) {
+                    live_entities = yyjson_get_uint(live_value);
+                }
+            }
+        }
+        if (!valid_observation) {
+            yyjson_doc_free(recording_doc);
+            response_error(result, exit_code, BLUEPRINTS_AUTOMATION_VALIDATION_ERROR, "recording observations are invalid");
+            return -1;
+        }
+        if (object_observations ||
+            (live_entities_values && yyjson_is_arr(live_entities_values) &&
+             yyjson_arr_size(live_entities_values) == frames)) {
+            expected.live_entities[frame] = (uint32_t)live_entities;
+            expected.has_live_entities = true;
+        }
+    }
+
+    scenario_context context = { 0 };
+    int status = prepare_scenario(root, name, &context, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    if (context.prototype_hash != expected_prototype_hash) {
+        scenario_context_free(&context);
+        yyjson_doc_free(recording_doc);
+        response_error(
+            result,
+            exit_code,
+            BLUEPRINTS_AUTOMATION_VALIDATION_ERROR,
+            "recording prototype content hash does not match the current asset"
+        );
+        return -1;
+    }
+    scenario_observations actual = { 0 };
+    status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &actual, error, sizeof error);
+    if (status != BLUEPRINTS_AUTOMATION_OK) {
+        scenario_context_free(&context);
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    int divergence = -1;
+    for (uint64_t frame = 0; frame < frames; frame++) {
+        if (expected.world_hash[frame] != actual.world_hash[frame] ||
+            (expected.has_live_entities &&
+             expected.live_entities[frame] != actual.live_entities[frame])) {
+            divergence = (int)frame;
+            break;
+        }
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(
+        result->doc,
+        value,
+        &context.prototype_ref,
+        context.prototype_bytes,
+        context.prototype_hash
+    );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    yyjson_mut_obj_add_bool(result->doc, value, "matched", divergence < 0);
+    yyjson_mut_obj_add_bool(result->doc, value, "deterministic", divergence < 0);
+    yyjson_mut_obj_add_bool(result->doc, value, "diverged", divergence >= 0);
+    yyjson_mut_obj_add_uint(
+        result->doc,
+        value,
+        "replayed_frames",
+        divergence < 0 ? frames : (uint64_t)divergence + 1
+    );
+    if (recording_path) {
+        yyjson_mut_obj_add_strcpy(result->doc, value, "recording_path", recording_path);
+    }
+    if (divergence >= 0) {
+        yyjson_mut_obj_add_int(result->doc, value, "first_divergence_frame", divergence);
+        yyjson_mut_val *difference = yyjson_mut_obj_add_obj(result->doc, value, "divergence");
+        yyjson_mut_obj_add_uint(result->doc, difference, "frame", divergence);
+        add_hash_named(result->doc, difference, "expected_world_hash", expected.world_hash[divergence]);
+        add_hash_named(result->doc, difference, "actual_world_hash", actual.world_hash[divergence]);
+        yyjson_mut_obj_add_uint(
+            result->doc,
+            difference,
+            "expected_live_entities",
+            expected.live_entities[divergence]
+        );
+        yyjson_mut_obj_add_uint(
+            result->doc,
+            difference,
+            "actual_live_entities",
+            actual.live_entities[divergence]
+        );
+    }
+    scenario_context_free(&context);
+    yyjson_doc_free(recording_doc);
+    return 0;
+}
+
+static int handle_read_recording(yyjson_val *request, response *result, int *exit_code)
+{
+    const char *id = request_string(request, "id");
+    if (!id || !id[0] || strlen(id) > 128 ||
+        strspn(id, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") !=
+            strlen(id)) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "id must be a bounded generated recording identifier");
+        return -1;
+    }
+    char path[256] = { 0 };
+    if (snprintf(path, sizeof path, "%s%s", SCENARIO_RECORDING_PATH_PREFIX, id) >=
+        (int)sizeof path) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_INVALID_REQUEST, "recording identifier is too long");
+        return -1;
+    }
+    char error[256] = { 0 };
+    yyjson_doc *document = read_recording_artifact(path, error, sizeof error);
+    if (!document) {
+        response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "recording_not_found");
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_val(
+        result->doc,
+        value,
+        "recording",
+        yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(document))
+    );
+    yyjson_doc_free(document);
+    return 0;
+}
+
 static int handle_describe_registry(response *result)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -3953,7 +4887,9 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "inspect_graph") ||
            !strcmp(operation, "inspect_system") ||
            !strcmp(operation, "run_scenario") ||
-           !strcmp(operation, "runtime_snapshot");
+           !strcmp(operation, "runtime_snapshot") ||
+           !strcmp(operation, "record_scenario") ||
+           !strcmp(operation, "replay_scenario");
 }
 
 char *blueprints_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -4024,6 +4960,12 @@ char *blueprints_automation_handle(const char *request, const char *default_root
         handle_run_scenario(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "runtime_snapshot")) {
         handle_runtime_snapshot(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "record_scenario")) {
+        handle_record_scenario(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "replay_scenario")) {
+        handle_replay_scenario(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "read_recording")) {
+        handle_read_recording(root_value, &result, exit_code);
     } else {
         handle_describe_registry(&result);
     }

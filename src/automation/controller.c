@@ -161,6 +161,7 @@ static const contract_field CONTRACT_LIST_ASSETS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "cursor", "uint64", false, "Zero-based result offset; defaults to zero." },
     { "limit", "uint64", false, "Maximum number of results; must be greater than zero." },
+    { "summary", "boolean", false, "Return compact asset records without relationship details." },
 };
 static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -2425,6 +2426,7 @@ static int handle_list_assets(const char *root, yyjson_val *request, response *r
     snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)content_hash_value);
     yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
     yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
+    yyjson_mut_obj_add_bool(result->doc, value, "summary", page.summary);
     uint64_t total = (uint64_t)acount(assets);
     uint64_t start = page.cursor < total ? page.cursor : total;
     uint64_t count = total - start;

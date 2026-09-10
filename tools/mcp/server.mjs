@@ -21,6 +21,14 @@ function negotiateProtocolVersion(requested) {
   return supportedProtocolVersions.includes(requested) ? requested : protocolVersion;
 }
 
+function resourceTemplates() {
+  return [{
+    uriTemplate: "blueprints://asset/{kind}/{name}",
+    name: "c-blueprints authored asset",
+    mimeType: "application/json",
+  }];
+}
+
 function controllerPath() {
   const candidates = [
     process.env.CBLUEPRINTS_CTL,
@@ -35,11 +43,14 @@ function send(message) {
 }
 
 function errorResponse(id, code, message) {
-  return {
+  const response = {
     jsonrpc: "2.0",
-    id: id ?? null,
     error: { code, message },
   };
+  if (id !== undefined) {
+    response.id = id;
+  }
+  return response;
 }
 
 function toolDefinitions() {
@@ -148,14 +159,22 @@ function toolResult(response) {
 }
 
 function resourceRead(uri) {
+  let response;
   if (uri === "blueprints://project/status") {
-    return nativeRequest("status");
+    response = nativeRequest("status");
+  } else {
+    const match = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
+    if (!match) {
+      throw new Error(`unknown resource: ${uri}`);
+    }
+    response = nativeRequest("read_asset", { kind: match[1], name: match[2] });
   }
-  const match = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
-  if (match) {
-    return nativeRequest("read_asset", { kind: match[1], name: match[2] });
+  if (response.ok !== true) {
+    const error = new Error(response.error?.message || "resource read failed");
+    error.rpcCode = response.error?.code === "asset_not_found" ? -32002 : -32603;
+    throw error;
   }
-  throw new Error(`unknown resource: ${uri}`);
+  return response;
 }
 
 function dispatch(message) {
@@ -167,6 +186,12 @@ function dispatch(message) {
     return null;
   }
   if (message.method === "initialize") {
+    const params = message.params;
+    if (!params || typeof params.protocolVersion !== "string" ||
+        !params.capabilities || typeof params.capabilities !== "object" ||
+        !params.clientInfo || typeof params.clientInfo !== "object") {
+      return reply(message, errorResponse(message.id, -32602, "initialize params are incomplete"));
+    }
     return reply(message, {
       jsonrpc: "2.0",
       id: message.id,
@@ -193,12 +218,14 @@ function dispatch(message) {
           name: "c-blueprints project status",
           mimeType: "application/json",
         }],
-        resourceTemplates: [{
-          uriTemplate: "blueprints://asset/{kind}/{name}",
-          name: "c-blueprints authored asset",
-          mimeType: "application/json",
-        }],
       },
+    });
+  }
+  if (message.method === "resources/templates/list") {
+    return reply(message, {
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { resourceTemplates: resourceTemplates() },
     });
   }
   if (message.method === "resources/read") {
@@ -211,7 +238,7 @@ function dispatch(message) {
         result: { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(response) }] },
       });
     } catch (error) {
-      return reply(message, errorResponse(message.id, -32000, error.message));
+      return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));
     }
   }
   if (message.method === "tools/call") {
@@ -239,7 +266,7 @@ process.stdin.on("data", (chunk) => {
       const response = dispatch(message);
       if (response) send(response);
     } catch (error) {
-      send(errorResponse(null, -32700, `Parse error: ${error.message}`));
+      send(errorResponse(undefined, -32700, `Parse error: ${error.message}`));
     }
   }
 });

@@ -25,7 +25,12 @@ function nativeRequest(operation, args = {}) {
 }
 
 const requests = [
-  { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+  {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "smoke", version: "0.1.0" } },
+  },
   { jsonrpc: "2.0", method: "notifications/initialized" },
   { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
   { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "project_status", arguments: {} } },
@@ -34,9 +39,11 @@ const requests = [
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
+  { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
   { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "blueprints://project/status" } },
   { jsonrpc: "2.0", id: 10, method: "resources/read", params: { uri: "blueprints://asset/behavior/HealthBehavior" } },
   { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "missing_tool", arguments: {} } },
+  { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "blueprints://asset/behavior/nope" } },
   { jsonrpc: "2.0", method: "ping" },
 ];
 const result = spawnSync(process.execPath, [server], {
@@ -71,15 +78,18 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     registry.result?.nodes?.length < 1) {
   throw new Error("native MCP operations failed");
 }
-if (!responseById.get(8)?.result?.resourceTemplates?.some((template) =>
+if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
   template.uriTemplate === "blueprints://asset/{kind}/{name}")) {
-  throw new Error("resources/list did not expose the asset template");
+  throw new Error("resources/templates/list did not expose the asset template");
 }
 if (responseById.get(9)?.error || responseById.get(10)?.error || !responseById.get(10)?.result?.contents?.length) {
   throw new Error("MCP status request failed");
 }
 if (responseById.get(11)?.error?.code !== -32602) {
   throw new Error("unknown tools return the expected JSON-RPC error");
+}
+if (responseById.get(13)?.error?.code !== -32002) {
+  throw new Error("missing resources return the expected JSON-RPC error");
 }
 
 const nativeStatus = nativeRequest("status");

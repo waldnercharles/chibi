@@ -263,7 +263,13 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
             return set_error(error, error_size, "asset path is too long");
         }
         snprintf(out->filename, sizeof out->filename, "%s", slash + 1);
-        snprintf(out->relative, sizeof out->relative, "%s", path);
+        snprintf(
+            out->relative,
+            sizeof out->relative,
+            "content/%s/%s",
+            out->family->folder,
+            out->filename
+        );
         return 0;
     }
 

@@ -21,8 +21,9 @@ adapter provides these tools:
 
 The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 `2025-11-25`, keeps notifications response-free, and advertises the dynamic
-`blueprints://asset/{kind}/{name}` resource template. Tool responses include
-both a text rendering and structured JSON content.
+`blueprints://asset/{kind}/{name}` resource template through
+`resources/templates/list`. Tool responses include both a text rendering and
+structured JSON content.
 
 The native controller also accepts newline-delimited JSON directly:
 

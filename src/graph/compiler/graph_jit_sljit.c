@@ -1674,7 +1674,7 @@ static void *compile_batch_code(const graph_ir *ir, graph_sljit_program *program
                               (program->simd_mode
                                    ? SLJIT_ENTER_VECTOR(SJLIT_FLOAT_REGISTER_COUNT)
                                    : 0);
-    if (sljit_emit_enter(compiler, SLJIT_ENTER_REG_ARG, SLJIT_ARGS1(W, P_R), scratch_count, 0, 0) !=
+    if (sljit_emit_enter(compiler, 0, SLJIT_ARGS1(W, P_R), scratch_count, 0, 0) !=
             SLJIT_SUCCESS ||
         emit_op1(&builder, SLJIT_MOV_P, SLJIT_R4, 0, SLJIT_R0, 0) ||
         (ir->event_delta >= 0 &&
@@ -1783,7 +1783,7 @@ static graph_sljit_program *compile_ir(const graph_ir *ir, const char **reason)
     }
     if (sljit_emit_enter(
             builder.compiler,
-            register_mode ? SLJIT_ENTER_REG_ARG : 0,
+            0,
             register_mode ? SLJIT_ARGS1(W, P_R) : SLJIT_ARGS1(W, P),
             (register_mode ? 3 : 4) |
                 (register_mode ? SLJIT_ENTER_FLOAT(SJLIT_FLOAT_REGISTER_COUNT) : 0) |

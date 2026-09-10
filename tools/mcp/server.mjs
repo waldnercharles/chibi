@@ -5,8 +5,21 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const protocolVersion = "2025-11-25";
+const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
 const serverVersion = "0.1.0";
 const root = resolve(process.env.CBLUEPRINTS_ROOT || process.cwd());
+
+function isNotification(message) {
+  return !Object.prototype.hasOwnProperty.call(message, "id");
+}
+
+function reply(message, response) {
+  return isNotification(message) ? null : response;
+}
+
+function negotiateProtocolVersion(requested) {
+  return supportedProtocolVersions.includes(requested) ? requested : protocolVersion;
+}
 
 function controllerPath() {
   const candidates = [
@@ -31,6 +44,7 @@ function errorResponse(id, code, message) {
 
 function toolDefinitions() {
   const noArguments = { type: "object", additionalProperties: false };
+  const outputSchema = { type: "object", additionalProperties: true };
   const assetArguments = {
     type: "object",
     properties: {
@@ -51,26 +65,31 @@ function toolDefinitions() {
       name: "project_status",
       description: "Return project paths, asset counts, and reflected registry counts.",
       inputSchema: noArguments,
+      outputSchema,
     },
     {
       name: "list_assets",
       description: "List authored JSON assets with stable paths, sizes, and content hashes.",
       inputSchema: noArguments,
+      outputSchema,
     },
     {
       name: "read_asset",
       description: "Read one authored asset as parsed JSON.",
       inputSchema: assetArguments,
+      outputSchema,
     },
     {
       name: "validate_asset",
       description: "Load and validate one asset through the engine's native loader/compiler.",
       inputSchema: assetArguments,
+      outputSchema,
     },
     {
       name: "describe_registry",
       description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
       inputSchema: noArguments,
+      outputSchema,
     },
   ];
 }
@@ -87,13 +106,22 @@ function nativeRequest(operation, args = {}) {
     },
   );
   if (result.error) {
-    throw new Error(`blueprints_ctl could not start: ${result.error.message}`);
+    const error = new Error(`blueprints_ctl could not start: ${result.error.message}`);
+    error.rpcCode = -32603;
+    throw error;
   }
   const line = result.stdout.trim().split("\n").filter(Boolean).at(-1);
   if (!line) {
-    throw new Error(result.stderr.trim() || "blueprints_ctl returned no response");
+    const error = new Error(result.stderr.trim() || "blueprints_ctl returned no response");
+    error.rpcCode = -32603;
+    throw error;
   }
-  return JSON.parse(line);
+  try {
+    return JSON.parse(line);
+  } catch (error) {
+    error.rpcCode = -32603;
+    throw error;
+  }
 }
 
 function toolCall(name, args) {
@@ -103,13 +131,18 @@ function toolCall(name, args) {
     case "read_asset": return nativeRequest("read_asset", args || {});
     case "validate_asset": return nativeRequest("validate_asset", args || {});
     case "describe_registry": return nativeRequest("describe_registry");
-    default: throw new Error(`unknown tool: ${name}`);
+    default: {
+      const error = new Error(`unknown tool: ${name}`);
+      error.rpcCode = -32602;
+      throw error;
+    }
   }
 }
 
 function toolResult(response) {
   return {
     content: [{ type: "text", text: JSON.stringify(response) }],
+    structuredContent: response,
     isError: response.ok !== true,
   };
 }
@@ -126,31 +159,32 @@ function resourceRead(uri) {
 }
 
 function dispatch(message) {
-  if (message.jsonrpc !== "2.0" || typeof message.method !== "string") {
-    return errorResponse(message.id, -32600, "Invalid Request");
+  if (!message || typeof message !== "object" || Array.isArray(message) ||
+      message.jsonrpc !== "2.0" || typeof message.method !== "string") {
+    return errorResponse(message?.id, -32600, "Invalid Request");
   }
   if (message.method === "notifications/initialized") {
     return null;
   }
   if (message.method === "initialize") {
-    return {
+    return reply(message, {
       jsonrpc: "2.0",
       id: message.id,
       result: {
-        protocolVersion,
+        protocolVersion: negotiateProtocolVersion(message.params?.protocolVersion),
         capabilities: { tools: {}, resources: {} },
         serverInfo: { name: "c-blueprints", version: serverVersion },
       },
-    };
+    });
   }
   if (message.method === "ping") {
-    return { jsonrpc: "2.0", id: message.id, result: {} };
+    return reply(message, { jsonrpc: "2.0", id: message.id, result: {} });
   }
   if (message.method === "tools/list") {
-    return { jsonrpc: "2.0", id: message.id, result: { tools: toolDefinitions() } };
+    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: toolDefinitions() } });
   }
   if (message.method === "resources/list") {
-    return {
+    return reply(message, {
       jsonrpc: "2.0",
       id: message.id,
       result: {
@@ -159,35 +193,36 @@ function dispatch(message) {
           name: "c-blueprints project status",
           mimeType: "application/json",
         }],
+        resourceTemplates: [{
+          uriTemplate: "blueprints://asset/{kind}/{name}",
+          name: "c-blueprints authored asset",
+          mimeType: "application/json",
+        }],
       },
-    };
+    });
   }
   if (message.method === "resources/read") {
     try {
       const uri = message.params?.uri;
       const response = resourceRead(uri);
-      return {
+      return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
         result: { contents: [{ uri, mimeType: "application/json", text: JSON.stringify(response) }] },
-      };
+      });
     } catch (error) {
-      return errorResponse(message.id, -32000, error.message);
+      return reply(message, errorResponse(message.id, -32000, error.message));
     }
   }
   if (message.method === "tools/call") {
     try {
       const response = toolCall(message.params?.name, message.params?.arguments);
-      return { jsonrpc: "2.0", id: message.id, result: toolResult(response) };
+      return reply(message, { jsonrpc: "2.0", id: message.id, result: toolResult(response) });
     } catch (error) {
-      return {
-        jsonrpc: "2.0",
-        id: message.id,
-        result: { content: [{ type: "text", text: error.message }], isError: true },
-      };
+      return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));
     }
   }
-  return errorResponse(message.id, -32601, `Method not found: ${message.method}`);
+  return reply(message, errorResponse(message.id, -32601, `Method not found: ${message.method}`));
 }
 
 let pending = "";

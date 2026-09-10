@@ -45,7 +45,7 @@ check-format:
 
 test:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev
+	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp
 	cmake --build $(BUILD_DIR) --target test_suite
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
 	cmake --build $(BUILD_DIR) --target app

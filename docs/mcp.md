@@ -19,6 +19,11 @@ adapter provides these tools:
 - `validate_asset` — native asset loading and compiler diagnostics.
 - `describe_registry` — reflected nodes, pins, types, services, operators, and components.
 
+The stdio adapter negotiates MCP protocol versions `2025-06-18` and
+`2025-11-25`, keeps notifications response-free, and advertises the dynamic
+`blueprints://asset/{kind}/{name}` resource template. Tool responses include
+both a text rendering and structured JSON content.
+
 The native controller also accepts newline-delimited JSON directly:
 
 ```sh
@@ -28,6 +33,8 @@ printf '%s\n' '{"contract":1,"operation":"status"}' |
 
 Set `CBLUEPRINTS_ROOT` when launching the MCP adapter outside the repository,
 or set `CBLUEPRINTS_CTL` to an explicitly built controller executable.
+
+`make test` includes the MCP protocol and native-controller smoke checks.
 
 The adapter is intentionally local and read-only in this first slice. Typed
 edits, deterministic run artifacts, and public registry metadata can build on

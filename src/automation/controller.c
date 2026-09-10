@@ -296,6 +296,56 @@ static char *asset_full_path(const char *root, const asset_ref *ref)
     return path;
 }
 
+/* Asset paths are rooted at a real project directory. Do not follow a
+ * symlink at either content level: a local MCP client must not be able to
+ * turn a project-relative asset path into an arbitrary filesystem read. */
+static int verify_asset_directory(const char *root, const asset_family *family, char *error, size_t error_size)
+{
+    size_t content_size = strlen(root) + strlen("/content") + 1;
+    char *content_path = xmalloc(content_size);
+    snprintf(content_path, content_size, "%s/content", root);
+    struct stat info;
+    if (lstat(content_path, &info) != 0) {
+        int missing = errno == ENOENT;
+        free(content_path);
+        if (missing) {
+            return 0;
+        }
+        return set_errorf(error, error_size, "could not inspect %s", "content"), -1;
+    }
+    if (!S_ISDIR(info.st_mode)) {
+        free(content_path);
+        return set_error(error, error_size, "content is not a directory"), -1;
+    }
+    free(content_path);
+
+    size_t directory_size = strlen(root) + strlen("/content/") +
+                            strlen(family->folder) + 1;
+    char *directory_path = xmalloc(directory_size);
+    snprintf(directory_path, directory_size, "%s/content/%s", root, family->folder);
+    if (lstat(directory_path, &info) != 0) {
+        int missing = errno == ENOENT;
+        free(directory_path);
+        if (missing) {
+            return 0;
+        }
+        return set_errorf(error, error_size, "could not inspect %s", family->folder),
+             -1;
+    }
+    if (!S_ISDIR(info.st_mode)) {
+        free(directory_path);
+        return set_errorf(
+                   error,
+                   error_size,
+                   "asset directory is not a directory: %s",
+                   family->folder
+               ),
+             -1;
+    }
+    free(directory_path);
+    return 1;
+}
+
 static int asset_entry_compare(const void *left, const void *right)
 {
     const asset_entry *a = left;
@@ -319,17 +369,21 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
          family_index < (int)(sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES);
          family_index++) {
         const asset_family *family = &ASSET_FAMILIES[family_index];
+        int directory_status = verify_asset_directory(root, family, error, error_size);
+        if (directory_status < 0) {
+            free_asset_entries(entries);
+            return -1;
+        }
+        if (directory_status == 0) {
+            continue;
+        }
         size_t directory_size = strlen(root) + strlen("/content/") +
                                 strlen(family->folder) + 1;
         char *directory_path = xmalloc(directory_size);
         snprintf(directory_path, directory_size, "%s/content/%s", root, family->folder);
         DIR *directory = opendir(directory_path);
         if (!directory) {
-            int missing = errno == ENOENT;
             free(directory_path);
-            if (missing) {
-                continue;
-            }
             free_asset_entries(entries);
             return set_errorf(
                 error,
@@ -618,6 +672,14 @@ static int load_asset(
     if (ref_status != 0) {
         return ref_status == -2 ? BLUEPRINTS_AUTOMATION_NOT_FOUND
                                 : BLUEPRINTS_AUTOMATION_INVALID_REQUEST;
+    }
+    int directory_status = verify_asset_directory(root, ref->family, error, error_size);
+    if (directory_status <= 0) {
+        if (directory_status == 0) {
+            set_errorf(error, error_size, "asset not found: %s", ref->relative);
+            return BLUEPRINTS_AUTOMATION_NOT_FOUND;
+        }
+        return BLUEPRINTS_AUTOMATION_IO_ERROR;
     }
     char *path = asset_full_path(root, ref);
     struct stat info;

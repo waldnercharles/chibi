@@ -161,12 +161,44 @@ static bool source_boundaries(fixture *f)
         settings.bloom_strength = (float)bloom;
         CF_Pixel *pixels = render(f, 8, 8, settings, 3);
         CF_Pixel p = pixels[4 * 8 + 4];
-        ok &= p.r >= 254 && p.g == 0 && p.b == 0 && p.a == 255;
+        bool finite = p.r >= 254 && p.g == 0 && p.b == 0 && p.a == 255;
+        if (!finite) {
+            fprintf(
+                stderr,
+                "arena post nonfinite bloom=%d: rgba=(%u,%u,%u,%u)\n",
+                bloom,
+                p.r,
+                p.g,
+                p.b,
+                p.a
+            );
+            uint16_t *hdr = read_canvas(render_arena_post_target(f->post), 8 * 8 * 8);
+            int center = (4 * 8 + 4) * 4;
+            fprintf(
+                stderr,
+                "arena post source: rgba=(%g,%g,%g,%g)\n",
+                half_value(hdr[center]),
+                half_value(hdr[center + 1]),
+                half_value(hdr[center + 2]),
+                half_value(hdr[center + 3])
+            );
+            free(hdr);
+        }
+        ok &= finite;
         free(pixels);
     }
     settings.bloom_radius = 0.06f;
     CF_Pixel *edge = render(f, 128, 128, settings, 4);
-    ok &= edge[64 * 128 + 8].r > 8 && edge[64 * 128 + 127].r == 0;
+    bool clamped = edge[64 * 128 + 8].r > 8 && edge[64 * 128 + 127].r == 0;
+    if (!clamped) {
+        fprintf(
+            stderr,
+            "arena post edge clamp: near=%u far=%u\n",
+            edge[64 * 128 + 8].r,
+            edge[64 * 128 + 127].r
+        );
+    }
+    ok &= clamped;
     free(edge);
     return ok;
 }

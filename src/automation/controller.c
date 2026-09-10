@@ -101,6 +101,17 @@ typedef struct
 
 typedef struct
 {
+    char *root;
+    asset_entry *entries;
+    catalog_asset *assets;
+    uint64_t revision;
+    uint64_t content_hash;
+} catalog_snapshot;
+
+static catalog_snapshot CATALOG_SNAPSHOT;
+
+typedef struct
+{
     yyjson_val *value;
     uint64_t id;
 } inspect_json_item;
@@ -277,6 +288,7 @@ static const char *const CONTRACT_ERROR_CATEGORIES[] = {
 
 static int handle_describe_registry(response *result);
 static int handle_describe_contract(response *result);
+static uint64_t catalog_content_hash(const catalog_asset *assets);
 static int load_asset(
     const char *root,
     yyjson_val *request,
@@ -642,6 +654,14 @@ static void free_catalog_assets(catalog_asset *assets)
     afree(assets);
 }
 
+static void free_catalog_snapshot(catalog_snapshot *snapshot)
+{
+    free(snapshot->root);
+    free_asset_entries(snapshot->entries);
+    free_catalog_assets(snapshot->assets);
+    memset(snapshot, 0, sizeof *snapshot);
+}
+
 static int catalog_reference_compare(const void *left, const void *right)
 {
     const catalog_reference *a = left;
@@ -979,60 +999,109 @@ static void catalog_resolve_references(catalog_asset *assets)
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
 
-static int build_catalog(const char *root, catalog_asset **out, char *error, size_t error_size)
+static int load_catalog_asset(
+    const char *root,
+    const asset_entry *entry,
+    catalog_asset *asset,
+    char *error,
+    size_t error_size
+)
 {
-    asset_entry *entries = NULL;
-    if (enumerate_assets(root, &entries, error, error_size) != 0) {
-        return -1;
+    *asset = (catalog_asset) {
+        .asset = {
+            .family = entry->family,
+            .filename = xstrdup(entry->filename),
+            .relative = xstrdup(entry->relative),
+            .bytes = entry->bytes,
+            .hash = entry->hash,
+        },
+        .name = asset_name_from_filename(entry->filename),
+        .valid = true,
+    };
+    size_t path_size = strlen(root) + strlen(entry->relative) + 2;
+    char *path = xmalloc(path_size);
+    snprintf(path, path_size, "%s/%s", root, entry->relative);
+    char read_error[256] = { 0 };
+    char *json = read_file(path, NULL, NULL, read_error, sizeof read_error);
+    free(path);
+    if (!json) {
+        free_catalog_assets(asset);
+        return set_error(error, error_size, read_error);
     }
+    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    if (!document) {
+        asset->valid = false;
+        asset->errors = 1;
+        catalog_add_diagnostic(asset, "error", 0, "JSON", "asset is not valid JSON");
+    } else {
+        yyjson_val *json_root = yyjson_doc_get_root(document);
+        yyjson_val *version = yyjson_obj_get(json_root, "version");
+        if (yyjson_is_num(version)) {
+            asset->schema_version = yyjson_get_sint(version);
+        }
+        const char *description = request_string(json_root, "description");
+        if (description) {
+            asset->description = xstrdup(description);
+        }
+        catalog_scan_members(asset, json_root);
+        catalog_scan_references(asset, json_root);
+        yyjson_doc_free(document);
+        catalog_validate_asset(asset, json);
+    }
+    free(json);
+    return 0;
+}
+
+static int cached_catalog_asset_index(const catalog_asset *assets, const asset_entry *entry)
+{
+    for (int i = 0; i < acount(assets); i++) {
+        if (assets[i].asset.family == entry->family &&
+            !strcmp(assets[i].asset.relative, entry->relative) &&
+            assets[i].asset.bytes == entry->bytes &&
+            assets[i].asset.hash == entry->hash) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void reset_catalog_derived_data(catalog_asset *asset)
+{
+    for (int i = 0; i < acount(asset->dependencies); i++) {
+        asset->dependencies[i].resolved = false;
+    }
+    free_catalog_references(asset->dependents);
+    asset->dependents = NULL;
+}
+
+static int build_catalog_from_entries(
+    const char *root,
+    const asset_entry *entries,
+    catalog_asset *previous,
+    catalog_asset **out,
+    char *error,
+    size_t error_size
+)
+{
     catalog_asset *assets = NULL;
     for (int i = 0; i < acount(entries); i++) {
-        catalog_asset asset = {
-            .asset = {
-                .family = entries[i].family,
-                .filename = xstrdup(entries[i].filename),
-                .relative = xstrdup(entries[i].relative),
-                .bytes = entries[i].bytes,
-                .hash = entries[i].hash,
-            },
-            .name = asset_name_from_filename(entries[i].filename),
-            .valid = true,
-        };
-        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
-        char *path = xmalloc(path_size);
-        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
-        char read_error[256] = { 0 };
-        char *json = read_file(path, NULL, NULL, read_error, sizeof read_error);
-        free(path);
-        if (!json) {
+        int previous_index = previous
+                               ? cached_catalog_asset_index(previous, &entries[i])
+                               : -1;
+        if (previous_index >= 0) {
+            catalog_asset asset = previous[previous_index];
+            previous[previous_index] = (catalog_asset){ 0 };
+            reset_catalog_derived_data(&asset);
+            apush(assets, asset);
+            continue;
+        }
+        catalog_asset asset = { 0 };
+        if (load_catalog_asset(root, &entries[i], &asset, error, error_size) != 0) {
             free_catalog_assets(assets);
-            free_asset_entries(entries);
-            return set_error(error, error_size, read_error);
+            return -1;
         }
-        yyjson_doc *document = yyjson_read(json, strlen(json), 0);
-        if (!document) {
-            asset.valid = false;
-            asset.errors = 1;
-            catalog_add_diagnostic(&asset, "error", 0, "JSON", "asset is not valid JSON");
-        } else {
-            yyjson_val *json_root = yyjson_doc_get_root(document);
-            yyjson_val *version = yyjson_obj_get(json_root, "version");
-            if (yyjson_is_num(version)) {
-                asset.schema_version = yyjson_get_sint(version);
-            }
-            const char *description = request_string(json_root, "description");
-            if (description) {
-                asset.description = xstrdup(description);
-            }
-            catalog_scan_members(&asset, json_root);
-            catalog_scan_references(&asset, json_root);
-            yyjson_doc_free(document);
-            catalog_validate_asset(&asset, json);
-        }
-        free(json);
         apush(assets, asset);
     }
-    free_asset_entries(entries);
     catalog_resolve_references(assets);
     *out = assets;
     return 0;
@@ -1118,6 +1187,62 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
     }
     qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
     *out = entries;
+    return 0;
+}
+
+static bool asset_entries_equal(const asset_entry *left, const asset_entry *right)
+{
+    if (acount(left) != acount(right)) {
+        return false;
+    }
+    for (int i = 0; i < acount(left); i++) {
+        if (left[i].family != right[i].family ||
+            strcmp(left[i].relative, right[i].relative) ||
+            left[i].bytes != right[i].bytes || left[i].hash != right[i].hash) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int catalog_snapshot_get(
+    const char *root,
+    catalog_asset **out,
+    uint64_t *revision,
+    uint64_t *content_hash,
+    char *error,
+    size_t error_size
+)
+{
+    asset_entry *entries = NULL;
+    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+        return -1;
+    }
+    if (CATALOG_SNAPSHOT.assets && !strcmp(CATALOG_SNAPSHOT.root, root) &&
+        asset_entries_equal(entries, CATALOG_SNAPSHOT.entries)) {
+        free_asset_entries(entries);
+        *out = CATALOG_SNAPSHOT.assets;
+        *revision = CATALOG_SNAPSHOT.revision;
+        *content_hash = CATALOG_SNAPSHOT.content_hash;
+        return 0;
+    }
+    catalog_asset *assets = NULL;
+    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, error, error_size) !=
+        0) {
+        free_asset_entries(entries);
+        free_catalog_snapshot(&CATALOG_SNAPSHOT);
+        return -1;
+    }
+    uint64_t next_revision = CATALOG_SNAPSHOT.revision + 1;
+    free_catalog_snapshot(&CATALOG_SNAPSHOT);
+    CATALOG_SNAPSHOT.root = xstrdup(root);
+    CATALOG_SNAPSHOT.entries = entries;
+    CATALOG_SNAPSHOT.assets = assets;
+    CATALOG_SNAPSHOT.revision = next_revision;
+    CATALOG_SNAPSHOT.content_hash = catalog_content_hash(assets);
+    *out = CATALOG_SNAPSHOT.assets;
+    *revision = CATALOG_SNAPSHOT.revision;
+    *content_hash = CATALOG_SNAPSHOT.content_hash;
     return 0;
 }
 
@@ -1480,15 +1605,19 @@ static bool catalog_search_match(yyjson_val *request, const catalog_asset *asset
 static int handle_catalog(const char *root, response *result, int *exit_code)
 {
     catalog_asset *assets = NULL;
+    uint64_t revision = 0;
+    uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (build_catalog(root, &assets, error, sizeof error) != 0) {
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
+        0) {
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_obj_add_int(result->doc, value, "catalog_version", 1);
     char content_hash[32];
-    snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)catalog_content_hash(assets));
+    snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)content_hash_value);
+    yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
     yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", root);
     yyjson_mut_val *asset_array = yyjson_mut_obj_add_arr(result->doc, value, "assets");
@@ -1507,7 +1636,6 @@ static int handle_catalog(const char *root, response *result, int *exit_code)
         );
     }
     yyjson_mut_doc_free(registry.doc);
-    free_catalog_assets(assets);
     return 0;
 }
 
@@ -1519,12 +1647,19 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
         return -1;
     }
     catalog_asset *assets = NULL;
+    uint64_t revision = 0;
+    uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (build_catalog(root, &assets, error, sizeof error) != 0) {
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
+        0) {
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    char content_hash[32];
+    snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)content_hash_value);
+    yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
     const char *query = request_string(request, "query");
     yyjson_mut_obj_add_strcpy(result->doc, value, "query", query ? query : "");
     yyjson_mut_val *matches = yyjson_mut_obj_add_arr(result->doc, value, "assets");
@@ -1534,7 +1669,6 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
         }
     }
     yyjson_mut_obj_add_int(result->doc, value, "count", yyjson_mut_arr_size(matches));
-    free_catalog_assets(assets);
     return 0;
 }
 
@@ -1600,19 +1734,25 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
         transitive = yyjson_get_bool(transitive_value);
     }
     catalog_asset *assets = NULL;
+    uint64_t revision = 0;
+    uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (build_catalog(root, &assets, error, sizeof error) != 0) {
+    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
+        0) {
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     int count = acount(assets);
     int root_index = catalog_asset_index(assets, count, family_by_kind(kind)->kind, name);
     if (root_index < 0) {
-        free_catalog_assets(assets);
         response_error(result, exit_code, BLUEPRINTS_AUTOMATION_NOT_FOUND, "asset not found");
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    char content_hash[32];
+    snprintf(content_hash, sizeof content_hash, "%016llx", (unsigned long long)content_hash_value);
+    yyjson_mut_obj_add_uint(result->doc, value, "catalog_revision", revision);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "content_hash", content_hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "direction", direction);
     yyjson_mut_obj_add_bool(result->doc, value, "transitive", transitive);
     yyjson_mut_val *root_value = yyjson_mut_obj_add_obj(result->doc, value, "root");
@@ -1717,7 +1857,6 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     afree(queue);
     free(node_seen);
     free(edge_seen);
-    free_catalog_assets(assets);
     return 0;
 }
 

@@ -2,7 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const protocolVersion = "2025-11-25";
@@ -75,6 +75,136 @@ function errorResponse(id, code, message) {
   }
   return response;
 }
+
+class ControllerSession {
+  constructor() {
+    this.child = spawn(
+      controllerPath(),
+      ["--project-root", root],
+      { cwd: root, stdio: ["pipe", "pipe", "pipe"] },
+    );
+    this.child.stdout.setEncoding("utf8");
+    this.child.stderr.setEncoding("utf8");
+    this.buffer = "";
+    this.stderr = "";
+    this.queue = [];
+    this.pending = null;
+    this.timer = null;
+    this.closed = false;
+    this.child.stdout.on("data", (chunk) => this.receive(chunk));
+    this.child.stderr.on("data", (chunk) => {
+      this.stderr = `${this.stderr}${chunk}`.slice(-4096);
+    });
+    this.child.on("error", (error) => this.fail(error));
+    this.child.on("exit", (code, signal) => {
+      if (!this.closed) {
+        const detail = signal ? `terminated by ${signal}` : `exited with status ${code}`;
+        this.fail(new Error(`blueprints_ctl ${detail}${this.stderr ? `: ${this.stderr.trim()}` : ""}`));
+      }
+    });
+  }
+
+  request(payload, timeout) {
+    return new Promise((resolveRequest, rejectRequest) => {
+      this.queue.push({ payload, timeout, resolveRequest, rejectRequest });
+      this.pump();
+    });
+  }
+
+  pump() {
+    if (this.closed || this.pending || !this.queue.length) {
+      return;
+    }
+    this.pending = this.queue.shift();
+    this.timer = setTimeout(() => {
+      const error = protocolError(-32001, "blueprints_ctl request timed out");
+      this.fail(error);
+    }, this.pending.timeout);
+    const line = `${JSON.stringify(this.pending.payload)}\n`;
+    this.child.stdin.write(line, (error) => {
+      if (error) {
+        this.fail(error);
+      }
+    });
+  }
+
+  receive(chunk) {
+    this.buffer += chunk;
+    let newline;
+    while ((newline = this.buffer.indexOf("\n")) >= 0) {
+      const line = this.buffer.slice(0, newline).trim();
+      this.buffer = this.buffer.slice(newline + 1);
+      if (!line) {
+        continue;
+      }
+      if (!this.pending) {
+        this.fail(new Error("blueprints_ctl returned an unsolicited response"));
+        return;
+      }
+      const request = this.pending;
+      this.pending = null;
+      clearTimeout(this.timer);
+      this.timer = null;
+      try {
+        request.resolveRequest(JSON.parse(line));
+      } catch (error) {
+        request.rejectRequest(protocolError(-32603, `blueprints_ctl returned invalid JSON: ${error.message}`));
+        this.fail(new Error("blueprints_ctl returned invalid JSON"));
+        return;
+      }
+      this.pump();
+    }
+  }
+
+  fail(error) {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    clearTimeout(this.timer);
+    this.timer = null;
+    const failure = error.rpcCode
+      ? error
+      : protocolError(-32603, `blueprints_ctl failed: ${error.message}`);
+    if (this.pending) {
+      this.pending.rejectRequest(failure);
+      this.pending = null;
+    }
+    for (const request of this.queue) {
+      request.rejectRequest(failure);
+    }
+    this.queue = [];
+    if (this.child.exitCode === null && !this.child.killed) {
+      this.child.kill();
+    }
+    if (controllerSession === this) {
+      controllerSession = null;
+    }
+  }
+
+  close() {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    clearTimeout(this.timer);
+    this.timer = null;
+    const error = protocolError(-32603, "blueprints_ctl session closed");
+    if (this.pending) {
+      this.pending.rejectRequest(error);
+      this.pending = null;
+    }
+    for (const request of this.queue) {
+      request.rejectRequest(error);
+    }
+    this.queue = [];
+    if (this.child.exitCode === null && !this.child.killed) {
+      this.child.kill();
+    }
+  }
+}
+
+let controllerSession;
 
 function rawToolDefinitions() {
   const noArguments = { type: "object", additionalProperties: false };
@@ -214,44 +344,16 @@ function rawToolDefinitions() {
   ];
 }
 
-function nativeRequest(operation, args = {}) {
+async function nativeRequest(operation, args = {}) {
   const timeoutValue = Number(process.env.CBLUEPRINTS_CTL_TIMEOUT_MS || 30000);
   const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 30000;
-  const result = spawnSync(
-    controllerPath(),
-    ["--project-root", root],
-    {
-      cwd: root,
-      input: `${JSON.stringify({ contract: 1, operation, ...args })}\n`,
-      encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
-      timeout,
-    },
+  if (!controllerSession || controllerSession.closed) {
+    controllerSession = new ControllerSession();
+  }
+  return controllerSession.request(
+    { contract: 1, operation, ...args },
+    timeout,
   );
-  if (result.error) {
-    const code = result.error.code === "ETIMEDOUT" ? -32001 : -32603;
-    throw protocolError(code, `blueprints_ctl failed: ${result.error.message}`);
-  }
-  if (result.signal) {
-    throw protocolError(-32603, `blueprints_ctl terminated by ${result.signal}`);
-  }
-  const line = result.stdout.trim().split("\n").filter(Boolean).at(-1);
-  if (!line) {
-    throw protocolError(-32603, result.stderr.trim() || "blueprints_ctl returned no response");
-  }
-  let response;
-  try {
-    response = JSON.parse(line);
-  } catch (error) {
-    throw protocolError(-32603, `blueprints_ctl returned invalid JSON: ${error.message}`);
-  }
-  if (result.status !== 0 && response.ok === true) {
-    throw protocolError(
-      -32603,
-      `blueprints_ctl exited with status ${result.status} after a successful response`,
-    );
-  }
-  return response;
 }
 
 let contractMetadataCache;
@@ -260,12 +362,9 @@ function contractMetadata() {
   if (contractMetadataCache !== undefined) {
     return contractMetadataCache;
   }
-  try {
-    const response = nativeRequest("describe_contract");
-    contractMetadataCache = response.ok === true ? response.result : null;
-  } catch {
-    contractMetadataCache = null;
-  }
+  contractMetadataCache = nativeRequest("describe_contract")
+    .then((response) => response.ok === true ? response.result : null)
+    .catch(() => null);
   return contractMetadataCache;
 }
 
@@ -273,8 +372,8 @@ function toolDefinition(name) {
   return rawToolDefinitions().find((candidate) => candidate.name === name);
 }
 
-function toolDefinitions() {
-  const contract = contractMetadata();
+async function toolDefinitions() {
+  const contract = await contractMetadata();
   return rawToolDefinitions().map(({ operation, ...definition }) => {
     const metadata = contract?.operations?.find((candidate) => candidate.name === operation);
     if (!metadata) {
@@ -346,7 +445,7 @@ function validateToolArguments(name, args) {
   validateSchema(args === undefined ? {} : args, tool.inputSchema, "arguments");
 }
 
-function toolCall(name, args) {
+async function toolCall(name, args) {
   if (typeof name !== "string") {
     throw protocolError(-32602, "tools/call requires a tool name");
   }
@@ -378,7 +477,7 @@ function toolResult(response) {
   };
 }
 
-function resourceRead(uri) {
+async function resourceRead(uri) {
   if (typeof uri !== "string" || !uri) {
     throw protocolError(-32602, "resources/read requires a URI string");
   }
@@ -394,9 +493,9 @@ function resourceRead(uri) {
   };
   let response;
   if (uri === "blueprints://project/status") {
-    response = nativeRequest("status");
+      response = await nativeRequest("status");
   } else if (uri === "blueprints://catalog") {
-    response = nativeRequest("catalog");
+    response = await nativeRequest("catalog");
   } else {
     const graphMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
     if (graphMatch) {
@@ -404,7 +503,7 @@ function resourceRead(uri) {
       if (!Number.isSafeInteger(graphId) || graphId < 0) {
         throw protocolError(-32602, `invalid graph resource: ${uri}`);
       }
-      response = nativeRequest("inspect_graph", {
+      response = await nativeRequest("inspect_graph", {
         kind: decode(graphMatch[1]),
         name: decode(graphMatch[2]),
         graph_id: graphId,
@@ -412,7 +511,7 @@ function resourceRead(uri) {
     }
     const dependencyMatch = /^blueprints:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
     if (response === undefined && dependencyMatch) {
-      response = nativeRequest("asset_dependencies", {
+      response = await nativeRequest("asset_dependencies", {
         kind: decode(dependencyMatch[1]),
         name: decode(dependencyMatch[2]),
       });
@@ -422,7 +521,7 @@ function resourceRead(uri) {
       throw protocolError(-32002, `resource not found: ${uri}`);
     }
     if (response === undefined) {
-      response = nativeRequest("read_asset", {
+      response = await nativeRequest("read_asset", {
         kind: decode(match[1]),
         name: decode(match[2]),
       });
@@ -435,7 +534,7 @@ function resourceRead(uri) {
   return response;
 }
 
-function dispatch(message) {
+async function dispatch(message) {
   if (!message || typeof message !== "object" || Array.isArray(message) ||
       message.jsonrpc !== "2.0" || typeof message.method !== "string") {
     return errorResponse(message?.id, -32600, "Invalid Request");
@@ -464,7 +563,7 @@ function dispatch(message) {
     return reply(message, { jsonrpc: "2.0", id: message.id, result: {} });
   }
   if (message.method === "tools/list") {
-    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: toolDefinitions() } });
+    return reply(message, { jsonrpc: "2.0", id: message.id, result: { tools: await toolDefinitions() } });
   }
   if (message.method === "resources/list") {
     return reply(message, {
@@ -496,7 +595,7 @@ function dispatch(message) {
         throw protocolError(-32602, "resources/read params are required");
       }
       const uri = message.params.uri;
-      const response = resourceRead(uri);
+      const response = await resourceRead(uri);
       return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
@@ -511,7 +610,7 @@ function dispatch(message) {
       if (!isObject(message.params)) {
         throw protocolError(-32602, "tools/call params are required");
       }
-      const response = toolCall(message.params?.name, message.params?.arguments);
+      const response = await toolCall(message.params?.name, message.params?.arguments);
       return reply(message, { jsonrpc: "2.0", id: message.id, result: toolResult(response) });
     } catch (error) {
       return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));
@@ -521,6 +620,15 @@ function dispatch(message) {
 }
 
 let pending = "";
+let activeDispatches = 0;
+let inputEnded = false;
+
+function maybeCloseController() {
+  if (inputEnded && activeDispatches === 0) {
+    controllerSession?.close();
+  }
+}
+
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
   pending += chunk;
@@ -531,10 +639,31 @@ process.stdin.on("data", (chunk) => {
     if (!line) continue;
     try {
       const message = JSON.parse(line);
-      const response = dispatch(message);
-      if (response) send(response);
+      activeDispatches++;
+      dispatch(message)
+        .then((response) => {
+          if (response) send(response);
+        })
+        .catch((error) => {
+          if (!isNotification(message)) {
+            send(errorResponse(message?.id, error.rpcCode || -32603, error.message));
+          }
+        })
+        .finally(() => {
+          activeDispatches--;
+          maybeCloseController();
+        });
     } catch (error) {
       send(errorResponse(undefined, -32700, `Parse error: ${error.message}`));
     }
   }
 });
+process.stdin.on("end", () => {
+  inputEnded = true;
+  if (pending.trim()) {
+    send(errorResponse(undefined, -32700, "Parse error: incomplete JSON frame"));
+    pending = "";
+  }
+  maybeCloseController();
+});
+process.on("exit", () => controllerSession?.close());

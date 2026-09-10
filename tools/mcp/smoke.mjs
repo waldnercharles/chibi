@@ -109,6 +109,10 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     dependencies.ok !== true || dependencies.result?.asset?.name !== "HealthBehavior" ||
+    catalog.result?.catalog_revision !== search.result?.catalog_revision ||
+    catalog.result?.catalog_revision !== dependencies.result?.catalog_revision ||
+    catalog.result?.content_hash !== search.result?.content_hash ||
+    catalog.result?.content_hash !== dependencies.result?.content_hash ||
     healthGraph.ok !== true || healthGraph.result?.name !== "HealthBehavior" ||
     !healthGraph.result?.graph || !Array.isArray(healthGraph.result.graph.nodes) ||
     !healthGraph.result?.validation ||

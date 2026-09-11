@@ -365,7 +365,6 @@ static engine_viewport_action draw_controls(
 
 static bool navigate_viewport(engine_viewport *viewport, ImVec2 size, bool playing)
 {
-#if ENGINE_IMGUI_AVAILABLE
     ImGuiIO *io = ImGui_GetIO();
     if (playing && !io->KeyAlt) {
         viewport->panning = false;
@@ -424,12 +423,6 @@ static bool navigate_viewport(engine_viewport *viewport, ImVec2 size, bool playi
         }
     }
     return true;
-#else
-    (void)viewport;
-    (void)size;
-    (void)playing;
-    return false;
-#endif
 }
 
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer)
@@ -445,7 +438,6 @@ static void cancel_viewport_pointer(engine_viewport *viewport)
 
 static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, bool blocked)
 {
-#if ENGINE_IMGUI_AVAILABLE
     ImGuiIO *io = ImGui_GetIO();
     bool popup = ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup);
     if (blocked || popup || io->MouseWheelH != 0 ||
@@ -498,11 +490,6 @@ static void capture_viewport_pointer(engine_viewport *viewport, ImVec2 size, boo
     } else if (!pointer->down) {
         cancel_viewport_pointer(viewport);
     }
-#else
-    (void)viewport;
-    (void)size;
-    (void)blocked;
-#endif
 }
 
 int engine_viewport_image(engine_viewport *viewport, float width, float height)
@@ -584,7 +571,6 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
     viewport->image_size = size;
     bool navigating = navigate_viewport(viewport, size, controls && controls->playing);
     capture_viewport_pointer(viewport, size, controls_blocked || navigating);
-#if ENGINE_IMGUI_AVAILABLE
     bool show_controls = controls && (scene_hovered || scene_focused) &&
                          size.x >= 110 && size.y >= 100;
     float controls_alpha = editor_ui_controls_opacity("scene.controls.opacity", show_controls);
@@ -619,11 +605,6 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
         ImGui_PopStyleVarEx(4);
         ImGui_SetCursorScreenPos(image_min);
     }
-#else
-    if (controls && (scene_hovered || scene_focused)) {
-        action = draw_controls(viewport, controls, false, &controls_blocked);
-    }
-#endif
     if (controls_blocked) {
         cancel_viewport_pointer(viewport);
         viewport->pointer.pressed = false;

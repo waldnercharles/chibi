@@ -334,7 +334,6 @@ set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIO
 add_library(engine STATIC ${ENGINE_SOURCES})
 target_include_directories(engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(engine PUBLIC runtime_support ecs core cute)
-target_compile_definitions(engine PRIVATE ENGINE_CUTE_AVAILABLE=1 ENGINE_IMGUI_AVAILABLE=1)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 
 # --- demo nodes (real TUs; interface.h declares what Behavior Assets sees) ---

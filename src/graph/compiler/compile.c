@@ -235,6 +235,7 @@ const char *cmpl_rule_name(int rule)
         case CMPL_RULE_FIELD_PROJECTION: return "CMPL-22";
         case CMPL_RULE_CALL_SIGNATURE: return "CMPL-23";
         case CMPL_RULE_INPUT_BINDING: return "CMPL-24";
+        case CMPL_RULE_BACKEND: return "CMPL-25";
         default: return "CMPL-?";
     }
 }

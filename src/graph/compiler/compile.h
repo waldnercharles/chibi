@@ -44,6 +44,7 @@ enum
     CMPL_RULE_OPERATOR = 19,         /* CMPL-19 */
     CMPL_RULE_FIELD_PROJECTION = 22, /* Output fields retain their aggregate source. */
     CMPL_RULE_CALL_SIGNATURE = 23, /* Calls match nonprojected signature parameters. */
+    CMPL_RULE_BACKEND = 25, /* Selected backend cannot publish a program. */
     CMPL_RULE_INPUT_BINDING = 24, /* Authored input source is missing or incompatible. */
 };
 

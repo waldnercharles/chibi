@@ -15,6 +15,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+static _Thread_local behavior_backend debug_backend;
+
+behavior_backend behavior_debug_backend(behavior_backend backend)
+{
+    behavior_backend previous = debug_backend;
+    debug_backend = backend;
+    return previous;
+}
+
+behavior_backend behavior_default_backend()
+{
+    if (debug_backend) {
+        return debug_backend;
+    }
+#ifdef __EMSCRIPTEN__
+    return BEHAVIOR_BYTECODE;
+#else
+    return BEHAVIOR_SLJIT;
+#endif
+}
+
 static void set_error(flow_error *error, int code, const node *n, const char *message)
 {
     if (error) {
@@ -29,7 +50,7 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
  * valid for the instance's lifetime. */
 static int instance_blocked(behavior_instance *bi, flow_error *error)
 {
-    unsigned long long rev = graph_topology_revision(bi->asset->graph);
+    unsigned long long rev = behavior_asset_revision(bi->asset);
     if (bi->compile_revision != rev) {
         compile_report_free(&bi->compile);
         compile_report_init(&bi->compile);
@@ -37,7 +58,17 @@ static int instance_blocked(behavior_instance *bi, flow_error *error)
         bi->compile_revision = rev;
     }
     if (!compile_report_blocked(&bi->compile)) {
-        return 0;
+        if (bi->backend == BEHAVIOR_ORACLE) {
+            return 0;
+        }
+        behavior_program *program = behavior_program_publish(bi->asset);
+        const compile_diagnostic *d = behavior_program_diagnostic(program);
+        if (!d) {
+            return 0;
+        }
+        graph *g = behavior_asset_find_graph(bi->asset, d->graph_id);
+        set_error(error, FLOW_ERR_COMPILE, g ? graph_node_by_id(g, d->node_id) : NULL, d->message);
+        return 1;
     }
     const compile_diagnostic *d = compile_report_first_error(&bi->compile);
     set_error(error, FLOW_ERR_COMPILE, graph_node_by_id(bi->asset->graph, d->node_id), d->message);
@@ -273,6 +304,10 @@ behavior_instance *behavior_instance_create(
     }
     behavior_instance *bi = (behavior_instance *)xcalloc(1, sizeof *bi);
     bi->asset = asset;
+    bi->backend = behavior_default_backend();
+    if (bi->backend != BEHAVIOR_ORACLE) {
+        behavior_program_publish(asset);
+    }
     bi->next_delegate_id = 1;
     bi->alive = 1;
     bi->trace_enabled = 1;
@@ -998,4 +1033,28 @@ pin_value *behavior_instance_scratch(behavior_instance *bi, uint64_t node_id)
     }
     apush(bi->scratch, (instance_scratch_slot){ .node_id = node_id });
     return &bi->scratch[acount(bi->scratch) - 1].value;
+}
+
+int behavior_instance_set_backend(behavior_instance *bi, behavior_backend backend)
+{
+    if (acount(bi->activations) || backend == BEHAVIOR_UNAVAILABLE) {
+        return -1;
+    }
+#ifdef __EMSCRIPTEN__
+    if (backend == BEHAVIOR_SLJIT) {
+        return -1;
+    }
+#endif
+    bi->backend = backend;
+    return 0;
+}
+
+behavior_backend behavior_instance_backend(const behavior_instance *bi)
+{
+    if (bi->backend == BEHAVIOR_ORACLE) {
+        return BEHAVIOR_ORACLE;
+    }
+    return behavior_program_backend(bi->asset->program) == BEHAVIOR_UNAVAILABLE
+             ? BEHAVIOR_UNAVAILABLE
+             : bi->backend;
 }

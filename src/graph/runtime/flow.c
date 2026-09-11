@@ -19,6 +19,22 @@
 
 #include "graph/runtime/flow_internal.h"
 
+static node *frame_node(const flow_run *run, const activation_frame *frame)
+{
+    return run->program ? behavior_program_block_node(run->program, frame->block)
+                        : frame->node;
+}
+
+static void push_frame(flow_run *run, activation_frame frame)
+{
+    frame.block = run->program ? behavior_program_block(run->program, frame.node)
+                               : -1;
+    if (run->program) {
+        frame.node = NULL;
+    }
+    apush(run->frames, frame);
+}
+
 static void set_event_name(flow_run *run, const char *name)
 {
     if (run->event_name == name ||
@@ -145,6 +161,9 @@ static void record_traversal(
     graph_edge_kind kind
 )
 {
+    if (run->instance && !run->instance->trace_enabled) {
+        return;
+    }
     flow_traversal traversal = {
         from_id, from_pin_id,       to_id,      to_pin_id,
         kind,    run->current_time, run->steps,
@@ -176,6 +195,21 @@ static int schedule_output(flow_context *ctx, int output_pin)
 
     node *target = NULL;
     int target_pin = -1;
+    if (run->program) {
+        if (!behavior_program_target(run->program, ctx->node, output_pin, &target, &target_pin)) {
+            return FLOW_OK;
+        }
+        record_traversal(
+            run,
+            ctx->node->id,
+            ctx->node->output_pins[output_pin].id,
+            target->id,
+            target->input_pins[target_pin].id,
+            GRAPH_EDGE_EXEC
+        );
+        push_frame(run, ((activation_frame){ .node = target, .kind = ACTIVATION_BLOCK, .input_pin = target_pin }));
+        return FLOW_OK;
+    }
     const edge *e = NULL;
     int found = graph_exec_output_edges(run->graph, ctx->node, output_pin, &e);
     if (found > 1) {
@@ -191,11 +225,11 @@ static int schedule_output(flow_context *ctx, int output_pin)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "invalid EXEC target");
     }
     record_traversal(run, ctx->node->id, ctx->node->output_pins[output_pin].id, e->to_id, e->to_pin_id, GRAPH_EDGE_EXEC);
-    apush(
-        run->frames,
-        (flow_frame){
+    push_frame(
+        run,
+        (activation_frame){
             .node = target,
-            .kind = FLOW_FRAME_NODE,
+            .kind = ACTIVATION_BLOCK,
             .input_pin = target_pin,
         }
     );
@@ -348,7 +382,7 @@ static int flow_run_wait(flow_run *run)
 static void frame_arrays_free(flow_run *run)
 {
     for (int i = 0; i < acount(run->frames); i++) {
-        if (run->frames[i].kind == FLOW_FRAME_FOREACH) {
+        if (run->frames[i].kind == ACTIVATION_FOREACH) {
             pin_array_free(run->frames[i].array);
         }
     }
@@ -365,11 +399,24 @@ static void flow_run_free_children(flow_run *run)
     run->returned = NULL;
 }
 
+static _Thread_local uint64_t oracle_calls;
+
+uint64_t flow_oracle_calls()
+{
+    return oracle_calls;
+}
+
+behavior_backend flow_run_backend(const flow_run *run)
+{
+    return run ? run->backend : BEHAVIOR_UNAVAILABLE;
+}
+
 static int flow_run_activate(flow_run *run)
 {
     if (run->steps >= run->step_budget) {
-        node *n = acount(run->frames) ? run->frames[acount(run->frames) - 1].node
-                                      : NULL;
+        node *n = acount(run->frames)
+                    ? frame_node(run, &run->frames[acount(run->frames) - 1])
+                    : NULL;
         flow_fail(run, FLOW_ERR_STEP_BUDGET, n, "flow step budget exceeded");
         return FLOW_ERR_STEP_BUDGET;
     }
@@ -380,10 +427,15 @@ static int flow_run_activate(flow_run *run)
     runtime_store_reset_memo(run->runtime);
     eval_context_reset(&run->eval);
     run->eval.services = run->services;
+    run->eval.on_data_edge = !run->instance || run->instance->trace_enabled ||
+                                     run->breakpoints_enabled
+                               ? record_evaluated_data_edge
+                               : NULL;
 
-    flow_frame frame = apop(run->frames);
+    activation_frame frame = apop(run->frames);
+    frame.node = frame_node(run, &frame);
     run->steps++;
-    if (frame.kind == FLOW_FRAME_WHILE) {
+    if (frame.kind == ACTIVATION_WHILE) {
         flow_context ctx = { .run = run, .node = frame.node, .input_pin = -1 };
         return frame.break_requested
                  ? flow_context_continue(&ctx, frame.completed_output)
@@ -394,8 +446,8 @@ static int flow_run_activate(flow_run *run)
                        frame.completed_output
                    );
     }
-    if (frame.kind == FLOW_FRAME_LOOP || frame.kind == FLOW_FRAME_FOREACH) {
-        if (frame.kind == FLOW_FRAME_FOREACH) {
+    if (frame.kind == ACTIVATION_LOOP || frame.kind == ACTIVATION_FOREACH) {
+        if (frame.kind == ACTIVATION_FOREACH) {
             if (frame.break_requested || !frame.array || frame.current > frame.last) {
                 flow_watch_capture_outputs(run, frame.node);
                 pin_array_free(frame.array);
@@ -425,7 +477,7 @@ static int flow_run_activate(flow_run *run)
             } else {
                 frame.current = frame.last + 1;
             }
-            apush(run->frames, frame);
+            push_frame(run, frame);
             flow_watch_capture_outputs(run, frame.node);
             return schedule_output_for_node(run, frame.node, frame.body_output);
         }
@@ -440,7 +492,7 @@ static int flow_run_activate(flow_run *run)
         outputs[frame.index_output].type = PIN_I32;
         outputs[frame.index_output].type_name = "int";
         outputs[frame.index_output].i = frame.current;
-        apush(run->frames, frame);
+        push_frame(run, frame);
         flow_watch_capture_outputs(run, frame.node);
         return schedule_output_for_node(run, frame.node, frame.body_output);
     }
@@ -476,7 +528,13 @@ static int flow_run_activate(flow_run *run)
         .node = n,
         .input_pin = frame.input_pin,
     };
-    int result = n->desc->flow(n, &ctx);
+    int result;
+    if (run->program) {
+        result = behavior_program_flow(run->program, n, &ctx, run->backend);
+    } else {
+        oracle_calls++;
+        result = n->desc->flow(n, &ctx);
+    }
     if (ctx.failed || result < 0) {
         if (run->state != FLOW_FAILED) {
             flow_fail(run, result < 0 ? result : FLOW_ERR_NODE, n, "flow node failed");
@@ -516,7 +574,7 @@ static int execute(flow_run *run)
     }
 
     while (run->state == FLOW_RUNNING && acount(run->frames) > 0) {
-        node *next = run->frames[acount(run->frames) - 1].node;
+        node *next = frame_node(run, &run->frames[acount(run->frames) - 1]);
         if (next && next->breakpoint && run->breakpoints_enabled &&
             !run->breakpoint_skipped) {
             run->breakpoint_node = next;
@@ -631,6 +689,21 @@ flow_run *flow_run_start_reuse(
         return NULL;
     }
     run->instance = options ? options->instance : NULL;
+    run->backend = run->instance ? run->instance->backend : BEHAVIOR_ORACLE;
+    run->program = NULL;
+    if (run->instance && run->backend != BEHAVIOR_ORACLE) {
+        behavior_program *program = behavior_program_publish(run->instance->asset);
+        const compile_diagnostic *d = behavior_program_diagnostic(program);
+        if (d) {
+            set_error(error, FLOW_ERR_COMPILE, entry, d->message);
+            return NULL;
+        }
+        run->program = behavior_program_graph(program, g);
+        if (!run->program) {
+            set_error(error, FLOW_ERR_COMPILE, entry, "compiled activation graph is missing");
+            return NULL;
+        }
+    }
     run->graph_guard_owned = run->instance == NULL;
     run->state = FLOW_RUNNING;
     run->step_budget = options && options->step_budget ? options->step_budget : 10000;
@@ -676,6 +749,9 @@ flow_run *flow_run_start_reuse(
     eval_context_reset(&run->eval);
     run->eval.delta_seconds = options ? options->delta_seconds : run->eval.delta_seconds;
     run->eval.instance = run->instance;
+    run->eval.program = run->program;
+    run->eval.observer = run;
+    run->eval.backend = run->backend;
     run->eval.on_data_edge = record_evaluated_data_edge;
     run->eval.on_data_edge_user = run;
     arena_reset(&run->input_arena);
@@ -695,7 +771,7 @@ flow_run *flow_run_start_reuse(
             }
         }
     }
-    apush(run->frames, (flow_frame){ .node = entry, .kind = FLOW_FRAME_NODE, .input_pin = -1 });
+    push_frame(run, (activation_frame){ .node = entry, .kind = ACTIVATION_BLOCK, .input_pin = -1 });
     if (run->graph_guard_owned) {
         graph_pause(run);
     }
@@ -773,7 +849,7 @@ int flow_run_continue(flow_run *run, int clear_step_mode)
         return run->error.code;
     }
     if (run->breakpoint_node && acount(run->frames) &&
-        run->frames[acount(run->frames) - 1].node == run->breakpoint_node) {
+        frame_node(run, &run->frames[acount(run->frames) - 1]) == run->breakpoint_node) {
         run->breakpoint_skipped = 1;
     }
     run->state = FLOW_RUNNING;
@@ -856,7 +932,7 @@ int flow_run_step(flow_run *run)
         return run->error.code;
     }
     if (run->breakpoint_node && acount(run->frames) &&
-        run->frames[acount(run->frames) - 1].node == run->breakpoint_node) {
+        frame_node(run, &run->frames[acount(run->frames) - 1]) == run->breakpoint_node) {
         run->breakpoint_skipped = 1;
     }
     run->state = FLOW_RUNNING;
@@ -1055,7 +1131,7 @@ const node *flow_run_current_node(const flow_run *run)
     if (!run || !acount(run->frames)) {
         return NULL;
     }
-    return run->frames[acount(run->frames) - 1].node;
+    return frame_node(run, &run->frames[acount(run->frames) - 1]);
 }
 
 const char *flow_run_event_name(const flow_run *run)
@@ -1074,7 +1150,7 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
     flow_run *mutable_run = (flow_run *)run;
     aclear(mutable_run->stack_cache);
     for (int i = 0; i < acount(run->frames); i++) {
-        node *n = run->frames[i].node;
+        node *n = frame_node(run, &run->frames[i]);
         apush(
             mutable_run->stack_cache,
             (flow_call_frame){ run->graph, run->graph->graph_id, n ? n->id : 0 }
@@ -1170,6 +1246,25 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "EXEC input used as data");
     }
 
+    if (ctx->run->program) {
+        int result = behavior_program_input(
+            ctx->run->program,
+            ctx->node,
+            input_pin,
+            &ctx->run->scratch,
+            out,
+            &ctx->run->eval,
+            ctx->run->backend
+        );
+        if (result) {
+            const eval_status *status = &ctx->run->eval.status;
+            flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, status->message);
+            ctx->run->error.node = status->node;
+            ctx->run->error.pin = status->pin;
+            return ctx->run->error.code;
+        }
+        return FLOW_OK;
+    }
     node *src = NULL;
     int src_pin = 0;
     if (graph_input_source(ctx->run->graph, ctx->node, input_pin, &src, &src_pin)) {
@@ -1286,11 +1381,11 @@ int flow_context_loop_range(
         .type_name = "int",
         .i = first,
     };
-    apush(
-        ctx->run->frames,
-        (flow_frame){
+    push_frame(
+        ctx->run,
+        (activation_frame){
             .node = ctx->node,
-            .kind = FLOW_FRAME_LOOP,
+            .kind = ACTIVATION_LOOP,
             .input_pin = -1,
             .current = first,
             .last = last,
@@ -1314,9 +1409,9 @@ int flow_context_break(struct flow_context *ctx)
         return FLOW_ERR_ARGUMENT;
     }
     for (int i = acount(ctx->run->frames) - 1; i >= 0; i--) {
-        flow_frame *frame = &ctx->run->frames[i];
-        if (frame->kind != FLOW_FRAME_LOOP && frame->kind != FLOW_FRAME_FOREACH &&
-            frame->kind != FLOW_FRAME_WHILE) {
+        activation_frame *frame = &ctx->run->frames[i];
+        if (frame->kind != ACTIVATION_LOOP && frame->kind != ACTIVATION_FOREACH &&
+            frame->kind != ACTIVATION_WHILE) {
             continue;
         }
         frame->break_requested = 1;
@@ -1339,13 +1434,13 @@ int flow_context_while(flow_context *ctx, int condition, int body, int completed
     if (!value.b) {
         return flow_context_continue(ctx, completed);
     }
-    apush(
-        ctx->run->frames,
-        ((flow_frame){ .node = ctx->node,
-                       .kind = FLOW_FRAME_WHILE,
-                       .index_output = condition,
-                       .body_output = body,
-                       .completed_output = completed })
+    push_frame(
+        ctx->run,
+        ((activation_frame){ .node = ctx->node,
+                             .kind = ACTIVATION_WHILE,
+                             .index_output = condition,
+                             .body_output = body,
+                             .completed_output = completed })
     );
     return flow_context_continue(ctx, body);
 }
@@ -1416,11 +1511,11 @@ int flow_context_foreach(
     runtime_node_outputs(state)[index_output] = (pin_value){ .type = PIN_I32,
                                                              .type_name = "int",
                                                              .i = 0 };
-    apush(
-        ctx->run->frames,
-        (flow_frame){
+    push_frame(
+        ctx->run,
+        (activation_frame){
             .node = ctx->node,
-            .kind = FLOW_FRAME_FOREACH,
+            .kind = ACTIVATION_FOREACH,
             .input_pin = -1,
             .current = 1,
             .last = array->count - 1,

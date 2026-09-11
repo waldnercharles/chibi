@@ -3,6 +3,7 @@
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/nodes.h"
+#include "graph/runtime/behavior_data.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "graph/runtime/value_array.h"
@@ -259,7 +260,7 @@ static int fail(eval_context *ctx, node *n, int pin, int code, const char *messa
     return code;
 }
 
-static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
+static int eval_pure_function(const graph *g, node *n, arena *a, eval_context *ctx)
 {
     if (!ctx->instance) {
         return fail(ctx, n, 0, NODE_EVAL_INVALID, "pure function requires an instance");
@@ -359,8 +360,16 @@ done:
     return result;
 }
 
+static _Thread_local uint64_t oracle_calls;
+
+uint64_t eval_oracle_calls()
+{
+    return oracle_calls;
+}
+
 static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
 {
+    oracle_calls++;
     runtime_node *state = runtime_state(ctx, n);
     if (!state) {
         return fail(ctx, n, -1, NODE_EVAL_INVALID, "node runtime state is unavailable");
@@ -416,6 +425,14 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             }
         }
     }
+    return eval_prepared_node(n, a, ctx);
+}
+
+int eval_prepared_node(node *n, arena *a, eval_context *ctx)
+{
+    runtime_node *state = runtime_store_node(ctx->runtime, n);
+    pin_value *inputs = runtime_node_inputs(state);
+    pin_value *outputs = runtime_node_outputs(state);
     /* Reflected wrappers pass structs by value and dereference ptr. */
     if (n->desc->pure_kind == NODE_PURE_CALL) {
         for (int i = 0; i < n->input_count; i++) {
@@ -479,7 +496,9 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             outputs[0] = behavior_instance_owner(ctx->instance);
             break;
         case NODE_PURE_FUNCTION:
-            if (eval_pure_function(g, n, a, ctx)) {
+            if (ctx->program
+                    ? behavior_data_call(n, a, ctx)
+                    : eval_pure_function(runtime_store_graph(ctx->runtime), n, a, ctx)) {
                 runtime_node_set_visiting(state, 0);
                 return ctx->status.code;
             }

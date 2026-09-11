@@ -241,6 +241,11 @@ void ed_draw_debug_menu(editor *e)
     }
     const behavior_instance *target_instance = ed_display_instance(e);
     int attached = target_instance != NULL;
+    if (target_instance) {
+        ImGui_TextUnformatted(
+            behavior_backend_name(behavior_instance_backend(target_instance))
+        );
+    }
     int can_dispatch = !ed_inspection_blocked(e) &&
                        e->active_graph == e->asset->graph && entry &&
                        entry->reference_name;

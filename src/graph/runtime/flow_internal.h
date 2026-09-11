@@ -1,6 +1,7 @@
 #ifndef CHIBI_FLOW_INTERNAL_H
 #define CHIBI_FLOW_INTERNAL_H
 
+#include "graph/runtime/activation.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/runtime.h"
@@ -8,28 +9,6 @@
 #include "support/arena.h"
 
 /* Private activation state shared only by execution and its diagnostics. */
-typedef enum
-{
-    FLOW_FRAME_NODE,
-    FLOW_FRAME_LOOP,
-    FLOW_FRAME_FOREACH,
-    FLOW_FRAME_WHILE,
-} flow_frame_kind;
-
-typedef struct
-{
-    node *node;
-    flow_frame_kind kind;
-    int current;
-    int last;
-    int input_pin;
-    int body_output;
-    int value_output;
-    int completed_output;
-    int index_output;
-    int break_requested;
-    pin_array *array;
-} flow_frame;
 
 typedef struct
 {
@@ -51,6 +30,8 @@ struct flow_host_request
 
 struct flow_run
 {
+    const struct behavior_graph_program *program;
+    int backend;
     graph *graph;
     behavior_instance *instance; /* owning instance, or NULL standalone */
     int graph_guard_owned; /* 1 when this run holds graph_flow_pause itself */
@@ -88,7 +69,7 @@ struct flow_run
     int entry_output;
     int return_input;
     int step_over;
-    flow_frame *frames;
+    activation_frame *frames;
     flow_call_frame *stack_cache;
     pin_value *inputs;
     int input_count;

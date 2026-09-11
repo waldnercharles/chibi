@@ -1,5 +1,6 @@
 #include "graph/model/behavior_asset.h"
 
+#include "graph/compiler/behavior_program.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
@@ -57,6 +58,7 @@ void behavior_asset_free(behavior_asset *asset)
         return;
     }
     afree(asset->variables);
+    behavior_program_free(asset->program);
     for (int i = 0; i < acount(asset->graphs); i++) {
         graph_free(asset->graphs[i]);
         free(asset->graphs[i]);

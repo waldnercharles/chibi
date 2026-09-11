@@ -3,6 +3,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
 
@@ -82,6 +83,23 @@ void eval_view_refresh(eval_view *v, graph *g)
                      g->owner->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY)) {
         return;
     }
+    const behavior_graph_program *program = NULL;
+    behavior_backend backend = BEHAVIOR_ORACLE;
+    if (g->owner) {
+        behavior_program *compiled = behavior_program_publish(g->owner);
+        const compile_diagnostic *diagnostic = behavior_program_diagnostic(compiled);
+        if (diagnostic) {
+            v->error = diagnostic->message;
+            return;
+        }
+        program = behavior_program_graph(compiled, g);
+        backend = behavior_program_backend(compiled);
+        if (!runtime_store_matches_graph(v->eval.runtime, g)) {
+            eval_context_detach_runtime(&v->eval);
+            v->eval.runtime = runtime_store_create(g);
+            v->eval.runtime_owned = 1;
+        }
+    }
     for (int i = 0; i < acount(g->nodes); i++) {
         node *n = g->nodes[i];
         if (!eval_view_node_safe(v, g, n, 0)) {
@@ -92,7 +110,10 @@ void eval_view_refresh(eval_view *v, graph *g)
                 continue;
             }
             pin_value out;
-            if (graph_eval_output(g, n, p, &v->a, &out, &v->eval) != 0 && !v->error) {
+            int result = program
+                           ? behavior_program_output(program, n, p, &v->a, &out, &v->eval, backend)
+                           : graph_eval_output(g, n, p, &v->a, &out, &v->eval);
+            if (result != 0 && !v->error) {
                 const eval_status *status = eval_context_status(&v->eval);
                 v->error = status && status->message ? status->message
                                                      : "evaluation failed";

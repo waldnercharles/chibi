@@ -673,6 +673,7 @@ void draw_scene_inspector(app_scene_authoring *scene)
         return;
     }
     ImGui_SeparatorText("Runtime");
+    ImGui_TextUnformatted(behavior_backend_name(behavior_instance_backend(info.instance)));
 
     game_behavior_world *behaviors = scene->live->behaviors;
     int attachment_count = game_behavior_attachment_count_for_entity(behaviors, info.entity);

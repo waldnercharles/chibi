@@ -672,3 +672,19 @@ foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner 
         target_compile_options(${driver} PRIVATE -UNDEBUG)
     endif()
 endforeach()
+
+# Backend policy smoke target also runs under Node in the Emscripten build.
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c)
+target_link_libraries(behavior_backend_smoke PRIVATE core)
+target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_options(behavior_backend_smoke PRIVATE "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    find_program(CHIBI_NODE_EXECUTABLE node REQUIRED)
+    add_custom_target(check-behavior-backend
+        COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:behavior_backend_smoke>"
+        DEPENDS behavior_backend_smoke VERBATIM)
+else()
+    add_custom_target(check-behavior-backend
+        COMMAND "$<TARGET_FILE:behavior_backend_smoke>"
+        DEPENDS behavior_backend_smoke VERBATIM)
+endif()

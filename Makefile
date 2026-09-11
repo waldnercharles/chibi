@@ -48,7 +48,7 @@ benchmark:
 web:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target reflect
 	emcmake cmake -S . -B build-web -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
-	cmake --build build-web --target app
+	cmake --build build-web --target app check-behavior-backend
 
 web-serve: web
 	emrun --no_browser --port 8099 build-web/app.html
@@ -61,7 +61,7 @@ check-format:
 
 test:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp
+	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents

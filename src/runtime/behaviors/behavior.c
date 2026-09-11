@@ -238,6 +238,7 @@ static behavior_instance *acquire_instance(
     if (!instance) {
         return NULL;
     }
+    behavior_instance_set_trace_enabled(instance, 0);
     instance->current_time = world->current_time;
     behavior_instance_set_delta_seconds(instance, world->delta_seconds);
     if (behavior_instance_set_activation_pool(instance, 1) != 0 ||
@@ -374,6 +375,7 @@ int game_behavior_register_asset(game_behavior_world *world, const char *asset_n
         find_asset(world, asset_name)) {
         return -1;
     }
+    behavior_program_publish(definition);
     apush(
         world->assets,
         (behavior_asset_record){
@@ -499,6 +501,9 @@ int game_behavior_replace_asset(
     if (!asset || !definition || asset->definition == definition) {
         return -1;
     }
+    if (behavior_program_diagnostic(behavior_program_publish(definition))) {
+        return -1;
+    }
     ecs_entity *entities = NULL;
     for (int i = 0; i < acount(world->attachments); i++) {
         if (world->attachments[i].asset == asset) {
@@ -566,6 +571,9 @@ int game_behavior_preview_asset(
     int status = game_behavior_can_preview_asset(world, asset_name, definition);
     if (status != INSTANCE_UPDATE_READY) {
         return status;
+    }
+    if (behavior_program_diagnostic(behavior_program_publish(definition))) {
+        return -1;
     }
     destroy_asset_pool(asset);
     for (int i = 0; i < acount(world->attachments); i++) {
@@ -786,6 +794,9 @@ int game_behavior_set_breakpoints_enabled_for_asset(
         return -1;
     }
     behavior_instance_set_breakpoints_enabled(instance, enabled);
+    if (enabled) {
+        behavior_instance_set_trace_enabled(instance, 1);
+    }
     return 0;
 }
 
@@ -814,6 +825,7 @@ int game_behavior_set_debug_hold(
         return -1;
     }
     attachment->debug_hold = enabled != 0;
+    behavior_instance_set_trace_enabled(attachment->instance, enabled);
     return 0;
 }
 
@@ -1244,4 +1256,18 @@ int game_behavior_promote_variable(
         return -1;
     }
     return promote(asset->definition, variable_id, component_id, user);
+}
+
+void game_behavior_inspect(game_behavior_world *world, const behavior_instance *instance)
+{
+    if (!world) {
+        return;
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        bool enabled = attachment->debug_hold || attachment->instance == instance;
+        if (attachment->instance->trace_enabled != enabled) {
+            behavior_instance_set_trace_enabled(attachment->instance, enabled);
+        }
+    }
 }

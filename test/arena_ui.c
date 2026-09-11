@@ -2616,3 +2616,80 @@ cleanup:
     }
     return 0;
 }
+
+int compiled_arena_run(const char *program)
+{
+    CF_Result result = cf_make_app(
+        "Compiled Arena smoke",
+        0,
+        0,
+        0,
+        800,
+        600,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        program
+    );
+    if (cf_is_error(result)) {
+        return 1;
+    }
+    app_scene_renderer_initialize();
+    cf_app_init_imgui();
+    app_input_initialize();
+    editor_ui_initialize(false);
+    ImGui_GetIO()->IniFilename = NULL;
+    cf_app_set_imgui_render_target(cf_app_get_canvas());
+    editor_ui_set_framebuffer_target(true);
+    behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
+    for (int mode = 0; mode < 2; mode++) {
+        behavior_backend previous = behavior_debug_backend(modes[mode]);
+        arena_fixture f = fixture_new();
+        assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
+        uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
+        for (int i = 0; i < 180; i++) {
+            assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == 0);
+            f.time += 1.0 / 60.0;
+            assert(app_scene_authoring_frame(f.scene, f.time) == FLOW_OK);
+        }
+        assert(projectiles(&f) > 0);
+        ecs_query query;
+        assert(ecs_query_begin(f.world, &query, NULL, 0) == ECS_OK);
+        ecs_entity entity;
+        int instances = 0;
+        while (ecs_query_next(&query, &entity) > 0) {
+            int count = game_behavior_attachment_count_for_entity(f.live->behaviors, entity);
+            for (int i = 0; i < count; i++) {
+                game_behavior_attachment_info info;
+                assert(
+                    game_behavior_attachment_info_at(f.live->behaviors, entity, i, &info) == 0
+                );
+                assert(behavior_instance_backend(info.instance) == modes[mode]);
+                instances++;
+            }
+        }
+        ecs_query_end(&query);
+        assert(instances > 0);
+        assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
+        assert(
+            app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART) == 0
+        );
+        assert(app_scene_authoring_frame(f.scene, f.time + 1.0 / 60.0) == FLOW_OK);
+        assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
+        printf(
+            "%s: Arena3D firing, simulation and restart; %d instances; zero "
+            "oracle calls\n",
+            behavior_backend_name(modes[mode]),
+            instances
+        );
+        editor_frame_profile_free(&f.profile);
+        app_scene_authoring_free(f.scene);
+        engine_viewport_free(f.viewport);
+        engine_free(f.runtime);
+        game_live_world_free(f.live);
+        editor_free(f.graph);
+        ecs_world_free(f.world);
+        behavior_debug_backend(previous);
+    }
+    app_input_shutdown();
+    cf_destroy_app();
+    return 0;
+}

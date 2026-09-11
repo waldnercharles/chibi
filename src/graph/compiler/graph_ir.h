@@ -66,11 +66,71 @@ typedef struct
     pin_value constant;
 } graph_ir_instruction;
 
+/* Behavior blocks use slot indices and resolved edges. They are independent of
+ * the straight-line System instructions above. Both behavior backends consume
+ * these same operations; nodes and pin IDs are retained only as source maps. */
+typedef enum
+{
+    GRAPH_IR_MEMO_BRANCH,
+    GRAPH_IR_BIND_INPUT,
+    GRAPH_IR_READ_SLOT,
+    GRAPH_IR_EVALUATE,
+} graph_ir_behavior_op;
+
+typedef struct
+{
+    graph_ir_behavior_op op;
+    const node *node;
+    int pin;
+    const node *source;
+    int source_pin;
+    const type_field *field;
+    node_fn conversion;
+    int target;
+} graph_ir_behavior_instruction;
+
+typedef struct
+{
+    int first;
+    int count;
+    uint64_t graph_id;
+    uint64_t node_id;
+    uint64_t pin_id;
+} graph_ir_block;
+
+typedef enum
+{
+    GRAPH_IR_ENTRY,
+    GRAPH_IR_BRANCH,
+    GRAPH_IR_SEQUENCE,
+    GRAPH_IR_LOOP,
+    GRAPH_IR_FOREACH,
+    GRAPH_IR_WHILE,
+    GRAPH_IR_BREAK,
+    GRAPH_IR_YIELD,
+    GRAPH_IR_FUNCTION_CALL,
+    GRAPH_IR_FUNCTION_RETURN,
+    GRAPH_IR_HOST_EFFECT,
+} graph_ir_control_op;
+
+typedef struct
+{
+    graph_ir_control_op op;
+    const node *node;
+    node_flow_fn host;
+    uint64_t graph_id;
+    uint64_t callee_id;
+    unsigned effects;
+} graph_ir_control;
+
 typedef struct graph_ir
 {
     graph_ir_value *values;
     graph_ir_instruction *instructions;
     int event_delta;
+    graph_ir_behavior_instruction *behavior;
+    graph_ir_block *blocks;
+    graph_ir_control *control;
 } graph_ir;
 
 void graph_ir_init(graph_ir *ir);

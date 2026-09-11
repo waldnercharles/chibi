@@ -145,6 +145,8 @@ int game_behavior_log_count(const game_behavior_world *world);
 int game_behavior_log_info_at(const game_behavior_world *world, int index, game_behavior_log_info *out);
 void game_behavior_clear_logs(game_behavior_world *world);
 int game_behavior_attachment_count(const game_behavior_world *world);
+/* Select traversal/watch instrumentation independently of debugger holds. */
+void game_behavior_inspect(game_behavior_world *world, const behavior_instance *instance);
 
 /* Attachment records borrow the asset name, definition, and instance from the
  * behavior world. They remain valid until the next attach, detach, replace, or

@@ -24,9 +24,15 @@ static inline simulation_fixture simulation_fixture_new(engine *runtime, game_pr
 static inline void simulation_frame(simulation_fixture *f, double time)
 {
     assert(time >= f->time);
+    uint64_t eval_before = eval_oracle_calls();
+    uint64_t flow_before = flow_oracle_calls();
     int result = f->preview ? game_prototype_preview_tick(f->preview, time)
                             : engine_frame(f->runtime, time);
     assert(result >= 0);
+    if (behavior_default_backend() != BEHAVIOR_ORACLE) {
+        assert(eval_before == eval_oracle_calls());
+        assert(flow_before == flow_oracle_calls());
+    }
     f->time = time;
 }
 

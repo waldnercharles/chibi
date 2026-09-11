@@ -48,6 +48,9 @@
 #include <unistd.h>
 #endif
 
+void test_encounter_backend_parity();
+void test_compiled_behaviors();
+void test_behavior_unavailable();
 void test_editor_checkpoint();
 void test_check(int ok, const char *message);
 extern void test_host_wait();

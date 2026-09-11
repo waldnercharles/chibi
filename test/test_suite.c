@@ -3,6 +3,7 @@
 
 int shader_ui_run(const char *program);
 int arena_ui_run(const char *program);
+int compiled_arena_run(const char *program);
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd);
 void run_behavior_loader_checks();
 void run_entity_presence_checks();
@@ -38,6 +39,8 @@ TEST_CASE(all_checks)
     run_graph_model_checks();
     run_graph_document_checks();
     run_runtime_execution_checks();
+    test_compiled_behaviors();
+    test_encounter_backend_parity();
     run_runtime_instance_checks();
     run_graph_compile_checks();
     run_graph_conversion_checks();
@@ -121,6 +124,28 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc > 1 && strcmp(argv[1], "--compiled-arena") == 0) {
+        registry_validate();
+        return compiled_arena_run(program_name);
+    }
+    if (argc > 1 && strcmp(argv[1], "--backend-unavailable") == 0) {
+        registry_validate();
+        test_behavior_unavailable();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--behavior-parity") == 0) {
+        registry_validate();
+        test_compiled_behaviors();
+        test_encounter_backend_parity();
+        behavior_debug_backend(BEHAVIOR_BYTECODE);
+        test_encounter();
+        test_host_wait();
+        behavior_debug_backend(BEHAVIOR_ORACLE);
+        test_encounter();
+        test_host_wait();
+        behavior_debug_backend(BEHAVIOR_UNAVAILABLE);
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--arena-ui") == 0) {
         registry_validate();
         return arena_ui_run(program_name);

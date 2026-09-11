@@ -23,10 +23,11 @@ const ecs_query_expr *game_system_query_expression(const game_system *system);
 typedef enum
 {
     GAME_SYSTEM_EXEC_AUTO,
-    /* Profiling hooks; normal callers should use GAME_SYSTEM_EXEC_AUTO. */
+    /* Explicit parity/debug backends; runtime callers use AUTO. */
     GAME_SYSTEM_EXEC_GENERIC_BYTECODE,
     GAME_SYSTEM_EXEC_TYPED_BYTECODE,
     GAME_SYSTEM_EXEC_SJLIT,
+    GAME_SYSTEM_EXEC_ORACLE,
 } game_system_exec_mode;
 
 int game_system_tick_mode(

@@ -1,5 +1,6 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
@@ -162,6 +163,9 @@ int flow_watch_store(flow_run *run, const node *n, int output, int pin, const pi
 
 void flow_watch_capture(flow_run *run, node *n)
 {
+    if (run->instance && !run->instance->trace_enabled) {
+        return;
+    }
     if (!run || !n || !n->desc) {
         return;
     }
@@ -177,6 +181,9 @@ void flow_watch_capture(flow_run *run, node *n)
 
 void flow_watch_capture_outputs(flow_run *run, node *n)
 {
+    if (run->instance && !run->instance->trace_enabled) {
+        return;
+    }
     const runtime_node *state = runtime_store_node(run->runtime, n);
     const pin_value *outputs = runtime_node_outputs_const(state);
     for (int i = 0; i < n->output_count; i++) {

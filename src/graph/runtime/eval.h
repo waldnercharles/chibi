@@ -57,6 +57,9 @@ typedef void (*eval_data_edge_fn)(
 
 typedef struct eval_context
 {
+    const struct behavior_graph_program *program;
+    int backend;
+    struct flow_run *observer;
     eval_status status;
     behavior_instance *instance; /* optional: variable/owner reads for Get/Self */
     const service_binding *services; /* borrowed activation service snapshot */
@@ -67,6 +70,8 @@ typedef struct eval_context
     unsigned call_depth;
     double delta_seconds;
 } eval_context;
+
+uint64_t eval_oracle_calls();
 
 void eval_context_init(eval_context *ctx);
 void eval_context_free(eval_context *ctx);
@@ -90,7 +95,7 @@ const char *eval_context_resolve_input(
 int eval_context_input(const eval_context *ctx, const node *n, int pin, pin_value *out);
 int eval_context_output(const eval_context *ctx, const node *n, int pin, pin_value *out);
 
-/* Pull-eval one output pin of n; writes the value to *out. Returns 0 on
+/* Explicit interpreter oracle: pull-eval one output pin of n; writes the value to *out. Returns 0 on
  * success, -1 on a bad pin index, -2 on a cycle, -3 on allocation failure,
  * and -4 on invalid graph data. Status is stored on the supplied context. */
 int graph_eval_output(graph *g, node *n, int out_pin, arena *a, pin_value *out, eval_context *ctx);

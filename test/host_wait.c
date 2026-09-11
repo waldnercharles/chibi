@@ -85,6 +85,7 @@ static void test_host_wait_loop()
 
 void test_host_wait()
 {
+    received = 0;
     graph g = { 0 };
     node *request = graph_add_node(&g, &request_desc);
     node *sink = graph_add_node(&g, &receive_desc);

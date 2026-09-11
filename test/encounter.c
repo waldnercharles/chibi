@@ -1554,3 +1554,103 @@ void test_encounter()
     }
     puts("encounter PASS: query snapshots, accepted damage, floor pulses, ship motion, source shards, XP lifecycle and final collection, same-tick defeat precedence and fresh runs in both hosts");
 }
+
+static uint64_t reflected_world_hash(const ecs_world *world)
+{
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    uint64_t hash = UINT64_C(1469598103934665603);
+    for (uint32_t slot = 1; slot <= ecs_world_high_water_mark(world); slot++) {
+        ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+        if (!ecs_entity_is_alive(world, entity)) {
+            continue;
+        }
+        hash = (hash ^ ecs_entity_to_u64(entity)) * UINT64_C(1099511628211);
+        for (int i = 0; i < ecs_world_component_count(world); i++) {
+            const ecs_component_desc *component = ecs_world_component_at(world, i);
+            if (!ecs_component_has(world, entity, component->id)) {
+                continue;
+            }
+            /* Unauthored prototype tags receive process-global IDs. Compare
+             * their presence; payload components retain their full identity. */
+            if (!strcmp(component->type->name, "PrototypeTag") &&
+                !strncmp(component->key, "prototype-", 10)) {
+                hash = (hash ^ 1u) * UINT64_C(1099511628211);
+                continue;
+            }
+            char *json = game_prototype_entity_component_json(world, entity, component, &registry);
+            assert(json);
+            for (const unsigned char *p = (const unsigned char *)json; *p; p++) {
+                hash = (hash ^ *p) * UINT64_C(1099511628211);
+            }
+            free(json);
+        }
+    }
+    return hash;
+}
+
+void test_encounter_backend_parity()
+{
+    uint64_t snapshots[2][90] = { 0 };
+    behavior_backend modes[] = {
+        BEHAVIOR_ORACLE,
+        BEHAVIOR_BYTECODE,
+#ifndef __EMSCRIPTEN__
+        BEHAVIOR_SLJIT,
+#endif
+    };
+    behavior_backend previous = behavior_debug_backend(BEHAVIOR_UNAVAILABLE);
+    for (int mode = 0; mode < (int)(sizeof modes / sizeof *modes); mode++) {
+        behavior_debug_backend(modes[mode]);
+        for (int preview = 0; preview < 2; preview++) {
+            srand(12345);
+            uint64_t eval_before = eval_oracle_calls(),
+                     flow_before = flow_oracle_calls();
+            encounter_host h = create(preview);
+            for (int frame = 0; frame < 90; frame++) {
+                if (frame == 30 || frame == 40 || frame == 50) {
+                    ecs_entity *targets = enemies(&h);
+                    if (acount(targets)) {
+                        damage(&h, targets[0], 30);
+                    }
+                    afree(targets);
+                }
+                simulation_step(&h.clock);
+                uint64_t hash = reflected_world_hash(h.world);
+                if (!mode) {
+                    snapshots[preview][frame] = hash;
+                }
+                if (hash != snapshots[preview][frame]) {
+                    fprintf(
+                        stderr,
+                        "backend parity mismatch: %s preview=%d frame=%d\n",
+                        behavior_backend_name(modes[mode]),
+                        preview,
+                        frame
+                    );
+                }
+                assert(hash == snapshots[preview][frame]);
+                ecs_query query;
+                assert(ecs_query_begin(h.world, &query, NULL, 0) == ECS_OK);
+                ecs_entity entity;
+                while (ecs_query_next(&query, &entity) > 0) {
+                    int count = game_behavior_attachment_count_for_entity(behaviors(&h), entity);
+                    for (int i = 0; i < count; i++) {
+                        game_behavior_attachment_info info;
+                        assert(
+                            game_behavior_attachment_info_at(behaviors(&h), entity, i, &info) == 0
+                        );
+                        assert(behavior_instance_backend(info.instance) == modes[mode]);
+                    }
+                }
+                ecs_query_end(&query);
+            }
+            if (modes[mode] != BEHAVIOR_ORACLE) {
+                assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
+            }
+            destroy_host(&h);
+        }
+    }
+    behavior_debug_backend(previous);
+    puts("PASS: native, bytecode and oracle frame hashes match for authored encounter spawning, damage and death in Scene and prototype hosts");
+}

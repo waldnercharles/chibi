@@ -103,7 +103,8 @@ static void graph_changed(graph *g)
 
 static int graph_mutation_allowed(const graph *g)
 {
-    return g && g->flow_pause_count == 0;
+    return g && g->flow_pause_count == 0 &&
+           (!g->owner || g->owner->graph->flow_pause_count == 0);
 }
 
 node *graph_node_by_id(const graph *g, uint64_t id);

@@ -4253,6 +4253,12 @@ static void add_snapshot_behavior(
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
     yyjson_mut_obj_add_strcpy(doc, object, "asset", info.asset_name ? info.asset_name : "");
     yyjson_mut_obj_add_uint(doc, object, "sequence", info.sequence);
+    yyjson_mut_obj_add_str(
+        doc,
+        object,
+        "backend",
+        behavior_backend_name(behavior_instance_backend(info.instance))
+    );
     yyjson_mut_obj_add_bool(doc, object, "debug_hold", info.debug_hold != 0);
     game_behavior_entity_state state = { 0 };
     if (game_behavior_entity_state_at(behaviors, entity, info.asset_name, &state) == 0) {

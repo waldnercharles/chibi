@@ -805,6 +805,12 @@ void sync_editor_inspection(app_scene_authoring *scene)
         }
     }
     bool available = scene->debug_status == APP_DEBUG_AVAILABLE;
+    for (int target = APP_RUNTIME_PREVIEW; target <= APP_RUNTIME_SCENE; target++) {
+        game_behavior_inspect(
+            debug_behaviors(scene, target),
+            available && target == (int)scene->debug_target ? info.instance : NULL
+        );
+    }
     bool behavior = scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR;
     editor_set_inspection_blocked(scene->graph_editor, behavior && !available);
     const flow_run *run = NULL;

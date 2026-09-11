@@ -1,6 +1,7 @@
 #ifndef CHIBI_INSTANCE_H
 #define CHIBI_INSTANCE_H
 
+#include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/runtime/flow.h"
@@ -59,6 +60,7 @@ struct behavior_instance
 {
     /* Borrowed; must outlive the instance. */
     behavior_asset *asset;
+    behavior_backend backend;
     /* Runtime storage, parallel to asset->variables. */
     pin_value *variables;
     /* Owned values; replaced atomically with each assignment. */
@@ -111,6 +113,15 @@ behavior_instance *behavior_instance_create(
     flow_clock_fn now,
     void *now_user
 );
+
+/* Explicit thread-local debug override for newly created instances. Passing
+ * UNAVAILABLE restores platform selection. Existing activations are unaffected. */
+behavior_backend behavior_debug_backend(behavior_backend backend);
+behavior_backend behavior_default_backend();
+
+/* Explicit parity/debug selection. Only valid before dispatch. */
+int behavior_instance_set_backend(behavior_instance *bi, behavior_backend backend);
+behavior_backend behavior_instance_backend(const behavior_instance *bi);
 
 /* Destroy cancels every ready, running, paused, or suspended activation and
  * releases instance variables, scratch, and activation storage without

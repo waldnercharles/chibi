@@ -61,9 +61,22 @@ snapshots in typed locals. Length, Last Index, Is Empty, Is Not Empty and Is Val
 Index use direct reads and comparisons. Null arrays retain their diagnostic or
 empty-query semantics. Owned defaults, escaping array results, array mutation,
 managed elements and mutating host operations still require additional ownership
-lowering. No array helper or iteration allocation is introduced by eligible
-bodies. Activation argument copies remain outside the whole-function body.
+lowering. Borrowed-array operations add no array helper or iteration allocation. Activation argument copies remain outside the whole-function body.
 See [array measurements](research/whole-arrays.md).
+
+`Find Entities With Component` supports whole-function execution with a constant
+component key. A typed `node_query_fn` produces an owned handle snapshot through
+an explicit C call. SLJIT emits the consuming array indexing, loop and body;
+bytecode and generated C consume the same operation. Each static query producer
+has separate reusable storage, released on success, Return and failure. Queries
+cannot mutate membership/layouts, reenter recursive loops, or let their arrays
+escape through locals, stored parameters, results or variables. Those restrictions
+preserve active snapshots until managed transfer is implemented. General
+compiled execution still handles the excluded shapes. Raw native/generated-C
+entry callers use `behavior_function_prepare_queries` and
+`behavior_function_release_queries`; `behavior_function_run` owns this lifecycle
+by default. See [query measurements and coverage](research/whole-queries.md).
+
 
 Native floating-point arithmetic and loads/stores use allocated registers
 directly. Loop locals use saved floating-point registers where available, including
@@ -171,7 +184,7 @@ parity and diagnostic tests.
   event, yield, resume, variables, loops and nested whole-function arguments,
   conversions, Min/Max, returns, nested pure bodies and fixed-layout aggregate arguments/results
   without callee runtime allocation, plus persistent plain struct writes through
-  nested calls and loops. It asserts bytecode execution,
+  nested calls and loops, and nested query snapshots. It asserts bytecode execution,
   SLJIT unavailability and zero oracle calls.
 
 The existing runtime tests cover local/library calls, managed values, loops,

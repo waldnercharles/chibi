@@ -356,7 +356,7 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
     array_value *array = behavior_lower_array(b, slot);
     if (array) {
         array_value *stored = op == BF_SAVE ? behavior_lower_array(b, target) : NULL;
-        if (!stored || stored->type != array->type) {
+        if (array->temporary || !stored || stored->type != array->type) {
             return false;
         }
         behavior_lower_emit(

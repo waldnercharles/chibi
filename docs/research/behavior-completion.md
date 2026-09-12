@@ -6,9 +6,9 @@ entries, 70 local functions and four library functions. Five of the 33 event
 entries qualify for whole-function execution: `PlayerContactBehavior.Tick`,
 `SurfacePulseBehavior.Begin`, `TwinStickInputBehavior.Input`,
 `TwinStickInputBehavior.Tick` and `TwinStickWeaponBehavior.Begin`.
-Four of 31 effectful function bodies qualify: `ArenaShardBehavior.Initialize Shard`,
-`ArenaShardBehavior.Advance Shard Motion`, `ProjectileBehavior.Face Direction`
-and `ArenaWaveBehavior.Formation Position`.
+Five of 31 effectful function bodies qualify: `ArenaShardBehavior.Initialize Shard`,
+`ArenaShardBehavior.Advance Shard Motion`, `ProjectileBehavior.Face Direction`,
+`ArenaWaveBehavior.Count Living Members` and `ArenaWaveBehavior.Formation Position`.
 All 39 pure local functions now execute whole compiled bodies, as do
 three of the four library functions. Pure calls inside general compiled events
 use these bodies directly; they no longer require callee runtime stores. The original request's larger
@@ -49,8 +49,8 @@ lower into explicit compiled control flow. Numeric edge conversions share the
 same saturating casts as explicit conversion nodes. Explicitly annotated struct
 alias conversions now copy typed fields without a native helper; the
 [alias measurements](whole-aliases.md) pass the 1.5x generated-C limit. Wave Tick
-now passes its input conversion and ForEach control and stops at
-`Find Entities With Component` (graph 2010, node 2065). Read-only array views,
+now passes its input conversion, ForEach and component query and stops at
+`Send Event` (graph 2005, node 2386). Read-only array views,
 plain elements and ForEach now lower without array helpers; their
 [benchmark](whole-arrays.md) passes the 1.5x generated-C gate. Persistent fixed-layout
 struct writes reuse instance storage and compile into field stores; the
@@ -95,8 +95,12 @@ exclusions have moved to the first unsupported operation inside the callee.
    changes invalidate the access with a source diagnostic before a read or write.
    Add managed component fields, other entity operations and direct compiled
    support for custom component readers without an ECS storage view. The scalar C-call ABI now preserves live values across native math calls.
-   Generate explicit ABI calls for queries,
-   spawning/destruction, physics, events, randomness and asynchronous host work.
+   Component-name queries now call a typed snapshot producer; ForEach and its body
+   remain native. Each lowered query owns reusable storage for this synchronous
+   invocation. Dynamic keys and snapshots crossing stored array parameters/results or
+   persistent stores remain excluded. See [query measurements](whole-queries.md).
+   Generate explicit ABI calls for other queries, spawning/destruction, physics,
+   events, randomness and asynchronous host work.
    Retain deterministic ordering and staged structural mutations.
 4. **Whole-function inspection.** Produce instrumented variants with source
    safe points, breakpoints, stepping, recorded values and call frames, including

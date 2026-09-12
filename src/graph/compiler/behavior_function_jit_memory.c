@@ -115,6 +115,41 @@ bool behavior_jit_memory(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    if (i->op == BF_QUERY) {
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, queries));
+        sljit_sw at = i->target * sizeof(behavior_query_binding);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R0,
+            0,
+            SLJIT_MEM1(SLJIT_R3),
+            at + offsetof(behavior_query_binding, service)
+        );
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R3), at + offsetof(behavior_query_binding, key));
+        sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R3, 0, SLJIT_IMM, at + offsetof(behavior_query_binding, snapshot));
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS3(P, P, P, P),
+            SLJIT_MEM1(SLJIT_R3),
+            at + offsetof(behavior_query_binding, read)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, error_message),
+            SLJIT_R0,
+            0
+        );
+        struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_HOST_DATA);
+        bind(c, ok);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, queries));
+        sljit_emit_op2(c, SLJIT_ADD, dest, offset, SLJIT_R3, 0, SLJIT_IMM, at + offsetof(behavior_query_binding, snapshot));
+        return true;
+    }
     if (i->op == BF_READ) {
         slot(m, i->left, SLJIT_R3, 0);
         read_pointer(m, i, dest, offset);

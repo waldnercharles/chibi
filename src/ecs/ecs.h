@@ -92,7 +92,6 @@ void ecs_query_expr_free(ecs_query_expr *expr);
 struct ecs_query
 {
     ecs_world *world;
-    ecs_component_id *components;
     int component_count;
     uint32_t cursor;
     uint32_t limit;
@@ -101,8 +100,9 @@ struct ecs_query
     int dense_cursor;
     int dense_index;
     const ecs_query_expr *expression;
-    void *component_refs;  /* private query plan */
-    void *expression_plan; /* private expression candidate plan */
+    void *component_refs;         /* private query plan */
+    const void *single_component; /* Inline plan for a single-component query. */
+    void *expression_plan;        /* private expression candidate plan */
 };
 
 /* A world owns fixed-size entity slots and the registered component columns. */

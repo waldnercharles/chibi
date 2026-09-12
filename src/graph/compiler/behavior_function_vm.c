@@ -34,14 +34,16 @@ static int fail(
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    ctx->error_message = i->message;
+    if (i->op != BF_QUERY) {
+        ctx->error_message = i->message;
+    }
     return reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
          : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
          : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
                                                  : FLOW_ERR_STEP_BUDGET;
 }
 
-int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
+static int run(const behavior_function *f, behavior_function_context *ctx, bool native)
 {
     if (native) {
         assert(f->code);
@@ -102,6 +104,24 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             continue;
         }
         switch (i->op) {
+            case BF_QUERY: {
+                behavior_query_binding *query = &ctx->queries[i->target];
+                ctx->error_message = query->read(
+                    query->service,
+                    query->key,
+                    &query->snapshot
+                );
+                if (ctx->error_message) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                    goto done;
+                }
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = (uintptr_t)&query->snapshot;
+                } else {
+                    out->u = (uint32_t)(uintptr_t)&query->snapshot;
+                }
+                break;
+            }
             case BF_ARRAY: {
                 const pin_value *value = &i->value;
                 if (i->target == BF_VARIABLE) {
@@ -454,5 +474,18 @@ done:
     }
     free(parents);
     free(slots);
+    return result;
+}
+
+int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
+{
+    bool owned = !ctx->queries && acount(f->queries);
+    if (owned) {
+        behavior_function_prepare_queries(f, ctx);
+    }
+    int result = run(f, ctx, native);
+    if (owned) {
+        behavior_function_release_queries(ctx);
+    }
     return result;
 }

@@ -1,6 +1,7 @@
 #ifndef CHIBI_BEHAVIOR_FUNCTION_H
 #define CHIBI_BEHAVIOR_FUNCTION_H
 #include "graph/model/behavior_asset.h"
+#include "graph/runtime/value_array.h"
 
 #include <stdio.h>
 
@@ -13,6 +14,13 @@ typedef struct
     uint64_t layout;
 } behavior_variable_storage;
 struct service_binding;
+typedef struct
+{
+    node_query_fn read;
+    void *service;
+    const char *key;
+    pin_array snapshot;
+} behavior_query_binding;
 typedef struct
 {
     graph *graph;
@@ -58,6 +66,8 @@ typedef struct
     uintptr_t error_steps;
     behavior_function_failure failure;
     const char *error_message;
+    const struct service_binding *services;
+    behavior_query_binding *queries;
     uint64_t owner;
     const struct ecs_execution_view *world, *binding_world;
     behavior_variable_storage *variable_storage;
@@ -80,6 +90,10 @@ bool behavior_function_bind(
     const struct service_binding *services,
     uint64_t owner
 );
+/* Raw native/generated-C entry callers prepare/release these once per
+ * invocation. run() does this automatically unless the caller supplies them. */
+void behavior_function_prepare_queries(const behavior_function *function, behavior_function_context *ctx);
+void behavior_function_release_queries(behavior_function_context *ctx);
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);
 int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool native);

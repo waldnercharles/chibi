@@ -58,9 +58,12 @@ static void enter_locals(FILE *out, const behavior_function *f, int frame)
 }
 static void failure(FILE *out, const behavior_function_instruction *i, behavior_function_failure reason)
 {
-    fputs("c->error_message=(const char*)", out);
-    type_name(out, i->message);
-    fprintf(out, ";c->error_stack=%d;", i->stack);
+    if (i->op != BF_QUERY) {
+        fputs("c->error_message=(const char*)", out);
+        type_name(out, i->message);
+        fputs(";", out);
+    }
+    fprintf(out, "c->error_stack=%d;", i->stack);
     fprintf(
         out,
         "c->error_steps=steps;c->steps=%s;c->node_id=%lluULL;c->error_frame=%d;"
@@ -155,6 +158,11 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             continue;
         }
         switch (i->op) {
+            case BF_QUERY:
+                fprintf(out, "{behavior_query_binding *q=&c->queries[%d];c->error_message=q->read(q->service,q->key,&q->snapshot);if(c->error_message){", i->target);
+                failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
+                fprintf(out, "}v%d=(uintptr_t)&q->snapshot;}\n", i->output);
+                break;
             case BF_ARRAY:
                 fprintf(out, "{const pin_value *a=");
                 if (i->target == BF_ARGUMENT) {

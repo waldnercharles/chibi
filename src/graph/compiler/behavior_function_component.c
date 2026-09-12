@@ -16,6 +16,7 @@ bool behavior_function_bind(
 )
 {
     ctx->owner = owner;
+    ctx->services = services;
     if (!f->component_access && !f->component_bindings) {
         return true;
     }

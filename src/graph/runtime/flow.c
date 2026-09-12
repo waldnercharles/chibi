@@ -617,6 +617,7 @@ static int execute(flow_run *run)
                 .owner = host.owner,
                 .world = host.world,
                 .binding_world = host.binding_world,
+                .services = host.services,
             };
             behavior_instance_bind_values(run->instance, &ctx);
             behavior_function_prepare_results(function, ctx.results, &run->scratch);

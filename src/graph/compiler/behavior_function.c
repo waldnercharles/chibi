@@ -172,6 +172,7 @@ static bool return_values(builder *b, node *n)
             return false;
         }
         if (!behavior_lower_store(b, call ? BF_SAVE : BF_RESULT, slot, target)) {
+            behavior_lower_unsupported(b, n, i, false, "return value ownership");
             return false;
         }
     }
@@ -404,6 +405,7 @@ void behavior_function_free(behavior_function *f)
     afree(f->sources);
     afree(f->stacks);
     afree(f->results);
+    afree(f->queries);
     free(f);
 }
 bool behavior_function_compile(behavior_function *f)

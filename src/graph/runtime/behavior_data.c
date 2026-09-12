@@ -123,6 +123,7 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             .owner = host.owner,
             .world = host.world,
             .binding_world = host.binding_world,
+            .services = host.services,
         };
         behavior_instance_bind_values(instance, &call);
         int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);

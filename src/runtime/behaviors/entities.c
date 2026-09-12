@@ -13,6 +13,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -643,18 +644,14 @@ static const char *has_entities_with_component(
     return NULL;
 }
 
-static const char *find_entities_with_component(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *storage,
-    pin_value *out
-)
+static const char *find_entity_snapshot(void *service, const char *key, pin_array *out)
 {
-    game_entities *entities = eval_context_service(ctx, "game.entities");
+    game_entities *entities = service;
+    out->count = 0;
     if (!entities) {
         return "Find Entities With Component requires a game world";
     }
-    const ecs_component_desc *component = query_component(entities, inputs[0].str);
+    const ecs_component_desc *component = query_component(entities, key);
     if (!component) {
         return "Choose a registered component for Find Entities With Component";
     }
@@ -662,28 +659,45 @@ static const char *find_entities_with_component(
     if (ecs_query_begin(entities->world, &query, &component->id, 1) != ECS_OK) {
         return "Find Entities With Component could not query the world";
     }
-    pin_value *items = NULL;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         if (game_entities_is_retiring(entities, entity)) {
             continue;
         }
-        pin_value value = { .type = PIN_HANDLE,
-                            .type_name = "ecs.entity",
-                            .u64 = ecs_entity_to_u64(entity) };
-        apush(items, value);
+        if (out->count == out->capacity) {
+            int result = pin_array_reserve(out, out->capacity ? out->capacity * 2 : 8);
+            assert(!result);
+            (void)result;
+        }
+        /* Handles have no payload ownership; append directly to the snapshot. */
+        out->items[out->count++] = (pin_value){ .type = PIN_HANDLE,
+                                                .type_name = "ecs.entity",
+                                                .u64 = ecs_entity_to_u64(entity) };
     }
     ecs_query_end(&query);
-    pin_array snapshot = { .element_type = PIN_HANDLE,
-                           .type_name = "ecs.entity",
-                           .count = acount(items),
-                           .items = items };
-    *out = (pin_value){ .type = PIN_HANDLE,
-                        .type_name = "ecs.entity",
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = pin_array_clone_to_arena(storage, &snapshot) };
-    afree(items);
     return NULL;
+}
+static const char *find_entities_with_component(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *storage,
+    pin_value *out
+)
+{
+    pin_array snapshot = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" };
+    const char *error = find_entity_snapshot(
+        eval_context_service(ctx, "game.entities"),
+        inputs[0].str,
+        &snapshot
+    );
+    if (!error) {
+        *out = (pin_value){ .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .container = PIN_CONTAINER_ARRAY,
+                            .ptr = pin_array_clone_to_arena(storage, &snapshot) };
+    }
+    free(snapshot.items);
+    return error;
 }
 
 static pin_spec HAS_ENTITIES_IN[] = { { .name = "Component", .type = PIN_NAME } };
@@ -714,6 +728,8 @@ static node_desc FIND_ENTITIES_NODE = {
     .outputs = FIND_ENTITIES_OUT,
     .pure_kind = NODE_PURE_READ,
     .read_inputs = find_entities_with_component,
+    .query_service = "game.entities",
+    .query = find_entity_snapshot,
     .category = "Entities",
     .keywords = "query find component entities array snapshot",
     .access = &NEAREST_ACCESS,

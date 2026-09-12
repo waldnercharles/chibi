@@ -1041,23 +1041,20 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
     query->dense_count = -1;
     query->dense_index = -1;
     if (component_count) {
-        query->components = (ecs_component_id *)xmalloc(
-            (size_t)component_count * sizeof *query->components
-        );
-        const ecs_component **refs = (const ecs_component **)xmalloc(
-            (size_t)component_count * sizeof *refs
-        );
+        const void **refs = component_count == 1
+                              ? &query->single_component
+                              : xmalloc((size_t)component_count * sizeof *refs);
         query->component_refs = refs;
         const ecs_component *candidate = NULL;
         for (int i = 0; i < component_count; i++) {
             const ecs_component *component = find_component(world, components[i]);
             if (!component) {
-                free(query->component_refs);
-                free(query->components);
+                if (component_count > 1) {
+                    free(query->component_refs);
+                }
                 memset(query, 0, sizeof *query);
                 return ECS_ERR_COMPONENT;
             }
-            query->components[i] = components[i];
             refs[i] = component;
             if (component->desc.index == ECS_INDEX_DENSE &&
                 (!candidate || acount(component->dense) < acount(candidate->dense))) {
@@ -1238,7 +1235,7 @@ int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
             !query_expression_matches(query->world, query->expression, slot)) {
             continue;
         }
-        const ecs_component *const *refs = (const ecs_component *const *)query->component_refs;
+        const void *const *refs = query->component_refs;
         int i;
         for (i = 0; i < query->component_count; i++) {
             if (i != query->dense_index && !component_matches(refs[i], slot)) {
@@ -1260,8 +1257,9 @@ void ecs_query_end(ecs_query *query)
     }
     assert(query->world->iteration_depth > 0);
     query->world->iteration_depth--;
-    free(query->component_refs);
-    free(query->components);
+    if (query->component_count > 1) {
+        free(query->component_refs);
+    }
     query_expression_plan *plan = (query_expression_plan *)query->expression_plan;
     if (plan) {
         afree(plan->slots);

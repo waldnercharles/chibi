@@ -738,6 +738,7 @@ void test_compiled_behaviors()
     test_compiled_aliases();
     test_compiled_stores();
     test_compiled_arrays();
+    test_compiled_queries();
     test_compiled_aggregates();
     test_compiled_math();
     test_compiled_integers();

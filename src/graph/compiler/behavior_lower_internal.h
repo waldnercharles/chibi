@@ -18,6 +18,7 @@ typedef struct
 {
     int slot, pointer;
     pin_type type;
+    bool temporary;
 } array_value;
 typedef struct
 {
@@ -62,6 +63,7 @@ array_value *behavior_lower_array(builder *b, int slot);
 int behavior_lower_array_value(builder *b, int pointer, pin_type type);
 int behavior_lower_array_source(builder *b, behavior_function_op op, int index, const pin_spec *spec);
 int behavior_lower_array_operation(builder *b, node *n);
+int behavior_lower_query(builder *b, node *n);
 int behavior_lower_array_element(builder *b, int items, int index, const pin_spec *spec);
 int behavior_lower_read(builder *b, int pointer, size_t offset, pin_type type, bool nullable);
 int behavior_lower_component_read(builder *b, node *n);

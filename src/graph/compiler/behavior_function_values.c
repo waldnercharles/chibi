@@ -54,8 +54,8 @@ int behavior_lower_emit(builder *b, behavior_function_instruction i)
     i.source = b->source;
     i.stack = b->stack;
     if (i.node_id && b->source != b->function->frames[b->frame].source_index &&
-        (i.op == BF_DIV || i.op == BF_MOD || i.op == BF_REQUIRE ||
-         i.op == BF_ASSERT || i.op == BF_COMPONENT || i.op == BF_CALL_CHECK)) {
+        (i.op == BF_DIV || i.op == BF_MOD || i.op == BF_REQUIRE || i.op == BF_ASSERT ||
+         i.op == BF_COMPONENT || i.op == BF_QUERY || i.op == BF_CALL_CHECK)) {
         int parent = data_stack(b, b->source, b->stack);
         i.stack = acount(b->function->stacks);
         apush(
@@ -706,6 +706,9 @@ static int get_output(builder *b, node *n, int pin)
         (n->desc == &NODE_To_Real || n->desc == &NODE_To_Byte ||
          n->desc == &NODE_To_Integer || n->desc == &NODE_To_Integer64)) {
         result = numeric_cast(b, behavior_lower_input(b, n, 0), n->desc, type);
+    }
+    if (result < 0 && n->desc->query) {
+        result = behavior_lower_query(b, n);
     }
     if (result < 0) {
         result = behavior_lower_array_operation(b, n);

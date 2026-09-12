@@ -10,6 +10,11 @@ typedef struct node node;
 typedef struct arena arena;
 typedef struct flow_context flow_context;
 typedef struct eval_context eval_context;
+struct pin_array;
+/* Snapshot producer: fills caller-owned reusable ecs.entity handle storage.
+ * It cannot mutate membership, layouts or behavior storage. An error message
+ * must remain valid after the snapshot is released. */
+typedef const char *(*node_query_fn)(void *service, const char *key, struct pin_array *out);
 
 typedef enum
 {
@@ -177,6 +182,8 @@ typedef struct
     const char *conversion_from;
     const char *conversion_to;
     const node_access *access;
+    const char *query_service;
+    node_query_fn query;
 } node_desc;
 
 struct node

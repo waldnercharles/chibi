@@ -32,6 +32,7 @@ typedef enum
     BF_WORLD,
     BF_STORAGE_NAME,
     BF_ARRAY,
+    BF_QUERY,
     BF_OWN_NAME,
     BF_ADD,
     BF_SUB,
@@ -89,7 +90,7 @@ static inline bool behavior_function_math(behavior_function_op op)
 }
 static inline bool behavior_function_call(behavior_function_op op)
 {
-    return behavior_function_math(op) || op == BF_OWN_NAME;
+    return behavior_function_math(op) || op == BF_OWN_NAME || op == BF_QUERY;
 }
 #define BF_POINTER_TYPE                                                        \
     (sizeof(uintptr_t) == sizeof(uint64_t) ? PIN_U64 : PIN_U32)
@@ -125,8 +126,14 @@ typedef struct
     behavior_function_source source;
     int depth, resume, source_index, stack;
 } behavior_function_frame;
+typedef struct
+{
+    const char *service, *key;
+    node_query_fn read;
+} behavior_function_query;
 struct behavior_function
 {
+    behavior_function_query *queries;
     behavior_function_instruction *instructions;
     pin_type *slots;
     behavior_function_local *locals;

@@ -85,14 +85,16 @@ void behavior_jit_failure(
 )
 {
     struct sljit_compiler *c = m->compiler;
-    sljit_emit_op1(
-        c,
-        SLJIT_MOV_P,
-        SLJIT_MEM1(m->context),
-        offsetof(behavior_function_context, error_message),
-        SLJIT_IMM,
-        (sljit_sw)i->message
-    );
+    if (i->op != BF_QUERY) {
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, error_message),
+            SLJIT_IMM,
+            (sljit_sw)i->message
+        );
+    }
     store_steps(m, offsetof(behavior_function_context, error_steps));
     if (i->frame) {
         sljit_emit_op1(c, SLJIT_MOV, m->steps, 0, SLJIT_MEM1(SLJIT_SP), m->parents);

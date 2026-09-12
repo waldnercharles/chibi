@@ -4,8 +4,10 @@
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
 #include "whole_function_fixture.h"
+#include "whole_math_fixture.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -139,6 +141,28 @@ int main()
     );
     runtime_store_free(ctx.runtime);
     arena_free(&storage);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+    asset = whole_math_fixture();
+    instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    double sine = sin(.1), cosine = cos(sine);
+    for (int i = 1; i < 6; i++) {
+        double x = sin(.1 + i * .2);
+        sine += x;
+        cosine += cos(x);
+    }
+    run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    assert(
+        instance->variables[0].d == sine + cosine &&
+        instance->variables[1].f == -.5f && instance->variables[2].b
+    );
+    assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
+    printf(
+        "%s: whole math calls and scalar results; zero oracle calls\n",
+        behavior_backend_name(behavior_instance_backend(instance))
+    );
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     return 0;

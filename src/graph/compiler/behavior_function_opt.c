@@ -110,6 +110,11 @@ void behavior_function_optimize(behavior_function *f)
             return;
         }
     }
+    for (int i = 0; i < acount(f->instructions); i++) {
+        if (behavior_function_math(f->instructions[i].op)) {
+            return;
+        }
+    }
     optimizer o = { .f = xcalloc(1, sizeof *o.f) };
     apush(o.f->frames, f->frames[0]);
     int variables = 0;

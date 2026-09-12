@@ -76,6 +76,18 @@ static void body(const behavior_function *f, FILE *out, char prefix)
         const behavior_function_instruction *i = &f->instructions[pc];
         fprintf(out, "%c%d: ;\n", prefix, pc);
         switch (i->op) {
+#define MATH_UNARY(op, name, fn)                                               \
+    case BF_##op:                                                              \
+        fprintf(out, "v%d=" #fn "(v%d);\n", i->output, i->left);               \
+        break;
+            BEHAVIOR_MATH_UNARY(MATH_UNARY)
+#undef MATH_UNARY
+#define MATH_BINARY(op, name, fn)                                              \
+    case BF_##op:                                                              \
+        fprintf(out, "v%d=" #fn "(v%d,v%d);\n", i->output, i->left, i->right); \
+        break;
+            BEHAVIOR_MATH_BINARY(MATH_BINARY)
+#undef MATH_BINARY
             case BF_CONSTANT: {
                 fprintf(out, "v%d=", i->output);
                 constant(out, i->type, i->value);

@@ -5,7 +5,7 @@ September 12 audit of this isolated branch finds 19 behavior assets, 33 event
 entries, 70 local functions and four library functions. **One of the 33 event
 entries qualifies for whole-function execution**, `PlayerContactBehavior.Tick`.
 One of 31 effectful function bodies also qualifies,
-`ArenaShardBehavior.Initialize Shard`. Of the 39 pure local functions, 21 now execute whole compiled bodies, as does
+`ArenaShardBehavior.Initialize Shard`. Of the 39 pure local functions, 26 now execute whole compiled bodies, as does
 one of the four library functions. Pure calls inside general compiled events
 use these bodies directly; they no longer require callee runtime stores. The original request's larger
 asset/event counts describe another snapshot; acceptance must enumerate content,
@@ -54,14 +54,15 @@ exclusions have moved to the first unsupported operation inside the callee.
    live values and continuation PCs across Delay, host waits, cancellation and
    hot apply. Pure-body publication and direct execution are implemented for eligible scalar functions.
 2. **Full value and control lowering.** Scalar payloads, F32/F64 coercions and
-   Min/Max are implemented. Add integers and remaining scalar operations;
+   Min/Max, Clamp and eleven scalar transcendental operations are implemented. Add integers and remaining scalar operations;
    vectors and projected struct
    fields; arrays, structs and managed ownership; ForLoop, ForEach and Break.
    Eliminate runtime dispatch for these language operations. Scalar Set Variable
    and Call Function outputs now retain their execution values across blocks.
 3. **Engine calls from generated code.** Resolve component layouts, field
    offsets, entity-reference checks and access contracts at publication. Compile
-   direct typed access where valid. Generate explicit ABI calls for queries,
+   direct typed access where valid. The scalar C-call ABI now preserves live values across native math calls.
+   Generate explicit ABI calls for queries,
    spawning/destruction, physics, events, randomness and asynchronous host work.
    Retain deterministic ordering and staged structural mutations.
 4. **Whole-function inspection.** Produce instrumented variants with source

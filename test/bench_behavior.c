@@ -6,6 +6,7 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "whole_function_fixture.h"
+#include "whole_math_fixture.h"
 
 #include <assert.h>
 #include <dlfcn.h>
@@ -477,6 +478,89 @@ static void measure_pure(behavior_backend backend, int count)
     behavior_asset_free(a);
 }
 
+static void compare_math(void *library, int count, int rotation)
+{
+    behavior_asset *a = whole_math_fixture();
+    const behavior_function *f = arguments_entry(a);
+    int (*entries[])(behavior_function_context *) = {
+        (int (*)(behavior_function_context *))behavior_function_entry(f),
+        (int (*)(behavior_function_context *))dlsym(library, "generated_math")
+    };
+    assert(entries[0] && entries[1]);
+    pin_value args[8], variables[3] = { { .type = PIN_F64, .d = 2.75 } };
+    node *entry = graph_node_by_id(a->graphs[1], a->graphs[1]->entry_id);
+    for (int i = 0; i < 8; i++) {
+        args[i] = entry->output_pins[i].default_value;
+    }
+    double cases[] = { NAN, INFINITY, -INFINITY, -0., 0., 1.e-40, .375 };
+    for (int k = 0; k < 7; k++) {
+        args[0].d = cases[k];
+        pin_value reference[3] = { 0 };
+        behavior_function_context expected = { .variables = variables,
+                                               .arguments = args,
+                                               .argument_count = 8,
+                                               .results = reference,
+                                               .steps = 123 };
+        assert(!behavior_function_run(f, &expected, false));
+        for (int mode = 0; mode < 2; mode++) {
+            pin_value values[3] = { 0 };
+            behavior_function_context actual = { .variables = variables,
+                                                 .arguments = args,
+                                                 .argument_count = 8,
+                                                 .results = values,
+                                                 .steps = 123 };
+            assert(!entries[mode](&actual) && actual.steps == expected.steps);
+            assert(actual.returned_node_id == expected.returned_node_id);
+            assert(
+                isnan(reference[0].d) ? isnan(values[0].d)
+                                      : values[0].d == reference[0].d
+            );
+            assert(values[1].f == reference[1].f && values[2].b == reference[2].b);
+        }
+    }
+    puts("math_parity=SLJIT,BYTECODE,GENERATED_C live-registers,stack-spills,mixed-returns,variables");
+    double reference[1024];
+    for (int k = 0; k < 1024; k++) {
+        double sine = sin(k * .001), cosine = cos(sine);
+        for (int i = 1; i < 6; i++) {
+            double x = sin(k * .001 + i * .13);
+            sine += x;
+            cosine += cos(x);
+        }
+        reference[k] = (sine + cosine) + 2.75;
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        int mode = (pass + rotation) % 2;
+        pin_value results[3] = { 0 };
+        behavior_function_context ctx = { .variables = variables,
+                                          .arguments = args,
+                                          .argument_count = 8,
+                                          .results = results };
+        double start = 0, checksum = 0, expected = 0;
+        for (int i = -10000; i < count; i++) {
+            if (!i) {
+                start = seconds();
+            }
+            for (int j = 0; j < 6; j++) {
+                args[j].d = (i & 1023) * .001 + j * .13;
+            }
+            assert(!entries[mode](&ctx));
+            if (i >= 0) {
+                checksum += results[0].d;
+                expected += reference[i & 1023];
+            }
+        }
+        assert(checksum == expected);
+        printf(
+            "%s math_body ns=%.3f checksum=%.12f\n",
+            mode ? "GENERATED_C" : "SLJIT",
+            (seconds() - start) * 1e9 / count,
+            checksum
+        );
+    }
+    behavior_asset_free(a);
+}
+
 int main(int argc, char **argv)
 {
     bool export_c = argc > 1 && !strcmp(argv[1], "--emit-c");
@@ -518,6 +602,9 @@ int main(int argc, char **argv)
         behavior_asset *pure = whole_pure_fixture();
         behavior_function_write_c(pure_entry(pure), out, "generated_pure");
         behavior_asset_free(pure);
+        behavior_asset *math = whole_math_fixture();
+        behavior_function_write_c(arguments_entry(math), out, "generated_math");
+        behavior_asset_free(math);
         assert(fclose(out) == 0);
         behavior_asset_free(asset);
         return 0;
@@ -550,6 +637,7 @@ int main(int argc, char **argv)
         behavior_asset_free(scopes);
         compare_arguments(library, count, rotation);
         compare_pure(library, count, rotation);
+        compare_math(library, count, rotation);
         void *entry = dlsym(library, "generated_behavior");
         assert(entry);
         for (int i = 0; i < 2; i++) {

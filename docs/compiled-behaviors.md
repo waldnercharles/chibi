@@ -135,3 +135,7 @@ remaining compiler work. The focused rendered check is
 [Pure-function body measurements](research/whole-pure-functions.md) cover independent
 publication, direct execution inside general compiled events, expanded coverage
 gates and paired Arena results.
+
+[Whole-function math calls](research/whole-math-calls.md) documents direct
+transcendental calls, register preservation, helper-free Clamp, expanded parity
+and the generated-C math benchmark.

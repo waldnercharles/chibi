@@ -2,6 +2,22 @@
 #define CHIBI_BEHAVIOR_FUNCTION_INTERNAL_H
 #include "graph/compiler/behavior_function.h"
 
+/* Platform libm routines with scalar C ABIs, called directly by native code.
+ * Keep inexpensive hardware operations separate from this call boundary. */
+#define BEHAVIOR_MATH_UNARY(X)                                                 \
+    X(SIN, Sine, sin)                                                          \
+    X(COS, Cosine, cos)                                                        \
+    X(TAN, Tangent, tan)                                                       \
+    X(ASIN, ArcSine, asin)                                                     \
+    X(ACOS, ArcCosine, acos)                                                   \
+    X(ATAN, ArcTangent, atan)                                                  \
+    X(EXP, Exponential, exp)                                                   \
+    X(LOG, Logarithm, log)                                                     \
+    X(LOG10, Logarithm10, log10)
+#define BEHAVIOR_MATH_BINARY(X)                                                \
+    X(POW, Power, pow)                                                         \
+    X(ATAN2, ArcTangent2, atan2)
+
 typedef enum
 {
     BF_CONSTANT,
@@ -24,6 +40,10 @@ typedef enum
     BF_GE,
     BF_EQ,
     BF_NE,
+#define MATH_OP(op, name, fn) BF_##op,
+    BEHAVIOR_MATH_UNARY(MATH_OP)
+    BEHAVIOR_MATH_BINARY(MATH_OP)
+#undef MATH_OP
     BF_STORE,
     BF_RESULT,
     BF_SAVE,
@@ -37,6 +57,10 @@ typedef enum
     BF_RETURN,
     BF_END
 } behavior_function_op;
+static inline bool behavior_function_math(behavior_function_op op)
+{
+    return op >= BF_SIN && op <= BF_ATAN2;
+}
 typedef struct
 {
     behavior_function_op op;

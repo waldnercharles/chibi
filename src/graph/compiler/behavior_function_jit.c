@@ -3,10 +3,17 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
 #if CHIBI_HAVE_SJLIT
 #include <sljitLir.h>
+
+typedef struct
+{
+    struct sljit_compiler *compiler;
+    int context, steps, variables, arguments, argument_count;
+} machine;
 
 static int width(pin_type type)
 {
@@ -26,7 +33,7 @@ static void load(struct sljit_compiler *c, const behavior_function *f, const int
 /* Slots are defined before their uses within one lowered expression. Allocate
  * four scratch registers by live interval; excess live values spill to the
  * activation stack. FR0/FR1 remain emitter temporaries. */
-static int *allocate_registers(const behavior_function *f)
+static int *allocate_registers(const behavior_function *f, int *saved_count)
 {
     int count = acount(f->slots);
     int *registers = xcalloc((size_t)(count + 1), sizeof *registers);
@@ -40,10 +47,33 @@ static int *allocate_registers(const behavior_function *f)
             }
         }
     }
-    int until[4] = { -1, -1, -1, -1 };
+    int until[4] = { -1, -1, -1, -1 }, saved_until[4] = { -1, -1, -1, -1 };
+    int *next_call = xmalloc((size_t)(acount(f->instructions) + 1) * sizeof *next_call);
+    next_call[acount(f->instructions)] = acount(f->instructions);
+    for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
+        next_call[pc] = behavior_function_math(f->instructions[pc].op)
+                          ? pc
+                          : next_call[pc + 1];
+    }
+    *saved_count = 0;
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         if (i->op >= BF_STORE || i->type == PIN_BOOL) {
+            continue;
+        }
+        if (next_call[pc + 1] < last[i->output]) {
+            /* Values crossing a C ABI call must survive scratch clobbers.
+             * SysV x86 has no saved FP registers, so those values spill. */
+            for (int r = 0; r < 4 && r < SLJIT_NUMBER_OF_SAVED_FLOAT_REGISTERS; r++) {
+                if (saved_until[r] <= pc) {
+                    registers[i->output] = SLJIT_FS(r);
+                    saved_until[r] = last[i->output];
+                    if (r + 1 > *saved_count) {
+                        *saved_count = r + 1;
+                    }
+                    break;
+                }
+            }
             continue;
         }
         for (int r = 0; r < 4; r++) {
@@ -54,12 +84,20 @@ static int *allocate_registers(const behavior_function *f)
             }
         }
     }
+    free(next_call);
     free(last);
     return registers;
 }
-static void store_steps(struct sljit_compiler *c)
+static void store_steps(const machine *m)
 {
-    sljit_emit_op1(c, SLJIT_MOV, SLJIT_MEM1(SLJIT_R2), offsetof(behavior_function_context, steps), SLJIT_R1, 0);
+    sljit_emit_op1(
+        m->compiler,
+        SLJIT_MOV,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, steps),
+        m->steps,
+        0
+    );
 }
 static void bind_here(struct sljit_compiler *c, struct sljit_jump *jump)
 {
@@ -84,29 +122,25 @@ static void enter_locals(struct sljit_compiler *c, const behavior_function *f, i
         );
     }
 }
-static void failure(
-    struct sljit_compiler *c,
-    const behavior_function_instruction *i,
-    int parents,
-    behavior_function_failure reason
-)
+static void failure(const machine *m, const behavior_function_instruction *i, int parents, behavior_function_failure reason)
 {
+    struct sljit_compiler *c = m->compiler;
     sljit_emit_op1(
         c,
         SLJIT_MOV,
-        SLJIT_MEM1(SLJIT_R2),
+        SLJIT_MEM1(m->context),
         offsetof(behavior_function_context, error_steps),
-        SLJIT_R1,
+        m->steps,
         0
     );
     if (i->frame) {
-        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_SP), parents);
+        sljit_emit_op1(c, SLJIT_MOV, m->steps, 0, SLJIT_MEM1(SLJIT_SP), parents);
     }
-    store_steps(c);
+    store_steps(m);
     sljit_emit_op1(
         c,
         SLJIT_MOV,
-        SLJIT_MEM1(SLJIT_R2),
+        SLJIT_MEM1(m->context),
         offsetof(behavior_function_context, node_id),
         SLJIT_IMM,
         i->node_id
@@ -114,7 +148,7 @@ static void failure(
     sljit_emit_op1(
         c,
         SLJIT_MOV32,
-        SLJIT_MEM1(SLJIT_R2),
+        SLJIT_MEM1(m->context),
         offsetof(behavior_function_context, error_frame),
         SLJIT_IMM,
         i->frame
@@ -122,7 +156,7 @@ static void failure(
     sljit_emit_op1(
         c,
         SLJIT_MOV32,
-        SLJIT_MEM1(SLJIT_R2),
+        SLJIT_MEM1(m->context),
         offsetof(behavior_function_context, failure),
         SLJIT_IMM,
         reason
@@ -135,20 +169,22 @@ static void failure(
     );
 }
 /* Match entry argument defaults and real-number coercion without a C call. */
-static void argument(
-    struct sljit_compiler *c,
-    const behavior_function_instruction *i,
-    int destination,
-    sljit_sw offset
-)
+static void argument(const machine *m, const behavior_function_instruction *i, int destination, sljit_sw offset)
 {
-    struct sljit_jump *
-        missing = sljit_emit_cmp(c, SLJIT_SIG_LESS_EQUAL | SLJIT_32, SLJIT_R5, 0, SLJIT_IMM, i->left);
+    struct sljit_compiler *c = m->compiler;
+    struct sljit_jump *missing = sljit_emit_cmp(
+        c,
+        SLJIT_SIG_LESS_EQUAL | SLJIT_32,
+        m->argument_count,
+        0,
+        SLJIT_IMM,
+        i->left
+    );
     sljit_sw base = i->left * sizeof(pin_value);
     struct sljit_jump *same = sljit_emit_cmp(
         c,
         SLJIT_EQUAL | SLJIT_32,
-        SLJIT_MEM1(SLJIT_R4),
+        SLJIT_MEM1(m->arguments),
         base + offsetof(pin_value, type),
         SLJIT_IMM,
         i->type
@@ -160,7 +196,7 @@ static void argument(
         wrong = sljit_emit_cmp(
             c,
             SLJIT_NOT_EQUAL | SLJIT_32,
-            SLJIT_MEM1(SLJIT_R4),
+            SLJIT_MEM1(m->arguments),
             base + offsetof(pin_value, type),
             SLJIT_IMM,
             i->type == PIN_F32 ? PIN_F64 : PIN_F32
@@ -170,7 +206,7 @@ static void argument(
             i->type == PIN_F32 ? SLJIT_CONV_F32_FROM_F64 : SLJIT_CONV_F64_FROM_F32,
             SLJIT_FR0,
             0,
-            SLJIT_MEM1(SLJIT_R4),
+            SLJIT_MEM1(m->arguments),
             base + offsetof(pin_value, d)
         );
         converted = sljit_emit_jump(c, SLJIT_JUMP);
@@ -182,7 +218,7 @@ static void argument(
             SLJIT_MOV_U8,
             destination,
             offset,
-            SLJIT_MEM1(SLJIT_R4),
+            SLJIT_MEM1(m->arguments),
             base + offsetof(pin_value, b)
         );
     } else {
@@ -191,7 +227,7 @@ static void argument(
             SLJIT_MOV_F64 | width(i->type),
             SLJIT_FR0,
             0,
-            SLJIT_MEM1(SLJIT_R4),
+            SLJIT_MEM1(m->arguments),
             base + offsetof(pin_value, d)
         );
     }
@@ -224,7 +260,8 @@ void *behavior_function_jit(const behavior_function *f)
     if (!c) {
         return NULL;
     }
-    int *registers = allocate_registers(f);
+    int saved_float = 0;
+    int *registers = allocate_registers(f, &saved_float);
     int stack_slots = 0;
     for (int i = 0; i < acount(f->slots); i++) {
         if (!registers[i]) {
@@ -236,22 +273,43 @@ void *behavior_function_jit(const behavior_function *f)
     int stack_size = parents + (acount(f->frames) > 1
                                     ? acount(f->frames) * sizeof(sljit_sw)
                                     : 0);
-    bool arguments = false;
+    bool arguments = false, calls = false;
     for (int i = 0; i < acount(f->instructions); i++) {
         arguments |= f->instructions[i].op == BF_ARGUMENT;
+        calls |= behavior_function_math(f->instructions[i].op);
     }
-    sljit_emit_enter(c, 0, SLJIT_ARGS1(32, P_R), (arguments ? 6 : 4) | SLJIT_ENTER_FLOAT(6), 0, stack_size);
-    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_R0, 0);
-    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(behavior_function_context, variables));
-    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R2), offsetof(behavior_function_context, steps));
+    machine m = { .compiler = c,
+                  .context = calls ? SLJIT_S0 : SLJIT_R2,
+                  .steps = calls ? SLJIT_S1 : SLJIT_R1,
+                  .variables = calls ? SLJIT_S2 : SLJIT_R0,
+                  .arguments = calls ? SLJIT_S3 : SLJIT_R4,
+                  .argument_count = calls ? SLJIT_S4 : SLJIT_R5 };
+    sljit_emit_enter(
+        c,
+        0,
+        SLJIT_ARGS1(32, P_R),
+        (arguments && !calls ? 6 : 4) | SLJIT_ENTER_FLOAT(6),
+        (calls ? (arguments ? 5 : 3) : 0) | SLJIT_ENTER_FLOAT(saved_float),
+        stack_size
+    );
+    sljit_emit_op1(c, SLJIT_MOV_P, m.context, 0, SLJIT_R0, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, m.variables, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, variables));
+    sljit_emit_op1(c, SLJIT_MOV, m.steps, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, steps));
     if (arguments) {
-        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R4, 0, SLJIT_MEM1(SLJIT_R2), offsetof(behavior_function_context, arguments));
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            m.arguments,
+            0,
+            SLJIT_MEM1(m.context),
+            offsetof(behavior_function_context, arguments)
+        );
         sljit_emit_op1(
             c,
             SLJIT_MOV32,
-            SLJIT_R5,
+            m.argument_count,
             0,
-            SLJIT_MEM1(SLJIT_R2),
+            SLJIT_MEM1(m.context),
             offsetof(behavior_function_context, argument_count)
         );
     }
@@ -265,21 +323,38 @@ void *behavior_function_jit(const behavior_function *f)
         int destination = registers[i->output] ? registers[i->output] : mem;
         sljit_sw offset = registers[i->output] ? 0 : i->output * sizeof(double);
         switch (i->op) {
+#define MATH_UNARY(op, name, fn)                                                                \
+    case BF_##op:                                                                               \
+        load(c, f, registers, i->left, SLJIT_FR0);                                              \
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS1(F64, F64), SLJIT_IMM, SLJIT_FUNC_ADDR(fn)); \
+        sljit_emit_fop1(c, SLJIT_MOV_F64, destination, offset, SLJIT_FR0, 0);                   \
+        break;
+            BEHAVIOR_MATH_UNARY(MATH_UNARY)
+#undef MATH_UNARY
+#define MATH_BINARY(op, name, fn)                                                                    \
+    case BF_##op:                                                                                    \
+        load(c, f, registers, i->left, SLJIT_FR0);                                                   \
+        load(c, f, registers, i->right, SLJIT_FR1);                                                  \
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(F64, F64, F64), SLJIT_IMM, SLJIT_FUNC_ADDR(fn)); \
+        sljit_emit_fop1(c, SLJIT_MOV_F64, destination, offset, SLJIT_FR0, 0);                        \
+        break;
+            BEHAVIOR_MATH_BINARY(MATH_BINARY)
+#undef MATH_BINARY
             case BF_CHECK: {
                 struct sljit_jump *ok = sljit_emit_cmp(
                     c,
                     SLJIT_LESS,
-                    SLJIT_R1,
+                    m.steps,
                     0,
-                    SLJIT_MEM1(SLJIT_R2),
+                    SLJIT_MEM1(m.context),
                     offsetof(behavior_function_context, budget)
                 );
-                failure(c, i, parents, BEHAVIOR_FUNCTION_BUDGET);
+                failure(&m, i, parents, BEHAVIOR_FUNCTION_BUDGET);
                 struct sljit_label *label = sljit_emit_label(c);
                 if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
                     sljit_set_label(ok, label);
                 }
-                sljit_emit_op2(c, SLJIT_ADD, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, 1);
+                sljit_emit_op2(c, SLJIT_ADD, m.steps, 0, m.steps, 0, SLJIT_IMM, 1);
                 break;
             }
             case BF_CALL_CHECK: {
@@ -288,29 +363,29 @@ void *behavior_function_jit(const behavior_function *f)
                                           ? sljit_emit_cmp(
                                                 c,
                                                 SLJIT_LESS | SLJIT_32,
-                                                SLJIT_MEM1(SLJIT_R2),
+                                                SLJIT_MEM1(m.context),
                                                 offsetof(behavior_function_context, call_depth),
                                                 SLJIT_IMM,
                                                 limit
                                             )
                                           : NULL;
-                failure(c, i, parents, BEHAVIOR_FUNCTION_DEPTH);
+                failure(&m, i, parents, BEHAVIOR_FUNCTION_DEPTH);
                 if (ok) {
                     bind_here(c, ok);
                 }
                 break;
             }
-            case BF_FAIL: failure(c, i, parents, i->left); break;
+            case BF_FAIL: failure(&m, i, parents, i->left); break;
             case BF_ENTER:
-                sljit_emit_op1(c, SLJIT_MOV, mem, parents + i->frame * sizeof(sljit_sw), SLJIT_R1, 0);
-                sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_IMM, 0);
+                sljit_emit_op1(c, SLJIT_MOV, mem, parents + i->frame * sizeof(sljit_sw), m.steps, 0);
+                sljit_emit_op1(c, SLJIT_MOV, m.steps, 0, SLJIT_IMM, 0);
                 enter_locals(c, f, i->target, locals);
                 break;
             case BF_LEAVE:
                 sljit_emit_op1(
                     c,
                     SLJIT_MOV,
-                    SLJIT_R1,
+                    m.steps,
                     0,
                     mem,
                     parents + f->frames[i->target].source.parent * sizeof(sljit_sw)
@@ -329,7 +404,7 @@ void *behavior_function_jit(const behavior_function *f)
                 sljit_emit_op1(
                     c,
                     SLJIT_MOV,
-                    SLJIT_MEM1(SLJIT_R2),
+                    SLJIT_MEM1(m.context),
                     offsetof(behavior_function_context, returned_node_id),
                     SLJIT_IMM,
                     i->node_id
@@ -337,9 +412,9 @@ void *behavior_function_jit(const behavior_function *f)
                 /* fall through */
             case BF_END:
                 if (f->root_steps) {
-                    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, f->root_steps);
+                    sljit_emit_op2(c, SLJIT_ADD, m.steps, 0, m.steps, 0, SLJIT_IMM, f->root_steps);
                 }
-                store_steps(c);
+                store_steps(&m);
                 sljit_emit_return(c, SLJIT_MOV32, SLJIT_IMM, 0);
                 break;
             case BF_CONSTANT:
@@ -366,7 +441,7 @@ void *behavior_function_jit(const behavior_function *f)
                 break;
             case BF_LOCAL:
             case BF_VARIABLE: {
-                int base = i->op == BF_LOCAL ? SLJIT_SP : SLJIT_R0;
+                int base = i->op == BF_LOCAL ? SLJIT_SP : m.variables;
                 sljit_sw address = i->op == BF_LOCAL
                                      ? locals + i->left * sizeof(double)
                                      : i->left * sizeof(pin_value) +
@@ -404,7 +479,7 @@ void *behavior_function_jit(const behavior_function *f)
                 break;
             case BF_RESULT:
             case BF_STORE: {
-                int base = SLJIT_R0;
+                int base = m.variables;
                 if (i->op == BF_RESULT) {
                     base = SLJIT_R3;
                     sljit_emit_op1(
@@ -412,7 +487,7 @@ void *behavior_function_jit(const behavior_function *f)
                         SLJIT_MOV_P,
                         base,
                         0,
-                        SLJIT_MEM1(SLJIT_R2),
+                        SLJIT_MEM1(m.context),
                         offsetof(behavior_function_context, results)
                     );
                 }
@@ -438,7 +513,7 @@ void *behavior_function_jit(const behavior_function *f)
                 }
                 break;
             }
-            case BF_ARGUMENT: argument(c, i, destination, offset); break;
+            case BF_ARGUMENT: argument(&m, i, destination, offset); break;
             case BF_CONVERT:
                 load(c, f, registers, i->left, SLJIT_FR0);
                 sljit_emit_fop1(
@@ -457,7 +532,7 @@ void *behavior_function_jit(const behavior_function *f)
                     SLJIT_CONV_F32_FROM_F64,
                     SLJIT_FR0,
                     0,
-                    SLJIT_MEM1(SLJIT_R2),
+                    SLJIT_MEM1(m.context),
                     offsetof(behavior_function_context, delta_seconds)
                 );
                 sljit_emit_fop1(c, SLJIT_MOV_F32, destination, offset, SLJIT_FR0, 0);

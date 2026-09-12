@@ -2,6 +2,7 @@
 #include "graph/compiler/behavior_jit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/math_nodes.h"
 #include "graph/runtime/flow.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -296,6 +297,13 @@ static int get_output(builder *b, node *n, int pin)
             case NODE_JIT_MAX: op = BF_MAX; break;
             default: break;
         }
+#define MATH_NODE(code, name, fn)                                              \
+    if (n->desc == &NODE_##name) {                                             \
+        op = BF_##code;                                                        \
+    }
+        BEHAVIOR_MATH_UNARY(MATH_NODE)
+        BEHAVIOR_MATH_BINARY(MATH_NODE)
+#undef MATH_NODE
         if (n->desc == &NODE_Less) {
             op = BF_LT;
         }
@@ -316,17 +324,39 @@ static int get_output(builder *b, node *n, int pin)
         }
         if (op >= 0 && n->input_count >= 1) {
             int left = input(b, n, 0), right = left;
-            if (op != BF_NEG && op != BF_ABS) {
+            if (op != BF_NEG && op != BF_ABS && !(op >= BF_SIN && op <= BF_LOG10)) {
                 right = n->input_count == 2 ? input(b, n, 1) : -1;
             }
             if (left >= 0 && right >= 0 && b->function->slots[left] != PIN_BOOL &&
                 b->function->slots[left] == b->function->slots[right] &&
-                (op >= BF_LT || b->function->slots[left] == type)) {
+                ((op >= BF_LT && op <= BF_NE) || b->function->slots[left] == type) &&
+                (!behavior_function_math(op) || type == PIN_F64)) {
                 result = value(
                     b,
                     (
                         behavior_function_instruction
                     ){ .op = op, .type = type, .left = left, .right = right }
+                );
+            }
+        }
+        if (n->desc->jit_kind == NODE_JIT_CLAMP && n->input_count == 3 &&
+            type != PIN_BOOL) {
+            int x = input(b, n, 0), low = input(b, n, 1), high = input(b, n, 2);
+            if (x >= 0 && low >= 0 && high >= 0 && b->function->slots[x] == type &&
+                b->function->slots[low] == type && b->function->slots[high] == type) {
+                /* The language defines Max(Min(value, high), low), including
+                 * NaNs, signed zero and reversed bounds. */
+                int bounded = value(
+                    b,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_MIN, .type = type, .left = x, .right = high }
+                );
+                result = value(
+                    b,
+                    (
+                        behavior_function_instruction
+                    ){ .op = BF_MAX, .type = type, .left = bounded, .right = low }
                 );
             }
         }

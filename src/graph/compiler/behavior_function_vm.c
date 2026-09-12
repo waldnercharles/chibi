@@ -63,6 +63,14 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             out->type = i->type;
         }
         switch (i->op) {
+#define MATH_UNARY(op, name, fn)                                               \
+    case BF_##op: out->d = fn(a.d); break;
+            BEHAVIOR_MATH_UNARY(MATH_UNARY)
+#undef MATH_UNARY
+#define MATH_BINARY(op, name, fn)                                              \
+    case BF_##op: out->d = fn(a.d, b.d); break;
+            BEHAVIOR_MATH_BINARY(MATH_BINARY)
+#undef MATH_BINARY
             case BF_CONSTANT: *out = i->value; break;
             case BF_VARIABLE: *out = ctx->variables[i->left]; break;
             case BF_LOCAL: *out = locals[i->left]; break;

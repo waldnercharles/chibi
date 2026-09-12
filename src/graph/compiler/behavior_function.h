@@ -46,7 +46,7 @@ typedef struct
     uintptr_t error_steps;
     behavior_function_failure failure;
 } behavior_function_context;
-/* Complete synchronous scalar entry, or NULL if an operation requires the
+/* Complete synchronous entry with scalar or fixed-layout values, or NULL if an operation requires the
  * general compiled runtime. No partial effects occur during eligibility checks. */
 behavior_function *behavior_function_lower(
     const behavior_asset *asset,
@@ -60,6 +60,13 @@ int behavior_function_run(const behavior_function *function, behavior_function_c
 /* The exported C function has the same ABI as the SLJIT entry. */
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
+/* Caller-owned output storage outlives the invocation. Only aggregate results
+ * allocate; scalar result slots are already initialized by the runtime. */
+void behavior_function_prepare_results(
+    const behavior_function *function,
+    pin_value *results,
+    arena *storage
+);
 /* Pure calls share the evaluator's depth counter. If an inlined call could
  * exceed its limit, use the checked compiled path for precise diagnostics. */
 bool behavior_function_pure_depth(const behavior_function *function, unsigned depth);

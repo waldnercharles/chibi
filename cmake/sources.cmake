@@ -5,9 +5,12 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_jit.c
     src/graph/compiler/behavior_expression.c
     src/graph/compiler/behavior_function.c
+    src/graph/compiler/behavior_function_values.c
+    src/graph/compiler/behavior_function_aggregate.c
     src/graph/compiler/behavior_function_vm.c
     src/graph/compiler/behavior_function_opt.c
     src/graph/compiler/behavior_function_jit_integer.c
+    src/graph/compiler/behavior_function_jit_memory.c
     src/graph/compiler/behavior_function_jit.c
     src/graph/compiler/behavior_function_c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/behavior_data.c

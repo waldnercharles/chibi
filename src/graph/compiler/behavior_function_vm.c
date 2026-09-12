@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void enter(const behavior_function *f, pin_value *locals, int frame)
 {
@@ -27,7 +28,7 @@ static int fail(
     ctx->node_id = i->node_id;
     ctx->error_frame = i->frame;
     ctx->error_source = i->source;
-    ctx->error_pin = reason == BEHAVIOR_FUNCTION_DATA ? 0 : -1;
+    ctx->error_pin = reason == BEHAVIOR_FUNCTION_DATA ? i->pin : -1;
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
@@ -66,15 +67,90 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
         if (i->op < BF_STORE) {
             out->type = i->type;
         }
+        if (i->indirect) {
+            if (i->op == BF_ARGUMENT && (i->left >= ctx->argument_count ||
+                                         ctx->arguments[i->left].type != PIN_STRUCT)) {
+                *out = i->value;
+                continue;
+            }
+            const pin_value *base = i->op == BF_ARGUMENT ? &ctx->arguments[i->left]
+                                  : i->op == BF_VARIABLE
+                                      ? &ctx->variables[i->left]
+                                      : &ctx->results[i->target];
+            size_t size = behavior_scalar_size(i->type);
+            if (i->op == BF_RESULT) {
+                if (base->ptr) {
+                    memcpy((char *)base->ptr + i->offset, &a.d, size);
+                }
+            } else {
+                memset(&out->d, 0, sizeof out->d);
+                if (base->ptr) {
+                    memcpy(&out->d, (const char *)base->ptr + i->offset, size);
+                }
+            }
+            continue;
+        }
         switch (i->op) {
+            case BF_TYPE_NAME: {
+                const char *name = i->value.str;
+                if (i->target == BF_VARIABLE) {
+                    name = ctx->variables[i->left].type_name;
+                } else if (
+                    i->target == BF_ARGUMENT && i->left < ctx->argument_count &&
+                    ctx->arguments[i->left].type == PIN_STRUCT
+                ) {
+                    name = ctx->arguments[i->left].type_name;
+                }
+                if (i->type == PIN_U64) {
+                    out->u64 = (uintptr_t)name;
+                } else {
+                    out->u = (uint32_t)(uintptr_t)name;
+                }
+                break;
+            }
+            case BF_RESULT_TYPE_NAME:
+                ctx->results[i->target]
+                    .type_name = (const char *)(uintptr_t)(BF_POINTER_TYPE == PIN_U64
+                                                               ? slots[i->left].u64
+                                                               : slots[i->left].u);
+                break;
+            case BF_PRESENT:
+                if (i->target == BF_ARGUMENT &&
+                    (i->left >= ctx->argument_count ||
+                     ctx->arguments[i->left].type != PIN_STRUCT)) {
+                    *out = i->value;
+                } else {
+                    out->b = (i->target == BF_ARGUMENT
+                                  ? ctx->arguments[i->left].ptr
+                                  : ctx->variables[i->left].ptr) != NULL;
+                }
+                break;
+            case BF_SELECT:
+                *out = slots[slots[i->left].b ? i->right : i->target];
+                break;
+            case BF_RESULT_PRESENT:
+                if (!slots[i->left].b) {
+                    ctx->results[i->target].ptr = NULL;
+                }
+                break;
+            case BF_REQUIRE:
+                if (!slots[i->left].b) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                    goto done;
+                }
+                break;
 #define MATH_UNARY(op, name, fn)                                               \
     case BF_##op: out->d = fn(a.d); break;
-            BEHAVIOR_MATH_UNARY(MATH_UNARY)
+                BEHAVIOR_MATH_UNARY(MATH_UNARY)
 #undef MATH_UNARY
 #define MATH_BINARY(op, name, fn)                                              \
     case BF_##op: out->d = fn(a.d, b.d); break;
-            BEHAVIOR_MATH_BINARY(MATH_BINARY)
+                BEHAVIOR_MATH_BINARY(MATH_BINARY)
 #undef MATH_BINARY
+            case BF_ATAN2_F32: out->f = atan2f(a.f, b.f); break;
+            case BF_MOD_F32: out->f = fmodf(a.f, b.f); break;
+            case BF_MOD_F64: out->d = fmod(a.d, b.d); break;
+            case BF_HYPOT: out->d = hypot(a.d, b.d); break;
             case BF_CONSTANT: *out = i->value; break;
             case BF_VARIABLE: *out = ctx->variables[i->left]; break;
             case BF_LOCAL: *out = locals[i->left]; break;

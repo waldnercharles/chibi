@@ -44,6 +44,20 @@ generated-C implementations. Scalar acyclic effectful calls inline into the same
 program using typed locals and logical frames, with independent budgets and
 source stacks. Instrumented or unsupported calls still use pooled activations.
 
+Fixed-layout structs and vectors now lower into scalar fields with separate
+presence and nominal-type metadata. Make, Break, projected fields, aggregate
+arguments/results, immutable variable reads and synchronous function locals use
+this representation. Intermediate structs stay in compiled slots; only final
+aggregate results allocate storage in the caller's arena. Null pass-through
+values remain null, and field access reports the original source node and pin.
+Generated single-field component conversions lower into field projections.
+
+Mixed F32/F64 arithmetic preserves the language's subnormal rules. Floating-point
+Modulo, Atan2 and robust vector normalization call platform `fmodf`, `fmod`,
+`atan2f` and `hypot` directly from generated code. They do not call node evaluators.
+These calls use the same scalar ABI as generated C. See
+[aggregate measurements and acceptance](research/whole-aggregates.md).
+
 Straight paths through multiple frames also have a guarded variant. The guard
 checks root/child budgets and call-depth limits before effects occur; the variant
 forwards stored values, folds constant arithmetic and removes unobservable
@@ -59,8 +73,8 @@ See [whole-function and scheduler measurements](research/whole-function-performa
 for the initial generated-C performance gates and queue benchmarks. The catalog
 now has one eligible event out of 33, `PlayerContactBehavior.Tick`, and one
 eligible effectful function body out of 31, `ArenaShardBehavior.Initialize Shard`.
-Of the other 39 local functions, 26 have independently compiled pure bodies, as
-does one of the four linked library functions.
+All 39 pure local functions now have independently compiled bodies, as do
+three of the four linked library functions.
 These counts describe complete entries, not how many individual arithmetic
 expressions compile. The strict catalog audit distinguishes the counts.
 
@@ -106,7 +120,8 @@ parity and diagnostic tests.
   diagnostic and zero interpreter calls.
 - `make web` builds the app and runs an Emscripten/Node backend smoke covering an
   event, yield, resume, variables, loops and nested whole-function arguments,
-  conversions, Min/Max, returns and nested pure bodies without callee runtime allocation. It asserts bytecode execution,
+  conversions, Min/Max, returns, nested pure bodies and fixed-layout aggregate arguments/results
+  without callee runtime allocation. It asserts bytecode execution,
   SLJIT unavailability and zero oracle calls.
 
 The existing runtime tests cover local/library calls, managed values, loops,

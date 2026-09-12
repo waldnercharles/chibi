@@ -65,6 +65,10 @@ def main():
         measurements["GENERATED_C math_body"]
     )
     print(f"SLJIT/generated-C math-body ratio={math_ratio:.3f}; limit={args.max_native_ratio:.3f}")
+    aggregate_ratio = statistics.median(measurements["SLJIT aggregate_body"]) / statistics.median(
+        measurements["GENERATED_C aggregate_body"]
+    )
+    print(f"SLJIT/generated-C aggregate-body ratio={aggregate_ratio:.3f}; limit={args.max_native_ratio:.3f}")
     integer_ratios = []
     for width in (32, 64):
         integer_ratio = statistics.median(measurements[f"SLJIT integer{width}_body"]) / statistics.median(
@@ -88,6 +92,8 @@ def main():
         raise SystemExit("FAIL: pure-body performance acceptance")
     if math_ratio > args.max_native_ratio:
         raise SystemExit("FAIL: math-body performance acceptance")
+    if aggregate_ratio > args.max_native_ratio:
+        raise SystemExit("FAIL: aggregate-body performance acceptance")
     if max(integer_ratios) > args.max_native_ratio:
         raise SystemExit("FAIL: integer-body performance acceptance")
     print("PASS: scalar whole-function performance acceptance")

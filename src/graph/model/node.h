@@ -106,6 +106,10 @@ typedef enum
     NODE_JIT_NEG,
     NODE_JIT_ABS,
     NODE_JIT_V2_MOVE,
+    NODE_JIT_V2_NORMALIZE,
+    NODE_JIT_V2_DIRECTION,
+    NODE_JIT_ATAN2_F32,
+    NODE_JIT_UNWRAP,
 } node_jit_kind;
 
 enum

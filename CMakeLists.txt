@@ -457,7 +457,7 @@ endif()
 
 # --- test registry: core, runtime_support, and demo packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-chibi_registry("${TEST_REGISTRY}" DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" WHOLE_VALUE_PACK DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -554,7 +554,9 @@ if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
 endif()
 
 # --- activation benchmark: headless per-instance event dispatch -------------
-add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c ${BASE_REGISTRY})
+set(BENCH_BEHAVIOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/bench_behavior_registry.c)
+chibi_registry("${BENCH_BEHAVIOR_REGISTRY}" WHOLE_VALUE_PACK ${BASE_REGISTRY_PACKS})
+add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c test/bench_aggregate.c test/support/whole_values.c ${BENCH_BEHAVIOR_REGISTRY})
 target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_behavior PRIVATE core demo ${CMAKE_DL_LIBS})
 target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)
@@ -683,7 +685,8 @@ foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner 
 endforeach()
 
 # Backend policy smoke target also runs under Node in the Emscripten build.
-add_executable(behavior_backend_smoke test/behavior_backend_smoke.c)
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/whole_values.c)
+target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(behavior_backend_smoke PRIVATE core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

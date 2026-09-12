@@ -562,6 +562,9 @@ static void compare_math(void *library, int count, int rotation)
     behavior_asset_free(a);
 }
 
+void emit_aggregate_c(FILE *out);
+void compare_aggregate_c(void *library, int count, int rotation);
+
 int main(int argc, char **argv)
 {
     bool export_c = argc > 1 && !strcmp(argv[1], "--emit-c");
@@ -607,6 +610,7 @@ int main(int argc, char **argv)
         behavior_function_write_c(arguments_entry(math), out, "generated_math");
         behavior_asset_free(math);
         emit_integer_c(out);
+        emit_aggregate_c(out);
         assert(fclose(out) == 0);
         behavior_asset_free(asset);
         return 0;
@@ -641,6 +645,7 @@ int main(int argc, char **argv)
         compare_pure(library, count, rotation);
         compare_math(library, count, rotation);
         compare_integer_c(library, count, rotation);
+        compare_aggregate_c(library, count, rotation);
         void *entry = dlsym(library, "generated_behavior");
         assert(entry);
         for (int i = 0; i < 2; i++) {

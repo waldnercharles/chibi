@@ -97,14 +97,21 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         (!ctx->observer ||
          (!ctx->observer->step_mode && !acount(ctx->observer->watches))) &&
         behavior_function_pure_depth(function, ctx->call_depth + 1)) {
-        /* Scalar pure signatures have contiguous canonical Return pins. The
-         * caller already owns correctly typed output slots. */
-        assert(ret->input_count == n->output_count);
+        /* Exposed output fields occupy caller pins but are not independent
+         * function results. Use canonical Return slots, then scatter roots. */
+        pin_value *results = outputs;
+        if (ret->input_count != n->output_count) {
+            results = arena_alloc(a, (size_t)ret->input_count * sizeof *results);
+            for (int i = 0; i < ret->input_count; i++) {
+                results[i] = ret->input_pins[i].default_value;
+            }
+        }
+        behavior_function_prepare_results(function, results, a);
         behavior_function_context call = {
             .variables = instance->variables,
             .arguments = arguments,
             .argument_count = n->input_count,
-            .results = outputs,
+            .results = results,
             .delta_seconds = ctx->delta_seconds,
         };
         int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);
@@ -112,6 +119,16 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             const behavior_function_source
                 *source = behavior_function_source_at(function, call.error_source);
             return fail(ctx, graph_node_by_id(source->graph, call.node_id), call.error_pin, "data function produced an invalid result");
+        }
+        if (results != outputs) {
+            int at = 0;
+            for (int i = 0; i < ret->input_count; i++) {
+                while (at < n->output_count && n->output_pins[at].field_source) {
+                    at++;
+                }
+                assert(at < n->output_count);
+                outputs[at++] = results[i];
+            }
         }
         return 0;
     }

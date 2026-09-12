@@ -34,8 +34,12 @@ static int *allocate_registers(const behavior_function *f, bool integers, int *s
     int *last = xcalloc((size_t)(count + 1), sizeof *last);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        if (i->op == BF_BRANCH) {
+        if (i->op == BF_BRANCH || i->op == BF_REQUIRE ||
+            i->op == BF_RESULT_PRESENT || i->op == BF_RESULT_TYPE_NAME) {
             last[i->left] = pc;
+        }
+        if (i->op == BF_SELECT) {
+            last[i->target] = pc;
         }
         if (i->op >= BF_ADD && i->op <= BF_SAVE) {
             last[i->left] = pc;
@@ -190,7 +194,7 @@ void behavior_jit_failure(
         SLJIT_MEM1(m->context),
         offsetof(behavior_function_context, error_pin),
         SLJIT_IMM,
-        reason == BEHAVIOR_FUNCTION_DATA ? 0 : -1
+        reason == BEHAVIOR_FUNCTION_DATA ? i->pin : -1
     );
     sljit_emit_return(
         c,
@@ -293,7 +297,10 @@ void *behavior_function_jit(const behavior_function *f)
                                     : 0);
     bool arguments = false, calls = false;
     for (int i = 0; i < acount(f->instructions); i++) {
-        arguments |= f->instructions[i].op == BF_ARGUMENT;
+        arguments |= f->instructions[i].op == BF_ARGUMENT ||
+                     ((f->instructions[i].op == BF_PRESENT ||
+                       f->instructions[i].op == BF_TYPE_NAME) &&
+                      f->instructions[i].target == BF_ARGUMENT);
         calls |= behavior_function_math(f->instructions[i].op);
     }
     /* Integer divide uses R0/R1, not the C ABI. Keep context in scratch
@@ -363,7 +370,16 @@ void *behavior_function_jit(const behavior_function *f)
         int flags = width(i->type), mem = SLJIT_MEM1(SLJIT_SP);
         int destination = registers[i->output] ? registers[i->output] : mem;
         sljit_sw offset = registers[i->output] ? 0 : i->output * sizeof(double);
-        if (behavior_jit_integer(&m, i, destination, offset)) {
+        int fields = behavior_jit_result_fields(&m, pc);
+        if (fields) {
+            for (int k = 1; k < fields; k++) {
+                labels[pc + k] = labels[pc];
+            }
+            pc += fields - 1;
+            continue;
+        }
+        if (behavior_jit_memory(&m, i, destination, offset) ||
+            behavior_jit_integer(&m, i, destination, offset)) {
             continue;
         }
         switch (i->op) {
@@ -383,7 +399,23 @@ void *behavior_function_jit(const behavior_function *f)
         sljit_emit_fop1(c, SLJIT_MOV_F64, destination, offset, SLJIT_FR0, 0);                        \
         break;
             BEHAVIOR_MATH_BINARY(MATH_BINARY)
+            MATH_BINARY(MOD_F64, Modulo, fmod)
+            MATH_BINARY(HYPOT, Length, hypot)
 #undef MATH_BINARY
+            case BF_ATAN2_F32:
+            case BF_MOD_F32:
+                load(c, f, registers, i->left, SLJIT_FR0);
+                load(c, f, registers, i->right, SLJIT_FR1);
+                sljit_emit_icall(
+                    c,
+                    SLJIT_CALL,
+                    SLJIT_ARGS2(F32, F32, F32),
+                    SLJIT_IMM,
+                    i->op == BF_ATAN2_F32 ? SLJIT_FUNC_ADDR(atan2f)
+                                          : SLJIT_FUNC_ADDR(fmodf)
+                );
+                sljit_emit_fop1(c, SLJIT_MOV_F32, destination, offset, SLJIT_FR0, 0);
+                break;
             case BF_CHECK: {
                 struct sljit_jump *ok = sljit_emit_cmp(
                     c,

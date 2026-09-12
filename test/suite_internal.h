@@ -51,6 +51,7 @@
 void test_encounter_backend_parity();
 void test_compiled_behaviors();
 void test_compiled_math();
+void test_compiled_aggregates();
 void test_compiled_integers();
 void test_behavior_unavailable();
 void test_editor_checkpoint();

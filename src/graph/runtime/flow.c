@@ -610,6 +610,7 @@ static int execute(flow_run *run)
                 .budget = run->step_budget,
                 .call_depth = run->call_depth,
             };
+            behavior_function_prepare_results(function, ctx.results, &run->scratch);
             int result = behavior_function_run(function, &ctx, run->backend == BEHAVIOR_SLJIT);
             run->whole_function_executed = true;
             run->whole_function = function;

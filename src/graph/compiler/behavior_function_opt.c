@@ -111,7 +111,11 @@ void behavior_function_optimize(behavior_function *f)
         }
     }
     for (int i = 0; i < acount(f->instructions); i++) {
-        if (behavior_function_math(f->instructions[i].op)) {
+        const behavior_function_instruction *op = &f->instructions[i];
+        if (behavior_function_math(op->op) || op->indirect ||
+            op->op == BF_PRESENT || op->op == BF_TYPE_NAME ||
+            op->op == BF_RESULT_TYPE_NAME || op->op == BF_REQUIRE ||
+            op->op == BF_SELECT || op->op == BF_RESULT_PRESENT) {
             return;
         }
     }

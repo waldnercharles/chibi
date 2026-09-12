@@ -26,6 +26,21 @@ static void constant(FILE *out, pin_type type, pin_value value)
         fprintf(out, "%a", v);
     }
 }
+static void type_name(FILE *out, const char *name)
+{
+    if (!name) {
+        fputs("0", out);
+        return;
+    }
+    fputs("(uintptr_t)\"", out);
+    for (const char *p = name; *p; p++) {
+        if (*p == '\\' || *p == '\"') {
+            fputc('\\', out);
+        }
+        fputc(*p, out);
+    }
+    fputc('\"', out);
+}
 static void enter_locals(FILE *out, const behavior_function *f, int frame)
 {
     for (int i = 0; i < acount(f->locals); i++) {
@@ -33,7 +48,11 @@ static void enter_locals(FILE *out, const behavior_function *f, int frame)
             continue;
         }
         fprintf(out, "l%d=", i);
-        constant(out, f->locals[i].initial.type, f->locals[i].initial);
+        if (f->locals[i].offset == SIZE_MAX - 1) {
+            type_name(out, f->locals[i].initial.str);
+        } else {
+            constant(out, f->locals[i].initial.type, f->locals[i].initial);
+        }
         fprintf(out, ";\n");
     }
 }
@@ -47,12 +66,56 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
         (unsigned long long)i->node_id,
         i->frame,
         i->source,
-        reason == BEHAVIOR_FUNCTION_DATA ? 0 : -1,
+        reason == BEHAVIOR_FUNCTION_DATA ? i->pin : -1,
         reason,
         reason == BEHAVIOR_FUNCTION_NO_RETURN || reason == BEHAVIOR_FUNCTION_DATA
             ? FLOW_ERR_INVALID_GRAPH
             : FLOW_ERR_STEP_BUDGET
     );
+}
+static void memory(FILE *out, const behavior_function_instruction *i)
+{
+    if (i->op == BF_RESULT) {
+        fprintf(
+            out,
+            "if(c->results[%d].ptr)memcpy((char*)c->results[%d].ptr+%zu,&v%d,"
+            "sizeof(v%d));\n",
+            i->target,
+            i->target,
+            i->offset,
+            i->left,
+            i->left
+        );
+        return;
+    }
+    bool argument = i->op == BF_ARGUMENT ||
+                    (i->op == BF_PRESENT && i->target == BF_ARGUMENT);
+    const char *base = argument ? "arguments" : "variables";
+    if (argument) {
+        fprintf(out, "v%d=", i->output);
+        constant(out, i->type, i->value);
+        fprintf(out, ";\nif(c->argument_count>%d && c->arguments[%d].type==%d){\n", i->left, i->left, PIN_STRUCT);
+    }
+    if (i->op == BF_PRESENT) {
+        fprintf(out, "v%d=c->%s[%d].ptr!=NULL;\n", i->output, base, i->left);
+    } else {
+        fprintf(
+            out,
+            "v%d=0; if(c->%s[%d].ptr)memcpy(&v%d,(const "
+            "char*)c->%s[%d].ptr+%zu,sizeof(v%d));\n",
+            i->output,
+            base,
+            i->left,
+            i->output,
+            base,
+            i->left,
+            i->offset,
+            i->output
+        );
+    }
+    if (argument) {
+        fprintf(out, "}\n");
+    }
 }
 static void body(const behavior_function *f, FILE *out, char prefix)
 {
@@ -71,18 +134,60 @@ static void body(const behavior_function *f, FILE *out, char prefix)
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         fprintf(out, "%c%d: ;\n", prefix, pc);
+        if (i->indirect || i->op == BF_PRESENT) {
+            memory(out, i);
+            continue;
+        }
         switch (i->op) {
+            case BF_TYPE_NAME:
+                fprintf(out, "v%d=", i->output);
+                type_name(out, i->value.str);
+                fprintf(out, ";\n");
+                if (i->target == BF_ARGUMENT) {
+                    fprintf(
+                        out,
+                        "if(c->argument_count>%d && "
+                        "c->arguments[%d].type==%d)v%d=(uintptr_t)c->arguments["
+                        "%d].type_name;\n",
+                        i->left,
+                        i->left,
+                        PIN_STRUCT,
+                        i->output,
+                        i->left
+                    );
+                } else if (i->target == BF_VARIABLE) {
+                    fprintf(out, "v%d=(uintptr_t)c->variables[%d].type_name;\n", i->output, i->left);
+                }
+                break;
+            case BF_RESULT_TYPE_NAME:
+                fprintf(out, "c->results[%d].type_name=(const char*)(uintptr_t)v%d;\n", i->target, i->left);
+                break;
+            case BF_SELECT:
+                fprintf(out, "v%d=v%d?v%d:v%d;\n", i->output, i->left, i->right, i->target);
+                break;
+            case BF_REQUIRE:
+                fprintf(out, "if(!v%d){", i->left);
+                failure(out, i, BEHAVIOR_FUNCTION_DATA);
+                fprintf(out, "}\n");
+                break;
+            case BF_RESULT_PRESENT:
+                fprintf(out, "if(!v%d)c->results[%d].ptr=NULL;\n", i->left, i->target);
+                break;
 #define MATH_UNARY(op, name, fn)                                               \
     case BF_##op:                                                              \
         fprintf(out, "v%d=" #fn "(v%d);\n", i->output, i->left);               \
         break;
-            BEHAVIOR_MATH_UNARY(MATH_UNARY)
+                BEHAVIOR_MATH_UNARY(MATH_UNARY)
 #undef MATH_UNARY
 #define MATH_BINARY(op, name, fn)                                              \
     case BF_##op:                                                              \
         fprintf(out, "v%d=" #fn "(v%d,v%d);\n", i->output, i->left, i->right); \
         break;
-            BEHAVIOR_MATH_BINARY(MATH_BINARY)
+                BEHAVIOR_MATH_BINARY(MATH_BINARY)
+                MATH_BINARY(ATAN2_F32, Atan2, atan2f)
+                MATH_BINARY(MOD_F32, Modulo, fmodf)
+                MATH_BINARY(MOD_F64, Modulo, fmod)
+                MATH_BINARY(HYPOT, Length, hypot)
 #undef MATH_BINARY
             case BF_CONSTANT: {
                 fprintf(out, "v%d=", i->output);
@@ -317,7 +422,7 @@ static void body(const behavior_function *f, FILE *out, char prefix)
 }
 void behavior_function_write_c(const behavior_function *f, FILE *out, const char *name)
 {
-    fprintf(out, "#include \"graph/compiler/behavior_function.h\"\n#include <math.h>\nint %s(behavior_function_context *c) {\n", name);
+    fprintf(out, "#include \"graph/compiler/behavior_function.h\"\n#include <math.h>\n#include <string.h>\nint %s(behavior_function_context *c) {\n", name);
     if (f->fast) {
         fprintf(
             out,

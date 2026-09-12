@@ -5,8 +5,8 @@ September 12 audit of this isolated branch finds 19 behavior assets, 33 event
 entries, 70 local functions and four library functions. **One of the 33 event
 entries qualifies for whole-function execution**, `PlayerContactBehavior.Tick`.
 One of 31 effectful function bodies also qualifies,
-`ArenaShardBehavior.Initialize Shard`. Of the 39 pure local functions, 26 now execute whole compiled bodies, as does
-one of the four library functions. Pure calls inside general compiled events
+`ArenaShardBehavior.Initialize Shard`. All 39 pure local functions now execute whole compiled bodies, as do
+three of the four library functions. Pure calls inside general compiled events
 use these bodies directly; they no longer require callee runtime stores. The original request's larger
 asset/event counts describe another snapshot; acceptance must enumerate content,
 not hard-code either set of counts.
@@ -38,8 +38,9 @@ exclusion. Native backend availability policy is unchanged.
 Each row identifies the first encountered blocker, not every blocker on every
 branch. Removing one can expose another. Adding Max made the contact cooldown
 Tick eligible. F32/F64 coercion moved the ship-motion exclusion to a compound
-argument in a pure call. Integer arithmetic, comparisons, flags and explicit
-numeric casts now lower into whole bodies. Component/entity operations and
+argument in a pure call. Integer arithmetic, comparisons, flags, explicit
+numeric casts, fixed-layout aggregates, vector normalization and field unwraps
+now lower into whole bodies. Component/entity operations and
 engine effects still exclude most entries. The [pure-function measurements](whole-pure-functions.md)
 show a 13.6% native Arena behavior-time reduction from executing eligible pure bodies directly. Scalar acyclic effectful calls
 and stored outputs now lower into the enclosing program; their previous
@@ -53,13 +54,17 @@ exclusions have moved to the first unsupported operation inside the callee.
    frame budgets, call-depth checks and accurate error stacks. Add recursive
    calls and managed locals. Persist
    live values and continuation PCs across Delay, host waits, cancellation and
-   hot apply. Pure-body publication and direct execution are implemented for eligible scalar functions.
+   hot apply. Pure-body publication and direct execution now cover every pure local function
+   in the current catalog, including fixed-layout aggregate arguments/results.
 2. **Full value and control lowering.** Scalar payloads, F32/F64 coercions and
    Min/Max, Clamp, signed I32/I64 arithmetic, I32 comparisons, U32 flag tests,
    saturating numeric casts and eleven scalar transcendental operations are implemented.
-   Add remaining scalar operations and native 32-bit wide-integer lowering;
-   vectors and projected struct
-   fields; arrays, structs and managed ownership; ForLoop, ForEach and Break.
+   Fixed-layout vectors/structs, projected fields, mixed real arithmetic, floating
+   Modulo, Atan2, Normalize Vector 2 and Direction To now lower. Aggregate values
+   preserve nulls and nominal type names across calls; final results are owned
+   by the caller. Add remaining scalar operations, native 32-bit wide-integer
+   lowering, persistent aggregate writes, arrays and managed fields/ownership;
+   ForLoop, ForEach and Break.
    Eliminate runtime dispatch for these language operations. Scalar Set Variable
    and Call Function outputs now retain their execution values across blocks.
 3. **Engine calls from generated code.** Resolve component layouts, field

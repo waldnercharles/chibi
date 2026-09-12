@@ -4,6 +4,7 @@
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
+#include "whole_aggregate_fixture.h"
 #include "whole_function_fixture.h"
 #include "whole_integer_fixture.h"
 #include "whole_math_fixture.h"
@@ -13,8 +14,10 @@
 #include <stdio.h>
 #include <string.h>
 
-const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK, &CORE_FLOW_PACK };
-const int REGISTRY_PACK_COUNT = 2;
+const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK,
+                                                &CORE_FLOW_PACK,
+                                                &WHOLE_VALUE_PACK };
+const int REGISTRY_PACK_COUNT = 3;
 
 int main()
 {
@@ -74,6 +77,7 @@ int main()
     );
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
+    whole_aggregate_smoke();
     asset = whole_function_fixture();
     instance = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);

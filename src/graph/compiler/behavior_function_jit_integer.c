@@ -2,7 +2,7 @@
 #if CHIBI_HAVE_SJLIT
 #include <stddef.h>
 
-static int move(pin_type type)
+int behavior_jit_integer_move(pin_type type)
 {
     switch (type) {
         case PIN_BOOL:
@@ -30,7 +30,7 @@ static void load(const behavior_machine *m, int slot, int reg)
     int source = m->registers[slot];
     sljit_emit_op1(
         m->compiler,
-        move(m->function->slots[slot]),
+        behavior_jit_integer_move(m->function->slots[slot]),
         reg,
         0,
         source ? source : SLJIT_MEM1(SLJIT_SP),
@@ -58,7 +58,7 @@ static void argument(const behavior_machine *m, const behavior_function_instruct
     );
     sljit_emit_op1(
         c,
-        move(i->type),
+        behavior_jit_integer_move(i->type),
         dest,
         offset,
         SLJIT_MEM1(m->arguments),
@@ -67,7 +67,14 @@ static void argument(const behavior_machine *m, const behavior_function_instruct
     struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
     bind(c, missing);
     bind(c, wrong);
-    sljit_emit_op1(c, move(i->type), dest, offset, SLJIT_IMM, (sljit_sw)behavior_scalar_bits(i->value));
+    sljit_emit_op1(
+        c,
+        behavior_jit_integer_move(i->type),
+        dest,
+        offset,
+        SLJIT_IMM,
+        (sljit_sw)behavior_scalar_bits(i->value)
+    );
     bind(c, done);
 }
 static void cast(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
@@ -146,7 +153,7 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
     bind(c, nan);
     bind(c, normal);
     bind(c, bounded);
-    sljit_emit_op1(c, move(i->type), dest, offset, SLJIT_R0, 0);
+    sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_R0, 0);
 }
 static void arithmetic(
     const behavior_machine *m,
@@ -184,14 +191,14 @@ static void arithmetic(
              * allocator assigns the primary result independently. */
             sljit_emit_op1(
                 c,
-                move(type),
+                behavior_jit_integer_move(type),
                 SLJIT_MEM1(SLJIT_SP),
                 i->target * sizeof(double),
                 i->op == BF_MOD ? SLJIT_R0 : SLJIT_R1,
                 0
             );
         }
-        sljit_emit_op1(c, move(type), dest, offset, i->op == BF_MOD ? SLJIT_R1 : SLJIT_R0, 0);
+        sljit_emit_op1(c, behavior_jit_integer_move(type), dest, offset, i->op == BF_MOD ? SLJIT_R1 : SLJIT_R0, 0);
         return;
     }
     if (i->op == BF_FLAGS || (i->op >= BF_LT && i->op <= BF_NE)) {
@@ -231,7 +238,7 @@ static void arithmetic(
             SLJIT_R1,
             0
         );
-        sljit_emit_op1(c, move(type), SLJIT_R0, 0, SLJIT_R1, 0);
+        sljit_emit_op1(c, behavior_jit_integer_move(type), SLJIT_R0, 0, SLJIT_R1, 0);
         bind(c, left);
     } else {
         assert(i->op == BF_ADD || i->op == BF_SUB || i->op == BF_MUL);
@@ -249,7 +256,7 @@ static void arithmetic(
             0
         );
     }
-    sljit_emit_op1(c, move(type), dest, offset, SLJIT_R0, 0);
+    sljit_emit_op1(c, behavior_jit_integer_move(type), dest, offset, SLJIT_R0, 0);
 }
 bool behavior_jit_integer(
     const behavior_machine *m,
@@ -274,13 +281,20 @@ bool behavior_jit_integer(
     }
     switch (i->op) {
         case BF_CONSTANT:
-            sljit_emit_op1(c, move(i->type), dest, offset, SLJIT_IMM, (sljit_sw)behavior_scalar_bits(i->value));
+            sljit_emit_op1(
+                c,
+                behavior_jit_integer_move(i->type),
+                dest,
+                offset,
+                SLJIT_IMM,
+                (sljit_sw)behavior_scalar_bits(i->value)
+            );
             return true;
         case BF_LOCAL:
         case BF_VARIABLE:
             sljit_emit_op1(
                 c,
-                move(i->type),
+                behavior_jit_integer_move(i->type),
                 dest,
                 offset,
                 SLJIT_MEM1(i->op == BF_LOCAL ? SLJIT_SP : m->variables),
@@ -313,7 +327,7 @@ bool behavior_jit_integer(
             int source = m->registers[i->left];
             sljit_emit_op1(
                 c,
-                move(i->type),
+                behavior_jit_integer_move(i->type),
                 SLJIT_MEM1(base),
                 address,
                 source ? source : SLJIT_MEM1(SLJIT_SP),

@@ -26,6 +26,8 @@ typedef enum
     BF_DELTA,
     BF_ARGUMENT,
     BF_LOCAL,
+    BF_PRESENT,
+    BF_TYPE_NAME,
     BF_ADD,
     BF_SUB,
     BF_MUL,
@@ -44,13 +46,21 @@ typedef enum
     BF_GE,
     BF_EQ,
     BF_NE,
+    BF_SELECT,
 #define MATH_OP(op, name, fn) BF_##op,
     BEHAVIOR_MATH_UNARY(MATH_OP)
     BEHAVIOR_MATH_BINARY(MATH_OP)
 #undef MATH_OP
+    BF_ATAN2_F32,
+    BF_MOD_F32,
+    BF_MOD_F64,
+    BF_HYPOT,
     BF_STORE,
     BF_RESULT,
     BF_SAVE,
+    BF_RESULT_PRESENT,
+    BF_RESULT_TYPE_NAME,
+    BF_REQUIRE,
     BF_CHECK,
     BF_CALL_CHECK,
     BF_ENTER,
@@ -63,13 +73,19 @@ typedef enum
 } behavior_function_op;
 static inline bool behavior_function_math(behavior_function_op op)
 {
-    return op >= BF_SIN && op <= BF_ATAN2;
+    return op >= BF_SIN && op <= BF_HYPOT;
 }
+#define BF_POINTER_TYPE                                                        \
+    (sizeof(uintptr_t) == sizeof(uint64_t) ? PIN_U64 : PIN_U32)
+
 typedef struct
 {
     behavior_function_op op;
     pin_type type;
     int output, left, right, target, frame, source;
+    int pin;
+    size_t offset;
+    bool indirect;
     uint64_t node_id;
     pin_value value;
 } behavior_function_instruction;
@@ -79,7 +95,13 @@ typedef struct
     int frame;
     const node *node;
     int pin;
+    size_t offset;
 } behavior_function_local;
+typedef struct
+{
+    int index;
+    const type_desc *type;
+} behavior_function_result;
 typedef struct
 {
     behavior_function_source source;
@@ -92,6 +114,7 @@ struct behavior_function
     behavior_function_local *locals;
     behavior_function_frame *frames;
     behavior_function_source *sources;
+    behavior_function_result *results;
     void *code;
     void *dispatch;
     struct behavior_function *fast;

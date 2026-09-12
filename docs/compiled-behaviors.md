@@ -104,3 +104,8 @@ each compiled backend, with zero oracle calls through firing and restart.
 The [remaining whole-function migration](research/behavior-completion.md) lists
 the unresolved language/runtime work and the strict catalog coverage command.
 Backend parity passes do not imply that this coverage gate passes.
+
+[Tick profiling and frame reuse](research/tick-profiling.md) documents the new
+execution/setup measurements, bounded call-frame storage, stress results and
+remaining compiler work. The focused rendered check is
+`test_suite --behavior-profile-ui`.

@@ -27,7 +27,7 @@ typedef struct
 {
     int key;
     uint64_t starts, resumes;
-    double cpu_ms;
+    double cpu_ms, setup_ms;
 } editor_behavior_measure;
 
 typedef struct

@@ -670,7 +670,9 @@ static void profile_checks()
     test_check(
         frame->count == 2 && outer_row.starts == 1 && work_row.starts == 1 &&
             !outer_row.resumes && !work_row.resumes && work_row.cpu_ms > 0 &&
-            frame->cpu_ms <= wall_ms,
+            outer_row.dispatches == 1 && work_row.dispatches == 1 &&
+            outer_row.setup_ms > 0 && work_row.setup_ms > 0 &&
+            frame->cpu_ms + frame->setup_ms <= wall_ms,
         "nested functions stay in their event while reentrant events are "
         "excluded from the caller's CPU time"
     );
@@ -685,10 +687,16 @@ static void profile_checks()
     work_row = profile_row(frame, inner->name, "Work");
     test_check(
         slow.starts == 0 && slow.resumes == 1 && slow.cpu_ms > 0 &&
-            work_row.starts == 1 && !work_row.resumes,
+            slow.dispatches == 0 && slow.setup_ms == 0 &&
+            work_row.dispatches == 1 && work_row.starts == 1 && !work_row.resumes,
         "dispatching Work retains Slow attribution when the scheduler first "
         "resumes the older activation"
     );
+    game_behavior_set_profiling(world, false);
+    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    test_check(game_behavior_profile(world)->count == 0, "disabled profiling records no intervals");
+    game_behavior_set_profiling(world, true);
+    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
     ecs_entity second = ecs_world_create_entity(ecs);
     assert(game_behavior_attach(world, second, inner->name) == 0);
     assert(game_behavior_dispatch(world, second, "Work", (flow_inputs){ 0 }, NULL) == 1);
@@ -706,7 +714,8 @@ static void profile_checks()
     game_behavior_profile_begin(world);
     test_check(
         game_behavior_profile(world)->count == 0 &&
-            game_behavior_profile(world)->cpu_ms == 0,
+            game_behavior_profile(world)->cpu_ms == 0 &&
+            game_behavior_profile(world)->setup_ms == 0,
         "a new display frame clears event totals without retaining earlier time"
     );
     game_behavior_world_free(world);

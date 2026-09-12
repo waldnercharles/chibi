@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/profile.h"
 #include "graph/runtime/runtime.h"
 #include "graph/runtime/service.h"
 #include "graph/runtime/value_array.h"
@@ -388,12 +389,31 @@ static void frame_arrays_free(flow_run *run)
     }
 }
 
-static void flow_run_free_children(flow_run *run)
+static bool flow_run_observed(const flow_run *run);
+
+static void flow_run_release_call(flow_run *run, flow_run *child)
+{
+    if (!run->instance || !run->instance->pool_enabled || flow_run_observed(child)) {
+        flow_run_free(child);
+        return;
+    }
+    for (int i = 0; i < acount(run->call_pool); i++) {
+        if (run->call_pool[i]->invocation == child->invocation) {
+            flow_run_free(child);
+            return;
+        }
+    }
+    flow_run_stop(child);
+    flow_run_recycle(child);
+    apush(run->call_pool, child);
+}
+
+static void flow_run_release_children(flow_run *run)
 {
     for (int i = 0; i < acount(run->children); i++) {
-        flow_run_free(run->children[i]);
+        flow_run_release_call(run, run->children[i]);
     }
-    afree(run->children);
+    aclear(run->children);
     run->active_child = NULL;
     run->call_node = NULL;
     run->returned = NULL;
@@ -630,13 +650,7 @@ static int execute(flow_run *run)
     return run->state == FLOW_FAILED ? run->error.code : FLOW_OK;
 }
 
-typedef struct profile_scope
-{
-    struct profile_scope *parent;
-    uint64_t children;
-} profile_scope;
-
-static _Thread_local profile_scope *active_profile;
+static _Thread_local behavior_profile_scope *active_profile;
 
 static uint64_t profile_now()
 {
@@ -645,6 +659,24 @@ static uint64_t profile_now()
     assert(result == 0);
     (void)result;
     return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+}
+
+void behavior_profile_enter(behavior_profile_scope *scope)
+{
+    *scope = (behavior_profile_scope){ .parent = active_profile,
+                                       .start = profile_now() };
+    active_profile = scope;
+}
+
+uint64_t behavior_profile_leave(behavior_profile_scope *scope)
+{
+    uint64_t elapsed = profile_now() - scope->start;
+    active_profile = scope->parent;
+    if (scope->parent) {
+        scope->parent->children += elapsed;
+    }
+    assert(elapsed >= scope->children);
+    return elapsed - scope->children;
 }
 
 static int flow_run_execute(flow_run *run)
@@ -656,19 +688,18 @@ static int flow_run_execute(flow_run *run)
     if (run->parent || !instance || !instance->profile || waiting) {
         return execute(run);
     }
-    profile_scope scope = { .parent = active_profile };
-    active_profile = &scope;
+    behavior_profile_scope scope;
+    behavior_profile_enter(&scope);
     bool first = !run->profile_started;
     run->profile_started = true;
-    uint64_t start = profile_now();
     int result = execute(run);
-    uint64_t elapsed = profile_now() - start;
-    active_profile = scope.parent;
-    if (scope.parent) {
-        scope.parent->children += elapsed;
-    }
-    assert(elapsed >= scope.children);
-    instance->profile(run->event_name, elapsed - scope.children, first, instance->profile_user);
+    uint64_t elapsed = behavior_profile_leave(&scope);
+    instance->profile(
+        run->event_name,
+        elapsed,
+        first ? BEHAVIOR_PROFILE_START : BEHAVIOR_PROFILE_RESUME,
+        instance->profile_user
+    );
     return result;
 }
 
@@ -828,7 +859,6 @@ int flow_run_recycle(flow_run *run)
     arena_reset(&run->input_arena);
     arena_reset(&run->scratch);
     run->input_count = 0;
-    run->input_capacity = 0;
     run->input_user_data = NULL;
     run->steps = 0;
     run->whole_function_executed = false;
@@ -1009,7 +1039,7 @@ int flow_run_stop(flow_run *run)
     run->activation_budget = 0;
     run->breakpoint_node = NULL;
     run->breakpoint_skipped = 0;
-    flow_run_free_children(run);
+    flow_run_release_children(run);
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     flow_watch_clear(run);
@@ -1026,6 +1056,11 @@ int flow_run_reset(flow_run *run)
         return FLOW_ERR_ARGUMENT;
     }
     flow_run_stop(run);
+    for (int i = 0; i < acount(run->call_pool); i++) {
+        flow_run_free(run->call_pool[i]);
+    }
+    afree(run->call_pool);
+    afree(run->children);
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     frame_arrays_free(run);
@@ -1606,7 +1641,7 @@ static void flow_run_prune_calls(flow_run *run, const node *call)
             flow_run_observed(child)) {
             continue;
         }
-        flow_run_free(child);
+        flow_run_release_call(run, child);
         memmove(
             run->children + i,
             run->children + i + 1,
@@ -1638,7 +1673,23 @@ int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs input
         .parallel_user = parent->parallel_user,
     };
     flow_error error = { 0 };
-    flow_run *child = flow_run_start(target, entry, inputs, &options, &error);
+    flow_run *child = NULL;
+    for (int i = 0; i < acount(parent->call_pool); i++) {
+        flow_run *candidate = parent->call_pool[i];
+        if (candidate->invocation != ctx->node || candidate->graph != target) {
+            continue;
+        }
+        parent->call_pool[i] = apop(parent->call_pool);
+        child = flow_run_start_reuse(candidate, target, entry, inputs, &options, &error);
+        if (!child) {
+            flow_run_free(candidate);
+            return flow_context_fail(ctx, error.code, error.message);
+        }
+        break;
+    }
+    if (!child) {
+        child = flow_run_start(target, entry, inputs, &options, &error);
+    }
     if (!child) {
         return flow_context_fail(ctx, error.code, error.message);
     }

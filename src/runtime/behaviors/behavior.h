@@ -13,9 +13,11 @@ typedef struct
 {
     const char *behavior;
     const char *event;
+    uint64_t dispatches;
     uint64_t starts;
     uint64_t resumes;
     double cpu_ms;
+    double setup_ms;
 } game_behavior_profile_row;
 
 typedef struct
@@ -24,11 +26,16 @@ typedef struct
     int count;
     game_behavior_profile_row overflow;
     double cpu_ms;
+    double setup_ms;
 } game_behavior_profile_frame;
 
 /* Per display frame, including every fixed step. Labels belong to the world.
  * Snapshot remains valid until the next read or world destruction. Execution
- * intervals exclude nested root events; host dispatch/setup remains unassigned. */
+ * intervals exclude nested root events and their setup. Setup measures successful
+ * event lookup and activation creation/reuse, excluding scheduler execution.
+ * World scans, scheduler bookkeeping and reaping remain unassigned. */
+/* Enabled by default. Disable for uninstrumented performance comparisons. */
+void game_behavior_set_profiling(game_behavior_world *world, bool enabled);
 void game_behavior_profile_begin(game_behavior_world *world);
 const game_behavior_profile_frame *game_behavior_profile(const game_behavior_world *world);
 struct game_entities;

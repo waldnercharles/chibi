@@ -1,3 +1,4 @@
+#include "graph/runtime/profile.h"
 #include "support/arena.h"
 /* graph/runtime/instance.c -- persistent Behavior Asset instances and the activation
  * scheduler. An instance owns variable storage, per-node scratch,
@@ -532,6 +533,11 @@ int behavior_instance_pool_release(behavior_instance *bi)
         flow_run_free(bi->activations[0]);
     }
     aclear(bi->activations);
+    /* Inactive instances release the mutation guard. Cached frames must not
+     * retain function graphs that may now be removed from the asset. */
+    for (int i = 0; i < acount(bi->activation_pool); i++) {
+        flow_run_reset(bi->activation_pool[i]);
+    }
     aclear(bi->services);
     bi->profile = NULL;
     bi->profile_user = NULL;
@@ -896,12 +902,7 @@ flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inp
     return act;
 }
 
-flow_run *behavior_instance_dispatch(
-    behavior_instance *bi,
-    const char *name,
-    flow_inputs inputs,
-    flow_error *error
-)
+static flow_run *dispatch_prepare(behavior_instance *bi, const char *name, flow_inputs inputs, flow_error *error)
 {
     set_error(error, FLOW_OK, NULL, NULL);
     if (!bi || !name || !name[0]) {
@@ -931,11 +932,31 @@ flow_run *behavior_instance_dispatch(
     if (instance_blocked(bi, error)) {
         return NULL;
     }
-    flow_run *act = behavior_instance_enqueue(bi, found, inputs, error);
-    if (!act) {
-        return NULL;
+    return behavior_instance_enqueue(bi, found, inputs, error);
+}
+
+flow_run *behavior_instance_dispatch(
+    behavior_instance *bi,
+    const char *name,
+    flow_inputs inputs,
+    flow_error *error
+)
+{
+    behavior_profile_scope scope;
+    bool profile = bi && bi->profile;
+    if (profile) {
+        behavior_profile_enter(&scope);
     }
-    scheduler_pump(bi);
+    flow_run *act = dispatch_prepare(bi, name, inputs, error);
+    if (profile) {
+        uint64_t elapsed = behavior_profile_leave(&scope);
+        if (act) {
+            bi->profile(name, elapsed, BEHAVIOR_PROFILE_SETUP, bi->profile_user);
+        }
+    }
+    if (act) {
+        scheduler_pump(bi);
+    }
     return act;
 }
 

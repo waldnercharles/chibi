@@ -2,7 +2,7 @@
 #include "suite_internal.h"
 
 int shader_ui_run(const char *program);
-int arena_ui_run(const char *program);
+int arena_ui_run(const char *program, bool profile_only);
 int compiled_arena_run(const char *program);
 int whole_function_audit();
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd);
@@ -143,17 +143,20 @@ int main(int argc, char **argv)
         test_compiled_behaviors();
         test_encounter_backend_parity();
         behavior_debug_backend(BEHAVIOR_BYTECODE);
+        test_function_wait();
         test_encounter();
         test_host_wait();
         behavior_debug_backend(BEHAVIOR_ORACLE);
+        test_function_wait();
         test_encounter();
         test_host_wait();
         behavior_debug_backend(BEHAVIOR_UNAVAILABLE);
         return fails ? 1 : 0;
     }
-    if (argc > 1 && strcmp(argv[1], "--arena-ui") == 0) {
+    if (argc > 1 && (strcmp(argv[1], "--arena-ui") == 0 ||
+                     strcmp(argv[1], "--behavior-profile-ui") == 0)) {
         registry_validate();
-        return arena_ui_run(program_name);
+        return arena_ui_run(program_name, strcmp(argv[1], "--behavior-profile-ui") == 0);
     }
     if (argc > 1 && (strcmp(argv[1], "--arena-play-review") == 0 ||
                      strcmp(argv[1], "--arena-editor-review") == 0 ||

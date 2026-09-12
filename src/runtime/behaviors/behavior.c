@@ -16,7 +16,7 @@ typedef struct
 {
     char *behavior;
     char *event;
-    _Atomic uint64_t nanoseconds;
+    _Atomic uint64_t nanoseconds, setup_nanoseconds, dispatches;
     _Atomic uint64_t starts;
     _Atomic uint64_t resumes;
 } behavior_profile_record;
@@ -68,6 +68,7 @@ struct game_behavior_world
     double delta_seconds;
     behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
     int profile_count;
+    bool profile_disabled;
     behavior_profile_record profile_overflow;
     game_behavior_profile_frame profile_view;
 };
@@ -111,7 +112,7 @@ static void profile_instance(behavior_instance *instance)
     }
 }
 
-static void record_profile(const char *event, uint64_t nanoseconds, bool first, void *user)
+static void record_profile(const char *event, uint64_t nanoseconds, behavior_profile_phase phase, void *user)
 {
     behavior_sink_context *context = user;
     behavior_profile_record *record = &context->world->profile_overflow;
@@ -122,8 +123,26 @@ static void record_profile(const char *event, uint64_t nanoseconds, bool first, 
             break;
         }
     }
+    if (phase == BEHAVIOR_PROFILE_SETUP) {
+        atomic_fetch_add_explicit(&record->setup_nanoseconds, nanoseconds, memory_order_relaxed);
+        atomic_fetch_add_explicit(&record->dispatches, 1, memory_order_relaxed);
+        return;
+    }
     atomic_fetch_add_explicit(&record->nanoseconds, nanoseconds, memory_order_relaxed);
-    atomic_fetch_add_explicit(first ? &record->starts : &record->resumes, 1, memory_order_relaxed);
+    atomic_fetch_add_explicit(
+        phase == BEHAVIOR_PROFILE_START ? &record->starts : &record->resumes,
+        1,
+        memory_order_relaxed
+    );
+}
+
+void game_behavior_set_profiling(game_behavior_world *world, bool enabled)
+{
+    world->profile_disabled = !enabled;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        world->attachments[i].instance->profile = enabled ? record_profile : NULL;
+    }
+    game_behavior_profile_begin(world);
 }
 
 void game_behavior_profile_begin(game_behavior_world *world)
@@ -132,6 +151,8 @@ void game_behavior_profile_begin(game_behavior_world *world)
         behavior_profile_record *record = i < world->profile_count
                                             ? &world->profile[i]
                                             : &world->profile_overflow;
+        atomic_store_explicit(&record->setup_nanoseconds, 0, memory_order_relaxed);
+        atomic_store_explicit(&record->dispatches, 0, memory_order_relaxed);
         atomic_store_explicit(&record->nanoseconds, 0, memory_order_relaxed);
         atomic_store_explicit(&record->starts, 0, memory_order_relaxed);
         atomic_store_explicit(&record->resumes, 0, memory_order_relaxed);
@@ -143,6 +164,7 @@ const game_behavior_profile_frame *game_behavior_profile(const game_behavior_wor
     game_behavior_profile_frame *view = &((game_behavior_world *)world)->profile_view;
     view->count = 0;
     view->cpu_ms = 0;
+    view->setup_ms = 0;
     view->overflow = (game_behavior_profile_row){ .behavior = "Other behaviors",
                                                   .event = "Profile capacity" };
     for (int i = 0; i <= world->profile_count; i++) {
@@ -152,17 +174,23 @@ const game_behavior_profile_frame *game_behavior_profile(const game_behavior_wor
         game_behavior_profile_row row = {
             .behavior = record->behavior,
             .event = record->event,
+            .dispatches = atomic_load_explicit(&record->dispatches, memory_order_relaxed),
+            .setup_ms = atomic_load_explicit(&record->setup_nanoseconds, memory_order_relaxed) /
+                        1000000.0,
             .starts = atomic_load_explicit(&record->starts, memory_order_relaxed),
             .resumes = atomic_load_explicit(&record->resumes, memory_order_relaxed),
             .cpu_ms = atomic_load_explicit(&record->nanoseconds, memory_order_relaxed) /
                       1000000.0,
         };
         view->cpu_ms += row.cpu_ms;
+        view->setup_ms += row.setup_ms;
         if (i == world->profile_count) {
+            view->overflow.dispatches = row.dispatches;
+            view->overflow.setup_ms = row.setup_ms;
             view->overflow.starts = row.starts;
             view->overflow.resumes = row.resumes;
             view->overflow.cpu_ms = row.cpu_ms;
-        } else if (row.starts || row.resumes) {
+        } else if (row.dispatches || row.starts || row.resumes) {
             view->rows[view->count++] = row;
         }
     }
@@ -263,7 +291,7 @@ static behavior_instance *acquire_instance(
     context->asset_name = asset->name;
     instance->sink = behavior_sink;
     instance->sink_user = context;
-    instance->profile = record_profile;
+    instance->profile = world->profile_disabled ? NULL : record_profile;
     instance->profile_user = context;
     profile_instance(instance);
     return instance;

@@ -65,6 +65,7 @@ static void capture_behaviors(editor_frame_profile *p, const game_behavior_profi
     frame->overflow.starts = source->overflow.starts;
     frame->overflow.resumes = source->overflow.resumes;
     frame->overflow.cpu_ms = source->overflow.cpu_ms;
+    frame->overflow.setup_ms = source->overflow.setup_ms;
     for (int i = 0; i < source->count; i++) {
         const game_behavior_profile_row *row = &source->rows[i];
         int key = behavior_key(p, row);
@@ -72,9 +73,13 @@ static void capture_behaviors(editor_frame_profile *p, const game_behavior_profi
             frame->overflow.starts += row->starts;
             frame->overflow.resumes += row->resumes;
             frame->overflow.cpu_ms += row->cpu_ms;
+            frame->overflow.setup_ms += row->setup_ms;
             continue;
         }
-        apush(frame->rows, ((editor_behavior_measure){ key, row->starts, row->resumes, row->cpu_ms }));
+        apush(
+            frame->rows,
+            ((editor_behavior_measure){ key, row->starts, row->resumes, row->cpu_ms, row->setup_ms })
+        );
     }
 }
 
@@ -114,7 +119,7 @@ typedef struct
 {
     const char *behavior, *event;
     uint64_t starts, resumes;
-    double cpu_ms;
+    double cpu_ms, setup_ms;
 } behavior_detail;
 
 static int compare_behavior(const void *a, const void *b)
@@ -131,6 +136,8 @@ static void detail_values(const behavior_detail *row, int frames)
 {
     ImGui_TableNextColumn();
     ImGui_Text("%.3f", row->cpu_ms / frames);
+    ImGui_TableNextColumn();
+    ImGui_Text("%.3f", row->setup_ms / frames);
     ImGui_TableNextColumn();
     ImGui_Text("%llu", (unsigned long long)row->starts);
     ImGui_TableNextColumn();
@@ -153,20 +160,23 @@ static void draw_behaviors(const editor_frame_profile *p, const editor_frame_sam
         overflow.starts += source->overflow.starts;
         overflow.resumes += source->overflow.resumes;
         overflow.cpu_ms += source->overflow.cpu_ms;
+        overflow.setup_ms += source->overflow.setup_ms;
         for (int i = 0; i < acount(source->rows); i++) {
             const editor_behavior_measure *value = &source->rows[i];
             rows[value->key].starts += value->starts;
             rows[value->key].resumes += value->resumes;
             rows[value->key].cpu_ms += value->cpu_ms;
+            rows[value->key].setup_ms += value->setup_ms;
         }
     }
     qsort(rows, (size_t)count, sizeof *rows, compare_behavior);
-    double total = overflow.cpu_ms;
+    double total = overflow.cpu_ms, setup = overflow.setup_ms;
     for (int i = 0; i < count; i++) {
-        if (!rows[i].starts && !rows[i].resumes) {
+        if (!rows[i].starts && !rows[i].resumes && !rows[i].setup_ms) {
             continue;
         }
         total += rows[i].cpu_ms;
+        setup += rows[i].setup_ms;
         int group = 0;
         while (group < group_count && strcmp(groups[group].behavior, rows[i].behavior)) {
             group++;
@@ -176,24 +186,27 @@ static void draw_behaviors(const editor_frame_profile *p, const editor_frame_sam
                                                        .event = "" };
         }
         groups[group].cpu_ms += rows[i].cpu_ms;
+        groups[group].setup_ms += rows[i].setup_ms;
         groups[group].starts += rows[i].starts;
         groups[group].resumes += rows[i].resumes;
     }
     qsort(groups, (size_t)group_count, sizeof *groups, compare_behavior);
-    ImGui_TextDisabled("Interpreted behavior execution");
+    ImGui_TextDisabled("Behavior execution");
     ImGui_Text(
-        "Graphs %.3f ms   Host dispatch / setup %.3f ms",
+        "Execution %.3f ms   Setup %.3f ms   Unassigned %.3f ms",
         total / p->count,
-        fmax(0, mean->runtime.behavior_ms - total / p->count)
+        setup / p->count,
+        fmax(0, mean->runtime.behavior_ms - (total + setup) / p->count)
     );
     ImGui_Text(
         "Physics %.3f ms   Other systems %.3f ms",
         mean->runtime.physics_ms,
         mean->runtime.systems_ms
     );
-    if (ImGui_BeginTable("behavior_profiles", 4, ImGuiTableFlags_SizingStretchProp)) {
+    if (ImGui_BeginTable("behavior_profiles", 5, ImGuiTableFlags_SizingStretchProp)) {
         ImGui_TableSetupColumnEx("Behavior / event", ImGuiTableColumnFlags_WidthStretch, 1, 0);
-        ImGui_TableSetupColumnEx("ms/frame", ImGuiTableColumnFlags_WidthFixed, 70, 0);
+        ImGui_TableSetupColumnEx("Exec ms", ImGuiTableColumnFlags_WidthFixed, 70, 0);
+        ImGui_TableSetupColumnEx("Setup ms", ImGuiTableColumnFlags_WidthFixed, 70, 0);
         ImGui_TableSetupColumnEx("Starts", ImGuiTableColumnFlags_WidthFixed, 65, 0);
         ImGui_TableSetupColumnEx("Resumes", ImGuiTableColumnFlags_WidthFixed, 65, 0);
         ImGui_TableHeadersRow();
@@ -214,7 +227,7 @@ static void draw_behaviors(const editor_frame_profile *p, const editor_frame_sam
             bool first_event = true;
             for (int i = 0; i < count; i++) {
                 if (strcmp(rows[i].behavior, groups[group].behavior) ||
-                    (!rows[i].starts && !rows[i].resumes)) {
+                    (!rows[i].starts && !rows[i].resumes && !rows[i].setup_ms)) {
                     continue;
                 }
                 ImGui_TableNextRow();
@@ -237,7 +250,7 @@ static void draw_behaviors(const editor_frame_profile *p, const editor_frame_sam
             ImGui_TableSetColumnIndex(0);
             ImGui_TreePop();
         }
-        if (overflow.starts || overflow.resumes) {
+        if (overflow.starts || overflow.resumes || overflow.setup_ms) {
             ImGui_TableNextRow();
             ImGui_TableNextColumn();
             ImGui_TextUnformatted(overflow.behavior);

@@ -62,6 +62,7 @@ struct flow_run
     eval_context eval;
     runtime_store *runtime;
     flow_run **children;
+    flow_run **call_pool; /* idle frames, at most one per call site */
     flow_run *parent;
     flow_run *active_child;
     node *call_node;

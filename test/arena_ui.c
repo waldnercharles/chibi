@@ -2065,11 +2065,15 @@ static void review_behavior_totals(game_behavior_profile_frame *total, const gam
             total->count++;
         }
         total->rows[index].cpu_ms += source->cpu_ms;
+        total->rows[index].setup_ms += source->setup_ms;
+        total->rows[index].dispatches += source->dispatches;
         total->rows[index].starts += source->starts;
         total->rows[index].resumes += source->resumes;
     }
     total->cpu_ms += frame->cpu_ms;
+    total->setup_ms += frame->setup_ms;
     total->overflow.cpu_ms += frame->overflow.cpu_ms;
+    total->overflow.setup_ms += frame->overflow.setup_ms;
 }
 
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
@@ -2302,19 +2306,23 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
         for (int i = 0; i < behavior_totals.count; i++) {
             const game_behavior_profile_row *row = &behavior_totals.rows[i];
             printf(
-                "Crowd behavior %s / %s: %.3f ms per frame, %.1f starts, %.1f "
+                "Crowd behavior %s / %s: %.3f exec ms, %.3f setup ms per "
+                "frame, %.1f starts, %.1f "
                 "resumes\n",
                 row->behavior,
                 row->event,
                 row->cpu_ms / crowd_samples[5],
+                row->setup_ms / crowd_samples[5],
                 (double)row->starts / crowd_samples[5],
                 (double)row->resumes / crowd_samples[5]
             );
         }
         printf(
-            "Crowd behavior host overhead: %.3f ms per frame; overflow %.3f "
+            "Crowd behavior unassigned overhead: %.3f ms per frame; overflow "
+            "%.3f "
             "ms\n",
-            (crowd_behavior[5] - behavior_totals.cpu_ms) / crowd_samples[5],
+            (crowd_behavior[5] - behavior_totals.cpu_ms - behavior_totals.setup_ms) /
+                crowd_samples[5],
             behavior_totals.overflow.cpu_ms / crowd_samples[5]
         );
     }
@@ -2453,7 +2461,8 @@ static void performance_panel(arena_fixture *f)
                                                  .event = event,
                                                  .starts = 2,
                                                  .resumes = 3,
-                                                 .cpu_ms = 4 },
+                                                 .cpu_ms = 4,
+                                                 .setup_ms = 2 },
                                            } };
     engine_frame_timing timing = { .frame = 7 };
     editor_frame_begin(&owned);
@@ -2474,7 +2483,9 @@ static void performance_panel(arena_fixture *f)
     assert(
         editor_frame_latest(&owned)->runtime.frame == 7 &&
         owned.behaviors[0].rows[0].starts == 2 &&
-        owned.behaviors[0].rows[0].resumes == 3 && owned.behaviors[0].rows[0].cpu_ms == 4
+        owned.behaviors[0].rows[0].resumes == 3 &&
+        owned.behaviors[0].rows[0].cpu_ms == 4 &&
+        owned.behaviors[0].rows[0].setup_ms == 2
     );
     editor_frame_profile_free(&owned);
     click_item(f, "view.menu");
@@ -2509,7 +2520,7 @@ static void performance_panel(arena_fixture *f)
     puts("performance UI PASS: View menu, live history, behavior/event expansion, owned labels, freeze and resume");
 }
 
-int arena_ui_run(const char *program)
+int arena_ui_run(const char *program, bool profile_only)
 {
     CF_Result result = cf_make_app(
         "Arena 3D editor regression",
@@ -2533,13 +2544,17 @@ int arena_ui_run(const char *program)
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
     bool input_only = getenv("CHIBI_ARENA_INPUT_ONLY") != NULL;
-    if (!input_only) {
+    if (!input_only && !profile_only) {
         assert(test_arena_input() == 0);
     }
     fflush(stdout);
     arena_fixture f = fixture_new();
     for (int i = 0; i < 30; i++) {
         frame(&f);
+    }
+    if (profile_only) {
+        performance_panel(&f);
+        goto cleanup;
     }
     const char *motion_frames = getenv("CHIBI_ARENA_MOTION_FRAMES");
     if (motion_frames && *motion_frames) {
@@ -2608,12 +2623,12 @@ cleanup:
     game_live_world_free(f.live);
     editor_free(f.graph);
     ecs_world_free(f.world);
-    if (!input_only) {
+    if (!input_only && !profile_only) {
         test_navigation_runtime();
     }
     app_input_shutdown();
     cf_destroy_app();
-    if (!input_only) {
+    if (!input_only && !profile_only) {
         puts("arena UI PASS: scene save/reload, independent preview projection, actual pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, component dropdown/Undo/Redo/save/reload, spatial-only fit/marquee/preview/placement");
     }
     return 0;
@@ -2653,8 +2668,12 @@ int compiled_arena_run(const char *program)
         srand(12345);
         arena_fixture f = fixture_new();
         assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
+        if (getenv("CBLUEPRINT_BENCH_NO_PROFILE")) {
+            game_behavior_set_profiling(f.live->behaviors, false);
+        }
         uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
         double behavior_ms[150], simulation_ms[150];
+        game_behavior_profile_frame profile = { 0 };
         for (int i = 0; i < 180; i++) {
             assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == 0);
             f.time += 1.0 / 60.0;
@@ -2663,6 +2682,7 @@ int compiled_arena_run(const char *program)
                 const engine_frame_timing *timing = app_scene_authoring_runtime_timing(
                     f.scene
                 );
+                review_behavior_totals(&profile, game_behavior_profile(f.live->behaviors));
                 behavior_ms[i - 30] = timing->behavior_ms;
                 simulation_ms[i - 30] = timing->behavior_ms +
                                         timing->physics_ms + timing->systems_ms;
@@ -2679,6 +2699,21 @@ int compiled_arena_run(const char *program)
             simulation_ms[74],
             simulation_ms[142]
         );
+        qsort(profile.rows, (size_t)profile.count, sizeof *profile.rows, compare_behavior_time);
+        for (int j = 0; j < profile.count; j++) {
+            printf(
+                "profile backend=%s behavior=%s event=%s exec_ms=%.6f "
+                "setup_ms=%.6f dispatches=%llu starts=%llu resumes=%llu\n",
+                behavior_backend_name(modes[mode]),
+                profile.rows[j].behavior,
+                profile.rows[j].event,
+                profile.rows[j].cpu_ms / 150,
+                profile.rows[j].setup_ms / 150,
+                (unsigned long long)profile.rows[j].dispatches,
+                (unsigned long long)profile.rows[j].starts,
+                (unsigned long long)profile.rows[j].resumes
+            );
+        }
         assert(projectiles(&f) > 0);
         ecs_query query;
         assert(ecs_query_begin(f.world, &query, NULL, 0) == ECS_OK);

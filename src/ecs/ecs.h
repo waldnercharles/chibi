@@ -35,7 +35,7 @@ typedef enum
     ECS_INDEX_DENSE,
 } ecs_index_kind;
 
-typedef struct
+typedef struct ecs_component_desc
 {
     ecs_component_id id;
     const char *key; /* persistent reflected identity */

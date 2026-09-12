@@ -93,7 +93,15 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
     pin_value *arguments = runtime_node_inputs(caller);
     pin_value *outputs = runtime_node_outputs(caller);
     const behavior_function *function = behavior_program_function(program, entry);
-    if (function && !instance->trace_enabled && !ctx->on_data_edge &&
+    behavior_function_context host = { 0 };
+    if (function &&
+        behavior_function_bind(
+            function,
+            &host,
+            ctx->services,
+            behavior_instance_owner(instance).u64
+        ) &&
+        !instance->trace_enabled && !ctx->on_data_edge &&
         (!ctx->observer ||
          (!ctx->observer->step_mode && !acount(ctx->observer->watches))) &&
         behavior_function_pure_depth(function, ctx->call_depth + 1)) {
@@ -113,12 +121,20 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             .argument_count = n->input_count,
             .results = results,
             .delta_seconds = ctx->delta_seconds,
+            .owner = host.owner,
+            .world = host.world,
+            .binding_world = host.binding_world,
         };
         int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);
         if (result) {
             const behavior_function_source
                 *source = behavior_function_source_at(function, call.error_source);
-            return fail(ctx, graph_node_by_id(source->graph, call.node_id), call.error_pin, "data function produced an invalid result");
+            return fail(
+                ctx,
+                graph_node_by_id(source->graph, call.node_id),
+                call.error_pin,
+                call.error_message ? call.error_message : "data function produced an invalid result"
+            );
         }
         if (results != outputs) {
             int at = 0;

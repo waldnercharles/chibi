@@ -132,6 +132,18 @@ typedef enum
     NODE_PURE_READ,      /* read host state without an execution edge */
 } node_pure_kind;
 
+typedef enum
+{
+    NODE_COMPONENT_NONE,
+    NODE_COMPONENT_GET_SELF,
+    NODE_COMPONENT_HAS_SELF,
+    NODE_COMPONENT_SET_SELF,
+    NODE_COMPONENT_GET_ENTITY,
+    NODE_COMPONENT_HAS_ENTITY,
+    NODE_COMPONENT_SET_ENTITY,
+    NODE_COMPONENT_SET_FIELD,
+} node_component_kind;
+
 typedef struct
 {
     const char *name;
@@ -142,6 +154,9 @@ typedef struct
     node_pure_kind pure_kind; /* how to compute DATA outputs; CONST is zero default */
     node_jit_kind jit_kind;
     unsigned jit_flags;
+    node_component_kind component_kind;
+    const struct ecs_component_desc *component;
+    int component_field;
     const type_desc *type;
     node_fn fn;
     node_read_fn read;

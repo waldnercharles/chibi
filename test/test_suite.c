@@ -125,6 +125,20 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 3 && strcmp(argv[1], "--emit-component-c") == 0) {
+        registry_validate();
+        emit_component_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && strcmp(argv[1], "--bench-component") == 0) {
+        registry_validate();
+        return bench_component(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && strcmp(argv[1], "--whole-component") == 0) {
+        registry_validate();
+        test_compiled_components();
+        return 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--whole-function-audit") == 0) {
         registry_validate();
         return whole_function_audit();

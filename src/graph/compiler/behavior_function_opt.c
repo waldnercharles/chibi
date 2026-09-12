@@ -112,10 +112,11 @@ void behavior_function_optimize(behavior_function *f)
     }
     for (int i = 0; i < acount(f->instructions); i++) {
         const behavior_function_instruction *op = &f->instructions[i];
-        if (behavior_function_math(op->op) || op->indirect ||
-            op->op == BF_PRESENT || op->op == BF_TYPE_NAME ||
-            op->op == BF_RESULT_TYPE_NAME || op->op == BF_REQUIRE ||
-            op->op == BF_SELECT || op->op == BF_RESULT_PRESENT) {
+        if (behavior_function_math(op->op) || op->indirect || op->op == BF_OWNER ||
+            op->op == BF_WORLD || (op->op >= BF_ENTITY && op->op <= BF_LOAD) ||
+            op->op == BF_ASSERT || op->op == BF_WRITE || op->op == BF_PRESENT ||
+            op->op == BF_TYPE_NAME || op->op == BF_RESULT_TYPE_NAME ||
+            op->op == BF_REQUIRE || op->op == BF_SELECT || op->op == BF_RESULT_PRESENT) {
             return;
         }
     }
@@ -240,4 +241,183 @@ done:
     free(slots);
     free(steps);
     free(visited);
+}
+
+/* Scalarized snapshots often expose only one field. Drop unused loads and
+ * copies after local compaction, while retaining checks and all effects. */
+static bool discardable(behavior_function_op op)
+{
+    return op <= BF_WORLD || op == BF_LOAD || op == BF_SELECT;
+}
+void behavior_function_prune_values(behavior_function *f)
+{
+    bool *live = xcalloc((size_t)(acount(f->slots) + 1), sizeof *live);
+    bool *keep = xcalloc((size_t)acount(f->instructions), sizeof *keep);
+    for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (discardable(i->op) && !live[i->output]) {
+            continue;
+        }
+        keep[pc] = true;
+        if (behavior_function_left_slot(i->op)) {
+            live[i->left] = true;
+        }
+        if (behavior_function_right_slot(i->op)) {
+            live[i->right] = true;
+        }
+        if (i->op == BF_SELECT) {
+            live[i->target] = true;
+        }
+    }
+    int *pcs = xcalloc((size_t)acount(f->instructions), sizeof *pcs);
+    int count = 0;
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        pcs[pc] = count;
+        if (keep[pc]) {
+            f->instructions[count++] = f->instructions[pc];
+        }
+    }
+    asetlen(f->instructions, count);
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_JUMP || i->op == BF_BRANCH) {
+            i->target = pcs[i->target];
+        }
+    }
+    memset(live, 0, (size_t)(acount(f->slots) + 1) * sizeof *live);
+    for (int pc = 0; pc < count; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op < BF_STORE) {
+            live[i->output] = true;
+        }
+        if ((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) {
+            live[i->target] = true;
+        }
+    }
+    int *slots = xcalloc((size_t)(acount(f->slots) + 1), sizeof *slots);
+    int used = 0;
+    for (int i = 0; i < acount(f->slots); i++) {
+        if (live[i]) {
+            f->slots[used] = f->slots[i];
+            slots[i] = used++;
+        }
+    }
+    asetlen(f->slots, used);
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op < BF_STORE) {
+            i->output = slots[i->output];
+        }
+        if (behavior_function_left_slot(i->op)) {
+            i->left = slots[i->left];
+        }
+        if (behavior_function_right_slot(i->op)) {
+            i->right = slots[i->right];
+        }
+        if (((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) ||
+            i->op == BF_SELECT) {
+            i->target = slots[i->target];
+        }
+    }
+    free(slots);
+    free(pcs);
+    free(keep);
+    free(live);
+}
+
+/* These bodies cannot change world membership or layouts. Reuse checked
+ * addresses along a single control path; joins and loop edges start fresh.
+ * Row contents remain mutable, so every field read still observes prior writes. */
+void behavior_function_reuse_accesses(behavior_function *f)
+{
+    int count = acount(f->instructions);
+    int *incoming = xcalloc((size_t)count, sizeof *incoming);
+    int *slots = xmalloc((size_t)(acount(f->slots) + 1) * sizeof *slots);
+    int *pcs = xcalloc((size_t)count, sizeof *pcs);
+    int *locals = xmalloc((size_t)(acount(f->locals) + 1) * sizeof *locals);
+    for (int i = 0; i < acount(f->locals); i++) {
+        locals[i] = -1;
+    }
+    behavior_function_instruction *out = NULL;
+    for (int i = 0; i < acount(f->slots); i++) {
+        slots[i] = i;
+    }
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_instruction i = f->instructions[pc];
+        if (i.op == BF_JUMP || i.op == BF_BRANCH) {
+            incoming[i.target]++;
+        }
+        if (pc + 1 < count && i.op != BF_JUMP && i.op != BF_RETURN &&
+            i.op != BF_END && i.op != BF_FAIL) {
+            incoming[pc + 1]++;
+        }
+    }
+    int start = 0;
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_instruction i = f->instructions[pc];
+        pcs[pc] = acount(out);
+        if (incoming[pc] != 1 || (pc && (f->instructions[pc - 1].op == BF_BRANCH ||
+                                         (f->instructions[pc - 1].op == BF_JUMP &&
+                                          f->instructions[pc - 1].target != pc)))) {
+            start = acount(out);
+            for (int j = 0; j < acount(f->locals); j++) {
+                locals[j] = -1;
+            }
+        }
+        if (behavior_function_left_slot(i.op)) {
+            i.left = slots[i.left];
+        }
+        if (behavior_function_right_slot(i.op)) {
+            i.right = slots[i.right];
+        }
+        if (((i.op == BF_DIV || i.op == BF_MOD) && i.target >= 0) || i.op == BF_SELECT) {
+            i.target = slots[i.target];
+        }
+        if (i.op == BF_ENTER) {
+            for (int j = 0; j < acount(f->locals); j++) {
+                if (f->locals[j].frame == i.target) {
+                    locals[j] = -1;
+                }
+            }
+        }
+        if (i.op == BF_LOCAL && locals[i.left] >= 0) {
+            slots[i.output] = locals[i.left];
+            continue;
+        }
+        if (i.op == BF_SAVE) {
+            locals[i.target] = i.left;
+        }
+        bool reusable = i.op == BF_OWNER || i.op == BF_WORLD || i.op == BF_ENTITY ||
+                        i.op == BF_COMPONENT || i.op == BF_ASSERT;
+        bool found = false;
+        for (int j = start; reusable && j < acount(out); j++) {
+            const behavior_function_instruction *previous = &out[j];
+            if (previous->op != i.op || previous->type != i.type ||
+                previous->left != i.left || previous->right != i.right ||
+                (i.op == BF_WORLD && previous->target != i.target) ||
+                previous->offset != i.offset || previous->value.u64 != i.value.u64 ||
+                previous->layout != i.layout) {
+                continue;
+            }
+            if (i.op != BF_ASSERT) {
+                slots[i.output] = previous->output;
+            }
+            found = true;
+            break;
+        }
+        if (!found) {
+            apush(out, i);
+        }
+    }
+    for (int pc = 0; pc < acount(out); pc++) {
+        if (out[pc].op == BF_JUMP || out[pc].op == BF_BRANCH) {
+            out[pc].target = pcs[out[pc].target];
+        }
+    }
+    afree(f->instructions);
+    f->instructions = out;
+    free(pcs);
+    free(slots);
+    free(incoming);
+    free(locals);
 }

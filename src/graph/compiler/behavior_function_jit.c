@@ -34,18 +34,14 @@ static int *allocate_registers(const behavior_function *f, bool integers, int *s
     int *last = xcalloc((size_t)(count + 1), sizeof *last);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        if (i->op == BF_BRANCH || i->op == BF_REQUIRE ||
-            i->op == BF_RESULT_PRESENT || i->op == BF_RESULT_TYPE_NAME) {
+        if (behavior_function_left_slot(i->op)) {
             last[i->left] = pc;
         }
         if (i->op == BF_SELECT) {
             last[i->target] = pc;
         }
-        if (i->op >= BF_ADD && i->op <= BF_SAVE) {
-            last[i->left] = pc;
-            if (i->op < BF_STORE) {
-                last[i->right] = pc;
-            }
+        if (behavior_function_right_slot(i->op)) {
+            last[i->right] = pc;
         }
     }
     int until[4] = { -1, -1, -1, -1 }, saved_until[4] = { -1, -1, -1, -1 };
@@ -56,13 +52,25 @@ static int *allocate_registers(const behavior_function *f, bool integers, int *s
                           ? pc
                           : next_call[pc + 1];
     }
+    int *next_integer_clobber = xmalloc(
+        (size_t)(acount(f->instructions) + 1) * sizeof *next_integer_clobber
+    );
+    next_integer_clobber[acount(f->instructions)] = acount(f->instructions);
+    for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
+        next_integer_clobber[pc] = behavior_function_integer_clobber(
+                                       f->instructions[pc].op
+                                   )
+                                     ? pc
+                                     : next_integer_clobber[pc + 1];
+    }
     *saved_count = 0;
     int integer_until[2] = { -1, -1 };
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         if (i->op < BF_STORE && integers &&
-            (behavior_scalar_integer(i->type) || i->type == PIN_BOOL)) {
-            if (next_call[pc + 1] >= last[i->output]) {
+            (behavior_scalar_integer(i->type) || i->type == PIN_BOOL ||
+             i->type == PIN_HANDLE)) {
+            if (next_integer_clobber[pc + 1] >= last[i->output]) {
                 for (int r = 0; r < 2; r++) {
                     if (integer_until[r] <= pc) {
                         registers[i->output] = r ? SLJIT_R4 : SLJIT_R2;
@@ -100,6 +108,7 @@ static int *allocate_registers(const behavior_function *f, bool integers, int *s
         }
     }
     free(next_call);
+    free(next_integer_clobber);
     free(last);
     return registers;
 }
@@ -144,6 +153,14 @@ void behavior_jit_failure(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, error_message),
+        SLJIT_IMM,
+        (sljit_sw)i->message
+    );
     sljit_emit_op1(
         c,
         SLJIT_MOV,
@@ -194,15 +211,15 @@ void behavior_jit_failure(
         SLJIT_MEM1(m->context),
         offsetof(behavior_function_context, error_pin),
         SLJIT_IMM,
-        reason == BEHAVIOR_FUNCTION_DATA ? i->pin : -1
+        reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1
     );
     sljit_emit_return(
         c,
         SLJIT_MOV32,
         SLJIT_IMM,
-        reason == BEHAVIOR_FUNCTION_NO_RETURN || reason == BEHAVIOR_FUNCTION_DATA
-            ? FLOW_ERR_INVALID_GRAPH
-            : FLOW_ERR_STEP_BUDGET
+        reason == BEHAVIOR_FUNCTION_HOST_FLOW   ? FLOW_ERR_NODE
+        : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
+                                                : FLOW_ERR_STEP_BUDGET
     );
 }
 /* Match entry argument defaults and real-number coercion without a C call. */
@@ -280,7 +297,7 @@ void *behavior_function_jit(const behavior_function *f)
     }
     bool integers = false;
     for (int i = 0; i < acount(f->slots); i++) {
-        integers |= behavior_scalar_integer(f->slots[i]);
+        integers |= behavior_scalar_integer(f->slots[i]) || f->slots[i] == PIN_HANDLE;
     }
     int saved_float = 0;
     int *registers = allocate_registers(f, integers, &saved_float);
@@ -378,7 +395,8 @@ void *behavior_function_jit(const behavior_function *f)
             pc += fields - 1;
             continue;
         }
-        if (behavior_jit_memory(&m, i, destination, offset) ||
+        if (behavior_jit_component(&m, i, destination, offset) ||
+            behavior_jit_memory(&m, i, destination, offset) ||
             behavior_jit_integer(&m, i, destination, offset)) {
             continue;
         }

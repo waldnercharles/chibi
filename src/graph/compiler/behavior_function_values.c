@@ -27,11 +27,12 @@ bool behavior_lower_scalar(pin_type type)
 #if CHIBI_HAVE_SJLIT && INTPTR_MAX < INT64_MAX
     /* Native 32-bit pair lowering is not implemented yet. The general
      * compiled backend still handles wide values on those targets. */
-    if (type == PIN_I64 || type == PIN_U64) {
+    if (type == PIN_I64 || type == PIN_U64 || type == PIN_HANDLE) {
         return false;
     }
 #endif
-    return (type >= PIN_BOOL && type <= PIN_F64) || type == PIN_ENUM;
+    return (type >= PIN_BOOL && type <= PIN_F64) || type == PIN_ENUM ||
+           type == PIN_HANDLE;
 }
 int behavior_lower_emit(builder *b, behavior_function_instruction i)
 {
@@ -457,11 +458,20 @@ static int get_output(builder *b, node *n, int pin)
         if (n->output_pins[pin].default_value.type == type) {
             result = behavior_lower_source(b, BF_ARGUMENT, ordinal, &n->output_pins[pin], n, pin);
         }
-    } else if (n == b->entry || n->desc == &NODE_SetVariable || n->desc == &NODE_CallFunction) {
+    } else if (
+        n == b->entry || n->desc == &NODE_SetVariable || n->desc == &NODE_CallFunction ||
+        n->desc->component_kind == NODE_COMPONENT_SET_SELF ||
+        n->desc->component_kind == NODE_COMPONENT_SET_ENTITY ||
+        n->desc->component_kind == NODE_COMPONENT_SET_FIELD
+    ) {
         int index = behavior_lower_local(b, b->frame, n, pin);
         if (index >= 0) {
             result = behavior_lower_source(b, BF_LOCAL, index, &n->output_pins[pin], n, pin);
         }
+    } else if (n->desc->component_kind) {
+        result = behavior_lower_component_read(b, n);
+    } else if (n->desc->pure_kind == NODE_PURE_SELF && type == PIN_HANDLE) {
+        result = behavior_lower_owner(b);
     } else if (n->desc->pure_kind == NODE_PURE_FUNCTION) {
         result = pure_call(b, n, pin);
     } else if (n->desc->pure_kind == NODE_PURE_GET) {
@@ -549,6 +559,7 @@ static int get_output(builder *b, node *n, int pin)
                 right = n->input_count == 2 ? behavior_lower_input(b, n, 1) : -1;
             }
             if (left >= 0 && right >= 0 && b->function->slots[left] != PIN_BOOL &&
+                b->function->slots[left] != PIN_HANDLE &&
                 b->function->slots[left] == b->function->slots[right] &&
                 ((op >= BF_LT && op <= BF_NE) || op == BF_FLAGS ||
                  b->function->slots[left] == type) &&
@@ -688,12 +699,20 @@ int behavior_lower_input(builder *b, node *n, int pin)
         return behavior_lower_convert(b, slot, s->type);
     }
     if (!s->binding) {
+        if ((s->flags & PIN_FLAG_DEFAULT_SELF) && !s->default_value.u64 &&
+            s->type == PIN_HANDLE) {
+            return behavior_lower_owner(b);
+        }
         if (s->default_value.type != s->type) {
             return -1;
         }
         return behavior_lower_source(b, BF_CONSTANT, 0, s, n, pin);
     }
     const pin_binding *binding = s->binding;
+    if (binding->kind == PIN_BINDING_COMPONENT ||
+        binding->kind == PIN_BINDING_COMPONENT_FIELD) {
+        return behavior_lower_component_binding(b, n, pin);
+    }
     if (binding->kind == PIN_BINDING_VARIABLE &&
         (!binding->source_asset || !strcmp(binding->source_asset, b->asset->name))) {
         int index = behavior_lower_variable(b, binding->variable_id, s->type);

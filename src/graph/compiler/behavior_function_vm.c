@@ -1,3 +1,4 @@
+#include "ecs/execution.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow.h"
 #include "support/array.h"
@@ -28,13 +29,14 @@ static int fail(
     ctx->node_id = i->node_id;
     ctx->error_frame = i->frame;
     ctx->error_source = i->source;
-    ctx->error_pin = reason == BEHAVIOR_FUNCTION_DATA ? i->pin : -1;
+    ctx->error_pin = reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1;
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    return reason == BEHAVIOR_FUNCTION_NO_RETURN || reason == BEHAVIOR_FUNCTION_DATA
-             ? FLOW_ERR_INVALID_GRAPH
-             : FLOW_ERR_STEP_BUDGET;
+    ctx->error_message = i->message;
+    return reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
+         : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
+                                                 : FLOW_ERR_STEP_BUDGET;
 }
 
 int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
@@ -57,12 +59,11 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         pin_value *out = &slots[i->output], a = { 0 }, b = { 0 };
-        if (i->op >= BF_ADD && i->op <= BF_SAVE) {
+        if (behavior_function_left_slot(i->op)) {
             a = slots[i->left];
-            b = slots[i->right];
         }
-        if (i->op == BF_BRANCH) {
-            a = slots[i->left];
+        if (behavior_function_right_slot(i->op)) {
+            b = slots[i->right];
         }
         if (i->op < BF_STORE) {
             out->type = i->type;
@@ -91,6 +92,65 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             continue;
         }
         switch (i->op) {
+            case BF_OWNER: out->u64 = ctx->owner; break;
+            case BF_WORLD:
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = (uintptr_t)(i->target ? ctx->binding_world : ctx->world);
+                } else {
+                    out->u = (uint32_t)(uintptr_t)(i->target ? ctx->binding_world
+                                                             : ctx->world);
+                }
+                break;
+            case BF_ENTITY:
+                out->u = ecs_execution_entity(
+                    (const ecs_execution_view *)(uintptr_t)behavior_scalar_bits(a),
+                    b.u64
+                );
+                break;
+            case BF_COMPONENT: {
+                const ecs_execution_column *column = ecs_execution_component(
+                    (const ecs_execution_view *)(uintptr_t)behavior_scalar_bits(a),
+                    b.u,
+                    i->value.u64
+                );
+                if (i->type == PIN_BOOL) {
+                    out->b = column != NULL;
+                    break;
+                }
+                if (column &&
+                    (column->layout != i->layout || column->stride != i->offset)) {
+                    result = fail(ctx, i, steps, parents, i->target);
+                    goto done;
+                }
+                uintptr_t row = column ? (uintptr_t)column->data + b.u * column->stride
+                                       : 0;
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = row;
+                } else {
+                    out->u = (uint32_t)row;
+                }
+                break;
+            }
+            case BF_LOAD:
+                memcpy(
+                    &out->d,
+                    (const char *)(uintptr_t)behavior_scalar_bits(a) + i->offset,
+                    behavior_scalar_size(i->type)
+                );
+                break;
+            case BF_WRITE:
+                memcpy(
+                    (char *)(uintptr_t)behavior_scalar_bits(b) + i->offset,
+                    &a.d,
+                    behavior_scalar_size(i->type)
+                );
+                break;
+            case BF_ASSERT:
+                if (!behavior_scalar_bits(a)) {
+                    result = fail(ctx, i, steps, parents, i->target);
+                    goto done;
+                }
+                break;
             case BF_TYPE_NAME: {
                 const char *name = i->value.str;
                 if (i->target == BF_VARIABLE) {

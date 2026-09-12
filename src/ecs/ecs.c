@@ -1,5 +1,6 @@
 #include "ecs/ecs.h"
 
+#include "ecs/execution.h"
 #include "graph/model/pin_conv.h"
 #include "graph/runtime/eval.h"
 #include "support/array.h"
@@ -44,6 +45,8 @@ struct ecs_query_expr
 
 struct ecs_world
 {
+    ecs_execution_view execution;
+    ecs_execution_column *execution_columns;
     uint32_t generations[ECS_ENTITY_SLOT_COUNT];
     unsigned char occupied[ECS_ENTITY_SLOT_COUNT];
     unsigned char reserved[ECS_ENTITY_SLOT_COUNT];
@@ -159,31 +162,9 @@ static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)
     return hash;
 }
 
-static uint64_t hash_string(uint64_t hash, const char *text)
-{
-    if (!text) {
-        return hash_bytes(hash, "", 1);
-    }
-    return hash_bytes(hash, text, strlen(text) + 1);
-}
-
 uint64_t ecs_layout_hash(const type_desc *type)
 {
-    if (!type) {
-        return 0;
-    }
-    uint64_t hash = UINT64_C(1469598103934665603);
-    hash = hash_bytes(hash, &type->size, sizeof type->size);
-    hash = hash_bytes(hash, &type->field_count, sizeof type->field_count);
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        hash = hash_string(hash, field->name);
-        hash = hash_bytes(hash, &field->offset, sizeof field->offset);
-        hash = hash_bytes(hash, &field->size, sizeof field->size);
-        hash = hash_bytes(hash, &field->type, sizeof field->type);
-        hash = hash_string(hash, field->type_name);
-    }
-    return hash;
+    return type_layout_hash(type);
 }
 
 static int component_bucket(ecs_component_id id, int capacity)
@@ -447,7 +428,25 @@ ecs_world *ecs_world_new(void)
     for (uint32_t slot = 1; slot <= ECS_MAX_ENTITIES; slot++) {
         world->generations[slot] = 1;
     }
+    world->execution = (ecs_execution_view){ .generations = world->generations,
+                                             .occupied = world->occupied,
+                                             .slot_count = ECS_ENTITY_SLOT_COUNT };
     return world;
+}
+
+static void update_execution_column(ecs_world *world, int index)
+{
+    const ecs_component *c = &world->components[index];
+    world->execution_columns[index] = (ecs_execution_column){
+        .id = c->desc.id,
+        .layout = type_layout_hash(c->desc.type),
+        .stride = c->desc.element_size,
+        .data = c->desc.column_base,
+        .occupancy = c->occupancy
+    };
+    world->execution.columns = world->execution_columns;
+    world->execution.lookup = world->component_lookup;
+    world->execution.capacity = world->component_lookup_capacity;
 }
 
 /* Descriptors own their identity strings; reflected type layouts stay borrowed. */
@@ -478,6 +477,7 @@ void ecs_world_free(ecs_world *world)
         afree(world->components[i].dense);
     }
     afree(world->components);
+    afree(world->execution_columns);
     free(world->component_lookup);
     afree(world->commands);
     for (int i = 0; i < acount(world->field_strings); i++) {
@@ -527,6 +527,8 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
         xcalloc(ECS_ENTITY_WORD_COUNT, sizeof *component.occupancy);
     apush(world->components, component);
     component_index_append(world);
+    apush(world->execution_columns, ((ecs_execution_column){ 0 }));
+    update_execution_column(world, acount(world->components) - 1);
     if (out_id) {
         *out_id = id;
     }
@@ -577,11 +579,15 @@ int ecs_world_migrate_component(
         return ECS_ERR_ARGUMENT;
     }
     ecs_component_desc owned = component_desc_copy(replacement);
-    if (component->desc.layout_hash == replacement->layout_hash) {
+    if (component->desc.layout_hash == replacement->layout_hash &&
+        component->desc.element_size == replacement->element_size &&
+        world->execution_columns[component - world->components].layout ==
+            type_layout_hash(replacement->type)) {
         void *column = component->desc.column_base;
         component_desc_free_names(&component->desc);
         component->desc = owned;
         component->desc.column_base = column;
+        update_execution_column(world, (int)(component - world->components));
         return ECS_OK;
     }
     unsigned char *column = (unsigned char *)
@@ -622,6 +628,7 @@ int ecs_world_migrate_component(
     component_desc_free_names(&component->desc);
     component->desc = owned;
     component->desc.column_base = column;
+    update_execution_column(world, (int)(component - world->components));
     if (report) {
         report->changed = 1;
     }
@@ -982,7 +989,8 @@ void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *wo
 {
     if (reader) {
         *reader = (eval_component_reader){ .read = eval_read_component_field,
-                                           .user = world };
+                                           .user = world,
+                                           .execution = (const ecs_execution_view *)world };
     }
 }
 

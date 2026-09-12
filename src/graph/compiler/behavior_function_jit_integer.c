@@ -14,7 +14,8 @@ int behavior_jit_integer_move(pin_type type)
         case PIN_ENUM: return SLJIT_MOV_S32;
         case PIN_U32: return SLJIT_MOV_U32;
         case PIN_I64:
-        case PIN_U64: return SLJIT_MOV;
+        case PIN_U64:
+        case PIN_HANDLE: return SLJIT_MOV;
         default: assert(false); return 0;
     }
 }
@@ -266,7 +267,8 @@ bool behavior_jit_integer(
 )
 {
     struct sljit_compiler *c = m->compiler;
-    bool integer = behavior_scalar_integer(i->type) || i->type == PIN_BOOL;
+    bool integer = behavior_scalar_integer(i->type) || i->type == PIN_BOOL ||
+                   i->type == PIN_HANDLE;
     if (i->op == BF_CAST) {
         cast(m, i, dest, offset);
         return true;

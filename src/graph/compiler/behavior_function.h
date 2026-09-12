@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+struct service_binding;
 typedef struct
 {
     graph *graph;
@@ -17,6 +18,8 @@ typedef enum
     BEHAVIOR_FUNCTION_DEPTH,
     BEHAVIOR_FUNCTION_NO_RETURN,
     BEHAVIOR_FUNCTION_DATA,
+    BEHAVIOR_FUNCTION_HOST_DATA,
+    BEHAVIOR_FUNCTION_HOST_FLOW,
 } behavior_function_failure;
 typedef struct
 {
@@ -45,6 +48,9 @@ typedef struct
     int error_pin;
     uintptr_t error_steps;
     behavior_function_failure failure;
+    const char *error_message;
+    uint64_t owner;
+    const struct ecs_execution_view *world, *binding_world;
 } behavior_function_context;
 /* Complete synchronous entry with scalar or fixed-layout values, or NULL if an operation requires the
  * general compiled runtime. No partial effects occur during eligibility checks. */
@@ -53,6 +59,14 @@ behavior_function *behavior_function_lower(
     graph *g,
     node *entry,
     behavior_function_diagnostic *diagnostic
+);
+/* Bind host storage once per invocation. Custom component readers keep their
+ * general compiled ABI until they supply a direct execution view. */
+bool behavior_function_bind(
+    const behavior_function *function,
+    behavior_function_context *ctx,
+    const struct service_binding *services,
+    uint64_t owner
 );
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);

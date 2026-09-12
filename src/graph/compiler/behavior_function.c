@@ -220,6 +220,11 @@ static bool block(builder *b, int index)
             return false;
         }
         next = successor(b, n, 0, t.after);
+    } else if (n->desc->component_kind) {
+        if (!behavior_lower_component_write(b, n)) {
+            return false;
+        }
+        next = successor(b, n, 0, t.after);
     } else if (n->desc == &NODE_Branch || n->desc == &NODE_WhileLoop) {
         int condition = behavior_lower_input(b, n, 1);
         if (condition < 0 || b->function->slots[condition] != PIN_BOOL) {
@@ -341,6 +346,9 @@ behavior_function *behavior_function_lower(
     behavior_lower_finish_values(&b);
     if (valid) {
         compact_locals(b.function);
+        behavior_function_reuse_accesses(b.function);
+        compact_locals(b.function);
+        behavior_function_prune_values(b.function);
         behavior_function_optimize(b.function);
         return b.function;
     }

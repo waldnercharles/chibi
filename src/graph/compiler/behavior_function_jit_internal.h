@@ -25,6 +25,12 @@ bool behavior_jit_integer(
 );
 int behavior_jit_integer_move(pin_type type);
 int behavior_jit_result_fields(const behavior_machine *machine, int pc);
+bool behavior_jit_component(
+    const behavior_machine *m,
+    const behavior_function_instruction *i,
+    int dest,
+    sljit_sw offset
+);
 bool behavior_jit_memory(
     const behavior_machine *m,
     const behavior_function_instruction *i,

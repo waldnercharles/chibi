@@ -23,7 +23,10 @@ typedef struct
     const char *alias_of; /* optional underlying nominal type name */
 } type_desc;
 
-/* The only two functions that touch raw struct bytes. */
+/* Hash the reflected storage layout on the current target. */
+uint64_t type_layout_hash(const type_desc *type);
+
+/* Read and write reflected fields. */
 void pin_write_field(void *base, const type_field *f, pin_value v);
 void pin_read_field(const void *base, const type_field *f, pin_value *out);
 

@@ -25,10 +25,10 @@ static const type_desc pair_type = { .name = "WholePair",
                                      .size = sizeof(whole_pair),
                                      .fields = pair_fields,
                                      .field_count = 2 };
-static const type_desc record_type = { .name = "WholeRecord",
-                                       .size = sizeof(whole_record),
-                                       .fields = record_fields,
-                                       .field_count = 5 };
+const type_desc WHOLE_RECORD_TYPE = { .name = "WholeRecord",
+                                      .size = sizeof(whole_record),
+                                      .fields = record_fields,
+                                      .field_count = 5 };
 static pin_spec pair_pins[] = { { .name = "x", .type = PIN_F32, .type_name = "float" },
                                 { .name = "y", .type = PIN_F32, .type_name = "float" } };
 static pin_spec record_pins[] = {
@@ -53,25 +53,29 @@ static node_desc make_pair = { .name = "Make WholePair",
                                .output_count = 1 };
 static node_desc make_record = { .name = "Make WholeRecord",
                                  .pure_kind = NODE_PURE_MAKE,
-                                 .type = &record_type,
+                                 .type = &WHOLE_RECORD_TYPE,
                                  .inputs = record_pins,
                                  .input_count = 5,
                                  .outputs = record_pin,
                                  .output_count = 1 };
 static node_desc break_record = { .name = "Break WholeRecord",
                                   .pure_kind = NODE_PURE_BREAK,
-                                  .type = &record_type,
+                                  .type = &WHOLE_RECORD_TYPE,
                                   .inputs = record_pin,
                                   .input_count = 1,
                                   .outputs = record_pins,
                                   .output_count = 5 };
-static const type_desc *const types[] = { &pair_type, &record_type };
-static node_desc *const nodes[] = { &make_pair, &make_record, &break_record };
+static const type_desc *const types[] = { &pair_type, &WHOLE_RECORD_TYPE };
+static node_desc *const nodes[] = { &make_pair,
+                                    &make_record,
+                                    &break_record,
+                                    &WHOLE_NODE_GetRecord,
+                                    &WHOLE_NODE_SetWeight };
 const registry_pack WHOLE_VALUE_PACK = { .name = "Whole values",
                                          .types = types,
                                          .type_count = 2,
                                          .nodes = nodes,
-                                         .node_count = 3 };
+                                         .node_count = 5 };
 
 behavior_asset *whole_aggregate_fixture()
 {

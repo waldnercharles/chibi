@@ -28,6 +28,8 @@ typedef enum
     BF_LOCAL,
     BF_PRESENT,
     BF_TYPE_NAME,
+    BF_OWNER,
+    BF_WORLD,
     BF_ADD,
     BF_SUB,
     BF_MUL,
@@ -55,12 +57,17 @@ typedef enum
     BF_MOD_F32,
     BF_MOD_F64,
     BF_HYPOT,
+    BF_ENTITY,
+    BF_COMPONENT,
+    BF_LOAD,
     BF_STORE,
     BF_RESULT,
     BF_SAVE,
     BF_RESULT_PRESENT,
     BF_RESULT_TYPE_NAME,
     BF_REQUIRE,
+    BF_ASSERT,
+    BF_WRITE,
     BF_CHECK,
     BF_CALL_CHECK,
     BF_ENTER,
@@ -88,6 +95,8 @@ typedef struct
     bool indirect;
     uint64_t node_id;
     pin_value value;
+    uint64_t layout;
+    const char *message;
 } behavior_function_instruction;
 typedef struct
 {
@@ -120,9 +129,26 @@ struct behavior_function
     struct behavior_function *fast;
     unsigned root_steps, child_budget, depth_limit;
     unsigned pure_depth_limit;
+    bool component_bindings, component_access;
 };
+static inline bool behavior_function_left_slot(behavior_function_op op)
+{
+    return (op >= BF_ADD && op <= BF_SAVE) || op == BF_BRANCH ||
+           op == BF_REQUIRE || op == BF_ASSERT || op == BF_WRITE ||
+           op == BF_RESULT_PRESENT || op == BF_RESULT_TYPE_NAME;
+}
+static inline bool behavior_function_right_slot(behavior_function_op op)
+{
+    return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD) || op == BF_WRITE;
+}
+static inline bool behavior_function_integer_clobber(behavior_function_op op)
+{
+    return behavior_function_math(op) || op == BF_ENTITY || op == BF_COMPONENT;
+}
 void *behavior_function_jit(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
+void behavior_function_prune_values(behavior_function *function);
+void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_optimize(behavior_function *function);
 static inline bool behavior_function_fast_allowed(
     const behavior_function *f,

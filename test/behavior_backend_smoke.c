@@ -14,10 +14,17 @@
 #include <stdio.h>
 #include <string.h>
 
+static const type_desc entity_type = { .name = "ecs.entity", .size = sizeof(uint64_t) };
+static const type_desc *const entity_types[] = { &entity_type };
+static const registry_pack entity_pack = { .name = "Entity identity",
+                                           .types = entity_types,
+                                           .type_count = 1 };
+
 const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK,
                                                 &CORE_FLOW_PACK,
-                                                &WHOLE_VALUE_PACK };
-const int REGISTRY_PACK_COUNT = 3;
+                                                &WHOLE_VALUE_PACK,
+                                                &entity_pack };
+const int REGISTRY_PACK_COUNT = 4;
 
 int main()
 {
@@ -226,5 +233,6 @@ int main()
     arena_free(&storage);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
+    whole_component_smoke();
     return 0;
 }

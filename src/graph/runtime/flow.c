@@ -599,7 +599,13 @@ static int execute(flow_run *run)
         run->steps == 0 && acount(run->frames) == 1) {
         node *entry = frame_node(run, &run->frames[0]);
         const behavior_function *function = behavior_program_function(run->program, entry);
-        if (function) {
+        behavior_function_context host = { 0 };
+        if (function && behavior_function_bind(
+                            function,
+                            &host,
+                            run->services,
+                            behavior_instance_owner(run->instance).u64
+                        )) {
             node *ret = graph_node_by_id(run->graph, run->graph->return_id);
             behavior_function_context ctx = {
                 .variables = run->instance->variables,
@@ -609,6 +615,9 @@ static int execute(flow_run *run)
                 .delta_seconds = run->eval.delta_seconds,
                 .budget = run->step_budget,
                 .call_depth = run->call_depth,
+                .owner = host.owner,
+                .world = host.world,
+                .binding_world = host.binding_world,
             };
             behavior_function_prepare_results(function, ctx.results, &run->scratch);
             int result = behavior_function_run(function, &ctx, run->backend == BEHAVIOR_SLJIT);
@@ -621,7 +630,8 @@ static int execute(flow_run *run)
                     *source = behavior_function_source_at(function, ctx.error_source);
                 node *failed = graph_node_by_id(source->graph, ctx.node_id);
                 aclear(run->frames);
-                const char *message = ctx.failure == BEHAVIOR_FUNCTION_DEPTH
+                const char *message = ctx.error_message ? ctx.error_message
+                                    : ctx.failure == BEHAVIOR_FUNCTION_DEPTH
                                         ? "function call depth limit exceeded"
                                     : ctx.failure == BEHAVIOR_FUNCTION_NO_RETURN
                                         ? "function completed without Return"
@@ -1378,9 +1388,19 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         );
         if (result) {
             const eval_status *status = &ctx->run->eval.status;
-            flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, status->message);
+            /* A binding on the executing node fails at the flow boundary.
+             * Preserve the oracle's code and pin when inspection selects the
+             * general compiled path. Errors in upstream expressions retain
+             * their data-node source. */
+            bool binding = spec->binding && status->node == ctx->node &&
+                           status->pin == input_pin;
+            flow_context_fail(
+                ctx,
+                binding ? FLOW_ERR_NODE : FLOW_ERR_INVALID_GRAPH,
+                status->message
+            );
             ctx->run->error.node = status->node;
-            ctx->run->error.pin = status->pin;
+            ctx->run->error.pin = binding ? -1 : status->pin;
             return ctx->run->error.code;
         }
         return FLOW_OK;

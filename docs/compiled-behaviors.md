@@ -52,6 +52,19 @@ aggregate results allocate storage in the caller's arena. Null pass-through
 values remain null, and field access reports the original source node and pin.
 Generated single-field component conversions lower into field projections.
 
+Reflected component Get, Has, Set and field Set now lower into checked native
+loads/stores, including explicit entity targets, Self/default-Self handles and
+component input bindings. The ECS supplies a small storage view; generated code
+checks the entity generation, membership, presence and reflected layout before
+accessing a row. Registration and migration refresh that view. Straight control
+paths reuse validated addresses and forward local snapshots through typed slots;
+field values still reflect intervening writes. No node evaluator, component C
+accessor or temporary full-component allocation is required by these bodies.
+Managed component fields remain excluded. Custom component readers without an ECS
+execution view retain the general compiled callback path. See
+[component measurements and acceptance](research/whole-components.md).
+
+
 Mixed F32/F64 arithmetic preserves the language's subnormal rules. Floating-point
 Modulo, Atan2 and robust vector normalization call platform `fmodf`, `fmod`,
 `atan2f` and `hypot` directly from generated code. They do not call node evaluators.
@@ -71,8 +84,8 @@ other inputs remain unavailable through `flow_run_input_value`.
 
 See [whole-function and scheduler measurements](research/whole-function-performance.md)
 for the initial generated-C performance gates and queue benchmarks. The catalog
-now has one eligible event out of 33, `PlayerContactBehavior.Tick`, and one
-eligible effectful function body out of 31, `ArenaShardBehavior.Initialize Shard`.
+now has five eligible events out of 33 and three eligible effectful function
+bodies out of 31.
 All 39 pure local functions now have independently compiled bodies, as do
 three of the four linked library functions.
 These counts describe complete entries, not how many individual arithmetic

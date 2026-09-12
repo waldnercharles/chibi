@@ -2,10 +2,13 @@
 
 The whole-function compiler is not yet a completed gameplay migration. The
 September 12 audit of this isolated branch finds 19 behavior assets, 33 event
-entries, 70 local functions and four library functions. **One of the 33 event
-entries qualifies for whole-function execution**, `PlayerContactBehavior.Tick`.
-One of 31 effectful function bodies also qualifies,
-`ArenaShardBehavior.Initialize Shard`. All 39 pure local functions now execute whole compiled bodies, as do
+entries, 70 local functions and four library functions. Five of the 33 event
+entries qualify for whole-function execution: `PlayerContactBehavior.Tick`,
+`SurfacePulseBehavior.Begin`, `TwinStickInputBehavior.Input`,
+`TwinStickInputBehavior.Tick` and `TwinStickWeaponBehavior.Begin`.
+Three of 31 effectful function bodies qualify: `ArenaShardBehavior.Initialize Shard`,
+`ArenaShardBehavior.Advance Shard Motion` and `ProjectileBehavior.Face Direction`.
+All 39 pure local functions now execute whole compiled bodies, as do
 three of the four library functions. Pure calls inside general compiled events
 use these bodies directly; they no longer require callee runtime stores. The original request's larger
 asset/event counts describe another snapshot; acceptance must enumerate content,
@@ -40,8 +43,9 @@ branch. Removing one can expose another. Adding Max made the contact cooldown
 Tick eligible. F32/F64 coercion moved the ship-motion exclusion to a compound
 argument in a pure call. Integer arithmetic, comparisons, flags, explicit
 numeric casts, fixed-layout aggregates, vector normalization and field unwraps
-now lower into whole bodies. Component/entity operations and
-engine effects still exclude most entries. The [pure-function measurements](whole-pure-functions.md)
+now lower into whole bodies. Fixed-layout component Get/Has/Set, field writes, component bindings and entity
+validation now lower directly. Managed values and engine effects still exclude
+most entries. The [pure-function measurements](whole-pure-functions.md)
 show a 13.6% native Arena behavior-time reduction from executing eligible pure bodies directly. Scalar acyclic effectful calls
 and stored outputs now lower into the enclosing program; their previous
 exclusions have moved to the first unsupported operation inside the callee.
@@ -67,9 +71,11 @@ exclusions have moved to the first unsupported operation inside the callee.
    ForLoop, ForEach and Break.
    Eliminate runtime dispatch for these language operations. Scalar Set Variable
    and Call Function outputs now retain their execution values across blocks.
-3. **Engine calls from generated code.** Resolve component layouts, field
-   offsets, entity-reference checks and access contracts at publication. Compile
-   direct typed access where valid. The scalar C-call ABI now preserves live values across native math calls.
+3. **Engine calls from generated code.** Fixed-layout component layouts, field
+   offsets, Self and explicit entity checks now compile to direct access. Layout
+   changes invalidate the access with a source diagnostic before a read or write.
+   Add managed component fields, other entity operations and direct compiled
+   support for custom component readers without an ECS storage view. The scalar C-call ABI now preserves live values across native math calls.
    Generate explicit ABI calls for queries,
    spawning/destruction, physics, events, randomness and asynchronous host work.
    Retain deterministic ordering and staged structural mutations.

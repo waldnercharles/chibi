@@ -18,7 +18,8 @@
     X(PIN_U64, uint64_t, u64)                                                  \
     X(PIN_F32, float, f)                                                       \
     X(PIN_F64, double, d)                                                      \
-    X(PIN_ENUM, int32_t, e)
+    X(PIN_ENUM, int32_t, e)                                                    \
+    X(PIN_HANDLE, uint64_t, u64)
 
 static inline bool behavior_scalar_integer(pin_type type)
 {
@@ -36,7 +37,8 @@ static inline uint64_t behavior_scalar_bits(pin_value value)
         case PIN_I32: return (uint64_t)value.i;
         case PIN_U32: return value.u;
         case PIN_I64: return (uint64_t)value.i64;
-        case PIN_U64: return value.u64;
+        case PIN_U64:
+        case PIN_HANDLE: return value.u64;
         case PIN_ENUM: return (uint64_t)value.e;
         default: assert(false); return 0;
     }

@@ -41,6 +41,7 @@ typedef int (*eval_component_read_fn)(
 
 typedef struct eval_component_reader
 {
+    const struct ecs_execution_view *execution; /* Optional direct ECS storage ABI. */
     eval_component_read_fn read;
     void *user;
 } eval_component_reader;

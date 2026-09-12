@@ -39,6 +39,10 @@ typedef struct
     behavior_function_diagnostic *diagnostic;
 } builder;
 
+int behavior_lower_owner(builder *b);
+int behavior_lower_component_read(builder *b, node *n);
+bool behavior_lower_component_write(builder *b, node *n);
+int behavior_lower_component_binding(builder *b, node *n, int pin);
 bool behavior_lower_scalar(pin_type type);
 int behavior_lower_value(builder *b, behavior_function_instruction i);
 aggregate *behavior_lower_aggregate(builder *b, int slot);

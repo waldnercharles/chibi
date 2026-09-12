@@ -349,13 +349,11 @@ void behavior_lower_finish_values(builder *b)
         if (i->op < BF_STORE) {
             i->output = map[i->output];
         }
-        if ((i->op >= BF_ADD && i->op <= BF_SAVE) || i->op == BF_BRANCH ||
-            i->op == BF_REQUIRE || i->op == BF_RESULT_PRESENT ||
-            i->op == BF_RESULT_TYPE_NAME) {
+        if (behavior_function_left_slot(i->op)) {
             i->left = map[i->left];
-            if (i->op < BF_STORE) {
-                i->right = map[i->right];
-            }
+        }
+        if (behavior_function_right_slot(i->op)) {
+            i->right = map[i->right];
         }
         if (((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) ||
             i->op == BF_SELECT) {

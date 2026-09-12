@@ -10,7 +10,7 @@ static const char *field(pin_type type)
 }
 static void constant(FILE *out, pin_type type, pin_value value)
 {
-    if (behavior_scalar_integer(type)) {
+    if (behavior_scalar_integer(type) || type == PIN_HANDLE) {
         uint64_t bits = behavior_scalar_bits(value);
         fprintf(out, "(%s)UINT64_C(%llu)", behavior_scalar_c_type(type), (unsigned long long)bits);
         return;
@@ -58,6 +58,9 @@ static void enter_locals(FILE *out, const behavior_function *f, int frame)
 }
 static void failure(FILE *out, const behavior_function_instruction *i, behavior_function_failure reason)
 {
+    fputs("c->error_message=(const char*)", out);
+    type_name(out, i->message);
+    fputs(";", out);
     fprintf(
         out,
         "c->error_steps=steps;c->steps=%s;c->node_id=%lluULL;c->error_frame=%d;"
@@ -66,11 +69,11 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
         (unsigned long long)i->node_id,
         i->frame,
         i->source,
-        reason == BEHAVIOR_FUNCTION_DATA ? i->pin : -1,
+        reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1,
         reason,
-        reason == BEHAVIOR_FUNCTION_NO_RETURN || reason == BEHAVIOR_FUNCTION_DATA
-            ? FLOW_ERR_INVALID_GRAPH
-            : FLOW_ERR_STEP_BUDGET
+        reason == BEHAVIOR_FUNCTION_HOST_FLOW   ? FLOW_ERR_NODE
+        : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
+                                                : FLOW_ERR_STEP_BUDGET
     );
 }
 static void memory(FILE *out, const behavior_function_instruction *i)
@@ -139,6 +142,70 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             continue;
         }
         switch (i->op) {
+            case BF_OWNER: fprintf(out, "v%d=c->owner;\n", i->output); break;
+            case BF_WORLD:
+                fprintf(out, "v%d=(uintptr_t)c->%s;\n", i->output, i->target ? "binding_world" : "world");
+                break;
+            case BF_ENTITY:
+                fprintf(
+                    out,
+                    "v%d=ecs_execution_entity((const "
+                    "ecs_execution_view*)(uintptr_t)v%d,v%d);\n",
+                    i->output,
+                    i->left,
+                    i->right
+                );
+                break;
+            case BF_COMPONENT:
+                fprintf(
+                    out,
+                    "{const ecs_execution_column "
+                    "*column=ecs_execution_component((const "
+                    "ecs_execution_view*)(uintptr_t)v%d,v%d,UINT64_C(%llu));\n",
+                    i->left,
+                    i->right,
+                    (unsigned long long)i->value.u64
+                );
+                if (i->type == PIN_BOOL) {
+                    fprintf(out, "v%d=column!=NULL;}\n", i->output);
+                    break;
+                }
+                fprintf(
+                    out,
+                    "if(column&&(column->layout!=UINT64_C(%llu)||column->"
+                    "stride!=%zu)){",
+                    (unsigned long long)i->layout,
+                    i->offset
+                );
+                failure(out, i, i->target);
+                fprintf(out, "}v%d=column?(uintptr_t)column->data+v%d*column->stride:0;}\n", i->output, i->right);
+                break;
+            case BF_LOAD:
+                fprintf(
+                    out,
+                    "memcpy(&v%d,(const "
+                    "char*)(uintptr_t)v%d+%zu,sizeof(v%d));\n",
+                    i->output,
+                    i->left,
+                    i->offset,
+                    i->output
+                );
+                break;
+            case BF_WRITE:
+                fprintf(
+                    out,
+                    "memcpy((char*)(uintptr_t)v%d+%zu,&v%d,sizeof(v%d));\n",
+                    i->right,
+                    i->offset,
+                    i->left,
+                    i->left
+                );
+                break;
+            case BF_ASSERT:
+                fprintf(out, "if(!v%d){", i->left);
+                failure(out, i, i->target);
+                fprintf(out, "}\n");
+                break;
             case BF_TYPE_NAME:
                 fprintf(out, "v%d=", i->output);
                 type_name(out, i->value.str);
@@ -422,7 +489,7 @@ static void body(const behavior_function *f, FILE *out, char prefix)
 }
 void behavior_function_write_c(const behavior_function *f, FILE *out, const char *name)
 {
-    fprintf(out, "#include \"graph/compiler/behavior_function.h\"\n#include <math.h>\n#include <string.h>\nint %s(behavior_function_context *c) {\n", name);
+    fprintf(out, "#include \"graph/compiler/behavior_function.h\"\n#include <math.h>\n#include <string.h>\n#include \"ecs/execution.h\"\nint %s(behavior_function_context *c) {\n", name);
     if (f->fast) {
         fprintf(
             out,

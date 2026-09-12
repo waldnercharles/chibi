@@ -46,6 +46,23 @@ static void compiled_counter(behavior_backend backend)
     behavior_asset *asset = counter_asset();
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
     assert(behavior_instance_set_backend(instance, backend) == 0);
+    if (backend != BEHAVIOR_ORACLE) {
+        const behavior_graph_program
+            *program = behavior_program_graph(asset->program, asset->graph);
+        node *event = NULL, *delay = NULL;
+        for (int i = 0; i < acount(asset->graph->nodes); i++) {
+            node *n = asset->graph->nodes[i];
+            if (n->desc == &NODE_Event) {
+                event = n;
+            }
+            if (n->desc == &NODE_Delay) {
+                delay = n;
+            }
+        }
+        assert(event && delay && !behavior_program_diagnostic(asset->program));
+        const behavior_function_diagnostic *d = behavior_program_function_diagnostic(program, event);
+        assert(d && d->graph == asset->graph && d->node == delay && d->pin == -1);
+    }
     uint64_t eval_before = eval_oracle_calls();
     uint64_t flow_before = flow_oracle_calls();
     flow_error error = { 0 };
@@ -273,7 +290,10 @@ static void whole_function_control(behavior_backend backend)
     if (backend != BEHAVIOR_ORACLE) {
         const behavior_function
             *f = behavior_program_function(behavior_program_graph(a->program, g), event);
-        assert(f);
+        assert(
+            f &&
+            !behavior_program_function_diagnostic(behavior_program_graph(a->program, g), event)
+        );
         pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
         behavior_function_context ctx = { .variables = variables, .budget = 5 };
         assert(behavior_function_run(f, &ctx, backend == BEHAVIOR_SLJIT) == FLOW_ERR_STEP_BUDGET);

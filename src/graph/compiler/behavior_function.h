@@ -7,6 +7,14 @@
 typedef struct behavior_function behavior_function;
 typedef struct
 {
+    const graph *graph;
+    const node *node;
+    int pin;
+    bool output;
+    const char *reason;
+} behavior_function_diagnostic;
+typedef struct
+{
     pin_value *variables;
     const pin_value *arguments;
     int argument_count;
@@ -17,7 +25,12 @@ typedef struct
 } behavior_function_context;
 /* Complete synchronous scalar entry, or NULL if an operation requires the
  * general compiled runtime. No partial effects occur during eligibility checks. */
-behavior_function *behavior_function_lower(const behavior_asset *asset, graph *g, node *entry);
+behavior_function *behavior_function_lower(
+    const behavior_asset *asset,
+    graph *g,
+    node *entry,
+    behavior_function_diagnostic *diagnostic
+);
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);
 int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool native);

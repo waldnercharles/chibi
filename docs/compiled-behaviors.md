@@ -100,3 +100,7 @@ Verified on September 11, 2026: `make test`, `make build`, `make web`,
 `test_suite --behavior-parity`, `test_suite --compiled-arena`, and the native
 no-JIT smoke target all passed. Arena3D reported 63 live behavior instances for
 each compiled backend, with zero oracle calls through firing and restart.
+
+The [remaining whole-function migration](research/behavior-completion.md) lists
+the unresolved language/runtime work and the strict catalog coverage command.
+Backend parity passes do not imply that this coverage gate passes.

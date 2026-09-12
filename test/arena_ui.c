@@ -2713,6 +2713,27 @@ int compiled_arena_run(const char *program)
                                  behavior_program_graph(asset->program, asset->graph),
                                  entry
                              ) != NULL;
+                    if (mode == 0) {
+                        const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
+                            behavior_program_graph(asset->program, asset->graph),
+                            entry
+                        );
+                        if (d) {
+                            printf(
+                                "whole_exclusion asset=%s event=%s graph=%llu "
+                                "node=%llu type=%s pin=%d output=%d "
+                                "reason=%s\n",
+                                asset->name,
+                                entry->reference_name,
+                                (unsigned long long)d->graph->graph_id,
+                                (unsigned long long)d->node->id,
+                                d->node->desc->name,
+                                d->pin,
+                                d->output,
+                                d->reason
+                            );
+                        }
+                    }
                 }
             }
         }

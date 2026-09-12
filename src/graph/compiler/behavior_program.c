@@ -30,9 +30,16 @@ typedef struct
     int control;
 } compiled_node;
 
+typedef struct
+{
+    const node *entry;
+    behavior_function_diagnostic diagnostic;
+} function_exclusion;
+
 struct behavior_graph_program
 {
     graph *source;
+    function_exclusion *exclusions;
     graph_ir ir;
     compiled_node *nodes; /* indexed by stable authored node ID */
     void **code;          /* one native entry per data block */
@@ -226,6 +233,7 @@ void behavior_program_free(behavior_program *program)
         for (int j = 0; j < acount(p->expressions); j++) {
             behavior_jit_free(p->expressions[j]);
         }
+        afree(p->exclusions);
         afree(p->expressions);
         afree(p->nodes);
         afree(p->code);
@@ -363,7 +371,11 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
             if (n->desc != &NODE_Event) {
                 continue;
             }
-            behavior_function *f = behavior_function_lower(asset, p->source, n);
+            behavior_function_diagnostic exclusion;
+            behavior_function *f = behavior_function_lower(asset, p->source, n, &exclusion);
+            if (!f) {
+                apush(p->exclusions, ((function_exclusion){ n, exclusion }));
+            }
             p->nodes[n->id].function = f;
             if (f && program->backend == BEHAVIOR_SLJIT &&
                 !behavior_function_compile(f)) {
@@ -567,4 +579,17 @@ const behavior_function *behavior_program_function(
 )
 {
     return program->nodes[entry->id].function;
+}
+
+const behavior_function_diagnostic *behavior_program_function_diagnostic(
+    const behavior_graph_program *program,
+    const node *entry
+)
+{
+    for (int i = 0; i < acount(program->exclusions); i++) {
+        if (program->exclusions[i].entry == entry) {
+            return &program->exclusions[i].diagnostic;
+        }
+    }
+    return NULL;
 }

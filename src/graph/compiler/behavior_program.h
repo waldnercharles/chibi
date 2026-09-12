@@ -69,6 +69,12 @@ const behavior_function *behavior_program_function(
     const node *entry
 );
 
+/* An optimization exclusion, separate from publication errors. */
+const behavior_function_diagnostic *behavior_program_function_diagnostic(
+    const behavior_graph_program *program,
+    const node *entry
+);
+
 int behavior_program_block(const behavior_graph_program *program, const node *n);
 node *behavior_program_block_node(const behavior_graph_program *program, int block);
 int behavior_program_target(

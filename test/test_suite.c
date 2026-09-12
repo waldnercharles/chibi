@@ -4,6 +4,7 @@
 int shader_ui_run(const char *program);
 int arena_ui_run(const char *program);
 int compiled_arena_run(const char *program);
+int whole_function_audit();
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd);
 void run_behavior_loader_checks();
 void run_entity_presence_checks();
@@ -124,6 +125,10 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc > 1 && strcmp(argv[1], "--whole-function-audit") == 0) {
+        registry_validate();
+        return whole_function_audit();
+    }
     if (argc > 1 && strcmp(argv[1], "--compiled-arena") == 0) {
         registry_validate();
         return compiled_arena_run(program_name);

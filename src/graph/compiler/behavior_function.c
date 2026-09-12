@@ -30,7 +30,15 @@ typedef struct
     output *outputs;
     const node **evaluating;
     unsigned call_depth;
+    behavior_function_diagnostic *diagnostic;
 } builder;
+static int unsupported(builder *b, const node *n, int pin, bool output, const char *reason)
+{
+    if (!b->diagnostic->reason) {
+        *b->diagnostic = (behavior_function_diagnostic){ b->graph, n, pin, output, reason };
+    }
+    return -1;
+}
 static bool scalar(pin_type type)
 {
     return type == PIN_F32 || type == PIN_F64 || type == PIN_BOOL;
@@ -138,7 +146,7 @@ static int get_output(builder *b, node *n, int pin)
         !scalar(n->output_pins[pin].type) ||
         n->output_pins[pin].container != PIN_CONTAINER_SINGLE ||
         n->output_pins[pin].field_source) {
-        return -1;
+        return unsupported(b, n, pin, true, "output type, projection or disabled node");
     }
     for (int i = 0; i < acount(b->outputs); i++) {
         output *o = &b->outputs[i];
@@ -230,6 +238,9 @@ static int get_output(builder *b, node *n, int pin)
         }
     }
     apop(b->evaluating);
+    if (result < 0) {
+        return unsupported(b, n, pin, true, "data operation");
+    }
     if (result >= 0 && b->function->slots[result] != type) {
         return -1;
     }
@@ -242,14 +253,14 @@ static int input(builder *b, node *n, int pin)
 {
     const pin_spec *s = &n->input_pins[pin];
     if (!scalar(s->type) || s->container != PIN_CONTAINER_SINGLE || s->kind != PIN_DATA) {
-        return -1;
+        return unsupported(b, n, pin, false, "input type or container");
     }
     node *source;
     int source_pin;
     if (graph_input_source(b->graph, n, pin, &source, &source_pin)) {
         if (graph_input_conversion(b->graph, n, pin) ||
             source->output_pins[source_pin].type != s->type) {
-            return -1;
+            return unsupported(b, n, pin, false, "input conversion");
         }
         return get_output(b, source, source_pin);
     }
@@ -280,7 +291,7 @@ static int input(builder *b, node *n, int pin)
     if (binding->kind == PIN_BINDING_DELTA_TIME && s->type == PIN_F32) {
         return value(b, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 });
     }
-    return -1;
+    return unsupported(b, n, pin, false, "input binding");
 }
 static int schedule(builder *b, node *n, int after)
 {
@@ -321,6 +332,7 @@ static bool block(builder *b, int index)
     task t = b->tasks[index];
     node *n = t.node;
     if (n->disabled || n->breakpoint) {
+        unsupported(b, n, -1, false, "disabled node or breakpoint");
         return false;
     }
     b->tasks[index].pc = acount(b->function->instructions);
@@ -365,6 +377,7 @@ static bool block(builder *b, int index)
             }
         }
     } else {
+        unsupported(b, n, -1, false, "control operation");
         return false;
     }
     if (next < -1) {
@@ -373,9 +386,16 @@ static bool block(builder *b, int index)
     emit(b, (behavior_function_instruction){ .op = BF_JUMP, .target = next });
     return true;
 }
-behavior_function *behavior_function_lower(const behavior_asset *asset, graph *g, node *entry)
+behavior_function *behavior_function_lower(
+    const behavior_asset *asset,
+    graph *g,
+    node *entry,
+    behavior_function_diagnostic *diagnostic
+)
 {
-    builder b = { .asset = asset,
+    *diagnostic = (behavior_function_diagnostic){ 0 };
+    builder b = { .diagnostic = diagnostic,
+                  .asset = asset,
                   .graph = g,
                   .function = xcalloc(1, sizeof(behavior_function)) };
     schedule(&b, entry, -1);
@@ -396,6 +416,7 @@ behavior_function *behavior_function_lower(const behavior_asset *asset, graph *g
     if (valid) {
         return b.function;
     }
+    unsupported(&b, entry, -1, false, "control shape, breakpoint or compilation limit");
     behavior_function_free(b.function);
     return NULL;
 }

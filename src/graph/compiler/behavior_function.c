@@ -10,24 +10,34 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int schedule(builder *b, node *n, int after)
+int behavior_lower_schedule(builder *b, task t)
 {
-    if (!n) {
-        return after;
+    if (!t.node) {
+        return t.after;
     }
     for (int i = 0; i < acount(b->tasks); i++) {
-        if (b->tasks[i].node == n && b->tasks[i].after == after &&
-            b->tasks[i].frame == b->frame) {
+        const task *stored = &b->tasks[i];
+        if (stored->node == t.node && stored->after == t.after &&
+            stored->frame == t.frame && stored->loop == t.loop &&
+            stored->input == t.input && stored->continuation == t.continuation) {
             return i;
         }
     }
     if (acount(b->tasks) >= 1024) {
         return -2;
     }
-    apush(b->tasks, ((task){ n, after, -1, b->frame }));
+    int parent = t.after >= 0 ? b->tasks[t.after].stack
+                              : b->function->frames[t.frame].stack;
+    t.stack = acount(b->function->stacks);
+    apush(
+        b->function->stacks,
+        ((behavior_function_source){ b->function->frames[t.frame].source.graph, t.node, parent })
+    );
+    t.pc = -1;
+    apush(b->tasks, t);
     return acount(b->tasks) - 1;
 }
-static int successor(builder *b, node *n, int pin, int after)
+int behavior_lower_successor(builder *b, node *n, int pin, int after)
 {
     const edge *e = NULL;
     int count = graph_exec_output_edges(b->graph, n, pin, &e);
@@ -39,11 +49,15 @@ static int successor(builder *b, node *n, int pin, int after)
     }
     node *target = graph_node_by_id(b->graph, e->to_id);
     int output, index;
-    if (!target || !graph_pin_by_id(target, e->to_pin_id, &output, &index) ||
-        output || index != 0) {
+    if (!target || !graph_pin_by_id(target, e->to_pin_id, &output, &index) || output ||
+        (index != 0 && !(index == 1 && (target->desc == &NODE_ForLoopWithBreak ||
+                                        target->desc == &NODE_ForEachWithBreak)))) {
         return -2;
     }
-    return schedule(b, target, after);
+    return behavior_lower_schedule(
+        b,
+        (task){ .node = target, .after = after, .frame = b->frame, .loop = b->loop, .input = index }
+    );
 }
 static int call(builder *b, node *n, int after)
 {
@@ -66,19 +80,22 @@ static int call(builder *b, node *n, int after)
         entry->output_pins[0].kind != PIN_EXEC) {
         return behavior_lower_unsupported(b, n, -1, false, "function entry or return");
     }
-    int resume = successor(b, n, 0, after);
+    int resume = behavior_lower_successor(b, n, 0, after);
     if (resume < -1) {
         return -2;
     }
     int parent = b->frame, frame = acount(b->function->frames);
     int source = acount(b->function->sources);
     apush(b->function->sources, ((behavior_function_source){ target, n, b->source }));
+    int stack = acount(b->function->stacks);
+    apush(b->function->stacks, ((behavior_function_source){ b->graph, n, b->stack }));
     apush(
         b->function->frames,
         ((behavior_function_frame){ .source = { target, n, parent },
                                     .depth = b->function->frames[parent].depth + 1,
                                     .resume = resume,
-                                    .source_index = source })
+                                    .source_index = source,
+                                    .stack = stack })
     );
     if (target->call_depth_limit) {
         behavior_lower_emit(
@@ -121,9 +138,12 @@ static int call(builder *b, node *n, int after)
     afree(args);
     afree(parameters);
     int end = acount(b->tasks);
-    apush(b->tasks, ((task){ .pc = -1, .after = -1, .frame = frame }));
+    apush(b->tasks, ((task){ .pc = -1, .after = -1, .frame = frame, .stack = stack }));
     b->frame = frame;
-    int next = schedule(b, entry, end);
+    int next = behavior_lower_schedule(
+        b,
+        (task){ .node = entry, .after = end, .frame = frame, .loop = -1 }
+    );
     b->frame = parent;
     return next;
 }
@@ -171,6 +191,8 @@ static bool block(builder *b, int index)
     task t = b->tasks[index];
     node *n = t.node;
     b->frame = t.frame;
+    b->loop = t.loop;
+    b->stack = t.stack;
     behavior_function_frame frame = b->function->frames[b->frame];
     b->graph = frame.source.graph;
     b->source = frame.source_index;
@@ -194,9 +216,10 @@ static bool block(builder *b, int index)
         return false;
     }
     behavior_lower_emit(b, (behavior_function_instruction){ .op = BF_CHECK, .node_id = n->id });
+    b->stack = b->function->stacks[t.stack].parent;
     int next = -2;
     if (n->desc == &NODE_Event || n->desc == &NODE_FunctionEntry) {
-        next = successor(b, n, 0, t.after);
+        next = behavior_lower_successor(b, n, 0, t.after);
     } else if (n->desc == &NODE_Return && n->id == b->graph->return_id) {
         return return_values(b, n);
     } else if (n->desc == &NODE_CallFunction) {
@@ -219,20 +242,21 @@ static bool block(builder *b, int index)
             behavior_lower_unsupported(b, n, 1, false, "persistent aggregate write");
             return false;
         }
-        next = successor(b, n, 0, t.after);
+        next = behavior_lower_successor(b, n, 0, t.after);
     } else if (n->desc->component_kind) {
         if (!behavior_lower_component_write(b, n)) {
             return false;
         }
-        next = successor(b, n, 0, t.after);
-    } else if (n->desc == &NODE_Branch || n->desc == &NODE_WhileLoop) {
+        next = behavior_lower_successor(b, n, 0, t.after);
+    } else if (n->desc == &NODE_WhileLoop || n->desc == &NODE_ForLoop || n->desc == &NODE_ForLoopWithBreak || n->desc == &NODE_Break) {
+        next = behavior_lower_loop(b, t);
+    } else if (n->desc == &NODE_Branch) {
         int condition = behavior_lower_input(b, n, 1);
         if (condition < 0 || b->function->slots[condition] != PIN_BOOL) {
             return false;
         }
-        bool loop = n->desc == &NODE_WhileLoop;
-        int yes = successor(b, n, 0, loop ? index : t.after);
-        int no = successor(b, n, 1, t.after);
+        int yes = behavior_lower_successor(b, n, 0, t.after);
+        int no = behavior_lower_successor(b, n, 1, t.after);
         if (yes < -1 || no < -1) {
             return false;
         }
@@ -244,7 +268,7 @@ static bool block(builder *b, int index)
     } else if (n->desc == &NODE_Sequence) {
         next = t.after;
         for (int i = n->output_count - 1; i >= 0; i--) {
-            next = successor(b, n, i, next);
+            next = behavior_lower_successor(b, n, i, next);
             if (next < -1) {
                 return false;
             }
@@ -318,9 +342,11 @@ behavior_function *behavior_function_lower(
                   .graph = g,
                   .entry = entry,
                   .root_entry = entry,
+                  .loop = -1,
+                  .stack = -1,
                   .function = xcalloc(1, sizeof(behavior_function)) };
     apush(b.function->sources, ((behavior_function_source){ g, NULL, -1 }));
-    apush(b.function->frames, ((behavior_function_frame){ .source = { g, NULL, -1 } }));
+    apush(b.function->frames, ((behavior_function_frame){ .source = { g, NULL, -1 }, .stack = -1 }));
     bool valid = true;
     bool pure = g->kind == GRAPH_FUNCTION &&
                 (!entry->output_count || entry->output_pins[0].kind != PIN_EXEC);
@@ -328,7 +354,7 @@ behavior_function *behavior_function_lower(
         node *ret = graph_node_by_id(g, g->return_id);
         valid = ret && return_values(&b, ret);
     } else {
-        schedule(&b, entry, -1);
+        behavior_lower_schedule(&b, (task){ .node = entry, .after = -1, .loop = -1 });
         for (int i = 0; valid && i < acount(b.tasks); i++) {
             valid = block(&b, i);
         }
@@ -341,10 +367,12 @@ behavior_function *behavior_function_lower(
         }
     }
     afree(b.tasks);
+    afree(b.loops);
     afree(b.outputs);
     afree(b.evaluating);
     behavior_lower_finish_values(&b);
     if (valid) {
+        behavior_function_constant_locals(b.function);
         compact_locals(b.function);
         behavior_function_reuse_accesses(b.function);
         compact_locals(b.function);
@@ -369,6 +397,7 @@ void behavior_function_free(behavior_function *f)
     afree(f->locals);
     afree(f->frames);
     afree(f->sources);
+    afree(f->stacks);
     afree(f->results);
     free(f);
 }
@@ -407,4 +436,9 @@ void behavior_function_prepare_results(const behavior_function *f, pin_value *re
                                         .type_name = r.type->name,
                                         .ptr = data };
     }
+}
+
+const behavior_function_source *behavior_function_stack_at(const behavior_function *f, int stack)
+{
+    return &f->stacks[stack];
 }

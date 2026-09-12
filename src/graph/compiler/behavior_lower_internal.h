@@ -21,8 +21,14 @@ typedef struct
 typedef struct
 {
     node *node;
-    int after, pc, frame;
+    int after, pc, frame, loop, input, stack;
+    bool continuation;
 } task;
+typedef struct
+{
+    const node *node;
+    int parent, current, last, step, broken, completed, next;
+} lowered_loop;
 typedef struct
 {
     behavior_function *function;
@@ -31,14 +37,19 @@ typedef struct
     const node *entry;
     const node *root_entry;
     task *tasks;
+    lowered_loop *loops;
     output *outputs;
     const node **evaluating;
     aggregate *aggregates;
     unsigned call_depth;
-    int frame, source;
+    int frame, source, loop, stack;
     behavior_function_diagnostic *diagnostic;
 } builder;
 
+int behavior_lower_schedule(builder *b, task t);
+int behavior_lower_successor(builder *b, node *n, int pin, int after);
+int behavior_lower_loop(builder *b, task t);
+int behavior_lower_hidden_local(builder *b, const node *n, int key, pin_type type);
 int behavior_lower_owner(builder *b);
 int behavior_lower_component_read(builder *b, node *n);
 bool behavior_lower_component_write(builder *b, node *n);

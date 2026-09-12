@@ -35,7 +35,7 @@ The measured improvement is specific to eligible computation; the Arena trial
 has not demonstrated a whole-scene speedup.
 
 Synchronous scalar event and effectful function entries can use a whole-function
-program, including branches, Sequence, WhileLoop, variable access, scalar event
+program, including branches, Sequence, WhileLoop, ForLoop, ForLoopWithBreak, Break, variable access, scalar event
 and function arguments, multiple returns, Min/Max, F32/F64 coercion and inlined
 pure local/library calls. Defaults and argument type checks execute in generated
 code. Return terminates the function even inside a Sequence or loop. SLJIT retains
@@ -43,6 +43,16 @@ scalar temporaries in registers; the same instructions have bytecode and
 generated-C implementations. Scalar acyclic effectful calls inline into the same
 program using typed locals and logical frames, with independent budgets and
 source stacks. Instrumented or unsupported calls still use pooled activations.
+
+Counted loops snapshot their endpoints and direction once. They preserve inclusive
+ascending and descending ranges, stored Index outputs, early Return, and Break's
+queued Sequence tails. Functions have independent loop scopes and budgets.
+Native loops retain scalar state in registers and use explicit branches; portable
+bytecode and emitted C execute the same lowered control flow. Static continuation
+records preserve pending loop/Sequence frames in budget and Break diagnostics.
+Numeric edge conversions use the same compiled saturating casts as explicit nodes.
+See [loop parity and performance results](research/whole-loops.md); the loop
+microbenchmark still exceeds the native/C performance limit.
 
 Fixed-layout structs and vectors now lower into scalar fields with separate
 presence and nominal-type metadata. Make, Break, projected fields, aggregate

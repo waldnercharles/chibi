@@ -421,3 +421,51 @@ void behavior_function_reuse_accesses(behavior_function *f)
     free(incoming);
     free(locals);
 }
+
+/* Fold locals whose only writes repeat their initial scalar value, including
+ * loop break flags when the body has no Break. No control-flow assumption is
+ * needed: entry, re-entry and every store all write the same bits. */
+void behavior_function_constant_locals(behavior_function *f)
+{
+    bool *constant = xcalloc((size_t)(acount(f->locals) + 1), sizeof *constant);
+    const behavior_function_instruction *
+        *definitions = xcalloc((size_t)(acount(f->slots) + 1), sizeof *definitions);
+    for (int i = 0; i < acount(f->locals); i++) {
+        constant[i] = f->locals[i].offset != SIZE_MAX - 1;
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op < BF_STORE) {
+            definitions[i->output] = i;
+        }
+        if (i->op == BF_SAVE) {
+            const behavior_function_instruction *value = definitions[i->left];
+            pin_value initial = f->locals[i->target].initial;
+            constant[i->target] &= value && value->op == BF_CONSTANT &&
+                                   value->type == initial.type &&
+                                   !memcmp(
+                                       &value->value.d,
+                                       &initial.d,
+                                       behavior_scalar_size(initial.type)
+                                   );
+        }
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_LOCAL && constant[i->left]) {
+            i->value = f->locals[i->left].initial;
+            i->op = BF_CONSTANT;
+        }
+        if (i->op == BF_BRANCH) {
+            const behavior_function_instruction *condition = definitions[i->left];
+            if (condition && condition->op == BF_CONSTANT) {
+                i->op = BF_JUMP;
+                if (!condition->value.b) {
+                    i->target = pc + 1;
+                }
+            }
+        }
+    }
+    free(definitions);
+    free(constant);
+}

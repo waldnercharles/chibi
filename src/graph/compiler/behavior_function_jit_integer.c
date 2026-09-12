@@ -11,7 +11,7 @@ int behavior_jit_integer_move(pin_type type)
         case PIN_U16: return SLJIT_MOV_U16;
         case PIN_I16: return SLJIT_MOV_S16;
         case PIN_I32:
-        case PIN_ENUM: return SLJIT_MOV_S32;
+        case PIN_ENUM: return SLJIT_MOV32;
         case PIN_U32: return SLJIT_MOV_U32;
         case PIN_I64:
         case PIN_U64:
@@ -97,7 +97,7 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
     }
     if (from == PIN_I32) {
         load(m, i->left, SLJIT_R0);
-        sljit_emit_op1(c, SLJIT_MOV, dest, offset, SLJIT_R0, 0);
+        sljit_emit_op1(c, SLJIT_MOV_S32, dest, offset, SLJIT_R0, 0);
         return;
     }
     int source = m->registers[i->left];
@@ -166,6 +166,23 @@ static void arithmetic(
     struct sljit_compiler *c = m->compiler;
     pin_type type = m->function->slots[i->left];
     int flags = behavior_scalar_size(type) == 8 ? 0 : SLJIT_32;
+    if (i->op == BF_ADD || i->op == BF_SUB || i->op == BF_MUL) {
+        int left = m->registers[i->left], right = m->registers[i->right];
+        sljit_emit_op2(
+            c,
+            (i->op == BF_ADD   ? SLJIT_ADD
+             : i->op == BF_SUB ? SLJIT_SUB
+                               : SLJIT_MUL) |
+                flags,
+            dest,
+            offset,
+            left ? left : SLJIT_MEM1(SLJIT_SP),
+            left ? 0 : i->left * sizeof(double),
+            right ? right : SLJIT_MEM1(SLJIT_SP),
+            right ? 0 : i->right * sizeof(double)
+        );
+        return;
+    }
     load(m, i->left, SLJIT_R0);
     if (i->op != BF_NEG && i->op != BF_ABS) {
         load(m, i->right, SLJIT_R1);
@@ -230,7 +247,8 @@ static void arithmetic(
         if (positive) {
             bind(c, positive);
         }
-    } else if (i->op == BF_MIN || i->op == BF_MAX) {
+    } else {
+        assert(i->op == BF_MIN || i->op == BF_MAX);
         struct sljit_jump *left = sljit_emit_cmp(
             c,
             (i->op == BF_MIN ? SLJIT_SIG_LESS : SLJIT_SIG_GREATER) | flags,
@@ -241,21 +259,6 @@ static void arithmetic(
         );
         sljit_emit_op1(c, behavior_jit_integer_move(type), SLJIT_R0, 0, SLJIT_R1, 0);
         bind(c, left);
-    } else {
-        assert(i->op == BF_ADD || i->op == BF_SUB || i->op == BF_MUL);
-        sljit_emit_op2(
-            c,
-            (i->op == BF_ADD   ? SLJIT_ADD
-             : i->op == BF_SUB ? SLJIT_SUB
-                               : SLJIT_MUL) |
-                flags,
-            SLJIT_R0,
-            0,
-            SLJIT_R0,
-            0,
-            SLJIT_R1,
-            0
-        );
     }
     sljit_emit_op1(c, behavior_jit_integer_move(type), dest, offset, SLJIT_R0, 0);
 }
@@ -294,6 +297,20 @@ bool behavior_jit_integer(
             return true;
         case BF_LOCAL:
         case BF_VARIABLE:
+            if (i->op == BF_LOCAL && m->local_registers[i->left]) {
+                if (dest == m->local_registers[i->left]) {
+                    return true;
+                }
+                sljit_emit_op1(
+                    c,
+                    behavior_jit_integer_move(i->type),
+                    dest,
+                    offset,
+                    m->local_registers[i->left],
+                    0
+                );
+                return true;
+            }
             sljit_emit_op1(
                 c,
                 behavior_jit_integer_move(i->type),
@@ -309,6 +326,13 @@ bool behavior_jit_integer(
         case BF_SAVE:
         case BF_STORE:
         case BF_RESULT: {
+            if (i->op == BF_SAVE && m->local_registers[i->target]) {
+                if (m->registers[i->left] == m->local_registers[i->target]) {
+                    return true;
+                }
+                load(m, i->left, m->local_registers[i->target]);
+                return true;
+            }
             int base = m->variables;
             sljit_sw address = i->target * sizeof(pin_value) + offsetof(pin_value, d);
             if (i->op == BF_SAVE) {

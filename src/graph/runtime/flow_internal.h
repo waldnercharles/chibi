@@ -41,7 +41,7 @@ struct flow_run
     bool profile_started;
     bool whole_function_executed;
     const struct behavior_function *whole_function;
-    int whole_error_source;
+    int whole_error_stack;
     unsigned long long topology_revision;
     flow_clock_fn now;
     void *now_user;

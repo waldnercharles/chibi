@@ -29,12 +29,14 @@ static int fail(
     ctx->node_id = i->node_id;
     ctx->error_frame = i->frame;
     ctx->error_source = i->source;
+    ctx->error_stack = i->stack;
     ctx->error_pin = reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1;
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
     ctx->error_message = i->message;
-    return reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
+    return reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
+         : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
          : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
                                                  : FLOW_ERR_STEP_BUDGET;
 }

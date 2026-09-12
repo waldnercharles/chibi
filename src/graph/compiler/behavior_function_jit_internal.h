@@ -8,10 +8,16 @@ typedef struct
 {
     struct sljit_compiler *compiler;
     const behavior_function *function;
-    const int *registers;
+    const int *registers, *local_registers;
     int context, steps, variables, arguments, argument_count;
     int locals, parents;
+    bool countdown;
 } behavior_machine;
+int *behavior_jit_registers(const behavior_function *f, bool integers, int *saved_count);
+int *behavior_jit_local_registers(const behavior_function *f, int base, int scratch, int *count);
+void behavior_jit_alias_locals(const behavior_function *f, int *registers, const int *locals);
+void behavior_jit_coalesce_saves(const behavior_function *f, int *registers, const int *locals);
+bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 void behavior_jit_failure(
     const behavior_machine *m,
     const behavior_function_instruction *i,

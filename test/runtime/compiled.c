@@ -733,6 +733,8 @@ static void whole_pure_calls(behavior_backend backend)
 void test_compiled_behaviors()
 {
     test_compiled_components();
+    test_compiled_loops();
+    test_compiled_conversions();
     test_compiled_aggregates();
     test_compiled_math();
     test_compiled_integers();

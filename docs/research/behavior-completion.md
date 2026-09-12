@@ -43,7 +43,10 @@ branch. Removing one can expose another. Adding Max made the contact cooldown
 Tick eligible. F32/F64 coercion moved the ship-motion exclusion to a compound
 argument in a pure call. Integer arithmetic, comparisons, flags, explicit
 numeric casts, fixed-layout aggregates, vector normalization and field unwraps
-now lower into whole bodies. Fixed-layout component Get/Has/Set, field writes, component bindings and entity
+now lower into whole bodies. Counted ranges, While continuations and Break now
+lower into explicit compiled control flow. Numeric edge conversions share the
+same saturating casts as explicit conversion nodes. Fixed-layout component
+Get/Has/Set, field writes, component bindings and entity
 validation now lower directly. Managed values and engine effects still exclude
 most entries. The [pure-function measurements](whole-pure-functions.md)
 show a 13.6% native Arena behavior-time reduction from executing eligible pure bodies directly. Scalar acyclic effectful calls
@@ -68,8 +71,12 @@ exclusions have moved to the first unsupported operation inside the callee.
    preserve nulls and nominal type names across calls; final results are owned
    by the caller. Add remaining scalar operations, native 32-bit wide-integer
    lowering, persistent aggregate writes, arrays and managed fields/ownership;
-   ForLoop, ForEach and Break.
-   Eliminate runtime dispatch for these language operations. Scalar Set Variable
+   ForEach and recursive loop activations. ForLoop, ForLoopWithBreak and Break
+   are implemented, including reverse/inclusive ranges, endpoint snapshots and
+   queued Sequence tails.
+   Eliminate runtime dispatch for the remaining language operations. The
+   [loop measurements](whole-loops.md) still fail the 1.5x native/C gate; that
+   performance work remains open. Scalar Set Variable
    and Call Function outputs now retain their execution values across blocks.
 3. **Engine calls from generated code.** Fixed-layout component layouts, field
    offsets, Self and explicit entity checks now compile to direct access. Layout

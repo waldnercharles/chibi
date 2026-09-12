@@ -4,6 +4,7 @@
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
+#include "test/whole_loop_fixture.h"
 #include "whole_aggregate_fixture.h"
 #include "whole_function_fixture.h"
 #include "whole_integer_fixture.h"
@@ -234,5 +235,6 @@ int main()
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     whole_component_smoke();
+    whole_loop_smoke();
     return 0;
 }

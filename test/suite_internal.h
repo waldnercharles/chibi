@@ -51,6 +51,10 @@
 void test_encounter_backend_parity();
 void test_compiled_behaviors();
 void test_compiled_components();
+void test_compiled_loops();
+void test_compiled_conversions();
+void emit_loop_c(const char *path);
+int bench_loop(const char *path, int count, int rotation, int length);
 void emit_component_c(const char *path);
 int bench_component(const char *path, int count, int rotation);
 behavior_asset *whole_component_fixture(int mode);

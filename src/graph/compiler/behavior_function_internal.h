@@ -89,7 +89,7 @@ typedef struct
 {
     behavior_function_op op;
     pin_type type;
-    int output, left, right, target, frame, source;
+    int output, left, right, target, frame, source, stack;
     int pin;
     size_t offset;
     bool indirect;
@@ -114,7 +114,7 @@ typedef struct
 typedef struct
 {
     behavior_function_source source;
-    int depth, resume, source_index;
+    int depth, resume, source_index, stack;
 } behavior_function_frame;
 struct behavior_function
 {
@@ -122,7 +122,7 @@ struct behavior_function
     pin_type *slots;
     behavior_function_local *locals;
     behavior_function_frame *frames;
-    behavior_function_source *sources;
+    behavior_function_source *sources, *stacks;
     behavior_function_result *results;
     void *code;
     void *dispatch;
@@ -147,6 +147,7 @@ static inline bool behavior_function_integer_clobber(behavior_function_op op)
 }
 void *behavior_function_jit(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
+void behavior_function_constant_locals(behavior_function *function);
 void behavior_function_prune_values(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_optimize(behavior_function *function);

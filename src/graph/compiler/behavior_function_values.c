@@ -34,10 +34,35 @@ bool behavior_lower_scalar(pin_type type)
     return (type >= PIN_BOOL && type <= PIN_F64) || type == PIN_ENUM ||
            type == PIN_HANDLE;
 }
+static int data_stack(builder *b, int source, int base)
+{
+    if (source == b->function->frames[b->frame].source_index) {
+        return base;
+    }
+    behavior_function_source call = b->function->sources[source];
+    int parent = data_stack(b, call.parent, base);
+    int index = acount(b->function->stacks);
+    apush(
+        b->function->stacks,
+        ((behavior_function_source){ b->function->sources[call.parent].graph, call.call, parent })
+    );
+    return index;
+}
 int behavior_lower_emit(builder *b, behavior_function_instruction i)
 {
     i.frame = b->frame;
     i.source = b->source;
+    i.stack = b->stack;
+    if (i.node_id && b->source != b->function->frames[b->frame].source_index &&
+        (i.op == BF_DIV || i.op == BF_MOD || i.op == BF_REQUIRE ||
+         i.op == BF_ASSERT || i.op == BF_COMPONENT || i.op == BF_CALL_CHECK)) {
+        int parent = data_stack(b, b->source, b->stack);
+        i.stack = acount(b->function->stacks);
+        apush(
+            b->function->stacks,
+            ((behavior_function_source){ b->graph, graph_node_by_id(b->graph, i.node_id), parent })
+        );
+    }
     apush(b->function->instructions, i);
     return acount(b->function->instructions) - 1;
 }
@@ -418,6 +443,27 @@ done:
     afree(returns);
     return result;
 }
+static int numeric_cast(builder *b, int slot, const node_desc *conversion, pin_type to)
+{
+    if (slot < 0) {
+        return -1;
+    }
+    pin_type from = b->function->slots[slot];
+    bool real = conversion == &NODE_To_Real && to == PIN_F64 &&
+                (from == PIN_U8 || from == PIN_I32 || from == PIN_I64);
+    bool integer = ((conversion == &NODE_To_Byte && to == PIN_U8) ||
+                    (conversion == &NODE_To_Integer && to == PIN_I32) ||
+                    (conversion == &NODE_To_Integer64 && to == PIN_I64)) &&
+                   (from == PIN_F32 || from == PIN_F64 ||
+                    (from == PIN_I32 && to == PIN_I64));
+    if (!real && !integer) {
+        return -1;
+    }
+    return behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_CAST, .type = to, .left = slot, .right = slot }
+    );
+}
 static int get_output(builder *b, node *n, int pin)
 {
     if (pin < 0 || pin >= n->output_count || n->disabled ||
@@ -460,6 +506,7 @@ static int get_output(builder *b, node *n, int pin)
         }
     } else if (
         n == b->entry || n->desc == &NODE_SetVariable || n->desc == &NODE_CallFunction ||
+        n->desc == &NODE_ForLoop || n->desc == &NODE_ForLoopWithBreak ||
         n->desc->component_kind == NODE_COMPONENT_SET_SELF ||
         n->desc->component_kind == NODE_COMPONENT_SET_ENTITY ||
         n->desc->component_kind == NODE_COMPONENT_SET_FIELD
@@ -639,26 +686,10 @@ static int get_output(builder *b, node *n, int pin)
             );
         }
     }
-    if (n->input_count == 1 && n->desc->pure_kind == NODE_PURE_CALL) {
-        pin_type from = n->input_pins[0].type;
-        bool to_real = n->desc == &NODE_To_Real && type == PIN_F64 &&
-                       (from == PIN_U8 || from == PIN_I32 || from == PIN_I64);
-        bool to_integer = ((n->desc == &NODE_To_Byte && type == PIN_U8) ||
-                           (n->desc == &NODE_To_Integer && type == PIN_I32) ||
-                           (n->desc == &NODE_To_Integer64 && type == PIN_I64)) &&
-                          (from == PIN_F32 || from == PIN_F64 ||
-                           (from == PIN_I32 && type == PIN_I64));
-        if (to_real || to_integer) {
-            int left = behavior_lower_input(b, n, 0);
-            if (left >= 0) {
-                result = behavior_lower_value(
-                    b,
-                    (
-                        behavior_function_instruction
-                    ){ .op = BF_CAST, .type = type, .left = left, .right = left }
-                );
-            }
-        }
+    if (n->input_count == 1 &&
+        (n->desc == &NODE_To_Real || n->desc == &NODE_To_Byte ||
+         n->desc == &NODE_To_Integer || n->desc == &NODE_To_Integer64)) {
+        result = numeric_cast(b, behavior_lower_input(b, n, 0), n->desc, type);
     }
     apop(b->evaluating);
     if (result < 0) {
@@ -681,6 +712,12 @@ static int edge_conversion(builder *b, int slot, const node_desc *conversion, no
     aggregate *a = behavior_lower_aggregate(b, slot);
     if (conversion->jit_kind == NODE_JIT_UNWRAP && a && a->type->field_count == 1) {
         return behavior_lower_field(b, slot, &a->type->fields[0], n, pin);
+    }
+    if (conversion->output_count == 1) {
+        int converted = numeric_cast(b, slot, conversion, conversion->outputs[0].type);
+        if (converted >= 0) {
+            return converted;
+        }
     }
     return behavior_lower_unsupported(b, n, pin, false, "input conversion");
 }

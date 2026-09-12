@@ -81,6 +81,10 @@ static int scalar_local(builder *b, int frame, const node *n, int pin, size_t of
     );
     return acount(b->function->locals) - 1;
 }
+int behavior_lower_hidden_local(builder *b, const node *n, int key, pin_type type)
+{
+    return scalar_local(b, b->frame, n, -1 - key, 0, (pin_value){ .type = type });
+}
 int behavior_lower_source(
     builder *b,
     behavior_function_op op,

@@ -625,7 +625,7 @@ static int execute(flow_run *run)
             run->whole_function = function;
             run->steps = ctx.steps;
             if (result) {
-                run->whole_error_source = ctx.error_source;
+                run->whole_error_stack = ctx.error_stack;
                 const behavior_function_source
                     *source = behavior_function_source_at(function, ctx.error_source);
                 node *failed = graph_node_by_id(source->graph, ctx.node_id);
@@ -822,7 +822,7 @@ flow_run *flow_run_start_reuse(
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
-    run->whole_error_source = 0;
+    run->whole_error_stack = -1;
     run->profile_started = false;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;
@@ -893,7 +893,7 @@ int flow_run_recycle(flow_run *run)
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
-    run->whole_error_source = 0;
+    run->whole_error_stack = -1;
     return FLOW_OK;
 }
 
@@ -1117,7 +1117,7 @@ int flow_run_reset(flow_run *run)
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
-    run->whole_error_source = 0;
+    run->whole_error_stack = -1;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     return FLOW_OK;
@@ -1257,15 +1257,15 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
     flow_run *mutable_run = (flow_run *)run;
     aclear(mutable_run->stack_cache);
     if (run->whole_function_executed && run->state == FLOW_FAILED) {
-        const node *n = run->error.node;
-        for (int frame = run->whole_error_source; frame >= 0;) {
+        for (int frame = run->whole_error_stack; frame >= 0;) {
             const behavior_function_source
-                *source = behavior_function_source_at(run->whole_function, frame);
+                *source = behavior_function_stack_at(run->whole_function, frame);
             apush(
                 mutable_run->stack_cache,
-                ((flow_call_frame){ source->graph, source->graph->graph_id, n->id })
+                ((flow_call_frame){ source->graph,
+                                    source->graph->graph_id,
+                                    source->call->id })
             );
-            n = source->call;
             frame = source->parent;
         }
         int length = acount(mutable_run->stack_cache);

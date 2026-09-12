@@ -60,7 +60,7 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
 {
     fputs("c->error_message=(const char*)", out);
     type_name(out, i->message);
-    fputs(";", out);
+    fprintf(out, ";c->error_stack=%d;", i->stack);
     fprintf(
         out,
         "c->error_steps=steps;c->steps=%s;c->node_id=%lluULL;c->error_frame=%d;"
@@ -71,7 +71,8 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
         i->source,
         reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1,
         reason,
-        reason == BEHAVIOR_FUNCTION_HOST_FLOW   ? FLOW_ERR_NODE
+        reason == BEHAVIOR_FUNCTION_STATE       ? FLOW_ERR_STATE
+        : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
         : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
                                                 : FLOW_ERR_STEP_BUDGET
     );

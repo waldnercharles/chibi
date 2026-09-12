@@ -20,6 +20,7 @@ typedef enum
     BEHAVIOR_FUNCTION_DATA,
     BEHAVIOR_FUNCTION_HOST_DATA,
     BEHAVIOR_FUNCTION_HOST_FLOW,
+    BEHAVIOR_FUNCTION_STATE,
 } behavior_function_failure;
 typedef struct
 {
@@ -45,6 +46,7 @@ typedef struct
     unsigned call_depth;
     int error_frame;
     int error_source;
+    int error_stack;
     int error_pin;
     uintptr_t error_steps;
     behavior_function_failure failure;
@@ -84,6 +86,7 @@ void behavior_function_prepare_results(
 /* Pure calls share the evaluator's depth counter. If an inlined call could
  * exceed its limit, use the checked compiled path for precise diagnostics. */
 bool behavior_function_pure_depth(const behavior_function *function, unsigned depth);
+const behavior_function_source *behavior_function_stack_at(const behavior_function *function, int stack);
 const behavior_function_source *behavior_function_source_at(
     const behavior_function *function,
     int source

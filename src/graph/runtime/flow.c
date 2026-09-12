@@ -427,8 +427,9 @@ static int flow_run_activate(flow_run *run)
     runtime_store_reset_memo(run->runtime);
     eval_context_reset(&run->eval);
     run->eval.services = run->services;
-    run->eval.on_data_edge = !run->instance || run->instance->trace_enabled ||
-                                     run->breakpoints_enabled
+    /* Allowing authored breakpoints is not an inspection subscription. Node
+     * break checks stay active independently of data-edge observation. */
+    run->eval.on_data_edge = !run->instance || run->instance->trace_enabled
                                ? record_evaluated_data_edge
                                : NULL;
 

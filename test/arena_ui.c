@@ -2617,6 +2617,12 @@ cleanup:
     return 0;
 }
 
+static int compare_milliseconds(const void *a, const void *b)
+{
+    double left = *(const double *)a, right = *(const double *)b;
+    return (left > right) - (left < right);
+}
+
 int compiled_arena_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -2642,14 +2648,35 @@ int compiled_arena_run(const char *program)
     behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
     for (int mode = 0; mode < 2; mode++) {
         behavior_backend previous = behavior_debug_backend(modes[mode]);
+        srand(12345);
         arena_fixture f = fixture_new();
         assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
         uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
+        double behavior_ms[150], simulation_ms[150];
         for (int i = 0; i < 180; i++) {
             assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == 0);
             f.time += 1.0 / 60.0;
             assert(app_scene_authoring_frame(f.scene, f.time) == FLOW_OK);
+            if (i >= 30) {
+                const engine_frame_timing *timing = app_scene_authoring_runtime_timing(
+                    f.scene
+                );
+                behavior_ms[i - 30] = timing->behavior_ms;
+                simulation_ms[i - 30] = timing->behavior_ms +
+                                        timing->physics_ms + timing->systems_ms;
+            }
         }
+        qsort(behavior_ms, 150, sizeof(double), compare_milliseconds);
+        qsort(simulation_ms, 150, sizeof(double), compare_milliseconds);
+        printf(
+            "%s Arena behavior_p50_ms=%.6f behavior_p95_ms=%.6f "
+            "simulation_p50_ms=%.6f simulation_p95_ms=%.6f\n",
+            behavior_backend_name(modes[mode]),
+            behavior_ms[74],
+            behavior_ms[142],
+            simulation_ms[74],
+            simulation_ms[142]
+        );
         assert(projectiles(&f) > 0);
         ecs_query query;
         assert(ecs_query_begin(f.world, &query, NULL, 0) == ECS_OK);

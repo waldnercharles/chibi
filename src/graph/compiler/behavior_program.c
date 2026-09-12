@@ -1,10 +1,12 @@
 #include "graph/compiler/behavior_program.h"
 
+#include "graph/compiler/behavior_expression.h"
 #include "graph/compiler/behavior_jit.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/behavior_data.h"
 #include "graph/runtime/flow.h"
+#include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -33,6 +35,7 @@ struct behavior_graph_program
     graph_ir ir;
     compiled_node *nodes; /* indexed by stable authored node ID */
     void **code;          /* one native entry per data block */
+    void **expressions;   /* helper-free numeric regions, when eligible */
 };
 
 struct behavior_program
@@ -149,6 +152,7 @@ static int lower_block(behavior_graph_program *p, node *n, int pin, bool output)
         ((graph_ir_block){
             .first = first,
             .count = acount(p->ir.behavior) - first,
+            .output = output,
             .graph_id = p->source->graph_id,
             .node_id = n->id,
             .pin_id = output ? n->output_pins[pin].id : n->input_pins[pin].id,
@@ -217,6 +221,10 @@ void behavior_program_free(behavior_program *program)
         for (int j = 0; j < acount(p->code); j++) {
             behavior_jit_free(p->code[j]);
         }
+        for (int j = 0; j < acount(p->expressions); j++) {
+            behavior_jit_free(p->expressions[j]);
+        }
+        afree(p->expressions);
         afree(p->nodes);
         afree(p->code);
         graph_ir_free(&p->ir);
@@ -354,6 +362,13 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
     for (int i = 0; i < acount(program->graphs); i++) {
         behavior_graph_program *p = &program->graphs[i];
         for (int j = 0; j < acount(p->ir.blocks); j++) {
+            void *expression = NULL;
+            if (!p->ir.blocks[j].output &&
+                !behavior_expression_compile(&p->ir, &p->ir.blocks[j], asset, &expression)) {
+                diagnostic(program, p->source, NULL, -1, "SLJIT numeric region emission failed");
+                return program;
+            }
+            apush(p->expressions, expression);
             void *code = behavior_jit_data(&p->ir, &p->ir.blocks[j]);
             apush(p->code, code);
             if (!code) {
@@ -438,6 +453,13 @@ static int execute_block(
     return 0;
 }
 
+bool behavior_program_input_is_direct(const behavior_graph_program *program, const node *n, int pin)
+{
+    int block = program->nodes[n->id].inputs[pin];
+    return block >= 0 && block < acount(program->expressions) &&
+           program->expressions[block];
+}
+
 int behavior_program_input(
     const behavior_graph_program *program,
     node *n,
@@ -448,7 +470,21 @@ int behavior_program_input(
     behavior_backend backend
 )
 {
-    int result = execute_block(program, program->nodes[n->id].inputs[pin], a, ctx, backend);
+    int block = program->nodes[n->id].inputs[pin];
+    if (backend == BEHAVIOR_SLJIT && program->expressions[block] &&
+        ctx->instance && !ctx->on_data_edge && !ctx->instance->trace_enabled) {
+        const pin_spec *spec = &n->input_pins[pin];
+        *out = (pin_value){ .type = spec->type,
+                            .container = spec->container,
+                            .type_name = spec->type_name };
+        ctx->program = program;
+        ctx->backend = backend;
+        int result = ((int (*)(const behavior_instance *, pin_value *))
+                          program->expressions[block])(ctx->instance, out);
+        runtime_node_inputs(runtime_store_node(ctx->runtime, n))[pin] = *out;
+        return result;
+    }
+    int result = execute_block(program, block, a, ctx, backend);
     if (!result) {
         *out = runtime_node_inputs(runtime_store_node(ctx->runtime, n))[pin];
     }

@@ -93,6 +93,7 @@ typedef struct
 {
     int first;
     int count;
+    bool output;
     uint64_t graph_id;
     uint64_t node_id;
     uint64_t pin_id;

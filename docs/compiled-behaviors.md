@@ -20,6 +20,20 @@ operations. They do not recursively call `eval_node` or discover data edges at
 runtime. More native arithmetic specialization remains possible; this change
 makes no performance claim for callback-heavy graphs.
 
+For uninstrumented native input evaluation, `behavior_expression.c` now lowers
+eligible F32/F64 dependency regions without value-helper calls. These regions
+support matching Add/Subtract/Multiply/Divide, scalar variable reads and
+bindings, defaults, static constant outputs and copy nodes. Variable indices
+are resolved at publication; arithmetic chains retain intermediates in registers,
+and shared values spill only when necessary. The API materializes the final
+input slot once. Inspection uses the existing instrumented compiled blocks.
+Mixed types, conversions, host reads and other unsupported operations keep their
+regular compiled implementation. WASM continues to use behavior bytecode.
+
+See [measured numeric-region results](research/behavior-numeric-performance.md).
+The measured improvement is specific to eligible computation; the Arena trial
+has not demonstrated a whole-scene speedup.
+
 Activations retain compiled block indices, live slot storage, function children,
 owned loop snapshots and wait state. Source nodes are recovered from the program
 for inspection. The existing scheduler still orders events and host effects and

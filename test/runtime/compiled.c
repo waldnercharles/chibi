@@ -1,7 +1,9 @@
 #include "graph/compiler/graph_jit_sljit.h"
+#include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
+#include <math.h>
 
 static behavior_asset *counter_asset()
 {
@@ -139,8 +141,95 @@ static void generation_guards()
     behavior_asset_free(asset);
 }
 
+static void numeric_regions(pin_type type)
+{
+    const char *name = type == PIN_F32 ? "float" : "double";
+    behavior_asset *a = behavior_asset_new("NumericRegions");
+    behavior_variable *v = behavior_asset_add_variable(a, "X", type, name, PIN_CONTAINER_SINGLE, NULL, "");
+    uint64_t id = v->id;
+    node *get = behavior_asset_add_get_node(a, id);
+    const node_desc *ops[] = { &NODE_Add, &NODE_Subtract, &NODE_Multiply, &NODE_Divide };
+    node *nodes[4];
+    for (int i = 0; i < 4; i++) {
+        nodes[i] = graph_add_node(a->graph, ops[i]);
+        for (int j = 0; j < 2; j++) {
+            assert(graph_set_pin_type(a->graph, nodes[i], 0, j, type, name) == 0);
+        }
+        assert(graph_set_pin_type(a->graph, nodes[i], 1, 0, type, name) == 0);
+    }
+    /* Shared values survive both left/right reuse and later operations. */
+    assert(
+        graph_set_pin_binding(
+            a->graph,
+            nodes[0],
+            0,
+            0,
+            &(pin_binding){ .kind = PIN_BINDING_VARIABLE, .variable_id = id }
+        ) == 0
+    );
+    assert(graph_connect_data(a->graph, get, 0, nodes[0], 1) == 0);
+    assert(graph_connect_data(a->graph, nodes[0], 0, nodes[1], 0) == 0);
+    assert(graph_connect_data(a->graph, get, 0, nodes[1], 1) == 0);
+    assert(graph_connect_data(a->graph, nodes[0], 0, nodes[2], 0) == 0);
+    assert(graph_connect_data(a->graph, nodes[1], 0, nodes[2], 1) == 0);
+    assert(graph_connect_data(a->graph, nodes[2], 0, nodes[3], 0) == 0);
+    assert(graph_connect_data(a->graph, nodes[0], 0, nodes[3], 1) == 0);
+    node *sink = behavior_asset_add_set_node(a, id);
+    assert(graph_connect_data(a->graph, nodes[3], 0, sink, 1) == 0);
+    behavior_instance *instance = behavior_instance_create(a, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    const behavior_graph_program *program = behavior_program_graph(a->program, a->graph);
+    if (behavior_default_backend() == BEHAVIOR_SLJIT) {
+        assert(behavior_program_input_is_direct(program, sink, 1));
+    }
+    eval_context ctx = { .instance = instance,
+                         .runtime = runtime_store_create(a->graph) };
+    arena storage = { 0 };
+    double cases[] = { 0., -0., 1., -1., .125, 1e10, INFINITY, -INFINITY, NAN };
+    for (int i = 0; i < 9; i++) {
+        pin_value x = { .type = type, .type_name = name };
+        if (type == PIN_F32) {
+            x.f = (float)cases[i];
+        } else {
+            x.d = cases[i];
+        }
+        assert(behavior_instance_set_variable(instance, id, &x) == 0);
+        pin_value expected;
+        runtime_store_reset_memo(ctx.runtime);
+        assert(graph_eval_output(a->graph, nodes[3], 0, &storage, &expected, &ctx) == 0);
+        for (int mode = 0; mode < 3; mode++) {
+            behavior_instance_set_trace_enabled(instance, mode == 2);
+            runtime_store_reset_memo(ctx.runtime);
+            pin_value actual;
+            behavior_backend backend = mode == 1 ? BEHAVIOR_BYTECODE
+                                                 : behavior_default_backend();
+            assert(behavior_program_input(program, sink, 1, &storage, &actual, &ctx, backend) == 0);
+            double want = type == PIN_F32 ? expected.f : expected.d;
+            double got = type == PIN_F32 ? actual.f : actual.d;
+            assert(
+                (isnan(want) && isnan(got)) ||
+                (want == got && signbit(want) == signbit(got))
+            );
+            pin_value stored = runtime_node_inputs(
+                runtime_store_node(ctx.runtime, sink)
+            )[1];
+            assert(stored.type == type);
+            assert(
+                memcmp(&stored.d, &actual.d, type == PIN_F32 ? sizeof(float) : sizeof(double)) == 0
+            );
+        }
+        behavior_instance_set_trace_enabled(instance, 0);
+    }
+    arena_free(&storage);
+    runtime_store_free(ctx.runtime);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(a);
+}
+
 void test_compiled_behaviors()
 {
+    numeric_regions(PIN_F32);
+    numeric_regions(PIN_F64);
     generation_guards();
     behavior_backend native = behavior_default_backend();
     compiled_counter(native);

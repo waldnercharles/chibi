@@ -36,6 +36,9 @@ const compile_diagnostic *behavior_program_diagnostic(const behavior_program *pr
 const behavior_graph_program *behavior_program_graph(const behavior_program *program, const graph *g);
 const graph_ir *behavior_graph_ir(const behavior_graph_program *program);
 
+/* True when this input has a helper-free native numeric region. */
+bool behavior_program_input_is_direct(const behavior_graph_program *program, const node *n, int pin);
+
 int behavior_program_input(
     const behavior_graph_program *program,
     node *n,

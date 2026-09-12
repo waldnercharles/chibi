@@ -3,6 +3,7 @@
 set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_program.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_jit.c
+    src/graph/compiler/behavior_expression.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/behavior_data.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow_visual.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/compile.c

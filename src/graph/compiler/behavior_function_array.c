@@ -75,14 +75,22 @@ int behavior_lower_array_operation(builder *b, node *n)
     }
     int count = behavior_lower_read(b, a->pointer, offsetof(pin_array, count), PIN_I32, true);
     if (n->desc == &NODE_ArrayLength) {
-        return count;
+        return behavior_lower_named_constant(b, count, NULL);
     }
     int zero = constant(b, (pin_value){ .type = PIN_I32 });
     if (n->desc == &NODE_ArrayIsEmpty || n->desc == &NODE_ArrayIsNotEmpty) {
-        return binary(b, n->desc == &NODE_ArrayIsEmpty ? BF_EQ : BF_NE, PIN_BOOL, count, zero);
+        return behavior_lower_named_constant(
+            b,
+            binary(b, n->desc == &NODE_ArrayIsEmpty ? BF_EQ : BF_NE, PIN_BOOL, count, zero),
+            NULL
+        );
     }
     if (n->desc == &NODE_ArrayLastIndex) {
-        return binary(b, BF_SUB, PIN_I32, count, constant(b, (pin_value){ .type = PIN_I32, .i = 1 }));
+        return behavior_lower_named_constant(
+            b,
+            binary(b, BF_SUB, PIN_I32, count, constant(b, (pin_value){ .type = PIN_I32, .i = 1 })),
+            NULL
+        );
     }
     int index = behavior_lower_input(b, n, 1);
     if (index < 0) {
@@ -90,18 +98,22 @@ int behavior_lower_array_operation(builder *b, node *n)
     }
     int low = binary(b, BF_GE, PIN_BOOL, index, zero);
     int high = binary(b, BF_LT, PIN_BOOL, index, count);
-    return behavior_lower_value(
+    return behavior_lower_named_constant(
         b,
-        (behavior_function_instruction){
-            .op = BF_SELECT,
-            .type = PIN_BOOL,
-            .left = low,
-            .right = high,
-            .target = constant(b, (pin_value){ .type = PIN_BOOL }),
-        }
+        behavior_lower_value(
+            b,
+            (behavior_function_instruction){
+                .op = BF_SELECT,
+                .type = PIN_BOOL,
+                .left = low,
+                .right = high,
+                .target = constant(b, (pin_value){ .type = PIN_BOOL }),
+            }
+        ),
+        NULL
     );
 }
-int behavior_lower_array_element(builder *b, int items, int index, const pin_spec *spec)
+int behavior_lower_array_element(builder *b, int items, int index, const pin_spec *spec, bool entity_snapshot)
 {
     int wide = behavior_lower_value(
         b,
@@ -118,7 +130,12 @@ int behavior_lower_array_element(builder *b, int items, int index, const pin_spe
     int offset = binary(b, BF_MUL, BF_POINTER_TYPE, wide, constant(b, stride));
     int item = binary(b, BF_ADD, BF_POINTER_TYPE, items, offset);
     if (behavior_lower_scalar(spec->type)) {
-        return behavior_lower_read(b, item, offsetof(pin_value, d), spec->type, false);
+        int value = behavior_lower_read(b, item, offsetof(pin_value, d), spec->type, false);
+        if (entity_snapshot) {
+            return behavior_lower_named_constant(b, value, "ecs.entity");
+        }
+        int name = behavior_lower_read(b, item, offsetof(pin_value, type_name), BF_POINTER_TYPE, false);
+        return behavior_lower_named_scalar(b, value, name, false);
     }
     if (spec->type != PIN_STRUCT) {
         return -1;

@@ -1101,6 +1101,7 @@ void behavior_instance_bind_values(behavior_instance *bi, behavior_function_cont
 {
     ctx->variables = bi->variables;
     ctx->variable_storage = bi->variable_storage;
+    ctx->owner_type_name = bi->owner.type_name;
     ctx->value_owner = bi;
     ctx->own_type_name = own_type_name;
 }

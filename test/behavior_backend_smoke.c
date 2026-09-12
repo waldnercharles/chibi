@@ -8,6 +8,7 @@
 #include "whole_aggregate_fixture.h"
 #include "whole_alias_fixture.h"
 #include "whole_array_fixture.h"
+#include "whole_command_fixture.h"
 #include "whole_function_fixture.h"
 #include "whole_integer_fixture.h"
 #include "whole_math_fixture.h"
@@ -245,5 +246,6 @@ int main()
     behavior_asset_free(asset);
     whole_component_smoke();
     whole_loop_smoke();
+    whole_command_smoke();
     return 0;
 }

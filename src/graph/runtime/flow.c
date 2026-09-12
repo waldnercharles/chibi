@@ -637,7 +637,7 @@ static int execute(flow_run *run)
                                     : ctx.failure == BEHAVIOR_FUNCTION_NO_RETURN
                                         ? "function completed without Return"
                                     : ctx.failure == BEHAVIOR_FUNCTION_DATA ? "data function produced an invalid result"
-                                                                            : "whole-function step budget exceeded";
+                                                                            : "flow step budget exceeded";
                 flow_fail(run, result, failed, message);
                 run->error.steps = ctx.error_steps;
                 run->error.pin = ctx.error_pin;

@@ -39,7 +39,17 @@ bool behavior_function_bind(
 }
 int behavior_lower_owner(builder *b)
 {
-    return behavior_lower_value(b, (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE });
+    int value = behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE }
+    );
+    int name = behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_TYPE_NAME,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_OWNER }
+    );
+    return behavior_lower_named_scalar(b, value, name, false);
 }
 static void require(builder *b, int value, const node *n, int pin, bool flow, const char *message)
 {
@@ -152,7 +162,7 @@ int behavior_lower_component_read(builder *b, node *n)
     }
     int row = component(b, n, 0, w, slot, n->desc->component, has, false);
     if (has) {
-        return row;
+        return behavior_lower_named_constant(b, row, "bool");
     }
     require(b, row, n, 0, false, "entity lacks component");
     return load(b, n->desc->component->type, row);

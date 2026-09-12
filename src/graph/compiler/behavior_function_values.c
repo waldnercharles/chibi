@@ -148,10 +148,14 @@ static int scalar_binary(builder *b, int op, int left, int right, const node *n)
 {
     pin_type a = b->function->slots[left], c = b->function->slots[right];
     if (a == c && (a == PIN_F32 || a == PIN_F64 || a == PIN_I32 || a == PIN_I64)) {
-        return binary(b, op, left, right, n);
+        return behavior_lower_inherit_name(b, binary(b, op, left, right, n), left);
     }
     if (a == PIN_F64 && c == PIN_F32) {
-        return binary(b, op, left, behavior_lower_convert(b, right, PIN_F64), n);
+        return behavior_lower_inherit_name(
+            b,
+            binary(b, op, left, behavior_lower_convert(b, right, PIN_F64), n),
+            left
+        );
     }
     if (a != PIN_F32 || c != PIN_F64) {
         return -1;
@@ -202,12 +206,17 @@ static int scalar_binary(builder *b, int op, int left, int right, const node *n)
     );
     int condition = select_value(b, subnormal[0], yes, subnormal[1]);
     int narrow = binary(b, op, left, behavior_lower_convert(b, right, PIN_F32), n);
-    return select_value(
+    int result = behavior_lower_inherit_name(
         b,
-        condition,
-        binary(b, op, wide, right, n),
-        behavior_lower_convert(b, narrow, PIN_F64)
+        select_value(b, condition, binary(b, op, wide, right, n), behavior_lower_convert(b, narrow, PIN_F64)),
+        left
     );
+    scalar_value *meta = behavior_lower_scalar_value(b, result);
+    if (meta) {
+        meta->wide = condition;
+        meta->logical_type = PIN_F32;
+    }
+    return result;
 }
 static int aggregate_binary(builder *b, int op, int left, int right, node *n)
 {
@@ -351,11 +360,15 @@ int behavior_lower_convert(builder *b, int slot, pin_type type)
         (b->function->slots[slot] != PIN_F32 && b->function->slots[slot] != PIN_F64)) {
         return -1;
     }
-    return behavior_lower_value(
+    return behavior_lower_inherit_name(
         b,
-        (
-            behavior_function_instruction
-        ){ .op = BF_CONVERT, .type = type, .left = slot, .right = slot }
+        behavior_lower_value(
+            b,
+            (
+                behavior_function_instruction
+            ){ .op = BF_CONVERT, .type = type, .left = slot, .right = slot }
+        ),
+        slot
     );
 }
 static int pure_call(builder *b, node *n, int pin)
@@ -463,9 +476,17 @@ static int numeric_cast(builder *b, int slot, const node_desc *conversion, pin_t
     if (!real && !integer) {
         return -1;
     }
-    return behavior_lower_value(
+    const char *name = to == PIN_F64 ? "double"
+                     : to == PIN_U8  ? "byte"
+                     : to == PIN_I32 ? "int"
+                                     : "int64";
+    return behavior_lower_named_constant(
         b,
-        (behavior_function_instruction){ .op = BF_CAST, .type = to, .left = slot, .right = slot }
+        behavior_lower_value(
+            b,
+            (behavior_function_instruction){ .op = BF_CAST, .type = to, .left = slot, .right = slot }
+        ),
+        name
     );
 }
 static int get_output(builder *b, node *n, int pin)
@@ -542,6 +563,7 @@ static int get_output(builder *b, node *n, int pin)
             b,
             (behavior_function_instruction){ .op = BF_DELTA, .type = type }
         );
+        result = behavior_lower_named_constant(b, result, NULL);
     } else if (n->desc->pure_kind == NODE_PURE_MAKE) {
         result = behavior_lower_make(b, n);
     } else if (n->desc->pure_kind == NODE_PURE_BREAK) {
@@ -635,6 +657,9 @@ static int get_output(builder *b, node *n, int pin)
                 result = (op == BF_DIV || op == BF_MOD) && behavior_scalar_integer(type)
                            ? divide(b, i)
                            : behavior_lower_value(b, i);
+                result = op == BF_NEG || op == BF_ABS
+                           ? behavior_lower_inherit_name(b, result, left)
+                           : behavior_lower_named_constant(b, result, NULL);
             }
         }
         if (n->desc->jit_kind == NODE_JIT_CLAMP && n->input_count == 3 &&
@@ -658,6 +683,7 @@ static int get_output(builder *b, node *n, int pin)
                         behavior_function_instruction
                     ){ .op = BF_MAX, .type = type, .left = bounded, .right = low }
                 );
+                result = behavior_lower_inherit_name(b, result, x);
             }
         }
     }
@@ -700,6 +726,7 @@ static int get_output(builder *b, node *n, int pin)
                     behavior_function_instruction
                 ){ .op = BF_ATAN2_F32, .type = PIN_F32, .left = y, .right = x }
             );
+            result = behavior_lower_named_constant(b, result, NULL);
         }
     }
     if (n->input_count == 1 &&
@@ -770,12 +797,12 @@ int behavior_lower_input(builder *b, node *n, int pin)
             return -1;
         }
         slot = edge_conversion(b, slot, graph_input_conversion(b->graph, n, pin), n, pin);
-        return behavior_lower_convert(b, slot, s->type);
+        return behavior_lower_coerce(b, slot, s, false);
     }
     if (!s->binding) {
         if ((s->flags & PIN_FLAG_DEFAULT_SELF) && !s->default_value.u64 &&
             s->type == PIN_HANDLE) {
-            return behavior_lower_owner(b);
+            return behavior_lower_coerce(b, behavior_lower_owner(b), s, true);
         }
         if (s->default_value.type != s->type) {
             return -1;
@@ -785,17 +812,26 @@ int behavior_lower_input(builder *b, node *n, int pin)
     const pin_binding *binding = s->binding;
     if (binding->kind == PIN_BINDING_COMPONENT ||
         binding->kind == PIN_BINDING_COMPONENT_FIELD) {
-        return behavior_lower_component_binding(b, n, pin);
+        return behavior_lower_coerce(b, behavior_lower_component_binding(b, n, pin), s, true);
     }
     if (binding->kind == PIN_BINDING_VARIABLE &&
         (!binding->source_asset || !strcmp(binding->source_asset, b->asset->name))) {
         int index = behavior_lower_variable(b, binding->variable_id, s->type, s->container);
         if (index >= 0) {
-            return behavior_lower_source(b, BF_VARIABLE, index, s, n, pin);
+            return behavior_lower_coerce(
+                b,
+                behavior_lower_source(b, BF_VARIABLE, index, s, n, pin),
+                s,
+                true
+            );
         }
     }
     if (binding->kind == PIN_BINDING_DELTA_TIME && s->type == PIN_F32) {
-        return behavior_lower_value(b, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 });
+        return behavior_lower_named_constant(
+            b,
+            behavior_lower_value(b, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }),
+            s->type_name
+        );
     }
     return behavior_lower_unsupported(b, n, pin, false, "input binding");
 }

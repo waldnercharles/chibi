@@ -1,36 +1,6 @@
 #include "graph/compiler/behavior_lower_internal.h"
-#include "graph/runtime/eval.h"
 #include "support/array.h"
 
-#include <stdlib.h>
-#include <string.h>
-
-void behavior_function_prepare_queries(const behavior_function *f, behavior_function_context *ctx)
-{
-    assert(!ctx->queries);
-    for (int i = 0; i < acount(f->queries); i++) {
-        const behavior_function_query *q = &f->queries[i];
-        behavior_query_binding binding = {
-            .read = q->read,
-            .key = q->key,
-            .snapshot = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" }
-        };
-        for (int j = 0; j < acount(ctx->services); j++) {
-            if (!strcmp(ctx->services[j].type_name, q->service)) {
-                binding.service = ctx->services[j].value;
-                break;
-            }
-        }
-        apush(ctx->queries, binding);
-    }
-}
-void behavior_function_release_queries(behavior_function_context *ctx)
-{
-    for (int i = 0; i < acount(ctx->queries); i++) {
-        free(ctx->queries[i].snapshot.items);
-    }
-    afree(ctx->queries);
-}
 int behavior_lower_query(builder *b, node *n)
 {
     assert(n->desc->query_service && n->input_count == 1);

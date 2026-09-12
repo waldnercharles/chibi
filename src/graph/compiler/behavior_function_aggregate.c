@@ -117,6 +117,18 @@ static int scalar_local(builder *b, int frame, const node *n, int pin, size_t of
     );
     return acount(b->function->locals) - 1;
 }
+int behavior_lower_local_name(builder *b, int local)
+{
+    behavior_function_local l = b->function->locals[local];
+    return scalar_local(
+        b,
+        l.frame,
+        l.node,
+        l.pin,
+        SIZE_MAX - 1,
+        (pin_value){ .type = BF_POINTER_TYPE, .str = l.initial.type_name }
+    );
+}
 int behavior_lower_hidden_local(builder *b, const node *n, int key, pin_type type)
 {
     return scalar_local(b, b->frame, n, -1 - key, 0, (pin_value){ .type = type });
@@ -139,7 +151,7 @@ int behavior_lower_source(
         return behavior_lower_array_source(b, op, index, spec);
     }
     if (spec->type != PIN_STRUCT) {
-        return behavior_lower_value(
+        int value = behavior_lower_value(
             b,
             (behavior_function_instruction){ .op = op,
                                              .type = spec->type,
@@ -148,6 +160,7 @@ int behavior_lower_source(
                                              .node_id = n->id,
                                              .pin = pin }
         );
+        return behavior_lower_source_name(b, value, op, index, spec);
     }
     aggregate a = behavior_lower_shape(spec->type_name);
     if (!a.type) {
@@ -173,7 +186,7 @@ int behavior_lower_source(
                 .op = BF_TYPE_NAME,
                 .type = BF_POINTER_TYPE,
                 .target = BF_CONSTANT,
-                .value = { .str = spec->default_value.type_name } }
+                .value = { .type = PIN_STRUCT, .str = spec->default_value.type_name } }
         );
     }
     if (op != BF_CONSTANT) {
@@ -185,7 +198,7 @@ int behavior_lower_source(
                 .type = BF_POINTER_TYPE,
                 .left = stored ? stored->name : index,
                 .target = op,
-                .value = { .str = spec->default_value.type_name } }
+                .value = { .type = PIN_STRUCT, .str = spec->default_value.type_name } }
         );
     }
     for (int i = 0; i < acount(a.fields); i++) {
@@ -235,7 +248,11 @@ int behavior_lower_field(builder *b, int slot, const type_field *field, const no
         for (int i = 0; i < acount(source->fields); i++) {
             if (source->fields[i].offset == field->offset &&
                 source->fields[i].type == field->type) {
-                return source->fields[i].slot;
+                return behavior_lower_named_constant(
+                    b,
+                    source->fields[i].slot,
+                    field->type_name
+                );
             }
         }
         return -1;
@@ -370,6 +387,7 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
     }
     aggregate *a = behavior_lower_aggregate(b, slot);
     if (!a) {
+        behavior_lower_store_name(b, op, slot, target);
         behavior_lower_emit(
             b,
             (behavior_function_instruction){ .op = op,
@@ -454,6 +472,11 @@ void behavior_lower_finish_values(builder *b)
     int *map = xmalloc((size_t)(acount(f->slots) + 1) * sizeof *map);
     int count = 0;
     for (int i = 0; i < acount(f->slots); i++) {
+        scalar_value *scalar = behavior_lower_scalar_value(b, i);
+        if (scalar) {
+            map[i] = map[scalar->value];
+            continue;
+        }
         map[i] = f->slots[i] == PIN_STRUCT || f->slots[i] == PIN_FLOW ? -1 : count++;
         if (map[i] >= 0) {
             f->slots[map[i]] = f->slots[i];
@@ -477,6 +500,7 @@ void behavior_lower_finish_values(builder *b)
         }
     }
     free(map);
+    afree(b->scalars);
     for (int i = 0; i < acount(b->aggregates); i++) {
         afree(b->aggregates[i].fields);
     }

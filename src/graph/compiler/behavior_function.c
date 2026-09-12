@@ -245,6 +245,11 @@ static bool block(builder *b, int index)
             return false;
         }
         next = behavior_lower_successor(b, n, 0, t.after);
+    } else if (n->desc->command) {
+        if (!behavior_lower_command(b, n)) {
+            return false;
+        }
+        next = behavior_lower_successor(b, n, 0, t.after);
     } else if (n->desc->component_kind) {
         if (!behavior_lower_component_write(b, n)) {
             return false;
@@ -406,6 +411,8 @@ void behavior_function_free(behavior_function *f)
     afree(f->stacks);
     afree(f->results);
     afree(f->queries);
+    afree(f->commands);
+    afree(f->command_arguments);
     free(f);
 }
 bool behavior_function_compile(behavior_function *f)

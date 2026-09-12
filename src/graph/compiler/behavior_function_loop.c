@@ -83,6 +83,7 @@ static int begin(builder *b, task t)
         if (!array) {
             return -2;
         }
+        loop.entity_snapshot = array->temporary;
         int pointer = array->pointer;
         int zero_pointer = constant(b, (pin_value){ .type = BF_POINTER_TYPE });
         int present = binary(b, BF_NE, pointer, zero_pointer, PIN_BOOL);
@@ -186,7 +187,7 @@ int behavior_lower_loop(builder *b, task t)
     if (n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak) {
         int items = local(b, loop.items, BF_POINTER_TYPE);
         int index = local(b, loop.current, PIN_I32);
-        int value = behavior_lower_array_element(b, items, index, &n->output_pins[1]);
+        int value = behavior_lower_array_element(b, items, index, &n->output_pins[1], loop.entity_snapshot);
         int target = behavior_lower_local(b, b->frame, n, 1);
         if (!behavior_lower_store(b, BF_SAVE, value, target)) {
             return behavior_lower_unsupported(b, n, 1, true, "managed array element");

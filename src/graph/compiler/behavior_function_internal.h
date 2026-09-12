@@ -33,6 +33,7 @@ typedef enum
     BF_STORAGE_NAME,
     BF_ARRAY,
     BF_QUERY,
+    BF_COMMAND_SERVICE,
     BF_OWN_NAME,
     BF_ADD,
     BF_SUB,
@@ -71,9 +72,12 @@ typedef enum
     BF_RESULT_PRESENT,
     BF_RESULT_TYPE_NAME,
     BF_STORE_HEADER,
+    BF_STORE_TYPE_NAME,
     BF_REQUIRE,
     BF_ASSERT,
     BF_WRITE,
+    BF_COMMAND_ARGUMENT,
+    BF_COMMAND,
     BF_CHECK,
     BF_CALL_CHECK,
     BF_ENTER,
@@ -90,7 +94,8 @@ static inline bool behavior_function_math(behavior_function_op op)
 }
 static inline bool behavior_function_call(behavior_function_op op)
 {
-    return behavior_function_math(op) || op == BF_OWN_NAME || op == BF_QUERY;
+    return behavior_function_math(op) || op == BF_OWN_NAME || op == BF_QUERY ||
+           op == BF_COMMAND;
 }
 #define BF_POINTER_TYPE                                                        \
     (sizeof(uintptr_t) == sizeof(uint64_t) ? PIN_U64 : PIN_U32)
@@ -131,8 +136,16 @@ typedef struct
     const char *service, *key;
     node_query_fn read;
 } behavior_function_query;
+typedef struct
+{
+    const node_command *command;
+    const char *reference;
+    int first, count;
+} behavior_function_command;
 struct behavior_function
 {
+    behavior_function_command *commands;
+    pin_value *command_arguments;
     behavior_function_query *queries;
     behavior_function_instruction *instructions;
     pin_type *slots;
@@ -149,9 +162,11 @@ struct behavior_function
 };
 static inline bool behavior_function_left_slot(behavior_function_op op)
 {
-    return (op >= BF_ADD && op <= BF_SAVE) || op == BF_BRANCH || op == BF_REQUIRE ||
-           op == BF_ASSERT || op == BF_WRITE || op == BF_RESULT_PRESENT ||
-           op == BF_RESULT_TYPE_NAME || op == BF_STORE_HEADER || op == BF_OWN_NAME;
+    return (op >= BF_ADD && op <= BF_SAVE) || op == BF_BRANCH ||
+           op == BF_REQUIRE || op == BF_ASSERT || op == BF_WRITE ||
+           op == BF_RESULT_PRESENT || op == BF_RESULT_TYPE_NAME ||
+           op == BF_STORE_HEADER || op == BF_STORE_TYPE_NAME ||
+           op == BF_OWN_NAME || op == BF_COMMAND_ARGUMENT;
 }
 static inline bool behavior_function_right_slot(behavior_function_op op)
 {
@@ -164,6 +179,8 @@ static inline bool behavior_function_integer_clobber(behavior_function_op op)
 }
 void *behavior_function_jit(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
+/* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
+bool behavior_function_static_name(const char **name);
 void behavior_function_constant_locals(behavior_function *function);
 void behavior_function_prune_values(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);

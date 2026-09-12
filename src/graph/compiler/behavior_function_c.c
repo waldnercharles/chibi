@@ -37,7 +37,11 @@ static void type_name(FILE *out, const char *name)
         if (*p == '\\' || *p == '\"') {
             fputc('\\', out);
         }
-        fputc(*p, out);
+        if ((unsigned char)*p < 32 || (unsigned char)*p == 127) {
+            fprintf(out, "\\%03o", (unsigned char)*p);
+        } else {
+            fputc(*p, out);
+        }
     }
     fputc('\"', out);
 }
@@ -67,13 +71,21 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
     fprintf(
         out,
         "c->error_steps=steps;c->steps=%s;c->node_id=%lluULL;c->error_frame=%d;"
-        "c->error_source=%d;c->error_pin=%d;c->failure=%d;return %d;\n",
+        "c->error_source=%d;c->error_pin=%d;c->failure=%d;",
         i->frame ? "s0" : "steps",
         (unsigned long long)i->node_id,
         i->frame,
         i->source,
         reason >= BEHAVIOR_FUNCTION_DATA ? i->pin : -1,
-        reason,
+        reason
+    );
+    if (reason == BEHAVIOR_FUNCTION_COMMAND) {
+        fputs("return c->error_status;\n", out);
+        return;
+    }
+    fprintf(
+        out,
+        "return %d;\n",
         reason == BEHAVIOR_FUNCTION_STATE       ? FLOW_ERR_STATE
         : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
         : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
@@ -158,6 +170,36 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             continue;
         }
         switch (i->op) {
+            case BF_COMMAND_SERVICE:
+                fprintf(out, "v%d=(uintptr_t)c->commands[%d].service;\n", i->output, i->target);
+                break;
+            case BF_COMMAND_ARGUMENT:
+                fprintf(
+                    out,
+                    "memcpy((char*)&c->command_arguments[%d]+%zu,&v%d,sizeof(v%"
+                    "d));\n",
+                    i->target,
+                    i->offset,
+                    i->left,
+                    i->left
+                );
+                break;
+            case BF_COMMAND: {
+                const behavior_function_command *command = &f->commands[i->target];
+                fprintf(
+                    out,
+                    "{behavior_command_binding "
+                    "*b=&c->commands[%d];c->error_status=b->invoke(b->service,"
+                    "b->reference,c->command_arguments+%d,%d);if(c->error_"
+                    "status<0){",
+                    i->target,
+                    command->first,
+                    command->count
+                );
+                failure(out, i, BEHAVIOR_FUNCTION_COMMAND);
+                fputs("}}\n", out);
+                break;
+            }
             case BF_QUERY:
                 fprintf(out, "{behavior_query_binding *q=&c->queries[%d];c->error_message=q->read(q->service,q->key,&q->snapshot);if(c->error_message){", i->target);
                 failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
@@ -186,7 +228,22 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                 fprintf(out, "v%d=(uintptr_t)c->variable_storage[%d].type_name;\n", i->output, i->left);
                 break;
             case BF_OWN_NAME:
-                fprintf(out, "v%d=(uintptr_t)c->own_type_name(c->value_owner,(const char*)(uintptr_t)v%d);\n", i->output, i->left);
+                fprintf(
+                    out,
+                    "v%d=v%d?(uintptr_t)c->own_type_name(c->value_owner,(const "
+                    "char*)(uintptr_t)v%d):0;\n",
+                    i->output,
+                    i->left,
+                    i->left
+                );
+                break;
+            case BF_STORE_TYPE_NAME:
+                fprintf(
+                    out,
+                    "c->variables[%d].type_name=(const char*)(uintptr_t)v%d;\n",
+                    i->target,
+                    i->left
+                );
                 break;
             case BF_STORE_HEADER:
                 fprintf(
@@ -281,12 +338,14 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                         "%d].type_name;\n",
                         i->left,
                         i->left,
-                        PIN_STRUCT,
+                        i->value.type,
                         i->output,
                         i->left
                     );
                 } else if (i->target == BF_VARIABLE) {
                     fprintf(out, "v%d=(uintptr_t)c->variables[%d].type_name;\n", i->output, i->left);
+                } else if (i->target == BF_OWNER) {
+                    fprintf(out, "v%d=(uintptr_t)c->owner_type_name;\n", i->output);
                 }
                 break;
             case BF_RESULT_TYPE_NAME:

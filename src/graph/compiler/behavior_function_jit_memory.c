@@ -115,6 +115,82 @@ bool behavior_jit_memory(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    if (i->op == BF_COMMAND_SERVICE) {
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, commands));
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            dest,
+            offset,
+            SLJIT_MEM1(SLJIT_R3),
+            i->target * sizeof(behavior_command_binding) +
+                offsetof(behavior_command_binding, service)
+        );
+        return true;
+    }
+    if (i->op == BF_COMMAND_ARGUMENT) {
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R3,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, command_arguments)
+        );
+        slot(m, i->left, SLJIT_MEM1(SLJIT_R3), i->target * sizeof(pin_value) + i->offset);
+        return true;
+    }
+    if (i->op == BF_COMMAND) {
+        const behavior_function_command *command = &m->function->commands[i->target];
+        sljit_sw at = i->target * sizeof(behavior_command_binding);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, commands));
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R0,
+            0,
+            SLJIT_MEM1(SLJIT_R3),
+            at + offsetof(behavior_command_binding, service)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R1,
+            0,
+            SLJIT_MEM1(SLJIT_R3),
+            at + offsetof(behavior_command_binding, reference)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R2,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, command_arguments)
+        );
+        sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, command->first * sizeof(pin_value));
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R3, 0, SLJIT_IMM, command->count);
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS4(32, P, P, P, 32),
+            SLJIT_IMM,
+            SLJIT_FUNC_ADDR(command->command->invoke)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV32,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, error_status),
+            SLJIT_R0,
+            0
+        );
+        struct sljit_jump *
+            ok = sljit_emit_cmp(c, SLJIT_SIG_GREATER_EQUAL | SLJIT_32, SLJIT_R0, 0, SLJIT_IMM, 0);
+        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_COMMAND);
+        bind(c, ok);
+        return true;
+    }
     if (i->op == BF_QUERY) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, queries));
         sljit_sw at = i->target * sizeof(behavior_query_binding);
@@ -220,6 +296,8 @@ bool behavior_jit_memory(
     }
     if (i->op == BF_OWN_NAME) {
         slot(m, i->left, SLJIT_R1, 0);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_IMM, 0);
+        struct sljit_jump *empty = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
         sljit_emit_op1(
             c,
             SLJIT_MOV_P,
@@ -235,7 +313,17 @@ bool behavior_jit_memory(
             SLJIT_MEM1(m->context),
             offsetof(behavior_function_context, own_type_name)
         );
+        bind(c, empty);
         sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
+    if (i->op == BF_STORE_TYPE_NAME) {
+        slot(
+            m,
+            i->left,
+            SLJIT_MEM1(m->variables),
+            i->target * sizeof(pin_value) + offsetof(pin_value, type_name)
+        );
         return true;
     }
     if (i->op == BF_STORE_HEADER) {
@@ -297,6 +385,17 @@ bool behavior_jit_memory(
             );
             return true;
         }
+        if (i->target == BF_OWNER) {
+            sljit_emit_op1(
+                c,
+                SLJIT_MOV_P,
+                dest,
+                offset,
+                SLJIT_MEM1(m->context),
+                offsetof(behavior_function_context, owner_type_name)
+            );
+            return true;
+        }
         struct sljit_jump *missing = NULL, *wrong = NULL;
         bool argument = i->target == BF_ARGUMENT;
         if (argument) {
@@ -314,7 +413,7 @@ bool behavior_jit_memory(
                 SLJIT_MEM1(m->arguments),
                 i->left * sizeof(pin_value) + offsetof(pin_value, type),
                 SLJIT_IMM,
-                PIN_STRUCT
+                i->value.type
             );
         }
         sljit_emit_op1(

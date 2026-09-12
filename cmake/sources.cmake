@@ -8,6 +8,9 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function.c
     src/graph/compiler/behavior_function_values.c
     src/graph/compiler/behavior_function_aggregate.c
+    src/graph/compiler/behavior_function_host.c
+    src/graph/compiler/behavior_function_names.c
+    src/graph/compiler/behavior_function_command.c
     src/graph/compiler/behavior_function_query.c
     src/graph/compiler/behavior_function_array.c
     src/graph/compiler/behavior_function_component.c

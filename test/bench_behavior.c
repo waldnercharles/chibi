@@ -177,10 +177,23 @@ static const behavior_function *whole_entry(behavior_asset *a)
     }
     return NULL;
 }
-static void measure_scopes(const char *label, int (*entry)(behavior_function_context *), int count)
+static void bind_names(behavior_instance *owner, behavior_function_context *ctx)
+{
+    pin_value *variables = ctx->variables;
+    behavior_instance_bind_values(owner, ctx);
+    ctx->variables = variables;
+}
+static void measure_scopes(
+    behavior_asset *a,
+    const char *label,
+    int (*entry)(behavior_function_context *),
+    int count
+)
 {
     pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
     behavior_function_context ctx = { .variables = variables, .budget = 4096 };
+    behavior_instance *owner = behavior_instance_create(a, NULL, NULL, NULL);
+    bind_names(owner, &ctx);
     double start = 0, checksum = 0, expected = 0;
     for (int i = -10000; i < count; i++) {
         if (!i) {
@@ -197,6 +210,7 @@ static void measure_scopes(const char *label, int (*entry)(behavior_function_con
     }
     printf("%s calls ns=%.3f checksum=%.12f\n", label, (seconds() - start) * 1e9 / count, checksum);
     assert(checksum == expected);
+    behavior_instance_destroy(owner);
 }
 static void compare_control(void *library, bool scopes)
 {
@@ -207,6 +221,7 @@ static void compare_control(void *library, bool scopes)
         behavior_function_context *
     ))dlsym(library, scopes ? "generated_scopes" : "generated_control");
     assert(generated);
+    behavior_instance *owner = behavior_instance_create(a, NULL, NULL, NULL);
     for (int budget_case = 0; budget_case < 18; budget_case++) {
         uintptr_t budget = budget_case < 17 ? (uintptr_t)budget_case : UINTPTR_MAX;
         for (int start = 0; start < 3; start++) {
@@ -217,6 +232,7 @@ static void compare_control(void *library, bool scopes)
                                                        .budget = budget,
                                                        .steps = steps,
                                                        .call_depth = depth };
+                bind_names(owner, &expected);
                 int result = behavior_function_run(f, &expected, false);
                 for (int mode = 0; mode < 2; mode++) {
                     pin_value variables[2] = { { .type = PIN_F32 },
@@ -225,6 +241,7 @@ static void compare_control(void *library, bool scopes)
                                                          .budget = budget,
                                                          .steps = steps,
                                                          .call_depth = depth };
+                    bind_names(owner, &actual);
                     int got = mode ? generated(&actual)
                                    : behavior_function_run(f, &actual, true);
                     assert(got == result && actual.steps == expected.steps);
@@ -243,6 +260,7 @@ static void compare_control(void *library, bool scopes)
         }
     }
     printf("%s_parity=SLJIT,BYTECODE,GENERATED_C budgets=0..16 depths=0,32,64\n", scopes ? "scopes" : "control");
+    behavior_instance_destroy(owner);
     behavior_asset_free(a);
 }
 
@@ -567,6 +585,7 @@ void compare_aggregate_c(void *library, int count, int rotation);
 
 int main(int argc, char **argv)
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);
     bool export_c = argc > 1 && !strcmp(argv[1], "--emit-c");
     int count = !export_c && argc > 1 ? atoi(argv[1]) : 1000000;
     assert(count > 0);
@@ -633,6 +652,7 @@ int main(int argc, char **argv)
         for (int i = 0; i < 2; i++) {
             bool generated = (i + rotation) % 2;
             measure_scopes(
+                scopes,
                 generated ? "GENERATED_C" : "SLJIT",
                 (int (*)(behavior_function_context *))(
                     generated ? scope_c : behavior_function_entry(scope_function)

@@ -2,6 +2,7 @@
 
 #include "graph/compiler/behavior_program.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/runtime/instance.h"
 #include "test/whole_integer_fixture.h"
 
 #include <dlfcn.h>
@@ -76,6 +77,9 @@ static void compare_body(void *library, int count, int rotation, pin_type type, 
 {
     behavior_asset *a = whole_integer_fixture(type, order);
     const behavior_function *f = entry(a, pure);
+    behavior_instance *owner = behavior_instance_create(a, NULL, NULL, NULL);
+    behavior_function_context bindings = { 0 };
+    behavior_instance_bind_values(owner, &bindings);
     char name[64];
     snprintf(name, sizeof name, "generated_integer_%d_%d_%d", type == PIN_I64, order, pure);
     int (*entries[])(behavior_function_context *) = {
@@ -92,7 +96,9 @@ static void compare_body(void *library, int count, int rotation, pin_type type, 
                 pin_value args[] = { integer(type, cases[x]),
                                      integer(type, cases[y]) };
                 pin_value reference[4] = { 0 }, results[3] = { 0 };
-                behavior_function_context expected = { .variables = reference,
+                behavior_function_context expected = { .value_owner = owner,
+                                                       .own_type_name = bindings.own_type_name,
+                                                       .variables = reference,
                                                        .arguments = args,
                                                        .argument_count = budget % 3,
                                                        .results = results,
@@ -100,11 +106,15 @@ static void compare_body(void *library, int count, int rotation, pin_type type, 
                 int status = behavior_function_run(f, &expected, false);
                 for (int mode = 0; mode < 2; mode++) {
                     pin_value variables[4] = { 0 }, values[3] = { 0 };
-                    behavior_function_context actual = { .variables = variables,
-                                                         .arguments = args,
-                                                         .argument_count = budget % 3,
-                                                         .results = values,
-                                                         .budget = budget };
+                    behavior_function_context actual = {
+                        .value_owner = owner,
+                        .own_type_name = bindings.own_type_name,
+                        .variables = variables,
+                        .arguments = args,
+                        .argument_count = budget % 3,
+                        .results = values,
+                        .budget = budget
+                    };
                     assert(
                         entries[mode](&actual) == status &&
                         actual.steps == expected.steps
@@ -182,6 +192,7 @@ static void compare_body(void *library, int count, int rotation, pin_type type, 
             );
         }
     }
+    behavior_instance_destroy(owner);
     behavior_asset_free(a);
 }
 

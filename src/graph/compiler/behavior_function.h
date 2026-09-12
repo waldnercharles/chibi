@@ -23,6 +23,12 @@ typedef struct
 } behavior_query_binding;
 typedef struct
 {
+    node_command_fn invoke;
+    void *service;
+    const char *reference;
+} behavior_command_binding;
+typedef struct
+{
     graph *graph;
     node *call;
     int parent;
@@ -36,6 +42,7 @@ typedef enum
     BEHAVIOR_FUNCTION_HOST_DATA,
     BEHAVIOR_FUNCTION_HOST_FLOW,
     BEHAVIOR_FUNCTION_STATE,
+    BEHAVIOR_FUNCTION_COMMAND,
 } behavior_function_failure;
 typedef struct
 {
@@ -68,10 +75,15 @@ typedef struct
     const char *error_message;
     const struct service_binding *services;
     behavior_query_binding *queries;
+    behavior_command_binding *commands;
+    pin_value *command_arguments;
+    int error_status;
     uint64_t owner;
+    const char *owner_type_name;
     const struct ecs_execution_view *world, *binding_world;
     behavior_variable_storage *variable_storage;
     void *value_owner;
+    /* Intern borrowed names before persistent writes; returns owner-lived storage. */
     const char *(*own_type_name)(void *owner, const char *name);
 } behavior_function_context;
 /* Complete synchronous entry with scalar or fixed-layout values, or NULL if an operation requires the
@@ -92,8 +104,8 @@ bool behavior_function_bind(
 );
 /* Raw native/generated-C entry callers prepare/release these once per
  * invocation. run() does this automatically unless the caller supplies them. */
-void behavior_function_prepare_queries(const behavior_function *function, behavior_function_context *ctx);
-void behavior_function_release_queries(behavior_function_context *ctx);
+void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
+void behavior_function_release_host(behavior_function_context *ctx);
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);
 int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool native);

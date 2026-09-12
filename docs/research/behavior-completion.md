@@ -2,13 +2,11 @@
 
 The whole-function compiler is not yet a completed gameplay migration. The
 September 12 audit of this isolated branch finds 19 behavior assets, 33 event
-entries, 70 local functions and four library functions. Five of the 33 event
-entries qualify for whole-function execution: `PlayerContactBehavior.Tick`,
-`SurfacePulseBehavior.Begin`, `TwinStickInputBehavior.Input`,
-`TwinStickInputBehavior.Tick` and `TwinStickWeaponBehavior.Begin`.
-Five of 31 effectful function bodies qualify: `ArenaShardBehavior.Initialize Shard`,
-`ArenaShardBehavior.Advance Shard Motion`, `ProjectileBehavior.Face Direction`,
-`ArenaWaveBehavior.Count Living Members` and `ArenaWaveBehavior.Formation Position`.
+entries, 70 local functions and four library functions. Thirteen of the 33 event
+entries and ten of 31 effectful function bodies now qualify for whole-function
+execution. This includes Tick on ArenaShardBehavior, PlayerContactBehavior,
+ProjectileBehavior, SurfacePulseBehavior, TwinStickInputBehavior and WavePulseBehavior;
+also HealthBehavior.Damage/Died and ArenaWaveBehavior.RefreshEncounter.
 All 39 pure local functions now execute whole compiled bodies, as do
 three of the four library functions. Pure calls inside general compiled events
 use these bodies directly; they no longer require callee runtime stores. The original request's larger
@@ -50,7 +48,9 @@ same saturating casts as explicit conversion nodes. Explicitly annotated struct
 alias conversions now copy typed fields without a native helper; the
 [alias measurements](whole-aliases.md) pass the 1.5x generated-C limit. Wave Tick
 now passes its input conversion, ForEach and component query and stops at
-`Send Event` (graph 2005, node 2386). Read-only array views,
+`Spawn Prototype` (graph 2021, node 2305). Synchronous Send Event and Destroy Entity
+now call their explicit deferred-command ABI from whole bodies; see
+[command measurements and parity](whole-commands.md). Read-only array views,
 plain elements and ForEach now lower without array helpers; their
 [benchmark](whole-arrays.md) passes the 1.5x generated-C gate. Persistent fixed-layout
 struct writes reuse instance storage and compile into field stores; the
@@ -99,8 +99,11 @@ exclusions have moved to the first unsupported operation inside the callee.
    remain native. Each lowered query owns reusable storage for this synchronous
    invocation. Dynamic keys and snapshots crossing stored array parameters/results or
    persistent stores remain excluded. See [query measurements](whole-queries.md).
-   Generate explicit ABI calls for other queries, spawning/destruction, physics,
-   events, randomness and asynchronous host work.
+   Send Event with scalar payloads and Destroy Entity now use a typed command ABI
+   that preserves deferred FIFO delivery and structural mutation. Scalar names
+   survive calls, stores and host payloads, including dynamic-name ownership.
+   Generate explicit ABI calls for other queries, spawning, physics,
+   managed event payloads, randomness and asynchronous host work.
    Retain deterministic ordering and staged structural mutations.
 4. **Whole-function inspection.** Produce instrumented variants with source
    safe points, breakpoints, stepping, recorded values and call frames, including

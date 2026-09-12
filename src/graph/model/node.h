@@ -12,9 +12,19 @@ typedef struct flow_context flow_context;
 typedef struct eval_context eval_context;
 struct pin_array;
 /* Snapshot producer: fills caller-owned reusable ecs.entity handle storage.
+ * Every item is a single PIN_HANDLE with the canonical "ecs.entity" type name.
  * It cannot mutate membership, layouts or behavior storage. An error message
  * must remain valid after the snapshot is released. */
 typedef const char *(*node_query_fn)(void *service, const char *key, struct pin_array *out);
+/* Synchronous commands may append deferred host effects, but cannot dispatch
+ * graphs, flush structural effects or invalidate behavior/column storage. The
+ * callee owns any retained arguments before returning zero or a negative error. */
+typedef int (*node_command_fn)(void *service, const char *reference, const pin_value *arguments, int count);
+typedef struct
+{
+    const char *service, *missing_service, *missing_reference, *failure_message;
+    node_command_fn invoke;
+} node_command;
 
 typedef enum
 {
@@ -184,6 +194,7 @@ typedef struct
     const node_access *access;
     const char *query_service;
     node_query_fn query;
+    const node_command *command;
 } node_desc;
 
 struct node

@@ -497,6 +497,36 @@ static int spawn_node(node *, flow_context *ctx)
                       : game_entities_request_spawn(entities, ctx, prototype.str);
 }
 
+static int destroy_command(void *service, const char *, const pin_value *arguments, int count)
+{
+    assert(count == 1);
+    (void)count;
+    game_entities_request_destroy(service, ecs_entity_from_u64(arguments[0].u64));
+    return FLOW_OK;
+}
+static int send_command(void *service, const char *reference, const pin_value *arguments, int count)
+{
+    assert(count >= 1);
+    return game_entities_request_event(
+        service,
+        ecs_entity_from_u64(arguments[0].u64),
+        reference,
+        (flow_inputs){ .values = arguments + 1, .count = count - 1 }
+    );
+}
+static const node_command DESTROY_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "Destroy Entity requires a game world",
+    .invoke = destroy_command
+};
+static const node_command SEND_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "Send Event requires a game world",
+    .missing_reference = "Choose an event definition",
+    .failure_message = "Could not queue event payload",
+    .invoke = send_command
+};
+
 static int destroy_node(node *, flow_context *ctx)
 {
     game_entities *entities = flow_context_service(ctx, "game.entities");
@@ -508,7 +538,7 @@ static int destroy_node(node *, flow_context *ctx)
     if (result < 0) {
         return result;
     }
-    game_entities_request_destroy(entities, ecs_entity_from_u64(entity.u64));
+    destroy_command(entities, NULL, &entity, 1);
     return flow_context_continue(ctx, 0);
 }
 
@@ -529,12 +559,7 @@ static int send_event_node(node *n, flow_context *ctx)
             return result;
         }
     }
-    int result = game_entities_request_event(
-        entities,
-        ecs_entity_from_u64(values[0].u64),
-        n->reference_name,
-        (flow_inputs){ .values = &values[1], .count = count - 1 }
-    );
+    int result = send_command(entities, n->reference_name, values, count);
     return result < 0
              ? flow_context_fail(ctx, result, "Could not queue event payload")
              : flow_context_continue(ctx, 0);
@@ -789,6 +814,7 @@ static node_desc DESTROY_NODE = { .name = "Destroy Entity",
                                   .outputs = DESTROY_OUT,
                                   .flow_kind = NODE_FLOW_CUSTOM,
                                   .flow = destroy_node,
+                                  .command = &DESTROY_COMMAND,
                                   .display_class = NODE_DISPLAY_FLOW,
                                   .category = "Entities",
                                   .access = &STRUCTURAL_ACCESS };
@@ -804,6 +830,7 @@ static node_desc DAMAGE_NODE = {
     .outputs = DESTROY_OUT,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = send_event_node,
+    .command = &SEND_COMMAND,
     .display_class = NODE_DISPLAY_EVENT,
     .category = "Events",
     .keywords = "send entity custom event message",

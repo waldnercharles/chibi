@@ -119,7 +119,9 @@ void behavior_function_optimize(behavior_function *f)
             op->op == BF_REQUIRE || op->op == BF_SELECT ||
             op->op == BF_RESULT_PRESENT || op->op == BF_STORAGE_NAME ||
             op->op == BF_OWN_NAME || op->op == BF_STORE_HEADER ||
-            op->op == BF_ARRAY || op->op == BF_QUERY || op->op == BF_READ) {
+            op->op == BF_STORE_TYPE_NAME || op->op == BF_ARRAY ||
+            op->op == BF_QUERY || op->op == BF_READ || op->op == BF_COMMAND_SERVICE ||
+            op->op == BF_COMMAND_ARGUMENT || op->op == BF_COMMAND) {
             return;
         }
     }
@@ -434,7 +436,7 @@ void behavior_function_constant_locals(behavior_function *f)
     const behavior_function_instruction *
         *definitions = xcalloc((size_t)(acount(f->slots) + 1), sizeof *definitions);
     for (int i = 0; i < acount(f->locals); i++) {
-        constant[i] = f->locals[i].offset != SIZE_MAX - 1;
+        constant[i] = true;
     }
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
@@ -444,6 +446,14 @@ void behavior_function_constant_locals(behavior_function *f)
         if (i->op == BF_SAVE) {
             const behavior_function_instruction *value = definitions[i->left];
             pin_value initial = f->locals[i->target].initial;
+            if (f->locals[i->target].offset == SIZE_MAX - 1) {
+                constant[i->target] &= value && value->op == BF_TYPE_NAME &&
+                                       value->target == BF_CONSTANT &&
+                                       ((initial.str == NULL && value->value.str == NULL) ||
+                                        (initial.str && value->value.str &&
+                                         !strcmp(initial.str, value->value.str)));
+                continue;
+            }
             constant[i->target] &= value && value->op == BF_CONSTANT &&
                                    value->type == initial.type &&
                                    !memcmp(
@@ -456,8 +466,20 @@ void behavior_function_constant_locals(behavior_function *f)
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         behavior_function_instruction *i = &f->instructions[pc];
         if (i->op == BF_LOCAL && constant[i->left]) {
+            bool name = f->locals[i->left].offset == SIZE_MAX - 1;
             i->value = f->locals[i->left].initial;
-            i->op = BF_CONSTANT;
+            i->op = name ? BF_TYPE_NAME : BF_CONSTANT;
+            i->target = BF_CONSTANT;
+        }
+        if (i->op == BF_OWN_NAME) {
+            const behavior_function_instruction *source = definitions[i->left];
+            const char *name = source ? source->value.str : NULL;
+            if (source && source->op == BF_TYPE_NAME && source->target == BF_CONSTANT &&
+                behavior_function_static_name(&name)) {
+                i->op = BF_TYPE_NAME;
+                i->target = BF_CONSTANT;
+                i->value = (pin_value){ .str = name };
+            }
         }
         if (i->op == BF_BRANCH) {
             const behavior_function_instruction *condition = definitions[i->left];

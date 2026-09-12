@@ -73,9 +73,24 @@ cannot mutate membership/layouts, reenter recursive loops, or let their arrays
 escape through locals, stored parameters, results or variables. Those restrictions
 preserve active snapshots until managed transfer is implemented. General
 compiled execution still handles the excluded shapes. Raw native/generated-C
-entry callers use `behavior_function_prepare_queries` and
-`behavior_function_release_queries`; `behavior_function_run` owns this lifecycle
+entry callers use `behavior_function_prepare_host` and
+`behavior_function_release_host`; `behavior_function_run` owns this lifecycle
 by default. See [query measurements and coverage](research/whole-queries.md).
+
+`Send Event` with scalar payloads and `Destroy Entity` use a synchronous
+`node_command_fn` ABI in whole bodies. SLJIT emits argument computation, typed
+payload writes, branches and loops, then calls the known C command directly.
+The command owns retained payloads and queues effects; it cannot dispatch graphs,
+flush structural changes or invalidate behavior/component storage. Bytecode and
+generated C use the same lowered command and error/source information.
+Invocation scratch is separate from immutable program metadata.
+
+Scalar values retain their actual type names through arguments, locals,
+arithmetic, coercions, array elements, returns and persistent variables. Borrowed
+names are interned before persistent stores. Canonical query element names and
+proven constant locals avoid redundant ownership calls. Arbitrary caller names
+still get owned storage. See [command measurements and parity](research/whole-commands.md).
+
 
 
 Native floating-point arithmetic and loads/stores use allocated registers
@@ -133,7 +148,7 @@ other inputs remain unavailable through `flow_run_input_value`.
 
 See [whole-function and scheduler measurements](research/whole-function-performance.md)
 for the initial generated-C performance gates and queue benchmarks. The catalog
-now has five eligible events out of 33 and four eligible effectful function
+now has thirteen eligible events out of 33 and ten eligible effectful function
 bodies out of 31.
 All 39 pure local functions now have independently compiled bodies, as do
 three of the four linked library functions.
@@ -184,7 +199,7 @@ parity and diagnostic tests.
   event, yield, resume, variables, loops and nested whole-function arguments,
   conversions, Min/Max, returns, nested pure bodies and fixed-layout aggregate arguments/results
   without callee runtime allocation, plus persistent plain struct writes through
-  nested calls and loops, and nested query snapshots. It asserts bytecode execution,
+  nested calls and loops, nested query snapshots, and direct command calls. It asserts bytecode execution,
   SLJIT unavailability and zero oracle calls.
 
 The existing runtime tests cover local/library calls, managed values, loops,

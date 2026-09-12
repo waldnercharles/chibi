@@ -147,6 +147,7 @@ static void storage_test()
     behavior_asset
         *a = whole_query_fixture(query_node(), GAME_COMPONENT_GameHealth.key, WHOLE_QUERY_NESTED);
     const behavior_function *f = body(a);
+    behavior_instance *owner = behavior_instance_create(a, NULL, NULL, NULL);
     ecs_world *w = world_new(11, true);
     game_entities *entities = game_entities_new(w, NULL);
     pin_value variables[2] = { { .type = PIN_I32 }, { .type = PIN_HANDLE } },
@@ -156,8 +157,10 @@ static void storage_test()
     behavior_function_context ctx = { .variables = variables,
                                       .results = results,
                                       .budget = 1000 };
+    behavior_instance_bind_values(owner, &ctx);
+    ctx.variables = variables;
     assert(behavior_function_bind(f, &ctx, services, 0));
-    behavior_function_prepare_queries(f, &ctx);
+    behavior_function_prepare_host(f, &ctx);
     assert(!behavior_function_run(f, &ctx, false));
     assert(acount(ctx.queries) == 2);
     pin_value *outer = ctx.queries[0].snapshot.items,
@@ -182,11 +185,12 @@ static void storage_test()
     }
     ecs_query_end(&q);
     assert(index == ctx.queries[0].snapshot.count && variables[0].i == index * index);
-    behavior_function_release_queries(&ctx);
+    behavior_function_release_host(&ctx);
     assert(!ctx.queries);
     afree(services);
     game_entities_free(entities);
     ecs_world_free(w);
+    behavior_instance_destroy(owner);
     behavior_asset_free(a);
 }
 static void escaping_snapshot_excluded()
@@ -278,7 +282,10 @@ int bench_query(const char *path, int count, int rotation)
         behavior_function_context ctx = { .variables = vars,
                                           .results = results,
                                           .services = services };
-        behavior_function_prepare_queries(f, &ctx);
+        behavior_instance *owner = behavior_instance_create(a, NULL, NULL, NULL);
+        behavior_instance_bind_values(owner, &ctx);
+        ctx.variables = vars;
+        behavior_function_prepare_host(f, &ctx);
         for (int scenario = 0; scenario < 3; scenario++) {
             for (int q = 0; q < acount(ctx.queries); q++) {
                 ctx.queries[q].service = scenario == 1 ? NULL : entities;
@@ -369,10 +376,11 @@ int bench_query(const char *path, int count, int rotation)
                 (unsigned long long)checksum
             );
         }
-        behavior_function_release_queries(&ctx);
+        behavior_function_release_host(&ctx);
         afree(services);
         game_entities_free(entities);
         ecs_world_free(w);
+        behavior_instance_destroy(owner);
         behavior_asset_free(a);
     }
     assert(!dlclose(library));

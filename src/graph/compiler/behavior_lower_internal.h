@@ -22,6 +22,12 @@ typedef struct
 } array_value;
 typedef struct
 {
+    int slot, value, name, variable, wide;
+    pin_type logical_type;
+    bool owned;
+} scalar_value;
+typedef struct
+{
     const node *node;
     int pin, slot;
 } output;
@@ -35,6 +41,7 @@ typedef struct
 {
     const node *node;
     int parent, current, last, step, broken, completed, next, items;
+    bool entity_snapshot;
 } lowered_loop;
 typedef struct
 {
@@ -49,6 +56,7 @@ typedef struct
     const node **evaluating;
     aggregate *aggregates;
     array_value *arrays;
+    scalar_value *scalars;
     unsigned call_depth;
     int frame, source, loop, stack;
     behavior_function_diagnostic *diagnostic;
@@ -64,7 +72,17 @@ int behavior_lower_array_value(builder *b, int pointer, pin_type type);
 int behavior_lower_array_source(builder *b, behavior_function_op op, int index, const pin_spec *spec);
 int behavior_lower_array_operation(builder *b, node *n);
 int behavior_lower_query(builder *b, node *n);
-int behavior_lower_array_element(builder *b, int items, int index, const pin_spec *spec);
+bool behavior_lower_command(builder *b, node *n);
+scalar_value *behavior_lower_scalar_value(builder *b, int slot);
+int behavior_lower_named_scalar(builder *b, int value, int name, bool owned);
+int behavior_lower_static_name(builder *b, const char *name);
+int behavior_lower_named_constant(builder *b, int value, const char *name);
+int behavior_lower_inherit_name(builder *b, int value, int source);
+int behavior_lower_coerce(builder *b, int value, const pin_spec *spec, bool binding);
+int behavior_lower_local_name(builder *b, int local);
+void behavior_lower_store_name(builder *b, behavior_function_op op, int value, int target);
+int behavior_lower_source_name(builder *b, int value, behavior_function_op op, int index, const pin_spec *spec);
+int behavior_lower_array_element(builder *b, int items, int index, const pin_spec *spec, bool entity_snapshot);
 int behavior_lower_read(builder *b, int pointer, size_t offset, pin_type type, bool nullable);
 int behavior_lower_component_read(builder *b, node *n);
 bool behavior_lower_component_write(builder *b, node *n);

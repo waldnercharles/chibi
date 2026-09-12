@@ -151,8 +151,10 @@ void behavior_jit_failure(
     sljit_emit_return(
         c,
         SLJIT_MOV32,
-        SLJIT_IMM,
-        reason == BEHAVIOR_FUNCTION_STATE       ? FLOW_ERR_STATE
+        reason == BEHAVIOR_FUNCTION_COMMAND ? SLJIT_MEM1(m->context) : SLJIT_IMM,
+        reason == BEHAVIOR_FUNCTION_COMMAND
+            ? offsetof(behavior_function_context, error_status)
+        : reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
         : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
         : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
                                                 : FLOW_ERR_STEP_BUDGET

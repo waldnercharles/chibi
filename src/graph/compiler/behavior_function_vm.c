@@ -37,7 +37,8 @@ static int fail(
     if (i->op != BF_QUERY) {
         ctx->error_message = i->message;
     }
-    return reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
+    return reason == BEHAVIOR_FUNCTION_COMMAND   ? ctx->error_status
+         : reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
          : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
          : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
                                                  : FLOW_ERR_STEP_BUDGET;
@@ -104,6 +105,37 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
             continue;
         }
         switch (i->op) {
+            case BF_COMMAND_SERVICE: {
+                uintptr_t pointer = (uintptr_t)ctx->commands[i->target].service;
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = pointer;
+                } else {
+                    out->u = (uint32_t)pointer;
+                }
+                break;
+            }
+            case BF_COMMAND_ARGUMENT:
+                memcpy(
+                    (char *)&ctx->command_arguments[i->target] + i->offset,
+                    &a.d,
+                    behavior_scalar_size(i->type)
+                );
+                break;
+            case BF_COMMAND: {
+                const behavior_function_command *spec = &f->commands[i->target];
+                behavior_command_binding *c = &ctx->commands[i->target];
+                ctx->error_status = c->invoke(
+                    c->service,
+                    c->reference,
+                    ctx->command_arguments + spec->first,
+                    spec->count
+                );
+                if (ctx->error_status < 0) {
+                    result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_COMMAND);
+                    goto done;
+                }
+                break;
+            }
             case BF_QUERY: {
                 behavior_query_binding *query = &ctx->queries[i->target];
                 ctx->error_message = query->read(
@@ -146,6 +178,8 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
             case BF_OWN_NAME: {
                 const char *name = i->op == BF_STORAGE_NAME
                                      ? ctx->variable_storage[i->left].type_name
+                                 : !behavior_scalar_bits(a)
+                                     ? NULL
                                      : ctx->own_type_name(
                                            ctx->value_owner,
                                            (const char *)(uintptr_t)behavior_scalar_bits(a)
@@ -157,6 +191,10 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 }
                 break;
             }
+            case BF_STORE_TYPE_NAME:
+                ctx->variables[i->target].type_name = (const char *)(uintptr_t)
+                    behavior_scalar_bits(a);
+                break;
             case BF_STORE_HEADER:
                 ctx->variables[i->target] = (pin_value){
                     .type = PIN_STRUCT,
@@ -230,11 +268,13 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 break;
             case BF_TYPE_NAME: {
                 const char *name = i->value.str;
-                if (i->target == BF_VARIABLE) {
+                if (i->target == BF_OWNER) {
+                    name = ctx->owner_type_name;
+                } else if (i->target == BF_VARIABLE) {
                     name = ctx->variables[i->left].type_name;
                 } else if (
                     i->target == BF_ARGUMENT && i->left < ctx->argument_count &&
-                    ctx->arguments[i->left].type == PIN_STRUCT
+                    ctx->arguments[i->left].type == i->value.type
                 ) {
                     name = ctx->arguments[i->left].type_name;
                 }
@@ -479,13 +519,14 @@ done:
 
 int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
 {
-    bool owned = !ctx->queries && acount(f->queries);
+    bool owned = !ctx->queries && !ctx->commands &&
+                 (acount(f->queries) || acount(f->commands));
     if (owned) {
-        behavior_function_prepare_queries(f, ctx);
+        behavior_function_prepare_host(f, ctx);
     }
     int result = run(f, ctx, native);
     if (owned) {
-        behavior_function_release_queries(ctx);
+        behavior_function_release_host(ctx);
     }
     return result;
 }

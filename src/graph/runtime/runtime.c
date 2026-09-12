@@ -64,9 +64,17 @@ static void runtime_node_resize(runtime_node *state, const node *n)
     values_resize(&state->outputs, &state->output_count, n->output_count, n->output_pins);
 }
 
+static _Thread_local uint64_t store_creations;
+
+uint64_t runtime_store_creations()
+{
+    return store_creations;
+}
+
 runtime_store *runtime_store_create(const graph *g)
 {
     assert(g);
+    store_creations++;
     runtime_store *store = (runtime_store *)xcalloc(1, sizeof *store);
     store->graph = g;
     store->graph_lifetime = g->lifetime_id;

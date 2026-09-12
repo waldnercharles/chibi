@@ -67,6 +67,7 @@ struct behavior_function
     void *dispatch;
     struct behavior_function *fast;
     unsigned root_steps, child_budget, depth_limit;
+    unsigned pure_depth_limit;
 };
 void *behavior_function_jit(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);

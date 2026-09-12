@@ -57,6 +57,9 @@ int behavior_function_run(const behavior_function *function, behavior_function_c
 /* The exported C function has the same ABI as the SLJIT entry. */
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
+/* Pure calls share the evaluator's depth counter. If an inlined call could
+ * exceed its limit, use the checked compiled path for precise diagnostics. */
+bool behavior_function_pure_depth(const behavior_function *function, unsigned depth);
 const behavior_function_source *behavior_function_frame_source(
     const behavior_function *function,
     int frame

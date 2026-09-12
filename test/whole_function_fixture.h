@@ -193,4 +193,56 @@ static behavior_asset *whole_scopes_fixture()
     assert(graph_connect_data(a->graph, sum, 0, save, 1) == 0);
     return a;
 }
+
+/* Pull calls stay on the general event runtime when the containing event has
+ * host operations. Compile their complete pure body independently. */
+static behavior_asset *whole_pure_fixture()
+{
+    behavior_asset *a = behavior_asset_new("Pure function bodies");
+    uint64_t x = behavior_asset_add_variable(a, "X", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
+                     ->id;
+    pin_spec parameter = { .name = "X", .kind = PIN_DATA, .type = PIN_F64, .type_name = "double" };
+    graph *leaf = behavior_asset_add_function(a, "Pair", 1);
+    node *entry = graph_node_by_id(leaf, leaf->entry_id),
+         *ret = graph_node_by_id(leaf, leaf->return_id);
+    assert(graph_add_pin(leaf, entry, 1, &parameter) >= 0);
+    const node_desc *ops[] = { &NODE_Add, &NODE_Multiply };
+    for (int i = 0; i < 2; i++) {
+        pin_spec output = parameter;
+        output.name = i ? "Scaled" : "Shifted";
+        assert(graph_add_pin(leaf, ret, 0, &output) >= 0);
+        node *op = graph_add_node(leaf, ops[i]);
+        for (int j = 0; j < 2; j++) {
+            assert(graph_set_pin_type(leaf, op, 0, j, PIN_F64, "double") == 0);
+        }
+        assert(graph_set_pin_type(leaf, op, 1, 0, PIN_F64, "double") == 0);
+        assert(
+            graph_set_pin_default(leaf, op, 0, 1, &(pin_value){ .type = PIN_F64, .d = i ? 1.25 : .25 }) == 0
+        );
+        assert(graph_connect_data(leaf, entry, 0, op, 0) == 0);
+        assert(graph_connect_data(leaf, op, 0, ret, i) == 0);
+    }
+    graph *wrapper = behavior_asset_add_function(a, "Combine pair", 1);
+    entry = graph_node_by_id(wrapper, wrapper->entry_id);
+    ret = graph_node_by_id(wrapper, wrapper->return_id);
+    assert(graph_add_pin(wrapper, entry, 1, &parameter) >= 0);
+    node *inner = behavior_asset_add_function_call_node_to_graph(a, wrapper, leaf);
+    assert(graph_connect_data(wrapper, entry, 0, inner, 0) == 0);
+    for (int i = 0; i < 2; i++) {
+        pin_spec output = parameter;
+        output.name = i ? "Product" : "Sum";
+        assert(graph_add_pin(wrapper, ret, 0, &output) >= 0);
+        node *op = graph_add_node(wrapper, ops[i]);
+        for (int j = 0; j < 2; j++) {
+            assert(graph_set_pin_type(wrapper, op, 0, j, PIN_F64, "double") == 0);
+            assert(graph_connect_data(wrapper, inner, j, op, j) == 0);
+        }
+        assert(graph_set_pin_type(wrapper, op, 1, 0, PIN_F64, "double") == 0);
+        assert(graph_connect_data(wrapper, op, 0, ret, i) == 0);
+    }
+    node *call = behavior_asset_add_function_call_node(a, wrapper);
+    node *get = behavior_asset_add_get_node(a, x);
+    assert(graph_connect_data(a->graph, get, 0, call, 0) == 0);
+    return a;
+}
 #endif

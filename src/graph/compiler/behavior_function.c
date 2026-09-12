@@ -138,8 +138,15 @@ static int pure_call(builder *b, node *n, int pin)
     }
     node *entry = graph_node_by_id(target, target->entry_id),
          *ret = graph_node_by_id(target, target->return_id);
-    if (!entry || !ret) {
+    if (!entry || !ret ||
+        (entry->output_count && entry->output_pins[0].kind == PIN_EXEC)) {
         return -1;
+    }
+    if (target->call_depth_limit) {
+        unsigned limit = (unsigned)target->call_depth_limit - b->call_depth;
+        if (!b->function->pure_depth_limit || limit < b->function->pure_depth_limit) {
+            b->function->pure_depth_limit = limit;
+        }
     }
     int *args = NULL;
     for (int i = 0; i < n->input_count; i++) {
@@ -156,23 +163,37 @@ static int pure_call(builder *b, node *n, int pin)
     b->graph = target;
     b->outputs = NULL;
     int at = 0, result = -1;
+    output *returns = NULL;
     for (int i = 0; i < entry->output_count; i++) {
         const pin_spec *spec = &entry->output_pins[i];
         if (spec->kind != PIN_DATA) {
             continue;
         }
-        if (at >= acount(args) || spec->field_source ||
-            spec->type != b->function->slots[args[at]]) {
+        if (at >= acount(args) || spec->field_source) {
             goto done;
         }
-        apush(b->outputs, ((output){ entry, i, args[at++] }));
+        int arg = convert(b, args[at++], spec->type);
+        if (arg < 0) {
+            goto done;
+        }
+        apush(b->outputs, ((output){ entry, i, arg }));
     }
     at = 0;
     for (int i = 0; i < ret->input_count; i++) {
-        if (ret->input_pins[i].kind == PIN_DATA && at++ == pin) {
-            result = input(b, ret, i);
-            break;
+        if (ret->input_pins[i].kind != PIN_DATA) {
+            continue;
         }
+        /* Evaluation computes every return, even when the caller reads only
+         * one. Cache the complete call so shared expressions run once. */
+        int slot = input(b, ret, i);
+        if (slot < 0 || at >= n->output_count || n->output_pins[at].field_source ||
+            b->function->slots[slot] != n->output_pins[at].type) {
+            goto done;
+        }
+        apush(returns, ((output){ n, at++, slot }));
+    }
+    if (pin < acount(returns)) {
+        result = returns[pin].slot;
     }
 done:
     afree(args);
@@ -180,9 +201,12 @@ done:
     b->outputs = saved;
     b->graph = parent;
     b->call_depth--;
-    if (result >= 0 && b->function->slots[result] != n->output_pins[pin].type) {
-        return -1;
+    if (result >= 0) {
+        for (int i = 0; i < acount(returns); i++) {
+            apush(b->outputs, returns[i]);
+        }
     }
+    afree(returns);
     return result;
 }
 static int get_output(builder *b, node *n, int pin)
@@ -314,7 +338,7 @@ static int get_output(builder *b, node *n, int pin)
     if (result >= 0 && b->function->slots[result] != type) {
         return -1;
     }
-    if (result >= 0) {
+    if (result >= 0 && n->desc->pure_kind != NODE_PURE_FUNCTION) {
         apush(b->outputs, ((output){ n, pin, result }));
     }
     return result;
@@ -671,10 +695,17 @@ behavior_function *behavior_function_lower(
                   .root_entry = entry,
                   .function = xcalloc(1, sizeof(behavior_function)) };
     apush(b.function->frames, ((behavior_function_frame){ .source = { g, NULL, -1 } }));
-    schedule(&b, entry, -1);
     bool valid = true;
-    for (int i = 0; valid && i < acount(b.tasks); i++) {
-        valid = block(&b, i);
+    bool pure = g->kind == GRAPH_FUNCTION &&
+                (!entry->output_count || entry->output_pins[0].kind != PIN_EXEC);
+    if (pure) {
+        node *ret = graph_node_by_id(g, g->return_id);
+        valid = ret && return_values(&b, ret);
+    } else {
+        schedule(&b, entry, -1);
+        for (int i = 0; valid && i < acount(b.tasks); i++) {
+            valid = block(&b, i);
+        }
     }
     int end = emit(&b, (behavior_function_instruction){ .op = BF_END });
     for (int i = 0; valid && i < acount(b.function->instructions); i++) {
@@ -724,6 +755,10 @@ bool behavior_function_compile(behavior_function *f)
 void *behavior_function_entry(const behavior_function *f)
 {
     return f ? (f->dispatch ? f->dispatch : f->code) : NULL;
+}
+bool behavior_function_pure_depth(const behavior_function *f, unsigned depth)
+{
+    return !f->pure_depth_limit || depth < f->pure_depth_limit;
 }
 const behavior_function_source *behavior_function_frame_source(const behavior_function *f, int frame)
 {

@@ -1,6 +1,8 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/runtime.h"
+#include "support/arena.h"
 #include "whole_function_fixture.h"
 
 #include <assert.h>
@@ -108,6 +110,35 @@ int main()
         "zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+    asset = whole_pure_fixture();
+    instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    instance->variables[0].d = 4;
+    arena storage = { 0 };
+    eval_context ctx = { .instance = instance,
+                         .runtime = runtime_store_create(asset->graph) };
+    uint64_t allocations = runtime_store_creations();
+    assert(
+        behavior_program_output(
+            behavior_program_graph(asset->program, asset->graph),
+            asset->graph->nodes[0],
+            0,
+            &storage,
+            &value,
+            &ctx,
+            behavior_instance_backend(instance)
+        ) == 0
+    );
+    assert(value.d == 9.25 && runtime_store_creations() == allocations);
+    assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
+    printf(
+        "%s: nested pure bodies; no callee allocation or oracle calls\n",
+        behavior_backend_name(behavior_instance_backend(instance))
+    );
+    runtime_store_free(ctx.runtime);
+    arena_free(&storage);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     return 0;

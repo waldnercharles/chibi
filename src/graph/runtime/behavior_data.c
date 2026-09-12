@@ -5,6 +5,8 @@
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 
+#include <assert.h>
+
 static int fail(eval_context *ctx, const node *n, int pin, const char *message)
 {
     ctx->status = (eval_status){ NODE_EVAL_INVALID, n, pin, message };
@@ -74,11 +76,11 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
     behavior_instance *instance = ctx->instance;
     graph *target = behavior_asset_find_graph(instance->asset, n->reference_id);
     if (!target || target->kind != GRAPH_FUNCTION) {
-        return fail(ctx, n, -1, "pure function graph is missing");
+        return fail(ctx, n, 0, "pure function graph is missing");
     }
     if (target->call_depth_limit &&
         ctx->call_depth >= (unsigned)target->call_depth_limit) {
-        return fail(ctx, n, -1, "pure function call depth limit exceeded");
+        return fail(ctx, n, 0, "pure function call depth limit exceeded");
     }
     const behavior_graph_program
         *program = behavior_program_graph(instance->asset->program, target);
@@ -87,15 +89,34 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
     if (!program || !entry || !ret) {
         return fail(ctx, n, -1, "compiled function entry or return is missing");
     }
+    runtime_node *caller = runtime_store_node(ctx->runtime, n);
+    pin_value *arguments = runtime_node_inputs(caller);
+    pin_value *outputs = runtime_node_outputs(caller);
+    const behavior_function *function = behavior_program_function(program, entry);
+    if (function && !instance->trace_enabled && !ctx->on_data_edge &&
+        (!ctx->observer ||
+         (!ctx->observer->step_mode && !acount(ctx->observer->watches))) &&
+        behavior_function_pure_depth(function, ctx->call_depth + 1)) {
+        /* Scalar pure signatures have contiguous canonical Return pins. The
+         * caller already owns correctly typed output slots. */
+        assert(ret->input_count == n->output_count);
+        behavior_function_context call = {
+            .variables = instance->variables,
+            .arguments = arguments,
+            .argument_count = n->input_count,
+            .results = outputs,
+            .delta_seconds = ctx->delta_seconds,
+        };
+        int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);
+        assert(!result);
+        return result;
+    }
     runtime_store *runtime = runtime_store_create(target);
     eval_context nested = *ctx;
     nested.runtime = runtime;
     nested.runtime_owned = 0;
     nested.program = program;
     nested.call_depth++;
-    runtime_node *caller = runtime_store_node(ctx->runtime, n);
-    pin_value *arguments = runtime_node_inputs(caller);
-    pin_value *outputs = runtime_node_outputs(caller);
     pin_value *parameters = runtime_node_outputs(runtime_store_node(runtime, entry));
     int argument = 0;
     for (int i = 0; i < entry->output_count; i++) {

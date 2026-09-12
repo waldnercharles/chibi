@@ -10,6 +10,8 @@ typedef struct runtime_store runtime_store;
 typedef struct runtime_node runtime_node;
 
 runtime_store *runtime_store_create(const graph *g);
+/* Monotonic count on the calling thread, for allocation profiling. */
+uint64_t runtime_store_creations();
 void runtime_store_free(runtime_store *store);
 void runtime_store_reset(runtime_store *store);
 void runtime_store_reset_memo(runtime_store *store);

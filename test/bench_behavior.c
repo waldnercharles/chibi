@@ -347,6 +347,136 @@ static void compare_arguments(void *library, int count, int rotation)
     behavior_asset_free(a);
 }
 
+static const behavior_function *pure_entry(behavior_asset *a)
+{
+    behavior_program_publish(a);
+    graph *g = a->graphs[2];
+    const behavior_function *f = behavior_program_function(
+        behavior_program_graph(a->program, g),
+        graph_node_by_id(g, g->entry_id)
+    );
+    assert(f);
+    return f;
+}
+
+static void compare_pure(void *library, int count, int rotation)
+{
+    behavior_asset *a = whole_pure_fixture();
+    const behavior_function *f = pure_entry(a);
+    int (*entries[])(behavior_function_context *) = {
+        (int (*)(behavior_function_context *))behavior_function_entry(f),
+        (int (*)(behavior_function_context *))dlsym(library, "generated_pure")
+    };
+    assert(entries[0] && entries[1]);
+    double cases[] = { NAN, INFINITY, -INFINITY, -0., 0., 1.e-40, 16777217. };
+    for (int k = 0; k < 7; k++) {
+        for (int present = 0; present < 2; present++) {
+            pin_value argument = { .type = PIN_F32, .f = (float)cases[k] };
+            pin_value reference[2] = { 0 };
+            behavior_function_context expected = { .arguments = &argument,
+                                                   .argument_count = present,
+                                                   .results = reference,
+                                                   .steps = 123 };
+            assert(!behavior_function_run(f, &expected, false) && expected.steps == 123);
+            for (int mode = 0; mode < 2; mode++) {
+                pin_value values[2] = { 0 };
+                behavior_function_context actual = { .arguments = &argument,
+                                                     .argument_count = present,
+                                                     .results = values,
+                                                     .steps = 123 };
+                assert(!entries[mode](&actual) && actual.steps == 123);
+                assert(actual.returned_node_id == expected.returned_node_id);
+                for (int i = 0; i < 2; i++) {
+                    assert(
+                        isnan(reference[i].d) ? isnan(values[i].d)
+                                              : values[i].d == reference[i].d
+                    );
+                    assert(
+                        reference[i].d != 0 ||
+                        signbit(reference[i].d) == signbit(values[i].d)
+                    );
+                }
+            }
+        }
+    }
+    puts("pure_parity=SLJIT,BYTECODE,GENERATED_C defaults,coercions,NaNs,zeros,all-returns,no-flow-steps");
+    for (int pass = 0; pass < 2; pass++) {
+        int mode = (pass + rotation) % 2;
+        pin_value arg = { .type = PIN_F64 }, results[2] = { 0 };
+        behavior_function_context ctx = { .arguments = &arg,
+                                          .argument_count = 1,
+                                          .results = results };
+        double checksum = 0, expected = 0, start = 0;
+        for (int i = -10000; i < count; i++) {
+            if (!i) {
+                start = seconds();
+            }
+            arg.d = (i & 1023) * .001;
+            assert(!entries[mode](&ctx));
+            if (i >= 0) {
+                checksum += results[1].d;
+                expected += (arg.d + .25) * (arg.d * 1.25);
+            }
+        }
+        assert(checksum == expected);
+        printf(
+            "%s pure_body ns=%.3f checksum=%.12f\n",
+            mode ? "GENERATED_C" : "SLJIT",
+            (seconds() - start) * 1e9 / count,
+            checksum
+        );
+    }
+    behavior_asset_free(a);
+}
+
+static void measure_pure(behavior_backend backend, int count)
+{
+    behavior_asset *a = whole_pure_fixture();
+    behavior_instance *instance = behavior_instance_create(a, NULL, NULL, NULL);
+    assert(!behavior_instance_set_backend(instance, backend));
+    behavior_instance_set_trace_enabled(instance, 0);
+    eval_context ctx = { .instance = instance,
+                         .runtime = runtime_store_create(a->graph) };
+    const behavior_graph_program *p = behavior_program_graph(a->program, a->graph);
+    arena storage = { 0 };
+    double start = 0, checksum = 0, expected = 0;
+    uint64_t allocations = 0, oracle = eval_oracle_calls();
+    for (int i = -1000; i < count; i++) {
+        if (!i) {
+            start = seconds();
+            allocations = runtime_store_creations();
+        }
+        double x = (i & 1023) * .001;
+        instance->variables[0].d = x;
+        runtime_store_reset_memo(ctx.runtime);
+        pin_value value;
+        int result = backend == BEHAVIOR_ORACLE
+                       ? graph_eval_output(a->graph, a->graph->nodes[0], 1, &storage, &value, &ctx)
+                       : behavior_program_output(p, a->graph->nodes[0], 1, &storage, &value, &ctx, backend);
+        assert(!result);
+        if (i >= 0) {
+            checksum += value.d;
+            expected += (x + .25) * (x * 1.25);
+        }
+    }
+    double elapsed = seconds() - start;
+    allocations = runtime_store_creations() - allocations;
+    assert(checksum == expected);
+    assert(allocations == (backend == BEHAVIOR_ORACLE ? 2 * (uint64_t)count : 0));
+    assert(backend == BEHAVIOR_ORACLE || oracle == eval_oracle_calls());
+    printf(
+        "%s pure_call ns=%.3f checksum=%.12f callee_stores=%llu\n",
+        behavior_backend_name(backend),
+        elapsed * 1e9 / count,
+        checksum,
+        (unsigned long long)allocations
+    );
+    runtime_store_free(ctx.runtime);
+    arena_free(&storage);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(a);
+}
+
 int main(int argc, char **argv)
 {
     bool export_c = argc > 1 && !strcmp(argv[1], "--emit-c");
@@ -385,6 +515,9 @@ int main(int argc, char **argv)
         behavior_asset *scopes = whole_scopes_fixture();
         behavior_function_write_c(whole_entry(scopes), out, "generated_scopes");
         behavior_asset_free(scopes);
+        behavior_asset *pure = whole_pure_fixture();
+        behavior_function_write_c(pure_entry(pure), out, "generated_pure");
+        behavior_asset_free(pure);
         assert(fclose(out) == 0);
         behavior_asset_free(asset);
         return 0;
@@ -416,6 +549,7 @@ int main(int argc, char **argv)
         }
         behavior_asset_free(scopes);
         compare_arguments(library, count, rotation);
+        compare_pure(library, count, rotation);
         void *entry = dlsym(library, "generated_behavior");
         assert(entry);
         for (int i = 0; i < 2; i++) {
@@ -446,6 +580,7 @@ int main(int argc, char **argv)
             BEHAVIOR_BYTECODE,
             BEHAVIOR_ORACLE
         }[(i + (argc > 2 ? atoi(argv[2]) : 0)) % 3];
+        measure_pure(backend, count);
         measure(asset, sink, backend, count, false);
         measure(asset, sink, backend, count, true);
     }

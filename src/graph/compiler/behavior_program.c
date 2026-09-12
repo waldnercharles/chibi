@@ -370,8 +370,7 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
             node *n = p->source->nodes[j];
             bool function_entry = n->desc == &NODE_FunctionEntry &&
                                   p->source->kind == GRAPH_FUNCTION &&
-                                  n->output_count &&
-                                  n->output_pins[0].kind == PIN_EXEC;
+                                  n->id == p->source->entry_id;
             if (n->desc != &NODE_Event && !function_entry) {
                 continue;
             }

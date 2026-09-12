@@ -30,8 +30,36 @@ static behavior_asset **catalog(const char *pattern)
     return assets;
 }
 
-/* This explicit acceptance command fails until every catalog event qualifies.
- * Ordinary backend/parity tests remain independent of this incomplete gate. */
+static bool audit_entry(const behavior_asset *a, graph *g, node *entry, const char *kind)
+{
+    const behavior_graph_program *body = behavior_program_graph(a->program, g);
+    bool whole = behavior_program_function(body, entry) != NULL;
+    const behavior_function_diagnostic *d = behavior_program_function_diagnostic(body, entry);
+    assert(whole || d);
+    printf(
+        "%s_%s %s.%s",
+        kind,
+        whole ? "WHOLE" : "EXCLUDED",
+        a->name,
+        entry->desc == &NODE_Event ? entry->reference_name : g->name
+    );
+    if (d) {
+        printf(
+            " graph=%llu node=%llu type=%s pin=%d output=%d reason=%s",
+            (unsigned long long)d->graph->graph_id,
+            (unsigned long long)d->node->id,
+            d->node->desc->name,
+            d->pin,
+            d->output,
+            d->reason
+        );
+    }
+    putchar('\n');
+    return whole;
+}
+
+/* Explicit acceptance gate for events and every local/library function body.
+ * Shader libraries and event declarations are supporting systems. */
 int whole_function_audit()
 {
     behavior_asset **assets = catalog("content/behaviors/*.json");
@@ -41,18 +69,15 @@ int whole_function_audit()
         apush(libraries, events[i]);
     }
     afree(events);
-    int entries = 0, compiled = 0, functions = 0, library_functions = 0;
-    int bodies = 0, compiled_bodies = 0, pure_functions = 0;
+    int total[4] = { 0 }, compiled[4] = { 0 };
+    int asset_count = acount(assets);
     for (int i = 0; i < acount(libraries); i++) {
-        for (int j = 0; j < acount(libraries[i]->graphs); j++) {
-            library_functions += libraries[i]->graphs[j]->kind == GRAPH_FUNCTION;
+        if (libraries[i]->domain == BEHAVIOR_DOMAIN_LIBRARY) {
+            apush(assets, libraries[i]);
         }
     }
     for (int i = 0; i < acount(assets); i++) {
         behavior_asset *a = assets[i];
-        for (int j = 0; j < acount(a->graphs); j++) {
-            functions += a->graphs[j]->kind == GRAPH_FUNCTION;
-        }
         char message[256];
         behavior_asset *linked = behavior_asset_link_libraries(
             a,
@@ -72,78 +97,64 @@ int whole_function_audit()
         }
         assert(!error);
         for (int j = 0; j < acount(a->graphs); j++) {
-            if (a->graphs[j]->kind != GRAPH_FUNCTION) {
-                continue;
-            }
             graph *source = behavior_asset_find_graph(linked, a->graphs[j]->graph_id);
-            node *entry = graph_node_by_id(source, source->entry_id);
-            if (!entry->output_count || entry->output_pins[0].kind != PIN_EXEC) {
-                pure_functions++;
+            if (source->kind != GRAPH_FUNCTION) {
                 continue;
             }
-            bodies++;
-            const behavior_graph_program *body = behavior_program_graph(program, source);
-            bool whole = behavior_program_function(body, entry) != NULL;
-            compiled_bodies += whole;
-            const behavior_function_diagnostic *d = behavior_program_function_diagnostic(body, entry);
-            assert(whole || d);
-            printf(
-                "FUNCTION_%s %s.%s reason=%s\n",
-                whole ? "WHOLE" : "EXCLUDED",
-                a->name,
-                source->name,
-                d ? d->reason : "complete body"
+            node *entry = graph_node_by_id(source, source->entry_id);
+            bool pure = !entry->output_count || entry->output_pins[0].kind != PIN_EXEC;
+            int group = i >= asset_count ? 3 : pure ? 2 : 1;
+            total[group]++;
+            compiled[group] += audit_entry(
+                linked,
+                source,
+                entry,
+                group == 3 ? "LIBRARY"
+                : pure     ? "PURE"
+                           : "FUNCTION"
             );
         }
-        const behavior_graph_program *g = behavior_program_graph(program, linked->graph);
-        for (int j = 0; j < acount(linked->graph->nodes); j++) {
-            node *n = linked->graph->nodes[j];
-            if (n->desc != &NODE_Event) {
-                continue;
+        if (i < asset_count) {
+            for (int j = 0; j < acount(linked->graph->nodes); j++) {
+                node *n = linked->graph->nodes[j];
+                if (n->desc == &NODE_Event) {
+                    total[0]++;
+                    compiled[0] += audit_entry(linked, linked->graph, n, "EVENT");
+                }
             }
-            entries++;
-            const behavior_function_diagnostic *d = behavior_program_function_diagnostic(g, n);
-            if (!d) {
-                assert(behavior_program_function(g, n));
-                compiled++;
-                printf("WHOLE %s.%s\n", a->name, n->reference_name);
-                continue;
-            }
-            printf(
-                "EXCLUDED %s.%s graph=%llu node=%llu type=%s pin=%d output=%d "
-                "reason=%s\n",
-                a->name,
-                n->reference_name,
-                (unsigned long long)d->graph->graph_id,
-                (unsigned long long)d->node->id,
-                d->node->desc->name,
-                d->pin,
-                d->output,
-                d->reason
-            );
         }
         behavior_asset_free(linked);
-        behavior_asset_free(a);
     }
     printf(
         "whole_function_entries=%d/%d assets=%d local_functions=%d "
         "library_functions=%d\n",
-        compiled,
-        entries,
-        acount(assets),
-        functions,
-        library_functions
+        compiled[0],
+        total[0],
+        asset_count,
+        total[1] + total[2],
+        total[3]
     );
     printf(
-        "whole_effectful_function_bodies=%d/%d pure_function_candidates=%d\n",
-        compiled_bodies,
-        bodies,
-        pure_functions
+        "whole_effectful_function_bodies=%d/%d "
+        "whole_pure_function_bodies=%d/%d "
+        "whole_library_function_bodies=%d/%d\n",
+        compiled[1],
+        total[1],
+        compiled[2],
+        total[2],
+        compiled[3],
+        total[3]
     );
+    for (int i = 0; i < asset_count; i++) {
+        behavior_asset_free(assets[i]);
+    }
     for (int i = 0; i < acount(libraries); i++) {
         behavior_asset_free(libraries[i]);
     }
     afree(libraries);
     afree(assets);
-    return compiled == entries ? 0 : 1;
+    return compiled[0] == total[0] && compiled[1] == total[1] &&
+                   compiled[2] == total[2] && compiled[3] == total[3]
+             ? 0
+             : 1;
 }

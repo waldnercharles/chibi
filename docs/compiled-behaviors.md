@@ -105,7 +105,7 @@ parity and diagnostic tests.
   diagnostic and zero interpreter calls.
 - `make web` builds the app and runs an Emscripten/Node backend smoke covering an
   event, yield, resume, variables, loops and nested whole-function arguments,
-  conversions, Min/Max and returns. It asserts bytecode execution,
+  conversions, Min/Max, returns and nested pure bodies without callee runtime allocation. It asserts bytecode execution,
   SLJIT unavailability and zero oracle calls.
 
 The existing runtime tests cover local/library calls, managed values, loops,
@@ -113,7 +113,7 @@ structural host waits, cancellation, hot apply, event ordering, watches and
 stepping. The existing gameplay tests cover contacts, damage, death, experience,
 restart and preview behavior. These are semantic checks, not a benchmark.
 
-Verified on September 11, 2026: `make test`, `make build`, `make web`,
+Verified on September 12, 2026: `make test`, `make build`, `make web`,
 `test_suite --behavior-parity`, `test_suite --compiled-arena`, and the native
 no-JIT smoke target all passed. Arena3D reported 63 live behavior instances for
 each compiled backend, with zero oracle calls through firing and restart.
@@ -131,3 +131,7 @@ cover logical frames, stored outputs and guarded optimization.
 execution/setup measurements, bounded call-frame storage, stress results and
 remaining compiler work. The focused rendered check is
 `test_suite --behavior-profile-ui`.
+
+[Pure-function body measurements](research/whole-pure-functions.md) cover independent
+publication, direct execution inside general compiled events, expanded coverage
+gates and paired Arena results.

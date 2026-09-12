@@ -385,6 +385,28 @@ static void whole_function_library(behavior_backend backend, bool effectful)
             ));
         }
     }
+    if (!effectful) {
+        node *linked_call = graph_node_by_id(linked->graph, call->id);
+        arena storage = { 0 };
+        eval_context ctx = { .instance = bi,
+                             .runtime = runtime_store_create(linked->graph) };
+        uint64_t allocations = runtime_store_creations();
+        int status = backend == BEHAVIOR_ORACLE
+                       ? graph_eval_output(linked->graph, linked_call, 0, &storage, &result, &ctx)
+                       : behavior_program_output(
+                             behavior_program_graph(linked->program, linked->graph),
+                             linked_call,
+                             0,
+                             &storage,
+                             &result,
+                             &ctx,
+                             backend
+                         );
+        assert(!status && result.d == 42);
+        assert(runtime_store_creations() - allocations == (backend == BEHAVIOR_ORACLE ? 2 : 0));
+        runtime_store_free(ctx.runtime);
+        arena_free(&storage);
+    }
     behavior_instance_destroy(bi);
     behavior_asset_free(linked);
     behavior_asset_free(a);
@@ -588,8 +610,134 @@ static void whole_function_scopes(behavior_backend backend)
     behavior_asset_free(a);
 }
 
+static void count_data_edge(const node *, int, const node *, int, void *user)
+{
+    (*(int *)user)++;
+}
+
+static void pure_unused_return(behavior_backend backend)
+{
+    behavior_asset *a = behavior_asset_new("Unused pure return");
+    uint64_t result = behavior_asset_add_variable(a, "Result", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
+                          ->id;
+    graph *f = behavior_asset_add_function(a, "Sample", 1);
+    node *ret = graph_node_by_id(f, f->return_id);
+    pin_spec output = { .name = "Value",
+                        .kind = PIN_DATA,
+                        .type = PIN_F64,
+                        .type_name = "double",
+                        .default_value = { .type = PIN_F64, .d = 42 } };
+    assert(graph_add_pin(f, ret, 0, &output) >= 0);
+    output.name = "Sample";
+    assert(graph_add_pin(f, ret, 0, &output) >= 0);
+    node *random = graph_add_node(f, registry_node_by_name("Random Real"));
+    assert(graph_connect_data(f, random, 0, ret, 1) == 0);
+    node *event = graph_add_node(a->graph, &NODE_Event);
+    assert(graph_set_event_name(a->graph, event, "Run") == 0);
+    node *call = behavior_asset_add_function_call_node(a, f);
+    node *set = behavior_asset_add_set_node(a, result);
+    assert(graph_connect_data(a->graph, call, 0, set, 1) == 0);
+    assert(graph_connect_exec(a->graph, event, 0, set, 0, 0) == 0);
+    behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+    assert(behavior_instance_set_backend(bi, backend) == 0);
+    behavior_instance_set_trace_enabled(bi, 0);
+    if (backend != BEHAVIOR_ORACLE) {
+        const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
+            behavior_program_graph(a->program, a->graph),
+            event
+        );
+        assert(d && d->graph == f && d->node == random);
+    }
+    srand(2718);
+    (void)rand();
+    int expected_next = rand();
+    srand(2718);
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    assert(bi->variables[0].d == 42 && rand() == expected_next);
+    behavior_instance_destroy(bi);
+    behavior_asset_free(a);
+}
+
+static void whole_pure_calls(behavior_backend backend)
+{
+    behavior_asset *a = whole_pure_fixture();
+    behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+    assert(behavior_instance_set_backend(bi, backend) == 0);
+    behavior_instance_set_trace_enabled(bi, 0);
+    node *call = a->graph->nodes[0];
+    const behavior_graph_program *program = behavior_program_graph(a->program, a->graph);
+    graph *wrapper = a->graphs[2];
+    node *inner = wrapper->nodes[2];
+    assert(inner->desc->pure_kind == NODE_PURE_FUNCTION);
+    if (backend != BEHAVIOR_ORACLE) {
+        for (int i = 1; i <= 2; i++) {
+            graph *f = a->graphs[i];
+            assert(behavior_program_function(
+                behavior_program_graph(a->program, f),
+                graph_node_by_id(f, f->entry_id)
+            ));
+        }
+    }
+    arena storage = { 0 };
+    eval_context ctx = { .instance = bi,
+                         .runtime = runtime_store_create(a->graph),
+                         .backend = backend };
+    double cases[] = { -0.,       0.,  .25,      -3.,      1.e-40,
+                       16777217., NAN, INFINITY, -INFINITY };
+    for (int inspect = 0; inspect < 2; inspect++) {
+        int edges = 0;
+        ctx.on_data_edge = inspect ? count_data_edge : NULL;
+        ctx.on_data_edge_user = &edges;
+        for (int depth_case = 0; depth_case < 4; depth_case++) {
+            ctx.call_depth = (unsigned[]){ 0, 62, 63, 64 }[depth_case];
+            for (int k = 0; k < 9; k++) {
+                runtime_store_reset_memo(ctx.runtime);
+                bi->variables[0].d = cases[k];
+                uint64_t allocated = runtime_store_creations(),
+                         oracle = eval_oracle_calls();
+                pin_value value;
+                int result = backend == BEHAVIOR_ORACLE
+                               ? graph_eval_output(a->graph, call, 0, &storage, &value, &ctx)
+                               : behavior_program_output(program, call, 0, &storage, &value, &ctx, backend);
+                if (depth_case >= 2) {
+                    assert(result == NODE_EVAL_INVALID);
+                    assert(ctx.status.node == (depth_case == 2 ? inner : call));
+                    assert(ctx.status.pin == 0);
+                    assert(strstr(ctx.status.message, "pure function call depth limit"));
+                    continue;
+                }
+                assert(!result);
+                assert_real(value.d, (cases[k] + .25) + cases[k] * 1.25);
+                const pin_value *outputs = runtime_node_outputs_const(
+                    runtime_store_node(ctx.runtime, call)
+                );
+                assert_real(outputs[1].d, (cases[k] + .25) * (cases[k] * 1.25));
+                if (backend != BEHAVIOR_ORACLE) {
+                    assert(oracle == eval_oracle_calls());
+                    assert(runtime_store_creations() - allocated == (inspect ? 2 : 0));
+                } else {
+                    assert(runtime_store_creations() - allocated == 2);
+                }
+            }
+        }
+        assert(!inspect || edges > 0);
+    }
+    runtime_store_free(ctx.runtime);
+    arena_free(&storage);
+    behavior_instance_destroy(bi);
+    behavior_asset_free(a);
+}
+
 void test_compiled_behaviors()
 {
+    pure_unused_return(behavior_default_backend());
+    pure_unused_return(BEHAVIOR_BYTECODE);
+    pure_unused_return(BEHAVIOR_ORACLE);
+    whole_pure_calls(behavior_default_backend());
+    whole_pure_calls(BEHAVIOR_BYTECODE);
+    whole_pure_calls(BEHAVIOR_ORACLE);
     whole_function_scopes(behavior_default_backend());
     whole_function_scopes(BEHAVIOR_BYTECODE);
     whole_function_scopes(BEHAVIOR_ORACLE);

@@ -1,12 +1,13 @@
 # Remaining whole-function migration
 
 The whole-function compiler is not yet a completed gameplay migration. The
-September 11 audit of this isolated branch finds 19 behavior assets, 33 event
+September 12 audit of this isolated branch finds 19 behavior assets, 33 event
 entries, 70 local functions and four library functions. **One of the 33 event
 entries qualifies for whole-function execution**, `PlayerContactBehavior.Tick`.
 One of 31 effectful function bodies also qualifies,
-`ArenaShardBehavior.Initialize Shard`. The other 39 local functions are pure;
-eligible scalar expressions are inlined on use. The original request's larger
+`ArenaShardBehavior.Initialize Shard`. Of the 39 pure local functions, 21 now execute whole compiled bodies, as does
+one of the four library functions. Pure calls inside general compiled events
+use these bodies directly; they no longer require callee runtime stores. The original request's larger
 asset/event counts describe another snapshot; acceptance must enumerate content,
 not hard-code either set of counts.
 
@@ -25,7 +26,7 @@ build-performance/test_suite --whole-function-audit
 This explicit acceptance command loads every behavior, library and event
 signature from the content catalog, links immutable snapshots, publishes them,
 and reports an exclusion's source graph, node type, node ID, pin and direction.
-It returns nonzero while any entry is excluded. Its current nonzero result is an
+It returns nonzero while any event, local function or library function body is excluded. Its current nonzero result is an
 unfinished performance-coverage gate, not a gameplay correctness failure.
 `--compiled-arena` also prints these diagnostics for the live assets.
 
@@ -38,7 +39,8 @@ Each row identifies the first encountered blocker, not every blocker on every
 branch. Removing one can expose another. Adding Max made the contact cooldown
 Tick eligible. F32/F64 coercion moved the ship-motion exclusion to a compound
 argument in a pure call. Component/entity operations, integer comparisons,
-and engine effects still exclude most entries. Scalar acyclic effectful calls
+and engine effects still exclude most entries. The [pure-function measurements](whole-pure-functions.md)
+show a 13.6% native Arena behavior-time reduction from executing eligible pure bodies directly. Scalar acyclic effectful calls
 and stored outputs now lower into the enclosing program; their previous
 exclusions have moved to the first unsupported operation inside the callee.
 
@@ -50,7 +52,7 @@ exclusions have moved to the first unsupported operation inside the callee.
    frame budgets, call-depth checks and accurate error stacks. Add recursive
    calls and managed locals. Persist
    live values and continuation PCs across Delay, host waits, cancellation and
-   hot apply. Existing pure scalar inlining is only one special case.
+   hot apply. Pure-body publication and direct execution are implemented for eligible scalar functions.
 2. **Full value and control lowering.** Scalar payloads, F32/F64 coercions and
    Min/Max are implemented. Add integers and remaining scalar operations;
    vectors and projected struct

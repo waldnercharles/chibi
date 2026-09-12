@@ -34,18 +34,34 @@ See [measured numeric-region results](research/behavior-numeric-performance.md).
 The measured improvement is specific to eligible computation; the Arena trial
 has not demonstrated a whole-scene speedup.
 
-Synchronous scalar event entries can now use a whole-function program, including
-branches, Sequence, WhileLoop, variable access and inlined pure local/library
-calls. SLJIT retains scalar temporaries in registers; the same instructions have
-bytecode and generated-C implementations. Instrumented execution keeps recording
-node values through the general compiled path. Uninstrumented whole functions
-return NULL from `flow_run_input_value` because they do not record those samples.
+Synchronous scalar event and effectful function entries can use a whole-function
+program, including branches, Sequence, WhileLoop, variable access, scalar event
+and function arguments, multiple returns, Min/Max, F32/F64 coercion and inlined
+pure local/library calls. Defaults and argument type checks execute in generated
+code. Return terminates the function even inside a Sequence or loop. SLJIT retains
+scalar temporaries in registers; the same instructions have bytecode and
+generated-C implementations. Scalar acyclic effectful calls inline into the same
+program using typed locals and logical frames, with independent budgets and
+source stacks. Instrumented or unsupported calls still use pooled activations.
+
+Straight paths through multiple frames also have a guarded variant. The guard
+checks root/child budgets and call-depth limits before effects occur; the variant
+forwards stored values, folds constant arithmetic and removes unobservable
+temporary stores. Insufficient budgets use the original checked compiled body,
+preserving the exact partial state and failing node. Native, portable and
+generated-C execution use this same optimization.
+
+Instrumented execution keeps recording node values through the general compiled
+path. Uninstrumented whole functions materialize Return inputs for the caller;
+other inputs remain unavailable through `flow_run_input_value`.
 
 See [whole-function and scheduler measurements](research/whole-function-performance.md)
-for eligibility, generated-C performance gates and queue benchmarks. Arena's live
-assets currently have no eligible whole-function event entries; they continue
-through the general compiled backend. This distinction is included in the
-compiled Arena smoke output.
+for the initial generated-C performance gates and queue benchmarks. The catalog
+now has one eligible event out of 33, `PlayerContactBehavior.Tick`, and one
+eligible effectful function body out of 31, `ArenaShardBehavior.Initialize Shard`.
+The other 39 local functions are pure and remain candidates for inlining on use.
+These counts describe complete entries, not how many individual arithmetic
+expressions compile. The strict catalog audit distinguishes the counts.
 
 Activations retain compiled block indices, live slot storage, function children,
 owned loop snapshots and wait state. Source nodes are recovered from the program
@@ -88,7 +104,8 @@ parity and diagnostic tests.
   `check-behavior-backend` or `test_suite --backend-unavailable` to verify a hard
   diagnostic and zero interpreter calls.
 - `make web` builds the app and runs an Emscripten/Node backend smoke covering an
-  event, yield, resume and variable assignment. It asserts bytecode execution,
+  event, yield, resume, variables, loops and nested whole-function arguments,
+  conversions, Min/Max and returns. It asserts bytecode execution,
   SLJIT unavailability and zero oracle calls.
 
 The existing runtime tests cover local/library calls, managed values, loops,
@@ -104,6 +121,11 @@ each compiled backend, with zero oracle calls through firing and restart.
 The [remaining whole-function migration](research/behavior-completion.md) lists
 the unresolved language/runtime work and the strict catalog coverage command.
 Backend parity passes do not imply that this coverage gate passes.
+
+[Whole-function call measurements](research/whole-function-calls.md) cover the
+typed argument/return ABI, generated-C comparison and paired scheduler/Arena runs.
+The subsequent [call-inlining measurements](research/whole-function-inline.md)
+cover logical frames, stored outputs and guarded optimization.
 
 [Tick profiling and frame reuse](research/tick-profiling.md) documents the new
 execution/setup measurements, bounded call-frame storage, stress results and

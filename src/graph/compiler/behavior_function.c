@@ -19,17 +19,20 @@ typedef struct
 typedef struct
 {
     node *node;
-    int after, pc;
+    int after, pc, frame;
 } task;
 typedef struct
 {
     behavior_function *function;
     const behavior_asset *asset;
     graph *graph;
+    const node *entry;
+    const node *root_entry;
     task *tasks;
     output *outputs;
     const node **evaluating;
     unsigned call_depth;
+    int frame;
     behavior_function_diagnostic *diagnostic;
 } builder;
 static int unsupported(builder *b, const node *n, int pin, bool output, const char *reason)
@@ -45,6 +48,7 @@ static bool scalar(pin_type type)
 }
 static int emit(builder *b, behavior_function_instruction i)
 {
+    i.frame = b->frame;
     apush(b->function->instructions, i);
     return acount(b->function->instructions) - 1;
 }
@@ -84,6 +88,47 @@ static int variable(const builder *b, uint64_t id, pin_type type)
     return -1;
 }
 static int input(builder *b, node *n, int pin);
+static int local(builder *b, int frame, const node *n, int pin)
+{
+    const pin_spec *spec = &n->output_pins[pin];
+    if (!scalar(spec->type) || spec->container != PIN_CONTAINER_SINGLE ||
+        spec->kind != PIN_DATA || spec->field_source ||
+        spec->default_value.type != spec->type) {
+        builder at = *b;
+        if (graph_node_by_id(b->graph, n->id) != n) {
+            at.graph = b->function->frames[frame].source.graph;
+        }
+        return unsupported(&at, n, pin, true, "stored output type, default or projection");
+    }
+    for (int i = 0; i < acount(b->function->locals); i++) {
+        const behavior_function_local *l = &b->function->locals[i];
+        if (l->frame == frame && l->node == n && l->pin == pin) {
+            return i;
+        }
+    }
+    apush(
+        b->function->locals,
+        ((
+            behavior_function_local
+        ){ .initial = spec->default_value, .frame = frame, .node = n, .pin = pin })
+    );
+    return acount(b->function->locals) - 1;
+}
+static int convert(builder *b, int slot, pin_type type)
+{
+    if (slot < 0 || b->function->slots[slot] == type) {
+        return slot;
+    }
+    if (type == PIN_BOOL || b->function->slots[slot] == PIN_BOOL) {
+        return -1;
+    }
+    return value(
+        b,
+        (
+            behavior_function_instruction
+        ){ .op = BF_CONVERT, .type = type, .left = slot, .right = slot }
+    );
+}
 static int pure_call(builder *b, node *n, int pin)
 {
     graph *target = behavior_asset_find_graph(b->asset, n->reference_id);
@@ -165,7 +210,30 @@ static int get_output(builder *b, node *n, int pin)
     apush(b->evaluating, n);
     pin_type type = n->output_pins[pin].type;
     int result = -1;
-    if (n->desc->pure_kind == NODE_PURE_FUNCTION) {
+    if (n == b->entry && b->frame == 0) {
+        int ordinal = 0;
+        for (int i = 0; i < pin; i++) {
+            ordinal += n->output_pins[i].kind == PIN_DATA &&
+                       !n->output_pins[i].field_source;
+        }
+        if (n->output_pins[pin].default_value.type == type) {
+            result = value(
+                b,
+                (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                                 .type = type,
+                                                 .left = ordinal,
+                                                 .value = n->output_pins[pin].default_value }
+            );
+        }
+    } else if (n == b->entry || n->desc == &NODE_SetVariable || n->desc == &NODE_CallFunction) {
+        int index = local(b, b->frame, n, pin);
+        if (index >= 0) {
+            result = value(
+                b,
+                (behavior_function_instruction){ .op = BF_LOCAL, .type = type, .left = index }
+            );
+        }
+    } else if (n->desc->pure_kind == NODE_PURE_FUNCTION) {
         result = pure_call(b, n, pin);
     } else if (n->desc->pure_kind == NODE_PURE_GET) {
         int index = variable(b, n->reference_id, type);
@@ -200,6 +268,8 @@ static int get_output(builder *b, node *n, int pin)
             case NODE_JIT_DIV: op = BF_DIV; break;
             case NODE_JIT_NEG: op = BF_NEG; break;
             case NODE_JIT_ABS: op = BF_ABS; break;
+            case NODE_JIT_MIN: op = BF_MIN; break;
+            case NODE_JIT_MAX: op = BF_MAX; break;
             default: break;
         }
         if (n->desc == &NODE_Less) {
@@ -258,11 +328,10 @@ static int input(builder *b, node *n, int pin)
     node *source;
     int source_pin;
     if (graph_input_source(b->graph, n, pin, &source, &source_pin)) {
-        if (graph_input_conversion(b->graph, n, pin) ||
-            source->output_pins[source_pin].type != s->type) {
+        if (graph_input_conversion(b->graph, n, pin)) {
             return unsupported(b, n, pin, false, "input conversion");
         }
-        return get_output(b, source, source_pin);
+        return convert(b, get_output(b, source, source_pin), s->type);
     }
     if (!s->binding) {
         if (s->default_value.type != s->type) {
@@ -299,14 +368,15 @@ static int schedule(builder *b, node *n, int after)
         return after;
     }
     for (int i = 0; i < acount(b->tasks); i++) {
-        if (b->tasks[i].node == n && b->tasks[i].after == after) {
+        if (b->tasks[i].node == n && b->tasks[i].after == after &&
+            b->tasks[i].frame == b->frame) {
             return i;
         }
     }
     if (acount(b->tasks) >= 1024) {
         return -2;
     }
-    apush(b->tasks, ((task){ n, after, -1 }));
+    apush(b->tasks, ((task){ n, after, -1, b->frame }));
     return acount(b->tasks) - 1;
 }
 static int successor(builder *b, node *n, int pin, int after)
@@ -327,20 +397,163 @@ static int successor(builder *b, node *n, int pin, int after)
     }
     return schedule(b, target, after);
 }
+static int call(builder *b, node *n, int after)
+{
+    graph *target = behavior_asset_find_graph(b->asset, n->reference_id);
+    if (!target || target->kind != GRAPH_FUNCTION) {
+        return unsupported(b, n, -1, false, "function graph");
+    }
+    for (int frame = b->frame; frame >= 0;
+         frame = b->function->frames[frame].source.parent) {
+        if (b->function->frames[frame].source.graph == target) {
+            return unsupported(b, n, -1, false, "recursive function call");
+        }
+    }
+    if (acount(b->function->frames) >= 128) {
+        return unsupported(b, n, -1, false, "function expansion limit");
+    }
+    node *entry = graph_node_by_id(target, target->entry_id);
+    node *ret = graph_node_by_id(target, target->return_id);
+    if (!entry || !ret || entry->output_count == 0 ||
+        entry->output_pins[0].kind != PIN_EXEC) {
+        return unsupported(b, n, -1, false, "function entry or return");
+    }
+    int resume = successor(b, n, 0, after);
+    if (resume < -1) {
+        return -2;
+    }
+    int parent = b->frame, frame = acount(b->function->frames);
+    apush(
+        b->function->frames,
+        ((behavior_function_frame){ .source = { target, n, parent },
+                                    .depth = b->function->frames[parent].depth + 1,
+                                    .resume = resume })
+    );
+    if (target->call_depth_limit) {
+        emit(
+            b,
+            (behavior_function_instruction){ .op = BF_CALL_CHECK,
+                                             .left = target->call_depth_limit,
+                                             .node_id = n->id }
+        );
+    }
+    int *args = NULL, *parameters = NULL;
+    int at = 1;
+    for (int i = 1; i < entry->output_count; i++) {
+        if (entry->output_pins[i].kind != PIN_DATA || entry->output_pins[i].field_source) {
+            continue;
+        }
+        while (at < n->input_count && n->input_pins[at].kind != PIN_DATA) {
+            at++;
+        }
+        int arg = at < n->input_count ? input(b, n, at++) : -1;
+        int parameter = local(b, frame, entry, i);
+        if (arg >= 0) {
+            arg = convert(b, arg, entry->output_pins[i].type);
+        }
+        if (arg < 0 || parameter < 0) {
+            afree(args);
+            afree(parameters);
+            return -2;
+        }
+        apush(args, arg);
+        apush(parameters, parameter);
+    }
+    emit(b, (behavior_function_instruction){ .op = BF_ENTER, .target = frame });
+    for (int i = 0; i < acount(args); i++) {
+        emit(
+            b,
+            (behavior_function_instruction){ .op = BF_SAVE,
+                                             .type = b->function->slots[args[i]],
+                                             .left = args[i],
+                                             .target = parameters[i] }
+        );
+    }
+    afree(args);
+    afree(parameters);
+    int end = acount(b->tasks);
+    apush(b->tasks, ((task){ .pc = -1, .after = -1, .frame = frame }));
+    b->frame = frame;
+    int next = schedule(b, entry, end);
+    b->frame = parent;
+    return next;
+}
+static bool return_values(builder *b, node *n)
+{
+    behavior_function_frame frame = b->function->frames[b->frame];
+    node *call = frame.source.call;
+    int at = 0;
+    for (int i = 0; i < n->input_count; i++) {
+        if (n->input_pins[i].kind != PIN_DATA) {
+            continue;
+        }
+        int slot = input(b, n, i), target = i;
+        if (call) {
+            while (at < call->output_count && (call->output_pins[at].kind != PIN_DATA ||
+                                               call->output_pins[at].field_source)) {
+                at++;
+            }
+            if (at == call->output_count) {
+                return false;
+            }
+            slot = convert(b, slot, call->output_pins[at].type);
+            target = local(b, frame.source.parent, call, at++);
+        }
+        if (slot < 0 || target < 0) {
+            return false;
+        }
+        emit(
+            b,
+            (behavior_function_instruction){ .op = call ? BF_SAVE : BF_RESULT,
+                                             .type = b->function->slots[slot],
+                                             .left = slot,
+                                             .target = target }
+        );
+    }
+    if (call) {
+        emit(b, (behavior_function_instruction){ .op = BF_LEAVE, .target = b->frame });
+        emit(b, (behavior_function_instruction){ .op = BF_JUMP, .target = frame.resume });
+        return true;
+    }
+    emit(b, (behavior_function_instruction){ .op = BF_RETURN, .node_id = n->id });
+    return true;
+}
 static bool block(builder *b, int index)
 {
     task t = b->tasks[index];
     node *n = t.node;
+    b->frame = t.frame;
+    behavior_function_frame frame = b->function->frames[b->frame];
+    b->graph = frame.source.graph;
+    b->entry = b->frame ? graph_node_by_id(b->graph, b->graph->entry_id) : b->root_entry;
+    b->tasks[index].pc = acount(b->function->instructions);
+    aclear(b->outputs);
+    if (!n) {
+        emit(b, (behavior_function_instruction){ .op = BF_LEAVE, .target = b->frame });
+        b->frame = frame.source.parent;
+        emit(
+            b,
+            (behavior_function_instruction){ .op = BF_FAIL,
+                                             .node_id = frame.source.call->id,
+                                             .left = BEHAVIOR_FUNCTION_NO_RETURN }
+        );
+        return true;
+    }
     if (n->disabled || n->breakpoint) {
         unsupported(b, n, -1, false, "disabled node or breakpoint");
         return false;
     }
-    b->tasks[index].pc = acount(b->function->instructions);
-    aclear(b->outputs);
     emit(b, (behavior_function_instruction){ .op = BF_CHECK, .node_id = n->id });
     int next = -2;
-    if (n->desc == &NODE_Event) {
+    if (n->desc == &NODE_Event || n->desc == &NODE_FunctionEntry) {
         next = successor(b, n, 0, t.after);
+    } else if (n->desc == &NODE_Return && n->id == b->graph->return_id) {
+        return return_values(b, n);
+    } else if (n->desc == &NODE_CallFunction) {
+        next = call(b, n, t.after);
+        if (next < 0) {
+            return false;
+        }
     } else if (n->desc == &NODE_SetVariable) {
         int source = input(b, n, 1),
             target = variable(b, n->reference_id, n->input_pins[1].type);
@@ -353,6 +566,17 @@ static bool block(builder *b, int index)
                                              .type = n->input_pins[1].type,
                                              .left = source,
                                              .target = target }
+        );
+        int stored = local(b, b->frame, n, 1);
+        if (stored < 0) {
+            return false;
+        }
+        emit(
+            b,
+            (behavior_function_instruction){ .op = BF_SAVE,
+                                             .type = n->input_pins[1].type,
+                                             .left = source,
+                                             .target = stored }
         );
         next = successor(b, n, 0, t.after);
     } else if (n->desc == &NODE_Branch || n->desc == &NODE_WhileLoop) {
@@ -386,6 +610,52 @@ static bool block(builder *b, int index)
     emit(b, (behavior_function_instruction){ .op = BF_JUMP, .target = next });
     return true;
 }
+/* Stored node outputs are observable only when another compiled expression
+ * reads them. Remove unused storage before assigning native stack offsets. */
+static void compact_locals(behavior_function *f)
+{
+    int *map = xcalloc((size_t)(acount(f->locals) + 1), sizeof *map);
+    for (int i = 0; i < acount(f->instructions); i++) {
+        if (f->instructions[i].op == BF_LOCAL) {
+            map[f->instructions[i].left] = 1;
+        }
+    }
+    int count = 0;
+    for (int i = 0; i < acount(f->locals); i++) {
+        if (map[i]) {
+            f->locals[count] = f->locals[i];
+            map[i] = count++;
+        } else {
+            map[i] = -1;
+        }
+    }
+    asetlen(f->locals, count);
+    int *pcs = xcalloc((size_t)acount(f->instructions), sizeof *pcs);
+    behavior_function_instruction *instructions = NULL;
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        behavior_function_instruction i = f->instructions[pc];
+        pcs[pc] = acount(instructions);
+        if (i.op == BF_SAVE) {
+            i.target = map[i.target];
+            if (i.target < 0) {
+                continue;
+            }
+        }
+        if (i.op == BF_LOCAL) {
+            i.left = map[i.left];
+        }
+        apush(instructions, i);
+    }
+    for (int i = 0; i < acount(instructions); i++) {
+        if (instructions[i].op == BF_JUMP || instructions[i].op == BF_BRANCH) {
+            instructions[i].target = pcs[instructions[i].target];
+        }
+    }
+    afree(f->instructions);
+    f->instructions = instructions;
+    free(pcs);
+    free(map);
+}
 behavior_function *behavior_function_lower(
     const behavior_asset *asset,
     graph *g,
@@ -397,7 +667,10 @@ behavior_function *behavior_function_lower(
     builder b = { .diagnostic = diagnostic,
                   .asset = asset,
                   .graph = g,
+                  .entry = entry,
+                  .root_entry = entry,
                   .function = xcalloc(1, sizeof(behavior_function)) };
+    apush(b.function->frames, ((behavior_function_frame){ .source = { g, NULL, -1 } }));
     schedule(&b, entry, -1);
     bool valid = true;
     for (int i = 0; valid && i < acount(b.tasks); i++) {
@@ -414,6 +687,8 @@ behavior_function *behavior_function_lower(
     afree(b.outputs);
     afree(b.evaluating);
     if (valid) {
+        compact_locals(b.function);
+        behavior_function_optimize(b.function);
         return b.function;
     }
     unsupported(&b, entry, -1, false, "control shape, breakpoint or compilation limit");
@@ -426,107 +701,31 @@ void behavior_function_free(behavior_function *f)
         return;
     }
     behavior_jit_free(f->code);
+    behavior_jit_free(f->dispatch);
+    behavior_function_free(f->fast);
     afree(f->instructions);
     afree(f->slots);
+    afree(f->locals);
+    afree(f->frames);
     free(f);
 }
 bool behavior_function_compile(behavior_function *f)
 {
     f->code = behavior_function_jit(f);
-    return f->code != NULL;
+    if (!f->code || !f->fast) {
+        return f->code != NULL;
+    }
+    if (!behavior_function_compile(f->fast)) {
+        return false;
+    }
+    f->dispatch = behavior_function_guard(f);
+    return f->dispatch != NULL;
 }
 void *behavior_function_entry(const behavior_function *f)
 {
-    return f ? f->code : NULL;
+    return f ? (f->dispatch ? f->dispatch : f->code) : NULL;
 }
-
-int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
+const behavior_function_source *behavior_function_frame_source(const behavior_function *f, int frame)
 {
-    if (native) {
-        assert(f->code);
-        return ((int (*)(behavior_function_context *))f->code)(ctx);
-    }
-    pin_value *slots = xcalloc((size_t)(acount(f->slots) + 1), sizeof *slots);
-    int result = 0;
-    for (int pc = 0; pc < acount(f->instructions); pc++) {
-        const behavior_function_instruction *i = &f->instructions[pc];
-        pin_value *out = &slots[i->output], a = { 0 }, b = { 0 };
-        if (i->op >= BF_ADD && i->op <= BF_STORE) {
-            a = slots[i->left];
-            b = slots[i->right];
-        }
-        if (i->op == BF_BRANCH) {
-            a = slots[i->left];
-        }
-        if (i->op < BF_STORE) {
-            out->type = i->type;
-        }
-        switch (i->op) {
-            case BF_CONSTANT: *out = i->value; break;
-            case BF_VARIABLE: *out = ctx->variables[i->left]; break;
-            case BF_DELTA: out->f = (float)ctx->delta_seconds; break;
-            case BF_STORE:
-                if (i->type == PIN_F32) {
-                    ctx->variables[i->target].f = a.f;
-                }
-                if (i->type == PIN_F64) {
-                    ctx->variables[i->target].d = a.d;
-                }
-                if (i->type == PIN_BOOL) {
-                    ctx->variables[i->target].b = a.b;
-                }
-                break;
-            case BF_CHECK:
-                ctx->node_id = i->node_id;
-                if (ctx->steps >= ctx->budget) {
-                    result = FLOW_ERR_STEP_BUDGET;
-                    goto done;
-                }
-                ctx->steps++;
-                break;
-            case BF_JUMP: pc = i->target - 1; break;
-            case BF_BRANCH:
-                if (a.b) {
-                    pc = i->target - 1;
-                }
-                break;
-            case BF_END: goto done;
-            default: {
-                double x = a.type == PIN_F32 ? a.f : a.d,
-                       y = b.type == PIN_F32 ? b.f : b.d, r = 0;
-                switch (i->op) {
-                    case BF_ADD:
-                        r = i->type == PIN_F32 ? (float)(a.f + b.f) : x + y;
-                        break;
-                    case BF_SUB:
-                        r = i->type == PIN_F32 ? (float)(a.f - b.f) : x - y;
-                        break;
-                    case BF_MUL:
-                        r = i->type == PIN_F32 ? (float)(a.f * b.f) : x * y;
-                        break;
-                    case BF_DIV:
-                        r = i->type == PIN_F32 ? (float)(a.f / b.f) : x / y;
-                        break;
-                    case BF_NEG: r = -x; break;
-                    case BF_ABS: r = fabs(x); break;
-                    case BF_LT: out->b = x < y; break;
-                    case BF_LE: out->b = x <= y; break;
-                    case BF_GT: out->b = x > y; break;
-                    case BF_GE: out->b = x >= y; break;
-                    case BF_EQ: out->b = x == y; break;
-                    case BF_NE: out->b = x != y; break;
-                    default: assert(false);
-                }
-                if (i->type == PIN_F32) {
-                    out->f = (float)r;
-                }
-                if (i->type == PIN_F64) {
-                    out->d = r;
-                }
-            }
-        }
-    }
-done:
-    free(slots);
-    return result;
+    return &f->frames[frame].source;
 }

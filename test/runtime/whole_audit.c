@@ -42,6 +42,7 @@ int whole_function_audit()
     }
     afree(events);
     int entries = 0, compiled = 0, functions = 0, library_functions = 0;
+    int bodies = 0, compiled_bodies = 0, pure_functions = 0;
     for (int i = 0; i < acount(libraries); i++) {
         for (int j = 0; j < acount(libraries[i]->graphs); j++) {
             library_functions += libraries[i]->graphs[j]->kind == GRAPH_FUNCTION;
@@ -70,6 +71,30 @@ int whole_function_audit()
             fprintf(stderr, "%s: %s\n", a->name, error->message);
         }
         assert(!error);
+        for (int j = 0; j < acount(a->graphs); j++) {
+            if (a->graphs[j]->kind != GRAPH_FUNCTION) {
+                continue;
+            }
+            graph *source = behavior_asset_find_graph(linked, a->graphs[j]->graph_id);
+            node *entry = graph_node_by_id(source, source->entry_id);
+            if (!entry->output_count || entry->output_pins[0].kind != PIN_EXEC) {
+                pure_functions++;
+                continue;
+            }
+            bodies++;
+            const behavior_graph_program *body = behavior_program_graph(program, source);
+            bool whole = behavior_program_function(body, entry) != NULL;
+            compiled_bodies += whole;
+            const behavior_function_diagnostic *d = behavior_program_function_diagnostic(body, entry);
+            assert(whole || d);
+            printf(
+                "FUNCTION_%s %s.%s reason=%s\n",
+                whole ? "WHOLE" : "EXCLUDED",
+                a->name,
+                source->name,
+                d ? d->reason : "complete body"
+            );
+        }
         const behavior_graph_program *g = behavior_program_graph(program, linked->graph);
         for (int j = 0; j < acount(linked->graph->nodes); j++) {
             node *n = linked->graph->nodes[j];
@@ -108,6 +133,12 @@ int whole_function_audit()
         acount(assets),
         functions,
         library_functions
+    );
+    printf(
+        "whole_effectful_function_bodies=%d/%d pure_function_candidates=%d\n",
+        compiled_bodies,
+        bodies,
+        pure_functions
     );
     for (int i = 0; i < acount(libraries); i++) {
         behavior_asset_free(libraries[i]);

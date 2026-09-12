@@ -600,22 +600,37 @@ static int execute(flow_run *run)
         node *entry = frame_node(run, &run->frames[0]);
         const behavior_function *function = behavior_program_function(run->program, entry);
         if (function) {
-            behavior_function_context ctx = { .variables = run->instance->variables,
-                                              .arguments = run->inputs,
-                                              .argument_count = run->input_count,
-                                              .delta_seconds = run->eval.delta_seconds,
-                                              .budget = run->step_budget };
+            node *ret = graph_node_by_id(run->graph, run->graph->return_id);
+            behavior_function_context ctx = {
+                .variables = run->instance->variables,
+                .arguments = run->inputs,
+                .argument_count = run->input_count,
+                .results = ret ? runtime_node_inputs(flow_runtime_node(run, ret)) : NULL,
+                .delta_seconds = run->eval.delta_seconds,
+                .budget = run->step_budget,
+                .call_depth = run->call_depth,
+            };
             int result = behavior_function_run(function, &ctx, run->backend == BEHAVIOR_SLJIT);
             run->whole_function_executed = true;
+            run->whole_function = function;
             run->steps = ctx.steps;
             if (result) {
-                node *failed = graph_node_by_id(run->graph, ctx.node_id);
+                run->whole_error_frame = ctx.error_frame;
+                const behavior_function_source
+                    *source = behavior_function_frame_source(function, ctx.error_frame);
+                node *failed = graph_node_by_id(source->graph, ctx.node_id);
                 aclear(run->frames);
-                push_frame(run, (activation_frame){ .node = failed });
-                flow_fail(run, result, failed, "whole-function step budget exceeded");
+                const char *message = ctx.failure == BEHAVIOR_FUNCTION_DEPTH
+                                        ? "function call depth limit exceeded"
+                                    : ctx.failure == BEHAVIOR_FUNCTION_NO_RETURN
+                                        ? "function completed without Return"
+                                        : "whole-function step budget exceeded";
+                flow_fail(run, result, failed, message);
+                run->error.steps = ctx.error_steps;
                 return result;
             }
             aclear(run->frames);
+            run->returned = ctx.returned_node_id ? ret : NULL;
             run->state = FLOW_COMPLETED;
             return FLOW_OK;
         }
@@ -793,6 +808,8 @@ flow_run *flow_run_start_reuse(
     run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
     run->whole_function_executed = false;
+    run->whole_function = NULL;
+    run->whole_error_frame = 0;
     run->profile_started = false;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;
@@ -862,6 +879,8 @@ int flow_run_recycle(flow_run *run)
     run->input_user_data = NULL;
     run->steps = 0;
     run->whole_function_executed = false;
+    run->whole_function = NULL;
+    run->whole_error_frame = 0;
     return FLOW_OK;
 }
 
@@ -1084,6 +1103,8 @@ int flow_run_reset(flow_run *run)
     run->traversal_view_dirty = false;
     run->steps = 0;
     run->whole_function_executed = false;
+    run->whole_function = NULL;
+    run->whole_error_frame = 0;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     return FLOW_OK;
@@ -1160,7 +1181,8 @@ flow_inputs flow_run_inputs(const flow_run *run)
 
 const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin)
 {
-    if (!run || run->whole_function_executed || !n || pin < 0 || pin >= n->input_count) {
+    if (!run || !n || pin < 0 || pin >= n->input_count ||
+        (run->whole_function_executed && n != run->returned)) {
         return NULL;
     }
     const runtime_node *state = flow_runtime_node((flow_run *)run, n);
@@ -1197,6 +1219,9 @@ const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
 const node *flow_run_current_node(const flow_run *run)
 {
     run = flow_run_active_leaf(run);
+    if (run && run->whole_function_executed && run->state == FLOW_FAILED) {
+        return run->error.node;
+    }
     if (!run || !acount(run->frames)) {
         return NULL;
     }
@@ -1218,6 +1243,29 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
     }
     flow_run *mutable_run = (flow_run *)run;
     aclear(mutable_run->stack_cache);
+    if (run->whole_function_executed && run->state == FLOW_FAILED) {
+        const node *n = run->error.node;
+        for (int frame = run->whole_error_frame; frame >= 0;) {
+            const behavior_function_source
+                *source = behavior_function_frame_source(run->whole_function, frame);
+            apush(
+                mutable_run->stack_cache,
+                ((flow_call_frame){ source->graph, source->graph->graph_id, n->id })
+            );
+            n = source->call;
+            frame = source->parent;
+        }
+        int length = acount(mutable_run->stack_cache);
+        for (int i = 0; i < length / 2; i++) {
+            flow_call_frame swap = mutable_run->stack_cache[i];
+            mutable_run->stack_cache[i] = mutable_run->stack_cache[length - i - 1];
+            mutable_run->stack_cache[length - i - 1] = swap;
+        }
+        if (count) {
+            *count = length;
+        }
+        return mutable_run->stack_cache;
+    }
     for (int i = 0; i < acount(run->frames); i++) {
         node *n = frame_node(run, &run->frames[i]);
         apush(

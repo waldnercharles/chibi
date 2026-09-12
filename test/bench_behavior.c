@@ -175,34 +175,175 @@ static const behavior_function *whole_entry(behavior_asset *a)
     }
     return NULL;
 }
-static void compare_control(void *library)
+static void measure_scopes(const char *label, int (*entry)(behavior_function_context *), int count)
 {
-    behavior_asset *a = whole_function_fixture();
-    const behavior_function *f = whole_entry(a);
-    assert(f);
-    int (*generated)(
-        behavior_function_context *
-    ) = (int (*)(behavior_function_context *))dlsym(library, "generated_control");
-    assert(generated);
-    for (unsigned long budget = 0; budget < 17; budget++) {
-        pin_value reference[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
-        behavior_function_context expected = { .variables = reference, .budget = budget };
-        int result = behavior_function_run(f, &expected, false);
-        for (int mode = 0; mode < 2; mode++) {
-            pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
-            behavior_function_context actual = { .variables = variables,
-                                                 .budget = budget };
-            int got = mode ? generated(&actual)
-                           : behavior_function_run(f, &actual, true);
-            assert(got == result && actual.steps == expected.steps);
-            assert(!result || actual.node_id == expected.node_id);
-            assert(
-                variables[0].f == reference[0].f &&
-                variables[1].f == reference[1].f
-            );
+    pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
+    behavior_function_context ctx = { .variables = variables, .budget = 4096 };
+    double start = 0, checksum = 0, expected = 0;
+    for (int i = -10000; i < count; i++) {
+        if (!i) {
+            start = seconds();
+        }
+        float input = (float)(i & 1023) * .001f;
+        variables[0].f = input;
+        ctx.steps = 0;
+        assert(entry(&ctx) == 0 && ctx.steps == 4 && variables[0].f == 99);
+        if (i >= 0) {
+            checksum += variables[1].f;
+            expected += (float)((float)(input + 1) + 100);
         }
     }
-    puts("control_parity=SLJIT,BYTECODE,GENERATED_C budgets=0..16");
+    printf("%s calls ns=%.3f checksum=%.12f\n", label, (seconds() - start) * 1e9 / count, checksum);
+    assert(checksum == expected);
+}
+static void compare_control(void *library, bool scopes)
+{
+    behavior_asset *a = scopes ? whole_scopes_fixture() : whole_function_fixture();
+    const behavior_function *f = whole_entry(a);
+    assert(f);
+    int (*generated)(behavior_function_context *) = (int (*)(
+        behavior_function_context *
+    ))dlsym(library, scopes ? "generated_scopes" : "generated_control");
+    assert(generated);
+    for (int budget_case = 0; budget_case < 18; budget_case++) {
+        uintptr_t budget = budget_case < 17 ? (uintptr_t)budget_case : UINTPTR_MAX;
+        for (int start = 0; start < 3; start++) {
+            uintptr_t steps = (uintptr_t[]){ 0, 5, UINTPTR_MAX - 1 }[start];
+            for (unsigned depth = 0; depth <= 64; depth += 32) {
+                pin_value reference[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
+                behavior_function_context expected = { .variables = reference,
+                                                       .budget = budget,
+                                                       .steps = steps,
+                                                       .call_depth = depth };
+                int result = behavior_function_run(f, &expected, false);
+                for (int mode = 0; mode < 2; mode++) {
+                    pin_value variables[2] = { { .type = PIN_F32 },
+                                               { .type = PIN_F32 } };
+                    behavior_function_context actual = { .variables = variables,
+                                                         .budget = budget,
+                                                         .steps = steps,
+                                                         .call_depth = depth };
+                    int got = mode ? generated(&actual)
+                                   : behavior_function_run(f, &actual, true);
+                    assert(got == result && actual.steps == expected.steps);
+                    assert(!result || actual.node_id == expected.node_id);
+                    assert(
+                        !result || (actual.error_frame == expected.error_frame &&
+                                    actual.error_steps == expected.error_steps &&
+                                    actual.failure == expected.failure)
+                    );
+                    assert(
+                        variables[0].f == reference[0].f &&
+                        variables[1].f == reference[1].f
+                    );
+                }
+            }
+        }
+    }
+    printf("%s_parity=SLJIT,BYTECODE,GENERATED_C budgets=0..16 depths=0,32,64\n", scopes ? "scopes" : "control");
+    behavior_asset_free(a);
+}
+
+static const behavior_function *arguments_entry(behavior_asset *a)
+{
+    behavior_program_publish(a);
+    graph *g = a->graphs[1];
+    const behavior_function *f = behavior_program_function(
+        behavior_program_graph(a->program, g),
+        graph_node_by_id(g, g->entry_id)
+    );
+    assert(f);
+    return f;
+}
+
+static void compare_arguments(void *library, int count, int rotation)
+{
+    behavior_asset *a = whole_arguments_fixture();
+    const behavior_function *f = arguments_entry(a);
+    int (*entries[])(behavior_function_context *) = {
+        (int (*)(behavior_function_context *))behavior_function_entry(f),
+        (int (*)(behavior_function_context *))dlsym(library, "generated_arguments")
+    };
+    assert(entries[0] && entries[1]);
+    double cases[] = { NAN, INFINITY, -INFINITY, -0., 0., 1.e-40, 16777217. };
+    for (int x = 0; x < 7; x++) {
+        for (int y = 0; y < 7; y++) {
+            for (unsigned long budget = 0; budget <= 4; budget++) {
+                /* Reverse the declared widths to exercise argument coercion. */
+                pin_value args[] = { { .type = PIN_F32, .f = (float)cases[x] },
+                                     { .type = PIN_F64, .d = cases[y] },
+                                     { .type = PIN_BOOL, .b = x % 2 } };
+                pin_value reference[4] = { 0 };
+                behavior_function_context expected = { .arguments = args,
+                                                       .argument_count = x % 4,
+                                                       .results = reference,
+                                                       .budget = budget };
+                int result = behavior_function_run(f, &expected, false);
+                for (int mode = 0; mode < 2; mode++) {
+                    pin_value values[4] = { 0 };
+                    behavior_function_context actual = { .arguments = args,
+                                                         .argument_count = x % 4,
+                                                         .results = values,
+                                                         .budget = budget };
+                    assert(
+                        entries[mode](&actual) == result &&
+                        actual.steps == expected.steps
+                    );
+                    assert(actual.returned_node_id == expected.returned_node_id);
+                    assert(!result || actual.node_id == expected.node_id);
+                    assert(
+                        isnan(reference[1].d) ? isnan(values[1].d)
+                                              : values[1].d == reference[1].d
+                    );
+                    assert(
+                        isnan(reference[2].f) ? isnan(values[2].f)
+                                              : values[2].f == reference[2].f
+                    );
+                    assert(values[3].b == reference[3].b);
+                    assert(
+                        reference[1].d != 0 ||
+                        signbit(reference[1].d) == signbit(values[1].d)
+                    );
+                    assert(
+                        reference[2].f != 0 ||
+                        signbit(reference[2].f) == signbit(values[2].f)
+                    );
+                }
+            }
+        }
+    }
+    puts("arguments_parity=SLJIT,BYTECODE,GENERATED_C defaults,coercions,NaNs,zeros,returns,budgets");
+    for (int pass = 0; pass < 2; pass++) {
+        int mode = (pass + rotation) % 2;
+        pin_value args[] = { { .type = PIN_F64 },
+                             { .type = PIN_F32, .f = -.5f },
+                             { .type = PIN_BOOL, .b = true } };
+        pin_value results[4] = { 0 };
+        behavior_function_context ctx = { .arguments = args,
+                                          .argument_count = 3,
+                                          .results = results,
+                                          .budget = 3 };
+        double start = 0, checksum = 0, expected = 0;
+        for (int i = -10000; i < count; i++) {
+            if (!i) {
+                start = seconds();
+            }
+            args[0].d = (i & 1023) * .001;
+            ctx.steps = 0;
+            assert(entries[mode](&ctx) == 0 && ctx.steps == 3);
+            if (i >= 0) {
+                checksum += results[1].d;
+                expected += args[0].d;
+            }
+        }
+        assert(checksum == expected);
+        printf(
+            "%s arguments ns=%.3f checksum=%.12f\n",
+            mode ? "GENERATED_C" : "SLJIT",
+            (seconds() - start) * 1e9 / count,
+            checksum
+        );
+    }
     behavior_asset_free(a);
 }
 
@@ -238,6 +379,12 @@ int main(int argc, char **argv)
         assert(cf);
         behavior_function_write_c(cf, out, "generated_control");
         behavior_asset_free(control);
+        behavior_asset *arguments = whole_arguments_fixture();
+        behavior_function_write_c(arguments_entry(arguments), out, "generated_arguments");
+        behavior_asset_free(arguments);
+        behavior_asset *scopes = whole_scopes_fixture();
+        behavior_function_write_c(whole_entry(scopes), out, "generated_scopes");
+        behavior_asset_free(scopes);
         assert(fclose(out) == 0);
         behavior_asset_free(asset);
         return 0;
@@ -251,7 +398,24 @@ int main(int argc, char **argv)
             fprintf(stderr, "%s\n", dlerror());
             return 1;
         }
-        compare_control(library);
+        compare_control(library, false);
+        compare_control(library, true);
+        behavior_asset *scopes = whole_scopes_fixture();
+        const behavior_function *scope_function = whole_entry(scopes);
+        void *scope_c = dlsym(library, "generated_scopes");
+        assert(scope_c);
+        for (int i = 0; i < 2; i++) {
+            bool generated = (i + rotation) % 2;
+            measure_scopes(
+                generated ? "GENERATED_C" : "SLJIT",
+                (int (*)(behavior_function_context *))(
+                    generated ? scope_c : behavior_function_entry(scope_function)
+                ),
+                count
+            );
+        }
+        behavior_asset_free(scopes);
+        compare_arguments(library, count, rotation);
         void *entry = dlsym(library, "generated_behavior");
         assert(entry);
         for (int i = 0; i < 2; i++) {

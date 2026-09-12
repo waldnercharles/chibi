@@ -49,6 +49,14 @@ def main():
         measurements["GENERATED_C whole_function"]
     )
     print(f"SLJIT/generated-C ratio={ratio:.3f}; limit={args.max_native_ratio:.3f}")
+    arguments_ratio = statistics.median(measurements["SLJIT arguments"]) / statistics.median(
+        measurements["GENERATED_C arguments"]
+    )
+    print(f"SLJIT/generated-C argument/return ratio={arguments_ratio:.3f}; limit={args.max_native_ratio:.3f}")
+    calls_ratio = statistics.median(measurements["SLJIT calls"]) / statistics.median(
+        measurements["GENERATED_C calls"]
+    )
+    print(f"SLJIT/generated-C inlined-call ratio={calls_ratio:.3f}; limit={args.max_native_ratio:.3f}")
     dispatch_ratio = statistics.median(measurements["SLJIT dispatch"]) / statistics.median(
         measurements["C dispatch"]
     )
@@ -57,6 +65,10 @@ def main():
         raise SystemExit("FAIL: scalar dispatch performance acceptance")
     if ratio > args.max_native_ratio:
         raise SystemExit("FAIL: scalar whole-function performance acceptance")
+    if arguments_ratio > args.max_native_ratio:
+        raise SystemExit("FAIL: argument/return performance acceptance")
+    if calls_ratio > args.max_native_ratio:
+        raise SystemExit("FAIL: inlined-call performance acceptance")
     print("PASS: scalar whole-function performance acceptance")
 
 

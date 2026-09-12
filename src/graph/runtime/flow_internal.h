@@ -40,6 +40,8 @@ struct flow_run
     unsigned long steps;
     bool profile_started;
     bool whole_function_executed;
+    const struct behavior_function *whole_function;
+    int whole_error_frame;
     unsigned long long topology_revision;
     flow_clock_fn now;
     void *now_user;

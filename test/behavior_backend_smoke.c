@@ -88,5 +88,27 @@ int main()
     );
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
+    asset = whole_arguments_fixture();
+    instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    graph *function = asset->graphs[1];
+    assert(behavior_program_function(
+        behavior_program_graph(asset->program, function),
+        graph_node_by_id(function, function->entry_id)
+    ));
+    run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    assert(
+        instance->variables[0].d == 3.25 && instance->variables[1].f == -2.5f &&
+        instance->variables[2].b
+    );
+    assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
+    printf(
+        "%s: nested whole-function arguments, conversions, min/max and Return; "
+        "zero oracle calls\n",
+        behavior_backend_name(behavior_instance_backend(instance))
+    );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
     return 0;
 }

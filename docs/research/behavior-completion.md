@@ -2,9 +2,11 @@
 
 The whole-function compiler is not yet a completed gameplay migration. The
 September 11 audit of this isolated branch finds 19 behavior assets, 33 event
-entries, 70 local functions and four library functions. **Zero of the 33 event
-entries qualifies for whole-function execution.** The separate Arena live-assets
-sample finds zero of 22 entries across 13 assets. The original request's larger
+entries, 70 local functions and four library functions. **One of the 33 event
+entries qualifies for whole-function execution**, `PlayerContactBehavior.Tick`.
+One of 31 effectful function bodies also qualifies,
+`ArenaShardBehavior.Initialize Shard`. The other 39 local functions are pure;
+eligible scalar expressions are inlined on use. The original request's larger
 asset/event counts describe another snapshot; acceptance must enumerate content,
 not hard-code either set of counts.
 
@@ -33,28 +35,28 @@ from the node table used during execution. Successful compilation has no
 exclusion. Native backend availability policy is unchanged.
 
 Each row identifies the first encountered blocker, not every blocker on every
-branch. Removing one can expose another. From Arena's 22 live entries:
-
-| First blocker | Entries | Examples |
-| --- | ---: | --- |
-| Effectful function calls | 7 | ArenaWaveBehavior.Tick, CombatFeedback.Damaged |
-| Component or entity operations, including projected fields | 10 | TwinStickInputBehavior.Input, TwinStickWeaponBehavior.Tick, EnemyBehavior.Tick |
-| Integer comparisons | 3 | HealthBehavior.Damage, ArenaImpactFeedback.Damaged |
-| Max | 1 | PlayerContactBehavior.Tick |
-| Input conversion | 1 | ArenaShipMotionBehavior.Tick |
+branch. Removing one can expose another. Adding Max made the contact cooldown
+Tick eligible. F32/F64 coercion moved the ship-motion exclusion to a compound
+argument in a pure call. Component/entity operations, integer comparisons,
+and engine effects still exclude most entries. Scalar acyclic effectful calls
+and stored outputs now lower into the enclosing program; their previous
+exclusions have moved to the first unsupported operation inside the callee.
 
 ## Work required to finish
 
-1. **Function execution and resumable state.** Compile effectful local/library
-   calls and returns with a typed argument/result ABI, function-local storage,
-   per-frame budgets, recursion limits and accurate error attribution. Persist
+1. **Function execution and resumable state.** Scalar synchronous function bodies
+   now have a typed argument/result ABI, early Return and native arithmetic.
+   Acyclic effectful calls now inline with typed local storage, independent
+   frame budgets, call-depth checks and accurate error stacks. Add recursive
+   calls and managed locals. Persist
    live values and continuation PCs across Delay, host waits, cancellation and
    hot apply. Existing pure scalar inlining is only one special case.
-2. **Full value and control lowering.** Add event payloads, integers, numeric
-   conversions and remaining scalar operations; vectors and projected struct
+2. **Full value and control lowering.** Scalar payloads, F32/F64 coercions and
+   Min/Max are implemented. Add integers and remaining scalar operations;
+   vectors and projected struct
    fields; arrays, structs and managed ownership; ForLoop, ForEach and Break.
-   Eliminate runtime dispatch for these language operations. Standalone function
-   entries currently do not receive the whole-function ABI.
+   Eliminate runtime dispatch for these language operations. Scalar Set Variable
+   and Call Function outputs now retain their execution values across blocks.
 3. **Engine calls from generated code.** Resolve component layouts, field
    offsets, entity-reference checks and access contracts at publication. Compile
    direct typed access where valid. Generate explicit ABI calls for queries,

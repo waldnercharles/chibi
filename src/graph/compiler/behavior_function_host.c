@@ -50,4 +50,5 @@ void behavior_function_release_host(behavior_function_context *ctx)
     afree(ctx->queries);
     afree(ctx->commands);
     afree(ctx->command_arguments);
+    ctx->owned_host = false;
 }

@@ -53,15 +53,51 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
     if (behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
-    pin_value *slots = xcalloc((size_t)(acount(f->slots) + acount(f->locals) + 1), sizeof *slots);
-    pin_value *locals = slots + acount(f->slots) + 1;
-    uintptr_t *parents = acount(f->frames) > 1
-                           ? xcalloc((size_t)acount(f->frames), sizeof *parents)
-                           : NULL;
+    behavior_function_activation *activation = ctx->activation;
+    behavior_function_vm_storage transient = { 0 };
+    if (activation && !activation->vm) {
+        activation->vm = xcalloc(1, sizeof *activation->vm);
+    }
+    behavior_function_vm_storage *storage = activation ? activation->vm : &transient;
+    if (!storage->values) {
+        storage->values = xcalloc(
+            (size_t)(acount(f->slots) + acount(f->locals) + 1),
+            sizeof *storage->values
+        );
+        storage
+            ->parents = acount(f->frames) > 1
+                          ? xcalloc((size_t)acount(f->frames), sizeof *storage->parents)
+                          : NULL;
+    }
+    pin_value *slots = storage->values, *locals = slots + acount(f->slots) + 1;
+    uintptr_t *parents = storage->parents;
     uintptr_t steps = ctx->steps;
-    enter(f, locals, 0);
+    int begin = 0;
+    if (!activation || !activation->pc) {
+        enter(f, locals, 0);
+    }
+    if (activation && activation->pc) {
+        begin = activation->pc;
+        steps = activation->steps;
+        int slot_count = acount(f->slots), base = slot_count + acount(f->locals);
+        const behavior_function_suspension
+            *s = &f->suspensions[f->instructions[begin - 1].target];
+        assert(s->pc + 1 == begin);
+        for (int k = 0; k < acount(s->values); k++) {
+            int v = s->values[k];
+            pin_value *to = v < slot_count ? &slots[v] : &locals[v - slot_count];
+            to->type = v < slot_count ? f->slots[v]
+                                      : f->locals[v - slot_count].initial.type;
+            memcpy(&to->d, &activation->values[v], sizeof(double));
+        }
+        for (int frame = f->frames[activation->frame].source.parent; frame >= 0;
+             frame = f->frames[frame].source.parent) {
+            parents[frame] = activation->values[base + frame];
+        }
+        activation->pc = 0;
+    }
     int result = 0;
-    for (int pc = 0; pc < acount(f->instructions); pc++) {
+    for (int pc = begin; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         pin_value *out = &slots[i->output], a = { 0 }, b = { 0 };
         if (behavior_function_left_slot(i->op)) {
@@ -105,6 +141,32 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
             continue;
         }
         switch (i->op) {
+            case BF_SUSPEND: {
+                assert(activation && activation->values);
+                int slot_count = acount(f->slots),
+                    base = slot_count + acount(f->locals);
+                const behavior_function_suspension *s = &f->suspensions[i->target];
+                for (int k = 0; k < acount(s->values); k++) {
+                    int v = s->values[k];
+                    const pin_value *from = v < slot_count
+                                              ? &slots[v]
+                                              : &locals[v - slot_count];
+                    memcpy(&activation->values[v], &from->d, sizeof(double));
+                }
+                for (int frame = f->frames[i->frame].source.parent; frame >= 0;
+                     frame = f->frames[frame].source.parent) {
+                    activation->values[base + frame] = parents[frame];
+                }
+                activation->pc = pc + 1;
+                activation->steps = steps;
+                activation->frame = i->frame;
+                activation->source = i->source;
+                activation->stack = i->stack;
+                activation->node_id = i->node_id;
+                ctx->steps = i->frame ? parents[0] : steps;
+                result = FLOW_SUSPENDED_RESULT;
+                goto done;
+            }
             case BF_COMMAND_SERVICE: {
                 uintptr_t pointer = (uintptr_t)ctx->commands[i->target].service;
                 if (BF_POINTER_TYPE == PIN_U64) {
@@ -512,8 +574,10 @@ done:
     if (!result) {
         ctx->steps = steps + f->root_steps;
     }
-    free(parents);
-    free(slots);
+    if (!activation) {
+        free(parents);
+        free(slots);
+    }
     return result;
 }
 
@@ -523,9 +587,10 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
                  (acount(f->queries) || acount(f->commands));
     if (owned) {
         behavior_function_prepare_host(f, ctx);
+        ctx->owned_host = true;
     }
     int result = run(f, ctx, native);
-    if (owned) {
+    if (ctx->owned_host && result != FLOW_SUSPENDED_RESULT) {
         behavior_function_release_host(ctx);
     }
     return result;

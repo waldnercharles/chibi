@@ -78,6 +78,7 @@ typedef enum
     BF_WRITE,
     BF_COMMAND_ARGUMENT,
     BF_COMMAND,
+    BF_SUSPEND,
     BF_CHECK,
     BF_CALL_CHECK,
     BF_ENTER,
@@ -142,8 +143,19 @@ typedef struct
     const char *reference;
     int first, count;
 } behavior_function_command;
+typedef struct behavior_function_vm_storage
+{
+    pin_value *values;
+    uintptr_t *parents;
+} behavior_function_vm_storage;
+typedef struct
+{
+    int pc;
+    int *values; /* Slots followed by locals, in the activation's scalar storage. */
+} behavior_function_suspension;
 struct behavior_function
 {
+    behavior_function_suspension *suspensions;
     behavior_function_command *commands;
     pin_value *command_arguments;
     behavior_function_query *queries;
@@ -155,6 +167,7 @@ struct behavior_function
     behavior_function_result *results;
     void *code;
     void *dispatch;
+    uintptr_t *resume_addresses;
     struct behavior_function *fast;
     unsigned root_steps, child_budget, depth_limit;
     unsigned pure_depth_limit;
@@ -177,6 +190,8 @@ static inline bool behavior_function_integer_clobber(behavior_function_op op)
 {
     return behavior_function_call(op) || op == BF_ENTITY || op == BF_COMPONENT;
 }
+/* Finalize continuation maps after all IR transformations. */
+void behavior_function_suspensions(behavior_function *function);
 void *behavior_function_jit(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */

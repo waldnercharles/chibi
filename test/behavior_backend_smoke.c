@@ -14,6 +14,7 @@
 #include "whole_math_fixture.h"
 #include "whole_query_fixture.h"
 #include "whole_store_fixture.h"
+#include "whole_suspend_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -247,5 +248,6 @@ int main()
     whole_component_smoke();
     whole_loop_smoke();
     whole_command_smoke();
+    whole_suspend_smoke();
     return 0;
 }

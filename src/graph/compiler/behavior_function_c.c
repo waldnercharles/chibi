@@ -148,6 +148,32 @@ static void memory(FILE *out, const behavior_function_instruction *i)
         fprintf(out, "}\n");
     }
 }
+static void activation_values(
+    FILE *out,
+    const behavior_function *f,
+    const behavior_function_suspension *s,
+    bool restore
+)
+{
+    int slots = acount(f->slots), base = slots + acount(f->locals);
+    for (int k = 0; k < acount(s->values); k++) {
+        int v = s->values[k], index = v < slots ? v : v - slots;
+        char name = v < slots ? 'v' : 'l';
+        if (restore) {
+            fprintf(out, "memcpy(&%c%d,&c->activation->values[%d],sizeof(%c%d));\n", name, index, v, name, index);
+        } else {
+            fprintf(out, "memcpy(&c->activation->values[%d],&%c%d,sizeof(%c%d));\n", v, name, index, name, index);
+        }
+    }
+    for (int frame = f->frames[f->instructions[s->pc].frame].source.parent; frame >= 0;
+         frame = f->frames[frame].source.parent) {
+        if (restore) {
+            fprintf(out, "s%d=c->activation->values[%d];\n", frame, base + frame);
+        } else {
+            fprintf(out, "c->activation->values[%d]=s%d;\n", base + frame, frame);
+        }
+    }
+}
 static void body(const behavior_function *f, FILE *out, char prefix)
 {
     for (int j = 0; j < acount(f->slots); j++) {
@@ -162,6 +188,16 @@ static void body(const behavior_function *f, FILE *out, char prefix)
         fprintf(out, "uintptr_t s%d=0;\n", j);
     }
     enter_locals(out, f, 0);
+    if (acount(f->suspensions)) {
+        fputs("switch(c->activation->pc){\n", out);
+        for (int j = 0; j < acount(f->suspensions); j++) {
+            const behavior_function_suspension *s = &f->suspensions[j];
+            fprintf(out, "case %d:steps=c->activation->steps;c->activation->pc=0;\n", s->pc + 1);
+            activation_values(out, f, s, true);
+            fprintf(out, "goto %c%d;\n", prefix, s->pc + 1);
+        }
+        fputs("default:break;}\n", out);
+    }
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         fprintf(out, "%c%d: ;\n", prefix, pc);
@@ -170,6 +206,29 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             continue;
         }
         switch (i->op) {
+            case BF_SUSPEND: {
+                for (int j = 0; j < acount(f->suspensions); j++) {
+                    if (f->suspensions[j].pc == pc) {
+                        activation_values(out, f, &f->suspensions[j], false);
+                    }
+                }
+                fprintf(
+                    out,
+                    "c->activation->pc=%d;c->activation->steps=steps;c->"
+                    "activation->frame=%d;"
+                    "c->activation->source=%d;c->activation->stack=%d;c->"
+                    "activation->node_id=%lluULL;"
+                    "c->steps=%s;return %d;\n",
+                    pc + 1,
+                    i->frame,
+                    i->source,
+                    i->stack,
+                    (unsigned long long)i->node_id,
+                    i->frame ? "s0" : "steps",
+                    FLOW_SUSPENDED_RESULT
+                );
+                break;
+            }
             case BF_COMMAND_SERVICE:
                 fprintf(out, "v%d=(uintptr_t)c->commands[%d].service;\n", i->output, i->target);
                 break;

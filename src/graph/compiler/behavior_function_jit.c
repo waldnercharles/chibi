@@ -233,7 +233,7 @@ void *behavior_function_jit(const behavior_function *f)
     if (!c) {
         return NULL;
     }
-    bool integers = false;
+    bool integers = acount(f->suspensions) > 0;
     for (int i = 0; i < acount(f->slots); i++) {
         integers |= behavior_scalar_integer(f->slots[i]) || f->slots[i] == PIN_HANDLE;
     }
@@ -324,7 +324,6 @@ void *behavior_function_jit(const behavior_function *f)
             offsetof(behavior_function_context, argument_count)
         );
     }
-    enter_locals(&m, 0);
     /* A loop keeps remaining budget in a register. Parent frames store the
      * same representation; only returns and failures materialize step counts. */
     if (loop) {
@@ -354,6 +353,9 @@ void *behavior_function_jit(const behavior_function *f)
     struct sljit_label **labels = xcalloc((size_t)acount(f->instructions), sizeof *labels);
     struct sljit_jump **failures = xcalloc((size_t)acount(f->instructions), sizeof *failures);
     struct sljit_jump **jumps = xcalloc((size_t)acount(f->instructions), sizeof *jumps);
+    struct sljit_label **resume_labels = xcalloc((size_t)(acount(f->suspensions) + 1), sizeof *resume_labels);
+    behavior_jit_resume(&m, jumps, resume_labels);
+    enter_locals(&m, 0);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         labels[pc] = sljit_emit_label(c);
@@ -413,6 +415,7 @@ void *behavior_function_jit(const behavior_function *f)
                 );
                 sljit_emit_fop1(c, SLJIT_MOV_F32, destination, offset, SLJIT_FR0, 0);
                 break;
+            case BF_SUSPEND: behavior_jit_suspend(&m, pc); break;
             case BF_CHECK:
                 if (m.countdown) {
                     sljit_emit_op2(c, SLJIT_SUB | SLJIT_SET_CARRY, m.steps, 0, m.steps, 0, SLJIT_IMM, 1);
@@ -686,11 +689,25 @@ void *behavior_function_jit(const behavior_function *f)
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
         for (int pc = 0; pc < acount(f->instructions); pc++) {
             if (jumps[pc]) {
-                sljit_set_label(jumps[pc], labels[f->instructions[pc].target]);
+                sljit_set_label(
+                    jumps[pc],
+                    labels
+                        [f->instructions[pc].op == BF_SUSPEND
+                             ? pc + 1
+                             : f->instructions[pc].target]
+                );
             }
         }
         code = sljit_generate_code(c, 0, NULL);
+        if (code) {
+            for (int j = 0; j < acount(f->suspensions); j++) {
+                f->resume_addresses[f->suspensions[j].pc + 1] = sljit_get_label_addr(
+                    resume_labels[j]
+                );
+            }
+        }
     }
+    free(resume_labels);
     free(registers);
     free(local_registers);
     free(labels);

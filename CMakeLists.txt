@@ -685,7 +685,7 @@ foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner 
 endforeach()
 
 # Backend policy smoke target also runs under Node in the Emscripten build.
-add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c)
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c)
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)

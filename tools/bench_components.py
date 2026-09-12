@@ -13,7 +13,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", default="build-performance")
-    parser.add_argument("--workload", choices=("component", "alias", "store", "array", "query", "command"), default="component")
+    parser.add_argument("--workload", choices=("component", "alias", "store", "array", "query", "command", "suspend"), default="component")
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--iterations", type=int, default=2_000_000)
     parser.add_argument("--max-native-ratio", type=float, default=1.5)

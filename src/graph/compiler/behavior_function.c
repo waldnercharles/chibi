@@ -402,7 +402,12 @@ void behavior_function_free(behavior_function *f)
     }
     behavior_jit_free(f->code);
     behavior_jit_free(f->dispatch);
+    free(f->resume_addresses);
     behavior_function_free(f->fast);
+    for (int i = 0; i < acount(f->suspensions); i++) {
+        afree(f->suspensions[i].values);
+    }
+    afree(f->suspensions);
     afree(f->instructions);
     afree(f->slots);
     afree(f->locals);
@@ -417,6 +422,10 @@ void behavior_function_free(behavior_function *f)
 }
 bool behavior_function_compile(behavior_function *f)
 {
+    if (acount(f->suspensions)) {
+        assert(!f->resume_addresses);
+        f->resume_addresses = xcalloc((size_t)acount(f->instructions), sizeof *f->resume_addresses);
+    }
     f->code = behavior_function_jit(f);
     if (!f->code || !f->fast) {
         return f->code != NULL;

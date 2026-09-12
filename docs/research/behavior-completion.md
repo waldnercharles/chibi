@@ -18,6 +18,12 @@ status is not proof of whole-function machine code: the general backend still
 uses per-node runtime operations and activation bookkeeping. The scalar timing
 results describe eligible benchmark functions, not these authored behaviors.
 
+The continuation compiler now saves live typed values and logical frame budgets
+and resumes through native code labels, portable instructions, or generated C.
+[Continuation measurements and boundary tests](whole-suspend.md) pass the 1.5x
+native/C gate. This foundation is not yet used for authored Delay, Spawn, or
+inspected Scene activations; the catalog coverage above is unchanged.
+
 ## Reproduce the exact exclusions
 
 ```sh

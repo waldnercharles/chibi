@@ -52,8 +52,22 @@ typedef struct
     bool output;
     const char *reason;
 } behavior_function_diagnostic;
+/* Saved scalar state is independent of the executing backend. The caller keeps
+ * the program generation, arguments, services and borrowed managed values alive
+ * until completion or cancellation. Only values live at the suspension are saved. */
 typedef struct
 {
+    uint64_t *values;
+    /* Optional bytecode scratch cache, allocated on its first execution. */
+    struct behavior_function_vm_storage *vm;
+    uintptr_t steps;
+    int pc, frame, source, stack;
+    uint64_t node_id;
+} behavior_function_activation;
+typedef struct
+{
+    behavior_function_activation *activation;
+    bool owned_host;
     /* The runtime owns distinct variable, argument and result storage. */
     pin_value *variables;
     const pin_value *arguments;
@@ -106,6 +120,11 @@ bool behavior_function_bind(
  * invocation. run() does this automatically unless the caller supplies them. */
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);
+void behavior_function_activation_init(
+    const behavior_function *function,
+    behavior_function_activation *activation
+);
+void behavior_function_activation_free(behavior_function_activation *activation);
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);
 int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool native);

@@ -116,12 +116,12 @@ void behavior_function_optimize(behavior_function *f)
             op->op == BF_WORLD || (op->op >= BF_ENTITY && op->op <= BF_LOAD) ||
             op->op == BF_ASSERT || op->op == BF_WRITE || op->op == BF_PRESENT ||
             op->op == BF_TYPE_NAME || op->op == BF_RESULT_TYPE_NAME ||
-            op->op == BF_REQUIRE || op->op == BF_SELECT ||
-            op->op == BF_RESULT_PRESENT || op->op == BF_STORAGE_NAME ||
-            op->op == BF_OWN_NAME || op->op == BF_STORE_HEADER ||
-            op->op == BF_STORE_TYPE_NAME || op->op == BF_ARRAY ||
-            op->op == BF_QUERY || op->op == BF_READ || op->op == BF_COMMAND_SERVICE ||
-            op->op == BF_COMMAND_ARGUMENT || op->op == BF_COMMAND) {
+            op->op == BF_REQUIRE || op->op == BF_SELECT || op->op == BF_RESULT_PRESENT ||
+            op->op == BF_STORAGE_NAME || op->op == BF_OWN_NAME ||
+            op->op == BF_STORE_HEADER || op->op == BF_STORE_TYPE_NAME ||
+            op->op == BF_ARRAY || op->op == BF_QUERY || op->op == BF_READ ||
+            op->op == BF_COMMAND_SERVICE || op->op == BF_COMMAND_ARGUMENT ||
+            op->op == BF_COMMAND || op->op == BF_SUSPEND) {
             return;
         }
     }
@@ -330,8 +330,8 @@ void behavior_function_prune_values(behavior_function *f)
     free(live);
 }
 
-/* These bodies cannot change world membership or layouts. Reuse checked
- * addresses along a single control path; joins and loop edges start fresh.
+/* Between suspensions these bodies cannot change world membership or layouts.
+ * Reuse checked addresses along one path; joins, loop edges and yields start fresh.
  * Row contents remain mutable, so every field read still observes prior writes. */
 void behavior_function_reuse_accesses(behavior_function *f)
 {
@@ -362,6 +362,7 @@ void behavior_function_reuse_accesses(behavior_function *f)
         behavior_function_instruction i = f->instructions[pc];
         pcs[pc] = acount(out);
         if (incoming[pc] != 1 || (pc && (f->instructions[pc - 1].op == BF_BRANCH ||
+                                         f->instructions[pc - 1].op == BF_SUSPEND ||
                                          (f->instructions[pc - 1].op == BF_JUMP &&
                                           f->instructions[pc - 1].target != pc)))) {
             start = acount(out);

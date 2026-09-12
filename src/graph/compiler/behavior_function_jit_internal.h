@@ -13,6 +13,8 @@ typedef struct
     int locals, parents;
     bool countdown;
 } behavior_machine;
+void behavior_jit_suspend(const behavior_machine *m, int pc);
+void behavior_jit_resume(const behavior_machine *m, struct sljit_jump **jumps, struct sljit_label **labels);
 int *behavior_jit_registers(const behavior_function *f, bool integers, int *saved_count);
 int *behavior_jit_local_registers(
     const behavior_function *f,

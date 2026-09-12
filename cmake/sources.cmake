@@ -9,6 +9,8 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function_values.c
     src/graph/compiler/behavior_function_aggregate.c
     src/graph/compiler/behavior_function_host.c
+    src/graph/compiler/behavior_function_suspend.c
+    src/graph/compiler/behavior_function_jit_suspend.c
     src/graph/compiler/behavior_function_names.c
     src/graph/compiler/behavior_function_command.c
     src/graph/compiler/behavior_function_query.c

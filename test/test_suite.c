@@ -134,6 +134,21 @@ int main(int argc, char **argv)
         registry_validate();
         return bench_command(argv[2], atoi(argv[3]), atoi(argv[4]));
     }
+    if (argc == 5 && strcmp(argv[1], "--bench-suspend") == 0) {
+        return bench_suspend(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && strcmp(argv[1], "--whole-suspend") == 0) {
+        test_compiled_suspensions();
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "--emit-suspend-c") == 0) {
+        emit_suspend_c(argv[2]);
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "--check-suspend-c") == 0) {
+        test_generated_suspensions(argv[2]);
+        return 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--whole-command") == 0) {
         registry_validate();
         test_compiled_commands();

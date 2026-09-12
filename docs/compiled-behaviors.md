@@ -59,7 +59,8 @@ See [whole-function and scheduler measurements](research/whole-function-performa
 for the initial generated-C performance gates and queue benchmarks. The catalog
 now has one eligible event out of 33, `PlayerContactBehavior.Tick`, and one
 eligible effectful function body out of 31, `ArenaShardBehavior.Initialize Shard`.
-The other 39 local functions are pure and remain candidates for inlining on use.
+Of the other 39 local functions, 26 have independently compiled pure bodies, as
+does one of the four linked library functions.
 These counts describe complete entries, not how many individual arithmetic
 expressions compile. The strict catalog audit distinguishes the counts.
 
@@ -139,3 +140,9 @@ gates and paired Arena results.
 [Whole-function math calls](research/whole-math-calls.md) documents direct
 transcendental calls, register preservation, helper-free Clamp, expanded parity
 and the generated-C math benchmark.
+
+[Whole-function integer operations](research/whole-integers.md) covers native
+integer instructions, shared division/remainder, saturating casts, pure-call
+error source scopes and generated-C acceptance. Integer language operations
+introduce no runtime C helpers. The general compiled executor still handles
+excluded bodies, including instrumented ones.

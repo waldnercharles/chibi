@@ -108,8 +108,12 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             .delta_seconds = ctx->delta_seconds,
         };
         int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);
-        assert(!result);
-        return result;
+        if (result) {
+            const behavior_function_source
+                *source = behavior_function_source_at(function, call.error_source);
+            return fail(ctx, graph_node_by_id(source->graph, call.node_id), call.error_pin, "data function produced an invalid result");
+        }
+        return 0;
     }
     runtime_store *runtime = runtime_store_create(target);
     eval_context nested = *ctx;

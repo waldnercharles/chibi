@@ -615,18 +615,20 @@ static int execute(flow_run *run)
             run->whole_function = function;
             run->steps = ctx.steps;
             if (result) {
-                run->whole_error_frame = ctx.error_frame;
+                run->whole_error_source = ctx.error_source;
                 const behavior_function_source
-                    *source = behavior_function_frame_source(function, ctx.error_frame);
+                    *source = behavior_function_source_at(function, ctx.error_source);
                 node *failed = graph_node_by_id(source->graph, ctx.node_id);
                 aclear(run->frames);
                 const char *message = ctx.failure == BEHAVIOR_FUNCTION_DEPTH
                                         ? "function call depth limit exceeded"
                                     : ctx.failure == BEHAVIOR_FUNCTION_NO_RETURN
                                         ? "function completed without Return"
-                                        : "whole-function step budget exceeded";
+                                    : ctx.failure == BEHAVIOR_FUNCTION_DATA ? "data function produced an invalid result"
+                                                                            : "whole-function step budget exceeded";
                 flow_fail(run, result, failed, message);
                 run->error.steps = ctx.error_steps;
+                run->error.pin = ctx.error_pin;
                 return result;
             }
             aclear(run->frames);
@@ -809,7 +811,7 @@ flow_run *flow_run_start_reuse(
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
-    run->whole_error_frame = 0;
+    run->whole_error_source = 0;
     run->profile_started = false;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;
@@ -880,7 +882,7 @@ int flow_run_recycle(flow_run *run)
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
-    run->whole_error_frame = 0;
+    run->whole_error_source = 0;
     return FLOW_OK;
 }
 
@@ -1104,7 +1106,7 @@ int flow_run_reset(flow_run *run)
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
-    run->whole_error_frame = 0;
+    run->whole_error_source = 0;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     return FLOW_OK;
@@ -1219,7 +1221,7 @@ const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
 const node *flow_run_current_node(const flow_run *run)
 {
     run = flow_run_active_leaf(run);
-    if (run && run->whole_function_executed && run->state == FLOW_FAILED) {
+    if (run && run->state == FLOW_FAILED && run->error.node) {
         return run->error.node;
     }
     if (!run || !acount(run->frames)) {
@@ -1245,9 +1247,9 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
     aclear(mutable_run->stack_cache);
     if (run->whole_function_executed && run->state == FLOW_FAILED) {
         const node *n = run->error.node;
-        for (int frame = run->whole_error_frame; frame >= 0;) {
+        for (int frame = run->whole_error_source; frame >= 0;) {
             const behavior_function_source
-                *source = behavior_function_frame_source(run->whole_function, frame);
+                *source = behavior_function_source_at(run->whole_function, frame);
             apush(
                 mutable_run->stack_cache,
                 ((flow_call_frame){ source->graph, source->graph->graph_id, n->id })
@@ -1396,11 +1398,10 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         );
         if (result) {
             const eval_status *status = eval_context_status(&ctx->run->eval);
-            return flow_context_fail(
-                ctx,
-                FLOW_ERR_INVALID_GRAPH,
-                status && status->message ? status->message : "data evaluation failed"
-            );
+            flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, status->message);
+            ctx->run->error.node = status->node;
+            ctx->run->error.pin = status->pin;
+            return ctx->run->error.code;
         }
         const node_desc *conversion = graph_input_conversion(ctx->run->graph, ctx->node, input_pin);
         if (conversion) {

@@ -733,6 +733,7 @@ static void whole_pure_calls(behavior_backend backend)
 void test_compiled_behaviors()
 {
     test_compiled_math();
+    test_compiled_integers();
     pure_unused_return(behavior_default_backend());
     pure_unused_return(BEHAVIOR_BYTECODE);
     pure_unused_return(BEHAVIOR_ORACLE);

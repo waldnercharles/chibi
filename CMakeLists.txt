@@ -554,7 +554,7 @@ if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
 endif()
 
 # --- activation benchmark: headless per-instance event dispatch -------------
-add_executable(bench_behavior test/bench_behavior.c ${BASE_REGISTRY})
+add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c ${BASE_REGISTRY})
 target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_behavior PRIVATE core demo ${CMAKE_DL_LIBS})
 target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)

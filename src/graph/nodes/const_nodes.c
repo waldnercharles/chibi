@@ -73,30 +73,36 @@ static pin_value numeric_op(pin_value a, pin_value b, int operation)
                                                 : a.d + b.d;
             break;
         case PIN_I32:
-            if (operation == GENERIC_DIV &&
+            if ((operation == GENERIC_DIV || operation == GENERIC_MOD) &&
                 (b.i == 0 || (a.i == INT_MIN && b.i == -1))) {
                 return (pin_value){ .type = PIN_FLOW };
             }
-            result.i = operation == GENERIC_MUL ? a.i * b.i
-                     : operation == GENERIC_SUB ? a.i - b.i
+            result.i = operation == GENERIC_MUL
+                         ? (int32_t)((uint32_t)a.i * (uint32_t)b.i)
+                     : operation == GENERIC_SUB
+                         ? (int32_t)((uint32_t)a.i - (uint32_t)b.i)
                      : operation == GENERIC_DIV ? a.i / b.i
                      : operation == GENERIC_MIN ? (a.i < b.i ? a.i : b.i)
                      : operation == GENERIC_MAX ? (a.i > b.i ? a.i : b.i)
-                     : operation == GENERIC_MOD ? a.i % b.i
-                                                : a.i + b.i;
+                     : operation == GENERIC_MOD
+                         ? a.i % b.i
+                         : (int32_t)((uint32_t)a.i + (uint32_t)b.i);
             break;
         case PIN_I64:
-            if (operation == GENERIC_DIV &&
+            if ((operation == GENERIC_DIV || operation == GENERIC_MOD) &&
                 (b.i64 == 0 || (a.i64 == INT64_MIN && b.i64 == -1))) {
                 return (pin_value){ .type = PIN_FLOW };
             }
-            result.i64 = operation == GENERIC_MUL ? a.i64 * b.i64
-                       : operation == GENERIC_SUB ? a.i64 - b.i64
+            result.i64 = operation == GENERIC_MUL
+                           ? (int64_t)((uint64_t)a.i64 * (uint64_t)b.i64)
+                       : operation == GENERIC_SUB
+                           ? (int64_t)((uint64_t)a.i64 - (uint64_t)b.i64)
                        : operation == GENERIC_DIV ? a.i64 / b.i64
                        : operation == GENERIC_MIN ? (a.i64 < b.i64 ? a.i64 : b.i64)
                        : operation == GENERIC_MAX ? (a.i64 > b.i64 ? a.i64 : b.i64)
-                       : operation == GENERIC_MOD ? a.i64 % b.i64
-                                                  : a.i64 + b.i64;
+                       : operation == GENERIC_MOD
+                           ? a.i64 % b.i64
+                           : (int64_t)((uint64_t)a.i64 + (uint64_t)b.i64);
             break;
         default: result.type = PIN_FLOW; break;
     }
@@ -224,8 +230,12 @@ static pin_value generic_negate(const pin_value *inputs, int input_count, arena 
     switch (result.type) {
         case PIN_F32: result.f = -result.f; break;
         case PIN_F64: result.d = -result.d; break;
-        case PIN_I32: result.i = -result.i; break;
-        case PIN_I64: result.i64 = -result.i64; break;
+        case PIN_I32:
+            result.i = (int32_t)((uint32_t)0 - (uint32_t)result.i);
+            break;
+        case PIN_I64:
+            result.i64 = (int64_t)((uint64_t)0 - (uint64_t)result.i64);
+            break;
         default: result.type = PIN_FLOW; break;
     }
     return result;
@@ -239,9 +249,14 @@ static pin_value generic_abs(const pin_value *inputs, int input_count, arena *a)
     switch (result.type) {
         case PIN_F32: result.f = fabsf(result.f); break;
         case PIN_F64: result.d = fabs(result.d); break;
-        case PIN_I32: result.i = result.i < 0 ? -result.i : result.i; break;
+        case PIN_I32:
+            result.i = result.i < 0 ? (int32_t)((uint32_t)0 - (uint32_t)result.i)
+                                    : result.i;
+            break;
         case PIN_I64:
-            result.i64 = result.i64 < 0 ? -result.i64 : result.i64;
+            result.i64 = result.i64 < 0
+                           ? (int64_t)((uint64_t)0 - (uint64_t)result.i64)
+                           : result.i64;
             break;
         default: result.type = PIN_FLOW; break;
     }

@@ -38,8 +38,9 @@ exclusion. Native backend availability policy is unchanged.
 Each row identifies the first encountered blocker, not every blocker on every
 branch. Removing one can expose another. Adding Max made the contact cooldown
 Tick eligible. F32/F64 coercion moved the ship-motion exclusion to a compound
-argument in a pure call. Component/entity operations, integer comparisons,
-and engine effects still exclude most entries. The [pure-function measurements](whole-pure-functions.md)
+argument in a pure call. Integer arithmetic, comparisons, flags and explicit
+numeric casts now lower into whole bodies. Component/entity operations and
+engine effects still exclude most entries. The [pure-function measurements](whole-pure-functions.md)
 show a 13.6% native Arena behavior-time reduction from executing eligible pure bodies directly. Scalar acyclic effectful calls
 and stored outputs now lower into the enclosing program; their previous
 exclusions have moved to the first unsupported operation inside the callee.
@@ -54,7 +55,9 @@ exclusions have moved to the first unsupported operation inside the callee.
    live values and continuation PCs across Delay, host waits, cancellation and
    hot apply. Pure-body publication and direct execution are implemented for eligible scalar functions.
 2. **Full value and control lowering.** Scalar payloads, F32/F64 coercions and
-   Min/Max, Clamp and eleven scalar transcendental operations are implemented. Add integers and remaining scalar operations;
+   Min/Max, Clamp, signed I32/I64 arithmetic, I32 comparisons, U32 flag tests,
+   saturating numeric casts and eleven scalar transcendental operations are implemented.
+   Add remaining scalar operations and native 32-bit wide-integer lowering;
    vectors and projected struct
    fields; arrays, structs and managed ownership; ForLoop, ForEach and Break.
    Eliminate runtime dispatch for these language operations. Scalar Set Variable

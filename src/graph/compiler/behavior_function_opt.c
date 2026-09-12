@@ -117,6 +117,7 @@ void behavior_function_optimize(behavior_function *f)
     }
     optimizer o = { .f = xcalloc(1, sizeof *o.f) };
     apush(o.f->frames, f->frames[0]);
+    apush(o.f->sources, f->sources[0]);
     int variables = 0;
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];

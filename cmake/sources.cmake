@@ -7,6 +7,7 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function.c
     src/graph/compiler/behavior_function_vm.c
     src/graph/compiler/behavior_function_opt.c
+    src/graph/compiler/behavior_function_jit_integer.c
     src/graph/compiler/behavior_function_jit.c
     src/graph/compiler/behavior_function_c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/behavior_data.c

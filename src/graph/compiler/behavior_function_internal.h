@@ -1,6 +1,7 @@
 #ifndef CHIBI_BEHAVIOR_FUNCTION_INTERNAL_H
 #define CHIBI_BEHAVIOR_FUNCTION_INTERNAL_H
 #include "graph/compiler/behavior_function.h"
+#include "graph/compiler/behavior_scalar.h"
 
 /* Platform libm routines with scalar C ABIs, called directly by native code.
  * Keep inexpensive hardware operations separate from this call boundary. */
@@ -29,11 +30,14 @@ typedef enum
     BF_SUB,
     BF_MUL,
     BF_DIV,
+    BF_MOD,
     BF_NEG,
     BF_ABS,
     BF_MIN,
     BF_MAX,
     BF_CONVERT,
+    BF_CAST,
+    BF_FLAGS,
     BF_LT,
     BF_LE,
     BF_GT,
@@ -65,7 +69,7 @@ typedef struct
 {
     behavior_function_op op;
     pin_type type;
-    int output, left, right, target, frame;
+    int output, left, right, target, frame, source;
     uint64_t node_id;
     pin_value value;
 } behavior_function_instruction;
@@ -79,7 +83,7 @@ typedef struct
 typedef struct
 {
     behavior_function_source source;
-    int depth, resume;
+    int depth, resume, source_index;
 } behavior_function_frame;
 struct behavior_function
 {
@@ -87,6 +91,7 @@ struct behavior_function
     pin_type *slots;
     behavior_function_local *locals;
     behavior_function_frame *frames;
+    behavior_function_source *sources;
     void *code;
     void *dispatch;
     struct behavior_function *fast;

@@ -3,12 +3,18 @@
 #include "support/array.h"
 
 #include <math.h>
+#include <string.h>
 static const char *field(pin_type type)
 {
-    return type == PIN_BOOL ? "b" : type == PIN_F32 ? "f" : "d";
+    return behavior_scalar_field(type);
 }
 static void constant(FILE *out, pin_type type, pin_value value)
 {
+    if (behavior_scalar_integer(type)) {
+        uint64_t bits = behavior_scalar_bits(value);
+        fprintf(out, "(%s)UINT64_C(%llu)", behavior_scalar_c_type(type), (unsigned long long)bits);
+        return;
+    }
     double v = type == PIN_F32 ? value.f : value.d;
     if (type == PIN_BOOL) {
         fprintf(out, "%d", value.b);
@@ -36,36 +42,26 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
     fprintf(
         out,
         "c->error_steps=steps;c->steps=%s;c->node_id=%lluULL;c->error_frame=%d;"
-        "c->failure=%d;return %d;\n",
+        "c->error_source=%d;c->error_pin=%d;c->failure=%d;return %d;\n",
         i->frame ? "s0" : "steps",
         (unsigned long long)i->node_id,
         i->frame,
+        i->source,
+        reason == BEHAVIOR_FUNCTION_DATA ? 0 : -1,
         reason,
-        reason == BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH : FLOW_ERR_STEP_BUDGET
+        reason == BEHAVIOR_FUNCTION_NO_RETURN || reason == BEHAVIOR_FUNCTION_DATA
+            ? FLOW_ERR_INVALID_GRAPH
+            : FLOW_ERR_STEP_BUDGET
     );
 }
 static void body(const behavior_function *f, FILE *out, char prefix)
 {
     for (int j = 0; j < acount(f->slots); j++) {
-        fprintf(
-            out,
-            "%s v%d=0;\n",
-            f->slots[j] == PIN_BOOL  ? "bool"
-            : f->slots[j] == PIN_F32 ? "float"
-                                     : "double",
-            j
-        );
+        fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);
     }
     for (int j = 0; j < acount(f->locals); j++) {
         pin_type type = f->locals[j].initial.type;
-        fprintf(
-            out,
-            "%s l%d=0;\n",
-            type == PIN_BOOL  ? "bool"
-            : type == PIN_F32 ? "float"
-                              : "double",
-            j
-        );
+        fprintf(out, "%s l%d=0;\n", behavior_scalar_c_type(type), j);
     }
     fprintf(out, "uintptr_t steps=c->steps;\n");
     for (int j = 0; j < acount(f->frames); j++) {
@@ -140,7 +136,7 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     i->left,
                     field(i->type)
                 );
-                if (i->type != PIN_BOOL) {
+                if (i->type == PIN_F32 || i->type == PIN_F64) {
                     pin_type other = i->type == PIN_F32 ? PIN_F64 : PIN_F32;
                     fprintf(
                         out,
@@ -155,6 +151,39 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     );
                 }
                 fprintf(out, "}\n");
+                break;
+            case BF_CAST: {
+                pin_type from = f->slots[i->left];
+                const char *type = behavior_scalar_c_type(i->type);
+                if (i->type == PIN_F64 || from == PIN_I32) {
+                    fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
+                    break;
+                }
+                const char *low = i->type == PIN_U8  ? "0"
+                                : i->type == PIN_I32 ? "INT32_MIN"
+                                                     : "INT64_MIN";
+                const char *high = i->type == PIN_U8  ? "UINT8_MAX"
+                                 : i->type == PIN_I32 ? "INT32_MAX"
+                                                      : "INT64_MAX";
+                fprintf(
+                    out,
+                    "v%d=isnan(v%d)?0:(double)v%d<=(double)%s?%s:(double)v%d>=("
+                    "double)%s?%s:(%s)v%d;\n",
+                    i->output,
+                    i->left,
+                    i->left,
+                    low,
+                    low,
+                    i->left,
+                    high,
+                    high,
+                    type,
+                    i->left
+                );
+                break;
+            }
+            case BF_FLAGS:
+                fprintf(out, "v%d=(v%d & v%d)!=0;\n", i->output, i->left, i->right);
                 break;
             case BF_CONVERT:
                 fprintf(out, "v%d=(%s)v%d;\n", i->output, i->type == PIN_F32 ? "float" : "double", i->left);
@@ -185,8 +214,34 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     f->root_steps
                 );
                 break;
-            case BF_NEG: fprintf(out, "v%d=-v%d;\n", i->output, i->left); break;
+            case BF_NEG:
+                if (behavior_scalar_integer(i->type)) {
+                    fprintf(
+                        out,
+                        "v%d=(%s)(0-(%s)v%d);\n",
+                        i->output,
+                        behavior_scalar_c_type(i->type),
+                        i->type == PIN_I32 ? "uint32_t" : "uint64_t",
+                        i->left
+                    );
+                } else {
+                    fprintf(out, "v%d=-v%d;\n", i->output, i->left);
+                }
+                break;
             case BF_ABS:
+                if (behavior_scalar_integer(i->type)) {
+                    fprintf(
+                        out,
+                        "v%d=v%d<0?(%s)(0-(%s)v%d):v%d;\n",
+                        i->output,
+                        i->left,
+                        behavior_scalar_c_type(i->type),
+                        i->type == PIN_I32 ? "uint32_t" : "uint64_t",
+                        i->left,
+                        i->left
+                    );
+                    break;
+                }
                 fprintf(out, "v%d=%s(v%d);\n", i->output, i->type == PIN_F32 ? "fabsf" : "fabs", i->left);
                 break;
             case BF_MIN:
@@ -203,10 +258,52 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                 );
                 break;
             default: {
+                if ((i->op == BF_DIV || i->op == BF_MOD) &&
+                    behavior_scalar_integer(i->type)) {
+                    fprintf(
+                        out,
+                        "if(v%d==0 || (v%d==%s && v%d==-1)){",
+                        i->right,
+                        i->left,
+                        i->type == PIN_I32 ? "INT32_MIN" : "INT64_MIN",
+                        i->right
+                    );
+                    failure(out, i, BEHAVIOR_FUNCTION_DATA);
+                    fprintf(out, "}\n");
+                    if (i->target >= 0) {
+                        fprintf(
+                            out,
+                            "v%d=v%d%s v%d;\n",
+                            i->target,
+                            i->left,
+                            i->op == BF_DIV ? "%" : "/",
+                            i->right
+                        );
+                    }
+                }
+                if (i->op >= BF_ADD && i->op <= BF_MUL &&
+                    behavior_scalar_integer(i->type)) {
+                    const char *u = i->type == PIN_I32 ? "uint32_t" : "uint64_t";
+                    fprintf(
+                        out,
+                        "v%d=(%s)((%s)v%d%s(%s)v%d);\n",
+                        i->output,
+                        behavior_scalar_c_type(i->type),
+                        u,
+                        i->left,
+                        i->op == BF_ADD   ? "+"
+                        : i->op == BF_SUB ? "-"
+                                          : "*",
+                        u,
+                        i->right
+                    );
+                    break;
+                }
                 const char *op = i->op == BF_ADD ? "+"
                                : i->op == BF_SUB ? "-"
                                : i->op == BF_MUL ? "*"
                                : i->op == BF_DIV ? "/"
+                               : i->op == BF_MOD ? "%"
                                : i->op == BF_LT  ? "<"
                                : i->op == BF_LE  ? "<="
                                : i->op == BF_GT  ? ">"

@@ -4,6 +4,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -25,11 +26,14 @@ static int fail(
 {
     ctx->node_id = i->node_id;
     ctx->error_frame = i->frame;
+    ctx->error_source = i->source;
+    ctx->error_pin = reason == BEHAVIOR_FUNCTION_DATA ? 0 : -1;
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    return reason == BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
-                                                 : FLOW_ERR_STEP_BUDGET;
+    return reason == BEHAVIOR_FUNCTION_NO_RETURN || reason == BEHAVIOR_FUNCTION_DATA
+             ? FLOW_ERR_INVALID_GRAPH
+             : FLOW_ERR_STEP_BUDGET;
 }
 
 int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
@@ -88,6 +92,8 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
                     }
                 }
                 break;
+            case BF_CAST: *out = behavior_scalar_cast(a, i->type); break;
+            case BF_FLAGS: out->b = (a.u & b.u) != 0; break;
             case BF_CONVERT:
                 if (i->type == PIN_F32) {
                     out->f = (float)a.d;
@@ -119,14 +125,12 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             case BF_RESULT:
             case BF_STORE: {
                 pin_value *target = i->op == BF_STORE ? ctx->variables : ctx->results;
-                if (i->type == PIN_F32) {
-                    target[i->target].f = a.f;
-                }
-                if (i->type == PIN_F64) {
-                    target[i->target].d = a.d;
-                }
-                if (i->type == PIN_BOOL) {
-                    target[i->target].b = a.b;
+                switch (i->type) {
+#define STORE(pin, type, field)                                                \
+    case pin: target[i->target].field = a.field; break;
+                    BEHAVIOR_SCALARS(STORE)
+#undef STORE
+                    default: assert(false);
                 }
                 break;
             }
@@ -147,6 +151,54 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             case BF_END: goto done;
             case BF_RETURN: ctx->returned_node_id = i->node_id; goto done;
             default: {
+                if (a.type == PIN_I32 || a.type == PIN_I64) {
+                    int64_t x = a.type == PIN_I32 ? a.i : a.i64;
+                    int64_t y = a.type == PIN_I32 ? b.i : b.i64;
+                    int64_t minimum = a.type == PIN_I32 ? INT32_MIN : INT64_MIN;
+                    if ((i->op == BF_DIV || i->op == BF_MOD) &&
+                        (!y || (x == minimum && y == -1))) {
+                        result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                        goto done;
+                    }
+                    if ((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) {
+                        pin_value *other = &slots[i->target];
+                        other->type = a.type;
+                        int64_t value = i->op == BF_DIV ? x % y : x / y;
+                        if (a.type == PIN_I32) {
+                            other->i = (int32_t)value;
+                        } else {
+                            other->i64 = value;
+                        }
+                    }
+                    uint64_t value = 0;
+                    switch (i->op) {
+                        case BF_ADD: value = (uint64_t)x + (uint64_t)y; break;
+                        case BF_SUB: value = (uint64_t)x - (uint64_t)y; break;
+                        case BF_MUL: value = (uint64_t)x * (uint64_t)y; break;
+                        case BF_DIV: value = (uint64_t)(x / y); break;
+                        case BF_MOD: value = (uint64_t)(x % y); break;
+                        case BF_NEG: value = UINT64_C(0) - (uint64_t)x; break;
+                        case BF_ABS:
+                            value = x < 0 ? UINT64_C(0) - (uint64_t)x : (uint64_t)x;
+                            break;
+                        case BF_MIN: value = (uint64_t)(x < y ? x : y); break;
+                        case BF_MAX: value = (uint64_t)(x > y ? x : y); break;
+                        case BF_LT: out->b = x < y; break;
+                        case BF_LE: out->b = x <= y; break;
+                        case BF_GT: out->b = x > y; break;
+                        case BF_GE: out->b = x >= y; break;
+                        case BF_EQ: out->b = x == y; break;
+                        case BF_NE: out->b = x != y; break;
+                        default: assert(false);
+                    }
+                    if (i->type == PIN_I32) {
+                        out->i = (int32_t)(uint32_t)value;
+                    }
+                    if (i->type == PIN_I64) {
+                        out->i64 = (int64_t)value;
+                    }
+                    break;
+                }
                 double x = a.type == PIN_F32 ? a.f : a.d,
                        y = b.type == PIN_F32 ? b.f : b.d, r = 0;
                 switch (i->op) {

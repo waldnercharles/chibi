@@ -1,4 +1,5 @@
 /* Release comparison of the same scalar DAG and behavior dispatch. */
+#include "bench_integer.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
@@ -605,6 +606,7 @@ int main(int argc, char **argv)
         behavior_asset *math = whole_math_fixture();
         behavior_function_write_c(arguments_entry(math), out, "generated_math");
         behavior_asset_free(math);
+        emit_integer_c(out);
         assert(fclose(out) == 0);
         behavior_asset_free(asset);
         return 0;
@@ -638,6 +640,7 @@ int main(int argc, char **argv)
         compare_arguments(library, count, rotation);
         compare_pure(library, count, rotation);
         compare_math(library, count, rotation);
+        compare_integer_c(library, count, rotation);
         void *entry = dlsym(library, "generated_behavior");
         assert(entry);
         for (int i = 0; i < 2; i++) {

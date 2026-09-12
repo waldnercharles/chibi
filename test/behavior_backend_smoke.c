@@ -1,9 +1,11 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
 #include "whole_function_fixture.h"
+#include "whole_integer_fixture.h"
 #include "whole_math_fixture.h"
 
 #include <assert.h>
@@ -163,6 +165,61 @@ int main()
         "%s: whole math calls and scalar results; zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+    for (int wide = 0; wide < 2; wide++) {
+        asset = whole_integer_fixture(wide ? PIN_I64 : PIN_I32, false);
+        instance = behavior_instance_create(asset, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(instance, 0);
+        assert(behavior_program_function(
+            behavior_program_graph(asset->program, asset->graph),
+            asset->graph->nodes[0]
+        ));
+        run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
+        assert(run && flow_run_status(run) == FLOW_COMPLETED);
+        assert(instance->variables[0].i == 1);
+        assert(
+            wide ? instance->variables[1].i64 == 5 && instance->variables[2].i64 == 2 &&
+                       instance->variables[3].i64 == 292
+                 : instance->variables[1].i == 5 && instance->variables[2].i == 2 &&
+                       instance->variables[3].i == 292
+        );
+        behavior_instance_destroy(instance);
+        behavior_asset_free(asset);
+    }
+    asset = whole_integer_loop();
+    instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
+    assert(
+        run && flow_run_status(run) == FLOW_COMPLETED && instance->variables[0].i == 4
+    );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+    asset = whole_integer_operation(&NODE_To_Integer64, PIN_F64, PIN_I64);
+    instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    instance->variables[0].d = 0x1p63;
+    ctx = (eval_context){ .instance = instance,
+                          .runtime = runtime_store_create(asset->graph) };
+    assert(!behavior_program_output(
+        behavior_program_graph(asset->program, asset->graph),
+        asset->graph->nodes[0],
+        0,
+        &storage,
+        &value,
+        &ctx,
+        behavior_instance_backend(instance)
+    ));
+    assert(value.i64 == INT64_MAX);
+    assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
+    printf(
+        "%s: whole integer bodies, loop and saturating wide cast; zero oracle "
+        "calls\n",
+        behavior_backend_name(behavior_instance_backend(instance))
+    );
+    runtime_store_free(ctx.runtime);
+    arena_free(&storage);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     return 0;

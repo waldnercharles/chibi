@@ -1,6 +1,7 @@
 #ifndef CHIBI_BEHAVIOR_PROGRAM_H
 #define CHIBI_BEHAVIOR_PROGRAM_H
 
+#include "graph/compiler/behavior_function.h"
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_ir.h"
 #include "graph/runtime/eval.h"
@@ -63,6 +64,11 @@ int behavior_program_flow(
     flow_context *ctx,
     behavior_backend backend
 );
+const behavior_function *behavior_program_function(
+    const behavior_graph_program *program,
+    const node *entry
+);
+
 int behavior_program_block(const behavior_graph_program *program, const node *n);
 node *behavior_program_block_node(const behavior_graph_program *program, int block);
 int behavior_program_target(

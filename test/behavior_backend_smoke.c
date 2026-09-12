@@ -1,6 +1,7 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
+#include "whole_function_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -63,6 +64,26 @@ int main()
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
     printf(
         "%s: event, yield, resume and variable write; zero oracle calls\n",
+        behavior_backend_name(behavior_instance_backend(instance))
+    );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+    asset = whole_function_fixture();
+    instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, 0);
+    run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED && flow_run_steps(run) == 14);
+    assert(
+        behavior_instance_get_variable(instance, asset->variables[0].id, &value) == 0 &&
+        value.f == 4
+    );
+    assert(
+        behavior_instance_get_variable(instance, asset->variables[1].id, &value) == 0 &&
+        value.f == 8
+    );
+    assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
+    printf(
+        "%s: whole-function loop, sequence and branch; zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
     behavior_instance_destroy(instance);

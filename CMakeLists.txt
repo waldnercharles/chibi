@@ -556,8 +556,12 @@ endif()
 # --- activation benchmark: headless per-instance event dispatch -------------
 add_executable(bench_behavior test/bench_behavior.c ${BASE_REGISTRY})
 target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(bench_behavior PRIVATE core demo)
+target_link_libraries(bench_behavior PRIVATE core demo ${CMAKE_DL_LIBS})
 target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)
+
+add_executable(bench_scheduler test/bench_scheduler.c ${BASE_REGISTRY})
+target_link_libraries(bench_scheduler PRIVATE core demo)
+target_compile_options(bench_scheduler PRIVATE -UNDEBUG)
 
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
 target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

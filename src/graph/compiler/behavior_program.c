@@ -26,6 +26,7 @@ typedef struct
     node **targets;
     int *target_pins;
     void *flow_code;
+    behavior_function *function;
     int control;
 } compiled_node;
 
@@ -217,6 +218,7 @@ void behavior_program_free(behavior_program *program)
             afree(n->targets);
             afree(n->target_pins);
             behavior_jit_free(n->flow_code);
+            behavior_function_free(n->function);
         }
         for (int j = 0; j < acount(p->code); j++) {
             behavior_jit_free(p->code[j]);
@@ -355,6 +357,19 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
         graph_ir_init(&p->ir);
         if (!lower_graph(program, p)) {
             return program;
+        }
+        for (int j = 0; j < acount(p->source->nodes); j++) {
+            node *n = p->source->nodes[j];
+            if (n->desc != &NODE_Event) {
+                continue;
+            }
+            behavior_function *f = behavior_function_lower(asset, p->source, n);
+            p->nodes[n->id].function = f;
+            if (f && program->backend == BEHAVIOR_SLJIT &&
+                !behavior_function_compile(f)) {
+                diagnostic(program, p->source, n, -1, "SLJIT whole-function emission failed");
+                return program;
+            }
         }
     }
 #if CHIBI_HAVE_SJLIT
@@ -544,4 +559,12 @@ node *behavior_program_block_node(const behavior_graph_program *program, int blo
 {
     assert(block >= 0 && block < acount(program->ir.control));
     return (node *)program->ir.control[block].node;
+}
+
+const behavior_function *behavior_program_function(
+    const behavior_graph_program *program,
+    const node *entry
+)
+{
+    return program->nodes[entry->id].function;
 }

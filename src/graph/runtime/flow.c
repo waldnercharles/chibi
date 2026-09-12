@@ -574,6 +574,33 @@ static int execute(flow_run *run)
         return waiting;
     }
 
+    if (run->program && run->instance && !run->instance->trace_enabled &&
+        !run->step_mode && !run->pause_requested && !acount(run->watches) &&
+        run->steps == 0 && acount(run->frames) == 1) {
+        node *entry = frame_node(run, &run->frames[0]);
+        const behavior_function *function = behavior_program_function(run->program, entry);
+        if (function) {
+            behavior_function_context ctx = { .variables = run->instance->variables,
+                                              .arguments = run->inputs,
+                                              .argument_count = run->input_count,
+                                              .delta_seconds = run->eval.delta_seconds,
+                                              .budget = run->step_budget };
+            int result = behavior_function_run(function, &ctx, run->backend == BEHAVIOR_SLJIT);
+            run->whole_function_executed = true;
+            run->steps = ctx.steps;
+            if (result) {
+                node *failed = graph_node_by_id(run->graph, ctx.node_id);
+                aclear(run->frames);
+                push_frame(run, (activation_frame){ .node = failed });
+                flow_fail(run, result, failed, "whole-function step budget exceeded");
+                return result;
+            }
+            aclear(run->frames);
+            run->state = FLOW_COMPLETED;
+            return FLOW_OK;
+        }
+    }
+
     while (run->state == FLOW_RUNNING && acount(run->frames) > 0) {
         node *next = frame_node(run, &run->frames[acount(run->frames) - 1]);
         if (next && next->breakpoint && run->breakpoints_enabled &&
@@ -734,6 +761,7 @@ flow_run *flow_run_start_reuse(
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
+    run->whole_function_executed = false;
     run->profile_started = false;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;
@@ -803,6 +831,7 @@ int flow_run_recycle(flow_run *run)
     run->input_capacity = 0;
     run->input_user_data = NULL;
     run->steps = 0;
+    run->whole_function_executed = false;
     return FLOW_OK;
 }
 
@@ -875,6 +904,9 @@ int flow_run_continue(flow_run *run, int clear_step_mode)
 
 int flow_run_resume(flow_run *run)
 {
+    if (run && run->instance) {
+        run->instance->schedule_revision++;
+    }
     return flow_run_continue(run, 1);
 }
 
@@ -1016,6 +1048,7 @@ int flow_run_reset(flow_run *run)
     run->traversal_head = 0;
     run->traversal_view_dirty = false;
     run->steps = 0;
+    run->whole_function_executed = false;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     return FLOW_OK;
@@ -1092,7 +1125,7 @@ flow_inputs flow_run_inputs(const flow_run *run)
 
 const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin)
 {
-    if (!run || !n || pin < 0 || pin >= n->input_count) {
+    if (!run || run->whole_function_executed || !n || pin < 0 || pin >= n->input_count) {
         return NULL;
     }
     const runtime_node *state = flow_runtime_node((flow_run *)run, n);

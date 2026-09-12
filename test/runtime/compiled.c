@@ -1,6 +1,8 @@
 #include "graph/compiler/graph_jit_sljit.h"
+#include "graph/document/library.h"
 #include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
+#include "test/whole_function_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -226,8 +228,187 @@ static void numeric_regions(pin_type type)
     behavior_asset_free(a);
 }
 
+static void whole_function_control(behavior_backend backend)
+{
+    behavior_asset *a = whole_function_fixture();
+    graph *g = a->graph;
+    uint64_t x = a->variables[0].id, y = a->variables[1].id;
+    node *event = NULL, *loop = NULL, *branch = NULL;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i]->desc == &NODE_Event) {
+            event = g->nodes[i];
+        }
+        if (g->nodes[i]->desc == registry_node_by_name("WhileLoop")) {
+            loop = g->nodes[i];
+        }
+    }
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i]->desc == registry_node_by_name("Branch")) {
+            branch = g->nodes[i];
+        }
+    }
+    assert(event && loop && branch);
+    behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+    assert(behavior_instance_set_backend(bi, backend) == 0);
+    behavior_instance_set_trace_enabled(bi, 0);
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    pin_value actual;
+    assert(behavior_instance_get_variable(bi, x, &actual) == 0 && actual.f == 4);
+    assert(behavior_instance_get_variable(bi, y, &actual) == 0 && actual.f == 8);
+    assert(flow_run_steps(run) == 14);
+    if (backend != BEHAVIOR_ORACLE) {
+        assert(!flow_run_input_value(run, loop, 1));
+        behavior_instance_set_trace_enabled(bi, 1);
+        flow_run *inspected = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
+        assert(inspected && flow_run_status(inspected) == FLOW_COMPLETED);
+        assert(
+            flow_run_watch_input(inspected, branch, 1, &actual) == 0 && !actual.b
+        );
+        assert(flow_run_input_value(inspected, loop, 1));
+        int count = 0;
+        assert(flow_run_traversals(inspected, &count) && count > 0);
+    }
+    if (backend != BEHAVIOR_ORACLE) {
+        const behavior_function
+            *f = behavior_program_function(behavior_program_graph(a->program, g), event);
+        assert(f);
+        pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
+        behavior_function_context ctx = { .variables = variables, .budget = 5 };
+        assert(behavior_function_run(f, &ctx, backend == BEHAVIOR_SLJIT) == FLOW_ERR_STEP_BUDGET);
+        assert(ctx.steps == 5 && ctx.node_id == loop->id && variables[0].f == 1);
+        behavior_instance_set_trace_enabled(bi, 0);
+        flow_options options = { .instance = bi, .step_budget = 5 };
+        flow_run *limited = flow_run_start(g, event, (flow_inputs){ 0 }, &options, &error);
+        assert(limited && flow_run_resume(limited) == FLOW_ERR_STEP_BUDGET);
+        assert(flow_run_current_node(limited) == loop && flow_run_error(limited)->node == loop);
+        int count = 0;
+        const flow_call_frame *frames = flow_run_call_stack(limited, &count);
+        assert(count == 1 && frames[0].node_id == loop->id);
+        flow_run_free(limited);
+    }
+    behavior_instance_destroy(bi);
+    behavior_asset_free(a);
+}
+
+static void whole_function_library(behavior_backend backend)
+{
+    behavior_asset *lib = behavior_asset_new("WholeMath");
+    lib->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    pin_spec spec = { .name = "Value", .type = PIN_F64, .type_name = "double", .kind = PIN_DATA };
+    graph *identity = behavior_asset_add_function(lib, "Identity", 1);
+    node *entry = graph_node_by_id(identity, identity->entry_id);
+    node *ret = graph_node_by_id(identity, identity->return_id);
+    assert(graph_add_pin(identity, entry, 1, &spec) == 0);
+    assert(graph_add_pin(identity, ret, 0, &spec) == 0);
+    assert(graph_connect_data(identity, entry, 0, ret, 0) == 0);
+    graph *wrapper = behavior_asset_add_function(lib, "Wrapper", 1);
+    entry = graph_node_by_id(wrapper, wrapper->entry_id);
+    ret = graph_node_by_id(wrapper, wrapper->return_id);
+    assert(graph_add_pin(wrapper, entry, 1, &spec) == 0);
+    assert(graph_add_pin(wrapper, ret, 0, &spec) == 0);
+    node *inner = behavior_asset_add_function_call_node_to_graph(lib, wrapper, identity);
+    assert(graph_connect_data(wrapper, entry, 0, inner, 0) == 0);
+    assert(graph_connect_data(wrapper, inner, 0, ret, 0) == 0);
+    behavior_asset *a = behavior_asset_new("WholeLibrary");
+    uint64_t id = behavior_asset_add_variable(a, "Result", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
+                      ->id;
+    node *event = graph_add_node(a->graph, &NODE_Event);
+    assert(graph_set_event_name(a->graph, event, "Run") == 0);
+    node *call = behavior_asset_add_function_call_node_to_graph(a, a->graph, wrapper);
+    node *set = behavior_asset_add_set_node(a, id);
+    assert(
+        graph_set_pin_default(a->graph, call, 0, 0, &(pin_value){ .type = PIN_F64, .d = 42 }) == 0
+    );
+    assert(graph_connect_exec(a->graph, event, 0, set, 0, 0) == 0);
+    assert(graph_connect_data(a->graph, call, 0, set, 1) == 0);
+    const behavior_asset *catalog[] = { lib };
+    char message[256];
+    behavior_asset *linked = behavior_asset_link_libraries(a, catalog, 1, message, sizeof message);
+    assert(linked);
+    behavior_instance *bi = behavior_instance_create(linked, NULL, NULL, NULL);
+    assert(behavior_instance_set_backend(bi, backend) == 0);
+    behavior_instance_set_trace_enabled(bi, 0);
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED && flow_run_steps(run) == 2);
+    pin_value result;
+    assert(behavior_instance_get_variable(bi, id, &result) == 0 && result.d == 42);
+    if (backend != BEHAVIOR_ORACLE) {
+        node *linked_event = graph_node_by_id(linked->graph, event->id);
+        assert(behavior_program_function(
+            behavior_program_graph(linked->program, linked->graph),
+            linked_event
+        ));
+    }
+    behavior_instance_destroy(bi);
+    behavior_asset_free(linked);
+    behavior_asset_free(a);
+    behavior_asset_free(lib);
+}
+
+static void whole_function_comparisons()
+{
+    const char *names[] = { "Less",    "Less Or Equal",
+                            "Greater", "Greater Or Equal",
+                            "Equal",   "Not Equal" };
+    float cases[] = { NAN, INFINITY, -INFINITY, -1, -0.f, 0, 1 };
+    for (int op = 0; op < 6; op++) {
+        behavior_asset *a = behavior_asset_new("WholeComparison");
+        uint64_t x = behavior_asset_add_variable(a, "X", PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, "")
+                         ->id;
+        uint64_t y = behavior_asset_add_variable(a, "Result", PIN_BOOL, "bool", PIN_CONTAINER_SINGLE, NULL, "")
+                         ->id;
+        node *event = graph_add_node(a->graph, &NODE_Event);
+        assert(graph_set_event_name(a->graph, event, "Run") == 0);
+        node *get = behavior_asset_add_get_node(a, x);
+        node *compare = graph_add_node(a->graph, registry_node_by_name(names[op]));
+        node *set = behavior_asset_add_set_node(a, y);
+        assert(graph_connect_data(a->graph, get, 0, compare, 0) == 0);
+        assert(graph_connect_data(a->graph, compare, 0, set, 1) == 0);
+        assert(graph_connect_exec(a->graph, event, 0, set, 0, 0) == 0);
+        behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(bi, 0);
+        assert(behavior_program_function(behavior_program_graph(a->program, a->graph), event));
+        for (int mode = 0; mode < 3; mode++) {
+            assert(
+                behavior_instance_set_backend(
+                    bi,
+                    (behavior_backend[]){ behavior_default_backend(),
+                                          BEHAVIOR_BYTECODE,
+                                          BEHAVIOR_ORACLE }[mode]
+                ) == 0
+            );
+            for (int i = 0; i < 7; i++) {
+                float v = cases[i];
+                bool want = (bool[]){ v < 0,  v <= 0, v > 0,
+                                      v >= 0, v == 0, v != 0 }[op];
+                assert(
+                    behavior_instance_set_variable(bi, x, &(pin_value){ .type = PIN_F32, .f = v }) == 0
+                );
+                flow_error error = { 0 };
+                flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
+                assert(run && flow_run_status(run) == FLOW_COMPLETED);
+                pin_value actual;
+                assert(behavior_instance_get_variable(bi, y, &actual) == 0 && actual.b == want);
+                assert(behavior_instance_release_activation(bi, run) == 0);
+            }
+        }
+        behavior_instance_destroy(bi);
+        behavior_asset_free(a);
+    }
+}
+
 void test_compiled_behaviors()
 {
+    whole_function_comparisons();
+    whole_function_library(behavior_default_backend());
+    whole_function_library(BEHAVIOR_BYTECODE);
+    whole_function_library(BEHAVIOR_ORACLE);
+    whole_function_control(behavior_default_backend());
+    whole_function_control(BEHAVIOR_BYTECODE);
+    whole_function_control(BEHAVIOR_ORACLE);
     numeric_regions(PIN_F32);
     numeric_regions(PIN_F64);
     generation_guards();

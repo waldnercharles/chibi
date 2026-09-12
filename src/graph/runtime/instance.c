@@ -276,18 +276,25 @@ static void instance_trace_run(behavior_instance *bi, const flow_run *run)
 static int scheduler_pump(behavior_instance *bi)
 {
     int result = FLOW_OK;
-    for (;;) {
-        flow_run *act = NULL;
-        for (int i = 0; i < acount(bi->activations); i++) {
-            if (flow_run_ready(bi->activations[i], bi->current_time)) {
-                act = bi->activations[i];
-                break;
-            }
+    int cursor = 0;
+    while (cursor < acount(bi->activations)) {
+        flow_run *act = bi->activations[cursor++];
+        if (!flow_run_ready(act, bi->current_time)) {
+            continue;
         }
-        if (!act) {
-            break;
+        uint64_t revision = bi->schedule_revision;
+        double time = bi->current_time;
+        result = flow_run_tick_at(act, time);
+        /* A callback can edit this queue or wake an older host wait. Restart
+         * only then, preserving oldest-ready delivery without quadratic scans
+         * over retained completed activations. Never inspect a removed act. */
+        if (revision != bi->schedule_revision || time != bi->current_time) {
+            cursor = 0;
+            continue;
         }
-        result = flow_run_tick_at(act, bi->current_time);
+        if (flow_run_ready(act, bi->current_time)) {
+            cursor--;
+        }
     }
     return result;
 }
@@ -403,6 +410,7 @@ int behavior_instance_remove_activation(behavior_instance *bi, flow_run *act)
     for (int i = 0; i < acount(bi->activations); i++) {
         if (bi->activations[i] == act) {
             adel(bi->activations, i);
+            bi->schedule_revision++;
             return 0;
         }
     }
@@ -884,6 +892,7 @@ flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inp
         return NULL;
     }
     apush(bi->activations, act);
+    bi->schedule_revision++;
     return act;
 }
 

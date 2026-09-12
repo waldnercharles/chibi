@@ -1,4 +1,5 @@
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/instance.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -120,6 +121,9 @@ bool flow_host_complete(flow_host_request *request, int output_pin, pin_value va
         flow_watch_capture_outputs(run, n);
     }
     request->state = FLOW_HOST_READY;
+    if (run->instance) {
+        run->instance->schedule_revision++;
+    }
     return true;
 }
 

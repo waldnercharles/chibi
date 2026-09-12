@@ -5,6 +5,8 @@
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/compiler/behavior_program.h"
+#include "graph/model/registry.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
 #include "render/arena_geometry.h"
@@ -2681,7 +2683,8 @@ int compiled_arena_run(const char *program)
         ecs_query query;
         assert(ecs_query_begin(f.world, &query, NULL, 0) == ECS_OK);
         ecs_entity entity;
-        int instances = 0;
+        int instances = 0, entries = 0, whole = 0;
+        const behavior_asset **seen = NULL;
         while (ecs_query_next(&query, &entity) > 0) {
             int count = game_behavior_attachment_count_for_entity(f.live->behaviors, entity);
             for (int i = 0; i < count; i++) {
@@ -2691,9 +2694,37 @@ int compiled_arena_run(const char *program)
                 );
                 assert(behavior_instance_backend(info.instance) == modes[mode]);
                 instances++;
+                const behavior_asset *asset = info.instance->asset;
+                bool known = false;
+                for (int j = 0; j < acount(seen); j++) {
+                    known |= seen[j] == asset;
+                }
+                if (known) {
+                    continue;
+                }
+                apush(seen, asset);
+                for (int j = 0; j < acount(asset->graph->nodes); j++) {
+                    node *entry = asset->graph->nodes[j];
+                    if (entry->desc != &NODE_Event) {
+                        continue;
+                    }
+                    entries++;
+                    whole += behavior_program_function(
+                                 behavior_program_graph(asset->program, asset->graph),
+                                 entry
+                             ) != NULL;
+                }
             }
         }
         ecs_query_end(&query);
+        printf(
+            "%s Arena whole_function_entries=%d/%d unique_assets=%d\n",
+            behavior_backend_name(modes[mode]),
+            whole,
+            entries,
+            acount(seen)
+        );
+        afree(seen);
         assert(instances > 0);
         assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
         assert(

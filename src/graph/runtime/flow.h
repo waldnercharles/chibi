@@ -158,6 +158,7 @@ extern "C"
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
     flow_inputs flow_run_inputs(const flow_run *run);
+    /* NULL when uninstrumented whole-function execution did not record node values. */
     const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin);
     /* Traversal records are ordered oldest to newest and remain available
      * after Stop until the run is reset or freed. The returned storage is

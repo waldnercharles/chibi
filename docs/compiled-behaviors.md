@@ -34,6 +34,19 @@ See [measured numeric-region results](research/behavior-numeric-performance.md).
 The measured improvement is specific to eligible computation; the Arena trial
 has not demonstrated a whole-scene speedup.
 
+Synchronous scalar event entries can now use a whole-function program, including
+branches, Sequence, WhileLoop, variable access and inlined pure local/library
+calls. SLJIT retains scalar temporaries in registers; the same instructions have
+bytecode and generated-C implementations. Instrumented execution keeps recording
+node values through the general compiled path. Uninstrumented whole functions
+return NULL from `flow_run_input_value` because they do not record those samples.
+
+See [whole-function and scheduler measurements](research/whole-function-performance.md)
+for eligibility, generated-C performance gates and queue benchmarks. Arena's live
+assets currently have no eligible whole-function event entries; they continue
+through the general compiled backend. This distinction is included in the
+compiled Arena smoke output.
+
 Activations retain compiled block indices, live slot storage, function children,
 owned loop snapshots and wait state. Source nodes are recovered from the program
 for inspection. The existing scheduler still orders events and host effects and

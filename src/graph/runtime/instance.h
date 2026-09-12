@@ -79,6 +79,7 @@ struct behavior_instance
     void *sink_user;
     behavior_profile_fn profile;
     void *profile_user;
+    uint64_t schedule_revision; /* Queue edits and asynchronous readiness changes. */
     flow_run **activations;     /* scheduler queue, FIFO by dispatch sequence */
     flow_run **activation_pool; /* idle reusable activations */
     behavior_instance_trace_entry *trace; /* bounded ring; read through behavior_instance_trace */

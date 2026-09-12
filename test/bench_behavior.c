@@ -4,11 +4,15 @@
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
+#include "support/array.h"
+#include "whole_function_fixture.h"
 
 #include <assert.h>
+#include <dlfcn.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 static double seconds()
@@ -136,9 +140,76 @@ static void measure(behavior_asset *a, node *sink, behavior_backend backend, int
     behavior_instance_destroy(instance);
 }
 
+static void measure_function(const char *label, int (*entry)(behavior_function_context *), int count)
+{
+    pin_value variable = { .type = PIN_F64 };
+    behavior_function_context ctx = { .variables = &variable, .budget = 4096 };
+    double start = 0, checksum = 0;
+    for (int i = -10000; i < count; i++) {
+        if (i == 0) {
+            start = seconds();
+        }
+        variable.d = (i & 1023) * .001;
+        ctx.steps = 0;
+        assert(entry(&ctx) == 0 && ctx.steps == 2);
+        if (i >= 0) {
+            checksum += variable.d;
+        }
+    }
+    printf("%s whole_function ns=%.3f checksum=%.12f\n", label, (seconds() - start) * 1e9 / count, checksum);
+    double expected = 0;
+    for (int i = 0; i < count; i++) {
+        expected += native((i & 1023) * .001);
+    }
+    assert(checksum == expected);
+}
+
+static const behavior_function *whole_entry(behavior_asset *a)
+{
+    behavior_program_publish(a);
+    for (int i = 0; i < acount(a->graph->nodes); i++) {
+        node *n = a->graph->nodes[i];
+        if (n->desc == &NODE_Event) {
+            return behavior_program_function(behavior_program_graph(a->program, a->graph), n);
+        }
+    }
+    return NULL;
+}
+static void compare_control(void *library)
+{
+    behavior_asset *a = whole_function_fixture();
+    const behavior_function *f = whole_entry(a);
+    assert(f);
+    int (*generated)(
+        behavior_function_context *
+    ) = (int (*)(behavior_function_context *))dlsym(library, "generated_control");
+    assert(generated);
+    for (unsigned long budget = 0; budget < 17; budget++) {
+        pin_value reference[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
+        behavior_function_context expected = { .variables = reference, .budget = budget };
+        int result = behavior_function_run(f, &expected, false);
+        for (int mode = 0; mode < 2; mode++) {
+            pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
+            behavior_function_context actual = { .variables = variables,
+                                                 .budget = budget };
+            int got = mode ? generated(&actual)
+                           : behavior_function_run(f, &actual, true);
+            assert(got == result && actual.steps == expected.steps);
+            assert(!result || actual.node_id == expected.node_id);
+            assert(
+                variables[0].f == reference[0].f &&
+                variables[1].f == reference[1].f
+            );
+        }
+    }
+    puts("control_parity=SLJIT,BYTECODE,GENERATED_C budgets=0..16");
+    behavior_asset_free(a);
+}
+
 int main(int argc, char **argv)
 {
-    int count = argc > 1 ? atoi(argv[1]) : 1000000;
+    bool export_c = argc > 1 && !strcmp(argv[1], "--emit-c");
+    int count = !export_c && argc > 1 ? atoi(argv[1]) : 1000000;
     assert(count > 0);
     node *sink;
     behavior_asset *asset = fixture(&sink, false);
@@ -146,6 +217,55 @@ int main(int argc, char **argv)
     behavior_program_publish(asset);
     printf("publication_ms=%.3f\n", (seconds() - publication) * 1000);
     assert(behavior_program_backend(asset->program) == BEHAVIOR_SLJIT);
+    node *event = asset->graph->nodes[0];
+    for (int i = 0; i < acount(asset->graph->nodes); i++) {
+        if (asset->graph->nodes[i]->desc == &NODE_Event) {
+            event = asset->graph->nodes[i];
+        }
+    }
+    const behavior_function *function = behavior_program_function(
+        behavior_program_graph(asset->program, asset->graph),
+        event
+    );
+    assert(function && behavior_function_entry(function));
+    if (export_c) {
+        assert(argc == 3);
+        FILE *out = fopen(argv[2], "w");
+        assert(out);
+        behavior_function_write_c(function, out, "generated_behavior");
+        behavior_asset *control = whole_function_fixture();
+        const behavior_function *cf = whole_entry(control);
+        assert(cf);
+        behavior_function_write_c(cf, out, "generated_control");
+        behavior_asset_free(control);
+        assert(fclose(out) == 0);
+        behavior_asset_free(asset);
+        return 0;
+    }
+    int rotation = argc > 2 ? atoi(argv[2]) : 0;
+    assert(rotation >= 0 && rotation < 3);
+    void *native_entry = behavior_function_entry(function);
+    if (argc > 3) {
+        void *library = dlopen(argv[3], RTLD_NOW | RTLD_LOCAL);
+        if (!library) {
+            fprintf(stderr, "%s\n", dlerror());
+            return 1;
+        }
+        compare_control(library);
+        void *entry = dlsym(library, "generated_behavior");
+        assert(entry);
+        for (int i = 0; i < 2; i++) {
+            bool generated = (i + rotation) % 2;
+            measure_function(
+                generated ? "GENERATED_C" : "SLJIT",
+                (int (*)(behavior_function_context *))(generated ? entry : native_entry),
+                count
+            );
+        }
+        dlclose(library);
+    } else {
+        measure_function("SLJIT", (int (*)(behavior_function_context *))native_entry, count);
+    }
     double warmup = 0;
     for (int i = 0; i < 10000; i++) {
         warmup += native((i & 1023) * .001);

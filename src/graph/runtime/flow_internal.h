@@ -39,6 +39,7 @@ struct flow_run
     unsigned long step_budget;
     unsigned long steps;
     bool profile_started;
+    bool whole_function_executed;
     unsigned long long topology_revision;
     flow_clock_fn now;
     void *now_user;

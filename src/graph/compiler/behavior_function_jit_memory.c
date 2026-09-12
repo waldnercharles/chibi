@@ -62,35 +62,49 @@ static void read_pointer(
     move(m, i->type, dest, offset, SLJIT_MEM1(SLJIT_R3), i->offset);
     bind(c, empty);
 }
-/* A result aggregate has one owned destination. Emit its pointer check once
- * for the contiguous field stores, rather than once for every scalar leaf. */
+/* Reuse one owned destination across contiguous scalar field stores. */
 int behavior_jit_result_fields(const behavior_machine *m, int pc)
 {
     const behavior_function_instruction *first = &m->function->instructions[pc];
-    if (first->op != BF_RESULT || !first->indirect) {
+    if ((first->op != BF_RESULT && first->op != BF_STORE) || !first->indirect) {
         return 0;
     }
     struct sljit_compiler *c = m->compiler;
-    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, results));
+    bool variable = first->op == BF_STORE;
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_R3,
+        0,
+        SLJIT_MEM1(m->context),
+        variable ? offsetof(behavior_function_context, variable_storage)
+                 : offsetof(behavior_function_context, results)
+    );
     sljit_emit_op1(
         c,
         SLJIT_MOV_P,
         SLJIT_R3,
         0,
         SLJIT_MEM1(SLJIT_R3),
-        first->target * sizeof(pin_value) + offsetof(pin_value, ptr)
+        variable ? first->target * sizeof(behavior_variable_storage) +
+                       offsetof(behavior_variable_storage, data)
+                 : first->target * sizeof(pin_value) + offsetof(pin_value, ptr)
     );
-    struct sljit_jump *empty = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0);
+    struct sljit_jump *empty = variable
+                                 ? NULL
+                                 : sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0);
     int end = pc;
     while (end < acount(m->function->instructions)) {
         const behavior_function_instruction *i = &m->function->instructions[end];
-        if (i->op != BF_RESULT || !i->indirect || i->target != first->target) {
+        if (i->op != first->op || !i->indirect || i->target != first->target) {
             break;
         }
         slot(m, i->left, SLJIT_MEM1(SLJIT_R3), i->offset);
         end++;
     }
-    bind(c, empty);
+    if (empty) {
+        bind(c, empty);
+    }
     return end - pc;
 }
 bool behavior_jit_memory(
@@ -101,6 +115,88 @@ bool behavior_jit_memory(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    if (i->op == BF_STORAGE_NAME) {
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R3,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, variable_storage)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            dest,
+            offset,
+            SLJIT_MEM1(SLJIT_R3),
+            i->left * sizeof(behavior_variable_storage) +
+                offsetof(behavior_variable_storage, type_name)
+        );
+        return true;
+    }
+    if (i->op == BF_OWN_NAME) {
+        slot(m, i->left, SLJIT_R1, 0);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R0,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, value_owner)
+        );
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS2(P, P, P),
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, own_type_name)
+        );
+        sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
+    if (i->op == BF_STORE_HEADER) {
+        sljit_sw base = i->target * sizeof(pin_value);
+        slot(m, i->left, SLJIT_MEM1(m->variables), base + offsetof(pin_value, type_name));
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV32,
+            SLJIT_MEM1(m->variables),
+            base + offsetof(pin_value, type),
+            SLJIT_IMM,
+            PIN_STRUCT
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV32,
+            SLJIT_MEM1(m->variables),
+            base + offsetof(pin_value, container),
+            SLJIT_IMM,
+            PIN_CONTAINER_SINGLE
+        );
+        slot(m, i->right, SLJIT_R3, 0);
+        struct sljit_jump *missing = sljit_emit_cmp(c, SLJIT_EQUAL | SLJIT_32, SLJIT_R3, 0, SLJIT_IMM, 0);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R3,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, variable_storage)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R3,
+            0,
+            SLJIT_MEM1(SLJIT_R3),
+            i->target * sizeof(behavior_variable_storage) +
+                offsetof(behavior_variable_storage, data)
+        );
+        bind(c, missing);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_MEM1(m->variables), base + offsetof(pin_value, ptr), SLJIT_R3, 0);
+        return true;
+    }
     if (i->op == BF_RESULT_TYPE_NAME) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, results));
         slot(m, i->left, SLJIT_MEM1(SLJIT_R3), i->target * sizeof(pin_value) + offsetof(pin_value, type_name));

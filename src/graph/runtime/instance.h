@@ -74,8 +74,9 @@ struct behavior_instance
     behavior_backend backend;
     /* Runtime storage, parallel to asset->variables. */
     pin_value *variables;
-    /* Owned values; replaced atomically with each assignment. */
+    /* Managed values replace their arena on assignment; plain structs reuse storage. */
     arena *variable_arenas;
+    behavior_variable_storage *variable_storage;
     int variable_count;
     instance_scratch_slot *scratch;
     pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
@@ -194,11 +195,12 @@ int behavior_instance_tick(behavior_instance *bi, double now);
  * The instance and its guard are untouched. */
 int behavior_instance_stop_activation(behavior_instance *bi, flow_run *act);
 
-/* Variable storage accessors. Values are shallow-copied; STR and NAME values
- * are copied into instance-owned storage. */
+/* Get borrows storage until assignment/reset. Copy retains an independent value
+ * using the supplied arena. Set retains an independent value. */
 int behavior_instance_get_variable(behavior_instance *bi, uint64_t id, pin_value *out);
 int behavior_instance_copy_variable(behavior_instance *bi, uint64_t id, arena *storage, pin_value *out);
 int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin_value *value);
+void behavior_instance_bind_values(behavior_instance *bi, behavior_function_context *ctx);
 pin_value behavior_instance_owner(const behavior_instance *bi);
 void behavior_instance_set_parallel_for(
     behavior_instance *bi,

@@ -608,7 +608,6 @@ static int execute(flow_run *run)
                         )) {
             node *ret = graph_node_by_id(run->graph, run->graph->return_id);
             behavior_function_context ctx = {
-                .variables = run->instance->variables,
                 .arguments = run->inputs,
                 .argument_count = run->input_count,
                 .results = ret ? runtime_node_inputs(flow_runtime_node(run, ret)) : NULL,
@@ -619,6 +618,7 @@ static int execute(flow_run *run)
                 .world = host.world,
                 .binding_world = host.binding_world,
             };
+            behavior_instance_bind_values(run->instance, &ctx);
             behavior_function_prepare_results(function, ctx.results, &run->scratch);
             int result = behavior_function_run(function, &ctx, run->backend == BEHAVIOR_SLJIT);
             run->whole_function_executed = true;

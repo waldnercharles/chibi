@@ -62,6 +62,16 @@ aggregate results allocate storage in the caller's arena. Null pass-through
 values remain null, and field access reports the original source node and pin.
 Generated single-field component conversions lower into field projections.
 
+Persistent plain struct variables own fixed storage for their reflected layout.
+Whole functions write fields, presence and nominal-type metadata directly;
+assignment results retain their earlier value in typed locals. Known declared
+type names use instance-owned metadata without a helper. Dynamic argument type
+names pass through an explicit ownership callback before publication in the
+variable. Backing storage survives null assignment, compatible hot apply and
+pool reuse. Managed structs keep their existing arena ownership and general
+compiled execution. Copying a variable retains a snapshot independently of later
+assignment or instance destruction. See [store acceptance](research/whole-stores.md).
+
 Reflected component Get, Has, Set and field Set now lower into checked native
 loads/stores, including explicit entity targets, Self/default-Self handles and
 component input bindings. The ECS supplies a small storage view; generated code
@@ -94,7 +104,7 @@ other inputs remain unavailable through `flow_run_input_value`.
 
 See [whole-function and scheduler measurements](research/whole-function-performance.md)
 for the initial generated-C performance gates and queue benchmarks. The catalog
-now has five eligible events out of 33 and three eligible effectful function
+now has five eligible events out of 33 and four eligible effectful function
 bodies out of 31.
 All 39 pure local functions now have independently compiled bodies, as do
 three of the four linked library functions.
@@ -144,7 +154,8 @@ parity and diagnostic tests.
 - `make web` builds the app and runs an Emscripten/Node backend smoke covering an
   event, yield, resume, variables, loops and nested whole-function arguments,
   conversions, Min/Max, returns, nested pure bodies and fixed-layout aggregate arguments/results
-  without callee runtime allocation. It asserts bytecode execution,
+  without callee runtime allocation, plus persistent plain struct writes through
+  nested calls and loops. It asserts bytecode execution,
   SLJIT unavailability and zero oracle calls.
 
 The existing runtime tests cover local/library calls, managed values, loops,

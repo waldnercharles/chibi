@@ -79,6 +79,18 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
 }
 static void memory(FILE *out, const behavior_function_instruction *i)
 {
+    if (i->op == BF_STORE) {
+        fprintf(
+            out,
+            "memcpy((char*)c->variable_storage[%d].data+%zu,&v%d,sizeof(v%d));"
+            "\n",
+            i->target,
+            i->offset,
+            i->left,
+            i->left
+        );
+        return;
+    }
     if (i->op == BF_RESULT) {
         fprintf(
             out,
@@ -143,6 +155,25 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             continue;
         }
         switch (i->op) {
+            case BF_STORAGE_NAME:
+                fprintf(out, "v%d=(uintptr_t)c->variable_storage[%d].type_name;\n", i->output, i->left);
+                break;
+            case BF_OWN_NAME:
+                fprintf(out, "v%d=(uintptr_t)c->own_type_name(c->value_owner,(const char*)(uintptr_t)v%d);\n", i->output, i->left);
+                break;
+            case BF_STORE_HEADER:
+                fprintf(
+                    out,
+                    "c->variables[%d]=(pin_value){.type=%d,.type_name=(const "
+                    "char*)(uintptr_t)v%d,.ptr=v%d?c->variable_storage[%d]."
+                    "data:NULL};\n",
+                    i->target,
+                    PIN_STRUCT,
+                    i->left,
+                    i->right,
+                    i->target
+                );
+                break;
             case BF_OWNER: fprintf(out, "v%d=c->owner;\n", i->output); break;
             case BF_WORLD:
                 fprintf(out, "v%d=(uintptr_t)c->%s;\n", i->output, i->target ? "binding_world" : "world");

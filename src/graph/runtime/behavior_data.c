@@ -116,7 +116,6 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         }
         behavior_function_prepare_results(function, results, a);
         behavior_function_context call = {
-            .variables = instance->variables,
             .arguments = arguments,
             .argument_count = n->input_count,
             .results = results,
@@ -125,6 +124,7 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             .world = host.world,
             .binding_world = host.binding_world,
         };
+        behavior_instance_bind_values(instance, &call);
         int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);
         if (result) {
             const behavior_function_source

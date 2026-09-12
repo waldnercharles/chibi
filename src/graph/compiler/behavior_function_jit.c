@@ -240,7 +240,7 @@ void *behavior_function_jit(const behavior_function *f)
                      ((f->instructions[i].op == BF_PRESENT ||
                        f->instructions[i].op == BF_TYPE_NAME) &&
                       f->instructions[i].target == BF_ARGUMENT);
-        calls |= behavior_function_math(f->instructions[i].op);
+        calls |= behavior_function_call(f->instructions[i].op);
         loop |= (f->instructions[i].op == BF_JUMP || f->instructions[i].op == BF_BRANCH) &&
                 f->instructions[i].target <= i;
     }

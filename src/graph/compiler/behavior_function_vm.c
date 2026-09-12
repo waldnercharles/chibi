@@ -71,6 +71,14 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             out->type = i->type;
         }
         if (i->indirect) {
+            if (i->op == BF_STORE) {
+                memcpy(
+                    (char *)ctx->variable_storage[i->target].data + i->offset,
+                    &a.d,
+                    behavior_scalar_size(i->type)
+                );
+                continue;
+            }
             if (i->op == BF_ARGUMENT && (i->left >= ctx->argument_count ||
                                          ctx->arguments[i->left].type != PIN_STRUCT)) {
                 *out = i->value;
@@ -94,6 +102,28 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             continue;
         }
         switch (i->op) {
+            case BF_STORAGE_NAME:
+            case BF_OWN_NAME: {
+                const char *name = i->op == BF_STORAGE_NAME
+                                     ? ctx->variable_storage[i->left].type_name
+                                     : ctx->own_type_name(
+                                           ctx->value_owner,
+                                           (const char *)(uintptr_t)behavior_scalar_bits(a)
+                                       );
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = (uintptr_t)name;
+                } else {
+                    out->u = (uint32_t)(uintptr_t)name;
+                }
+                break;
+            }
+            case BF_STORE_HEADER:
+                ctx->variables[i->target] = (pin_value){
+                    .type = PIN_STRUCT,
+                    .type_name = (const char *)(uintptr_t)behavior_scalar_bits(a),
+                    .ptr = b.b ? ctx->variable_storage[i->target].data : NULL
+                };
+                break;
             case BF_OWNER: out->u64 = ctx->owner; break;
             case BF_WORLD:
                 if (BF_POINTER_TYPE == PIN_U64) {

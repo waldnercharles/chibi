@@ -30,6 +30,8 @@ typedef enum
     BF_TYPE_NAME,
     BF_OWNER,
     BF_WORLD,
+    BF_STORAGE_NAME,
+    BF_OWN_NAME,
     BF_ADD,
     BF_SUB,
     BF_MUL,
@@ -65,6 +67,7 @@ typedef enum
     BF_SAVE,
     BF_RESULT_PRESENT,
     BF_RESULT_TYPE_NAME,
+    BF_STORE_HEADER,
     BF_REQUIRE,
     BF_ASSERT,
     BF_WRITE,
@@ -81,6 +84,10 @@ typedef enum
 static inline bool behavior_function_math(behavior_function_op op)
 {
     return op >= BF_SIN && op <= BF_HYPOT;
+}
+static inline bool behavior_function_call(behavior_function_op op)
+{
+    return behavior_function_math(op) || op == BF_OWN_NAME;
 }
 #define BF_POINTER_TYPE                                                        \
     (sizeof(uintptr_t) == sizeof(uint64_t) ? PIN_U64 : PIN_U32)
@@ -133,17 +140,18 @@ struct behavior_function
 };
 static inline bool behavior_function_left_slot(behavior_function_op op)
 {
-    return (op >= BF_ADD && op <= BF_SAVE) || op == BF_BRANCH ||
-           op == BF_REQUIRE || op == BF_ASSERT || op == BF_WRITE ||
-           op == BF_RESULT_PRESENT || op == BF_RESULT_TYPE_NAME;
+    return (op >= BF_ADD && op <= BF_SAVE) || op == BF_BRANCH || op == BF_REQUIRE ||
+           op == BF_ASSERT || op == BF_WRITE || op == BF_RESULT_PRESENT ||
+           op == BF_RESULT_TYPE_NAME || op == BF_STORE_HEADER || op == BF_OWN_NAME;
 }
 static inline bool behavior_function_right_slot(behavior_function_op op)
 {
-    return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD) || op == BF_WRITE;
+    return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD) || op == BF_WRITE ||
+           op == BF_STORE_HEADER;
 }
 static inline bool behavior_function_integer_clobber(behavior_function_op op)
 {
-    return behavior_function_math(op) || op == BF_ENTITY || op == BF_COMPONENT;
+    return behavior_function_call(op) || op == BF_ENTITY || op == BF_COMPONENT;
 }
 void *behavior_function_jit(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);

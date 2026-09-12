@@ -10,6 +10,7 @@
 #include "whole_function_fixture.h"
 #include "whole_integer_fixture.h"
 #include "whole_math_fixture.h"
+#include "whole_store_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -89,6 +90,7 @@ int main()
     behavior_asset_free(asset);
     whole_aggregate_smoke();
     whole_alias_smoke();
+    whole_store_smoke();
     asset = whole_function_fixture();
     instance = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);

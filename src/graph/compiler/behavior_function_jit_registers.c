@@ -28,7 +28,7 @@ int *behavior_jit_registers(const behavior_function *f, bool integers, int *save
     int *next_call = xmalloc((size_t)(acount(f->instructions) + 1) * sizeof *next_call);
     next_call[acount(f->instructions)] = acount(f->instructions);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
-        next_call[pc] = behavior_function_math(f->instructions[pc].op)
+        next_call[pc] = behavior_function_call(f->instructions[pc].op)
                           ? pc
                           : next_call[pc + 1];
     }

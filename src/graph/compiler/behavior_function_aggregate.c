@@ -169,6 +169,7 @@ int behavior_lower_source(
         );
     }
     if (op != BF_CONSTANT) {
+        a.name_owned = op == BF_VARIABLE;
         a.name = behavior_lower_value(
             b,
             (behavior_function_instruction){
@@ -289,6 +290,56 @@ int behavior_lower_make(builder *b, node *n)
     }
     return behavior_lower_aggregate_value(b, a);
 }
+static bool variable_header(builder *b, const aggregate *a, int target)
+{
+    const behavior_variable *v = &b->asset->variables[target];
+    aggregate shape = behavior_lower_shape(v->type_name);
+    bool same = shape.type && shape.type->size == a->type->size &&
+                acount(shape.fields) == acount(a->fields);
+    for (int i = 0; same && i < acount(shape.fields); i++) {
+        same = shape.fields[i].offset == a->fields[i].offset &&
+               shape.fields[i].type == a->fields[i].type;
+    }
+    afree(shape.fields);
+    if (!same) {
+        return false;
+    }
+    int name = a->name;
+    bool owned = a->name_owned;
+    if (name < 0) {
+        owned = !strcmp(a->type->name, v->type_name);
+        name = behavior_lower_value(
+            b,
+            (behavior_function_instruction){
+                .op = owned ? BF_STORAGE_NAME : BF_TYPE_NAME,
+                .type = BF_POINTER_TYPE,
+                .left = target,
+                .target = BF_CONSTANT,
+                .value = { .str = a->type->name },
+            }
+        );
+    }
+    if (!owned) {
+        name = behavior_lower_value(
+            b,
+            (behavior_function_instruction){
+                .op = BF_OWN_NAME,
+                .type = BF_POINTER_TYPE,
+                .left = name,
+            }
+        );
+    }
+    behavior_lower_emit(
+        b,
+        (behavior_function_instruction){
+            .op = BF_STORE_HEADER,
+            .left = name,
+            .right = a->present,
+            .target = target,
+        }
+    );
+    return true;
+}
 bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int target)
 {
     if (slot < 0 || target < 0) {
@@ -306,7 +357,9 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
         return true;
     }
     if (op == BF_STORE) {
-        return false;
+        if (!variable_header(b, a, target)) {
+            return false;
+        }
     }
     aggregate *stored = op == BF_SAVE ? behavior_lower_aggregate(b, target) : NULL;
     if (stored) {
@@ -334,7 +387,7 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
                                              .left = a->present,
                                              .target = stored->present }
         );
-    } else {
+    } else if (op == BF_RESULT) {
         bool found = false;
         for (int i = 0; i < acount(b->function->results); i++) {
             found |= b->function->results[i].index == target;

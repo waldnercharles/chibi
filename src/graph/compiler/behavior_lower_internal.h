@@ -11,6 +11,7 @@ typedef struct
 {
     const type_desc *type;
     int slot, present, name;
+    bool name_owned;
     aggregate_field *fields;
 } aggregate;
 typedef struct

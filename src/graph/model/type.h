@@ -25,6 +25,8 @@ typedef struct
 
 /* Hash the reflected storage layout on the current target. */
 uint64_t type_layout_hash(const type_desc *type);
+/* Every field is inline and contains no managed string or container. */
+bool type_is_plain(const type_desc *type);
 
 /* Read and write reflected fields. */
 void pin_write_field(void *base, const type_field *f, pin_value v);

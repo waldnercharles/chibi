@@ -13,7 +13,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", default="build-performance")
-    parser.add_argument("--workload", choices=("component", "alias"), default="component")
+    parser.add_argument("--workload", choices=("component", "alias", "store"), default="component")
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--iterations", type=int, default=2_000_000)
     parser.add_argument("--max-native-ratio", type=float, default=1.5)
@@ -51,8 +51,11 @@ def main():
     medians = {label: statistics.median(values) for label, values in measurements.items()}
     for label, values in measurements.items():
         print(f"{label}: median={medians[label]:.3f} ns range={min(values):.3f}..{max(values):.3f}")
-    ratio = medians[f"SLJIT {args.workload}_body"] / medians[f"GENERATED_C {args.workload}_body"]
-    print(f"SLJIT/generated-C ratio={ratio:.3f}; limit={args.max_native_ratio:.3f}")
+    bodies = ("store_body", "store_dynamic_body") if args.workload == "store" else (f"{args.workload}_body",)
+    ratios = {body: medians[f"SLJIT {body}"] / medians[f"GENERATED_C {body}"] for body in bodies}
+    ratio = max(ratios.values())
+    for body, value in ratios.items():
+        print(f"{body} SLJIT/generated-C ratio={value:.3f}; limit={args.max_native_ratio:.3f}")
     if args.output:
         args.output.write_text(json.dumps({
             "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
@@ -60,6 +63,7 @@ def main():
             "compiler": subprocess.check_output([compiler, "--version"], text=True).strip(),
             "iterations": args.iterations, "trials": logs, "nanoseconds": measurements,
             "workload": args.workload,
+            "native_c_ratios": ratios,
             "medians": medians, "native_c_ratio": ratio, "maximum_ratio": args.max_native_ratio,
         }, indent=2) + "\n")
     if ratio > args.max_native_ratio:

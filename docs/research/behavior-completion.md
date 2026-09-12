@@ -6,8 +6,9 @@ entries, 70 local functions and four library functions. Five of the 33 event
 entries qualify for whole-function execution: `PlayerContactBehavior.Tick`,
 `SurfacePulseBehavior.Begin`, `TwinStickInputBehavior.Input`,
 `TwinStickInputBehavior.Tick` and `TwinStickWeaponBehavior.Begin`.
-Three of 31 effectful function bodies qualify: `ArenaShardBehavior.Initialize Shard`,
-`ArenaShardBehavior.Advance Shard Motion` and `ProjectileBehavior.Face Direction`.
+Four of 31 effectful function bodies qualify: `ArenaShardBehavior.Initialize Shard`,
+`ArenaShardBehavior.Advance Shard Motion`, `ProjectileBehavior.Face Direction`
+and `ArenaWaveBehavior.Formation Position`.
 All 39 pure local functions now execute whole compiled bodies, as do
 three of the four library functions. Pure calls inside general compiled events
 use these bodies directly; they no longer require callee runtime stores. The original request's larger
@@ -48,7 +49,9 @@ lower into explicit compiled control flow. Numeric edge conversions share the
 same saturating casts as explicit conversion nodes. Explicitly annotated struct
 alias conversions now copy typed fields without a native helper; the
 [alias measurements](whole-aliases.md) pass the 1.5x generated-C limit. Wave Tick
-now passes its input conversion and stops at ForEach. Fixed-layout component
+now passes its input conversion and stops at ForEach. Persistent fixed-layout
+struct writes reuse instance storage and compile into field stores; the
+[store measurements](whole-stores.md) pass the 1.5x generated-C limit. Fixed-layout component
 Get/Has/Set, field writes, component bindings and entity
 validation now lower directly. Managed values and engine effects still exclude
 most entries. The [pure-function measurements](whole-pure-functions.md)
@@ -72,8 +75,9 @@ exclusions have moved to the first unsupported operation inside the callee.
    Fixed-layout vectors/structs, projected fields, mixed real arithmetic, floating
    Modulo, Atan2, Normalize Vector 2 and Direction To now lower. Aggregate values
    preserve nulls and nominal type names across calls; final results are owned
-   by the caller. Add remaining scalar operations, native 32-bit wide-integer
-   lowering, persistent aggregate writes, arrays and managed fields/ownership;
+   by the caller. Persistent plain structs now reuse stable instance storage,
+   preserving local snapshots, nulls, hot apply and pooling. Add remaining scalar
+   operations, native 32-bit wide-integer lowering, arrays and managed fields/ownership;
    ForEach and recursive loop activations. ForLoop, ForLoopWithBreak and Break
    are implemented, including reverse/inclusive ranges, endpoint snapshots and
    queued Sequence tails.

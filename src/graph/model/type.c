@@ -108,3 +108,28 @@ uint64_t type_layout_hash(const type_desc *type)
 {
     return layout_hash(type, 0);
 }
+
+static bool plain(const type_desc *type, int depth)
+{
+    if (!type || !type->size || !type->field_count || depth > 16) {
+        return false;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *f = &type->fields[i];
+        if (f->offset > type->size || f->size > type->size - f->offset ||
+            f->type == PIN_FLOW || f->type == PIN_STR || f->type == PIN_NAME) {
+            return false;
+        }
+        if (f->type == PIN_STRUCT) {
+            const type_desc *nested = registry_type_by_name(f->type_name);
+            if (!plain(nested, depth + 1) || nested->size != f->size) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+bool type_is_plain(const type_desc *type)
+{
+    return plain(type, 0);
+}

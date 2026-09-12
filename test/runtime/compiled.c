@@ -736,6 +736,7 @@ void test_compiled_behaviors()
     test_compiled_loops();
     test_compiled_conversions();
     test_compiled_aliases();
+    test_compiled_stores();
     test_compiled_aggregates();
     test_compiled_math();
     test_compiled_integers();

@@ -5,6 +5,13 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+typedef struct
+{
+    void *data;            /* Stable even while the current value is null. */
+    const char *type_name; /* Owner-interned declared name. */
+    const type_desc *type;
+    uint64_t layout;
+} behavior_variable_storage;
 struct service_binding;
 typedef struct
 {
@@ -53,6 +60,9 @@ typedef struct
     const char *error_message;
     uint64_t owner;
     const struct ecs_execution_view *world, *binding_world;
+    behavior_variable_storage *variable_storage;
+    void *value_owner;
+    const char *(*own_type_name)(void *owner, const char *name);
 } behavior_function_context;
 /* Complete synchronous entry with scalar or fixed-layout values, or NULL if an operation requires the
  * general compiled runtime. No partial effects occur during eligibility checks. */

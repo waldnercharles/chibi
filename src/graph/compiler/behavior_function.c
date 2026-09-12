@@ -231,7 +231,8 @@ static bool block(builder *b, int index)
         int source = behavior_lower_input(b, n, 1), target = behavior_lower_variable(
                                                         b,
                                                         n->reference_id,
-                                                        n->input_pins[1].type
+                                                        n->input_pins[1].type,
+                                                        n->input_pins[1].container
                                                     );
         if (source < 0 || target < 0) {
             return false;
@@ -248,7 +249,11 @@ static bool block(builder *b, int index)
             return false;
         }
         next = behavior_lower_successor(b, n, 0, t.after);
-    } else if (n->desc == &NODE_WhileLoop || n->desc == &NODE_ForLoop || n->desc == &NODE_ForLoopWithBreak || n->desc == &NODE_Break) {
+    } else if (
+        n->desc == &NODE_WhileLoop || n->desc == &NODE_ForLoop ||
+        n->desc == &NODE_ForLoopWithBreak || n->desc == &NODE_ForEach ||
+        n->desc == &NODE_ForEachWithBreak || n->desc == &NODE_Break
+    ) {
         next = behavior_lower_loop(b, t);
     } else if (n->desc == &NODE_Branch) {
         int condition = behavior_lower_input(b, n, 1);

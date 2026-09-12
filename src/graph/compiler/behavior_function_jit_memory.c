@@ -115,6 +115,54 @@ bool behavior_jit_memory(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    if (i->op == BF_READ) {
+        slot(m, i->left, SLJIT_R3, 0);
+        read_pointer(m, i, dest, offset);
+        return true;
+    }
+    if (i->op == BF_ARRAY) {
+        bool argument = i->target == BF_ARGUMENT;
+        struct sljit_jump *missing = NULL, *wrong = NULL;
+        constant(m, BF_POINTER_TYPE, dest, offset, (pin_value){ .type = BF_POINTER_TYPE });
+        if (i->target == BF_CONSTANT) {
+            return true;
+        }
+        int base = argument ? m->arguments : m->variables;
+        sljit_sw at = i->left * sizeof(pin_value);
+        if (argument) {
+            missing = sljit_emit_cmp(
+                c,
+                SLJIT_SIG_LESS_EQUAL | SLJIT_32,
+                m->argument_count,
+                0,
+                SLJIT_IMM,
+                i->left
+            );
+            wrong = sljit_emit_cmp(
+                c,
+                SLJIT_NOT_EQUAL | SLJIT_32,
+                SLJIT_MEM1(base),
+                at + offsetof(pin_value, type),
+                SLJIT_IMM,
+                i->value.type
+            );
+        }
+        struct sljit_jump *container = sljit_emit_cmp(
+            c,
+            SLJIT_NOT_EQUAL | SLJIT_32,
+            SLJIT_MEM1(base),
+            at + offsetof(pin_value, container),
+            SLJIT_IMM,
+            PIN_CONTAINER_ARRAY
+        );
+        sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_MEM1(base), at + offsetof(pin_value, ptr));
+        bind(c, container);
+        if (argument) {
+            bind(c, missing);
+            bind(c, wrong);
+        }
+        return true;
+    }
     if (i->op == BF_STORAGE_NAME) {
         sljit_emit_op1(
             c,

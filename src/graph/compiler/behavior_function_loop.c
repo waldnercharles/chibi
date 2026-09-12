@@ -1,5 +1,6 @@
 #include "graph/compiler/behavior_lower_internal.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/value_array.h"
 #include "support/array.h"
 
 static int constant(builder *b, pin_value value)
@@ -53,13 +54,21 @@ static int break_loop(builder *b, task t)
 static int begin(builder *b, task t)
 {
     node *n = t.node;
+    bool each = n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak;
     bool counted = n->desc != &NODE_WhileLoop;
     for (int at = b->loop; at >= 0; at = b->loops[at].parent) {
         if (b->loops[at].node == n) {
             return behavior_lower_unsupported(b, n, -1, false, "recursive loop activation");
         }
     }
-    int completed = behavior_lower_successor(b, n, counted ? 2 : 1, t.after);
+    int completed = behavior_lower_successor(
+        b,
+        n,
+        each      ? 3
+        : counted ? 2
+                  : 1,
+        t.after
+    );
     if (completed < -1) {
         return -2;
     }
@@ -67,7 +76,40 @@ static int begin(builder *b, task t)
                           .parent = b->loop,
                           .completed = completed,
                           .broken = behavior_lower_hidden_local(b, n, 0, PIN_BOOL) };
-    if (counted) {
+    if (each) {
+        int input = n->desc == &NODE_ForEach ? 1 : 2;
+        int source = behavior_lower_input(b, n, input);
+        array_value *array = behavior_lower_array(b, source);
+        if (!array) {
+            return -2;
+        }
+        int pointer = array->pointer;
+        int zero_pointer = constant(b, (pin_value){ .type = BF_POINTER_TYPE });
+        int present = binary(b, BF_NE, pointer, zero_pointer, PIN_BOOL);
+        behavior_lower_emit(
+            b,
+            (behavior_function_instruction){
+                .op = BF_ASSERT,
+                .left = present,
+                .target = BEHAVIOR_FUNCTION_DATA,
+                .node_id = n->id,
+                .pin = -1,
+                .message = "ForEach input is not an array",
+            }
+        );
+        int count = behavior_lower_read(b, pointer, offsetof(pin_array, count), PIN_I32, false);
+        int zero = constant(b, (pin_value){ .type = PIN_I32 });
+        branch(b, binary(b, BF_EQ, count, zero, PIN_BOOL), completed);
+        loop.current = behavior_lower_local(b, b->frame, n, 2);
+        loop.last = behavior_lower_hidden_local(b, n, 1, PIN_I32);
+        loop.items = behavior_lower_hidden_local(b, n, 3, BF_POINTER_TYPE);
+        int one = constant(b, (pin_value){ .type = PIN_I32, .i = 1 });
+        int last = binary(b, BF_SUB, count, one, PIN_I32);
+        int items = behavior_lower_read(b, pointer, offsetof(pin_array, items), BF_POINTER_TYPE, false);
+        behavior_lower_store(b, BF_SAVE, items, loop.items);
+        behavior_lower_store(b, BF_SAVE, zero, loop.current);
+        behavior_lower_store(b, BF_SAVE, last, loop.last);
+    } else if (counted) {
         int first_pin = n->desc == &NODE_ForLoop ? 1 : 2;
         int first = behavior_lower_input(b, n, first_pin);
         int last = behavior_lower_input(b, n, first_pin + 1);
@@ -135,9 +177,20 @@ int behavior_lower_loop(builder *b, task t)
         int current = local(b, loop.current, PIN_I32),
             last = local(b, loop.last, PIN_I32);
         branch(b, binary(b, BF_EQ, current, last, PIN_BOOL), loop.completed);
-        int step = local(b, loop.step, PIN_I32);
+        bool each = n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak;
+        int step = each ? constant(b, (pin_value){ .type = PIN_I32, .i = 1 })
+                        : local(b, loop.step, PIN_I32);
         int increment = binary(b, BF_ADD, current, step, PIN_I32);
         behavior_lower_store(b, BF_SAVE, increment, loop.current);
+    }
+    if (n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak) {
+        int items = local(b, loop.items, BF_POINTER_TYPE);
+        int index = local(b, loop.current, PIN_I32);
+        int value = behavior_lower_array_element(b, items, index, &n->output_pins[1]);
+        int target = behavior_lower_local(b, b->frame, n, 1);
+        if (!behavior_lower_store(b, BF_SAVE, value, target)) {
+            return behavior_lower_unsupported(b, n, 1, true, "managed array element");
+        }
     }
     /* Inclusive ranges run once even when the endpoints are equal. Check the
      * endpoint before stepping, so INT_MIN/INT_MAX never overflow. */

@@ -328,11 +328,11 @@ static int normalize_aggregate(builder *b, node *n, int slot)
     }
     return behavior_lower_aggregate_value(b, result);
 }
-int behavior_lower_variable(const builder *b, uint64_t id, pin_type type)
+int behavior_lower_variable(const builder *b, uint64_t id, pin_type type, pin_container container)
 {
     for (int i = 0; i < acount(b->asset->variables); i++) {
         const behavior_variable *v = &b->asset->variables[i];
-        if (v->id == id && v->type == type && v->container == PIN_CONTAINER_SINGLE) {
+        if (v->id == id && v->type == type && v->container == container) {
             return i;
         }
     }
@@ -340,6 +340,10 @@ int behavior_lower_variable(const builder *b, uint64_t id, pin_type type)
 }
 int behavior_lower_convert(builder *b, int slot, pin_type type)
 {
+    array_value *array = behavior_lower_array(b, slot);
+    if (array) {
+        return array->type == type ? slot : -1;
+    }
     if (slot < 0 || b->function->slots[slot] == type) {
         return slot;
     }
@@ -468,8 +472,9 @@ static int get_output(builder *b, node *n, int pin)
 {
     if (pin < 0 || pin >= n->output_count || n->disabled ||
         (!behavior_lower_scalar(n->output_pins[pin].type) &&
-         n->output_pins[pin].type != PIN_STRUCT) ||
-        n->output_pins[pin].container != PIN_CONTAINER_SINGLE) {
+         n->output_pins[pin].type != PIN_STRUCT &&
+         n->output_pins[pin].container != PIN_CONTAINER_ARRAY) ||
+        n->output_pins[pin].container > PIN_CONTAINER_ARRAY) {
         return behavior_lower_unsupported(b, n, pin, true, "output type, projection or disabled node");
     }
     for (int i = 0; i < acount(b->outputs); i++) {
@@ -507,6 +512,7 @@ static int get_output(builder *b, node *n, int pin)
     } else if (
         n == b->entry || n->desc == &NODE_SetVariable || n->desc == &NODE_CallFunction ||
         n->desc == &NODE_ForLoop || n->desc == &NODE_ForLoopWithBreak ||
+        n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak ||
         n->desc->component_kind == NODE_COMPONENT_SET_SELF ||
         n->desc->component_kind == NODE_COMPONENT_SET_ENTITY ||
         n->desc->component_kind == NODE_COMPONENT_SET_FIELD
@@ -522,7 +528,12 @@ static int get_output(builder *b, node *n, int pin)
     } else if (n->desc->pure_kind == NODE_PURE_FUNCTION) {
         result = pure_call(b, n, pin);
     } else if (n->desc->pure_kind == NODE_PURE_GET) {
-        int index = behavior_lower_variable(b, n->reference_id, type);
+        int index = behavior_lower_variable(
+            b,
+            n->reference_id,
+            type,
+            n->output_pins[pin].container
+        );
         if (index >= 0) {
             result = behavior_lower_source(b, BF_VARIABLE, index, &n->output_pins[pin], n, pin);
         }
@@ -605,7 +616,9 @@ static int get_output(builder *b, node *n, int pin)
             if (op != BF_NEG && op != BF_ABS && !(op >= BF_SIN && op <= BF_LOG10)) {
                 right = n->input_count == 2 ? behavior_lower_input(b, n, 1) : -1;
             }
-            if (left >= 0 && right >= 0 && b->function->slots[left] != PIN_BOOL &&
+            if (left >= 0 && right >= 0 &&
+                behavior_lower_scalar(b->function->slots[left]) &&
+                b->function->slots[left] != PIN_BOOL &&
                 b->function->slots[left] != PIN_HANDLE &&
                 b->function->slots[left] == b->function->slots[right] &&
                 ((op >= BF_LT && op <= BF_NE) || op == BF_FLAGS ||
@@ -694,11 +707,18 @@ static int get_output(builder *b, node *n, int pin)
          n->desc == &NODE_To_Integer || n->desc == &NODE_To_Integer64)) {
         result = numeric_cast(b, behavior_lower_input(b, n, 0), n->desc, type);
     }
+    if (result < 0) {
+        result = behavior_lower_array_operation(b, n);
+    }
     apop(b->evaluating);
     if (result < 0) {
         return behavior_lower_unsupported(b, n, pin, true, "data operation");
     }
-    if (result >= 0 && b->function->slots[result] != type &&
+    array_value *array = behavior_lower_array(b, result);
+    if ((array != NULL) != (n->output_pins[pin].container == PIN_CONTAINER_ARRAY)) {
+        return -1;
+    }
+    if (!array && result >= 0 && b->function->slots[result] != type &&
         !(type == PIN_F32 && b->function->slots[result] == PIN_F64)) {
         return -1;
     }
@@ -733,14 +753,19 @@ static int edge_conversion(builder *b, int slot, const node_desc *conversion, no
 int behavior_lower_input(builder *b, node *n, int pin)
 {
     const pin_spec *s = &n->input_pins[pin];
-    if ((!behavior_lower_scalar(s->type) && s->type != PIN_STRUCT) ||
-        s->container != PIN_CONTAINER_SINGLE || s->kind != PIN_DATA) {
+    if ((!behavior_lower_scalar(s->type) && s->type != PIN_STRUCT &&
+         s->container != PIN_CONTAINER_ARRAY) ||
+        s->container > PIN_CONTAINER_ARRAY || s->kind != PIN_DATA) {
         return behavior_lower_unsupported(b, n, pin, false, "input type or container");
     }
     node *source;
     int source_pin;
     if (graph_input_source(b->graph, n, pin, &source, &source_pin)) {
         int slot = get_output(b, source, source_pin);
+        if ((behavior_lower_array(b, slot) != NULL) !=
+            (s->container == PIN_CONTAINER_ARRAY)) {
+            return -1;
+        }
         slot = edge_conversion(b, slot, graph_input_conversion(b->graph, n, pin), n, pin);
         return behavior_lower_convert(b, slot, s->type);
     }
@@ -761,7 +786,7 @@ int behavior_lower_input(builder *b, node *n, int pin)
     }
     if (binding->kind == PIN_BINDING_VARIABLE &&
         (!binding->source_asset || !strcmp(binding->source_asset, b->asset->name))) {
-        int index = behavior_lower_variable(b, binding->variable_id, s->type);
+        int index = behavior_lower_variable(b, binding->variable_id, s->type, s->container);
         if (index >= 0) {
             return behavior_lower_source(b, BF_VARIABLE, index, s, n, pin);
         }

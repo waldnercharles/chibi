@@ -31,6 +31,7 @@ typedef enum
     BF_OWNER,
     BF_WORLD,
     BF_STORAGE_NAME,
+    BF_ARRAY,
     BF_OWN_NAME,
     BF_ADD,
     BF_SUB,
@@ -62,6 +63,7 @@ typedef enum
     BF_ENTITY,
     BF_COMPONENT,
     BF_LOAD,
+    BF_READ,
     BF_STORE,
     BF_RESULT,
     BF_SAVE,
@@ -146,8 +148,8 @@ static inline bool behavior_function_left_slot(behavior_function_op op)
 }
 static inline bool behavior_function_right_slot(behavior_function_op op)
 {
-    return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD) || op == BF_WRITE ||
-           op == BF_STORE_HEADER;
+    return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD && op != BF_READ) ||
+           op == BF_WRITE || op == BF_STORE_HEADER;
 }
 static inline bool behavior_function_integer_clobber(behavior_function_op op)
 {

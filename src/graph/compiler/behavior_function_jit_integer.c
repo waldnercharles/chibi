@@ -97,7 +97,8 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
     }
     if (from == PIN_I32) {
         load(m, i->left, SLJIT_R0);
-        sljit_emit_op1(c, SLJIT_MOV_S32, dest, offset, SLJIT_R0, 0);
+        sljit_emit_op1(c, SLJIT_MOV_S32, SLJIT_R0, 0, SLJIT_R0, 0);
+        sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_R0, 0);
         return;
     }
     int source = m->registers[i->left];

@@ -116,9 +116,9 @@ void behavior_function_optimize(behavior_function *f)
             op->op == BF_WORLD || (op->op >= BF_ENTITY && op->op <= BF_LOAD) ||
             op->op == BF_ASSERT || op->op == BF_WRITE || op->op == BF_PRESENT ||
             op->op == BF_TYPE_NAME || op->op == BF_RESULT_TYPE_NAME ||
-            op->op == BF_REQUIRE || op->op == BF_SELECT ||
-            op->op == BF_RESULT_PRESENT || op->op == BF_STORAGE_NAME ||
-            op->op == BF_OWN_NAME || op->op == BF_STORE_HEADER) {
+            op->op == BF_REQUIRE || op->op == BF_SELECT || op->op == BF_RESULT_PRESENT ||
+            op->op == BF_STORAGE_NAME || op->op == BF_OWN_NAME ||
+            op->op == BF_STORE_HEADER || op->op == BF_ARRAY || op->op == BF_READ) {
             return;
         }
     }
@@ -249,7 +249,7 @@ done:
  * copies after local compaction, while retaining checks and all effects. */
 static bool discardable(behavior_function_op op)
 {
-    return op <= BF_STORAGE_NAME || op == BF_LOAD || op == BF_SELECT;
+    return op <= BF_ARRAY || op == BF_LOAD || op == BF_READ || op == BF_SELECT;
 }
 void behavior_function_prune_values(behavior_function *f)
 {

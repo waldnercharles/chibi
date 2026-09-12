@@ -93,7 +93,7 @@ int *behavior_jit_registers(const behavior_function *f, bool integers, int *save
     return registers;
 }
 
-int *behavior_jit_local_registers(const behavior_function *f, int base, int scratch, int *count)
+int *behavior_jit_local_registers(const behavior_function *f, int base, int scratch, int *count, int *float_count)
 {
     int *registers = xcalloc((size_t)(acount(f->locals) + 1), sizeof *registers);
     int *uses = xcalloc((size_t)(acount(f->locals) + 1), sizeof *uses);
@@ -124,6 +124,23 @@ int *behavior_jit_local_registers(const behavior_function *f, int base, int scra
         }
         registers[best] = SLJIT_S(base + r);
         (*count)++;
+    }
+    /* Loop-carried values survive block boundaries and C calls. Targets
+     * without saved FP registers keep the existing stack representation. */
+    for (int r = 0; loop && r < 4 && *float_count < SLJIT_NUMBER_OF_SAVED_FLOAT_REGISTERS;
+         r++) {
+        int best = -1;
+        for (int i = 0; i < acount(f->locals); i++) {
+            pin_type type = f->locals[i].initial.type;
+            if (!registers[i] && uses[i] && (type == PIN_F32 || type == PIN_F64) &&
+                (best < 0 || uses[i] > uses[best])) {
+                best = i;
+            }
+        }
+        if (best < 0) {
+            break;
+        }
+        registers[best] = SLJIT_FS((*float_count)++);
     }
     free(uses);
     return registers;

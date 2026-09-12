@@ -54,6 +54,22 @@ Numeric edge conversions use the same compiled saturating casts as explicit node
 See [loop parity and performance results](research/whole-loops.md); the loop
 microbenchmark still exceeds the native/C performance limit.
 
+Synchronous whole functions can borrow array arguments and variables when the
+complete body cannot mutate them. ForEach and ForEachWithBreak emit direct
+iteration over scalar or plain struct elements, retaining Index and element
+snapshots in typed locals. Length, Last Index, Is Empty, Is Not Empty and Is Valid
+Index use direct reads and comparisons. Null arrays retain their diagnostic or
+empty-query semantics. Owned defaults, escaping array results, array mutation,
+managed elements and mutating host operations still require additional ownership
+lowering. No array helper or iteration allocation is introduced by eligible
+bodies. Activation argument copies remain outside the whole-function body.
+See [array measurements](research/whole-arrays.md).
+
+Native floating-point arithmetic and loads/stores use allocated registers
+directly. Loop locals use saved floating-point registers where available, including
+across C ABI math calls; other targets retain stack storage. Spilled widening
+casts write the full destination width.
+
 Fixed-layout structs and vectors now lower into scalar fields with separate
 presence and nominal-type metadata. Make, Break, projected fields, aggregate
 arguments/results, immutable variable reads and synchronous function locals use

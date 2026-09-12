@@ -49,7 +49,10 @@ lower into explicit compiled control flow. Numeric edge conversions share the
 same saturating casts as explicit conversion nodes. Explicitly annotated struct
 alias conversions now copy typed fields without a native helper; the
 [alias measurements](whole-aliases.md) pass the 1.5x generated-C limit. Wave Tick
-now passes its input conversion and stops at ForEach. Persistent fixed-layout
+now passes its input conversion and ForEach control and stops at
+`Find Entities With Component` (graph 2010, node 2065). Read-only array views,
+plain elements and ForEach now lower without array helpers; their
+[benchmark](whole-arrays.md) passes the 1.5x generated-C gate. Persistent fixed-layout
 struct writes reuse instance storage and compile into field stores; the
 [store measurements](whole-stores.md) pass the 1.5x generated-C limit. Fixed-layout component
 Get/Has/Set, field writes, component bindings and entity
@@ -77,8 +80,10 @@ exclusions have moved to the first unsupported operation inside the callee.
    preserve nulls and nominal type names across calls; final results are owned
    by the caller. Persistent plain structs now reuse stable instance storage,
    preserving local snapshots, nulls, hot apply and pooling. Add remaining scalar
-   operations, native 32-bit wide-integer lowering, arrays and managed fields/ownership;
-   ForEach and recursive loop activations. ForLoop, ForLoopWithBreak and Break
+   operations, native 32-bit wide-integer lowering, owned array defaults/results,
+   array creation/mutation, managed fields/ownership and recursive loop activations.
+   Read-only array arguments and variables now support ForEach, ForEachWithBreak,
+   length, last-index and bounds queries. ForLoop, ForLoopWithBreak and Break
    are implemented, including reverse/inclusive ranges, endpoint snapshots and
    queued Sequence tails.
    Eliminate runtime dispatch for the remaining language operations. The

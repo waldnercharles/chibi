@@ -155,6 +155,25 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             continue;
         }
         switch (i->op) {
+            case BF_ARRAY:
+                fprintf(out, "{const pin_value *a=");
+                if (i->target == BF_ARGUMENT) {
+                    fprintf(
+                        out,
+                        "c->argument_count>%d&&c->arguments[%d].type==%d?&c->"
+                        "arguments[%d]:0;",
+                        i->left,
+                        i->left,
+                        i->value.type,
+                        i->left
+                    );
+                } else if (i->target == BF_VARIABLE) {
+                    fprintf(out, "&c->variables[%d];", i->left);
+                } else {
+                    fprintf(out, "0;");
+                }
+                fprintf(out, "v%d=a&&a->container==%d?(uintptr_t)a->ptr:0;}\n", i->output, PIN_CONTAINER_ARRAY);
+                break;
             case BF_STORAGE_NAME:
                 fprintf(out, "v%d=(uintptr_t)c->variable_storage[%d].type_name;\n", i->output, i->left);
                 break;
@@ -213,6 +232,10 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                 fprintf(out, "}v%d=column?(uintptr_t)column->data+v%d*column->stride:0;}\n", i->output, i->right);
                 break;
             case BF_LOAD:
+            case BF_READ:
+                if (i->op == BF_READ) {
+                    fprintf(out, "if(!v%d)v%d=0;else ", i->left, i->output);
+                }
                 fprintf(
                     out,
                     "memcpy(&v%d,(const "

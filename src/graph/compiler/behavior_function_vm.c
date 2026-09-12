@@ -102,6 +102,26 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             continue;
         }
         switch (i->op) {
+            case BF_ARRAY: {
+                const pin_value *value = &i->value;
+                if (i->target == BF_VARIABLE) {
+                    value = &ctx->variables[i->left];
+                } else if (
+                    i->target == BF_ARGUMENT && i->left < ctx->argument_count &&
+                    ctx->arguments[i->left].type == i->value.type
+                ) {
+                    value = &ctx->arguments[i->left];
+                }
+                uintptr_t pointer = value->container == PIN_CONTAINER_ARRAY
+                                      ? (uintptr_t)value->ptr
+                                      : 0;
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = pointer;
+                } else {
+                    out->u = (uint32_t)pointer;
+                }
+                break;
+            }
             case BF_STORAGE_NAME:
             case BF_OWN_NAME: {
                 const char *name = i->op == BF_STORAGE_NAME
@@ -164,6 +184,11 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
                 break;
             }
             case BF_LOAD:
+            case BF_READ:
+                if (i->op == BF_READ && !behavior_scalar_bits(a)) {
+                    memset(&out->d, 0, sizeof out->d);
+                    break;
+                }
                 memcpy(
                     &out->d,
                     (const char *)(uintptr_t)behavior_scalar_bits(a) + i->offset,
@@ -319,6 +344,26 @@ int behavior_function_run(const behavior_function *f, behavior_function_context 
             case BF_END: goto done;
             case BF_RETURN: ctx->returned_node_id = i->node_id; goto done;
             default: {
+                /* Address arithmetic uses an unsigned word on both native
+                 * and wasm32. It must not pass through floating point. */
+                if (a.type == PIN_U32 || a.type == PIN_U64) {
+                    uint64_t x = behavior_scalar_bits(a),
+                             y = behavior_scalar_bits(b), value = 0;
+                    switch (i->op) {
+                        case BF_ADD: value = x + y; break;
+                        case BF_MUL: value = x * y; break;
+                        case BF_EQ: out->b = x == y; break;
+                        case BF_NE: out->b = x != y; break;
+                        default: assert(false);
+                    }
+                    if (i->type == PIN_U32) {
+                        out->u = (uint32_t)value;
+                    }
+                    if (i->type == PIN_U64) {
+                        out->u64 = value;
+                    }
+                    break;
+                }
                 if (a.type == PIN_I32 || a.type == PIN_I64) {
                     int64_t x = a.type == PIN_I32 ? a.i : a.i64;
                     int64_t y = a.type == PIN_I32 ? b.i : b.i64;

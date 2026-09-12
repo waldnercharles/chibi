@@ -125,6 +125,20 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 3 && strcmp(argv[1], "--emit-array-c") == 0) {
+        registry_validate();
+        emit_array_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && strcmp(argv[1], "--bench-array") == 0) {
+        registry_validate();
+        return bench_array(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && strcmp(argv[1], "--whole-array") == 0) {
+        registry_validate();
+        test_compiled_arrays();
+        return 0;
+    }
     if (argc == 3 && strcmp(argv[1], "--emit-store-c") == 0) {
         registry_validate();
         emit_store_c(argv[2]);

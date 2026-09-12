@@ -5,5 +5,7 @@
 
 extern node_desc *const ARRAY_NODES[];
 extern const int ARRAY_NODE_COUNT;
+extern node_desc NODE_ArrayLength, NODE_ArrayLastIndex, NODE_ArrayIsEmpty,
+    NODE_ArrayIsNotEmpty, NODE_ArrayIsValidIndex;
 
 #endif

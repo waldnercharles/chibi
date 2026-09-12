@@ -56,6 +56,18 @@ static void enter_locals(const behavior_machine *m, int frame)
         if (f->locals[i].frame != frame) {
             continue;
         }
+        pin_type type = f->locals[i].initial.type;
+        if (m->local_registers[i] && (type == PIN_F32 || type == PIN_F64)) {
+            sljit_emit_fop1(
+                c,
+                SLJIT_MOV_F64 | width(type),
+                m->local_registers[i],
+                0,
+                SLJIT_MEM0(),
+                (sljit_sw)&f->locals[i].initial.d
+            );
+            continue;
+        }
         sljit_emit_op1(
             c,
             SLJIT_MOV,
@@ -238,7 +250,8 @@ void *behavior_function_jit(const behavior_function *f)
     for (int i = 0; i < acount(f->instructions); i++) {
         arguments |= f->instructions[i].op == BF_ARGUMENT ||
                      ((f->instructions[i].op == BF_PRESENT ||
-                       f->instructions[i].op == BF_TYPE_NAME) &&
+                       f->instructions[i].op == BF_TYPE_NAME ||
+                       f->instructions[i].op == BF_ARRAY) &&
                       f->instructions[i].target == BF_ARGUMENT);
         calls |= behavior_function_call(f->instructions[i].op);
         loop |= (f->instructions[i].op == BF_JUMP || f->instructions[i].op == BF_BRANCH) &&
@@ -274,7 +287,7 @@ void *behavior_function_jit(const behavior_function *f)
                 : arguments && !calls ? 6
                                       : 4;
     int saved_integer = saved ? (arguments ? 5 : 3) : 0, saved_locals = 0;
-    int *local_registers = behavior_jit_local_registers(f, saved_integer, scratch, &saved_locals);
+    int *local_registers = behavior_jit_local_registers(f, saved_integer, scratch, &saved_locals, &saved_float);
     m.local_registers = local_registers;
     behavior_jit_alias_locals(f, registers, local_registers);
     behavior_jit_coalesce_saves(f, registers, local_registers);
@@ -490,28 +503,43 @@ void *behavior_function_jit(const behavior_function *f)
                 sljit_emit_fop1(
                     c,
                     SLJIT_MOV_F64 | flags,
-                    SLJIT_FR0,
-                    0,
+                    destination,
+                    offset,
                     SLJIT_MEM0(),
                     (sljit_sw)&i->value.d
                 );
-                sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
                 break;
             case BF_LOCAL:
             case BF_VARIABLE: {
+                int local = i->op == BF_LOCAL ? local_registers[i->left] : 0;
+                if (local) {
+                    if (destination != local) {
+                        sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, local, 0);
+                    }
+                    break;
+                }
                 int base = i->op == BF_LOCAL ? SLJIT_SP : m.variables;
                 sljit_sw address = i->op == BF_LOCAL
                                      ? locals + i->left * sizeof(double)
                                      : i->left * sizeof(pin_value) +
                                            offsetof(pin_value, d);
-                sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, SLJIT_FR0, 0, SLJIT_MEM1(base), address);
-                sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
+                sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_MEM1(base), address);
                 break;
             }
-            case BF_SAVE:
-                load(c, f, registers, i->left, SLJIT_FR0);
-                sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, mem, locals + i->target * sizeof(double), SLJIT_FR0, 0);
+            case BF_SAVE: {
+                int source = registers[i->left], local = local_registers[i->target];
+                if (!source || source != local) {
+                    sljit_emit_fop1(
+                        c,
+                        SLJIT_MOV_F64 | flags,
+                        local ? local : mem,
+                        local ? 0 : locals + i->target * sizeof(double),
+                        source ? source : mem,
+                        source ? 0 : i->left * sizeof(double)
+                    );
+                }
                 break;
+            }
             case BF_RESULT:
             case BF_STORE: {
                 int base = m.variables;
@@ -526,14 +554,14 @@ void *behavior_function_jit(const behavior_function *f)
                         offsetof(behavior_function_context, results)
                     );
                 }
-                load(c, f, registers, i->left, SLJIT_FR0);
+                int source = registers[i->left];
                 sljit_emit_fop1(
                     c,
                     SLJIT_MOV_F64 | flags,
                     SLJIT_MEM1(base),
                     i->target * sizeof(pin_value) + offsetof(pin_value, d),
-                    SLJIT_FR0,
-                    0
+                    source ? source : mem,
+                    source ? 0 : i->left * sizeof(double)
                 );
                 break;
             }
@@ -561,6 +589,40 @@ void *behavior_function_jit(const behavior_function *f)
                 );
                 sljit_emit_fop1(c, SLJIT_MOV_F32, destination, offset, SLJIT_FR0, 0);
                 break;
+            case BF_ADD:
+            case BF_SUB:
+            case BF_MUL:
+            case BF_DIV:
+            case BF_NEG:
+            case BF_ABS: {
+                int left = registers[i->left], right = registers[i->right];
+                if (i->op == BF_NEG || i->op == BF_ABS) {
+                    sljit_emit_fop1(
+                        c,
+                        (i->op == BF_NEG ? SLJIT_NEG_F64 : SLJIT_ABS_F64) | flags,
+                        destination,
+                        offset,
+                        left ? left : mem,
+                        left ? 0 : i->left * sizeof(double)
+                    );
+                    break;
+                }
+                int op = i->op == BF_ADD ? SLJIT_ADD_F64
+                       : i->op == BF_SUB ? SLJIT_SUB_F64
+                       : i->op == BF_MUL ? SLJIT_MUL_F64
+                                         : SLJIT_DIV_F64;
+                sljit_emit_fop2(
+                    c,
+                    op | flags,
+                    destination,
+                    offset,
+                    left ? left : mem,
+                    left ? 0 : i->left * sizeof(double),
+                    right ? right : mem,
+                    right ? 0 : i->right * sizeof(double)
+                );
+                break;
+            }
             default: {
                 load(c, f, registers, i->left, SLJIT_FR0);
                 load(c, f, registers, i->right, SLJIT_FR1);
@@ -602,23 +664,7 @@ void *behavior_function_jit(const behavior_function *f)
                     bind_here(c, left);
                     sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
                 } else {
-                    int op = i->op == BF_ADD ? SLJIT_ADD_F64
-                           : i->op == BF_SUB ? SLJIT_SUB_F64
-                           : i->op == BF_MUL ? SLJIT_MUL_F64
-                                             : SLJIT_DIV_F64;
-                    if (i->op == BF_NEG || i->op == BF_ABS) {
-                        sljit_emit_fop1(
-                            c,
-                            (i->op == BF_NEG ? SLJIT_NEG_F64 : SLJIT_ABS_F64) | flags,
-                            SLJIT_FR0,
-                            0,
-                            SLJIT_FR0,
-                            0
-                        );
-                    } else {
-                        sljit_emit_fop2(c, op | flags, SLJIT_FR0, 0, SLJIT_FR0, 0, SLJIT_FR1, 0);
-                    }
-                    sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
+                    assert(false);
                 }
             }
         }

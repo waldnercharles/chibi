@@ -76,6 +76,14 @@ static inline const char *behavior_scalar_c_type(pin_type type)
 static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
 {
     pin_value out = { .type = type };
+    if (a.type == PIN_I32 && (type == PIN_U32 || type == PIN_U64)) {
+        if (type == PIN_U32) {
+            out.u = (uint32_t)a.i;
+        } else {
+            out.u64 = (uint64_t)(int64_t)a.i;
+        }
+        return out;
+    }
     if (type == PIN_F64) {
         out.d = a.type == PIN_U8  ? a.u8
               : a.type == PIN_I32 ? a.i

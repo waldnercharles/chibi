@@ -207,7 +207,7 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
     *dst = *src;
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone((const pin_array *)src->ptr);
-        return dst->ptr ? 0 : -1;
+        return !src->ptr || dst->ptr ? 0 : -1;
     }
     if (value_string(src->type) && src->str) {
         dst->str = xstrdup(src->str);
@@ -227,7 +227,7 @@ int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src)
     *dst = *src;
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone_to_graph(g, (const pin_array *)src->ptr);
-        return dst->ptr ? 0 : -1;
+        return !src->ptr || dst->ptr ? 0 : -1;
     }
     if (value_string(src->type) && src->str) {
         dst->str = graph_string(g, src->str);
@@ -264,7 +264,7 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
     *dst = *src;
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone_to_arena(a, (const pin_array *)src->ptr);
-        return dst->ptr ? 0 : -1;
+        return !src->ptr || dst->ptr ? 0 : -1;
     }
     if (value_string(src->type) && src->str) {
         dst->str = arena_string(a, src->str);

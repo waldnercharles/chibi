@@ -130,6 +130,14 @@ int behavior_lower_source(
     int pin
 )
 {
+    if (spec->container == PIN_CONTAINER_ARRAY) {
+        if (spec->default_value.ptr) {
+            bool output = pin >= 0 && pin < n->output_count &&
+                          spec == &n->output_pins[pin];
+            return behavior_lower_unsupported(b, n, pin, output, "owned array default");
+        }
+        return behavior_lower_array_source(b, op, index, spec);
+    }
     if (spec->type != PIN_STRUCT) {
         return behavior_lower_value(
             b,
@@ -345,6 +353,21 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
     if (slot < 0 || target < 0) {
         return false;
     }
+    array_value *array = behavior_lower_array(b, slot);
+    if (array) {
+        array_value *stored = op == BF_SAVE ? behavior_lower_array(b, target) : NULL;
+        if (!stored || stored->type != array->type) {
+            return false;
+        }
+        behavior_lower_emit(
+            b,
+            (behavior_function_instruction){ .op = BF_SAVE,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = array->pointer,
+                                             .target = stored->pointer }
+        );
+        return true;
+    }
     aggregate *a = behavior_lower_aggregate(b, slot);
     if (!a) {
         behavior_lower_emit(
@@ -431,7 +454,7 @@ void behavior_lower_finish_values(builder *b)
     int *map = xmalloc((size_t)(acount(f->slots) + 1) * sizeof *map);
     int count = 0;
     for (int i = 0; i < acount(f->slots); i++) {
-        map[i] = f->slots[i] == PIN_STRUCT ? -1 : count++;
+        map[i] = f->slots[i] == PIN_STRUCT || f->slots[i] == PIN_FLOW ? -1 : count++;
         if (map[i] >= 0) {
             f->slots[map[i]] = f->slots[i];
         }
@@ -458,13 +481,20 @@ void behavior_lower_finish_values(builder *b)
         afree(b->aggregates[i].fields);
     }
     afree(b->aggregates);
+    afree(b->arrays);
 }
 int behavior_lower_local(builder *b, int frame, const node *n, int pin)
 {
     const pin_spec *spec = &n->output_pins[pin];
-    if (spec->container != PIN_CONTAINER_SINGLE || spec->kind != PIN_DATA ||
+    if (spec->container > PIN_CONTAINER_ARRAY || spec->kind != PIN_DATA ||
         spec->field_source || spec->default_value.type != spec->type) {
         return behavior_lower_unsupported(b, n, pin, true, "stored output type, default or projection");
+    }
+    if (spec->container == PIN_CONTAINER_ARRAY) {
+        pin_value initial = { .type = BF_POINTER_TYPE,
+                              .ptr = spec->default_value.ptr };
+        int pointer = scalar_local(b, frame, n, pin, 0, initial);
+        return behavior_lower_array_value(b, pointer, spec->type);
     }
     if (behavior_lower_scalar(spec->type)) {
         return scalar_local(b, frame, n, pin, 0, spec->default_value);

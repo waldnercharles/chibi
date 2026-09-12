@@ -75,6 +75,7 @@ struct flow_run
     int step_over;
     activation_frame *frames;
     flow_call_frame *stack_cache;
+    flow_call_frame *data_error_stack;
     pin_value *inputs;
     int input_count;
     int input_capacity;
@@ -116,5 +117,12 @@ void flow_host_finish(flow_run *run, flow_host_state state);
 void flow_host_detach(flow_run *run);
 int flow_copy_input(arena *a, pin_value *dst, const pin_value *src);
 int flow_run_continue(flow_run *run, int clear_step_mode);
+void flow_run_data_call(
+    flow_run *run,
+    const graph *caller,
+    const node *call,
+    const graph *callee,
+    const node *failed
+);
 
 #endif

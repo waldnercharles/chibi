@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Measure checked whole-function ECS access against C emitted from the same IR."""
+"""Measure whole-function memory operations against C emitted from the same IR."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -12,6 +13,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", default="build-performance")
+    parser.add_argument("--workload", choices=("component", "alias"), default="component")
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--iterations", type=int, default=2_000_000)
     parser.add_argument("--max-native-ratio", type=float, default=1.5)
@@ -33,14 +35,14 @@ def main():
     with tempfile.TemporaryDirectory(prefix="component-c-") as temp:
         source = Path(temp) / "generated.c"
         library = Path(temp) / "generated.so"
-        subprocess.run([binary, "--emit-component-c", source], check=True, cwd=root)
+        subprocess.run([binary, f"--emit-{args.workload}-c", source], check=True, cwd=root)
         subprocess.run([
             compiler, "-std=c23", "-O3", "-ffp-contract=off", "-shared", "-fPIC",
             "-I" + str(root / "src"), str(source), "-o", str(library)
         ], check=True, cwd=root)
         for trial in range(args.trials):
             result = subprocess.check_output([
-                binary, "--bench-component", library, str(args.iterations), str(trial % 3)
+                binary, f"--bench-{args.workload}", library, str(args.iterations), str(trial % 3)
             ], cwd=root, text=True)
             logs.append(result)
             print(f"trial={trial}\n{result}", end="", flush=True)
@@ -49,18 +51,20 @@ def main():
     medians = {label: statistics.median(values) for label, values in measurements.items()}
     for label, values in measurements.items():
         print(f"{label}: median={medians[label]:.3f} ns range={min(values):.3f}..{max(values):.3f}")
-    ratio = medians["SLJIT component_body"] / medians["GENERATED_C component_body"]
+    ratio = medians[f"SLJIT {args.workload}_body"] / medians[f"GENERATED_C {args.workload}_body"]
     print(f"SLJIT/generated-C ratio={ratio:.3f}; limit={args.max_native_ratio:.3f}")
     if args.output:
         args.output.write_text(json.dumps({
             "base_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
+            "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
             "compiler": subprocess.check_output([compiler, "--version"], text=True).strip(),
             "iterations": args.iterations, "trials": logs, "nanoseconds": measurements,
+            "workload": args.workload,
             "medians": medians, "native_c_ratio": ratio, "maximum_ratio": args.max_native_ratio,
         }, indent=2) + "\n")
     if ratio > args.max_native_ratio:
-        raise SystemExit("FAIL: whole component performance acceptance")
-    print("PASS: whole component performance acceptance")
+        raise SystemExit(f"FAIL: whole {args.workload} performance acceptance")
+    print(f"PASS: whole {args.workload} performance acceptance")
 
 
 if __name__ == "__main__":

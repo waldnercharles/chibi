@@ -8,10 +8,12 @@ NODE_EXEC void game_component_probe(void) NODE_READS(GameHealth) NODE_ENTITY_SCO
 NODE_FN NODE_JIT(
     "v2-move"
 ) GameTransform game_move_transform(GameTransform transform, float x, float y);
-NODE_FN NODE_CONVERTS(GameTransform, CF_V2)
-CF_V2 game_transform_to_cf(GameTransform transform);
-NODE_FN NODE_CONVERTS(CF_V2, GameTransform)
-GameTransform game_transform_from_cf(CF_V2 value);
+NODE_FN NODE_JIT("identity") NODE_CONVERTS(GameTransform, CF_V2) CF_V2 game_transform_to_cf(
+    GameTransform transform
+);
+NODE_FN NODE_JIT(
+    "identity"
+) NODE_CONVERTS(CF_V2, GameTransform) GameTransform game_transform_from_cf(CF_V2 value);
 
 NODE_READ NODE_NAME("Transform Visual Offset") NODE_CATEGORY(
     "Math/Vector"

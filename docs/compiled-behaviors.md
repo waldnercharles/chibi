@@ -184,3 +184,13 @@ integer instructions, shared division/remainder, saturating casts, pure-call
 error source scopes and generated-C acceptance. Integer language operations
 introduce no runtime C helpers. The general compiled executor still handles
 excluded bodies, including instrumented ones.
+
+## Struct identity conversions
+
+`NODE_JIT("identity")` promises a by-value struct copy with a nominal type change.
+Reflection requires one struct argument with the same canonical C type as the
+return value. Whole-function lowering checks the scalar field layout and reuses
+typed slots for both explicit nodes and conversion edges. Native execution emits
+no conversion helper or intermediate allocation. System native lowering also
+requires this annotation; compatible layouts alone do not imply identity.
+See [measurements and parity coverage](research/whole-aliases.md).

@@ -45,7 +45,10 @@ argument in a pure call. Integer arithmetic, comparisons, flags, explicit
 numeric casts, fixed-layout aggregates, vector normalization and field unwraps
 now lower into whole bodies. Counted ranges, While continuations and Break now
 lower into explicit compiled control flow. Numeric edge conversions share the
-same saturating casts as explicit conversion nodes. Fixed-layout component
+same saturating casts as explicit conversion nodes. Explicitly annotated struct
+alias conversions now copy typed fields without a native helper; the
+[alias measurements](whole-aliases.md) pass the 1.5x generated-C limit. Wave Tick
+now passes its input conversion and stops at ForEach. Fixed-layout component
 Get/Has/Set, field writes, component bindings and entity
 validation now lower directly. Managed values and engine effects still exclude
 most entries. The [pure-function measurements](whole-pure-functions.md)

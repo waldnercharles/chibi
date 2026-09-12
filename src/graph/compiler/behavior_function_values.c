@@ -674,6 +674,9 @@ static int get_output(builder *b, node *n, int pin)
             result = behavior_lower_field(b, source, &a->type->fields[0], n, 0);
         }
     }
+    if (n->desc->jit_kind == NODE_JIT_IDENTITY) {
+        result = behavior_lower_identity(b, behavior_lower_input(b, n, 0), n->desc, n, 0, false);
+    }
     if (n->desc->jit_kind == NODE_JIT_ATAN2_F32) {
         int y = behavior_lower_input(b, n, 0), x = behavior_lower_input(b, n, 1);
         if (x >= 0 && y >= 0 && b->function->slots[x] == PIN_F32 &&
@@ -710,6 +713,12 @@ static int edge_conversion(builder *b, int slot, const node_desc *conversion, no
         return slot;
     }
     aggregate *a = behavior_lower_aggregate(b, slot);
+    if (conversion->jit_kind == NODE_JIT_IDENTITY) {
+        int converted = behavior_lower_identity(b, slot, conversion, n, pin, true);
+        if (converted >= 0) {
+            return converted;
+        }
+    }
     if (conversion->jit_kind == NODE_JIT_UNWRAP && a && a->type->field_count == 1) {
         return behavior_lower_field(b, slot, &a->type->fields[0], n, pin);
     }

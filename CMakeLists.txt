@@ -457,7 +457,7 @@ endif()
 
 # --- test registry: core, runtime_support, and demo packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-chibi_registry("${TEST_REGISTRY}" WHOLE_VALUE_PACK DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -685,7 +685,7 @@ foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner 
 endforeach()
 
 # Backend policy smoke target also runs under Node in the Emscripten build.
-add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c)
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c)
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)

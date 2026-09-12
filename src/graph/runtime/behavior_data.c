@@ -129,6 +129,26 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         if (result) {
             const behavior_function_source
                 *source = behavior_function_source_at(function, call.error_source);
+            const node *failed = graph_node_by_id(source->graph, call.node_id);
+            for (const behavior_function_source *at = source; at->parent >= 0;) {
+                const behavior_function_source
+                    *parent = behavior_function_source_at(function, at->parent);
+                flow_run_data_call(
+                    ctx->observer,
+                    parent->graph,
+                    at->call,
+                    source->graph,
+                    failed
+                );
+                at = parent;
+            }
+            flow_run_data_call(
+                ctx->observer,
+                runtime_store_graph(ctx->runtime),
+                n,
+                source->graph,
+                failed
+            );
             return fail(
                 ctx,
                 graph_node_by_id(source->graph, call.node_id),
@@ -186,6 +206,15 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         }
     }
     runtime_store_free(runtime);
+    if (result && ctx->status.node != n) {
+        flow_run_data_call(
+            ctx->observer,
+            runtime_store_graph(ctx->runtime),
+            n,
+            target,
+            ctx->status.node
+        );
+    }
     return result;
 }
 

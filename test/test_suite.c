@@ -125,6 +125,15 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 3 && strcmp(argv[1], "--emit-alias-c") == 0) {
+        registry_validate();
+        emit_alias_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && strcmp(argv[1], "--bench-alias") == 0) {
+        registry_validate();
+        return bench_alias(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
     if (argc == 3 && strcmp(argv[1], "--emit-loop-c") == 0) {
         registry_validate();
         emit_loop_c(argv[2]);
@@ -147,6 +156,11 @@ int main(int argc, char **argv)
         registry_validate();
         test_compiled_loops();
         test_compiled_conversions();
+        return 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--whole-alias") == 0) {
+        registry_validate();
+        test_compiled_aliases();
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--whole-component") == 0) {

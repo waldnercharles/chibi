@@ -59,6 +59,7 @@ int behavior_lower_value(builder *b, behavior_function_instruction i);
 aggregate *behavior_lower_aggregate(builder *b, int slot);
 aggregate behavior_lower_shape(const char *name);
 int behavior_lower_aggregate_value(builder *b, aggregate a);
+int behavior_lower_identity(builder *b, int slot, const node_desc *desc, const node *n, int pin, bool edge);
 int behavior_lower_source(
     builder *b,
     behavior_function_op op,

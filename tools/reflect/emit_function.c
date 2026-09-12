@@ -205,6 +205,9 @@ void emit_fn(FILE *out, const fn_info *f)
     if (!f->ret_void) {
         fprintf(out, "    r.type_name = \"%s\";\n", f->ret);
     }
+    if (f->jit_kind && !strcmp(f->jit_kind, "identity")) {
+        fputs("    if (nargs != 1 || !args[0].ptr) return r;\n", out);
+    }
 
     if (f->ret_void) {
         fprintf(out, "    %s(", f->name);
@@ -495,6 +498,9 @@ static const char *jit_kind_name(const char *kind)
     }
     if (strcmp(kind, "v2-move") == 0) {
         return "NODE_JIT_V2_MOVE";
+    }
+    if (strcmp(kind, "identity") == 0) {
+        return "NODE_JIT_IDENTITY";
     }
     return NULL;
 }

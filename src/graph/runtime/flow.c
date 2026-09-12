@@ -830,6 +830,7 @@ flow_run *flow_run_start_reuse(
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     aclear(run->frames);
     aclear(run->stack_cache);
+    aclear(run->data_error_stack);
     aclear(run->services);
     if (!run->runtime) {
         run->runtime = runtime_store_create(g);
@@ -1064,6 +1065,7 @@ int flow_run_stop(flow_run *run)
     run->state = FLOW_IDLE;
     frame_arrays_free(run);
     aclear(run->frames);
+    aclear(run->data_error_stack);
     run->waiting_node = NULL;
     run->waiting_output = -1;
     run->pause_requested = 0;
@@ -1098,6 +1100,7 @@ int flow_run_reset(flow_run *run)
     frame_arrays_free(run);
     afree(run->frames);
     afree(run->stack_cache);
+    afree(run->data_error_stack);
     afree(run->services);
     free(run->inputs);
     run->inputs = NULL;
@@ -1246,6 +1249,25 @@ const char *flow_run_event_name(const flow_run *run)
     return run ? run->event_name : NULL;
 }
 
+void flow_run_data_call(
+    flow_run *run,
+    const graph *caller,
+    const node *call,
+    const graph *callee,
+    const node *failed
+)
+{
+    if (!run) {
+        return;
+    }
+    if (!acount(run->data_error_stack)) {
+        apush(
+            run->data_error_stack,
+            ((flow_call_frame){ callee, callee->graph_id, failed->id })
+        );
+    }
+    apush(run->data_error_stack, ((flow_call_frame){ caller, caller->graph_id, call->id }));
+}
 const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
 {
     if (count) {
@@ -1296,6 +1318,9 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
         for (int i = 0; i < child_count; i++) {
             apush(mutable_run->stack_cache, children[i]);
         }
+    }
+    for (int i = acount(run->data_error_stack) - 1; i >= 0; i--) {
+        apush(mutable_run->stack_cache, run->data_error_stack[i]);
     }
     if (count) {
         *count = acount(mutable_run->stack_cache);
@@ -1432,7 +1457,9 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
             *out = conversion->fn(out, 1, &ctx->run->scratch);
             pin_coerce(out, spec);
             if (out->type != spec->type || (out->type == PIN_STRUCT && !out->ptr)) {
-                return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion failed");
+                int result = flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion failed");
+                ctx->run->error.pin = input_pin;
+                return result;
             }
         }
         pin_coerce(out, spec);

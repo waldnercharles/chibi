@@ -6,6 +6,7 @@
 #include "support/arena.h"
 #include "test/whole_loop_fixture.h"
 #include "whole_aggregate_fixture.h"
+#include "whole_alias_fixture.h"
 #include "whole_function_fixture.h"
 #include "whole_integer_fixture.h"
 #include "whole_math_fixture.h"
@@ -24,8 +25,9 @@ static const registry_pack entity_pack = { .name = "Entity identity",
 const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK,
                                                 &CORE_FLOW_PACK,
                                                 &WHOLE_VALUE_PACK,
+                                                &WHOLE_ALIAS_PACK,
                                                 &entity_pack };
-const int REGISTRY_PACK_COUNT = 4;
+const int REGISTRY_PACK_COUNT = 5;
 
 int main()
 {
@@ -86,6 +88,7 @@ int main()
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     whole_aggregate_smoke();
+    whole_alias_smoke();
     asset = whole_function_fixture();
     instance = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);

@@ -110,6 +110,8 @@ typedef enum
     NODE_JIT_V2_DIRECTION,
     NODE_JIT_ATAN2_F32,
     NODE_JIT_UNWRAP,
+    /* Explicit promise: copy a fixed-layout struct and retag its nominal type. */
+    NODE_JIT_IDENTITY,
 } node_jit_kind;
 
 enum

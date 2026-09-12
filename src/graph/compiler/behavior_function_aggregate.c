@@ -57,6 +57,42 @@ int behavior_lower_aggregate_value(builder *b, aggregate a)
     apush(b->aggregates, a);
     return a.slot;
 }
+int behavior_lower_identity(builder *b, int slot, const node_desc *desc, const node *n, int pin, bool edge)
+{
+    aggregate *source = behavior_lower_aggregate(b, slot);
+    if (!source || desc->input_count != 1 || desc->output_count != 1 ||
+        desc->inputs[0].type != PIN_STRUCT || desc->outputs[0].type != PIN_STRUCT ||
+        desc->inputs[0].container != PIN_CONTAINER_SINGLE ||
+        desc->outputs[0].container != PIN_CONTAINER_SINGLE) {
+        return -1;
+    }
+    aggregate result = behavior_lower_shape(desc->outputs[0].type_name);
+    if (!result.type || result.type->size != source->type->size ||
+        acount(result.fields) != acount(source->fields)) {
+        afree(result.fields);
+        return -1;
+    }
+    for (int i = 0; i < acount(result.fields); i++) {
+        if (result.fields[i].offset != source->fields[i].offset ||
+            result.fields[i].type != source->fields[i].type) {
+            afree(result.fields);
+            return -1;
+        }
+        result.fields[i].slot = source->fields[i].slot;
+    }
+    result.present = source->present;
+    behavior_lower_emit(
+        b,
+        (behavior_function_instruction){
+            .op = BF_REQUIRE,
+            .left = source->present,
+            .node_id = n->id,
+            .pin = pin,
+            .message = edge ? "edge conversion failed" : "data input has no struct value",
+        }
+    );
+    return behavior_lower_aggregate_value(b, result);
+}
 static pin_value initial_field(pin_value initial, aggregate_field f)
 {
     pin_value v = { .type = f.type };

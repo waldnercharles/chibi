@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/nodes.h"
 #include "graph/runtime/behavior_data.h"
+#include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "graph/runtime/value_array.h"
@@ -288,6 +289,7 @@ static int eval_pure_function(const graph *g, node *n, arena *a, eval_context *c
     nested.call_depth = ctx->call_depth + 1;
     nested.on_data_edge = ctx->on_data_edge;
     nested.on_data_edge_user = ctx->on_data_edge_user;
+    nested.observer = ctx->observer;
     eval_context_attach_runtime(&nested, target_runtime);
 
     runtime_node *caller_state = runtime_state(ctx, n);
@@ -328,6 +330,17 @@ static int eval_pure_function(const graph *g, node *n, arena *a, eval_context *c
                 ctx->status = nested.status;
                 goto done;
             }
+            const node_desc *conversion = graph_input_conversion(target, ret, i);
+            if (conversion) {
+                value = conversion->fn(&value, 1, a);
+                pin_coerce(&value, &ret->input_pins[i]);
+                if (value.type != ret->input_pins[i].type ||
+                    (value.type == PIN_STRUCT && !value.ptr)) {
+                    result = fail(&nested, ret, i, NODE_EVAL_INVALID, "edge conversion failed");
+                    ctx->status = nested.status;
+                    goto done;
+                }
+            }
             pin_coerce(&value, &ret->input_pins[i]);
         } else {
             const char *error = eval_context_resolve_input(
@@ -355,6 +368,9 @@ static int eval_pure_function(const graph *g, node *n, arena *a, eval_context *c
     }
 
 done:
+    if (result && ctx->status.node != n) {
+        flow_run_data_call(ctx->observer, g, n, target, ctx->status.node);
+    }
     eval_context_free(&nested);
     runtime_store_free(target_runtime);
     return result;

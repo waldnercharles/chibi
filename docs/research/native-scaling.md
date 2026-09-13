@@ -122,7 +122,9 @@ tracking or a different executor. The shared framework checkout was not modified
 for task completion. The experiment uses source commit
 `4cba61a045d8e759bd35e5d85691bf9f7271f822`, fetched into a separate temporary
 checkout. The runtime physics task interface borrows an executor; the benchmark
-adapter does not add EnkiTS as a production dependency. Executor measurements
+adapter initially kept EnkiTS outside production. The subsequent
+[shared task pool](shared-task-pool.md) now makes it the default native executor
+for sufficiently large physics steps. Executor measurements
 now include both Box2D's solver callbacks and read-only contact collection. The
 latter uses per-worker scratch and serial sorting/event delivery after joining.
 
@@ -144,7 +146,11 @@ Position checksums match and the driver verifies that the requested executor
 was actually active. The 1,000-enemy frame remains presentation-bound with a
 slightly worse wall-time tail. These results support further executor integration,
 but do not establish a universal worker count or measure projectile-heavy play.
-Production pool ownership and automatic selection remain unfinished.
+Production pool ownership and automatic selection are now implemented. The
+[follow-up measurements](shared-task-pool.md) include small-scene checks and
+1,000-enemy firing, damage, XP and restart parity. They also expose a separate
+5,000-enemy encounter step-budget failure. Earlier large Scene timings measure
+physics and rendering work but do not establish complete gameplay correctness.
 
 ## Validation
 
@@ -165,7 +171,9 @@ firing/restart scenario passed on both SLJIT and BYTECODE in three paired runs;
 its timing remained effectively unchanged. The large rendered fixture still
 does not cover projectile-heavy combat or first-sweep creation cost at scale.
 
-Body fusion, safe parallel behavior batches, sleeping-queue scheduling, large
-structural bursts and a full large-population firing/death/restart scenario remain
-unfinished. The measurements above identify useful next changes without claiming
-that SLJIT status alone means all runtime overhead has disappeared.
+Body fusion, safe parallel behavior batches, sleeping-queue scheduling and large
+structural bursts remain unfinished. Combat/restart now passes at 1,000 enemies;
+5,000-enemy acceptance requires fixing the encounter query's execution-budget
+limit and preserving failed-activation diagnostics. The measurements above identify
+useful next changes without claiming that SLJIT status alone means all runtime
+overhead has disappeared.

@@ -16,13 +16,16 @@ typedef struct
 } game_physics_profile;
 
 /* Authored lengths use 32 units per meter; velocities use those units/second.
- * One persistent, zero-gravity Box2D world belongs to each live ECS world. */
+ * One persistent, zero-gravity Box2D world belongs to each live ECS world.
+ * Native worlds use a shared lazy pool for sufficiently large workloads. */
 game_physics *game_physics_new(ecs_world *world, struct game_entities *entities);
 void game_physics_free(game_physics *physics);
 void game_physics_reset(game_physics *physics);
 /* Configure before bodies are synchronized, or immediately after reset.
  * The borrowed executor must outlive this physics world. NULL selects serial. */
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks);
+/* Effective worker budget for the last step; 1 before the first step. */
+int game_physics_workers(const game_physics *physics);
 /* Synchronize authored state, integrate, then queue deduplicated Contact Begin.
  * A zero delta synchronizes and checks overlaps without advancing simulation. */
 int game_physics_tick(game_physics *physics, float delta_seconds);

@@ -4,6 +4,7 @@
 #include "graph/runtime/value_array.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/generated.h"
+#include "runtime/task_pool.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -15,6 +16,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+enum
+{
+    PARALLEL_BODY_MINIMUM = 256
+};
 
 typedef struct
 {
@@ -54,6 +60,8 @@ struct game_physics
     bool profiling;
     game_physics_profile profile;
     game_task_system tasks;
+    game_task_pool *pool;
+    int body_count, active_workers;
     pair_buffer *workers;
     char error[256];
 };
@@ -136,6 +144,17 @@ static void free_workers(game_physics *physics)
     afree(physics->workers);
 }
 
+static void configure_tasks(game_physics *physics, const game_task_system *tasks)
+{
+    free_workers(physics);
+    physics->tasks = tasks ? *tasks : (game_task_system){ 0 };
+    if (tasks && tasks->workers > 1) {
+        asetlen(physics->workers, tasks->workers);
+        memset(physics->workers, 0, (size_t)tasks->workers * sizeof *physics->workers);
+    }
+    physics->active_workers = 1;
+}
+
 game_physics *game_physics_new(ecs_world *world, game_entities *entities)
 {
     assert(world && entities);
@@ -148,6 +167,8 @@ game_physics *game_physics_new(ecs_world *world, game_entities *entities)
     game_physics *physics = xcalloc(1, sizeof *physics);
     physics->world = world;
     physics->entities = entities;
+    physics->pool = game_task_pool_acquire();
+    configure_tasks(physics, game_task_pool_tasks(physics->pool));
     create_world(physics);
     return physics;
 }
@@ -164,6 +185,9 @@ void game_physics_free(game_physics *physics)
     afree(physics->current);
     afree(physics->contacts);
     free_workers(physics);
+    if (physics->pool) {
+        game_task_pool_release(physics->pool);
+    }
     free(physics);
 }
 
@@ -173,6 +197,8 @@ void game_physics_reset(game_physics *physics)
     b2DestroyWorld(physics->simulation);
     b2DynamicTree_Destroy(&physics->sweeps);
     aclear(physics->bodies);
+    physics->body_count = 0;
+    physics->active_workers = 1;
     aclear(physics->previous);
     aclear(physics->current);
     physics->error[0] = 0;
@@ -188,13 +214,18 @@ void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks
 {
     assert(!acount(physics->bodies));
     assert(!tasks || (tasks->workers > 0 && tasks->enqueue && tasks->finish));
-    free_workers(physics);
-    physics->tasks = tasks ? *tasks : (game_task_system){ 0 };
-    if (tasks && tasks->workers > 1) {
-        asetlen(physics->workers, tasks->workers);
-        memset(physics->workers, 0, (size_t)tasks->workers * sizeof *physics->workers);
-    }
+    game_task_pool *pool = physics->pool;
+    physics->pool = NULL;
+    configure_tasks(physics, tasks);
     game_physics_reset(physics);
+    if (pool) {
+        game_task_pool_release(pool);
+    }
+}
+
+int game_physics_workers(const game_physics *physics)
+{
+    return physics->active_workers;
 }
 
 bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out)
@@ -380,6 +411,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
 
 static int synchronize(game_physics *physics)
 {
+    physics->body_count = 0;
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics->bodies[i].seen = false;
     }
@@ -402,6 +434,7 @@ static int synchronize(game_physics *physics)
             if (result < 0) {
                 break;
             }
+            physics->body_count++;
         }
         ecs_query_end(&query);
     }
@@ -709,7 +742,7 @@ static void collect_pairs(game_physics *physics, bool solved)
 {
     collect_context context = { physics, solved };
     int count = acount(physics->bodies);
-    if (!acount(physics->workers) || count < 256) {
+    if (physics->active_workers < 2 || physics->body_count < PARALLEL_BODY_MINIMUM) {
         pair_buffer buffer = { physics->current, physics->contacts };
         for (int i = 0; i < count; i++) {
             collect_body(&context, i, &buffer);
@@ -857,11 +890,21 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     if (result < 0) {
         return result;
     }
+    bool parallel = physics->body_count >= PARALLEL_BODY_MINIMUM;
+    if (physics->pool) {
+        game_task_pool_begin(physics->pool, parallel);
+    }
+    physics->active_workers = physics->tasks.workers > 1 && (!physics->pool || parallel)
+                                ? physics->tasks.workers
+                                : 1;
     b2World_Step(physics->simulation, delta_seconds, 4);
     profile_phase(physics, &start, &physics->profile.solve_ms);
     update_poses(physics);
     profile_phase(physics, &start, &physics->profile.sweeps_ms);
     collect_pairs(physics, delta_seconds > 0);
+    if (physics->pool) {
+        game_task_pool_end(physics->pool);
+    }
     profile_phase(physics, &start, &physics->profile.pairs_ms);
     if (physics->profiling) {
         physics->profile.pairs = acount(physics->current);

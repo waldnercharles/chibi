@@ -179,6 +179,7 @@ set(APP_SOURCES
 )
 
 set(RUNTIME_SUPPORT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c

@@ -108,6 +108,22 @@ option(CHIBI_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer" ON)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 
+# Native worlds share a lazy task pool. The portable runtime stays serial and
+# does not fetch or link EnkiTS or require browser pthread support.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(ENKITS_BUILD_C_INTERFACE ON CACHE BOOL "" FORCE)
+    set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ENKITS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ENKITS_INSTALL OFF CACHE BOOL "" FORCE)
+    set(ENKITS_SANITIZE ${CHIBI_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
+    FetchContent_Declare(enkits
+        GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
+        GIT_TAG 4cba61a045d8e759bd35e5d85691bf9f7271f822
+        UPDATE_DISCONNECTED TRUE)
+    FetchContent_MakeAvailable(enkits)
+    set_target_properties(enkiTS PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 if(CHIBI_ENABLE_WARNINGS AND
    (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
     CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
@@ -311,6 +327,10 @@ target_include_directories(runtime_support PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime
 )
 target_link_libraries(runtime_support PUBLIC ecs core cute)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_libraries(runtime_support PRIVATE enkiTS)
+    target_compile_definitions(runtime_support PRIVATE CHIBI_HAS_ENKITS=1)
+endif()
 
 # --- headless automation controller ----------------------------------------
 
@@ -689,7 +709,7 @@ add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${cute_framework_SOURCE_DIR}/include)
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)
-add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c)
+add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c test/support/task_pool.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c)
 target_link_libraries(runtime_backend_smoke PRIVATE runtime_support)
 target_compile_options(runtime_backend_smoke PRIVATE -UNDEBUG)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

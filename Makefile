@@ -91,6 +91,6 @@ dev:
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi_host" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" $(ARGS)
 
 dev-smoke:
-	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON -DCHIBI_ENABLE_SJLIT=OFF
+	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON -DCHIBI_ENABLE_SJLIT=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi_host chibi_application --parallel $(JOBS)
 	$(DEV_DISPLAY_RUNNER) env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 cmake --build "$(DEV_BUILD_DIR)" --target check-dev-smoke

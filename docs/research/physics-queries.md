@@ -70,8 +70,8 @@ continuous sensor queries them. Destroyed bodies remove their proxies.
 The EnkiTS experiment can partition these read-only world queries after the
 solver finishes. Each worker owns its pair and contact scratch arrays and writes
 only the stop fraction of its assigned bodies. Main-thread merging establishes
-the same event order afterward. EnkiTS remains an experimental borrowed executor,
-not a default production dependency.
+the same event order afterward. The subsequent [shared task pool](shared-task-pool.md)
+makes this the default native path for steps with at least 256 live bodies.
 
 Validation includes thin walls, sliding, sustained contacts, moving targets,
 rotated box casts, nearest-hit and owner filtering, initial overlap, zero-delta
@@ -113,11 +113,15 @@ After index reuse, a [separate paired four-worker EnkiTS experiment](enki-world-
 reduces 5,000-enemy physics p50 from 5.089 to 2.207 ms, and frame p50 from 10.172
 to 8.487 ms. Both sides of that comparison already reuse the world index.
 It combines Box2D solver tasks and engine contact collection tasks. This
-executor is still optional in the benchmark and is not enabled by default.
+experiment used an optional borrowed executor. Production now owns a shared pool;
+[the follow-up](shared-task-pool.md) measures its default selection and lifetime.
+
+The later combat fixture exposed a 10,000-step budget failure in the authored
+encounter scan at 5,000 enemies. These earlier physics timings remain phase
+measurements, but do not establish full gameplay correctness at that population.
 
 The full native sanitizer `make test`, four-worker physics regression run,
 `make web` and native JIT-unavailable check all passed. The portable backend
-smoke now runs the physics cases under BYTECODE with SLJIT absent. Large-scale
-projectile-heavy play and the first activation of the swept index remain to be
-measured; no projectile-heavy speedup is claimed from the stationary-player
-crowd benchmark.
+smoke now runs the physics cases under BYTECODE with SLJIT absent. The follow-up
+adds firing, damage, XP and restart parity at 1,000 enemies. Longer-lived projectile
+swarms and corrected encounter execution at larger populations remain unfinished.

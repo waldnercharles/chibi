@@ -3,6 +3,7 @@
 #include "graph/model/registry.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
+#include "runtime/task_pool.h"
 #include "support/array.h"
 #include "test/physics_executor.h"
 
@@ -18,6 +19,9 @@ typedef struct
 } fixture;
 
 static const game_task_system *test_tasks;
+static bool large_world;
+static int expected_workers;
+extern void test_task_pool();
 enum
 {
     PARALLEL_PADDING = 256
@@ -69,6 +73,8 @@ static fixture create()
     f.live = game_live_world_new(f.world);
     if (test_tasks) {
         game_physics_set_tasks(f.live->physics, test_tasks);
+    }
+    if (large_world) {
         /* Put every semantic case above the parallel collection threshold.
          * These distant, masked bodies produce no additional contacts. */
         for (int i = 0; i < PARALLEL_PADDING; i++) {
@@ -128,6 +134,7 @@ static int step(fixture *f, float delta)
         fprintf(stderr, "physics: %s\n", game_physics_error(f->live->physics));
     }
     assert(result == 0);
+    assert(game_physics_workers(f->live->physics) == (large_world ? expected_workers : 1));
     do {
         assert(game_entities_dispatch_events(f->live->entities) >= 0);
     } while (game_entities_pending_events(f->live->entities));
@@ -221,7 +228,7 @@ static void contact_set_changes()
     assert(step(&f, 0) == 4);
     assert(
         game_physics_last_profile(f.live->physics)->bodies ==
-        3 + (test_tasks ? PARALLEL_PADDING : 0)
+        3 + (large_world ? PARALLEL_PADDING : 0)
     );
     assert(game_physics_last_profile(f.live->physics)->pairs == 2);
     assert(game_behavior_destroy_entity(f.live->behaviors, b) == 0);
@@ -522,18 +529,21 @@ static void physics_cases()
 
 void test_physics()
 {
+    test_task_pool();
+    game_task_pool *pool = game_task_pool_acquire();
     physics_cases();
     test_physics_executor executor = test_physics_executor_open();
     if (executor.library) {
         test_tasks = &executor.tasks;
-        physics_cases();
-        test_tasks = NULL;
-        printf(
-            "physics parallel PASS: workers=%d, padded semantic cases and "
-            "ordered contact re-entry\n",
-            executor.tasks.workers
-        );
     }
+    expected_workers = test_tasks ? test_tasks->workers
+                                  : game_task_pool_tasks(pool)->workers;
+    large_world = true;
+    physics_cases();
+    large_world = false;
+    test_tasks = NULL;
+    printf("physics parallel PASS: workers=%d, padded semantic cases and ordered contact re-entry\n", expected_workers);
     test_physics_executor_close(&executor);
+    game_task_pool_release(pool);
     puts("physics PASS: solid thin walls, sliding, contact lifetime, relative moving-target and box sweeps, nearest/filter/owner exclusion, initial overlap, removal/reset and validation");
 }

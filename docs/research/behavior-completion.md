@@ -185,6 +185,14 @@ scaling fixture. Also run full scenes with physics, structural effects and
 rendering; the isolated fixed-position fixture does not prove playable frame
 rates. Record unsupported counts as unfinished acceptance, not omitted samples.
 
+The September 13 [shared native task pool](shared-task-pool.md) passes paired
+firing/death/XP/restart checks at 1,000 enemies and reduces physics p50 from
+1.319 to 0.825 ms. The strengthened 5,000-enemy check exposes a separate limit:
+ArenaWaveBehavior's Count Living Members exceeds the default 10,000-step budget,
+and ordinary dispatch reaps the failed activation. Its encounter count can stay
+stale while other gameplay continues. This remains unfinished acceptance, with
+compiled query reductions and persistent source diagnostics the next priorities.
+
 The September 12 scaling probe found repeated nearest-entity world scans, a
 fixed 10,000-entity ceiling and roughly 1.9 GB peak process memory near that
 ceiling. Query reuse removes the repeated scans. Subsequent

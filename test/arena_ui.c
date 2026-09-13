@@ -2661,7 +2661,52 @@ static int compare_milliseconds(const void *a, const void *b)
     return (left > right) - (left < right);
 }
 
-static ecs_entity *scene_scale_enemies(arena_fixture *f, int count)
+static ecs_entity scene_scale_spawner(arena_fixture *f)
+{
+    behavior_asset *asset = behavior_asset_new("Scene scale spawn");
+    assert(!behavior_asset_set_owner_type(asset, "ecs.entity"));
+    pin_value zero = { .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    behavior_variable *created = behavior_asset_add_variable(
+        asset,
+        "Created",
+        PIN_HANDLE,
+        "ecs.entity",
+        PIN_CONTAINER_SINGLE,
+        &zero,
+        "Test"
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, registry_node_by_name("Event"));
+    assert(!graph_set_event_name(g, event, "Fire"));
+    const char *names[] = { "X", "Y" };
+    for (int i = 0; i < 2; i++) {
+        pin_spec parameter = { .name = names[i],
+                               .type = PIN_F32,
+                               .type_name = "float",
+                               .kind = PIN_DATA };
+        assert(graph_add_pin(g, event, 1, &parameter) == i + 1);
+    }
+    node *spawn = graph_add_node(g, registry_node_by_name("Spawn Prototype"));
+    pin_value prototype = { .type = PIN_NAME, .str = "ArenaEnemy" };
+    assert(!graph_set_pin_default(g, spawn, 0, 1, &prototype));
+    node *make = graph_add_node(g, registry_node_by_name("Make_GameTransform"));
+    node *initialize = graph_add_node(g, registry_node_by_name("SetEntity_GameTransform"));
+    node *remember = behavior_asset_add_set_node(asset, created->id);
+    assert(!graph_connect_exec(g, event, 0, spawn, 0, 0));
+    assert(!graph_connect_exec(g, spawn, 0, initialize, 0, 0));
+    assert(!graph_connect_exec(g, initialize, 0, remember, 0, 0));
+    assert(!graph_connect_data(g, event, 1, make, 0));
+    assert(!graph_connect_data(g, event, 2, make, 1));
+    assert(!graph_connect_data(g, spawn, 1, initialize, 1));
+    assert(!graph_connect_data(g, make, 0, initialize, 2));
+    assert(!graph_connect_data(g, spawn, 1, remember, 1));
+    assert(!game_live_add_definition(f->live, game_live_definition_new("Scene scale spawn", asset)));
+    ecs_entity owner = ecs_world_create_entity(f->world);
+    assert(!game_behavior_attach(f->live->behaviors, owner, "Scene scale spawn"));
+    return owner;
+}
+
+static ecs_entity *scene_scale_enemies(arena_fixture *f, int count, bool combat)
 {
     ecs_entity player = f->scene->actors[player_index(f)].entity;
     GameTransform center = *GAME_GameTransform_get_const(f->world, player);
@@ -2683,24 +2728,94 @@ static ecs_entity *scene_scale_enemies(arena_fixture *f, int count)
     free(json);
     assert(prototype);
     ecs_entity *enemies = NULL;
+    ecs_entity spawner = combat ? scene_scale_spawner(f) : (ecs_entity){ 0 };
     int side = (int)ceil(sqrt(count));
     for (int i = 0; i < count; i++) {
         ecs_entity entity;
-        assert(!game_prototype_spawn_components(prototype, f->world, &entity, error, sizeof error));
-        *GAME_GameTransform_get(f->world, entity) = (GameTransform){
+        GameTransform position = {
             center.x + (i % side - (side - 1) * .5f) * 22,
             center.y + (i / side - (side - 1) * .5f) * 22,
         };
-        assert(!game_behavior_set_attachments(
-            f->live->behaviors,
-            entity,
-            (const char *const *)prototype->graphs,
-            acount(prototype->graphs)
-        ));
+        if (combat) {
+            /* Use compiled host spawning so restart owns this population and
+             * initialization still precedes each enemy's Begin handlers. */
+            pin_value inputs[] = { { .type = PIN_F32, .f = position.x },
+                                   { .type = PIN_F32, .f = position.y } };
+            assert(
+                game_behavior_dispatch(f->live->behaviors, spawner, "Fire", (flow_inputs){ inputs, 2 }, NULL) ==
+                1
+            );
+            assert(!game_entities_flush_initializers(f->live->entities, f->time));
+            behavior_instance *instance = game_behavior_instance(f->live->behaviors, spawner, "Scene scale spawn");
+            pin_value value;
+            assert(!behavior_instance_get_variable(
+                instance,
+                instance->asset->variables[0].id,
+                &value
+            ));
+            entity = ecs_entity_from_u64(value.u64);
+            assert(ecs_entity_is_alive(f->world, entity));
+        } else {
+            assert(
+                !game_prototype_spawn_components(prototype, f->world, &entity, error, sizeof error)
+            );
+            *GAME_GameTransform_get(f->world, entity) = position;
+            assert(!game_behavior_set_attachments(
+                f->live->behaviors,
+                entity,
+                (const char *const *)prototype->graphs,
+                acount(prototype->graphs)
+            ));
+        }
         apush(enemies, entity);
+    }
+    if (combat) {
+        assert(!game_behavior_destroy_entity(f->live->behaviors, spawner));
+        assert(!game_live_remove_definition(f->live, "Scene scale spawn"));
     }
     game_prototype_free(prototype);
     return enemies;
+}
+
+static void scene_scale_aim(arena_fixture *f)
+{
+    GameTransform player, target;
+    assert(review_target(f, &player, &target));
+    render_arena_camera view = camera(f);
+    CF_V3 aim = render_arena_project(&view, (CF_V3){ target.x, 0, target.y });
+    ImVec2 size = ImGui_GetIO()->DisplaySize;
+    mouse_move_event((ImVec2){ (aim.x * .5f + .5f) * size.x,
+                               (.5f - aim.y * .5f) * size.y });
+}
+
+static void scene_scale_verify_encounter(arena_fixture *f)
+{
+    for (int i = 0; i < acount(f->scene->actors); i++) {
+        ecs_entity entity = f->scene->actors[i].entity;
+        if (!GAME_GameEncounter_has(f->world, entity)) {
+            continue;
+        }
+        behavior_instance *instance = game_behavior_instance(f->live->behaviors, entity, "ArenaWaveBehavior");
+        flow_run *run = behavior_instance_dispatch(instance, "RefreshEncounter", (flow_inputs){ 0 }, NULL);
+        assert(run);
+        if (flow_run_status(run) == FLOW_FAILED) {
+            const flow_error *error = flow_run_error(run);
+            fprintf(
+                stderr,
+                "Scene scale encounter failed: %s, code=%d node=%llu pin=%d "
+                "steps=%lu\n",
+                error->message,
+                error->code,
+                (unsigned long long)error->node->id,
+                error->pin,
+                error->steps
+            );
+        }
+        assert(flow_run_status(run) == FLOW_COMPLETED);
+        assert(!behavior_instance_release_activation(instance, run));
+        return;
+    }
+    assert(!"Missing encounter behavior");
 }
 
 int arena_scene_scale_run(const char *program, int count, int frames, bool profile)
@@ -2738,14 +2853,16 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     test_physics_executor executor = test_physics_executor_open();
     if (executor.library) {
         game_physics_set_tasks(f.live->physics, &executor.tasks);
+    } else if (getenv("CBLUEPRINT_BENCH_SERIAL_PHYSICS")) {
+        game_physics_set_tasks(f.live->physics, NULL);
     }
-    printf(
-        "scene_scale_executor workers=%d external=%d\n",
-        executor.tasks.workers ? executor.tasks.workers : 1,
-        executor.library != NULL
-    );
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
-    ecs_entity *enemies = scene_scale_enemies(&f, count);
+    bool combat = getenv("CBLUEPRINT_BENCH_COMBAT") != NULL, cold = true;
+    ecs_entity *enemies = scene_scale_enemies(&f, count, combat);
+    ecs_entity player = f.scene->actors[player_index(&f)].entity;
+    uint64_t trace = UINT64_C(14695981039346656037);
+    int peak_backlog = 0, backlog_frames = 0, peak_shots = 0, firing_frames = 0;
+    double peak_physics = 0, peak_frame = 0;
     enum
     {
         WALL,
@@ -2763,6 +2880,14 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     int peak_draws = 0;
     cf_draw3d_stats();
     for (int i = -30; i < frames; i++) {
+        if (combat && i >= 0) {
+            /* Aim selection is fixture work, outside the frame timer. Held
+             * input still enters through the normal presentation controls. */
+            scene_scale_aim(&f);
+            if (!i) {
+                key_event(SDL_SCANCODE_SPACE, true);
+            }
+        }
         double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
         cf_app_update(NULL);
         app_input_frame();
@@ -2776,11 +2901,49 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         if (draws.instances > peak_draws) {
             peak_draws = draws.instances;
         }
+        const engine_frame_timing *timing = engine_last_timing(f.runtime);
+        if (cold && timing->steps) {
+            printf("scene_scale_cold physics_ms=%.6f frame_ms=%.6f\n", timing->physics_ms, end - start);
+            cold = false;
+        }
         if (i < 0) {
             continue;
         }
-        const engine_frame_timing *timing = engine_last_timing(f.runtime);
-        assert(timing->steps == 1 && review_encounter(f.world).alive == count);
+        GameEncounter encounter = review_encounter(f.world);
+        assert(timing->steps == 1 && encounter.alive <= count);
+        assert(combat || encounter.alive == count);
+        peak_physics = fmax(peak_physics, timing->physics_ms);
+        peak_frame = fmax(peak_frame, end - start);
+        if (timing->event_backlog > peak_backlog) {
+            peak_backlog = timing->event_backlog;
+        }
+        backlog_frames += timing->event_backlog > 0;
+        if (combat) {
+            bool firing = GAME_GameAim_get_const(f.world, player)->firing;
+            if (firing && !firing_frames) {
+                printf(
+                    "scene_scale_first_fire physics_ms=%.6f behavior_ms=%.6f "
+                    "frame_ms=%.6f\n",
+                    timing->physics_ms,
+                    timing->behavior_ms,
+                    end - start
+                );
+            }
+            firing_frames += firing;
+            int shots = projectiles(&f);
+            if (shots > peak_shots) {
+                peak_shots = shots;
+            }
+            int state[] = { encounter.alive,
+                            encounter.status,
+                            shots,
+                            GAME_GameHealth_get_const(f.world, player)->current,
+                            GAME_GameExperience_get_const(f.world, player)->current,
+                            timing->event_backlog };
+            for (int j = 0; j < (int)(sizeof state / sizeof *state); j++) {
+                trace = (trace ^ (uint64_t)state[j]) * UINT64_C(1099511628211);
+            }
+        }
         double values[] = { end - start,
                             timing->behavior_ms,
                             timing->physics_ms,
@@ -2804,8 +2967,12 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         phases.bodies = p->bodies;
         phases.pairs = p->pairs;
     }
+    scene_scale_verify_encounter(&f);
     double checksum = 0;
     for (int i = 0; i < count; i++) {
+        if (combat && !ecs_entity_is_alive(f.world, enemies[i])) {
+            continue;
+        }
         const GameTransform *position = GAME_GameTransform_get_const(f.world, enemies[i]);
         assert(position && isfinite(position->x) && isfinite(position->y));
         checksum += position->x + position->y;
@@ -2818,6 +2985,20 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         }
     }
     assert(peak_draws > 0 && eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    printf(
+        "scene_scale_executor workers=%d external=%d\n",
+        game_physics_workers(f.live->physics),
+        executor.library != NULL
+    );
+    printf(
+        "scene_scale_spikes physics_max_ms=%.6f frame_max_ms=%.6f "
+        "backlog_max=%d backlog_frames=%d backlog_final=%d\n",
+        peak_physics,
+        peak_frame,
+        peak_backlog,
+        backlog_frames,
+        engine_last_timing(f.runtime)->event_backlog
+    );
     for (int j = 0; j < METRICS; j++) {
         qsort(samples[j], (size_t)frames, sizeof(double), compare_milliseconds);
         printf(
@@ -2850,6 +3031,49 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         peak_draws,
         checksum
     );
+    if (combat) {
+        GameEncounter encounter = review_encounter(f.world);
+        int experience = GAME_GameExperience_get_const(f.world, player)->current;
+        int health = GAME_GameHealth_get_const(f.world, player)->current;
+        printf(
+            "scene_scale_combat alive=%d kills=%d experience=%d health=%d "
+            "peak_shots=%d firing_frames=%d trace=%llu\n",
+            encounter.alive,
+            count - encounter.alive,
+            experience,
+            health,
+            peak_shots,
+            firing_frames,
+            (unsigned long long)trace
+        );
+        fflush(stdout);
+        assert(encounter.alive < count && experience > 0 && firing_frames > 0);
+        key_event(SDL_SCANCODE_SPACE, false);
+        double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
+        assert(!app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART));
+        double restart_ms = cf_get_ticks() * 1000.0 / cf_get_tick_frequency() - start;
+        for (int i = 0; i < count; i++) {
+            assert(!ecs_entity_is_alive(f.world, enemies[i]));
+        }
+        player = f.scene->actors[player_index(&f)].entity;
+        assert(!GAME_GameExperience_get_const(f.world, player)->current);
+        assert(!projectiles(&f) && !game_entities_pending_events(f.live->entities));
+        for (int i = 0; i < 3; i++) {
+            assert(!standalone_frame(&f, game));
+        }
+        assert(engine_last_timing(f.runtime)->steps == 1);
+        assert(review_encounter(f.world).total == 40);
+        assert(
+            game_physics_workers(f.live->physics) ==
+            (executor.library ? executor.tasks.workers : 1)
+        );
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+        printf(
+            "scene_scale_restart reset_ms=%.6f workers=%d oracle_calls=0\n",
+            restart_ms,
+            game_physics_workers(f.live->physics)
+        );
+    }
     fflush(stdout);
     afree(enemies);
     app_game_presentation_free(game);

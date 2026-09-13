@@ -7,14 +7,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifndef ECS_MAX_ENTITIES
-#define ECS_MAX_ENTITIES 10000
-#endif
-
 #define ECS_ENTITY_SLOT_BITS 32u
 #define ECS_ENTITY_GENERATION_BITS 32u
-#define ECS_ENTITY_SLOT_COUNT (ECS_MAX_ENTITIES + 1u)
-#define ECS_ENTITY_WORD_COUNT ((ECS_ENTITY_SLOT_COUNT + 63u) / 64u)
 
 typedef struct ecs_world ecs_world;
 typedef struct ecs_query ecs_query;
@@ -105,9 +99,14 @@ struct ecs_query
     void *expression_plan;        /* private expression candidate plan */
 };
 
-/* A world owns fixed-size entity slots and the registered component columns. */
+/* Entity storage grows automatically. Component rows remain contiguous, but a
+ * structural change can relocate columns. Reacquire pointers after applying
+ * commands or changing component schemas; queries keep storage stable. */
 ecs_world *ecs_world_new(void);
 void ecs_world_free(ecs_world *world);
+/* Optional bulk reservation; normal creation needs no capacity setting. */
+int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity);
+uint32_t ecs_world_entity_capacity(const ecs_world *world);
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id);
 int ecs_world_component_count(const ecs_world *world);
 const ecs_component_desc *ecs_world_component_at(const ecs_world *world, int index);

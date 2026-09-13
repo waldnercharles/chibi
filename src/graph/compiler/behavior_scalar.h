@@ -5,6 +5,12 @@
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
+#include <string.h>
+
+static inline int behavior_string_equal(const char *a, const char *b)
+{
+    return a == b || strcmp(a ? a : "", b ? b : "") == 0;
+}
 
 #define BEHAVIOR_SCALARS(X)                                                    \
     X(PIN_BOOL, bool, b)                                                       \
@@ -19,7 +25,14 @@
     X(PIN_F32, float, f)                                                       \
     X(PIN_F64, double, d)                                                      \
     X(PIN_ENUM, int32_t, e)                                                    \
-    X(PIN_HANDLE, uint64_t, u64)
+    X(PIN_HANDLE, uint64_t, u64)                                               \
+    X(PIN_NAME, const char *, str)                                             \
+    X(PIN_STR, const char *, str)
+
+static inline bool behavior_scalar_string(pin_type type)
+{
+    return type == PIN_NAME || type == PIN_STR;
+}
 
 static inline bool behavior_scalar_integer(pin_type type)
 {
@@ -40,6 +53,8 @@ static inline uint64_t behavior_scalar_bits(pin_value value)
         case PIN_U64:
         case PIN_HANDLE: return value.u64;
         case PIN_ENUM: return (uint64_t)value.e;
+        case PIN_NAME:
+        case PIN_STR: return (uintptr_t)value.str;
         default: assert(false); return 0;
     }
 }

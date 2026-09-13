@@ -13,11 +13,18 @@ struct arena_block
     size_t used;
     _Alignas(max_align_t) unsigned char data[];
 };
+static _Thread_local uint64_t block_allocations;
+
+uint64_t arena_block_allocations()
+{
+    return block_allocations;
+}
 
 static arena_block *new_block(size_t cap)
 {
     assert(cap <= SIZE_MAX - sizeof(arena_block));
     arena_block *block = xmalloc(sizeof *block + cap);
+    block_allocations++;
     block->next = NULL;
     block->cap = cap;
     block->used = 0;

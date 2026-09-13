@@ -1,12 +1,16 @@
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/eval.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <stdlib.h>
 #include <string.h>
 
 static void *service(const service_binding *services, const char *name)
 {
+    if (!name) {
+        return NULL;
+    }
     for (int i = 0; i < acount(services); i++) {
         if (!strcmp(services[i].type_name, name)) {
             return services[i].value;
@@ -14,9 +18,77 @@ static void *service(const service_binding *services, const char *name)
     }
     return NULL;
 }
+static _Thread_local uint64_t data_allocations;
+uint64_t behavior_function_data_allocations()
+{
+    return data_allocations;
+}
+void behavior_function_free_data(behavior_data_storage *data)
+{
+    if (!data) {
+        return;
+    }
+    for (int i = 0; i < acount(data->buffers); i++) {
+        free(data->buffers[i]);
+    }
+    afree(data->buffers);
+    afree(data->values);
+    afree(data->calls);
+    free(data);
+}
+void behavior_function_prepare_data(
+    const behavior_function *f,
+    const service_binding *services,
+    behavior_data_storage **storage
+)
+{
+    if (*storage && (*storage)->function != f) {
+        behavior_function_free_data(*storage);
+        *storage = NULL;
+    }
+    if (!acount(f->host_calls) && !acount(f->data_values)) {
+        return;
+    }
+    if (!*storage) {
+        data_allocations++;
+        behavior_data_storage *data = xcalloc(1, sizeof *data);
+        data->function = f;
+        for (int i = 0; i < acount(f->host_calls); i++) {
+            apush(
+                data->calls,
+                ((behavior_data_binding){ .invoke = f->host_calls[i].call->invoke,
+                                          .value = f->host_calls[i].call->value })
+            );
+        }
+        for (int i = 0; i < acount(f->data_values); i++) {
+            behavior_function_data_value v = f->data_values[i];
+            void *buffer = v.size ? xcalloc(1, v.size) : NULL;
+            if (v.size) {
+                v.initial.ptr = buffer;
+            }
+            apush(data->values, v.initial);
+            apush(data->buffers, buffer);
+        }
+        /* Keep zero-argument, zero-result calls on a valid bank base. */
+        if (!data->values) {
+            apush(data->values, ((pin_value){ 0 }));
+        }
+        *storage = data;
+    }
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        (*storage)->calls[i].service = service(services, f->host_calls[i].call->service);
+    }
+}
 void behavior_function_prepare_host(const behavior_function *f, behavior_function_context *ctx)
 {
-    assert(!ctx->queries && !ctx->commands && !ctx->command_arguments);
+    assert(!ctx->queries && !ctx->commands && !ctx->command_arguments && !ctx->command_results);
+    ctx->points = f->points;
+    ctx->watches = f->watches;
+    ctx->edges = f->edges;
+    if (!ctx->data && (acount(f->host_calls) || acount(f->data_values))) {
+        behavior_function_prepare_data(f, ctx->services, &ctx->data);
+        ctx->owned_data = true;
+    }
     for (int i = 0; i < acount(f->queries); i++) {
         const behavior_function_query *q = &f->queries[i];
         apush(
@@ -34,12 +106,21 @@ void behavior_function_prepare_host(const behavior_function *f, behavior_functio
             ctx->commands,
             ((behavior_command_binding){
                 .invoke = c->command->invoke,
+                .begin = c->command->begin,
                 .service = service(ctx->services, c->command->service),
-                .reference = c->reference })
+                .reference = c->reference,
+                .node = c->node,
+                .frame = c->frame,
+                .first = c->first,
+                .count = c->count,
+                .result_first = c->result_first })
         );
     }
     for (int i = 0; i < acount(f->command_arguments); i++) {
         apush(ctx->command_arguments, f->command_arguments[i]);
+    }
+    for (int i = 0; i < acount(f->command_results); i++) {
+        apush(ctx->command_results, f->command_results[i]);
     }
 }
 void behavior_function_release_host(behavior_function_context *ctx)
@@ -50,5 +131,11 @@ void behavior_function_release_host(behavior_function_context *ctx)
     afree(ctx->queries);
     afree(ctx->commands);
     afree(ctx->command_arguments);
+    afree(ctx->command_results);
+    if (ctx->owned_data) {
+        behavior_function_free_data(ctx->data);
+        ctx->data = NULL;
+        ctx->owned_data = false;
+    }
     ctx->owned_host = false;
 }

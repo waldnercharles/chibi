@@ -5,63 +5,90 @@
 #include <stdlib.h>
 #if CHIBI_HAVE_SJLIT
 /* Slots are defined before their uses within one lowered expression. Allocate
- * four scratch registers by live interval; excess live values spill to the
- * activation stack. FR0/FR1 remain emitter temporaries. */
-int *behavior_jit_registers(const behavior_function *f, bool integers, int *saved_count)
+ * scratch registers by live interval; excess live values spill to the
+ * activation stack. FR0/FR1 are temporaries, plus FR2 for ternary math. */
+static int *lifetimes(const behavior_function *f, bool inspected, bool *invariants)
 {
     int count = acount(f->slots);
-    int *registers = xcalloc((size_t)(count + 1), sizeof *registers);
     int *last = xcalloc((size_t)(count + 1), sizeof *last);
+    int *defined = xmalloc((size_t)(count + 1) * sizeof *defined);
+    for (int i = 0; i <= count; i++) {
+        defined[i] = -1;
+    }
     for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+            continue;
+        }
         const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op < BF_STORE) {
+            defined[i->output] = pc;
+        }
         if (behavior_function_left_slot(i->op)) {
             last[i->left] = pc;
         }
-        if (i->op == BF_SELECT) {
+        if (behavior_function_third_slot(i->op)) {
             last[i->target] = pc;
         }
         if (behavior_function_right_slot(i->op)) {
             last[i->right] = pc;
         }
     }
+    /* An invariant used in a loop must survive the complete iteration, even
+     * when its last textual use precedes scratch clobbers near the back edge. */
+    bool changed;
+    do {
+        changed = false;
+        for (int pc = 0; pc < acount(f->instructions); pc++) {
+            const behavior_function_instruction *i = &f->instructions[pc];
+            if ((i->op != BF_JUMP && i->op != BF_BRANCH) || i->target > pc) {
+                continue;
+            }
+            for (int slot = 0; slot < count; slot++) {
+                if (defined[slot] >= 0 && defined[slot] < i->target &&
+                    last[slot] >= i->target) {
+                    if (invariants) {
+                        invariants[slot] = true;
+                    }
+                    if (last[slot] < pc) {
+                        last[slot] = pc;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    } while (changed);
+    free(defined);
+    return last;
+}
+int *behavior_jit_registers(const behavior_function *f, bool inspected, int *saved_count, bool *invariants)
+{
+    int *last = lifetimes(f, inspected, invariants);
+    int *registers = xcalloc((size_t)(acount(f->slots) + 1), sizeof *registers);
+    int temporaries = 2;
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (f->instructions[pc].op == BF_FMA) {
+            temporaries = 3;
+            break;
+        }
+    }
     int until[4] = { -1, -1, -1, -1 }, saved_until[4] = { -1, -1, -1, -1 };
     int *next_call = xmalloc((size_t)(acount(f->instructions) + 1) * sizeof *next_call);
     next_call[acount(f->instructions)] = acount(f->instructions);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
-        next_call[pc] = behavior_function_call(f->instructions[pc].op)
+        next_call[pc] = behavior_jit_call(f->instructions[pc].op) ||
+                                (inspected && behavior_function_inspection_call(
+                                                  f->instructions[pc].op
+                                              ))
                           ? pc
                           : next_call[pc + 1];
     }
-    int *next_integer_clobber = xmalloc(
-        (size_t)(acount(f->instructions) + 1) * sizeof *next_integer_clobber
-    );
-    next_integer_clobber[acount(f->instructions)] = acount(f->instructions);
-    for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
-        next_integer_clobber[pc] = behavior_function_integer_clobber(
-                                       f->instructions[pc].op
-                                   )
-                                     ? pc
-                                     : next_integer_clobber[pc + 1];
-    }
     *saved_count = 0;
-    int integer_until[2] = { -1, -1 };
     for (int pc = 0; pc < acount(f->instructions); pc++) {
-        const behavior_function_instruction *i = &f->instructions[pc];
-        if (i->op < BF_STORE && integers &&
-            (behavior_scalar_integer(i->type) || i->type == PIN_BOOL ||
-             i->type == PIN_HANDLE)) {
-            if (next_integer_clobber[pc + 1] >= last[i->output]) {
-                for (int r = 0; r < 2; r++) {
-                    if (integer_until[r] <= pc) {
-                        registers[i->output] = r ? SLJIT_R4 : SLJIT_R2;
-                        integer_until[r] = last[i->output];
-                        break;
-                    }
-                }
-            }
+        if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
             continue;
         }
-        if (i->op >= BF_STORE || i->type == PIN_BOOL) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op >= BF_STORE || (i->type != PIN_F32 && i->type != PIN_F64)) {
             continue;
         }
         if (next_call[pc + 1] < last[i->output]) {
@@ -79,18 +106,90 @@ int *behavior_jit_registers(const behavior_function *f, bool integers, int *save
             }
             continue;
         }
-        for (int r = 0; r < 4; r++) {
+        for (int r = 0; r < 6 - temporaries; r++) {
             if (until[r] <= pc) {
-                registers[i->output] = SLJIT_FR2 + r;
+                registers[i->output] = SLJIT_FR0 + temporaries + r;
                 until[r] = last[i->output];
                 break;
             }
         }
     }
     free(next_call);
-    free(next_integer_clobber);
     free(last);
     return registers;
+}
+
+/* Allocate scratch after aliases and invariant registers have been assigned.
+ * A local already held in a saved register must not reserve a scratch interval. */
+void behavior_jit_integer_registers(
+    const behavior_function *f,
+    bool inspected,
+    int *registers,
+    const bool *invariants
+)
+{
+    int *last = lifetimes(f, inspected, NULL);
+    int *next_integer_clobber = xmalloc(
+        (size_t)(acount(f->instructions) + 1) * sizeof *next_integer_clobber
+    );
+    next_integer_clobber[acount(f->instructions)] = acount(f->instructions);
+    for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
+        next_integer_clobber[pc] = behavior_jit_integer_clobber(
+                                       f->instructions[pc].op
+                                   ) || (inspected &&
+                                         behavior_function_inspection_call(
+                                             f->instructions[pc].op
+                                         ))
+                                     ? pc
+                                     : next_integer_clobber[pc + 1];
+    }
+    int until[2] = { -1, -1 };
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+            continue;
+        }
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op >= BF_STORE || registers[i->output] || invariants[i->output] ||
+            !(behavior_scalar_integer(i->type) || i->type == PIN_BOOL ||
+              i->type == PIN_HANDLE || behavior_scalar_string(i->type)) ||
+            next_integer_clobber[pc + 1] < last[i->output]) {
+            continue;
+        }
+        for (int r = 0; r < 2; r++) {
+            if (until[r] <= pc) {
+                registers[i->output] = r ? SLJIT_R4 : SLJIT_R2;
+                until[r] = last[i->output];
+                break;
+            }
+        }
+    }
+    free(next_integer_clobber);
+    free(last);
+}
+
+/* Keep long-lived integer inputs out of the two expression scratch registers.
+ * Otherwise a count and array pointer can force every loop temporary to spill.
+ * Saved registers retain these values across loop bodies and native calls. */
+int behavior_jit_invariant_registers(
+    const behavior_function *f,
+    int *registers,
+    const bool *invariants,
+    int base,
+    int scratch
+)
+{
+    int used = 0;
+    for (int slot = 0; slot < acount(f->slots) && used < 4 &&
+                       base + used < SLJIT_NUMBER_OF_SAVED_REGISTERS &&
+                       base + used + scratch < SLJIT_NUMBER_OF_REGISTERS;
+         slot++) {
+        pin_type type = f->slots[slot];
+        if (invariants[slot] && (behavior_scalar_integer(type) || type == PIN_BOOL ||
+                                 type == PIN_HANDLE || behavior_scalar_string(type))) {
+            registers[slot] = SLJIT_S(base + used++);
+        }
+    }
+    return used;
 }
 
 int *behavior_jit_local_registers(const behavior_function *f, int base, int scratch, int *count, int *float_count)
@@ -114,7 +213,8 @@ int *behavior_jit_local_registers(const behavior_function *f, int base, int scra
         for (int i = 0; i < acount(f->locals); i++) {
             pin_type type = f->locals[i].initial.type;
             if (!registers[i] && uses[i] &&
-                (behavior_scalar_integer(type) || type == PIN_BOOL || type == PIN_HANDLE) &&
+                (behavior_scalar_integer(type) || type == PIN_BOOL ||
+                 type == PIN_HANDLE || behavior_scalar_string(type)) &&
                 (best < 0 || uses[i] > uses[best])) {
                 best = i;
             }
@@ -148,7 +248,12 @@ int *behavior_jit_local_registers(const behavior_function *f, int base, int scra
 
 /* Preserve a separate snapshot if a later save or frame entry can overwrite
  * the local before this expression has finished reading it. */
-void behavior_jit_alias_locals(const behavior_function *f, int *registers, const int *locals)
+void behavior_jit_alias_locals(
+    const behavior_function *f,
+    int *registers,
+    const int *locals,
+    const bool *invariants
+)
 {
     int *last = xcalloc((size_t)(acount(f->slots) + 1), sizeof *last);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
@@ -159,7 +264,7 @@ void behavior_jit_alias_locals(const behavior_function *f, int *registers, const
         if (behavior_function_right_slot(i->op)) {
             last[i->right] = pc;
         }
-        if (i->op == BF_SELECT) {
+        if (behavior_function_third_slot(i->op)) {
             last[i->target] = pc;
         }
         if ((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) {
@@ -168,7 +273,7 @@ void behavior_jit_alias_locals(const behavior_function *f, int *registers, const
     }
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        if (i->op != BF_LOCAL || !locals[i->left]) {
+        if (i->op != BF_LOCAL || !locals[i->left] || invariants[i->output]) {
             continue;
         }
         bool unchanged = true;
@@ -199,7 +304,7 @@ static bool single_use(const behavior_function *f, int slot, int expected)
         }
         if ((behavior_function_left_slot(i->op) && i->left == slot) ||
             (behavior_function_right_slot(i->op) && i->right == slot) ||
-            (i->op == BF_SELECT && i->target == slot)) {
+            (behavior_function_third_slot(i->op) && i->target == slot)) {
             return false;
         }
     }
@@ -225,14 +330,33 @@ bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_j
     }
     const behavior_function_instruction *next = i + 1;
     pin_type type = f->slots[i->left];
-    if ((type != PIN_I32 && type != PIN_I64) || next->op != BF_BRANCH ||
+    bool real = type == PIN_F32 || type == PIN_F64;
+    if ((!real && type != PIN_I32 && type != PIN_I64) ||
+        (next->op != BF_BRANCH && next->op != BF_ASSERT) ||
         next->left != i->output || !single_use(f, i->output, pc + 1)) {
         return false;
     }
-    int condition = (int[]){ SLJIT_SIG_LESS,    SLJIT_SIG_LESS_EQUAL,
-                             SLJIT_SIG_GREATER, SLJIT_SIG_GREATER_EQUAL,
-                             SLJIT_EQUAL,       SLJIT_NOT_EQUAL }[i->op - BF_LT];
+    int condition = real ? (int[]){ SLJIT_ORDERED_LESS,
+                                    SLJIT_ORDERED_LESS_EQUAL,
+                                    SLJIT_ORDERED_GREATER,
+                                    SLJIT_ORDERED_GREATER_EQUAL,
+                                    SLJIT_ORDERED_EQUAL,
+                                    SLJIT_UNORDERED_OR_NOT_EQUAL }[i->op - BF_LT]
+                         : (int[]){ SLJIT_SIG_LESS,    SLJIT_SIG_LESS_EQUAL,
+                                    SLJIT_SIG_GREATER, SLJIT_SIG_GREATER_EQUAL,
+                                    SLJIT_EQUAL,       SLJIT_NOT_EQUAL }[i->op - BF_LT];
     int left = m->registers[i->left], right = m->registers[i->right];
+    if (real) {
+        *jump = sljit_emit_fcmp(
+            m->compiler,
+            condition | (type == PIN_F32 ? SLJIT_32 : 0),
+            left ? left : SLJIT_MEM1(SLJIT_SP),
+            left ? 0 : i->left * sizeof(double),
+            right ? right : SLJIT_MEM1(SLJIT_SP),
+            right ? 0 : i->right * sizeof(double)
+        );
+        return true;
+    }
     *jump = sljit_emit_cmp(
         m->compiler,
         condition | (type == PIN_I32 ? SLJIT_32 : 0),
@@ -242,5 +366,75 @@ bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_j
         right ? 0 : i->right * sizeof(double)
     );
     return true;
+}
+/* A field used only by a branch can be compared directly in memory. Keep
+ * literals immediate instead of materializing and reloading stack slots. */
+int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_jump **jump)
+{
+    const behavior_function *f = m->function;
+    const behavior_function_instruction *load = &f->instructions[pc];
+    pin_type type = load->type;
+    if (load->op != BF_LOAD ||
+        (type != PIN_I32 && type != PIN_U32 && type != PIN_I64 &&
+         type != PIN_U64 && type != PIN_HANDLE) ||
+        pc + 2 >= acount(f->instructions)) {
+        return 0;
+    }
+    const behavior_function_instruction *literal = &f->instructions[pc + 1];
+    bool immediate = literal->op == BF_CONSTANT && literal->type == type;
+    int comparison = pc + 1 + immediate, last = comparison + 1;
+    if (last >= acount(f->instructions)) {
+        return 0;
+    }
+    const behavior_function_instruction *compare = &f->instructions[comparison],
+                                        *branch = &f->instructions[last];
+    if (compare->op < BF_LT || compare->op > BF_NE || compare->left != load->output ||
+        branch->op != BF_BRANCH || branch->left != compare->output ||
+        !single_use(f, load->output, comparison) ||
+        !single_use(f, compare->output, last) || f->slots[compare->right] != type ||
+        (immediate && (compare->right != literal->output ||
+                       !single_use(f, literal->output, comparison)))) {
+        return 0;
+    }
+    for (int i = 0; i < acount(f->instructions); i++) {
+        const behavior_function_instruction *op = &f->instructions[i];
+        if ((op->op == BF_BRANCH || op->op == BF_JUMP) && op->target > pc &&
+            op->target <= last) {
+            return 0;
+        }
+    }
+    bool sign = type == PIN_I32 || type == PIN_I64;
+    int condition =
+        (sign ? (int[]){ SLJIT_SIG_LESS,
+                         SLJIT_SIG_LESS_EQUAL,
+                         SLJIT_SIG_GREATER,
+                         SLJIT_SIG_GREATER_EQUAL,
+                         SLJIT_EQUAL,
+                         SLJIT_NOT_EQUAL }
+              : (int[]){ SLJIT_LESS,
+                         SLJIT_LESS_EQUAL,
+                         SLJIT_GREATER,
+                         SLJIT_GREATER_EQUAL,
+                         SLJIT_EQUAL,
+                         SLJIT_NOT_EQUAL })[compare->op - BF_LT];
+    int pointer = m->registers[load->left];
+    if (!pointer) {
+        sljit_emit_op1(m->compiler, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_SP), load->left * sizeof(double));
+        pointer = SLJIT_R3;
+    }
+    int right = m->registers[compare->right];
+    *jump = sljit_emit_cmp(
+        m->compiler,
+        condition | (behavior_scalar_size(type) == 4 ? SLJIT_32 : 0),
+        SLJIT_MEM1(pointer),
+        load->offset,
+        immediate ? SLJIT_IMM
+        : right   ? right
+                  : SLJIT_MEM1(SLJIT_SP),
+        immediate ? (sljit_sw)behavior_scalar_bits(literal->value)
+        : right   ? 0
+                  : compare->right * sizeof(double)
+    );
+    return last - pc + 1;
 }
 #endif

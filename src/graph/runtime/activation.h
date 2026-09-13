@@ -2,6 +2,7 @@
 #define CHIBI_ACTIVATION_H
 #include "graph/model/node.h"
 #include "graph/runtime/value_array.h"
+#include "support/arena.h"
 
 /* Backend-neutral continuation state. Managed iteration snapshots belong to
  * the activation and are released on completion, return, failure or cancel. */
@@ -27,6 +28,7 @@ typedef struct
     int index_output;
     int break_requested;
     pin_array *array;
+    arena array_storage;
 } activation_frame;
 
 #endif

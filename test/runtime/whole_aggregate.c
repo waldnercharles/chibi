@@ -78,7 +78,7 @@ static void parity(behavior_asset *a, const pin_value *inputs)
             if (!mode) {
                 failure = ctx.status;
                 if (!status) {
-                    assert(!flow_copy_input(&storage, &expected[i], &actual));
+                    assert(!pin_value_snapshot_to_arena(&storage, &expected[i], &actual));
                 }
             } else {
                 assert((status != 0) == (failure.code != 0));
@@ -210,7 +210,9 @@ static void aggregate_frames()
                             runtime_store_node(run->runtime, g->nodes[1])
                         );
                         for (int i = 0; i < 2; i++) {
-                            assert(!flow_copy_input(&storage, &expected[i], &values[i + 1]));
+                            assert(
+                                !pin_value_snapshot_to_arena(&storage, &expected[i], &values[i + 1])
+                            );
                         }
                     }
                 } else {

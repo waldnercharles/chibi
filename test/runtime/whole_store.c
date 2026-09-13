@@ -5,7 +5,7 @@
 static pin_value snapshot(arena *storage, pin_value v)
 {
     pin_value out;
-    assert(!flow_copy_input(storage, &out, &v));
+    assert(!pin_value_snapshot_to_arena(storage, &out, &v));
     if (v.type_name) {
         char *name = arena_alloc(storage, strlen(v.type_name) + 1);
         strcpy(name, v.type_name);
@@ -203,9 +203,11 @@ static void managed_storage()
     char *json = behavior_asset_save_json(a);
     behavior_asset *next = behavior_asset_load_json(json);
     free(json);
-    assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_RESTART);
-    behavior_instance_destroy(bi);
+    assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
+    behavior_instance_update(bi, next);
     behavior_asset_free(a);
+    assert(!strcmp(((GameMeshParts *)bi->variables[0].ptr)->parts, "owned parts"));
+    behavior_instance_destroy(bi);
     behavior_asset_free(next);
     assert(!strcmp(retained.type_name, "GameMeshParts"));
     assert(!strcmp(((GameMeshParts *)retained.ptr)->parts, "owned parts"));

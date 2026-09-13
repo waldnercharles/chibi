@@ -193,7 +193,7 @@ static void storage_test()
     behavior_instance_destroy(owner);
     behavior_asset_free(a);
 }
-static void escaping_snapshot_excluded()
+static void escaping_snapshot()
 {
     behavior_asset
         *a = whole_query_fixture(query_node(), GAME_COMPONENT_GameHealth.key, WHOLE_QUERY_RANGE);
@@ -207,9 +207,50 @@ static void escaping_snapshot_excluded()
     assert(query);
     assert(graph_add_pin(g, g->nodes[1], 0, &query->output_pins[0]) == 3);
     assert(!graph_connect_data(g, query, 0, g->nodes[1], 3));
-    behavior_function_diagnostic diagnostic = { 0 };
-    assert(!behavior_function_lower(a, g, g->nodes[0], &diagnostic));
-    assert(diagnostic.node == g->nodes[1] && diagnostic.pin == 3);
+    const behavior_function *f = body(a);
+    parity(a, 11, true, 0, 1000);
+    for (int native = 0; native < 2; native++) {
+        behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+        ecs_world *w = world_new(11, true);
+        game_entities *entities = game_entities_new(w, NULL);
+        service_binding *services = NULL;
+        apush(services, ((service_binding){ "game.entities", entities }));
+        pin_value results[4] = { 0 };
+        arena storage = { 0 };
+        behavior_function_context ctx = { .results = results, .budget = 1000 };
+        behavior_instance_bind_values(bi, &ctx);
+        behavior_function_bind_storage(&ctx, &storage);
+        assert(behavior_function_bind(f, &ctx, services, 0));
+        behavior_function_activation activation = { 0 };
+        behavior_function_activation_init(f, &activation);
+        ctx.activation = &activation;
+        uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+        assert(!behavior_function_run(f, &ctx, native));
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+        uint64_t *expected = NULL;
+        ecs_query q;
+        ecs_entity e;
+        assert(!ecs_query_begin(w, &q, &GAME_COMPONENT_GameHealth.id, 1));
+        while (ecs_query_next(&q, &e)) {
+            apush(expected, ecs_entity_to_u64(e));
+        }
+        ecs_query_end(&q);
+        behavior_function_activation_free(&activation);
+        afree(services);
+        game_entities_free(entities);
+        ecs_world_free(w);
+        behavior_instance_destroy(bi);
+        const pin_array *retained = results[3].ptr;
+        assert(retained && retained->count == acount(expected));
+        assert(results[3].container == PIN_CONTAINER_ARRAY);
+        assert(!strcmp(retained->type_name, "ecs.entity"));
+        for (int i = 0; i < retained->count; i++) {
+            assert(retained->items[i].u64 == expected[i]);
+            assert(!strcmp(retained->items[i].type_name, "ecs.entity"));
+        }
+        afree(expected);
+        arena_free(&storage);
+    }
     behavior_asset_free(a);
 }
 void test_compiled_queries()
@@ -233,7 +274,7 @@ void test_compiled_queries()
             behavior_asset_free(a);
         }
     }
-    escaping_snapshot_excluded();
+    escaping_snapshot();
     storage_test();
     whole_query_smoke();
     puts("PASS: compiled query order, empty/dense/sparse worlds, retired/reused entities, nested loops/calls, bounded snapshot storage and error/source parity");

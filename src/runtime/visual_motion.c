@@ -8,7 +8,14 @@
 
 static bool finite_vector(CF_V3 value);
 
-static const node_access visual_reaction_access = { .flags = NODE_EFFECT_ENTITY_SCOPED };
+/* Target can name another instance's entity. Keep this write serialized until
+ * entry analysis proves disjoint targets. */
+static const node_access visual_reaction_access = {
+    .reads = &GAME_COMPONENT_GameVisualMotion.id,
+    .read_count = 1,
+    .writes = &GAME_COMPONENT_GameVisualMotion.id,
+    .write_count = 1
+};
 static pin_spec visual_reaction_inputs[] = {
     { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
     { .name = "Rotation", .type = PIN_STRUCT, .type_name = "CF_V3" },
@@ -66,6 +73,7 @@ node_desc NODE_Set_Visual_Reaction = {
     .outputs = visual_reaction_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = set_visual_reaction,
+    .lower = game_visual_reaction_lower,
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Visual/Motion",
     .keywords = "trigger visual reaction bump recoil hit lift rotation",

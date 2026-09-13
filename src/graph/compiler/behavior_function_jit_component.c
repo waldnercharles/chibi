@@ -59,9 +59,18 @@ static void component(const behavior_machine *m, const behavior_function_instruc
 {
     struct sljit_compiler *c = m->compiler;
     slot(m, i->left, SLJIT_R0);
-    slot(m, i->right, SLJIT_R1);
-    struct sljit_jump *empty[4];
-    empty[0] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
+    bool metadata = i->op == BF_COLUMN;
+    struct sljit_jump *empty[5] = { 0 };
+    if (!metadata) {
+        slot(m, i->right, SLJIT_R1);
+        empty[0] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
+    }
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, columns));
+    struct sljit_jump *unbound = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R2), i->component * sizeof(void *));
+    empty[4] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0);
+    struct sljit_jump *bound = sljit_emit_jump(c, SLJIT_JUMP);
+    bind(c, unbound);
     sljit_emit_op1(c, SLJIT_MOV_U32, SLJIT_R4, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, capacity));
     empty[1] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R4, 0, SLJIT_IMM, 0);
     sljit_emit_op2(c, SLJIT_SUB, SLJIT_R4, 0, SLJIT_R4, 0, SLJIT_IMM, 1);
@@ -89,13 +98,16 @@ static void component(const behavior_machine *m, const behavior_function_instruc
         sljit_set_label(again, probe);
     }
     bind(c, found);
-    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, occupancy));
-    sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 6);
-    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM2(SLJIT_R0, SLJIT_R3), 3);
-    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 63);
-    sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R3, 0);
-    sljit_emit_op2(c, SLJIT_AND, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, 1);
-    empty[3] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    bind(c, bound);
+    if (!metadata) {
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, occupancy));
+        sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 6);
+        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM2(SLJIT_R0, SLJIT_R3), 3);
+        sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 63);
+        sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R3, 0);
+        sljit_emit_op2(c, SLJIT_AND, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, 1);
+        empty[3] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    }
     if (i->type == PIN_BOOL) {
         sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_IMM, 1);
     } else {
@@ -118,22 +130,28 @@ static void component(const behavior_machine *m, const behavior_function_instruc
         bind(c, wrong);
         behavior_jit_failure(m, i, i->target);
         bind(c, valid);
-        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, data));
-        sljit_emit_op2(
-            c,
-            SLJIT_MUL,
-            SLJIT_R1,
-            0,
-            SLJIT_R1,
-            0,
-            SLJIT_IMM,
-            (sljit_sw)i->offset
-        );
-        sljit_emit_op2(c, SLJIT_ADD, dest, offset, SLJIT_R0, 0, SLJIT_R1, 0);
+        if (metadata) {
+            sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R2, 0);
+        } else {
+            sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, data));
+            sljit_emit_op2(
+                c,
+                SLJIT_MUL,
+                SLJIT_R1,
+                0,
+                SLJIT_R1,
+                0,
+                SLJIT_IMM,
+                (sljit_sw)i->offset
+            );
+            sljit_emit_op2(c, SLJIT_ADD, dest, offset, SLJIT_R0, 0, SLJIT_R1, 0);
+        }
     }
     struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
-    for (int j = 0; j < 4; j++) {
-        bind(c, empty[j]);
+    for (int j = 0; j < 5; j++) {
+        if (empty[j]) {
+            bind(c, empty[j]);
+        }
     }
     sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_IMM, 0);
     bind(c, done);
@@ -147,6 +165,27 @@ bool behavior_jit_component(
 {
     struct sljit_compiler *c = m->compiler;
     switch (i->op) {
+        case BF_CONTEXT:
+            if (i->type == PIN_F32 || i->type == PIN_F64) {
+                sljit_emit_fop1(
+                    c,
+                    i->type == PIN_F32 ? SLJIT_MOV_F32 : SLJIT_MOV_F64,
+                    dest,
+                    offset,
+                    SLJIT_MEM1(m->context),
+                    i->offset
+                );
+            } else {
+                sljit_emit_op1(
+                    c,
+                    behavior_jit_integer_move(i->type),
+                    dest,
+                    offset,
+                    SLJIT_MEM1(m->context),
+                    i->offset
+                );
+            }
+            return true;
         case BF_OWNER:
         case BF_WORLD:
             sljit_emit_op1(
@@ -161,6 +200,7 @@ bool behavior_jit_component(
             );
             return true;
         case BF_ENTITY: entity(m, i, dest, offset); return true;
+        case BF_COLUMN:
         case BF_COMPONENT: component(m, i, dest, offset); return true;
         case BF_ASSERT: {
             slot(m, i->left, SLJIT_R3);

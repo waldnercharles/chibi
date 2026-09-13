@@ -54,8 +54,9 @@ int behavior_lower_emit(builder *b, behavior_function_instruction i)
     i.source = b->source;
     i.stack = b->stack;
     if (i.node_id && b->source != b->function->frames[b->frame].source_index &&
-        (i.op == BF_DIV || i.op == BF_MOD || i.op == BF_REQUIRE || i.op == BF_ASSERT ||
-         i.op == BF_COMPONENT || i.op == BF_QUERY || i.op == BF_CALL_CHECK)) {
+        (i.op == BF_DIV || i.op == BF_MOD || i.op == BF_REQUIRE ||
+         i.op == BF_ASSERT || i.op == BF_COMPONENT || i.op == BF_COLUMN ||
+         i.op == BF_QUERY || i.op == BF_HOST_CALL || i.op == BF_CALL_CHECK)) {
         int parent = data_stack(b, b->source, b->stack);
         i.stack = acount(b->function->stacks);
         apush(
@@ -66,16 +67,41 @@ int behavior_lower_emit(builder *b, behavior_function_instruction i)
     apush(b->function->instructions, i);
     return acount(b->function->instructions) - 1;
 }
+/* Negative targets below -1 identify expression-local labels; -1 remains the
+ * end-of-function target and nonnegative targets belong to flow tasks. */
+int behavior_lower_label(builder *b)
+{
+    int label = -2 - acount(b->labels);
+    apush(b->labels, -1);
+    return label;
+}
+void behavior_lower_bind_label(builder *b, int label)
+{
+    assert(label <= -2 && -label - 2 < acount(b->labels));
+    assert(b->labels[-label - 2] == -1);
+    b->labels[-label - 2] = acount(b->function->instructions);
+    b->constant_start = acount(b->function->instructions);
+}
 int behavior_lower_value(builder *b, behavior_function_instruction i)
 {
-    if (!behavior_lower_scalar(i.type)) {
+    if (!behavior_lower_scalar(i.type) && !behavior_scalar_string(i.type)) {
+        return -1;
+    }
+    /* String reads borrow their source until a retention boundary emits a copy.
+     * Keep string pointers out of numeric operations. */
+    if (behavior_scalar_string(i.type) && i.op != BF_CONSTANT &&
+        i.op != BF_ARGUMENT && i.op != BF_LOCAL && i.op != BF_VARIABLE &&
+        i.op != BF_COMMAND_RESULT && i.op != BF_LOAD && i.op != BF_READ &&
+        i.op != BF_COPY_STRING && i.op != BF_INTERN_STRING && i.op != BF_SELECT) {
         return -1;
     }
     if (i.op == BF_CONSTANT) {
         size_t size = behavior_scalar_size(i.type);
-        for (int pc = acount(b->function->instructions) - 1; pc >= 0; pc--) {
+        for (int pc = acount(b->function->instructions) - 1; pc >= b->constant_start;
+             pc--) {
             const behavior_function_instruction *previous = &b->function->instructions[pc];
-            if (previous->op == BF_CHECK) {
+            if (previous->op == BF_CHECK || previous->op == BF_JUMP ||
+                previous->op == BF_BRANCH) {
                 break;
             }
             if (previous->op == BF_CONSTANT && previous->type == i.type &&
@@ -84,6 +110,7 @@ int behavior_lower_value(builder *b, behavior_function_instruction i)
             }
         }
     }
+    b->function->managed |= behavior_scalar_string(i.type);
     i.output = acount(b->function->slots);
     apush(b->function->slots, i.type);
     behavior_lower_emit(b, i);
@@ -404,9 +431,11 @@ static int pure_call(builder *b, node *n, int pin)
     b->source = acount(b->function->sources);
     apush(b->function->sources, ((behavior_function_source){ target, n, parent_source }));
     output *saved = b->outputs;
+    const node **traced = b->traced;
     b->call_depth++;
     b->graph = target;
     b->outputs = NULL;
+    b->traced = NULL;
     int at = 0, result = -1;
     output *returns = NULL;
     for (int i = 0; i < entry->output_count; i++) {
@@ -449,6 +478,8 @@ done:
     afree(args);
     afree(b->outputs);
     b->outputs = saved;
+    afree(b->traced);
+    b->traced = traced;
     b->graph = parent;
     b->source = parent_source;
     b->call_depth--;
@@ -489,13 +520,31 @@ static int numeric_cast(builder *b, int slot, const node_desc *conversion, pin_t
         name
     );
 }
-static int get_output(builder *b, node *n, int pin)
+static int to_name(builder *b, int source)
+{
+    if (source < 0 || b->function->slots[source] != PIN_STR) {
+        return -1;
+    }
+    return behavior_lower_named_constant(
+        b,
+        behavior_lower_value(
+            b,
+            (behavior_function_instruction){ .op = BF_COPY_STRING,
+                                             .type = PIN_NAME,
+                                             .left = source,
+                                             .value = { .str = "" } }
+        ),
+        "name"
+    );
+}
+static int output_value(builder *b, node *n, int pin)
 {
     if (pin < 0 || pin >= n->output_count || n->disabled ||
         (!behavior_lower_scalar(n->output_pins[pin].type) &&
+         !behavior_scalar_string(n->output_pins[pin].type) &&
          n->output_pins[pin].type != PIN_STRUCT &&
-         n->output_pins[pin].container != PIN_CONTAINER_ARRAY) ||
-        n->output_pins[pin].container > PIN_CONTAINER_ARRAY) {
+         n->output_pins[pin].container < PIN_CONTAINER_ARRAY) ||
+        n->output_pins[pin].container > PIN_CONTAINER_SET) {
         return behavior_lower_unsupported(b, n, pin, true, "output type, projection or disabled node");
     }
     for (int i = 0; i < acount(b->outputs); i++) {
@@ -507,7 +556,9 @@ static int get_output(builder *b, node *n, int pin)
     if (n->output_pins[pin].field_source) {
         int source = -1;
         const type_field *field = graph_output_field(n, pin, &source);
-        int aggregate = field ? get_output(b, n, source) : -1;
+        /* The outer call already marked this node as traced. Read its base
+         * output without suppressing the first evaluation's dependencies. */
+        int aggregate = field ? output_value(b, n, source) : -1;
         return aggregate < 0 ? -1 : behavior_lower_field(b, aggregate, field, n, pin);
     }
     if (acount(b->evaluating) > 128) {
@@ -531,17 +582,34 @@ static int get_output(builder *b, node *n, int pin)
             result = behavior_lower_source(b, BF_ARGUMENT, ordinal, &n->output_pins[pin], n, pin);
         }
     } else if (
-        n == b->entry || n->desc == &NODE_SetVariable || n->desc == &NODE_CallFunction ||
+        n == b->entry || n->desc == &NODE_SetVariable ||
+        n->desc == &NODE_CallFunction || behavior_lower_is_state(n->desc) ||
+        (n->desc->command && n->desc->command->begin) ||
         n->desc == &NODE_ForLoop || n->desc == &NODE_ForLoopWithBreak ||
         n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak ||
         n->desc->component_kind == NODE_COMPONENT_SET_SELF ||
         n->desc->component_kind == NODE_COMPONENT_SET_ENTITY ||
         n->desc->component_kind == NODE_COMPONENT_SET_FIELD
     ) {
+        if (behavior_lower_is_state(n->desc) && !b->capture_outputs) {
+            /* The data evaluator refreshes inputs before exposing a stored
+             * state-node output. Preserve those effects, but never repeat the
+             * flow operation. Dependency traversal was already recorded. */
+            bool suppressed = b->suppress_trace;
+            b->suppress_trace = true;
+            bool valid = behavior_lower_state_inputs(b, n);
+            b->suppress_trace = suppressed;
+            if (!valid) {
+                return -1;
+            }
+        }
         int index = behavior_lower_local(b, b->frame, n, pin);
         if (index >= 0) {
             result = behavior_lower_source(b, BF_LOCAL, index, &n->output_pins[pin], n, pin);
         }
+    } else if (n->desc->lower) {
+        b->function->custom_lowering = true;
+        result = n->desc->lower(b, n, pin);
     } else if (n->desc->component_kind) {
         result = behavior_lower_component_read(b, n);
     } else if (n->desc->pure_kind == NODE_PURE_SELF && type == PIN_HANDLE) {
@@ -635,7 +703,7 @@ static int get_output(builder *b, node *n, int pin)
         }
         if (!numeric && op >= 0 && n->input_count >= 1) {
             int left = behavior_lower_input(b, n, 0), right = left;
-            if (op != BF_NEG && op != BF_ABS && !(op >= BF_SIN && op <= BF_LOG10)) {
+            if (op != BF_NEG && op != BF_ABS && !(op >= BF_SIN && op <= BF_ROUND)) {
                 right = n->input_count == 2 ? behavior_lower_input(b, n, 1) : -1;
             }
             if (left >= 0 && right >= 0 &&
@@ -729,13 +797,23 @@ static int get_output(builder *b, node *n, int pin)
             result = behavior_lower_named_constant(b, result, NULL);
         }
     }
+    if (n->desc == &NODE_To_Name && n->input_count == 1) {
+        result = to_name(b, behavior_lower_input(b, n, 0));
+    }
     if (n->input_count == 1 &&
         (n->desc == &NODE_To_Real || n->desc == &NODE_To_Byte ||
          n->desc == &NODE_To_Integer || n->desc == &NODE_To_Integer64)) {
         result = numeric_cast(b, behavior_lower_input(b, n, 0), n->desc, type);
     }
+    if (result < 0) {
+        result = n->desc->host_call ? behavior_lower_host_call(b, n, pin)
+                                    : behavior_lower_motion(b, n, pin);
+    }
     if (result < 0 && n->desc->query) {
         result = behavior_lower_query(b, n);
+    }
+    if (result < 0) {
+        result = behavior_lower_random(b, n, pin);
     }
     if (result < 0) {
         result = behavior_lower_array_operation(b, n);
@@ -745,7 +823,8 @@ static int get_output(builder *b, node *n, int pin)
         return behavior_lower_unsupported(b, n, pin, true, "data operation");
     }
     array_value *array = behavior_lower_array(b, result);
-    if ((array != NULL) != (n->output_pins[pin].container == PIN_CONTAINER_ARRAY)) {
+    if ((array != NULL) != (n->output_pins[pin].container >= PIN_CONTAINER_ARRAY) ||
+        (array && array->container != n->output_pins[pin].container)) {
         return -1;
     }
     if (!array && result >= 0 && b->function->slots[result] != type &&
@@ -757,10 +836,32 @@ static int get_output(builder *b, node *n, int pin)
     }
     return result;
 }
+int behavior_lower_output(builder *b, node *n, int pin)
+{
+    bool seen = false;
+    for (int i = 0; i < acount(b->traced); i++) {
+        seen |= b->traced[i] == n;
+    }
+    bool suppressed = b->suppress_trace;
+    if (b->recording && !b->capture_outputs && !seen) {
+        if (n->desc->flow) {
+            behavior_lower_trace_dependencies(b, n);
+        } else {
+            apush(b->traced, n);
+        }
+    }
+    b->suppress_trace |= seen || b->capture_outputs;
+    int value = output_value(b, n, pin);
+    b->suppress_trace = suppressed;
+    return value;
+}
 static int edge_conversion(builder *b, int slot, const node_desc *conversion, node *n, int pin)
 {
     if (!conversion || slot < 0) {
         return slot;
+    }
+    if (conversion == &NODE_To_Name) {
+        return to_name(b, slot);
     }
     aggregate *a = behavior_lower_aggregate(b, slot);
     if (conversion->jit_kind == NODE_JIT_IDENTITY) {
@@ -780,20 +881,22 @@ static int edge_conversion(builder *b, int slot, const node_desc *conversion, no
     }
     return behavior_lower_unsupported(b, n, pin, false, "input conversion");
 }
-int behavior_lower_input(builder *b, node *n, int pin)
+static int input_value(builder *b, node *n, int pin)
 {
     const pin_spec *s = &n->input_pins[pin];
-    if ((!behavior_lower_scalar(s->type) && s->type != PIN_STRUCT &&
-         s->container != PIN_CONTAINER_ARRAY) ||
-        s->container > PIN_CONTAINER_ARRAY || s->kind != PIN_DATA) {
+    if ((!behavior_lower_scalar(s->type) && !behavior_scalar_string(s->type) &&
+         s->type != PIN_STRUCT && s->container < PIN_CONTAINER_ARRAY) ||
+        s->container > PIN_CONTAINER_SET || s->kind != PIN_DATA) {
         return behavior_lower_unsupported(b, n, pin, false, "input type or container");
     }
     node *source;
     int source_pin;
     if (graph_input_source(b->graph, n, pin, &source, &source_pin)) {
-        int slot = get_output(b, source, source_pin);
-        if ((behavior_lower_array(b, slot) != NULL) !=
-            (s->container == PIN_CONTAINER_ARRAY)) {
+        behavior_lower_trace(b, source, source_pin, n, pin, GRAPH_EDGE_DATA);
+        int slot = behavior_lower_output(b, source, source_pin);
+        const array_value *array = behavior_lower_array(b, slot);
+        if ((array != NULL) != (s->container >= PIN_CONTAINER_ARRAY) ||
+            (array && array->container != s->container)) {
             return -1;
         }
         slot = edge_conversion(b, slot, graph_input_conversion(b->graph, n, pin), n, pin);
@@ -834,4 +937,20 @@ int behavior_lower_input(builder *b, node *n, int pin)
         );
     }
     return behavior_lower_unsupported(b, n, pin, false, "input binding");
+}
+
+int behavior_lower_input(builder *b, node *n, int pin)
+{
+    int slot = input_value(b, n, pin);
+    if (b->recording && slot >= 0) {
+        apush(b->inputs, ((output){ n, pin, slot }));
+        node *source;
+        int source_pin;
+        if (n->desc->flow &&
+            graph_input_source(b->graph, n, pin, &source, &source_pin) &&
+            (source->output_pins[source_pin].flags & PIN_FLAG_WATCH)) {
+            behavior_lower_watch(b, source, source_pin, true, slot);
+        }
+    }
+    return slot;
 }

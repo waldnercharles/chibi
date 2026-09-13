@@ -1,8 +1,10 @@
+#include "ecs/execution.h"
 #include "graph/compiler/behavior_function_jit_internal.h"
 #if CHIBI_HAVE_SJLIT
 #include "support/array.h"
 
 #include <stddef.h>
+#include <string.h>
 
 static void bind(struct sljit_compiler *c, struct sljit_jump *jump)
 {
@@ -62,6 +64,58 @@ static void read_pointer(
     move(m, i->type, dest, offset, SLJIT_MEM1(SLJIT_R3), i->offset);
     bind(c, empty);
 }
+/* Bound code growth and stop on each mismatching byte, including NUL. Wide
+ * loads could cross the end of a shorter input into an unmapped page. */
+static bool short_string_equal(
+    const behavior_machine *m,
+    const behavior_function_instruction *i,
+    int dest,
+    sljit_sw offset
+)
+{
+    enum
+    {
+        MAX_BYTES = 8
+    };
+    const char *text = NULL;
+    for (int pc = 0; pc < acount(m->function->instructions); pc++) {
+        const behavior_function_instruction *constant = &m->function->instructions[pc];
+        if (constant->op == BF_CONSTANT && constant->output == i->right &&
+            behavior_scalar_string(constant->type)) {
+            text = constant->value.str ? constant->value.str : "";
+            break;
+        }
+    }
+    if (!text || strnlen(text, MAX_BYTES + 1) > MAX_BYTES) {
+        return false;
+    }
+    struct sljit_compiler *c = m->compiler;
+    struct sljit_jump *misses[MAX_BYTES + 2];
+    int count = 0;
+    slot(m, i->left, SLJIT_R0, 0);
+    struct sljit_jump *empty = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    if (*text) {
+        misses[count++] = empty;
+    }
+    for (int j = 0;; j++) {
+        sljit_emit_op1(c, SLJIT_MOV_U8, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R0), j);
+        misses[count++] = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, (unsigned char)text[j]);
+        if (!text[j]) {
+            break;
+        }
+    }
+    if (!*text) {
+        bind(c, empty);
+    }
+    sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_IMM, 1);
+    struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
+    for (int j = 0; j < count; j++) {
+        bind(c, misses[j]);
+    }
+    sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_IMM, 0);
+    bind(c, done);
+    return true;
+}
 /* Reuse one owned destination across contiguous scalar field stores. */
 int behavior_jit_result_fields(const behavior_machine *m, int pc)
 {
@@ -115,6 +169,50 @@ bool behavior_jit_memory(
 )
 {
     struct sljit_compiler *c = m->compiler;
+    if (i->op == BF_STATE_SELECT) {
+        slot(m, i->right, SLJIT_R3, 0);
+        slot(m, i->left, SLJIT_R2, 0);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R0,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, value_owner)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R1,
+            0,
+            SLJIT_IMM,
+            (sljit_sw)&m->function->state_selections[i->target]
+        );
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS4(32, P, P, 32, 32),
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, select_state)
+        );
+        move(m, PIN_I32, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
+    if (i->op == BF_RETRIGGER) {
+        slot(m, i->left, SLJIT_FR0, 0);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->frame);
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R2, 0, SLJIT_IMM, i->target);
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS4(32, P, 32, 32, F64),
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, retrigger)
+        );
+        move(m, PIN_BOOL, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
     if (i->op == BF_COMMAND_SERVICE) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, commands));
         sljit_emit_op1(
@@ -128,14 +226,28 @@ bool behavior_jit_memory(
         );
         return true;
     }
-    if (i->op == BF_COMMAND_ARGUMENT) {
+    if (i->op == BF_COMMAND_RESULT) {
         sljit_emit_op1(
             c,
             SLJIT_MOV_P,
             SLJIT_R3,
             0,
             SLJIT_MEM1(m->context),
-            offsetof(behavior_function_context, command_arguments)
+            offsetof(behavior_function_context, command_results)
+        );
+        move(m, i->type, dest, offset, SLJIT_MEM1(SLJIT_R3), i->left * sizeof(pin_value) + i->offset);
+        return true;
+    }
+    if (i->op == BF_COMMAND_ARGUMENT || i->op == BF_COMMAND_OUTPUT) {
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R3,
+            0,
+            SLJIT_MEM1(m->context),
+            i->op == BF_COMMAND_OUTPUT
+                ? offsetof(behavior_function_context, command_results)
+                : offsetof(behavior_function_context, command_arguments)
         );
         slot(m, i->left, SLJIT_MEM1(SLJIT_R3), i->target * sizeof(pin_value) + i->offset);
         return true;
@@ -176,6 +288,30 @@ bool behavior_jit_memory(
             SLJIT_ARGS4(32, P, P, P, 32),
             SLJIT_IMM,
             SLJIT_FUNC_ADDR(command->command->invoke)
+        );
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV32,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, error_status),
+            SLJIT_R0,
+            0
+        );
+        struct sljit_jump *
+            ok = sljit_emit_cmp(c, SLJIT_SIG_GREATER_EQUAL | SLJIT_32, SLJIT_R0, 0, SLJIT_IMM, 0);
+        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_COMMAND);
+        bind(c, ok);
+        return true;
+    }
+    if (i->op == BF_COMMAND_BEGIN) {
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS2(32, P, 32),
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, begin_command)
         );
         sljit_emit_op1(
             c,
@@ -234,7 +370,13 @@ bool behavior_jit_memory(
     if (i->op == BF_ARRAY) {
         bool argument = i->target == BF_ARGUMENT;
         struct sljit_jump *missing = NULL, *wrong = NULL;
-        constant(m, BF_POINTER_TYPE, dest, offset, (pin_value){ .type = BF_POINTER_TYPE });
+        constant(
+            m,
+            BF_POINTER_TYPE,
+            dest,
+            offset,
+            (pin_value){ .type = BF_POINTER_TYPE, .ptr = i->value.ptr }
+        );
         if (i->target == BF_CONSTANT) {
             return true;
         }
@@ -258,13 +400,14 @@ bool behavior_jit_memory(
                 i->value.type
             );
         }
+        constant(m, BF_POINTER_TYPE, dest, offset, (pin_value){ .type = BF_POINTER_TYPE });
         struct sljit_jump *container = sljit_emit_cmp(
             c,
             SLJIT_NOT_EQUAL | SLJIT_32,
             SLJIT_MEM1(base),
             at + offsetof(pin_value, container),
             SLJIT_IMM,
-            PIN_CONTAINER_ARRAY
+            i->value.container
         );
         sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_MEM1(base), at + offsetof(pin_value, ptr));
         bind(c, container);
@@ -292,6 +435,127 @@ bool behavior_jit_memory(
             i->left * sizeof(behavior_variable_storage) +
                 offsetof(behavior_variable_storage, type_name)
         );
+        return true;
+    }
+    if (i->op == BF_STORE_VALUE) {
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, data));
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R2), offsetof(behavior_data_storage, values));
+        sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, i->left * sizeof(pin_value));
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R0,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, value_owner)
+        );
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS3V(P, 32, P),
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, store_value)
+        );
+        return true;
+    }
+    if (i->op == BF_INDEX) {
+        slot(m, i->right, SLJIT_R0, 0);
+        sljit_emit_op1(c, SLJIT_MOV_S32, SLJIT_R0, 0, SLJIT_R0, 0);
+        assert(i->offset > 0);
+        bool power_two = !(i->offset & (i->offset - 1));
+        int shift = 0;
+        for (size_t value = i->offset; value > 1; value >>= 1) {
+            shift++;
+        }
+        sljit_emit_op2(
+            c,
+            power_two ? SLJIT_SHL : SLJIT_MUL,
+            SLJIT_R0,
+            0,
+            SLJIT_R0,
+            0,
+            SLJIT_IMM,
+            power_two ? shift : (sljit_sw)i->offset
+        );
+        slot(m, i->left, SLJIT_R1, 0);
+        sljit_emit_op2(c, SLJIT_ADD, dest, offset, SLJIT_R1, 0, SLJIT_R0, 0);
+        return true;
+    }
+    if (i->op == BF_STRING_EQUAL) {
+        if (short_string_equal(m, i, dest, offset)) {
+            return true;
+        }
+        slot(m, i->left, SLJIT_R0, 0);
+        slot(m, i->right, SLJIT_R1, 0);
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(32, P, P), SLJIT_IMM, (sljit_sw)behavior_string_equal);
+        sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
+    if (i->op == BF_COPY_ARRAY) {
+        slot(m, i->left, SLJIT_R1, 0);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_R0,
+            0,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, value_storage)
+        );
+        sljit_emit_icall(
+            c,
+            SLJIT_CALL,
+            SLJIT_ARGS2(P, P, P),
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, copy_array)
+        );
+        sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R0, 0);
+        return true;
+    }
+    if (i->op == BF_COPY_STRING || i->op == BF_INTERN_STRING) {
+        slot(m, i->left, SLJIT_R1, 0);
+        if (i->op == BF_INTERN_STRING) {
+            slot(m, i->right, SLJIT_R0, 0);
+            sljit_emit_icall(
+                c,
+                SLJIT_CALL,
+                SLJIT_ARGS2(P, P, P),
+                SLJIT_MEM1(SLJIT_R0),
+                offsetof(ecs_execution_view, intern_string)
+            );
+        } else {
+            if (i->value.str) {
+                struct sljit_jump *present = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
+                sljit_emit_op1(
+                    c,
+                    SLJIT_MOV_P,
+                    SLJIT_R1,
+                    0,
+                    SLJIT_IMM,
+                    (sljit_sw)i->value.str
+                );
+                bind(c, present);
+            }
+            sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_IMM, 0);
+            struct sljit_jump *empty = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
+            sljit_emit_op1(
+                c,
+                SLJIT_MOV_P,
+                SLJIT_R0,
+                0,
+                SLJIT_MEM1(m->context),
+                offsetof(behavior_function_context, value_storage)
+            );
+            sljit_emit_icall(
+                c,
+                SLJIT_CALL,
+                SLJIT_ARGS2(P, P, P),
+                SLJIT_MEM1(m->context),
+                offsetof(behavior_function_context, copy_string)
+            );
+            bind(c, empty);
+        }
+        sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R0, 0);
         return true;
     }
     if (i->op == BF_OWN_NAME) {
@@ -371,6 +635,22 @@ bool behavior_jit_memory(
     if (i->op == BF_RESULT_TYPE_NAME) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, results));
         slot(m, i->left, SLJIT_MEM1(SLJIT_R3), i->target * sizeof(pin_value) + offsetof(pin_value, type_name));
+        return true;
+    }
+    if (i->op == BF_RESULT_ARRAY) {
+        sljit_sw at = i->target * sizeof(pin_value);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, results));
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_MEM1(SLJIT_R3), at + offsetof(pin_value, type), SLJIT_IMM, i->type);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV32,
+            SLJIT_MEM1(SLJIT_R3),
+            at + offsetof(pin_value, container),
+            SLJIT_IMM,
+            i->value.container
+        );
+        slot(m, i->left, SLJIT_MEM1(SLJIT_R3), at + offsetof(pin_value, ptr));
+        slot(m, i->right, SLJIT_MEM1(SLJIT_R3), at + offsetof(pin_value, type_name));
         return true;
     }
     if (i->op == BF_TYPE_NAME) {

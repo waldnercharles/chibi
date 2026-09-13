@@ -143,7 +143,7 @@ static void writes()
                         expected_other = target ? *target : (GameHealth){ 0 };
                         if (!result) {
                             for (int i = 0; i < 2; i++) {
-                                assert(!flow_copy_input(
+                                assert(!pin_value_snapshot_to_arena(
                                     &storage,
                                     &expected[i],
                                     flow_run_input_value(run, g->nodes[1], i + 1)
@@ -307,7 +307,7 @@ static void reads()
                     status = result;
                     expected_error = *flow_run_error(run);
                     if (!result) {
-                        assert(!flow_copy_input(
+                        assert(!pin_value_snapshot_to_arena(
                             &memory,
                             &expected,
                             flow_run_input_value(run, g->nodes[1], 1)
@@ -427,6 +427,12 @@ void test_compiled_components()
     reads();
     migration();
     writes();
-    whole_component_smoke();
+    for (int portable = 0; portable < 2; portable++) {
+        behavior_backend previous = behavior_debug_backend(
+            portable ? BEHAVIOR_BYTECODE : BEHAVIOR_SLJIT
+        );
+        whole_component_smoke();
+        behavior_debug_backend(previous);
+    }
     puts("PASS: whole component writes, snapshots, stale handles, missing components, source errors and budgets");
 }

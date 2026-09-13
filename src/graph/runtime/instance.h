@@ -14,6 +14,7 @@
  * defaults, per-node scratch keyed by node ID, an optional owner handle, and
  * the ready/suspended event activations that currently belong to it. */
 typedef struct behavior_instance behavior_instance;
+typedef struct behavior_instance_bank behavior_instance_bank;
 /* Disjoint setup/execution intervals. Execution includes nested functions,
  * excluding other synchronous root events and their setup. No waiting wall time. */
 typedef enum
@@ -71,49 +72,63 @@ struct behavior_instance
 {
     /* Borrowed; must outlive the instance. */
     behavior_asset *asset;
-    behavior_backend backend;
     /* Runtime storage, parallel to asset->variables. */
     pin_value *variables;
-    /* Managed values replace their arena on assignment; plain structs reuse storage. */
-    arena *variable_arenas;
+    /* Fields used together by prepared Tick guards and context binding. */
     behavior_variable_storage *variable_storage;
+    pin_value *node_states;
+    flow_run **activations; /* scheduler queue, FIFO by dispatch sequence */
+    behavior_profile_fn profile;
+    uint64_t services_revision; /* Invalidates prepared update bindings. */
+    pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
+    double current_time;
+    double delta_seconds;
+    behavior_backend backend;
+    int alive;
+    int trace_enabled;
+
+    /* Current arenas; first managed write adds one spare per variable.
+     * Assignments swap them; pooling release frees both. Plain structs use
+     * variable_storage backing. */
+    arena *variable_arenas;
     int variable_count;
     instance_scratch_slot *scratch;
-    pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
-    char **strings;  /* instance-owned string variable values */
+    const uint64_t *state_ids; /* Borrowed from the guarded program generation. */
+    char **strings;            /* instance-owned string variable values */
     flow_clock_fn now;
     void *now_user;
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
-    double current_time;
-    double delta_seconds;
     flow_sink_fn sink;
     void *sink_user;
-    behavior_profile_fn profile;
     void *profile_user;
     uint64_t schedule_revision; /* Queue edits and asynchronous readiness changes. */
-    flow_run **activations;     /* scheduler queue, FIFO by dispatch sequence */
     flow_run **activation_pool; /* idle reusable activations */
     behavior_instance_trace_entry *trace; /* bounded ring; read through behavior_instance_trace */
     behavior_instance_trace_entry *trace_view; /* lazily ordered inspection cache */
     char **trace_names;
     int trace_head;
     bool trace_view_dirty;
+    bool variable_spares;
     int pool_enabled;
-    int trace_enabled;
     int breakpoints_override;
     int breakpoints_enabled;
     behavior_delegate_binding *delegates; /* outgoing weak bindings */
     behavior_delegate_ref *delegate_incoming;
     service_binding *services;
+    /* Optional owner notification. May invalidate caches, never execute graphs. */
+    void (*services_changed)(behavior_instance *instance);
+    /* Queue empty/nonempty transition. May update owner scheduling metadata,
+     * never execute graphs. Different instances may notify in parallel. */
+    void (*activations_changed)(behavior_instance *instance);
     uint64_t next_delegate_id;
-    int alive;
 
     /* RUN-12: cached compile report, rebuilt whenever the topology revision
      * moves. Any error refuses every dispatch/enqueue start. The report's
      * message strings stay valid for the instance's lifetime. */
     compile_report compile;
     unsigned long long compile_revision;
+    struct behavior_instance_page *page; /* Optional stable bank allocation. */
 };
 
 /* Create an instance and acquire the definition's mutation guard (EXEC-19,
@@ -126,6 +141,17 @@ behavior_instance *behavior_instance_create(
     flow_clock_fn now,
     void *now_user
 );
+
+/* Group instances and variable headers in stable pages, normally one bank per
+ * asset in a world. Creation/destruction are serialized structural operations.
+ * Destroy every instance before freeing the bank. Managed payloads keep their
+ * existing instance ownership. The bank is created lazily. */
+behavior_instance *behavior_instance_create_in_bank(
+    behavior_instance_bank **bank,
+    behavior_asset *asset,
+    const pin_value *owner
+);
+void behavior_instance_bank_free(behavior_instance_bank *bank);
 
 /* Explicit thread-local debug override for newly created instances. Passing
  * UNAVAILABLE restores platform selection. Existing activations are unaffected. */
@@ -186,6 +212,23 @@ flow_run *behavior_instance_dispatch(
     flow_inputs inputs,
     flow_error *error
 );
+
+/* Ordered engine broadcasts may elide successful, unobserved activations.
+ * False means no execution occurred; use ordinary dispatch. A failure returns
+ * an inspectable activation in `failed`, without repeating any effects.
+ * Profiling callbacks on this path must only record timing, never reenter.
+ * Debugger holds must use ordinary dispatch. */
+typedef struct behavior_batch behavior_batch;
+/* The caller initializes *batch to NULL, reuses it across ordered instances,
+ * and frees it at teardown. It caches portable scratch for one program entry. */
+bool behavior_instance_dispatch_batch(
+    behavior_instance *bi,
+    const char *name,
+    behavior_batch **batch,
+    flow_run **failed
+);
+void behavior_batch_free(behavior_batch *batch);
+uint64_t behavior_batch_dispatches();
 
 /* Advance the scheduler to `now` (host monotonic time). Runs the oldest ready
  * activation to completion or to its next suspension (EXEC-17). */

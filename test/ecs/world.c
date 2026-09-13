@@ -102,7 +102,6 @@ void run_ecs_checks(void)
         .type = &g_ecs_health_type,
         .index = ECS_INDEX_DENSE,
     };
-    test_check(ECS_MAX_ENTITIES == 10000, "world uses the fixed 10,000-slot default");
     test_check(
         ecs_world_register_component(world, &position_desc, &position) == ECS_OK &&
             ecs_world_register_component(world, &health_desc, &health) == ECS_OK,
@@ -117,7 +116,7 @@ void run_ecs_checks(void)
     test_check(
         registered && registered->column_base &&
             registered->layout_hash == ecs_layout_hash(&g_ecs_position_type),
-        "descriptor reports its stable column base and reflected layout "
+        "descriptor reports its current column base and reflected layout "
         "hash"
     );
     ecs_component_desc duplicate_key = position_desc;
@@ -152,7 +151,7 @@ void run_ecs_checks(void)
     p2->y = 4.0f;
     test_check(
         p1 && p2 && (unsigned char *)p2 - (unsigned char *)p1 == sizeof(ecs_position),
-        "component values use stable flat columns with element stride"
+        "component values use contiguous flat columns with element stride"
     );
     pin_value field = { .type = PIN_F32, .type_name = "float", .f = 9.0f };
     test_check(

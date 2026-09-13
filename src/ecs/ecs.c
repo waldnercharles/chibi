@@ -15,6 +15,9 @@ typedef struct
     ecs_component_desc desc;
     uint64_t *occupancy;
     uint32_t *dense;
+    uint32_t slot_count; /* Allocated payload rows, independent of world capacity. */
+    int count;
+    uint32_t singleton;
 } ecs_component;
 
 typedef enum
@@ -47,10 +50,11 @@ struct ecs_world
 {
     ecs_execution_view execution;
     ecs_execution_column *execution_columns;
-    uint32_t generations[ECS_ENTITY_SLOT_COUNT];
-    unsigned char occupied[ECS_ENTITY_SLOT_COUNT];
-    unsigned char reserved[ECS_ENTITY_SLOT_COUNT];
-    unsigned char pending_destroy[ECS_ENTITY_SLOT_COUNT];
+    uint32_t *generations;
+    unsigned char *occupied;
+    unsigned char *reserved;
+    unsigned char *pending_destroy;
+    uint32_t free_hint;
     uint32_t live_count;
     uint32_t high_water;
     ecs_component *components;
@@ -223,14 +227,144 @@ static const ecs_component *find_component_const(const ecs_world *world, ecs_com
     return find_component((ecs_world *)world, id);
 }
 
-static int slot_valid(uint32_t slot)
+static void update_execution_column(ecs_world *world, int index)
 {
-    return slot > 0 && slot <= ECS_MAX_ENTITIES;
+    const ecs_component *c = &world->components[index];
+    world->execution_columns[index] = (ecs_execution_column){
+        .id = c->desc.id,
+        .layout = type_layout_hash(c->desc.type),
+        .stride = c->desc.element_size,
+        .data = c->desc.column_base,
+        .occupancy = c->occupancy,
+        .count = c->count,
+        .singleton = c->singleton
+    };
+    world->execution.columns = world->execution_columns;
+    world->execution.lookup = world->component_lookup;
+    world->execution.capacity = world->component_lookup_capacity;
+}
+
+enum
+{
+    INITIAL_ENTITY_SLOTS = 256
+};
+
+/* Growth is a structural operation. Occupancy covers every entity slot, while
+ * payload columns grow only when a component is actually added at that slot. */
+static uint32_t grown_slots(uint32_t current, uint32_t required, size_t limit)
+{
+    if (required > limit) {
+        return 0;
+    }
+    size_t count = current ? current : INITIAL_ENTITY_SLOTS;
+    while (count < required) {
+        count = count > limit / 2 ? limit : count * 2;
+    }
+    return (uint32_t)(count < limit ? count : limit);
+}
+
+static size_t occupancy_words(uint32_t slots)
+{
+    return ((size_t)slots + 63) / 64;
+}
+
+static void *grow_storage(void *data, size_t old_count, size_t count, size_t stride)
+{
+    assert(count <= SIZE_MAX / stride && old_count <= count);
+    data = xrealloc(data, count * stride);
+    memset((unsigned char *)data + old_count * stride, 0, (count - old_count) * stride);
+    return data;
+}
+
+int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
+{
+    assert(world);
+    if (world->iteration_depth) {
+        return ECS_ERR_ITERATING;
+    }
+    if (capacity < world->execution.slot_count) {
+        return ECS_OK;
+    }
+    size_t limit = SIZE_MAX / sizeof *world->generations;
+    if (limit > UINT32_MAX) {
+        limit = UINT32_MAX;
+    }
+    if (capacity >= limit) {
+        return ECS_ERR_CAPACITY;
+    }
+    uint32_t old = world->execution.slot_count;
+    uint32_t count = grown_slots(old, capacity + 1, limit);
+    world->generations = grow_storage(
+        world->generations,
+        old,
+        count,
+        sizeof *world->generations
+    );
+    world->occupied = grow_storage(world->occupied, old, count, sizeof *world->occupied);
+    world->reserved = grow_storage(world->reserved, old, count, sizeof *world->reserved);
+    world->pending_destroy = grow_storage(
+        world->pending_destroy,
+        old,
+        count,
+        sizeof *world->pending_destroy
+    );
+    for (uint32_t slot = old ? old : 1; slot < count; slot++) {
+        world->generations[slot] = 1;
+    }
+    world->execution.generations = world->generations;
+    world->execution.occupied = world->occupied;
+    world->execution.slot_count = count;
+    for (int i = 0; i < acount(world->components); i++) {
+        ecs_component *c = &world->components[i];
+        c->occupancy = grow_storage(
+            c->occupancy,
+            occupancy_words(old),
+            occupancy_words(count),
+            sizeof *c->occupancy
+        );
+        update_execution_column(world, i);
+    }
+    return ECS_OK;
+}
+
+uint32_t ecs_world_entity_capacity(const ecs_world *world)
+{
+    assert(world);
+    return world->execution.slot_count - 1;
+}
+
+static int reserve_component(ecs_world *world, ecs_component *component, uint32_t slot)
+{
+    if (slot < component->slot_count) {
+        return ECS_OK;
+    }
+    size_t limit = SIZE_MAX / component->desc.element_size;
+    if (limit > world->execution.slot_count) {
+        limit = world->execution.slot_count;
+    }
+    uint32_t count = grown_slots(component->slot_count, slot + 1, limit);
+    if (!count) {
+        return ECS_ERR_CAPACITY;
+    }
+    component->desc.column_base = grow_storage(
+        component->desc.column_base,
+        component->slot_count,
+        count,
+        component->desc.element_size
+    );
+    component->slot_count = count;
+    update_execution_column(world, (int)(component - world->components));
+    return ECS_OK;
+}
+
+static int slot_valid(const ecs_world *world, uint32_t slot)
+{
+    return slot > 0 && slot < world->execution.slot_count;
 }
 
 static int entity_matches(const ecs_world *world, ecs_entity entity)
 {
-    return slot_valid(entity.slot) && entity.generation &&
+    return slot_valid(world, entity.slot) && entity.generation &&
            world->occupied[entity.slot] &&
            world->generations[entity.slot] == entity.generation;
 }
@@ -241,12 +375,21 @@ static int component_matches(const ecs_component *component, uint32_t slot)
     return (component->occupancy[slot / 64u] & bit) != 0;
 }
 
-static void occupancy_add(ecs_component *component, uint32_t slot)
+static void occupancy_count(ecs_world *world, ecs_component *component, uint32_t slot, int change)
+{
+    component->count += change;
+    component->singleton ^= slot;
+    ecs_execution_column *column = &world->execution_columns[component - world->components];
+    column->count = component->count;
+    column->singleton = component->singleton;
+}
+static void occupancy_add(ecs_world *world, ecs_component *component, uint32_t slot)
 {
     uint64_t *word = &component->occupancy[slot / 64u];
     uint64_t bit = UINT64_C(1) << (slot % 64u);
     assert(!(*word & bit));
     *word |= bit;
+    occupancy_count(world, component, slot, 1);
     if (component->desc.index != ECS_INDEX_DENSE) {
         return;
     }
@@ -260,12 +403,13 @@ static void occupancy_add(ecs_component *component, uint32_t slot)
     component->dense[at] = slot;
 }
 
-static void occupancy_remove(ecs_component *component, uint32_t slot)
+static void occupancy_remove(ecs_world *world, ecs_component *component, uint32_t slot)
 {
     uint64_t *word = &component->occupancy[slot / 64u];
     uint64_t bit = UINT64_C(1) << (slot % 64u);
     assert(*word & bit);
     *word &= ~bit;
+    occupancy_count(world, component, slot, -1);
     if (component->desc.index != ECS_INDEX_DENSE) {
         return;
     }
@@ -285,12 +429,16 @@ static void occupancy_remove(ecs_component *component, uint32_t slot)
 
 static void *component_address(const ecs_component *component, uint32_t slot)
 {
+    assert(slot < component->slot_count);
     unsigned char *base = (unsigned char *)component->desc.column_base;
     return base + (size_t)slot * component->desc.element_size;
 }
 
 static void advance_generation(ecs_world *world, uint32_t slot)
 {
+    if (slot < world->free_hint) {
+        world->free_hint = slot;
+    }
     world->generations[slot]++;
     if (!world->generations[slot]) {
         world->generations[slot] = 1;
@@ -358,7 +506,7 @@ static void free_command(ecs_command *command)
 static int apply_create(ecs_world *world, const ecs_command *command)
 {
     uint32_t slot = command->entity.slot;
-    if (!slot_valid(slot) || !world->reserved[slot] || world->occupied[slot] ||
+    if (!slot_valid(world, slot) || !world->reserved[slot] || world->occupied[slot] ||
         world->generations[slot] != command->entity.generation) {
         return ECS_ERR_ENTITY;
     }
@@ -380,7 +528,7 @@ static int apply_destroy(ecs_world *world, const ecs_command *command)
     for (int i = 0; i < acount(world->components); i++) {
         ecs_component *component = &world->components[i];
         if (ecs_component_has(world, entity, component->desc.id)) {
-            occupancy_remove(component, entity.slot);
+            occupancy_remove(world, component, entity.slot);
         }
     }
     world->occupied[entity.slot] = 0;
@@ -400,12 +548,16 @@ static int apply_add(ecs_world *world, const ecs_command *command)
     if (ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_DUPLICATE;
     }
+    int result = reserve_component(world, component, command->entity.slot);
+    if (result) {
+        return result;
+    }
     void *address = component_address(component, command->entity.slot);
     memset(address, 0, component->desc.element_size);
     if (command->value) {
         memcpy(address, command->value, component->desc.element_size);
     }
-    occupancy_add(component, command->entity.slot);
+    occupancy_add(world, component, command->entity.slot);
     return ECS_OK;
 }
 
@@ -418,35 +570,24 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
     if (!ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_COMPONENT;
     }
-    occupancy_remove(component, command->entity.slot);
+    occupancy_remove(world, component, command->entity.slot);
     return ECS_OK;
+}
+
+static const char *execution_intern(const ecs_execution_view *world, const char *text)
+{
+    return ecs_world_intern_string((ecs_world *)world, text);
 }
 
 ecs_world *ecs_world_new(void)
 {
     ecs_world *world = (ecs_world *)xcalloc(1, sizeof *world);
-    for (uint32_t slot = 1; slot <= ECS_MAX_ENTITIES; slot++) {
-        world->generations[slot] = 1;
-    }
-    world->execution = (ecs_execution_view){ .generations = world->generations,
-                                             .occupied = world->occupied,
-                                             .slot_count = ECS_ENTITY_SLOT_COUNT };
+    world->free_hint = 1;
+    world->execution.intern_string = execution_intern;
+    int result = ecs_world_reserve_entities(world, INITIAL_ENTITY_SLOTS - 1);
+    assert(!result);
+    (void)result;
     return world;
-}
-
-static void update_execution_column(ecs_world *world, int index)
-{
-    const ecs_component *c = &world->components[index];
-    world->execution_columns[index] = (ecs_execution_column){
-        .id = c->desc.id,
-        .layout = type_layout_hash(c->desc.type),
-        .stride = c->desc.element_size,
-        .data = c->desc.column_base,
-        .occupancy = c->occupancy
-    };
-    world->execution.columns = world->execution_columns;
-    world->execution.lookup = world->component_lookup;
-    world->execution.capacity = world->component_lookup_capacity;
 }
 
 /* Descriptors own their identity strings; reflected type layouts stay borrowed. */
@@ -484,6 +625,10 @@ void ecs_world_free(ecs_world *world)
         free(world->field_strings[i]);
     }
     afree(world->field_strings);
+    free(world->generations);
+    free(world->occupied);
+    free(world->reserved);
+    free(world->pending_destroy);
     free(world);
 }
 
@@ -492,6 +637,9 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     if (!world || !desc || !desc->name || !desc->name[0] || !desc->element_size ||
         !desc->type || desc->type->size != desc->element_size) {
         return ECS_ERR_ARGUMENT;
+    }
+    if (world->iteration_depth) {
+        return ECS_ERR_ITERATING;
     }
     if (desc->id && find_component(world, desc->id)) {
         return ECS_ERR_DUPLICATE;
@@ -522,9 +670,12 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     component.desc.id = id;
     component.desc.layout_hash = desc->layout_hash ? desc->layout_hash
                                                    : ecs_layout_hash(desc->type);
-    component.desc.column_base = xcalloc(ECS_ENTITY_SLOT_COUNT, desc->element_size);
-    component.occupancy = (uint64_t *)
-        xcalloc(ECS_ENTITY_WORD_COUNT, sizeof *component.occupancy);
+    component.slot_count = 1;
+    component.desc.column_base = xcalloc(component.slot_count, desc->element_size);
+    component.occupancy = xcalloc(
+        occupancy_words(world->execution.slot_count),
+        sizeof *component.occupancy
+    );
     apush(world->components, component);
     component_index_append(world);
     apush(world->execution_columns, ((ecs_execution_column){ 0 }));
@@ -575,8 +726,15 @@ int ecs_world_migrate_component(
     if (!component || !replacement->type || !replacement->name ||
         (replacement->key && component->desc.key &&
          strcmp(component->desc.key, replacement->key) != 0) ||
+        !replacement->element_size ||
         replacement->element_size != replacement->type->size) {
         return ECS_ERR_ARGUMENT;
+    }
+    if (world->iteration_depth) {
+        return ECS_ERR_ITERATING;
+    }
+    if (component->slot_count > SIZE_MAX / replacement->element_size) {
+        return ECS_ERR_CAPACITY;
     }
     ecs_component_desc owned = component_desc_copy(replacement);
     if (component->desc.layout_hash == replacement->layout_hash &&
@@ -591,8 +749,8 @@ int ecs_world_migrate_component(
         return ECS_OK;
     }
     unsigned char *column = (unsigned char *)
-        xcalloc(ECS_ENTITY_SLOT_COUNT, replacement->element_size);
-    for (uint32_t slot = 1; slot <= ECS_MAX_ENTITIES; slot++) {
+        xcalloc(component->slot_count, replacement->element_size);
+    for (uint32_t slot = 1; slot <= world->high_water; slot++) {
         if (!world->occupied[slot] || !ecs_component_has(
                                           world,
                                           (ecs_entity){ slot, world->generations[slot] },
@@ -646,11 +804,16 @@ ecs_entity ecs_world_record_create(ecs_world *world, uint64_t sort_key)
     if (!world || world->iteration_depth) {
         return (ecs_entity){ 0, 0 };
     }
-    for (uint32_t slot = 1; slot <= ECS_MAX_ENTITIES; slot++) {
+    for (uint32_t slot = world->free_hint;; slot++) {
+        if (slot >= world->execution.slot_count &&
+            ecs_world_reserve_entities(world, slot)) {
+            return (ecs_entity){ 0, 0 };
+        }
         if (world->occupied[slot] || world->reserved[slot]) {
             continue;
         }
         world->reserved[slot] = 1;
+        world->free_hint = slot + 1;
         if (slot > world->high_water) {
             world->high_water = slot;
         }
@@ -666,7 +829,6 @@ ecs_entity ecs_world_record_create(ecs_world *world, uint64_t sort_key)
         );
         return entity;
     }
-    return (ecs_entity){ 0, 0 };
 }
 
 int ecs_world_record_destroy(ecs_world *world, ecs_entity entity, uint64_t sort_key)
@@ -785,11 +947,15 @@ void ecs_world_clear_commands(ecs_world *world)
     }
     for (int i = 0; i < acount(world->commands); i++) {
         ecs_command *command = &world->commands[i];
-        if (command->kind == ECS_COMMAND_CREATE && slot_valid(command->entity.slot) &&
-            !world->occupied[command->entity.slot]) {
+        if (command->kind == ECS_COMMAND_CREATE &&
+            slot_valid(world, command->entity.slot) &&
+            world->reserved[command->entity.slot] &&
+            world->generations[command->entity.slot] == command->entity.generation) {
             world->reserved[command->entity.slot] = 0;
+            advance_generation(world, command->entity.slot);
         }
-        if (command->kind == ECS_COMMAND_DESTROY && slot_valid(command->entity.slot)) {
+        if (command->kind == ECS_COMMAND_DESTROY &&
+            slot_valid(world, command->entity.slot)) {
             world->pending_destroy[command->entity.slot] = 0;
         }
         free_command(command);
@@ -1335,7 +1501,7 @@ uint32_t ecs_world_high_water_mark(const ecs_world *world)
 
 uint32_t ecs_world_generation(const ecs_world *world, uint32_t slot)
 {
-    if (!world || !slot_valid(slot)) {
+    if (!world || !slot_valid(world, slot)) {
         return 0;
     }
     return world->generations[slot];

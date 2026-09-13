@@ -5,16 +5,28 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_jit.c
     src/graph/compiler/behavior_expression.c
     src/graph/compiler/behavior_function_loop.c
+    src/graph/compiler/behavior_function_switch.c
+    src/graph/compiler/behavior_function_state.c
+    src/graph/compiler/behavior_function_delay.c
     src/graph/compiler/behavior_function.c
     src/graph/compiler/behavior_function_values.c
+    src/graph/compiler/behavior_function_motion.c
+    src/graph/compiler/behavior_function_random.c
     src/graph/compiler/behavior_function_aggregate.c
     src/graph/compiler/behavior_function_host.c
+    src/graph/compiler/behavior_function_watch.c
+    src/graph/compiler/behavior_function_jit_watch.c
     src/graph/compiler/behavior_function_suspend.c
+    src/graph/compiler/behavior_function_call.c
+    src/graph/compiler/behavior_function_invoke.c
     src/graph/compiler/behavior_function_jit_suspend.c
     src/graph/compiler/behavior_function_names.c
     src/graph/compiler/behavior_function_command.c
     src/graph/compiler/behavior_function_query.c
+    src/graph/compiler/behavior_function_host_call.c
+    src/graph/compiler/behavior_function_jit_host_call.c
     src/graph/compiler/behavior_function_array.c
+    src/graph/compiler/behavior_function_array_search.c
     src/graph/compiler/behavior_function_component.c
     src/graph/compiler/behavior_function_jit_component.c
     src/graph/compiler/behavior_function_vm.c
@@ -24,6 +36,8 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function_jit_registers.c
     src/graph/compiler/behavior_function_jit.c
     src/graph/compiler/behavior_function_c.c
+    src/graph/runtime/flow_compiled.c
+    src/graph/runtime/flow_compiled_frames.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/behavior_data.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow_visual.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/compile.c
@@ -70,6 +84,11 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/flow_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/flow_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/instance.c
+    src/graph/runtime/instance_bank.c
+    src/graph/runtime/instance_batch.c
+    src/graph/runtime/instance_state.c
+    src/graph/runtime/update.c
+    src/graph/runtime/update_jit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/value_array.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
@@ -173,10 +192,13 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/particles.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_motion.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_transform.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_motion.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_motion_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_parts.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/behavior.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/pending.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entities.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/live.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/gameplay.c

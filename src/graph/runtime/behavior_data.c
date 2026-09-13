@@ -52,7 +52,14 @@ int behavior_data_instruction(behavior_data_context *context, const graph_ir_beh
             }
             if (ctx->observer && ctx->on_data_edge &&
                 (source->output_pins[instruction->target].flags & PIN_FLAG_WATCH)) {
-                flow_watch_store(ctx->observer, source, 1, instruction->target, &value);
+                flow_watch_store(
+                    ctx->observer,
+                    runtime_store_graph(ctx->runtime),
+                    source,
+                    1,
+                    instruction->target,
+                    &value
+                );
             }
             const pin_spec *spec = &n->input_pins[instruction->pin];
             if (instruction->conversion) {
@@ -126,7 +133,14 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             .services = host.services,
         };
         behavior_instance_bind_values(instance, &call);
+        behavior_function_bind_storage(&call, a);
+        behavior_function_activation activation = { 0 };
+        if (behavior_function_resumable(function)) {
+            behavior_function_activation_init(function, &activation);
+            call.activation = &activation;
+        }
         int result = behavior_function_run(function, &call, ctx->backend == BEHAVIOR_SLJIT);
+        behavior_function_activation_free(&activation);
         if (result) {
             const behavior_function_source
                 *source = behavior_function_source_at(function, call.error_source);
@@ -200,7 +214,7 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
             break;
         }
         /* Managed return values must outlive the callee's slot storage. */
-        result = flow_copy_input(a, &outputs[output++], &value);
+        result = pin_value_snapshot_to_arena(a, &outputs[output++], &value);
         if (result) {
             result = fail(ctx, n, i, "function return copy failed");
             break;

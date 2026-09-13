@@ -2,8 +2,24 @@
 #include "graph/document/library.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
+#include "test/instance_bank_fixture.h"
+#include "test/pending_fixture.h"
 #include "test/suite_internal.h"
+#include "test/whole_array_op_fixture.h"
 #include "test/whole_function_fixture.h"
+#include "test/whole_managed_fixture.h"
+#include "test/whole_multigate_fixture.h"
+#include "test/whole_name_fixture.h"
+#include "test/whole_owned_array_fixture.h"
+#include "test/whole_particle_fixture.h"
+#include "test/whole_random_fixture.h"
+#include "test/whole_reaction_fixture.h"
+#include "test/whole_reflected_fixture.h"
+#include "test/whole_retrigger_fixture.h"
+#include "test/whole_rhythm_fixture.h"
+#include "test/whole_search_fixture.h"
+#include "test/whole_state_fixture.h"
+#include "test/whole_switch_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -62,7 +78,7 @@ static void compiled_counter(behavior_backend backend)
         }
         assert(event && delay && !behavior_program_diagnostic(asset->program));
         const behavior_function_diagnostic *d = behavior_program_function_diagnostic(program, event);
-        assert(d && d->graph == asset->graph && d->node == delay && d->pin == -1);
+        assert(!d && behavior_program_function(program, event));
     }
     uint64_t eval_before = eval_oracle_calls();
     uint64_t flow_before = flow_oracle_calls();
@@ -642,20 +658,24 @@ static void pure_unused_return(behavior_backend backend)
     assert(behavior_instance_set_backend(bi, backend) == 0);
     behavior_instance_set_trace_enabled(bi, 0);
     if (backend != BEHAVIOR_ORACLE) {
-        const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
-            behavior_program_graph(a->program, a->graph),
-            event
+        assert(behavior_program_function(behavior_program_graph(a->program, a->graph), event));
+        assert(
+            !behavior_program_function_diagnostic(behavior_program_graph(a->program, a->graph), event)
         );
-        assert(d && d->graph == f && d->node == random);
     }
     srand(2718);
     (void)rand();
     int expected_next = rand();
     srand(2718);
     flow_error error = { 0 };
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     assert(bi->variables[0].d == 42 && rand() == expected_next);
+    if (backend != BEHAVIOR_ORACLE) {
+        assert(run->whole_function_executed);
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    }
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
 }
@@ -730,19 +750,99 @@ static void whole_pure_calls(behavior_backend backend)
     behavior_asset_free(a);
 }
 
+static void dispatch_empty(behavior_instance *instance, const char *name)
+{
+    flow_error error;
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+    flow_run *run = behavior_instance_dispatch(instance, name, (flow_inputs){ 0 }, &error);
+    assert(run && !error.code && flow_run_status(run) == FLOW_COMPLETED);
+    if (instance->backend != BEHAVIOR_ORACLE) {
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    }
+    assert(!behavior_instance_release_activation(instance, run));
+}
+static void event_generations(behavior_backend backend)
+{
+    behavior_asset *asset = behavior_asset_new("Event generations");
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    assert(!graph_set_event_name(asset->graph, event, "Old"));
+    behavior_program_publish(asset);
+    assert(!graph_set_event_name(asset->graph, event, "Current"));
+    behavior_backend previous = behavior_debug_backend(BEHAVIOR_ORACLE);
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_debug_backend(previous);
+    assert(!behavior_instance_set_backend(instance, backend));
+    assert(!behavior_instance_set_activation_pool(instance, true));
+    flow_error error;
+    assert(!behavior_instance_dispatch(instance, "Old", (flow_inputs){ 0 }, &error));
+    assert(error.code == FLOW_ERR_UNKNOWN_EVENT);
+    dispatch_empty(instance, "Current");
+
+    behavior_asset *next = behavior_asset_new("Event generations");
+    node *updated = graph_add_node(next->graph, &NODE_Event);
+    assert(!graph_set_event_name(next->graph, updated, "Current"));
+    behavior_program_publish(next);
+    assert(!graph_set_event_name(next->graph, updated, "Updated"));
+    assert(behavior_instance_can_update(instance, next) == INSTANCE_UPDATE_READY);
+    behavior_instance_update(instance, next);
+    behavior_asset_free(asset);
+    assert(!behavior_instance_dispatch(instance, "Current", (flow_inputs){ 0 }, &error));
+    assert(error.code == FLOW_ERR_UNKNOWN_EVENT);
+    dispatch_empty(instance, "Updated");
+
+    assert(!behavior_instance_pool_release(instance));
+    assert(!graph_set_event_name(next->graph, updated, "Reused"));
+    assert(behavior_instance_pool_reuse(instance, next, NULL, NULL, NULL) == instance);
+    assert(!behavior_instance_dispatch(instance, "Updated", (flow_inputs){ 0 }, &error));
+    assert(error.code == FLOW_ERR_UNKNOWN_EVENT);
+    dispatch_empty(instance, "Reused");
+    behavior_instance_destroy(instance);
+    behavior_asset_free(next);
+}
 void test_compiled_behaviors()
 {
+    test_pending_backend(BEHAVIOR_SLJIT);
+    test_pending_backend(BEHAVIOR_BYTECODE);
+    test_pending_backend(BEHAVIOR_ORACLE);
+    test_behavior_batches();
+    event_generations(BEHAVIOR_SLJIT);
+    event_generations(BEHAVIOR_BYTECODE);
+    event_generations(BEHAVIOR_ORACLE);
     test_compiled_components();
     test_compiled_loops();
+    test_compiled_switches(NULL);
+    test_compiled_states(NULL);
+    test_compiled_multigate(NULL);
     test_compiled_conversions();
     test_compiled_aliases();
     test_compiled_stores();
+    test_managed_reuse();
     test_compiled_arrays();
     test_compiled_queries();
     test_compiled_commands();
     test_compiled_suspensions();
+    test_compiled_delays();
+    test_compiled_retrigger(NULL);
+    instance_bank_smoke(BEHAVIOR_ORACLE);
+    instance_bank_smoke(BEHAVIOR_BYTECODE);
+    instance_bank_smoke(BEHAVIOR_SLJIT);
+    test_compiled_recursion(NULL);
+    test_compiled_async(NULL);
     test_compiled_aggregates();
     test_compiled_math();
+    test_compiled_motion(NULL);
+    test_compiled_random(NULL);
+    test_compiled_data(NULL);
+    test_compiled_material(NULL);
+    test_compiled_particles(NULL);
+    test_compiled_managed(NULL);
+    test_owned_arrays(NULL);
+    test_array_ops(NULL);
+    test_compiled_names(NULL);
+    test_compiled_search(NULL);
+    test_compiled_reaction(NULL);
+    test_compiled_rhythm(NULL);
+    test_compiled_reflected(NULL);
     test_compiled_integers();
     pure_unused_return(behavior_default_backend());
     pure_unused_return(BEHAVIOR_BYTECODE);

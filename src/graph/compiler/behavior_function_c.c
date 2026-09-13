@@ -8,8 +8,14 @@ static const char *field(pin_type type)
 {
     return behavior_scalar_field(type);
 }
+static void type_name(FILE *out, const char *name);
 static void constant(FILE *out, pin_type type, pin_value value)
 {
+    if (behavior_scalar_string(type)) {
+        fputs("(const char*)", out);
+        type_name(out, value.str);
+        return;
+    }
     if (behavior_scalar_integer(type) || type == PIN_HANDLE) {
         uint64_t bits = behavior_scalar_bits(value);
         fprintf(out, "(%s)UINT64_C(%llu)", behavior_scalar_c_type(type), (unsigned long long)bits);
@@ -47,12 +53,17 @@ static void type_name(FILE *out, const char *name)
 }
 static void enter_locals(FILE *out, const behavior_function *f, int frame)
 {
+    if (f->waits) {
+        fprintf(out, "c->activation->wake_times[%d]=0;\n", frame);
+    }
     for (int i = 0; i < acount(f->locals); i++) {
         if (f->locals[i].frame != frame) {
             continue;
         }
         fprintf(out, "l%d=", i);
-        if (f->locals[i].offset == SIZE_MAX - 1) {
+        if (f->locals[i].array_default) {
+            fprintf(out, "(uintptr_t)c->data->values[%d].ptr", f->locals[i].data_index);
+        } else if (f->locals[i].offset == SIZE_MAX - 1) {
             type_name(out, f->locals[i].initial.str);
         } else {
             constant(out, f->locals[i].initial.type, f->locals[i].initial);
@@ -62,7 +73,7 @@ static void enter_locals(FILE *out, const behavior_function *f, int frame)
 }
 static void failure(FILE *out, const behavior_function_instruction *i, behavior_function_failure reason)
 {
-    if (i->op != BF_QUERY) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
         fputs("c->error_message=(const char*)", out);
         type_name(out, i->message);
         fputs(";", out);
@@ -86,7 +97,8 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
     fprintf(
         out,
         "return %d;\n",
-        reason == BEHAVIOR_FUNCTION_STATE       ? FLOW_ERR_STATE
+        reason == BEHAVIOR_FUNCTION_ARGUMENT    ? FLOW_ERR_ARGUMENT
+        : reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
         : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
         : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
                                                 : FLOW_ERR_STEP_BUDGET
@@ -174,7 +186,7 @@ static void activation_values(
         }
     }
 }
-static void body(const behavior_function *f, FILE *out, char prefix)
+static void body(const behavior_function *f, FILE *out, char prefix, bool inspected)
 {
     for (int j = 0; j < acount(f->slots); j++) {
         fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);
@@ -187,7 +199,6 @@ static void body(const behavior_function *f, FILE *out, char prefix)
     for (int j = 0; j < acount(f->frames); j++) {
         fprintf(out, "uintptr_t s%d=0;\n", j);
     }
-    enter_locals(out, f, 0);
     if (acount(f->suspensions)) {
         fputs("switch(c->activation->pc){\n", out);
         for (int j = 0; j < acount(f->suspensions); j++) {
@@ -198,15 +209,59 @@ static void body(const behavior_function *f, FILE *out, char prefix)
         }
         fputs("default:break;}\n", out);
     }
+    enter_locals(out, f, 0);
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
         fprintf(out, "%c%d: ;\n", prefix, pc);
+        if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+            continue;
+        }
         if (i->indirect || i->op == BF_PRESENT) {
             memory(out, i);
             continue;
         }
         switch (i->op) {
+            case BF_WATCH_BEGIN:
+                fprintf(out, "if(c->watch)c->watched=c->watches[%d].initial;\n", i->target);
+                break;
+            case BF_WATCH_VALUE:
+                fprintf(
+                    out,
+                    "if(c->watch)memcpy((char*)%s+%zu,&v%d,sizeof(v%d));\n",
+                    i->right ? "c->watch_storage" : "&c->watched",
+                    i->offset,
+                    i->left,
+                    i->left
+                );
+                break;
+            case BF_WATCH_PRESENT:
+                fprintf(out, "if(c->watch)c->watched.ptr=v%d?c->watch_storage:NULL;\n", i->left);
+                break;
+            case BF_WATCH_RESET:
+                fprintf(out, "if(c->watch)c->watch(c->inspection_user,c->watches+%d,NULL);\n", i->target);
+                break;
+            case BF_WATCH_END:
+                fprintf(out, "if(c->watch && v%d)c->watch(c->inspection_user,c->watches+%d,&c->watched);\n", i->left, i->target);
+                break;
+            case BF_TRACE:
+                fprintf(out, "if(c->trace)c->trace(c->inspection_user,c->edges+%d,steps);\n", i->target);
+                break;
+            case BF_POINT:
+            case BF_DELAY:
+            case BF_INVOKE:
             case BF_SUSPEND: {
+                if (i->op == BF_POINT) {
+                    fprintf(out, "if(c->inspect && c->inspect(c->inspection_user,c->points+%d)){\n", i->left);
+                }
+                if (i->op == BF_DELAY) {
+                    fprintf(
+                        out,
+                        "c->wake_time=c->now+v%d;if(!(c->wake_time<=c->now)){c-"
+                        ">activation->wake_times[%d]=c->wake_time;\n",
+                        i->left,
+                        i->frame
+                    );
+                }
                 for (int j = 0; j < acount(f->suspensions); j++) {
                     if (f->suspensions[j].pc == pc) {
                         activation_values(out, f, &f->suspensions[j], false);
@@ -225,23 +280,166 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     i->stack,
                     (unsigned long long)i->node_id,
                     i->frame ? "s0" : "steps",
-                    FLOW_SUSPENDED_RESULT
+                    i->op == BF_POINT    ? FLOW_PAUSED_RESULT
+                    : i->op == BF_INVOKE ? BEHAVIOR_FUNCTION_CALL_RESULT
+                                         : FLOW_SUSPENDED_RESULT
                 );
+                if (i->op == BF_DELAY || i->op == BF_POINT) {
+                    fputs("}\n", out);
+                }
+                break;
+            }
+            case BF_RETRIGGER:
+                fprintf(out, "v%d=c->retrigger(c,%d,%d,v%d)!=0;\n", i->output, i->frame, i->target, i->left);
+                break;
+            case BF_STRING_EQUAL:
+                fprintf(
+                    out,
+                    "v%d=behavior_string_equal((const "
+                    "char*)(uintptr_t)v%d,(const char*)(uintptr_t)v%d);\n",
+                    i->output,
+                    i->left,
+                    i->right
+                );
+                break;
+            case BF_INDEX:
+                fprintf(
+                    out,
+                    "v%d=v%d+(uintptr_t)(intptr_t)v%d*%zu;\n",
+                    i->output,
+                    i->left,
+                    i->right,
+                    i->offset
+                );
+                break;
+            case BF_COPY_STRING:
+                fprintf(out, "{const char *s=(const char*)(uintptr_t)v%d;if(!s)s=(const char*)", i->left);
+                type_name(out, i->value.str);
+                fprintf(
+                    out,
+                    ";v%d=(%s)(uintptr_t)(s?c->copy_string(c->value_storage,s):"
+                    "0); }\n",
+                    i->output,
+                    behavior_scalar_c_type(i->type)
+                );
+                break;
+            case BF_COPY_ARRAY:
+                fprintf(
+                    out,
+                    "v%d=(uintptr_t)c->copy_array(c->value_storage,(const "
+                    "pin_array*)(uintptr_t)v%d);\n",
+                    i->output,
+                    i->left
+                );
+                break;
+            case BF_STATE_SELECT: {
+                const behavior_state_selection *s = &f->state_selections[i->target];
+                fprintf(
+                    out,
+                    "v%d=c->select_state(c->value_owner,&(const "
+                    "behavior_state_selection){%d,%d},v%d,v%d);\n",
+                    i->output,
+                    s->index,
+                    s->outputs,
+                    i->left,
+                    i->right
+                );
+                break;
+            }
+            case BF_INTERN_STRING:
+                fprintf(
+                    out,
+                    "{const ecs_execution_view *w=(const "
+                    "ecs_execution_view*)(uintptr_t)v%d;v%d=w->intern_string(w,"
+                    "v%d); }\n",
+                    i->right,
+                    i->output,
+                    i->left
+                );
+                break;
+            case BF_STORE_VALUE:
+                fprintf(
+                    out,
+                    "c->store_value(c->value_owner,%d,&c->data->values[%d]);\n",
+                    i->target,
+                    i->left
+                );
+                break;
+            case BF_HOST_SERVICE:
+                fprintf(out, "v%d=(uintptr_t)c->data->calls[%d].service;\n", i->output, i->target);
+                break;
+            case BF_HOST_SLOT:
+                fprintf(
+                    out,
+                    i->target ? "v%d=(uintptr_t)c->data->buffers[%d];\n"
+                              : "v%d=(uintptr_t)&c->data->values[%d];\n",
+                    i->output,
+                    i->left
+                );
+                break;
+            case BF_HOST_CALL: {
+                const behavior_function_host_call *spec = &f->host_calls[i->target];
+                if (spec->call->value) {
+                    fprintf(
+                        out,
+                        "{c->error_message=c->data->calls[%d].value(c->value_"
+                        "storage,"
+                        "c->data->values+%d,%d,c->data->values+%d);if(c->error_"
+                        "message){",
+                        i->target,
+                        spec->first,
+                        spec->result_first - spec->first,
+                        spec->result_first
+                    );
+                    failure(out, i, i->left);
+                    fputs("}}\n", out);
+                    break;
+                }
+                fprintf(
+                    out,
+                    "{behavior_data_binding "
+                    "*d=&c->data->calls[%d];c->error_message=d->invoke(d->"
+                    "service,c->data->values+%d,c->data->values+%d);if(c->"
+                    "error_message){",
+                    i->target,
+                    spec->first,
+                    spec->result_first
+                );
+                failure(out, i, i->left);
+                fputs("}}\n", out);
                 break;
             }
             case BF_COMMAND_SERVICE:
                 fprintf(out, "v%d=(uintptr_t)c->commands[%d].service;\n", i->output, i->target);
                 break;
-            case BF_COMMAND_ARGUMENT:
+            case BF_COMMAND_RESULT:
                 fprintf(
                     out,
-                    "memcpy((char*)&c->command_arguments[%d]+%zu,&v%d,sizeof(v%"
+                    "memcpy(&v%d,(const "
+                    "char*)&c->command_results[%d]+%zu,sizeof(v%d));\n",
+                    i->output,
+                    i->left,
+                    i->offset,
+                    i->output
+                );
+                break;
+            case BF_COMMAND_ARGUMENT:
+            case BF_COMMAND_OUTPUT:
+                fprintf(
+                    out,
+                    "memcpy((char*)&c->%s[%d]+%zu,&v%d,sizeof(v%"
                     "d));\n",
+                    i->op == BF_COMMAND_OUTPUT ? "command_results" : "command_arguments",
                     i->target,
                     i->offset,
                     i->left,
                     i->left
                 );
+                break;
+            case BF_COMMAND_BEGIN:
+                fprintf(out, "c->error_status=c->begin_command(c,%d);if(c->error_status<0){", i->target);
+                failure(out, i, BEHAVIOR_FUNCTION_COMMAND);
+                fputs("}\n", out);
                 break;
             case BF_COMMAND: {
                 const behavior_function_command *command = &f->commands[i->target];
@@ -265,12 +463,18 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                 fprintf(out, "}v%d=(uintptr_t)&q->snapshot;}\n", i->output);
                 break;
             case BF_ARRAY:
-                fprintf(out, "{const pin_value *a=");
+                fprintf(out, "{const pin_value *fallback=");
+                if (i->offset) {
+                    fprintf(out, "&c->data->values[%zu];", i->offset - 1);
+                } else {
+                    fprintf(out, "0;");
+                }
+                fprintf(out, "const pin_value *a=");
                 if (i->target == BF_ARGUMENT) {
                     fprintf(
                         out,
                         "c->argument_count>%d&&c->arguments[%d].type==%d?&c->"
-                        "arguments[%d]:0;",
+                        "arguments[%d]:fallback;",
                         i->left,
                         i->left,
                         i->value.type,
@@ -279,9 +483,14 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                 } else if (i->target == BF_VARIABLE) {
                     fprintf(out, "&c->variables[%d];", i->left);
                 } else {
-                    fprintf(out, "0;");
+                    fprintf(out, "fallback;");
                 }
-                fprintf(out, "v%d=a&&a->container==%d?(uintptr_t)a->ptr:0;}\n", i->output, PIN_CONTAINER_ARRAY);
+                fprintf(
+                    out,
+                    "v%d=a&&a->container==%d?(uintptr_t)a->ptr:0;}\n",
+                    i->output,
+                    i->value.container
+                );
                 break;
             case BF_STORAGE_NAME:
                 fprintf(out, "v%d=(uintptr_t)c->variable_storage[%d].type_name;\n", i->output, i->left);
@@ -317,6 +526,15 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     i->target
                 );
                 break;
+            case BF_CONTEXT:
+                fprintf(
+                    out,
+                    "memcpy(&v%d,(const char*)c+%zu,sizeof(v%d));\n",
+                    i->output,
+                    i->offset,
+                    i->output
+                );
+                break;
             case BF_OWNER: fprintf(out, "v%d=c->owner;\n", i->output); break;
             case BF_WORLD:
                 fprintf(out, "v%d=(uintptr_t)c->%s;\n", i->output, i->target ? "binding_world" : "world");
@@ -331,16 +549,21 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     i->right
                 );
                 break;
+            case BF_COLUMN:
             case BF_COMPONENT:
                 fprintf(
                     out,
                     "{const ecs_execution_column "
-                    "*column=ecs_execution_component((const "
-                    "ecs_execution_view*)(uintptr_t)v%d,v%d,UINT64_C(%llu));\n",
+                    "*column=c->columns?c->columns[%d]:ecs_execution_find_"
+                    "column((const "
+                    "ecs_execution_view*)(uintptr_t)v%d,UINT64_C(%llu));\n",
+                    i->component,
                     i->left,
-                    i->right,
                     (unsigned long long)i->value.u64
                 );
+                if (i->op == BF_COMPONENT) {
+                    fprintf(out, "column=ecs_execution_present(column,v%d);\n", i->right);
+                }
                 if (i->type == PIN_BOOL) {
                     fprintf(out, "v%d=column!=NULL;}\n", i->output);
                     break;
@@ -353,7 +576,11 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                     i->offset
                 );
                 failure(out, i, i->target);
-                fprintf(out, "}v%d=column?(uintptr_t)column->data+v%d*column->stride:0;}\n", i->output, i->right);
+                if (i->op == BF_COLUMN) {
+                    fprintf(out, "}v%d=(uintptr_t)column;}\n", i->output);
+                } else {
+                    fprintf(out, "}v%d=column?(uintptr_t)column->data+v%d*column->stride:0;}\n", i->output, i->right);
+                }
                 break;
             case BF_LOAD:
             case BF_READ:
@@ -410,8 +637,24 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             case BF_RESULT_TYPE_NAME:
                 fprintf(out, "c->results[%d].type_name=(const char*)(uintptr_t)v%d;\n", i->target, i->left);
                 break;
+            case BF_RESULT_ARRAY:
+                fprintf(
+                    out,
+                    "c->results[%d]=(pin_value){.type=%d,.container=%d,.ptr=("
+                    "void*)(uintptr_t)v%d,.type_name=(const "
+                    "char*)(uintptr_t)v%d};\n",
+                    i->target,
+                    i->type,
+                    i->value.container,
+                    i->left,
+                    i->right
+                );
+                break;
             case BF_SELECT:
                 fprintf(out, "v%d=v%d?v%d:v%d;\n", i->output, i->left, i->right, i->target);
+                break;
+            case BF_FMA:
+                fprintf(out, "v%d=fma(v%d,v%d,v%d);\n", i->output, i->left, i->right, i->target);
                 break;
             case BF_REQUIRE:
                 fprintf(out, "if(!v%d){", i->left);
@@ -436,7 +679,9 @@ static void body(const behavior_function *f, FILE *out, char prefix)
                 MATH_BINARY(MOD_F32, Modulo, fmodf)
                 MATH_BINARY(MOD_F64, Modulo, fmod)
                 MATH_BINARY(HYPOT, Length, hypot)
+                MATH_BINARY(RANDOM_RANGE, RandomRange, behavior_random_range)
 #undef MATH_BINARY
+            case BF_RANDOM: fprintf(out, "v%d=rand();\n", i->output); break;
             case BF_CONSTANT: {
                 fprintf(out, "v%d=", i->output);
                 constant(out, i->type, i->value);
@@ -449,12 +694,37 @@ static void body(const behavior_function *f, FILE *out, char prefix)
             case BF_LOCAL:
                 fprintf(out, "v%d=l%d;\n", i->output, i->left);
                 break;
-            case BF_SAVE: fprintf(out, "l%d=v%d;\n", i->target, i->left); break;
+            case BF_SAVE:
+                fprintf(out, "l%d=v%d;\n", i->target, i->left);
+                if (behavior_function_inspectable(f) && f->locals[i->target].parameter) {
+                    fprintf(
+                        out,
+                        "memcpy(c->activation->values+%d,&v%d,sizeof(v%d));\n",
+                        acount(f->slots) + i->target,
+                        i->left,
+                        i->left
+                    );
+                }
+                break;
             case BF_ENTER:
+                if (behavior_function_inspectable(f)) {
+                    fprintf(
+                        out,
+                        "c->activation->values[%d]=steps;\n",
+                        acount(f->slots) + acount(f->locals) + i->frame
+                    );
+                }
                 fprintf(out, "s%d=steps;steps=0;\n", i->frame);
                 enter_locals(out, f, i->target);
                 break;
             case BF_LEAVE:
+                if (behavior_function_inspectable(f)) {
+                    fprintf(
+                        out,
+                        "c->activation->values[%d]=steps;\n",
+                        acount(f->slots) + acount(f->locals) + i->target
+                    );
+                }
                 fprintf(out, "steps=s%d;\n", f->frames[i->target].source.parent);
                 break;
             case BF_CALL_CHECK: {
@@ -668,9 +938,13 @@ static void body(const behavior_function *f, FILE *out, char prefix)
         }
     }
 }
-void behavior_function_write_c(const behavior_function *f, FILE *out, const char *name)
+static void write_definition(const behavior_function *f, FILE *out, const char *name, int index)
 {
-    fprintf(out, "#include \"graph/compiler/behavior_function.h\"\n#include <math.h>\n#include <string.h>\n#include \"ecs/execution.h\"\nint %s(behavior_function_context *c) {\n", name);
+    fprintf(out, "#include \"graph/compiler/behavior_scalar.h\"\n#include \"graph/compiler/behavior_function.h\"\n#include \"graph/runtime/random.h\"\n#include <math.h>\n#include <string.h>\n#include \"ecs/execution.h\"\nint %s", name);
+    if (index) {
+        fprintf(out, "_callee_%d", index);
+    }
+    fputs("(behavior_function_context *c) {\n", out);
     if (f->fast) {
         fprintf(
             out,
@@ -685,9 +959,22 @@ void behavior_function_write_c(const behavior_function *f, FILE *out, const char
             fprintf(out, "1");
         }
         fprintf(out, "){\n");
-        body(f->fast, out, 'F');
+        body(f->fast, out, 'F', false);
         fprintf(out, "}\n");
     }
-    body(f, out, 'L');
+    if (f->runtime_map) {
+        fprintf(out, "if(!c->inspect && !c->watch && !c->trace){\n");
+        body(f, out, 'N', false);
+        fprintf(out, "}\n");
+    }
+    body(f, out, 'L', true);
     fprintf(out, "}\n");
+}
+
+void behavior_function_write_c(const behavior_function *f, FILE *out, const char *name)
+{
+    write_definition(f, out, name, 0);
+    for (int i = 0; i < acount(f->definitions); i++) {
+        write_definition(f->definitions[i], out, name, i + 1);
+    }
 }

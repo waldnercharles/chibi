@@ -4,6 +4,7 @@
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/physics_executor.h"
 
 #include <assert.h>
 #include <math.h>
@@ -15,6 +16,12 @@ typedef struct
     ecs_world *world;
     game_live_world *live;
 } fixture;
+
+static const game_task_system *test_tasks;
+enum
+{
+    PARALLEL_PADDING = 256
+};
 
 static behavior_asset *observer()
 {
@@ -60,6 +67,20 @@ static fixture create()
         assert(ecs_world_register_component(f.world, components[i], NULL) == ECS_OK);
     }
     f.live = game_live_world_new(f.world);
+    if (test_tasks) {
+        game_physics_set_tasks(f.live->physics, test_tasks);
+        /* Put every semantic case above the parallel collection threshold.
+         * These distant, masked bodies produce no additional contacts. */
+        for (int i = 0; i < PARALLEL_PADDING; i++) {
+            ecs_entity entity = ecs_world_create_entity(f.world);
+            assert(GAME_GameTransform_add(f.world, entity, 0) == ECS_OK);
+            assert(GAME_GameCollider_add(f.world, entity, 0) == ECS_OK);
+            assert(ecs_world_apply_commands(f.world) == ECS_OK);
+            *GAME_GameTransform_get(f.world, entity) = (GameTransform){ 10000 + i * 20,
+                                                                        10000 };
+            *GAME_GameCollider_get(f.world, entity) = (GameCollider){ .radius = 1 };
+        }
+    }
     assert(
         game_live_add_definition(f.live, game_live_definition_new("PhysicsObserver", observer())) == 0
     );
@@ -107,7 +128,9 @@ static int step(fixture *f, float delta)
         fprintf(stderr, "physics: %s\n", game_physics_error(f->live->physics));
     }
     assert(result == 0);
-    assert(game_entities_dispatch_events(f->live->entities) >= 0);
+    do {
+        assert(game_entities_dispatch_events(f->live->entities) >= 0);
+    } while (game_entities_pending_events(f->live->entities));
     return game_behavior_log_count(f->live->behaviors);
 }
 
@@ -175,6 +198,45 @@ static void sustained_dynamic_contact()
     dispose(&f);
 }
 
+static void contact_set_changes()
+{
+    fixture f = create();
+    ecs_entity a = body(&f, 0, 0, GAME_BODY_KINEMATIC, 1, 1);
+    ecs_entity b = body(&f, 6, 0, GAME_BODY_KINEMATIC, 1, 1);
+    ecs_entity c = body(&f, 12, 0, GAME_BODY_KINEMATIC, 1, 1);
+    GAME_GameCollider_get(f.world, a)->sensor = true;
+    GAME_GameCollider_get(f.world, b)->sensor = true;
+    GAME_GameCollider_get(f.world, c)->sensor = true;
+    game_physics_set_profiling(f.live->physics, true);
+    assert(step(&f, 0) == 4);
+    assert(other(&f, a) == ecs_entity_to_u64(b));
+    assert(other(&f, c) == ecs_entity_to_u64(b));
+    assert(step(&f, 0) == 0);
+    GAME_GameTransform_get(f.world, a)->x = -20;
+    assert(step(&f, 0) == 0); /* Remove the first sorted pair; keep the second. */
+    GAME_GameTransform_get(f.world, c)->x = 40;
+    assert(step(&f, 0) == 0);
+    GAME_GameTransform_get(f.world, a)->x = 0;
+    GAME_GameTransform_get(f.world, c)->x = 12;
+    assert(step(&f, 0) == 4);
+    assert(
+        game_physics_last_profile(f.live->physics)->bodies ==
+        3 + (test_tasks ? PARALLEL_PADDING : 0)
+    );
+    assert(game_physics_last_profile(f.live->physics)->pairs == 2);
+    assert(game_behavior_destroy_entity(f.live->behaviors, b) == 0);
+    ecs_entity replacement = body(&f, 6, 0, GAME_BODY_KINEMATIC, 1, 1);
+    assert(replacement.slot == b.slot && replacement.generation != b.generation);
+    GAME_GameCollider_get(f.world, replacement)->sensor = true;
+    assert(step(&f, 0) == 4); /* Reused slots must generate new contact events. */
+    assert(other(&f, a) == ecs_entity_to_u64(replacement));
+    assert(other(&f, c) == ecs_entity_to_u64(replacement));
+    game_physics_set_profiling(f.live->physics, false);
+    assert(step(&f, 0) == 0);
+    assert(!game_physics_last_profile(f.live->physics)->bodies);
+    dispose(&f);
+}
+
 static void nearest_and_filters()
 {
     fixture f = create();
@@ -232,6 +294,39 @@ static void moving_target_and_box()
     assert(step(&f, 1.0f / 60) == 2);
     assert(other(&f, shot) == ecs_entity_to_u64(target));
     assert(GAME_GameTransform_get(f.world, shot)->x < 50);
+    dispose(&f);
+}
+
+static void sweep_tree_lifetime()
+{
+    fixture f = create();
+    ecs_entity target = body(&f, 50, 0, GAME_BODY_STATIC, 2, 4);
+    ecs_entity shot = sensor(&f, 0, 0);
+    GAME_GameVelocity_get(f.world, shot)->x = 6000;
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, shot) == ecs_entity_to_u64(target));
+
+    /* Ordinary queries remain current while the swept index is dormant. */
+    GAME_GameBody_get(f.world, shot)->continuous = false;
+    GAME_GameTransform_get(f.world, shot)->x = 0;
+    GAME_GameTransform_get(f.world, target)->x = 80;
+    GAME_GameVelocity_get(f.world, shot)->x = 0;
+    assert(step(&f, 0) == 0);
+    GAME_GameTransform_get(f.world, shot)->x = 80;
+    assert(step(&f, 0) == 2);
+    GAME_GameTransform_get(f.world, shot)->x = 0;
+    assert(step(&f, 0) == 0);
+    assert(game_behavior_destroy_entity(f.live->behaviors, target) == 0);
+    ecs_entity replacement = body(&f, 60, 0, GAME_BODY_STATIC, 2, 4);
+    assert(replacement.slot == target.slot && replacement.generation != target.generation);
+    assert(step(&f, 0) == 0);
+
+    GAME_GameBody_get(f.world, shot)->continuous = true;
+    GAME_GameVelocity_get(f.world, shot)->x = 6000;
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, shot) == ecs_entity_to_u64(replacement));
+    float impact = GAME_GameTransform_get(f.world, shot)->x;
+    assert(impact > 53 && impact < 55);
     dispose(&f);
 }
 
@@ -365,14 +460,80 @@ static void current_contact_query()
     dispose(&f);
 }
 
-void test_physics()
+static void ordered_contacts()
+{
+    fixture f = create();
+    enum
+    {
+        GROUPS = 48
+    };
+    ecs_entity actors[GROUPS][3];
+    for (int group = 0; group < GROUPS; group++) {
+        for (int i = 0; i < 3; i++) {
+            actors[group][i] = body(&f, group * 40 + i * 6, 0, GAME_BODY_KINEMATIC, 1, 1);
+        }
+    }
+    assert(step(&f, 0) == GROUPS * 4);
+    int index = 0;
+    for (int group = 0; group < GROUPS; group++) {
+        const int order[] = { 0, 1, 1, 2 };
+        for (int i = 0; i < 4; i++) {
+            game_behavior_log_info info;
+            assert(game_behavior_log_info_at(f.live->behaviors, index++, &info) == 0);
+            assert(
+                ecs_entity_to_u64(info.entity) ==
+                ecs_entity_to_u64(actors[group][order[i]])
+            );
+        }
+        assert(other(&f, actors[group][1]) == ecs_entity_to_u64(actors[group][2]));
+    }
+    assert(step(&f, 1.0f / 60) == 0);
+    for (int group = 0; group < GROUPS; group++) {
+        GAME_GameTransform_get(f.world, actors[group][2])->y = 40;
+    }
+    assert(step(&f, 0) == 0);
+    for (int group = 0; group < GROUPS; group++) {
+        GAME_GameTransform_get(f.world, actors[group][2])->y = 0;
+    }
+    assert(step(&f, 0) == GROUPS * 2);
+    for (int group = 0; group < GROUPS; group++) {
+        for (int i = 0; i < 2; i++) {
+            game_behavior_log_info info;
+            assert(game_behavior_log_info_at(f.live->behaviors, group * 2 + i, &info) == 0);
+            assert(ecs_entity_to_u64(info.entity) == ecs_entity_to_u64(actors[group][i + 1]));
+        }
+    }
+    dispose(&f);
+}
+
+static void physics_cases()
 {
     solid_walls();
     sustained_dynamic_contact();
+    contact_set_changes();
     nearest_and_filters();
     moving_target_and_box();
+    sweep_tree_lifetime();
     lifecycle_and_validation();
     interpolation();
     current_contact_query();
+    ordered_contacts();
+}
+
+void test_physics()
+{
+    physics_cases();
+    test_physics_executor executor = test_physics_executor_open();
+    if (executor.library) {
+        test_tasks = &executor.tasks;
+        physics_cases();
+        test_tasks = NULL;
+        printf(
+            "physics parallel PASS: workers=%d, padded semantic cases and "
+            "ordered contact re-entry\n",
+            executor.tasks.workers
+        );
+    }
+    test_physics_executor_close(&executor);
     puts("physics PASS: solid thin walls, sliding, contact lifetime, relative moving-target and box sweeps, nearest/filter/owner exclusion, initial overlap, removal/reset and validation");
 }

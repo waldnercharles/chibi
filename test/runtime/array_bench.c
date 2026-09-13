@@ -5,7 +5,7 @@
 #include <dlfcn.h>
 #include <time.h>
 
-static const behavior_function *body(behavior_asset *a)
+static const behavior_function *body(behavior_asset *a, int kind)
 {
     behavior_program_publish(a);
     graph *g = a->graphs[3];
@@ -16,6 +16,7 @@ static const behavior_function *body(behavior_asset *a)
     assert(f && behavior_function_entry(f));
     for (int i = 0; i < acount(f->instructions); i++) {
         assert(
+            (kind == WHOLE_ARRAY_VARIABLE && f->instructions[i].op == BF_COPY_ARRAY) ||
             !behavior_function_call(f->instructions[i].op) ||
             behavior_function_math(f->instructions[i].op)
         );
@@ -30,7 +31,7 @@ void emit_array_c(const char *path)
         behavior_asset *a = whole_array_fixture(kind);
         char name[40];
         snprintf(name, sizeof name, "generated_array%d", kind);
-        behavior_function_write_c(body(a), out, name);
+        behavior_function_write_c(body(a, kind), out, name);
         behavior_asset_free(a);
     }
     assert(!fclose(out));
@@ -58,6 +59,12 @@ static void compare(
                                             .results = expected,
                                             .budget = budget };
     behavior_instance_bind_values(bi, &reference);
+    behavior_function_bind_storage(&reference, &storage);
+    behavior_function_activation reference_activation = { 0 };
+    if (behavior_function_resumable(f)) {
+        behavior_function_activation_init(f, &reference_activation);
+    }
+    reference.activation = &reference_activation;
     int status = behavior_function_run(f, &reference, false);
     double sum = bi->variables[2].d;
     bi->variables[2].d = 0;
@@ -67,6 +74,12 @@ static void compare(
                                          .results = results,
                                          .budget = budget };
     behavior_instance_bind_values(bi, &actual);
+    behavior_function_bind_storage(&actual, &storage);
+    behavior_function_activation actual_activation = { 0 };
+    if (behavior_function_resumable(f)) {
+        behavior_function_activation_init(f, &actual_activation);
+    }
+    actual.activation = &actual_activation;
     assert(
         entry(&actual) == status && actual.steps == reference.steps &&
         bi->variables[2].d == sum
@@ -101,6 +114,8 @@ static void compare(
             }
         }
     }
+    behavior_function_activation_free(&reference_activation);
+    behavior_function_activation_free(&actual_activation);
     arena_free(&storage);
 }
 int bench_array(const char *path, int count, int rotation)
@@ -109,7 +124,7 @@ int bench_array(const char *path, int count, int rotation)
     assert(library && count > 0);
     for (int kind = 0; kind < WHOLE_ARRAY_COUNT; kind++) {
         behavior_asset *a = whole_array_fixture(kind);
-        const behavior_function *f = body(a);
+        const behavior_function *f = body(a, kind);
         char name[40];
         snprintf(name, sizeof name, "generated_array%d", kind);
         int (*entries[])(behavior_function_context *) = {
@@ -167,6 +182,11 @@ int bench_array(const char *path, int count, int rotation)
                                                   .results = results,
                                                   .budget = 200 };
                 behavior_instance_bind_values(bi, &ctx);
+                behavior_function_activation activation = { 0 };
+                if (behavior_function_resumable(f)) {
+                    behavior_function_activation_init(f, &activation);
+                }
+                ctx.activation = &activation;
                 uint64_t checksum = 0;
                 double start = 0;
                 for (int i = -10000; i < count; i++) {
@@ -192,12 +212,13 @@ int bench_array(const char *path, int count, int rotation)
                     (seconds() - start) * 1e9 / count,
                     (unsigned long long)checksum
                 );
+                behavior_function_activation_free(&activation);
             }
         }
         behavior_instance_destroy(bi);
         behavior_asset_free(a);
     }
     assert(!dlclose(library));
-    puts("PASS: generated-C/SLJIT/bytecode array state, results, errors and source stacks; no array helpers");
+    puts("PASS: generated-C/SLJIT/bytecode array state, results, errors and source stacks; immutable input iteration has no array helpers");
     return 0;
 }

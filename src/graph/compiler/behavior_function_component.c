@@ -37,6 +37,24 @@ bool behavior_function_bind(
     }
     return true;
 }
+
+void behavior_function_bind_columns(
+    const behavior_function *f,
+    behavior_function_context *ctx,
+    const ecs_execution_column ***columns
+)
+{
+    assert(behavior_function_batchable(f));
+    asetlen(*columns, acount(f->components));
+    for (int i = 0; i < acount(f->components); i++) {
+        behavior_function_component component = f->components[i];
+        (*columns)[i] = ecs_execution_find_column(
+            component.binding ? ctx->binding_world : ctx->world,
+            component.id
+        );
+    }
+    ctx->columns = *columns;
+}
 int behavior_lower_owner(builder *b)
 {
     int value = behavior_lower_value(
@@ -91,13 +109,26 @@ static int component(
     int entity,
     const ecs_component_desc *desc,
     bool has,
-    bool flow
+    bool flow,
+    bool binding,
+    bool metadata
 )
 {
+    int column = 0;
+    for (; column < acount(b->function->components); column++) {
+        const behavior_function_component *c = &b->function->components[column];
+        if (c->id == desc->id && c->binding == binding) {
+            break;
+        }
+    }
+    if (column == acount(b->function->components)) {
+        apush(b->function->components, ((behavior_function_component){ desc->id, binding }));
+    }
     return behavior_lower_value(
         b,
         (behavior_function_instruction){
-            .op = BF_COMPONENT,
+            .op = metadata ? BF_COLUMN : BF_COMPONENT,
+            .component = column,
             .type = has ? PIN_BOOL : BF_POINTER_TYPE,
             .left = world,
             .right = entity,
@@ -110,6 +141,16 @@ static int component(
             .message = "compiled component layout changed; republish the "
                        "behavior" }
     );
+}
+int behavior_lower_component_target(builder *b, node *n, int world, int owner, const ecs_component_desc *desc)
+{
+    b->function->component_access = true;
+    return component(b, n, -1, world, entity(b, world, owner), desc, false, true, false, false);
+}
+int behavior_lower_component_column(builder *b, node *n, int pin, int world, const ecs_component_desc *desc)
+{
+    b->function->component_access = true;
+    return component(b, n, pin, world, 0, desc, false, false, false, true);
 }
 static int load(builder *b, const type_desc *type, int row)
 {
@@ -160,15 +201,24 @@ int behavior_lower_component_read(builder *b, node *n)
     if (!self) {
         require(b, slot, n, 0, false, "component access requires a live entity");
     }
-    int row = component(b, n, 0, w, slot, n->desc->component, has, false);
+    int row = component(b, n, 0, w, slot, n->desc->component, has, false, false, false);
     if (has) {
         return behavior_lower_named_constant(b, row, "bool");
     }
     require(b, row, n, 0, false, "entity lacks component");
     return load(b, n->desc->component->type, row);
 }
-static void write(builder *b, int row, int source, size_t offset)
+static void write(builder *b, int world, int row, int source, size_t offset)
 {
+    if (behavior_scalar_string(b->function->slots[source])) {
+        source = behavior_lower_value(
+            b,
+            (behavior_function_instruction){ .op = BF_INTERN_STRING,
+                                             .type = b->function->slots[source],
+                                             .left = source,
+                                             .right = world }
+        );
+    }
     behavior_lower_emit(
         b,
         (behavior_function_instruction){ .op = BF_WRITE,
@@ -187,6 +237,7 @@ bool behavior_lower_component_write(builder *b, node *n)
         return false;
     }
     const ecs_component_desc *desc = n->desc->component;
+    apush(b->function->component_writes, desc->id);
     aggregate shape = behavior_lower_shape(desc->type->name);
     if (!shape.type) {
         behavior_lower_unsupported(b, n, 1, false, "component has managed or unsupported fields");
@@ -220,15 +271,15 @@ bool behavior_lower_component_write(builder *b, node *n)
     if (value) {
         require(b, value->present, n, -1, true, field ? "component field Set requires a value" : "component Set requires a value");
     }
-    int row = component(b, n, -1, w, slot, desc, false, true);
+    int row = component(b, n, -1, w, slot, desc, false, true, false, false);
     require(b, row, n, -1, true, field ? "Target lacks component" : "entity lacks component");
     size_t offset = field ? desc->type->fields[n->desc->component_field].offset : 0;
     if (value) {
         for (int i = 0; i < acount(value->fields); i++) {
-            write(b, row, value->fields[i].slot, offset + value->fields[i].offset);
+            write(b, w, row, value->fields[i].slot, offset + value->fields[i].offset);
         }
     } else {
-        write(b, row, source, offset);
+        write(b, w, row, source, offset);
     }
     /* Keep the output's execution-time snapshot even if later nodes mutate
      * the same row. Unread snapshots are removed by local compaction. */
@@ -275,7 +326,7 @@ int behavior_lower_component_binding(builder *b, node *n, int pin)
     int w = world(b, n, error_pin, flow, true, "component binding requires a component reader and behavior instance");
     int owner = behavior_lower_owner(b);
     require(b, owner, n, error_pin, flow, "component binding requires a live Self entity");
-    int row = component(b, n, error_pin, w, entity(b, w, owner), desc, false, flow);
+    int row = component(b, n, error_pin, w, entity(b, w, owner), desc, false, flow, true, false);
     require(b, row, n, error_pin, flow, "Self does not have the bound component");
     int value = load(b, desc->type, row);
     if (field && value >= 0) {

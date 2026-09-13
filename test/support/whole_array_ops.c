@@ -1,0 +1,425 @@
+#include "graph/model/registry.h"
+#include "graph/runtime/flow_internal.h"
+#include "graph/runtime/instance.h"
+#include "graph/runtime/update.h"
+#include "test/whole_array_op_fixture.h"
+#include "test/whole_managed_fixture.h"
+
+#include <assert.h>
+#include <stdio.h>
+
+static pin_type element_type(int kind)
+{
+    return (pin_type[]){ PIN_I32, PIN_STR, PIN_NAME, PIN_STRUCT }[kind];
+}
+static const char *type_name(int kind)
+{
+    return (const char *[]){ "int", "const char *", "name", "ManagedRecord" }[kind];
+}
+void whole_array_op_inputs(int kind, pin_value arguments[5], arena *storage)
+{
+    const char *names[] = { "one", "two", "three", "four" };
+    whole_managed records[4];
+    pin_value items[4];
+    for (int i = 0; i < 4; i++) {
+        records[i] = (whole_managed){ names[i], { names[i], i + .25f }, i + 1 };
+        items[i] = (pin_value){ .type = element_type(kind),
+                                .type_name = type_name(kind) };
+        if (kind == ARRAY_OP_INTS) {
+            items[i].i = i + 1;
+        } else if (kind == ARRAY_OP_STRUCTS) {
+            items[i].ptr = &records[i];
+        } else {
+            items[i].str = names[i];
+        }
+    }
+    pin_array arrays[] = {
+        { .element_type = items[0].type,
+          .type_name = items[0].type_name,
+          .items = items,
+          .count = 3,
+          .capacity = 3 },
+        { .element_type = items[0].type,
+          .type_name = items[0].type_name,
+          .items = items + 2,
+          .count = 2,
+          .capacity = 2 },
+    };
+    for (int i = 0; i < 2; i++) {
+        pin_value value = { .type = items[0].type,
+                            .type_name = items[0].type_name,
+                            .container = PIN_CONTAINER_ARRAY,
+                            .ptr = &arrays[i] };
+        assert(!pin_value_snapshot_to_arena(storage, &arguments[i], &value));
+    }
+    assert(!pin_value_snapshot_to_arena(storage, &arguments[2], &items[1]));
+    arguments[3] = (pin_value){ .type = PIN_I32, .i = 1 };
+    arguments[4] = (pin_value){ .type = PIN_I32, .i = 2 };
+}
+static node *variable(behavior_asset *a, graph *g, int index, bool set)
+{
+    const behavior_variable *v = &a->variables[index];
+    node *n = graph_add_node(g, set ? &NODE_SetVariable : &NODE_GetVariable);
+    assert(!graph_set_node_reference(g, n, v->id, v->name));
+    assert(!graph_set_pin_type(g, n, true, set ? 1 : 0, v->type, v->type_name));
+    assert(!graph_set_pin_container(g, n, true, set ? 1 : 0, v->container));
+    if (set) {
+        assert(!graph_set_pin_type(g, n, false, 1, v->type, v->type_name));
+        assert(!graph_set_pin_container(g, n, false, 1, v->container));
+    }
+    return n;
+}
+void whole_array_op_arguments(int kind, int operation, pin_value arguments[5], arena *storage)
+{
+    whole_array_op_inputs(kind, arguments, storage);
+    if (operation >= ARRAY_OP_MAKE_SET) {
+        arguments[0].container = arguments[1].container = PIN_CONTAINER_SET;
+    }
+}
+behavior_asset *whole_array_op_fixture(int kind, int operation, bool waits)
+{
+    const char *operations[] = { "Make Array",     "Get",        "Identical",
+                                 "Array Add",      "Add Unique", "Append",
+                                 "Set Array Elem", "Insert",     "Remove Index",
+                                 "Remove Item",    "Clear",      "Reverse",
+                                 "Swap",           "Resize",     "Contains",
+                                 "Find",           "Make Set",   "Set Add",
+                                 "Set Contains",   "Set Length" };
+    behavior_asset *a = behavior_asset_new("Array operations");
+    pin_spec pins[] = {
+        { .name = "Array",
+          .type = element_type(kind),
+          .type_name = type_name(kind),
+          .container = PIN_CONTAINER_ARRAY },
+        { .name = "Other",
+          .type = element_type(kind),
+          .type_name = type_name(kind),
+          .container = PIN_CONTAINER_ARRAY },
+        { .name = "Item", .type = element_type(kind), .type_name = type_name(kind) },
+        { .name = "Index", .type = PIN_I32, .type_name = "int" },
+        { .name = "Second", .type = PIN_I32, .type_name = "int" },
+    };
+    if (operation >= ARRAY_OP_MAKE_SET) {
+        pins[0].container = pins[1].container = PIN_CONTAINER_SET;
+    }
+    for (int i = 0; i < 5; i++) {
+        pins[i].default_value = (pin_value){ .type = pins[i].type,
+                                             .type_name = pins[i].type_name,
+                                             .container = pins[i].container };
+    }
+    pin_spec output = pins[0];
+    output.name = "Result";
+    if (operation == ARRAY_OP_GET) {
+        output = pins[2];
+    } else if (operation == ARRAY_OP_IDENTICAL || operation == ARRAY_OP_CONTAINS || operation == ARRAY_OP_SET_CONTAINS) {
+        output = (pin_spec){ .name = "Result", .type = PIN_BOOL, .type_name = "bool" };
+    } else if (operation == ARRAY_OP_FIND || operation == ARRAY_OP_SET_LENGTH) {
+        output = pins[3];
+    }
+    assert(behavior_asset_add_variable(
+        a,
+        "Source",
+        pins[0].type,
+        pins[0].type_name,
+        pins[0].container,
+        NULL,
+        ""
+    ));
+    assert(behavior_asset_add_variable(
+        a,
+        "Saved",
+        output.type,
+        output.type_name,
+        output.container,
+        NULL,
+        ""
+    ));
+    assert(behavior_asset_add_variable(
+        a,
+        "Final",
+        output.type,
+        output.type_name,
+        output.container,
+        NULL,
+        ""
+    ));
+    graph *g = behavior_asset_add_function(a, "Transform", false);
+    node *input = g->nodes[0], *ret = g->nodes[1];
+    for (int i = 0; i < 5; i++) {
+        assert(graph_add_pin(g, input, true, &pins[i]) == i + 1);
+    }
+    assert(graph_add_pin(g, ret, false, &output) == 1);
+    node *op = graph_add_node(g, registry_node_by_name(operations[operation]));
+    assert(op);
+    if (operation == ARRAY_OP_MAKE || operation == ARRAY_OP_MAKE_SET) {
+        assert(graph_add_pin(g, op, false, &pins[2]) == 1);
+        assert(graph_add_pin(g, op, false, &pins[2]) == 2);
+    }
+    int sources[3] = { 0, 3, 2 };
+    if (operation == ARRAY_OP_MAKE || operation == ARRAY_OP_MAKE_SET) {
+        sources[0] = sources[1] = sources[2] = 2;
+    } else if (operation == ARRAY_OP_IDENTICAL || operation == ARRAY_OP_APPEND) {
+        sources[1] = 1;
+    } else if (
+        operation == ARRAY_OP_ADD || operation == ARRAY_OP_UNIQUE ||
+        operation == ARRAY_OP_REMOVE_ITEM || operation == ARRAY_OP_CONTAINS ||
+        operation == ARRAY_OP_FIND || operation == ARRAY_OP_SET_ADD ||
+        operation == ARRAY_OP_SET_CONTAINS
+    ) {
+        sources[1] = 2;
+    } else if (operation == ARRAY_OP_SWAP) {
+        sources[2] = 4;
+    }
+    for (int i = 0; i < op->input_count; i++) {
+        assert(!graph_connect_data(g, input, sources[i] + 1, op, i));
+    }
+    node *save = variable(a, g, 1, true);
+    assert(!graph_connect_data(g, op, 0, save, 1));
+    assert(!graph_connect_data(g, save, 1, ret, 1));
+    assert(!graph_connect_exec(g, input, 0, save, 0, 0));
+    if (waits) {
+        node *delay = graph_add_node(g, &NODE_Delay);
+        assert(
+            !graph_set_pin_default(g, delay, false, 1, &(pin_value){ .type = PIN_F64, .d = .25 })
+        );
+        assert(!graph_connect_exec(g, save, 0, delay, 0, 0));
+        assert(!graph_connect_exec(g, delay, 0, ret, 0, 0));
+    } else {
+        assert(!graph_connect_exec(g, save, 0, ret, 0, 0));
+    }
+    graph *root = a->graph;
+    node *event = graph_add_node(root, &NODE_Event);
+    assert(!graph_set_event_name(root, event, "Run"));
+    for (int i = 0; i < 5; i++) {
+        assert(graph_add_pin(root, event, true, &pins[i]) == i + 1);
+    }
+    node *source = variable(a, root, 0, true), *get = variable(a, root, 0, false);
+    node *call = behavior_asset_add_function_call_node(a, g),
+         *final = variable(a, root, 2, true);
+    assert(!graph_connect_data(root, event, 1, source, 1));
+    assert(!graph_connect_data(root, get, 0, call, 1));
+    for (int i = 2; i <= 5; i++) {
+        assert(!graph_connect_data(root, event, i, call, i));
+    }
+    assert(!graph_connect_data(root, call, 1, final, 1));
+    assert(!graph_connect_exec(root, event, 0, source, 0, 0));
+    assert(!graph_connect_exec(root, source, 0, call, 0, 0));
+    assert(!graph_connect_exec(root, call, 0, final, 0, 0));
+    return a;
+}
+static behavior_asset *owned_tick_fixture(int kind, int operation, bool failure)
+{
+    behavior_asset *a = whole_array_op_fixture(kind, operation, false);
+    assert(!behavior_asset_set_owner_type(a, "ecs.entity"));
+    graph *g = a->graph;
+    node *event = g->nodes[0], *source = g->nodes[1], *get = g->nodes[2],
+         *call = g->nodes[3];
+    arena storage = { 0 };
+    pin_value args[5];
+    whole_array_op_arguments(kind, operation, args, &storage);
+    if (operation == ARRAY_OP_SET_ADD) {
+        args[2] = ((pin_array *)args[1].ptr)->items[1];
+    }
+    assert(!behavior_asset_set_variable_default(a, a->variables[0].id, &args[0]));
+    assert(!graph_set_event_name(g, event, "Tick"));
+    assert(!graph_remove_edge(g, event, 1, source, 1));
+    assert(!graph_connect_data(g, get, 0, source, 1));
+    for (int i = 2; i <= 5; i++) {
+        assert(!graph_remove_edge(g, event, i, call, i));
+        assert(!graph_set_pin_default(g, call, false, i, &args[i - 1]));
+    }
+    for (int i = 5; i > 0; i--) {
+        assert(!graph_remove_pin(g, event, true, i));
+    }
+    arena_free(&storage);
+    assert(behavior_asset_add_variable(a, "Runs", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, ""));
+    node *get_runs = variable(a, g, 3, false),
+         *set_runs = variable(a, g, 3, true), *add = graph_add_node(g, &NODE_Add);
+    for (int i = 0; i < 2; i++) {
+        assert(!graph_set_pin_type(g, add, false, i, PIN_I32, "int"));
+    }
+    assert(!graph_set_pin_type(g, add, true, 0, PIN_I32, "int"));
+    assert(!graph_set_pin_default(g, add, false, 1, &(pin_value){ .type = PIN_I32, .i = 1 }));
+    assert(!graph_connect_data(g, get_runs, 0, add, 0));
+    assert(!graph_connect_data(g, add, 0, set_runs, 1));
+    assert(!graph_remove_edge(g, event, 0, source, 0));
+    assert(!graph_connect_exec(g, event, 0, set_runs, 0, 0));
+    assert(!graph_connect_exec(g, set_runs, 0, source, 0, 0));
+    if (failure) {
+        graph *child = a->graphs[1];
+        assert(!graph_remove_edge(child, child->nodes[3], 0, child->nodes[1], 0));
+    }
+    return a;
+}
+behavior_asset *whole_owned_tick_fixture(int kind, bool failure)
+{
+    return owned_tick_fixture(kind, ARRAY_OP_APPEND, failure);
+}
+static void owned_tick_arrays()
+{
+    ecs_world *ecs = ecs_world_new();
+    ecs_entity entity = ecs_world_create_entity(ecs);
+    bool native = behavior_default_backend() == BEHAVIOR_SLJIT;
+    void *code = native ? behavior_update_compile() : NULL;
+    assert(!native || code);
+    for (int variant = 0; variant < ARRAY_OP_KINDS * 2; variant++) {
+        bool set = variant >= ARRAY_OP_KINDS;
+        behavior_asset *a = owned_tick_fixture(
+            variant % ARRAY_OP_KINDS,
+            set ? ARRAY_OP_SET_ADD : ARRAY_OP_APPEND,
+            false
+        );
+        behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(bi, false);
+        behavior_batch *batch = NULL;
+        flow_run *failed;
+        uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls(),
+                 stores = runtime_store_creations();
+        uint64_t allocations = 0;
+        for (int i = 0; i < 16; i++) {
+            if (i == 8) {
+                allocations = arena_block_allocations();
+            }
+            assert(behavior_instance_dispatch_batch(bi, "Tick", &batch, &failed) && !failed);
+        }
+        assert(allocations == arena_block_allocations());
+        node *entry;
+        const behavior_function *f = behavior_program_batch_event(a->program, "Tick", &entry);
+        behavior_update_binding **bindings = NULL;
+        behavior_update_row row = {
+            .instance = bi,
+            .binding = behavior_update_prepare(&bindings, bi, f, entry),
+            .entity = ecs_entity_to_u64(entity),
+            .services_revision = bi->services_revision
+        };
+        assert(row.binding);
+        for (int i = 0; i < 16; i++) {
+            if (i == 8) {
+                allocations = arena_block_allocations();
+            }
+            int result;
+            behavior_update_row *stopped = native
+                                             ? ((behavior_update_fn)code)(
+                                                   &row,
+                                                   &row + 1,
+                                                   (const ecs_execution_view *)ecs,
+                                                   &result
+                                               )
+                                             : behavior_update_run_c(
+                                                   &row,
+                                                   &row + 1,
+                                                   (const ecs_execution_view *)ecs,
+                                                   &result,
+                                                   NULL
+                                               );
+            assert(stopped == &row + 1 && result == FLOW_OK);
+        }
+        assert(allocations == arena_block_allocations());
+        assert(
+            bi->variables[3].i == 32 &&
+            ((pin_array *)bi->variables[2].ptr)->count == (set ? 4 : 5)
+        );
+        assert(bi->variables[2].container == (set ? PIN_CONTAINER_SET : PIN_CONTAINER_ARRAY));
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+        assert(stores == runtime_store_creations() && !acount(bi->activations));
+        behavior_update_free_bindings(bindings);
+        behavior_batch_free(batch);
+        behavior_instance_destroy(bi);
+        behavior_asset_free(a);
+    }
+    behavior_update_free_code(code);
+    ecs_world_free(ecs);
+    puts("PASS: owned arrays, sets and managed records in Tick batches and prepared updates; no backing-block growth, activation stores or oracle calls");
+}
+static void owned_tick()
+{
+    behavior_asset *a = behavior_asset_new("Owned Tick values");
+    assert(behavior_asset_add_variable(a, "Count", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, ""));
+    graph *g = a->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Tick"));
+    node *make = graph_add_node(g, registry_node_by_name("Make Array"));
+    assert(!graph_set_pin_type(g, make, false, 0, PIN_I32, "int"));
+    assert(!graph_set_pin_default(g, make, false, 0, &(pin_value){ .type = PIN_I32, .i = 7 }));
+    node *length = graph_add_node(g, registry_node_by_name("Length"));
+    node *set = variable(a, g, 0, true);
+    assert(!graph_connect_data(g, make, 0, length, 0));
+    assert(!graph_connect_data(g, length, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+    behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(bi, false);
+    behavior_program *program = behavior_program_publish(a);
+    const behavior_function
+        *f = behavior_program_function(behavior_program_graph(program, g), event);
+    assert(f && behavior_function_batchable(f));
+    behavior_batch *batch = NULL;
+    flow_run *failed = NULL;
+    assert(behavior_instance_dispatch_batch(bi, "Tick", &batch, &failed));
+    assert(batch && !failed && bi->variables[0].i == 1);
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+    flow_run *run = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, NULL);
+    assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
+    assert(bi->variables[0].i == 1);
+    assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    behavior_batch_free(batch);
+    behavior_instance_destroy(bi);
+    behavior_asset_free(a);
+}
+static void set_semantics()
+{
+    for (int kind = 0; kind < ARRAY_OP_KINDS; kind++) {
+        arena input = { 0 }, output = { 0 };
+        pin_value args[5];
+        whole_array_op_arguments(kind, ARRAY_OP_MAKE_SET, args, &input);
+        const pin_array *source = args[0].ptr, *other = args[1].ptr;
+        pin_value duplicate;
+        assert(!pin_value_snapshot_to_arena(&input, &duplicate, &args[2]));
+        pin_value items[] = { args[2], duplicate, source->items[0] };
+        pin_value made = registry_node_by_name("Make Set")->fn(items, 3, &output);
+        const pin_array *set = made.ptr;
+        assert(made.container == PIN_CONTAINER_SET && set && set->count == 2);
+        assert(pin_value_equal(&set->items[0], &items[0]));
+        assert(pin_value_equal(&set->items[1], &items[2]));
+        pin_value operands[] = { args[0], other->items[1] };
+        pin_value added = registry_node_by_name("Set Add")->fn(operands, 2, &output);
+        const pin_array *extended = added.ptr;
+        assert(extended && extended->count == 4 && source->count == 3);
+        assert(pin_value_equal(&extended->items[3], &operands[1]));
+        arena_free(&input);
+        if (kind == ARRAY_OP_STRUCTS) {
+            const whole_managed *record = extended->items[3].ptr;
+            assert(record->count == 4 && !strcmp(record->label, "four"));
+            assert(!strcmp(record->nested.text, "four") && record->nested.weight == 3.25f);
+        } else if (kind == ARRAY_OP_INTS) {
+            assert(extended->items[3].i == 4);
+        } else {
+            assert(!strcmp(extended->items[3].str, "four"));
+        }
+        assert(!strcmp(added.type_name, extended->type_name));
+        arena_free(&output);
+    }
+}
+void whole_array_op_smoke()
+{
+    set_semantics();
+    owned_tick();
+    owned_tick_arrays();
+    for (int operation = 0; operation < ARRAY_OP_COUNT; operation++) {
+        behavior_asset *a = whole_array_op_fixture(ARRAY_OP_STRINGS, operation, true);
+        behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(bi, false);
+        arena input = { 0 };
+        pin_value args[5];
+        whole_array_op_arguments(ARRAY_OP_STRINGS, operation, args, &input);
+        uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+        flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ args, 5 }, NULL);
+        assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_SUSPENDED);
+        arena_free(&input);
+        assert(!flow_run_tick_at(run, .25));
+        assert(flow_run_status(run) == FLOW_COMPLETED);
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+        behavior_instance_destroy(bi);
+        behavior_asset_free(a);
+    }
+    puts("PASS: whole array/set construction, mutation, membership, length and direct Get through nested waits; zero oracle calls");
+}

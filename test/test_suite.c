@@ -1,9 +1,27 @@
+#include "test/instance_bank_fixture.h"
+#include "test/pending_fixture.h"
+#include "test/whole_array_op_fixture.h"
+#include "test/whole_managed_fixture.h"
+#include "test/whole_multigate_fixture.h"
+#include "test/whole_name_fixture.h"
+#include "test/whole_owned_array_fixture.h"
+#include "test/whole_particle_fixture.h"
+#include "test/whole_random_fixture.h"
+#include "test/whole_reaction_fixture.h"
+#include "test/whole_reflected_fixture.h"
+#include "test/whole_retrigger_fixture.h"
+#include "test/whole_rhythm_fixture.h"
+#include "test/whole_search_fixture.h"
+#include "test/whole_state_fixture.h"
+#include "test/whole_switch_fixture.h"
 #define PICO_UNIT_IMPLEMENTATION
 #include "suite_internal.h"
 
 int shader_ui_run(const char *program);
 int arena_ui_run(const char *program, bool profile_only);
 int compiled_arena_run(const char *program);
+int arena_scene_scale_run(const char *program, int count, int frames, bool profile);
+int bench_arena_scale(int count, int frames, bool portable, bool profile, int mode);
 int whole_function_audit();
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd);
 void run_behavior_loader_checks();
@@ -50,6 +68,7 @@ TEST_CASE(all_checks)
     run_runtime_catalog_checks();
     run_support_format_checks();
     run_ecs_checks();
+    run_ecs_growth_checks();
     run_component_read_checks();
     run_prototype_checks();
     run_scene_document_checks();
@@ -125,6 +144,23 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 2 && !strcmp(argv[1], "--pending")) {
+        test_pending_backend(BEHAVIOR_SLJIT);
+        test_pending_backend(BEHAVIOR_BYTECODE);
+        test_pending_backend(BEHAVIOR_ORACLE);
+        return 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--tick-batch")) {
+        test_behavior_batches();
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-batch-c")) {
+        emit_batch_c(argv[2]);
+        return 0;
+    }
+    if (argc == 6 && !strcmp(argv[1], "--bench-batch")) {
+        return bench_batch(argv[2], atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
+    }
     if (argc == 3 && !strcmp(argv[1], "--emit-command-c")) {
         registry_validate();
         emit_command_c(argv[2]);
@@ -136,6 +172,204 @@ int main(int argc, char **argv)
     }
     if (argc == 5 && strcmp(argv[1], "--bench-suspend") == 0) {
         return bench_suspend(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-delay-c")) {
+        emit_delay_c(argv[2]);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--check-delay-c")) {
+        test_delay_entries(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-delay")) {
+        return bench_delay(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && strcmp(argv[1], "--whole-delay") == 0) {
+        test_compiled_delays();
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-recursion")) {
+        registry_validate();
+        test_compiled_recursion(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--recursive-function-audit")) {
+        registry_validate();
+        return whole_recursion_audit();
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-recursion-c")) {
+        emit_recursion_c(argv[2]);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-async")) {
+        test_compiled_async(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-random")) {
+        test_compiled_random(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-random-c")) {
+        emit_random_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-random")) {
+        return bench_random(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-motion")) {
+        test_compiled_motion(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-data")) {
+        test_compiled_data(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-search")) {
+        test_compiled_search(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-search-c")) {
+        emit_search_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-search")) {
+        return bench_search(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 2 && !strcmp(argv[1], "--owned-ticks")) {
+        test_owned_ticks();
+        return 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--managed-reuse")) {
+        test_managed_reuse();
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-array-ops")) {
+        test_array_ops(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-array-ops-c")) {
+        emit_array_ops_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-array-ops")) {
+        return bench_array_ops(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-owned-arrays")) {
+        test_owned_arrays(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-owned-array-c")) {
+        emit_owned_array_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-owned-arrays")) {
+        return bench_owned_arrays(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-reflected")) {
+        test_compiled_reflected(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-reflected-c")) {
+        emit_reflected_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-reflected")) {
+        return bench_reflected(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-rhythm")) {
+        test_compiled_rhythm(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-rhythm-c")) {
+        emit_rhythm_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-rhythm")) {
+        return bench_rhythm(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-reaction")) {
+        test_compiled_reaction(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-reaction-c")) {
+        emit_reaction_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-reaction")) {
+        return bench_reaction(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-names")) {
+        test_compiled_names(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-name-c")) {
+        emit_name_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-names")) {
+        return bench_names(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-managed")) {
+        test_compiled_managed(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-managed")) {
+        return bench_managed(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-managed-c")) {
+        emit_managed_c(argv[2]);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-particles")) {
+        test_compiled_particles(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-particle-c")) {
+        emit_particle_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-particles")) {
+        return bench_particles(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-material")) {
+        test_compiled_material(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-material-c")) {
+        emit_material_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-material")) {
+        return bench_material(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-data-c")) {
+        emit_data_c(argv[2]);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-nearest-c")) {
+        emit_nearest_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-nearest")) {
+        return bench_nearest(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 2 && !strcmp(argv[1], "--whole-nearest")) {
+        test_targeting();
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-motion-c")) {
+        emit_motion_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-motion")) {
+        return bench_motion(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-async-c")) {
+        emit_async_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-async")) {
+        return bench_async(argv[2], atoi(argv[3]), atoi(argv[4]));
     }
     if (argc > 1 && strcmp(argv[1], "--whole-suspend") == 0) {
         test_compiled_suspensions();
@@ -223,6 +457,65 @@ int main(int argc, char **argv)
         registry_validate();
         return bench_component(argv[2], atoi(argv[3]), atoi(argv[4]));
     }
+    if (argc > 1 && !strcmp(argv[1], "--whole-switch")) {
+        registry_validate();
+        test_compiled_switches(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--instance-pages")) {
+        registry_validate();
+        instance_bank_smoke(BEHAVIOR_ORACLE);
+        instance_bank_smoke(BEHAVIOR_BYTECODE);
+        instance_bank_smoke(BEHAVIOR_SLJIT);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-retrigger")) {
+        registry_validate();
+        test_compiled_retrigger(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-retrigger-c")) {
+        registry_validate();
+        emit_retrigger_c(argv[2]);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-multigate")) {
+        registry_validate();
+        test_compiled_multigate(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-multigate-c")) {
+        registry_validate();
+        emit_multigate_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-multigate")) {
+        registry_validate();
+        return bench_multigate(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc > 1 && !strcmp(argv[1], "--whole-state")) {
+        registry_validate();
+        test_compiled_states(argc == 3 ? argv[2] : NULL);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-state-c")) {
+        registry_validate();
+        emit_state_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-state")) {
+        registry_validate();
+        return bench_state(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-switch")) {
+        registry_validate();
+        return bench_switch(argv[2], atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-switch-c")) {
+        registry_validate();
+        emit_switch_c(argv[2]);
+        return 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--whole-loop") == 0) {
         registry_validate();
         test_compiled_loops();
@@ -242,6 +535,29 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--whole-function-audit") == 0) {
         registry_validate();
         return whole_function_audit();
+    }
+    if (argc > 1 && strcmp(argv[1], "--whole-spawn") == 0) {
+        registry_validate();
+        test_compiled_spawns();
+        return fails ? 1 : 0;
+    }
+    if (argc == 6 && (!strcmp(argv[1], "--bench-arena-scale") ||
+                      !strcmp(argv[1], "--bench-arena-reference") ||
+                      !strcmp(argv[1], "--bench-arena-clock"))) {
+        registry_validate();
+        return bench_arena_scale(
+            atoi(argv[2]),
+            atoi(argv[3]),
+            atoi(argv[4]),
+            atoi(argv[5]),
+            !strcmp(argv[1], "--bench-arena-reference") ? 1
+            : !strcmp(argv[1], "--bench-arena-clock")   ? 2
+                                                        : 0
+        );
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-arena-scene-scale")) {
+        registry_validate();
+        return arena_scene_scale_run(program_name, atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
     }
     if (argc > 1 && strcmp(argv[1], "--compiled-arena") == 0) {
         registry_validate();

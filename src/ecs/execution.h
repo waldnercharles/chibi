@@ -6,13 +6,17 @@
 
 /* Read-only storage metadata. Rows may be written under the node's declared
  * access contract. The world owns these arrays and refreshes them on schema
- * changes; callers must not retain column or row pointers across host calls. */
-typedef struct
+ * changes and entity growth. Retain column or row pointers only within spans
+ * proven to preserve storage, then reacquire them before the next span. */
+typedef struct ecs_execution_column
 {
     uint64_t id, layout;
     size_t stride;
     void *data;
     const uint64_t *occupancy;
+    int count;
+    /* XOR of occupied slots; identifies the sole row when count is one. */
+    uint32_t singleton;
 } ecs_execution_column;
 
 typedef struct ecs_execution_view
@@ -23,6 +27,8 @@ typedef struct ecs_execution_view
     const ecs_execution_column *columns;
     const int *lookup;
     int capacity;
+    /* Retains reflected string writes for the world's lifetime. */
+    const char *(*intern_string)(const struct ecs_execution_view *world, const char *text);
 } ecs_execution_view;
 
 /* ecs_world begins with this view. Its ecs.world service pointer therefore
@@ -35,13 +41,12 @@ static inline uint32_t ecs_execution_entity(const ecs_execution_view *world, uin
              ? slot
              : 0;
 }
-static inline const ecs_execution_column *ecs_execution_component(
+static inline const ecs_execution_column *ecs_execution_find_column(
     const ecs_execution_view *world,
-    uint32_t slot,
     uint64_t id
 )
 {
-    if (!slot || !world->capacity) {
+    if (!world || !world->capacity) {
         return NULL;
     }
     uint64_t hash = id * UINT64_C(11400714819323198485);
@@ -54,9 +59,27 @@ static inline const ecs_execution_column *ecs_execution_component(
         }
         const ecs_execution_column *column = &world->columns[index - 1];
         if (column->id == id) {
-            return (column->occupancy[slot >> 6] >> (slot & 63)) & 1 ? column : NULL;
+            return column;
         }
         bucket = (bucket + 1) & mask;
     }
+}
+static inline const ecs_execution_column *ecs_execution_present(
+    const ecs_execution_column *column,
+    uint32_t slot
+)
+{
+    return slot && column && ((column->occupancy[slot >> 6] >> (slot & 63)) & 1)
+             ? column
+             : NULL;
+}
+static inline const ecs_execution_column *ecs_execution_component(
+    const ecs_execution_view *world,
+    uint32_t slot,
+    uint64_t id
+)
+{
+    return slot ? ecs_execution_present(ecs_execution_find_column(world, id), slot)
+                : NULL;
 }
 #endif

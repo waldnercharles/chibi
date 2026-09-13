@@ -4,15 +4,33 @@
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
+#include "test/instance_bank_fixture.h"
 #include "test/whole_loop_fixture.h"
+#include "test/whole_multigate_fixture.h"
+#include "test/whole_name_fixture.h"
+#include "test/whole_recursion_fixture.h"
+#include "test/whole_retrigger_fixture.h"
+#include "test/whole_search_fixture.h"
+#include "test/whole_state_fixture.h"
+#include "test/whole_switch_fixture.h"
 #include "whole_aggregate_fixture.h"
 #include "whole_alias_fixture.h"
 #include "whole_array_fixture.h"
+#include "whole_array_op_fixture.h"
+#include "whole_async_fixture.h"
+#include "whole_batch_fixture.h"
 #include "whole_command_fixture.h"
+#include "whole_data_fixture.h"
+#include "whole_delay_fixture.h"
 #include "whole_function_fixture.h"
 #include "whole_integer_fixture.h"
+#include "whole_managed_fixture.h"
 #include "whole_math_fixture.h"
+#include "whole_motion_fixture.h"
+#include "whole_owned_array_fixture.h"
+#include "whole_particle_fixture.h"
 #include "whole_query_fixture.h"
+#include "whole_random_fixture.h"
 #include "whole_store_fixture.h"
 #include "whole_suspend_fixture.h"
 
@@ -22,17 +40,38 @@
 #include <string.h>
 
 static const type_desc entity_type = { .name = "ecs.entity", .size = sizeof(uint64_t) };
-static const type_desc *const entity_types[] = { &entity_type };
+static const type_field vector_fields[] = {
+    { .name = "x", .type = PIN_F32, .type_name = "float", .offset = 0, .size = sizeof(float) },
+    { .name = "y",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = sizeof(float),
+      .size = sizeof(float) },
+    { .name = "z",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = 2 * sizeof(float),
+      .size = sizeof(float) }
+};
+static const type_desc vector_type = { .name = "CF_V3",
+                                       .size = 3 * sizeof(float),
+                                       .fields = vector_fields,
+                                       .field_count = 3 };
+static const type_desc vector2_type = { .name = "CF_V2",
+                                        .size = 2 * sizeof(float),
+                                        .fields = vector_fields,
+                                        .field_count = 2 };
+static const type_desc *const entity_types[] = { &entity_type, &vector_type, &vector2_type };
 static const registry_pack entity_pack = { .name = "Entity identity",
                                            .types = entity_types,
-                                           .type_count = 1 };
+                                           .type_count = 3 };
 
-const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK,
-                                                &CORE_FLOW_PACK,
-                                                &WHOLE_VALUE_PACK,
-                                                &WHOLE_ALIAS_PACK,
-                                                &entity_pack };
-const int REGISTRY_PACK_COUNT = 5;
+const registry_pack *const REGISTRY_PACKS[] = {
+    &CORE_EXTRA_PACK,  &CORE_FLOW_PACK,     &WHOLE_VALUE_PACK,
+    &WHOLE_ALIAS_PACK, &WHOLE_MANAGED_PACK, &entity_pack,
+    &CORE_ARRAY_PACK,  &CORE_SET_MAP_PACK,  &CORE_STATE_PACK
+};
+const int REGISTRY_PACK_COUNT = sizeof REGISTRY_PACKS / sizeof REGISTRY_PACKS[0];
 
 int main()
 {
@@ -93,6 +132,11 @@ int main()
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     whole_aggregate_smoke();
+    whole_batch_smoke();
+    instance_bank_smoke(behavior_default_backend());
+    whole_async_smoke();
+    whole_motion_smoke();
+    whole_data_smoke();
     whole_alias_smoke();
     whole_store_smoke();
     whole_array_smoke();
@@ -247,7 +291,20 @@ int main()
     behavior_asset_free(asset);
     whole_component_smoke();
     whole_loop_smoke();
+    whole_switch_smoke();
+    whole_state_smoke();
+    whole_multigate_smoke();
     whole_command_smoke();
     whole_suspend_smoke();
+    whole_delay_smoke();
+    whole_retrigger_smoke();
+    whole_recursion_smoke();
+    whole_random_smoke();
+    whole_particle_smoke();
+    whole_managed_smoke();
+    whole_owned_array_smoke();
+    whole_array_op_smoke();
+    whole_name_smoke();
+    whole_search_smoke();
     return 0;
 }

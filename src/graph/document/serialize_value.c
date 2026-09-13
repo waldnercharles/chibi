@@ -15,7 +15,7 @@ void serialize_write_value(
     const pin_value *v
 )
 {
-    if (v && v->container == PIN_CONTAINER_ARRAY) {
+    if (v && (v->container == PIN_CONTAINER_ARRAY || v->container == PIN_CONTAINER_SET)) {
         yyjson_mut_val *array = yyjson_mut_arr(doc);
         const pin_array *items = (const pin_array *)v->ptr;
         if (items) {

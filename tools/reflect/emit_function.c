@@ -273,9 +273,90 @@ static void emit_read_value_assignment(
     }
 }
 
-/* Emit the contextual adapter for a typed, fallible pure read. The native
- * function owns domain validation; reflection owns graph values, allocation,
- * and the multi-output descriptor contract. */
+/* Both adapters invoke the declared C function. Input pin indices are compact
+ * even when NODE_OUT parameters appear between inputs in the C signature. */
+static void emit_read_call(FILE *out, const fn_info *f)
+{
+    int input = 0;
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (f->pout[i]) {
+            fprintf(out, "    %s __out%d = { 0 };\n", f->pout_type[i], i);
+            continue;
+        }
+        if (!strcmp(f->ppin[i], "PIN_STRUCT")) {
+            fprintf(
+                out,
+                "    if (!args[%d].ptr) return \"read node requires %s\";\n",
+                input,
+                param_label(f, i)
+            );
+        }
+        input++;
+    }
+    fprintf(out, "    const char *__error = %s(", f->name);
+    input = 0;
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (i) {
+            fputs(", ", out);
+        }
+        if (f->pout[i]) {
+            fprintf(out, "&__out%d", i);
+        } else {
+            emit_arg(out, f->ptype[i], f->ppin[i], input++);
+        }
+    }
+    fputs(");\n    if (__error) return __error;\n", out);
+}
+static bool read_host_supported(const fn_info *f)
+{
+    if (f->effect_flags != (1u << 3) || acount(f->reads) || acount(f->writes)) {
+        return false;
+    }
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (f->pservice[i] || (f->pout[i] && !strcmp(f->ppin[i], "PIN_STR"))) {
+            return false;
+        }
+    }
+    return true;
+}
+/* Typed native-call adapters use caller-owned result backing. They neither
+ * allocate nor recurse into evaluation. The behavior compiler checks reflected
+ * struct ownership/layout before accepting the signature. */
+static void emit_read_host(FILE *out, const fn_info *f)
+{
+    if (!read_host_supported(f)) {
+        return;
+    }
+    fprintf(
+        out,
+        "static const char *__host_%s_%s(void *service, const pin_value *args, "
+        "pin_value *out) {\n    (void)service;\n",
+        g_prefix,
+        f->name
+    );
+    emit_read_call(out, f);
+    int output = 0;
+    for (int i = 0; i < acount(f->pname); i++) {
+        if (!f->pout[i]) {
+            continue;
+        }
+        if (!strcmp(f->ppin[i], "PIN_STRUCT")) {
+            fprintf(out, "    *(%s *)out[%d].ptr = __out%d;\n", f->pout_type[i], output, i);
+        } else {
+            fprintf(out, "    out[%d].%s = __out%d;\n", output, pin_member(f->ppin[i]), i);
+        }
+        output++;
+    }
+    fprintf(
+        out,
+        "    return NULL;\n}\nstatic const node_host_call %s_%s_host = { "
+        ".invoke = __host_%s_%s };\n\n",
+        g_prefix,
+        f->name,
+        g_prefix,
+        f->name
+    );
+}
 void emit_read_fn(FILE *out, const fn_info *f)
 {
     int has_struct_output = 0;
@@ -285,39 +366,26 @@ void emit_read_fn(FILE *out, const fn_info *f)
     fprintf(
         out,
         "static const char *__read_%s_%s(const eval_context *ctx, const "
-        "pin_value *args, arena *a, pin_value *out) {\n",
+        "pin_value *args, arena *a, pin_value *out) {\n    (void)ctx;\n",
         g_prefix,
         f->name
     );
-    fputs("    (void)ctx;\n", out);
     if (!has_struct_output) {
         fputs("    (void)a;\n", out);
     }
-    for (int i = 0; i < acount(f->pname); i++) {
-        if (f->pout[i]) {
-            fprintf(out, "    %s __out%d = { 0 };\n", f->pout_type[i], i);
-        }
-    }
-    fprintf(out, "    const char *__error = %s(", f->name);
-    for (int i = 0; i < acount(f->pname); i++) {
-        if (i) {
-            fputs(", ", out);
-        }
-        emit_native_arg(out, f, i);
-    }
-    fputs(");\n    if (__error) return __error;\n", out);
+    emit_read_call(out, f);
     int output = 0;
     for (int i = 0; i < acount(f->pname); i++) {
         if (!f->pout[i]) {
             continue;
         }
-        char target[32];
-        char expr[32];
+        char target[32], expr[32];
         snprintf(target, sizeof target, "out[%d]", output++);
         snprintf(expr, sizeof expr, "__out%d", i);
         emit_read_value_assignment(out, target, f->ppin[i], f->pout_type[i], pin_member(f->ppin[i]), expr);
     }
     fputs("    return NULL;\n}\n\n", out);
+    emit_read_host(out, f);
 }
 
 /* Emit Make + Break node_desc for one struct. */
@@ -729,6 +797,9 @@ void emit_read_node(FILE *out, const fn_info *f)
     fprintf(out, "    .outputs = %s_%s_read_outputs,\n", g_prefix, f->name);
     fputs("    .pure_kind = NODE_PURE_READ,\n", out);
     fprintf(out, "    .read_inputs = __read_%s_%s,\n", g_prefix, f->name);
+    if (read_host_supported(f)) {
+        fprintf(out, "    .host_call = &%s_%s_host,\n", g_prefix, f->name);
+    }
     fputs("    .flow_kind = NODE_FLOW_NONE,\n", out);
     fputs("    .display_class = NODE_DISPLAY_FUNCTION,\n", out);
     if (f->category) {

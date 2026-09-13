@@ -16,14 +16,63 @@ struct pin_array;
  * It cannot mutate membership, layouts or behavior storage. An error message
  * must remain valid after the snapshot is released. */
 typedef const char *(*node_query_fn)(void *service, const char *key, struct pin_array *out);
+/* Typed host capability. Arguments borrow scalar values, strings or plain
+ * structs for this call. The caller supplies result
+ * headers and non-null struct backing; the callee writes every result payload
+ * on success, preserving those headers and pointers. Data nodes are read-only;
+ * execution nodes may perform synchronous effects. Neither may execute graphs,
+ * invalidate component/behavior storage or retain borrowed values. Error text
+ * must outlive the activation. Access metadata describes the host effects. */
+typedef const char *(*node_host_call_fn)(void *service, const pin_value *arguments, pin_value *results);
+/* NODE_PURE_CALL operation with one owned result. Inputs are borrowed for this
+ * call; dynamic result payloads and names belong to storage. It writes the
+ * complete result header, never evaluates graphs or retains inputs, and
+ * returns stable error text on failure. A successful struct result has non-null
+ * backing, matching NODE_PURE_CALL's oracle contract. */
+typedef const char *(*node_value_call_fn)(
+    arena *storage,
+    const pin_value *arguments,
+    int count,
+    pin_value *result
+);
+struct behavior_lower_builder;
+/* Publication-only intrinsic expansion into the shared behavior IR. A data
+ * output returns its typed slot. A synchronous flow node receives pin=-1 and
+ * returns zero after emitting effects; it has one Then output. Negative means
+ * unsupported and must carry a source diagnostic. Never called by execution. */
+typedef int (*node_lower_fn)(struct behavior_lower_builder *, node *, int pin);
+typedef struct
+{
+    /* NULL for a native value operation that requires no host service. */
+    const char *service;
+    node_host_call_fn invoke;
+    /* Optional service check before evaluating arguments, preserving nodes whose
+     * original contract rejects a missing host before input effects or errors. */
+    const char *missing_service;
+    /* Exactly one of invoke/value is set. Value calls have no host service. */
+    node_value_call_fn value;
+    bool variadic;
+} node_host_call;
 /* Synchronous commands may append deferred host effects, but cannot dispatch
  * graphs, flush structural effects or invalidate behavior/column storage. The
  * callee owns any retained arguments before returning zero or a negative error. */
 typedef int (*node_command_fn)(void *service, const char *reference, const pin_value *arguments, int count);
+struct flow_host_request;
+/* A successful begin transfers the host reference to the service. On failure
+ * it must neither retain the request nor perform deferred work. */
+typedef int (*node_command_begin_fn)(
+    void *service,
+    const char *reference,
+    const pin_value *arguments,
+    int count,
+    struct flow_host_request *request,
+    const char **error
+);
 typedef struct
 {
     const char *service, *missing_service, *missing_reference, *failure_message;
     node_command_fn invoke;
+    node_command_begin_fn begin;
 } node_command;
 
 typedef enum
@@ -124,6 +173,7 @@ typedef enum
     NODE_JIT_V2_NORMALIZE,
     NODE_JIT_V2_DIRECTION,
     NODE_JIT_ATAN2_F32,
+    NODE_JIT_RANDOM_VECTOR,
     NODE_JIT_UNWRAP,
     /* Explicit promise: copy a fixed-layout struct and retag its nominal type. */
     NODE_JIT_IDENTITY,
@@ -184,6 +234,7 @@ typedef struct
     node_flow_kind flow_kind;
     node_flow_fn flow;
     int latent;
+    bool instance_state; /* One zero-initialized pin_value per node and instance. */
     node_display_class display_class;
     /* CAT-27: spawn-menu category path and space-separated search keywords.
      * Both are static display/search data; NULL means uncategorized. */
@@ -195,6 +246,8 @@ typedef struct
     const char *query_service;
     node_query_fn query;
     const node_command *command;
+    const node_host_call *host_call;
+    node_lower_fn lower;
 } node_desc;
 
 struct node

@@ -487,6 +487,7 @@ node_desc NODE_Delay = {
     .latent = 1,
     .display_class = NODE_DISPLAY_FLOW,
 };
+static const node_access print_access = { .flags = NODE_EFFECT_HOST_SINK };
 node_desc NODE_PrintString = {
     .name = "Print String",
     .input_count = 2,
@@ -495,6 +496,7 @@ node_desc NODE_PrintString = {
     .outputs = print_text_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = flow_print_string,
+    .access = &print_access,
     .display_class = NODE_DISPLAY_FUNCTION,
 };
 node_desc NODE_GetVariable = {

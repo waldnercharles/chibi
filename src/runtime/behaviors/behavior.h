@@ -34,7 +34,7 @@ typedef struct
  * intervals exclude nested root events and their setup. Setup measures successful
  * event lookup and activation creation/reuse, excluding scheduler execution.
  * World scans, scheduler bookkeeping and reaping remain unassigned. */
-/* Enabled by default. Disable for uninstrumented performance comparisons. */
+/* Disabled by default. Performance inspection or explicit requests enable timers. */
 void game_behavior_set_profiling(game_behavior_world *world, bool enabled);
 void game_behavior_profile_begin(game_behavior_world *world);
 const game_behavior_profile_frame *game_behavior_profile(const game_behavior_world *world);
@@ -134,9 +134,25 @@ int game_behavior_dispatch_all(
     flow_inputs inputs,
     flow_error *error
 );
+/* Dedicated Tick schedule, rebuilt at attachment/publication changes. Eligible
+ * synchronous entries execute in attachment order with shared prepared bindings.
+ * Inspection, waits and unproven effects retain their compiled activations. */
+int game_behavior_update(game_behavior_world *world, flow_error *error);
+typedef struct
+{
+    int entries, prepared, native_loop, scheduled;
+} game_behavior_update_stats;
+game_behavior_update_stats game_behavior_last_update(const game_behavior_world *world);
+/* Performance comparison: retain compiled bodies but use the C outer loop. */
+void game_behavior_set_native_update(game_behavior_world *world, bool enabled);
+/* Debug/performance comparison switch. Ordered synchronous batches are enabled
+ * by default; inspected, queued and effectful host work keeps normal activations. */
+void game_behavior_set_batch_enabled(game_behavior_world *world, bool enabled);
 /* Returns whether at least one attached behavior declares the event. */
 bool game_behavior_has_event(const game_behavior_world *world, const char *event_name);
 int game_behavior_pump(game_behavior_world *world, double monotonic_time);
+/* Number of attachment queues visited by the last pump, excluding idle rows. */
+int game_behavior_last_pump_count(const game_behavior_world *world);
 /* Set the simulation clock before dispatch, including newly attached Begin runs. */
 void game_behavior_set_time(game_behavior_world *world, double simulation_time);
 bool game_behavior_paused(const game_behavior_world *world);

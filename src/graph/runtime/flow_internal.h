@@ -18,6 +18,8 @@ typedef struct
     pin_value value;
     void *owned;
     size_t owned_size;
+    arena managed;
+    char *type_name;
 } flow_watch;
 
 struct flow_host_request
@@ -26,6 +28,10 @@ struct flow_host_request
     flow_host_state state;
     flow_run *run;
     node *node;
+    pin_value *compiled_outputs;
+    int compiled_frame;
+    unsigned compiled_order;
+    uint64_t compiled_serial;
 };
 
 struct flow_run
@@ -42,6 +48,13 @@ struct flow_run
     bool whole_function_executed;
     const struct behavior_function *whole_function;
     int whole_error_stack;
+    struct flow_compiled *compiled, *compiled_cache;
+    behavior_data_storage *data_storage;
+    /* Read-only logical frame views never own an execution runtime. */
+    flow_run *compiled_owner;
+    int compiled_frame;
+    uint64_t compiled_revision;
+    const node *inspection_node;
     unsigned long long topology_revision;
     flow_clock_fn now;
     void *now_user;
@@ -108,14 +121,49 @@ struct flow_context
     int failed;
 };
 
-int flow_watch_store(flow_run *run, const node *n, int output, int pin, const pin_value *value);
+void flow_fail(flow_run *run, int code, node *n, const char *message);
+void flow_run_finish_compiled(
+    flow_run *run,
+    const behavior_function *function,
+    const behavior_function_context *context,
+    int result
+);
+void flow_compiled_start(flow_run *run, const struct behavior_function *function);
+void flow_compiled_capture_failure(
+    flow_run *run,
+    const struct behavior_function *function,
+    const behavior_function_context *context
+);
+void flow_compiled_host_output(flow_run *run, int frame, node *n, int pin, const pin_value *value);
+int flow_compiled_execute(flow_run *run);
+void flow_compiled_stop(flow_run *run);
+void flow_compiled_free(flow_run *run);
+void flow_compiled_resume(flow_run *run);
+void flow_compiled_step(flow_run *run);
+void flow_compiled_pause(flow_run *run);
+const node *flow_compiled_current(const flow_run *run);
+double flow_compiled_wake_time(const flow_run *run);
+void flow_compiled_retime(flow_run *run, double deadline);
+bool flow_run_retrigger_delay(flow_run *current, const node *waiting, double deadline);
+void flow_compiled_build_stack(flow_run *run);
+const flow_run *flow_compiled_leaf(const flow_run *run);
+const flow_run *flow_compiled_sync_view(const flow_run *run);
+static inline const flow_run *flow_run_view(const flow_run *run)
+{
+    return run && run->compiled_owner ? flow_compiled_sync_view(run) : run;
+}
+const flow_run *flow_compiled_watch_owner(const flow_run *run, const node *n, int output, int pin);
+const pin_value *flow_watch_value(const flow_run *run, const node *n, int output, int pin);
+void flow_trace_record(flow_run *run, flow_traversal traversal);
+const pin_value *flow_watch_input_value(const flow_run *run, const node *n, int pin);
+int flow_watch_store(flow_run *run, const graph *g, const node *n, int output, int pin, const pin_value *value);
 void flow_watch_capture(flow_run *run, node *n);
 void flow_watch_capture_outputs(flow_run *run, node *n);
 void flow_watch_clear(flow_run *run);
 
 void flow_host_finish(flow_run *run, flow_host_state state);
+flow_host_request *flow_host_start(flow_run *run, node *n);
 void flow_host_detach(flow_run *run);
-int flow_copy_input(arena *a, pin_value *dst, const pin_value *src);
 int flow_run_continue(flow_run *run, int clear_step_mode);
 void flow_run_data_call(
     flow_run *run,

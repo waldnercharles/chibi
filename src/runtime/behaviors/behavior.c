@@ -1,6 +1,9 @@
 #include "runtime/behaviors/behavior.h"
 
 #include "graph/runtime/eval.h"
+#include "graph/runtime/update.h"
+#include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/pending.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -26,6 +29,8 @@ typedef struct
     char *name;
     behavior_asset *definition; /* borrowed by the behavior world */
     behavior_instance **pool;
+    behavior_instance_bank *bank;
+    behavior_batch *batch;
 } behavior_asset_record;
 
 typedef struct
@@ -34,6 +39,7 @@ typedef struct
     ecs_entity entity;
     const char *asset_name;
     behavior_profile_record **profile;
+    int attachment;
 } behavior_sink_context;
 
 typedef struct
@@ -54,15 +60,28 @@ struct game_behavior_world
     struct game_particles *particles;
     behavior_asset_record *assets;
     behavior_attachment *attachments;
+    int **attachments_by_slot; /* Ordered indices into the broadcast array. */
+    uint32_t attachment_slot_count;
+    behavior_update_row *updates;
+    behavior_update_binding **update_bindings;
+    const behavior_function *update_query_scope;
+    uint64_t attachment_revision, update_revision;
+    void *update_code;
+    bool update_native_disabled;
+    game_behavior_update_stats update_stats;
     game_behavior_log_info *logs;
     flow_parallel_for_fn parallel_for;
     void *parallel_user;
     flow_sink_fn sink;
     void *sink_user;
     bool defer_begin;
+    bool batch_disabled;
     int breakpoints_enabled;
     int *pump_results;
     int pump_result_capacity;
+    behavior_pending pending;
+    int *pumped;
+    int last_pump_count;
     uint64_t next_sequence;
     double current_time;
     double delta_seconds;
@@ -138,6 +157,9 @@ static void record_profile(const char *event, uint64_t nanoseconds, behavior_pro
 
 void game_behavior_set_profiling(game_behavior_world *world, bool enabled)
 {
+    if (world->profile_disabled == !enabled) {
+        return;
+    }
     world->profile_disabled = !enabled;
     for (int i = 0; i < acount(world->attachments); i++) {
         world->attachments[i].instance->profile = enabled ? record_profile : NULL;
@@ -226,6 +248,60 @@ static void behavior_sink(const node *origin, const char *message, void *user)
     }
 }
 
+static const int *entity_attachments(const game_behavior_world *world, ecs_entity entity)
+{
+    return entity.slot < world->attachment_slot_count
+             ? world->attachments_by_slot[entity.slot]
+             : NULL;
+}
+
+static void index_attachment(game_behavior_world *world, int index)
+{
+    uint32_t slot = world->attachments[index].entity.slot;
+    if (slot >= world->attachment_slot_count) {
+        uint32_t old = world->attachment_slot_count;
+        uint32_t count = ecs_world_entity_capacity(world->ecs) + 1;
+        assert(slot < count);
+        world->attachments_by_slot = xrealloc(
+            world->attachments_by_slot,
+            (size_t)count * sizeof *world->attachments_by_slot
+        );
+        memset(
+            world->attachments_by_slot + old,
+            0,
+            (size_t)(count - old) * sizeof *world->attachments_by_slot
+        );
+        world->attachment_slot_count = count;
+    }
+    apush(world->attachments_by_slot[slot], index);
+    behavior_instance *instance = world->attachments[index].instance;
+    behavior_sink_context *context = instance->sink_user;
+    context->attachment = index;
+    behavior_pending_reserve(&world->pending, index + 1);
+    if (acount(instance->activations)) {
+        behavior_pending_set(&world->pending, index, true);
+    }
+}
+
+static void rebuild_attachment_index(game_behavior_world *world)
+{
+    world->attachment_revision++;
+    behavior_pending_reset(&world->pending);
+    for (uint32_t slot = 0; slot < world->attachment_slot_count; slot++) {
+        aclear(world->attachments_by_slot[slot]);
+    }
+    for (int i = 0; i < acount(world->attachments); i++) {
+        index_attachment(world, i);
+    }
+}
+
+static void append_attachment(game_behavior_world *world, behavior_attachment attachment)
+{
+    world->attachment_revision++;
+    apush(world->attachments, attachment);
+    index_attachment(world, acount(world->attachments) - 1);
+}
+
 static behavior_attachment *find_attachment(
     game_behavior_world *world,
     ecs_entity entity,
@@ -236,14 +312,31 @@ static behavior_attachment *find_attachment(
     if (!asset) {
         return NULL;
     }
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_attachment *attachment = &world->attachments[i];
+    const int *indices = entity_attachments(world, entity);
+    for (int i = 0; i < acount(indices); i++) {
+        behavior_attachment *attachment = &world->attachments[indices[i]];
         if (attachment->asset == asset && attachment->entity.slot == entity.slot &&
             attachment->entity.generation == entity.generation) {
             return attachment;
         }
     }
     return NULL;
+}
+
+static void activations_changed(behavior_instance *instance)
+{
+    behavior_sink_context *context = instance->sink_user;
+    assert(context->attachment >= 0);
+    behavior_pending_set(
+        &context->world->pending,
+        context->attachment,
+        acount(instance->activations) != 0
+    );
+}
+static void services_changed(behavior_instance *instance)
+{
+    behavior_sink_context *context = instance->sink_user;
+    context->world->attachment_revision++;
 }
 
 static behavior_instance *acquire_instance(
@@ -261,7 +354,7 @@ static behavior_instance *acquire_instance(
     if (acount(asset->pool)) {
         instance = behavior_instance_pool_reuse(apop(asset->pool), asset->definition, &owner, NULL, NULL);
     } else {
-        instance = behavior_instance_create(asset->definition, &owner, NULL, NULL);
+        instance = behavior_instance_create_in_bank(&asset->bank, asset->definition, &owner);
     }
     if (!instance) {
         return NULL;
@@ -287,10 +380,13 @@ static behavior_instance *acquire_instance(
     }
     behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
     context->world = world;
+    context->attachment = -1;
     context->entity = entity;
     context->asset_name = asset->name;
     instance->sink = behavior_sink;
     instance->sink_user = context;
+    instance->services_changed = services_changed;
+    instance->activations_changed = activations_changed;
     instance->profile = world->profile_disabled ? NULL : record_profile;
     instance->profile_user = context;
     profile_instance(instance);
@@ -299,7 +395,12 @@ static behavior_instance *acquire_instance(
 
 static void release_instance(behavior_asset_record *asset, behavior_instance *instance)
 {
+    instance->services_changed = NULL;
+    instance->activations_changed = NULL;
     behavior_sink_context *context = instance->sink_user;
+    if (context->attachment >= 0) {
+        behavior_pending_set(&context->world->pending, context->attachment, false);
+    }
     afree(context->profile);
     free(instance->sink_user);
     instance->sink = NULL;
@@ -331,6 +432,7 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     }
     game_behavior_world *result = (game_behavior_world *)xcalloc(1, sizeof *result);
     result->ecs = world;
+    result->profile_disabled = true;
     ecs_eval_component_reader_init(&result->component_reader, world);
     result->next_sequence = 1;
     return result;
@@ -373,6 +475,9 @@ void game_behavior_world_free(game_behavior_world *world)
     if (!world) {
         return;
     }
+    behavior_update_free_code(world->update_code);
+    behavior_update_free_bindings(world->update_bindings);
+    afree(world->updates);
     while (acount(world->attachments)) {
         behavior_attachment *attachment = &alast(world->attachments);
         release_instance(attachment->asset, attachment->instance);
@@ -380,14 +485,18 @@ void game_behavior_world_free(game_behavior_world *world)
     }
     for (int i = 0; i < acount(world->assets); i++) {
         behavior_asset_record *asset = &world->assets[i];
-        for (int j = 0; j < acount(asset->pool); j++) {
-            behavior_instance_destroy(asset->pool[j]);
-        }
-        afree(asset->pool);
+        destroy_asset_pool(asset);
+        behavior_instance_bank_free(asset->bank);
         free(asset->name);
     }
     afree(world->assets);
+    for (uint32_t slot = 0; slot < world->attachment_slot_count; slot++) {
+        afree(world->attachments_by_slot[slot]);
+    }
+    free(world->attachments_by_slot);
     afree(world->attachments);
+    free(world->pending.words);
+    afree(world->pumped);
     afree(world->logs);
     for (int i = 0; i < world->profile_count; i++) {
         free(world->profile[i].behavior);
@@ -436,6 +545,7 @@ int game_behavior_unregister_asset(
         *definition = asset->definition;
         free(asset->name);
         destroy_asset_pool(asset);
+        behavior_instance_bank_free(asset->bank);
         adel(world->assets, i);
         return 0;
     }
@@ -482,7 +592,12 @@ int game_behavior_begin_pending(game_behavior_world *world)
     if (!world || world->defer_begin) {
         return -1;
     }
-    uint64_t *pending = NULL;
+    typedef struct
+    {
+        ecs_entity entity;
+        uint64_t sequence;
+    } pending_begin;
+    pending_begin *pending = NULL;
     for (int i = 0; i < acount(world->attachments); i++) {
         if (world->attachments[i].begin_state < 0) {
             return -1;
@@ -490,15 +605,21 @@ int game_behavior_begin_pending(game_behavior_world *world)
     }
     for (int i = 0; i < acount(world->attachments); i++) {
         if (!world->attachments[i].begin_state) {
-            apush(pending, world->attachments[i].sequence);
+            apush(
+                pending,
+                ((pending_begin){ world->attachments[i].entity,
+                                  world->attachments[i].sequence })
+            );
         }
     }
     for (int i = 0; i < acount(pending); i++) {
-        for (int j = 0; j < acount(world->attachments); j++) {
-            if (world->attachments[j].sequence != pending[i]) {
+        const int *indices = entity_attachments(world, pending[i].entity);
+        for (int j = 0; j < acount(indices); j++) {
+            behavior_attachment *attachment = &world->attachments[indices[j]];
+            if (attachment->sequence != pending[i].sequence) {
                 continue;
             }
-            if (begin_instance(world, &world->attachments[j]) != 0) {
+            if (begin_instance(world, attachment) != 0) {
                 afree(pending);
                 return -1;
             }
@@ -515,6 +636,8 @@ static void destroy_asset_pool(behavior_asset_record *asset)
         behavior_instance_destroy(asset->pool[i]);
     }
     afree(asset->pool);
+    behavior_batch_free(asset->batch);
+    asset->batch = NULL;
 }
 
 int game_behavior_replace_asset(
@@ -545,6 +668,7 @@ int game_behavior_replace_asset(
         release_instance(asset, world->attachments[i].instance);
         adel(world->attachments, i);
     }
+    rebuild_attachment_index(world);
     destroy_asset_pool(asset);
     behavior_asset *old = asset->definition;
     asset->definition = definition;
@@ -613,6 +737,7 @@ int game_behavior_preview_asset(
     }
     *old_definition = asset->definition;
     asset->definition = definition;
+    world->attachment_revision++;
     return INSTANCE_UPDATE_READY;
 }
 
@@ -638,8 +763,8 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
         return -1;
     }
     behavior_instance_set_parallel_for(instance, world->parallel_for, world->parallel_user);
-    apush(
-        world->attachments,
+    append_attachment(
+        world,
         (behavior_attachment){
             .entity = entity,
             .asset = asset,
@@ -651,11 +776,13 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
     if (begin_instance(world, attachment) != 0) {
         for (int i = 0; i < acount(world->attachments); i++) {
             if (world->attachments[i].instance == instance) {
+                release_instance(asset, instance);
                 adel(world->attachments, i);
-                break;
+                rebuild_attachment_index(world);
+                return -1;
             }
         }
-        release_instance(asset, instance);
+        assert(false);
         return -1;
     }
     return 0;
@@ -665,6 +792,25 @@ static bool attachment_entity(const behavior_attachment *attachment, ecs_entity 
 {
     return attachment->entity.slot == entity.slot &&
            attachment->entity.generation == entity.generation;
+}
+
+static bool attachments_match(
+    const game_behavior_world *world,
+    ecs_entity entity,
+    const behavior_attachment *requested
+)
+{
+    const int *indices = entity_attachments(world, entity);
+    if (acount(indices) != acount(requested)) {
+        return false;
+    }
+    for (int i = 0; i < acount(indices); i++) {
+        const behavior_attachment *current = &world->attachments[indices[i]];
+        if (indices[i] != indices[0] + i || current->instance != requested[i].instance) {
+            return false;
+        }
+    }
+    return true;
 }
 
 int game_behavior_set_attachments(
@@ -724,7 +870,7 @@ int game_behavior_set_attachments(
     /* Publish the new attachments for Begin's ordinary lookup semantics, but
      * retain every old instance until all Begin dispatches have succeeded. */
     for (int i = 0; i < acount(created); i++) {
-        apush(world->attachments, created[i]);
+        append_attachment(world, created[i]);
     }
     for (int i = 0; i < acount(created); i++) {
         behavior_attachment
@@ -746,6 +892,11 @@ int game_behavior_set_attachments(
                 requested[j].begin_state = published->begin_state;
             }
         }
+    }
+    if (attachments_match(world, entity, requested)) {
+        afree(requested);
+        afree(created);
+        return 0;
     }
     behavior_attachment *ordered = NULL;
     bool inserted = false;
@@ -774,6 +925,7 @@ int game_behavior_set_attachments(
     }
     afree(world->attachments);
     world->attachments = ordered;
+    rebuild_attachment_index(world);
     afree(requested);
     afree(created);
     return 0;
@@ -781,6 +933,7 @@ fail:
     for (int i = 0; i < acount(created); i++) {
         release_instance(created[i].asset, created[i].instance);
     }
+    rebuild_attachment_index(world);
     afree(created);
     afree(requested);
     return -1;
@@ -799,6 +952,9 @@ static int detach_asset_entity(game_behavior_world *world, behavior_asset_record
         release_instance(asset, attachment->instance);
         adel(world->attachments, i);
         detached++;
+    }
+    if (detached) {
+        rebuild_attachment_index(world);
     }
     return detached;
 }
@@ -879,14 +1035,49 @@ int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity)
 }
 
 static int dispatch_attachment(
+    game_behavior_world *world,
     behavior_attachment *attachment,
     const char *event_name,
     flow_inputs inputs,
-    flow_error *error
+    flow_error *error,
+    bool batch
 )
 {
     flow_error local = { 0 };
-    flow_run *run = behavior_instance_dispatch(attachment->instance, event_name, inputs, &local);
+    flow_run *run;
+    behavior_instance *instance = attachment->instance;
+    bool debug_hold = attachment->debug_hold;
+    const behavior_program *program = instance->asset->program;
+    bool duplicate = false;
+    if (program && !behavior_program_diagnostic(program) &&
+        !behavior_program_event(program, event_name, &duplicate)) {
+        return 0;
+    }
+    node *entry;
+    const behavior_function *function = batch && program && !duplicate
+                                          ? behavior_program_batch_event(program, event_name, &entry)
+                                          : NULL;
+    bool unobserved = !attachment->debug_hold &&
+                      (!instance->profile || instance->profile == record_profile);
+    bool cache = batch && unobserved && !inputs.count &&
+                 !instance->trace_enabled && !acount(instance->activations) &&
+                 (instance->backend == BEHAVIOR_SLJIT ||
+                  instance->backend == BEHAVIOR_BYTECODE);
+    game_entities_query_scope(world->entities, cache ? function : NULL);
+    if (batch && unobserved && !inputs.count &&
+        behavior_instance_dispatch_batch(
+            instance,
+            event_name,
+            &attachment->asset->batch,
+            &run
+        )) {
+        if (!run) {
+            return 1;
+        }
+    } else {
+        game_entities_query_scope(world->entities, NULL);
+        run = behavior_instance_dispatch(instance, event_name, inputs, &local);
+    }
     if (!run) {
         if (local.code == FLOW_ERR_UNKNOWN_EVENT) {
             return 0;
@@ -896,9 +1087,9 @@ static int dispatch_attachment(
         }
         return local.code;
     }
-    if (!attachment->debug_hold && (flow_run_status(run) == FLOW_COMPLETED ||
-                                    flow_run_status(run) == FLOW_FAILED)) {
-        behavior_instance_release_activation(attachment->instance, run);
+    if (!debug_hold && (flow_run_status(run) == FLOW_COMPLETED ||
+                        flow_run_status(run) == FLOW_FAILED)) {
+        behavior_instance_release_activation(instance, run);
     }
     return 1;
 }
@@ -917,14 +1108,29 @@ int game_behavior_dispatch(
     if (error) {
         *error = (flow_error){ 0 };
     }
-    int dispatched = 0;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_attachment *attachment = &world->attachments[i];
-        if (attachment->entity.slot != entity.slot ||
-            attachment->entity.generation != entity.generation) {
+    int dispatched = 0, at = 0, next = 0;
+    uint64_t revision = world->attachment_revision;
+    for (;;) {
+        /* A sink may grow/reorder attachments while handling an event. Rebind
+         * the index after edits and retain the ordered broadcast-array cursor. */
+        if (revision != world->attachment_revision) {
+            revision = world->attachment_revision;
+            at = 0;
+        }
+        const int *indices = entity_attachments(world, entity);
+        while (at < acount(indices) && indices[at] < next) {
+            at++;
+        }
+        if (at == acount(indices)) {
+            break;
+        }
+        int index = indices[at++];
+        next = index + 1;
+        behavior_attachment *attachment = &world->attachments[index];
+        if (!attachment_entity(attachment, entity)) {
             continue;
         }
-        int result = dispatch_attachment(attachment, event_name, inputs, error);
+        int result = dispatch_attachment(world, attachment, event_name, inputs, error, false);
         if (result < 0) {
             return result;
         }
@@ -952,13 +1158,163 @@ int game_behavior_dispatch_all(
         if (!ecs_entity_is_alive(world->ecs, attachment->entity)) {
             continue;
         }
-        int result = dispatch_attachment(attachment, event_name, inputs, error);
+        int result = dispatch_attachment(
+            world,
+            attachment,
+            event_name,
+            inputs,
+            error,
+            !world->batch_disabled
+        );
         if (result < 0) {
+            game_entities_query_scope(world->entities, NULL);
             return result;
         }
         dispatched += result;
     }
+    game_entities_query_scope(world->entities, NULL);
     return dispatched;
+}
+
+static void prepare_updates(game_behavior_world *world)
+{
+    behavior_update_free_bindings(world->update_bindings);
+    world->update_bindings = NULL;
+    world->update_query_scope = NULL;
+    aclear(world->updates);
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        behavior_instance *instance = attachment->instance;
+        const behavior_program *program = instance->asset->program;
+        bool duplicate = false;
+        if (program && !behavior_program_diagnostic(program) &&
+            !behavior_program_event(program, "Tick", &duplicate)) {
+            continue;
+        }
+        behavior_update_row row = { .instance = instance,
+                                    .entity = ecs_entity_to_u64(attachment->entity),
+                                    .attachment = i,
+                                    .services_revision = instance->services_revision };
+        node *entry;
+        const behavior_function
+            *function = program && !duplicate && !behavior_program_diagnostic(program)
+                          ? behavior_program_batch_event(program, "Tick", &entry)
+                          : NULL;
+        /* A stretch may share query membership only if every body preserves
+         * its dependencies. Other bodies keep their existing effect barriers. */
+        if (function && game_entities_queries_preserved(function)) {
+            row.binding = behavior_update_prepare(&world->update_bindings, instance, function, entry);
+            world->update_query_scope = function;
+        }
+        apush(world->updates, row);
+    }
+    world->update_revision = world->attachment_revision;
+}
+
+int game_behavior_update(game_behavior_world *world, flow_error *error)
+{
+    if (!world) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    world->update_stats = (game_behavior_update_stats){ 0 };
+    if (world->batch_disabled) {
+        int result = game_behavior_dispatch_all(world, "Tick", (flow_inputs){ 0 }, error);
+        if (result >= 0) {
+            world->update_stats.entries = world->update_stats.scheduled = result;
+        }
+        return result;
+    }
+    if (error) {
+        *error = (flow_error){ 0 };
+    }
+    int at = 0, next_attachment = 0, dispatched = 0;
+    for (;;) {
+        if (world->update_revision != world->attachment_revision) {
+            prepare_updates(world);
+            at = 0;
+            while (at < acount(world->updates) &&
+                   world->updates[at].attachment < next_attachment) {
+                at++;
+            }
+        }
+        if (at == acount(world->updates)) {
+            break;
+        }
+        behavior_update_row *row = &world->updates[at],
+                            *end = world->updates + acount(world->updates);
+        behavior_update_row *stopped;
+        int result = FLOW_OK;
+        behavior_update_refresh(world->update_bindings);
+        game_entities_query_scope(world->entities, world->update_query_scope);
+        bool native = !world->update_native_disabled &&
+                      row->instance->backend == BEHAVIOR_SLJIT &&
+                      !row->instance->profile;
+        if (native && row->binding && !world->update_code) {
+            world->update_code = behavior_update_compile();
+        }
+        if (native && world->update_code) {
+            stopped = ((
+                           behavior_update_fn
+            )world->update_code)(row, end, (const ecs_execution_view *)world->ecs, &result);
+            world->update_stats.native_loop += (int)(stopped - row) + (result < 0);
+        } else {
+            stopped = behavior_update_run_c(
+                row,
+                end,
+                (const ecs_execution_view *)world->ecs,
+                &result,
+                record_profile
+            );
+        }
+        assert(result <= FLOW_OK);
+        int ran = (int)(stopped - row) + (result < 0);
+        world->update_stats.prepared += ran;
+        dispatched += ran;
+        at = (int)(stopped - world->updates);
+        if (stopped == end) {
+            break;
+        }
+        next_attachment = stopped->attachment + 1;
+        behavior_attachment *attachment = &world->attachments[stopped->attachment];
+        if (result < 0) {
+            game_entities_query_scope(world->entities, NULL);
+            flow_run *failed = behavior_update_failure(stopped, result);
+            behavior_instance_release_activation(stopped->instance, failed);
+        } else if (ecs_entity_is_alive(world->ecs, attachment->entity)) {
+            /* A changed binding is repaired at the next schedule boundary. The
+             * guarded row has not executed, so normal dispatch is safe here. */
+            if (stopped->services_revision != stopped->instance->services_revision) {
+                world->attachment_revision++;
+            }
+            game_entities_query_scope(world->entities, NULL);
+            result = dispatch_attachment(world, attachment, "Tick", (flow_inputs){ 0 }, error, true);
+            if (result < 0) {
+                game_entities_query_scope(world->entities, NULL);
+                return result;
+            }
+            world->update_stats.scheduled += result;
+            dispatched += result;
+        }
+        at++;
+    }
+    game_entities_query_scope(world->entities, NULL);
+    world->update_stats.entries = dispatched;
+    return dispatched;
+}
+
+game_behavior_update_stats game_behavior_last_update(const game_behavior_world *world)
+{
+    return world->update_stats;
+}
+
+void game_behavior_set_native_update(game_behavior_world *world, bool enabled)
+{
+    world->update_native_disabled = !enabled;
+}
+
+void game_behavior_set_batch_enabled(game_behavior_world *world, bool enabled)
+{
+    world->batch_disabled = !enabled;
 }
 
 bool game_behavior_has_event(const game_behavior_world *world, const char *event_name)
@@ -988,7 +1344,7 @@ typedef struct
 
 static int instance_breakpoints_active(const behavior_instance *instance)
 {
-    if (!instance || !instance->asset || !instance->asset->graph) {
+    if (!instance || !acount(instance->activations)) {
         return 0;
     }
     if (instance->breakpoints_override) {
@@ -1009,8 +1365,12 @@ static int instance_breakpoints_active(const behavior_instance *instance)
 static void pump_attachment(int index, void *user)
 {
     behavior_pump_context *context = (behavior_pump_context *)user;
-    behavior_attachment *attachment = &context->world->attachments[index];
+    behavior_attachment
+        *attachment = &context->world->attachments[context->world->pumped[index]];
     context->world->pump_results[index] = FLOW_OK;
+    if (!acount(attachment->instance->activations)) {
+        return;
+    }
     if (!ecs_entity_is_alive(context->world->ecs, attachment->entity)) {
         return;
     }
@@ -1026,42 +1386,70 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         return FLOW_ERR_ARGUMENT;
     }
     game_behavior_set_time(world, monotonic_time);
-    int count = acount(world->attachments);
-    int breakpoints_enabled = world->breakpoints_enabled;
-    for (int i = 0; i < count && !breakpoints_enabled; i++) {
-        breakpoints_enabled = instance_breakpoints_active(world->attachments[i].instance);
+    aclear(world->pumped);
+    world->last_pump_count = 0;
+    bool serial = world->breakpoints_enabled;
+    for (int i = behavior_pending_next(&world->pending, 0); i >= 0;
+         i = behavior_pending_next(&world->pending, i + 1)) {
+        behavior_instance *instance = world->attachments[i].instance;
+        assert(acount(instance->activations));
+        apush(world->pumped, i);
+        serial = serial || instance_breakpoints_active(instance) ||
+                 asset_requires_serial(instance->asset);
     }
-    if (count > world->pump_result_capacity) {
-        world->pump_results = (int *)
-            xrealloc(world->pump_results, (size_t)count * sizeof *world->pump_results);
-        world->pump_result_capacity = count;
+    int count = acount(world->pumped);
+    if (!count) {
+        return FLOW_OK;
+    }
+    /* Serial effects can enqueue a later attachment during this pump. Retain
+     * the original ordered walk by consulting membership again after each row. */
+    int limit = acount(world->attachments);
+    int capacity = serial || !world->parallel_for ? limit : count;
+    if (capacity > world->pump_result_capacity) {
+        world->pump_results = xrealloc(
+            world->pump_results,
+            (size_t)capacity * sizeof *world->pump_results
+        );
+        world->pump_result_capacity = capacity;
     }
     behavior_pump_context context = { world, monotonic_time };
-    bool serial = breakpoints_enabled;
-    for (int i = 0; i < count && !serial; i++) {
-        serial = asset_requires_serial(world->attachments[i].asset->definition);
-    }
     if (world->parallel_for && !serial) {
         world->parallel_for(count, pump_attachment, &context);
     } else {
-        for (int i = 0; i < count; i++) {
-            pump_attachment(i, &context);
+        aclear(world->pumped);
+        for (int i = behavior_pending_next(&world->pending, 0); i >= 0 && i < limit;
+             i = behavior_pending_next(&world->pending, i + 1)) {
+            apush(world->pumped, i);
+            pump_attachment(acount(world->pumped) - 1, &context);
         }
     }
+    world->last_pump_count = acount(world->pumped);
     int result = FLOW_OK;
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < acount(world->pumped); i++) {
         if (world->pump_results[i] < 0) {
             result = world->pump_results[i];
         }
-        if (!world->attachments[i].debug_hold) {
-            reap_instance(world->attachments[i].instance);
+        behavior_attachment *attachment = &world->attachments[world->pumped[i]];
+        if (!attachment->debug_hold) {
+            reap_instance(attachment->instance);
         }
     }
     return result;
 }
 
+int game_behavior_last_pump_count(const game_behavior_world *world)
+{
+    return world->last_pump_count;
+}
+
 void game_behavior_set_time(game_behavior_world *world, double simulation_time)
 {
+    /* Acquired instances inherit both world clock values. Pumping again at the
+     * same time therefore needs no full-population write. Compare bits to
+     * preserve signed zero and NaN payloads in authored clock reads. */
+    if (!memcmp(&world->current_time, &simulation_time, sizeof simulation_time)) {
+        return;
+    }
     world->current_time = simulation_time;
     for (int i = 0; i < acount(world->attachments); i++) {
         world->attachments[i].instance->current_time = simulation_time;
@@ -1070,7 +1458,8 @@ void game_behavior_set_time(game_behavior_world *world, double simulation_time)
 
 bool game_behavior_paused(const game_behavior_world *world)
 {
-    for (int i = 0; i < acount(world->attachments); i++) {
+    for (int i = behavior_pending_next(&world->pending, 0); i >= 0;
+         i = behavior_pending_next(&world->pending, i + 1)) {
         const behavior_instance *instance = world->attachments[i].instance;
         for (int j = 0; j < acount(instance->activations); j++) {
             if (flow_run_status(instance->activations[j]) == FLOW_PAUSED) {
@@ -1084,6 +1473,9 @@ bool game_behavior_paused(const game_behavior_world *world)
 void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds)
 {
     if (!world) {
+        return;
+    }
+    if (!memcmp(&world->delta_seconds, &delta_seconds, sizeof delta_seconds)) {
         return;
     }
     world->delta_seconds = delta_seconds;
@@ -1156,8 +1548,9 @@ int game_behavior_attachment_count_for_entity(const game_behavior_world *world, 
         return 0;
     }
     int count = 0;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        const behavior_attachment *attachment = &world->attachments[i];
+    const int *indices = entity_attachments(world, entity);
+    for (int i = 0; i < acount(indices); i++) {
+        const behavior_attachment *attachment = &world->attachments[indices[i]];
         if (attachment->entity.slot == entity.slot &&
             attachment->entity.generation == entity.generation) {
             count++;
@@ -1176,8 +1569,9 @@ int game_behavior_attachment_info_at(
     if (!world || !out || index < 0) {
         return -1;
     }
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_attachment *attachment = &world->attachments[i];
+    const int *indices = entity_attachments(world, entity);
+    for (int i = 0; i < acount(indices); i++) {
+        behavior_attachment *attachment = &world->attachments[indices[i]];
         if (attachment->entity.slot != entity.slot ||
             attachment->entity.generation != entity.generation) {
             continue;

@@ -613,6 +613,7 @@ static void profile_checks()
 {
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
+    game_behavior_set_profiling(world, true);
     ecs_entity parent = ecs_world_create_entity(ecs),
                child = ecs_world_create_entity(ecs);
     behavior_asset *outer = behavior_asset_new("Profile Parent");
@@ -724,6 +725,7 @@ static void profile_checks()
 
     clock_fixture f = clock_new(false, false);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
+    engine_set_behavior_profiling(f.runtime, true);
     assert(engine_frame(f.runtime, 3 * ENGINE_FIXED_SECONDS) == FLOW_OK);
     test_check(
         profile_row(engine_behavior_profile(f.runtime), "Clock", "Tick").starts == 3,
@@ -794,7 +796,10 @@ void run_parallel_checks(void)
     );
 
     behavior_asset *unsafe = behavior_asset_new("ConservativeEffects");
-    graph_add_node(unsafe->graph, registry_node_by_name("Print String"));
+    node_desc undeclared = NODE_PrintString;
+    undeclared.name = "Undeclared test operation";
+    undeclared.access = NULL;
+    graph_add_node(unsafe->graph, &undeclared);
     compile_report unsafe_report;
     compile_report_init(&unsafe_report);
     behavior_asset_compile(unsafe, &unsafe_report);

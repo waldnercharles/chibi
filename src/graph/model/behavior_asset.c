@@ -277,7 +277,8 @@ behavior_variable *behavior_asset_add_variable(
                 return NULL;
             }
         }
-        if ((type == PIN_STR || type == PIN_NAME) && v.default_value.str) {
+        if (container == PIN_CONTAINER_SINGLE &&
+            (type == PIN_STR || type == PIN_NAME) && v.default_value.str) {
             v.default_value.str = graph_own_str(
                 asset->graph,
                 v.default_value.str,
@@ -288,7 +289,7 @@ behavior_variable *behavior_asset_add_variable(
         v.default_value = (pin_value){ .type = type,
                                        .container = container,
                                        .type_name = v.type_name };
-        if (type == PIN_STR || type == PIN_NAME) {
+        if (container == PIN_CONTAINER_SINGLE && (type == PIN_STR || type == PIN_NAME)) {
             v.default_value.str = "";
         }
     }
@@ -404,8 +405,16 @@ int behavior_asset_set_variable_container(behavior_asset *asset, uint64_t id, pi
     if (!v) {
         return -1;
     }
+    if (v->container != container) {
+        v->default_value = (pin_value){ .type = v->type,
+                                        .type_name = v->type_name,
+                                        .container = container };
+        if (container == PIN_CONTAINER_SINGLE &&
+            (v->type == PIN_STR || v->type == PIN_NAME)) {
+            v->default_value.str = "";
+        }
+    }
     v->container = container;
-    v->default_value.container = container;
     for (int g = 0; g < acount(asset->graphs); g++) {
         for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
             node *n = asset->graphs[g]->nodes[i];
@@ -512,7 +521,8 @@ int behavior_asset_set_variable_default(behavior_asset *asset, uint64_t id, cons
             (const pin_array *)value->ptr
         );
     }
-    if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
+    if (v->container == PIN_CONTAINER_SINGLE &&
+        (value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
         v->default_value
             .str = graph_own_str(asset->graph, value->str, strlen(value->str));
     }

@@ -802,7 +802,7 @@
             {
               "id": 33,
               "name": "Name",
-              "type": 12,
+              "type": 13,
               "kind": "data",
               "container": 0,
               "split_parent": 0,
@@ -1532,7 +1532,7 @@
             {
               "id": 88,
               "name": "Name",
-              "type": 12,
+              "type": 13,
               "kind": "data",
               "container": 0,
               "split_parent": 0,
@@ -2134,7 +2134,7 @@
             {
               "id": 126,
               "name": "Name",
-              "type": 12,
+              "type": 13,
               "kind": "data",
               "container": 0,
               "split_parent": 0,

@@ -2,23 +2,21 @@
 
 #include "graph/runtime/flow.h"
 #include "render/particles.h"
-#include "runtime/components.h"
 
-static int emit_particles(node *, flow_context *ctx)
+#include <cute_math.h>
+
+static const char missing_particles[] = "Emit Particles requires a game world";
+static const char
+    missing_directed[] = "Emit Directed Particles requires a game world";
+
+static const char *burst_call(void *service, const pin_value *values, pin_value *)
 {
-    game_particles *particles = flow_context_service(ctx, "game.particles");
+    game_particles *particles = service;
     if (!particles) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Emit Particles requires a game world");
-    }
-    pin_value values[5];
-    for (int i = 0; i < 5; i++) {
-        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
-        if (result < 0) {
-            return result;
-        }
+        return missing_particles;
     }
     if (!values[0].ptr) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Emit Particles requires a position");
+        return "Emit Particles requires a position";
     }
     const CF_V2 *position = values[0].ptr;
     game_particle_burst burst = {
@@ -28,10 +26,30 @@ static int emit_particles(node *, flow_context *ctx)
         .speed = values[3].f,
         .lifetime = values[4].f,
     };
-    if (game_particles_emit(particles, &burst) < 0) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Emit Particles requires finite position, nonnegative count and speed, and positive lifetime");
+    return game_particles_emit(particles, &burst) < 0
+             ? "Emit Particles requires finite position, nonnegative count and "
+               "speed, and positive lifetime"
+             : NULL;
+}
+static const node_host_call burst_host = { .service = "game.particles",
+                                           .invoke = burst_call,
+                                           .missing_service = missing_particles };
+static int emit_particles(node *, flow_context *ctx)
+{
+    game_particles *particles = flow_context_service(ctx, "game.particles");
+    if (!particles) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, missing_particles);
     }
-    return flow_context_continue(ctx, 0);
+    pin_value values[5];
+    for (int i = 0; i < 5; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    const char *error = burst_call(particles, values, NULL);
+    return error ? flow_context_fail(ctx, FLOW_ERR_NODE, error)
+                 : flow_context_continue(ctx, 0);
 }
 
 static pin_spec INPUTS[] = {
@@ -67,27 +85,21 @@ node_desc NODE_Emit_Particles = {
     .outputs = OUTPUTS,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = emit_particles,
+    .host_call = &burst_host,
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Effects",
     .keywords = "particles burst sparks impact",
     .access = &ACCESS,
 };
 
-static int emit_directed(node *, flow_context *ctx)
+static const char *directed_call(void *service, const pin_value *v, pin_value *)
 {
-    game_particles *particles = flow_context_service(ctx, "game.particles");
+    game_particles *particles = service;
     if (!particles) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Emit Directed Particles requires a game world");
-    }
-    pin_value v[19];
-    for (int i = 0; i < 19; i++) {
-        int result = flow_context_eval_data(ctx, i + 1, &v[i]);
-        if (result < 0) {
-            return result;
-        }
+        return missing_directed;
     }
     if (!v[0].ptr || !v[1].ptr) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Position and Direction are required");
+        return "Position and Direction are required";
     }
     const CF_V2 *position = v[0].ptr, *direction = v[1].ptr;
     game_particle_spray spray = {
@@ -112,9 +124,31 @@ static int emit_directed(node *, flow_context *ctx)
         .shape = v[18].i,
     };
     if (game_particles_emit_directed(particles, &spray) < 0) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Directed particle ranges and direction must be finite and valid");
+        return "Directed particle ranges and direction must be finite and "
+               "valid";
     }
-    return flow_context_continue(ctx, 0);
+    return NULL;
+}
+
+static const node_host_call directed_host = { .service = "game.particles",
+                                              .invoke = directed_call,
+                                              .missing_service = missing_directed };
+static int emit_directed(node *, flow_context *ctx)
+{
+    game_particles *particles = flow_context_service(ctx, "game.particles");
+    if (!particles) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, missing_directed);
+    }
+    pin_value values[19];
+    for (int i = 0; i < 19; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    const char *error = directed_call(particles, values, NULL);
+    return error ? flow_context_fail(ctx, FLOW_ERR_NODE, error)
+                 : flow_context_continue(ctx, 0);
 }
 
 static pin_spec DIRECTED_INPUTS[] = {
@@ -214,6 +248,7 @@ node_desc NODE_Emit_Directed_Particles = {
     .outputs = OUTPUTS,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = emit_directed,
+    .host_call = &directed_host,
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Effects",
     .keywords = "particles spray trail cone",

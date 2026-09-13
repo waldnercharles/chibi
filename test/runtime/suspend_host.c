@@ -75,7 +75,7 @@ void test_suspended_commands(void *library)
                     expected_status = flow_run_resume(run);
                     if (!expected_status) {
                         for (int j = 1; j < 5; j++) {
-                            assert(!flow_copy_input(
+                            assert(!pin_value_snapshot_to_arena(
                                 &values,
                                 &expected_result[j],
                                 flow_run_input_value(run, g->nodes[1], j)
@@ -83,7 +83,7 @@ void test_suspended_commands(void *library)
                         }
                     }
                     for (int j = 0; j < 4; j++) {
-                        assert(!flow_copy_input(
+                        assert(!pin_value_snapshot_to_arena(
                             &values,
                             &expected_variables[j],
                             &instance->variables[j]

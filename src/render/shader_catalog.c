@@ -630,27 +630,15 @@ void render_shader_catalog_clear()
     revision++;
     ramp_revision++;
 }
-static int set_parameter(node *, flow_context *ctx)
+static const char *write_parameter(void *service, const pin_value *inputs, pin_value *)
 {
-    pin_value target, name, value;
-    int result = flow_context_eval_data(ctx, 1, &target);
-    if (result < 0) {
-        return result;
-    }
-    result = flow_context_eval_data(ctx, 2, &name);
-    if (result < 0) {
-        return result;
-    }
-    result = flow_context_eval_data(ctx, 3, &value);
-    if (result < 0) {
-        return result;
-    }
-    ecs_world *world = flow_context_service(ctx, "ecs.world");
+    ecs_world *world = service;
+    pin_value target = inputs[0], name = inputs[1], value = inputs[2];
     ecs_entity entity = ecs_entity_from_u64(target.u64);
     const GameShader *binding = world ? GAME_GameShader_get_const(world, entity) : NULL;
     int id = binding ? render_shader_find(binding->material) : 0;
     if (!id || !name.str) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Choose an entity with a material and a named parameter.");
+        return "Choose an entity with a material and a named parameter.";
     }
     int slot = -1;
     shader_asset *asset = &assets[id - 1];
@@ -660,7 +648,7 @@ static int set_parameter(node *, flow_context *ctx)
         }
     }
     if (slot < 0) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Material parameter does not exist.");
+        return "Material parameter does not exist.";
     }
     shader_override fresh = { .world = world,
                               .entity = target.u64,
@@ -680,11 +668,11 @@ static int set_parameter(node *, flow_context *ctx)
     ) {
         memcpy(fresh.value, value.ptr, (size_t)fresh.width * sizeof(float));
     } else {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Material parameter type does not match.");
+        return "Material parameter type does not match.";
     }
     for (int i = 0; i < fresh.width; i++) {
         if (!isfinite(fresh.value[i])) {
-            return flow_context_fail(ctx, FLOW_ERR_NODE, "Material parameters must be finite.");
+            return "Material parameters must be finite.";
         }
     }
     for (int i = 0; i < acount(overrides); i++) {
@@ -692,13 +680,28 @@ static int set_parameter(node *, flow_context *ctx)
             !strcmp(overrides[i].name, name.str)) {
             memcpy(overrides[i].value, fresh.value, sizeof fresh.value);
             overrides[i].width = fresh.width;
-            return flow_context_continue(ctx, 0);
+            return NULL;
         }
     }
     fresh.name = xstrdup(name.str);
     apush(overrides, fresh);
-    return flow_context_continue(ctx, 0);
+    return NULL;
 }
+static int set_parameter(node *, flow_context *ctx)
+{
+    pin_value inputs[3];
+    for (int i = 0; i < 3; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &inputs[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    const char *error = write_parameter(flow_context_service(ctx, "ecs.world"), inputs, NULL);
+    return error ? flow_context_fail(ctx, FLOW_ERR_NODE, error)
+                 : flow_context_continue(ctx, 0);
+}
+static const node_host_call parameter_call = { .service = "ecs.world",
+                                               .invoke = write_parameter };
 static pin_spec parameter_inputs[] = {
     { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
     { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
@@ -717,6 +720,7 @@ static node_desc parameter_node = { .name = "Set Material Parameter",
                                     .output_count = 1,
                                     .flow_kind = NODE_FLOW_CUSTOM,
                                     .flow = set_parameter,
+                                    .host_call = &parameter_call,
                                     .display_class = NODE_DISPLAY_FLOW,
                                     .access = &parameter_access };
 static node_desc *binding_nodes[] = { &parameter_node };

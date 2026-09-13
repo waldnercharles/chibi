@@ -155,6 +155,7 @@ int app_scene_authoring_runtime_command(
 );
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
+void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool enabled);
 const game_behavior_profile_frame *app_scene_authoring_behavior_profile(
     const app_scene_authoring *scene
 );

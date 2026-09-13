@@ -45,7 +45,7 @@ void whole_suspend_instrument(behavior_function *f, bool expressions)
     afree(f->instructions);
     f->instructions = out;
     free(map);
-    behavior_function_suspensions(f);
+    behavior_function_finalize(f);
 }
 void whole_suspend_smoke()
 {
@@ -182,6 +182,6 @@ behavior_function *whole_suspend_float_ir(pin_type type)
         ((behavior_function_instruction){ .op = BF_RESULT, .type = type, .left = 4, .target = 1 })
     );
     apush(f->instructions, ((behavior_function_instruction){ .op = BF_END }));
-    behavior_function_suspensions(f);
+    behavior_function_finalize(f);
     return f;
 }

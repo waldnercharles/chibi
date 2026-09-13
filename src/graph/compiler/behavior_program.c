@@ -36,6 +36,12 @@ typedef struct
     behavior_function_diagnostic diagnostic;
 } function_exclusion;
 
+typedef struct
+{
+    node *entry;
+    const behavior_function *function;
+} batch_event;
+
 struct behavior_graph_program
 {
     graph *source;
@@ -52,7 +58,71 @@ struct behavior_program
     unsigned long long revision;
     compile_diagnostic diagnostic;
     behavior_graph_program *graphs;
+    node **events; /* Named root entries, including duplicates on invalid assets. */
+    batch_event *batches;
+    uint64_t *states;
 };
+
+int behavior_asset_state_index(const behavior_asset *asset, uint64_t node_id)
+{
+    int index = 0;
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        for (int j = 0; j < acount(asset->graphs[i]->nodes); j++) {
+            const node *n = asset->graphs[i]->nodes[j];
+            if (!n->desc->instance_state) {
+                continue;
+            }
+            if (n->id == node_id) {
+                return index;
+            }
+            index++;
+        }
+    }
+    return -1;
+}
+const uint64_t *behavior_program_states(const behavior_program *program, int *count)
+{
+    *count = acount(program->states);
+    return program->states;
+}
+
+uint64_t behavior_program_revision(const behavior_program *program)
+{
+    return program->revision;
+}
+node *behavior_program_event(const behavior_program *program, const char *name, bool *duplicate)
+{
+    node *found = NULL;
+    *duplicate = false;
+    for (int i = 0; i < acount(program->events); i++) {
+        node *entry = program->events[i];
+        if (strcmp(entry->reference_name, name)) {
+            continue;
+        }
+        if (found) {
+            *duplicate = true;
+            return entry;
+        }
+        found = entry;
+    }
+    return found;
+}
+
+const behavior_function *behavior_program_batch_event(
+    const behavior_program *program,
+    const char *name,
+    node **entry
+)
+{
+    for (int i = 0; i < acount(program->batches); i++) {
+        const batch_event *event = &program->batches[i];
+        if (!strcmp(event->entry->reference_name, name)) {
+            *entry = event->entry;
+            return event->function;
+        }
+    }
+    return NULL;
+}
 
 const char *behavior_backend_name(behavior_backend backend)
 {
@@ -240,6 +310,9 @@ void behavior_program_free(behavior_program *program)
         graph_ir_free(&p->ir);
     }
     afree(program->graphs);
+    afree(program->events);
+    afree(program->batches);
+    afree(program->states);
     free(program);
 }
 
@@ -341,6 +414,22 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
     behavior_program *program = xcalloc(1, sizeof *program);
     asset->program = program;
     program->revision = revision;
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        for (int j = 0; j < acount(asset->graphs[i]->nodes); j++) {
+            const node *n = asset->graphs[i]->nodes[j];
+            if (n->desc->instance_state) {
+                apush(program->states, n->id);
+            }
+        }
+    }
+    /* Dispatch distinguishes unknown/duplicate names before compile errors.
+     * Keep the index available even when validation or native emission fails. */
+    for (int i = 0; i < acount(asset->graph->nodes); i++) {
+        node *entry = asset->graph->nodes[i];
+        if (entry->desc->flow_kind == NODE_FLOW_EVENT && entry->reference_name) {
+            apush(program->events, entry);
+        }
+    }
     compile_report report;
     compile_report_init(&report);
     behavior_asset_compile(asset, &report);
@@ -421,6 +510,19 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
         }
     }
 #endif
+    const behavior_graph_program *root = behavior_program_graph(program, asset->graph);
+    for (int i = 0; i < acount(program->events); i++) {
+        node *entry = program->events[i];
+        const behavior_function *f = behavior_program_function(root, entry);
+        if (!behavior_function_batchable(f)) {
+            continue;
+        }
+        bool duplicate;
+        behavior_program_event(program, entry->reference_name, &duplicate);
+        if (!duplicate) {
+            apush(program->batches, ((batch_event){ entry, f }));
+        }
+    }
     return program;
 }
 

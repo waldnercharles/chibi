@@ -1,5 +1,9 @@
 # Array views and native iteration
 
+This records the initial borrowed-view implementation. [Owned-array support](whole-owned-arrays.md)
+now adds defaults, returned values, managed elements and snapshots of mutable
+variables, and repeats the immutable-input benchmark with the current ABI.
+
 Synchronous whole bodies now compile ForEach and ForEachWithBreak over scalar
 and fixed-layout struct elements. Array arguments, variable reads and inlined
 parameters use borrowed views. Length, Last Index, Is Empty, Is Not Empty and

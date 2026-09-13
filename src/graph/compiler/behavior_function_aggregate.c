@@ -33,7 +33,8 @@ static bool shape_fields(const type_desc *type, size_t offset, aggregate_field *
             }
             continue;
         }
-        if (!behavior_lower_scalar(field->type) ||
+        if ((!behavior_lower_scalar(field->type) &&
+             !behavior_scalar_string(field->type)) ||
             field->size != behavior_scalar_size(field->type)) {
             return false;
         }
@@ -111,9 +112,14 @@ static int scalar_local(builder *b, int frame, const node *n, int pin, size_t of
     }
     apush(
         b->function->locals,
-        ((
-            behavior_function_local
-        ){ .initial = initial, .frame = frame, .node = n, .pin = pin, .offset = offset })
+        ((behavior_function_local){
+            .initial = initial,
+            .frame = frame,
+            .node = n,
+            .pin = pin,
+            .offset = offset,
+            .parameter = frame &&
+                         n->id == b->function->frames[frame].source.graph->entry_id })
     );
     return acount(b->function->locals) - 1;
 }
@@ -142,12 +148,7 @@ int behavior_lower_source(
     int pin
 )
 {
-    if (spec->container == PIN_CONTAINER_ARRAY) {
-        if (spec->default_value.ptr) {
-            bool output = pin >= 0 && pin < n->output_count &&
-                          spec == &n->output_pins[pin];
-            return behavior_lower_unsupported(b, n, pin, output, "owned array default");
-        }
+    if (spec->container == PIN_CONTAINER_ARRAY || spec->container == PIN_CONTAINER_SET) {
         return behavior_lower_array_source(b, op, index, spec);
     }
     if (spec->type != PIN_STRUCT) {
@@ -243,7 +244,19 @@ int behavior_lower_field(builder *b, int slot, const type_field *field, const no
     if (!source) {
         return -1;
     }
-    behavior_lower_require(b, source, n, pin);
+    if (!b->capture_outputs) {
+        if (pin >= 0 && pin < n->output_count && n->output_pins[pin].field_source &&
+            graph_output_field(n, pin, NULL) == field) {
+            behavior_lower_emit(
+                b,
+                (
+                    behavior_function_instruction
+                ){ .op = BF_REQUIRE, .left = source->present, .node_id = n->id, .pin = pin, .message = "exposed field has invalid metadata or no aggregate value" }
+            );
+        } else {
+            behavior_lower_require(b, source, n, pin);
+        }
+    }
     if (field->type != PIN_STRUCT) {
         for (int i = 0; i < acount(source->fields); i++) {
             if (source->fields[i].offset == field->offset &&
@@ -365,6 +378,53 @@ static bool variable_header(builder *b, const aggregate *a, int target)
     );
     return true;
 }
+static int copy_string(builder *b, int value, bool result)
+{
+    scalar_value *scalar = behavior_lower_scalar_value(b, value);
+    int slot = scalar ? scalar->value : value;
+    for (int pc = acount(b->function->instructions) - 1; !result && pc >= 0; pc--) {
+        const behavior_function_instruction *i = &b->function->instructions[pc];
+        if (i->op >= BF_STORE || i->output != slot) {
+            continue;
+        }
+        /* Constants and arguments outlive this invocation. Local assignments
+         * have already captured mutable sources at their retention boundary. */
+        if (i->op == BF_CONSTANT || i->op == BF_ARGUMENT || i->op == BF_LOCAL ||
+            i->op == BF_COPY_STRING || i->op == BF_INTERN_STRING) {
+            return value;
+        }
+        break;
+    }
+    return behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_COPY_STRING,
+                                         .type = b->function->slots[value],
+                                         .left = value }
+    );
+}
+static bool store_managed(builder *b, int value, int target, const aggregate *a)
+{
+    array_value *array = behavior_lower_array(b, value);
+    int index = acount(b->function->data_values);
+    apush(
+        b->function->data_values,
+        ((behavior_function_data_value){
+            .initial = { .type = array ? array->type
+                               : a     ? PIN_STRUCT
+                                       : b->function->slots[value],
+                         .type_name = a ? a->type->name : NULL,
+                         .container = array ? array->container : PIN_CONTAINER_SINGLE },
+            .size = a ? a->type->size : 0 })
+    );
+    if (!behavior_lower_pack_value(b, value, index)) {
+        return false;
+    }
+    behavior_lower_emit(
+        b,
+        (behavior_function_instruction){ .op = BF_STORE_VALUE, .left = index, .target = target }
+    );
+    return true;
+}
 bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int target)
 {
     if (slot < 0 || target < 0) {
@@ -372,22 +432,57 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
     }
     array_value *array = behavior_lower_array(b, slot);
     if (array) {
+        if (op == BF_STORE) {
+            return store_managed(b, slot, target, NULL);
+        }
+        array_value source = *array;
+        int pointer = source.pointer, name = source.name;
+        if (!source.stable || op == BF_RESULT) {
+            pointer = behavior_lower_array_copy(b, pointer);
+        }
+        if (op == BF_RESULT) {
+            name = copy_string(b, name, true);
+            behavior_lower_emit(
+                b,
+                (behavior_function_instruction){ .op = BF_RESULT_ARRAY,
+                                                 .type = source.type,
+                                                 .value = { .container = source.container },
+                                                 .left = pointer,
+                                                 .right = name,
+                                                 .target = target }
+            );
+            return true;
+        }
         array_value *stored = op == BF_SAVE ? behavior_lower_array(b, target) : NULL;
-        if (array->temporary || !stored || stored->type != array->type) {
+        if (!stored || stored->type != source.type ||
+            stored->container != source.container) {
             return false;
         }
         behavior_lower_emit(
             b,
             (behavior_function_instruction){ .op = BF_SAVE,
                                              .type = BF_POINTER_TYPE,
-                                             .left = array->pointer,
+                                             .left = pointer,
                                              .target = stored->pointer }
+        );
+        behavior_lower_emit(
+            b,
+            (behavior_function_instruction){ .op = BF_SAVE,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = name,
+                                             .target = stored->name }
         );
         return true;
     }
     aggregate *a = behavior_lower_aggregate(b, slot);
     if (!a) {
+        if (behavior_scalar_string(b->function->slots[slot]) && op == BF_STORE) {
+            return store_managed(b, slot, target, NULL);
+        }
         behavior_lower_store_name(b, op, slot, target);
+        if (behavior_scalar_string(b->function->slots[slot])) {
+            slot = copy_string(b, slot, op == BF_RESULT);
+        }
         behavior_lower_emit(
             b,
             (behavior_function_instruction){ .op = op,
@@ -398,6 +493,9 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
         return true;
     }
     if (op == BF_STORE) {
+        if (!type_is_plain(a->type)) {
+            return store_managed(b, slot, target, a);
+        }
         if (!variable_header(b, a, target)) {
             return false;
         }
@@ -437,10 +535,12 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
             apush(b->function->results, ((behavior_function_result){ target, a->type }));
         }
         if (a->name >= 0) {
+            int name = type_is_plain(a->type) ? a->name
+                                              : copy_string(b, a->name, true);
             behavior_lower_emit(
                 b,
                 (behavior_function_instruction){ .op = BF_RESULT_TYPE_NAME,
-                                                 .left = a->name,
+                                                 .left = name,
                                                  .target = target }
             );
         }
@@ -453,6 +553,9 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
     }
     for (int i = 0; i < acount(a->fields); i++) {
         aggregate_field f = a->fields[i];
+        if (behavior_scalar_string(f.type)) {
+            f.slot = copy_string(b, f.slot, op == BF_RESULT);
+        }
         behavior_lower_emit(
             b,
             (behavior_function_instruction){
@@ -489,13 +592,15 @@ void behavior_lower_finish_values(builder *b)
             i->output = map[i->output];
         }
         if (behavior_function_left_slot(i->op)) {
+            assert(i->left >= 0);
             i->left = map[i->left];
         }
         if (behavior_function_right_slot(i->op)) {
+            assert(i->right >= 0);
             i->right = map[i->right];
         }
         if (((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) ||
-            i->op == BF_SELECT) {
+            behavior_function_third_slot(i->op)) {
             i->target = map[i->target];
         }
     }
@@ -510,17 +615,24 @@ void behavior_lower_finish_values(builder *b)
 int behavior_lower_local(builder *b, int frame, const node *n, int pin)
 {
     const pin_spec *spec = &n->output_pins[pin];
-    if (spec->container > PIN_CONTAINER_ARRAY || spec->kind != PIN_DATA ||
+    if (spec->container > PIN_CONTAINER_SET || spec->kind != PIN_DATA ||
         spec->field_source || spec->default_value.type != spec->type) {
         return behavior_lower_unsupported(b, n, pin, true, "stored output type, default or projection");
     }
-    if (spec->container == PIN_CONTAINER_ARRAY) {
+    if (spec->container == PIN_CONTAINER_ARRAY || spec->container == PIN_CONTAINER_SET) {
         pin_value initial = { .type = BF_POINTER_TYPE,
+                              .type_name = spec->default_value.type_name,
                               .ptr = spec->default_value.ptr };
         int pointer = scalar_local(b, frame, n, pin, 0, initial);
-        return behavior_lower_array_value(b, pointer, spec->type);
+        behavior_function_local *local = &b->function->locals[pointer];
+        if (initial.ptr && !local->array_default) {
+            local->array_default = true;
+            local->data_index = behavior_lower_array_default(b, spec->default_value);
+        }
+        int name = behavior_lower_local_name(b, pointer);
+        return behavior_lower_array_value(b, pointer, name, spec);
     }
-    if (behavior_lower_scalar(spec->type)) {
+    if (behavior_lower_scalar(spec->type) || behavior_scalar_string(spec->type)) {
         return scalar_local(b, frame, n, pin, 0, spec->default_value);
     }
     aggregate a = behavior_lower_shape(spec->type_name);

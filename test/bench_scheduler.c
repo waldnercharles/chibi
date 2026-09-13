@@ -4,6 +4,8 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 static double seconds()
 {
@@ -47,7 +49,7 @@ static void benchmark(int count)
 }
 /* A second authored workload: independent per-entity counters updated through
  * an effectful function. No Arena content, rendering, physics or host services. */
-static void tick_calls(int count, behavior_backend backend)
+static void tick_calls(int count, behavior_backend backend, int extra_nodes)
 {
     behavior_asset *a = behavior_asset_new("Counter Tick");
     uint64_t id = behavior_asset_add_variable(a, "Value", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
@@ -73,6 +75,9 @@ static void tick_calls(int count, behavior_backend backend)
     assert(graph_set_event_name(a->graph, event, "Tick") == 0);
     node *call = behavior_asset_add_function_call_node(a, fn);
     assert(graph_connect_exec(a->graph, event, 0, call, 0, 0) == 0);
+    for (int i = 0; i < extra_nodes; i++) {
+        graph_add_node(a->graph, &NODE_DeltaTime);
+    }
     behavior_instance **instances = NULL;
     for (int i = 0; i < count; i++) {
         behavior_instance *instance = behavior_instance_create(a, NULL, NULL, NULL);
@@ -95,9 +100,11 @@ static void tick_calls(int count, behavior_backend backend)
         }
     }
     printf(
-        "tick_entities=%d backend=%s frame_ms=%.6f ns_per_entity=%.3f\n",
+        "tick_entities=%d backend=%s graph_nodes=%d frame_ms=%.6f "
+        "ns_per_entity=%.3f\n",
         count,
         behavior_backend_name(backend),
+        acount(a->graph->nodes),
         (seconds() - start) * 1000 / 128,
         (seconds() - start) * 1e9 / (128 * count)
     );
@@ -109,15 +116,22 @@ static void tick_calls(int count, behavior_backend backend)
     behavior_asset_free(a);
 }
 
-int main()
+int main(int argc, char **argv)
 {
-    benchmark(64);
-    benchmark(512);
-    benchmark(4096);
+    int extra_nodes = 0;
+    if (argc == 3 && !strcmp(argv[1], "--tick")) {
+        extra_nodes = atoi(argv[2]);
+        assert(extra_nodes >= 0 && extra_nodes <= 1024);
+    } else {
+        assert(argc == 1);
+        benchmark(64);
+        benchmark(512);
+        benchmark(4096);
+    }
     for (int mode = 0; mode < 2; mode++) {
         behavior_backend backend = mode ? BEHAVIOR_BYTECODE : BEHAVIOR_SLJIT;
-        tick_calls(64, backend);
-        tick_calls(512, backend);
-        tick_calls(4096, backend);
+        tick_calls(64, backend, extra_nodes);
+        tick_calls(512, backend, extra_nodes);
+        tick_calls(4096, backend, extra_nodes);
     }
 }

@@ -1,6 +1,7 @@
 #include "ecs/execution.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow.h"
+#include "graph/runtime/random.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -10,8 +11,17 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void enter(const behavior_function *f, pin_value *locals, int frame)
+static _Thread_local uint64_t vm_allocations;
+uint64_t behavior_function_vm_allocations()
 {
+    return vm_allocations;
+}
+
+static void enter(const behavior_function *f, pin_value *locals, int frame, behavior_function_activation *activation)
+{
+    if (f->waits) {
+        activation->wake_times[frame] = 0;
+    }
     for (int i = 0; i < acount(f->locals); i++) {
         if (f->locals[i].frame == frame) {
             locals[i] = f->locals[i].initial;
@@ -34,10 +44,11 @@ static int fail(
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    if (i->op != BF_QUERY) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
         ctx->error_message = i->message;
     }
     return reason == BEHAVIOR_FUNCTION_COMMAND   ? ctx->error_status
+         : reason == BEHAVIOR_FUNCTION_ARGUMENT  ? FLOW_ERR_ARGUMENT
          : reason == BEHAVIOR_FUNCTION_STATE     ? FLOW_ERR_STATE
          : reason == BEHAVIOR_FUNCTION_HOST_FLOW ? FLOW_ERR_NODE
          : reason >= BEHAVIOR_FUNCTION_NO_RETURN ? FLOW_ERR_INVALID_GRAPH
@@ -46,9 +57,12 @@ static int fail(
 
 static int run(const behavior_function *f, behavior_function_context *ctx, bool native)
 {
+    bool inspected = ctx->inspect || ctx->watch || ctx->trace;
     if (native) {
         assert(f->code);
-        return ((int (*)(behavior_function_context *))behavior_function_entry(f))(ctx);
+        void *entry = inspected && f->inspection_code ? f->inspection_code
+                                                      : behavior_function_entry(f);
+        return ((int (*)(behavior_function_context *))entry)(ctx);
     }
     if (behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
@@ -60,6 +74,7 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
     }
     behavior_function_vm_storage *storage = activation ? activation->vm : &transient;
     if (!storage->values) {
+        vm_allocations++;
         storage->values = xcalloc(
             (size_t)(acount(f->slots) + acount(f->locals) + 1),
             sizeof *storage->values
@@ -74,7 +89,7 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
     uintptr_t steps = ctx->steps;
     int begin = 0;
     if (!activation || !activation->pc) {
-        enter(f, locals, 0);
+        enter(f, locals, 0, activation);
     }
     if (activation && activation->pc) {
         begin = activation->pc;
@@ -97,15 +112,17 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
         activation->pc = 0;
     }
     int result = 0;
-    for (int pc = begin; pc < acount(f->instructions); pc++) {
-        const behavior_function_instruction *i = &f->instructions[pc];
-        pin_value *out = &slots[i->output], a = { 0 }, b = { 0 };
-        if (behavior_function_left_slot(i->op)) {
-            a = slots[i->left];
-        }
-        if (behavior_function_right_slot(i->op)) {
-            b = slots[i->right];
-        }
+    const behavior_function_instruction *instructions = f->instructions;
+    if (!inspected && f->runtime_instructions) {
+        instructions = f->runtime_instructions;
+        begin = f->runtime_map[begin];
+    }
+    int instruction_count = acount(instructions);
+    for (int pc = begin; pc < instruction_count; pc++) {
+        const behavior_function_instruction *i = &instructions[pc];
+        pin_value *out = &slots[i->output];
+        pin_value a = i->left_slot ? slots[i->left] : (pin_value){ 0 };
+        pin_value b = i->right_slot ? slots[i->right] : (pin_value){ 0 };
         if (i->op < BF_STORE) {
             out->type = i->type;
         }
@@ -141,7 +158,57 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
             continue;
         }
         switch (i->op) {
+            case BF_WATCH_BEGIN:
+                if (ctx->watch) {
+                    ctx->watched = ctx->watches[i->target].initial;
+                }
+                break;
+            case BF_WATCH_VALUE:
+                if (ctx->watch) {
+                    memcpy(
+                        (i->right ? (char *)ctx->watch_storage : (char *)&ctx->watched) +
+                            i->offset,
+                        &a.d,
+                        behavior_scalar_size(i->type)
+                    );
+                }
+                break;
+            case BF_WATCH_PRESENT:
+                if (ctx->watch) {
+                    ctx->watched.ptr = a.b ? ctx->watch_storage : NULL;
+                }
+                break;
+            case BF_WATCH_RESET:
+                if (ctx->watch) {
+                    ctx->watch(ctx->inspection_user, &ctx->watches[i->target], NULL);
+                }
+                break;
+            case BF_WATCH_END:
+                if (ctx->watch && a.b) {
+                    ctx->watch(ctx->inspection_user, &ctx->watches[i->target], &ctx->watched);
+                }
+                break;
+            case BF_TRACE:
+                if (ctx->trace) {
+                    ctx->trace(ctx->inspection_user, &ctx->edges[i->target], steps);
+                }
+                break;
+            case BF_POINT:
+                if (!ctx->inspect ||
+                    !ctx->inspect(ctx->inspection_user, &ctx->points[i->left])) {
+                    break;
+                }
+                goto suspend;
+            case BF_DELAY:
+                ctx->wake_time = ctx->now + a.d;
+                if (ctx->wake_time <= ctx->now) {
+                    break;
+                }
+                activation->wake_times[i->frame] = ctx->wake_time;
+                goto suspend;
+            case BF_INVOKE:
             case BF_SUSPEND: {
+            suspend:
                 assert(activation && activation->values);
                 int slot_count = acount(f->slots),
                     base = slot_count + acount(f->locals);
@@ -157,14 +224,16 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                      frame = f->frames[frame].source.parent) {
                     activation->values[base + frame] = parents[frame];
                 }
-                activation->pc = pc + 1;
+                activation->pc = s->pc + 1;
                 activation->steps = steps;
                 activation->frame = i->frame;
                 activation->source = i->source;
                 activation->stack = i->stack;
                 activation->node_id = i->node_id;
                 ctx->steps = i->frame ? parents[0] : steps;
-                result = FLOW_SUSPENDED_RESULT;
+                result = i->op == BF_POINT  ? FLOW_PAUSED_RESULT
+                       : i->op == BF_INVOKE ? BEHAVIOR_FUNCTION_CALL_RESULT
+                                            : FLOW_SUSPENDED_RESULT;
                 goto done;
             }
             case BF_COMMAND_SERVICE: {
@@ -176,24 +245,132 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 }
                 break;
             }
-            case BF_COMMAND_ARGUMENT:
+            case BF_COMMAND_RESULT:
                 memcpy(
-                    (char *)&ctx->command_arguments[i->target] + i->offset,
+                    &out->d,
+                    (const char *)&ctx->command_results[i->left] + i->offset,
+                    behavior_scalar_size(i->type)
+                );
+                break;
+            case BF_COMMAND_ARGUMENT:
+            case BF_COMMAND_OUTPUT:
+                memcpy(
+                    (char *)&(
+                        i->op == BF_COMMAND_OUTPUT ? ctx->command_results : ctx->command_arguments
+                    )[i->target] +
+                        i->offset,
                     &a.d,
                     behavior_scalar_size(i->type)
                 );
                 break;
-            case BF_COMMAND: {
+            case BF_COMMAND:
+            case BF_COMMAND_BEGIN: {
                 const behavior_function_command *spec = &f->commands[i->target];
                 behavior_command_binding *c = &ctx->commands[i->target];
-                ctx->error_status = c->invoke(
-                    c->service,
-                    c->reference,
-                    ctx->command_arguments + spec->first,
-                    spec->count
-                );
+                ctx->error_status = i->op == BF_COMMAND_BEGIN
+                                      ? ctx->begin_command(ctx, i->target)
+                                      : c->invoke(
+                                            c->service,
+                                            c->reference,
+                                            ctx->command_arguments + spec->first,
+                                            spec->count
+                                        );
                 if (ctx->error_status < 0) {
                     result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_COMMAND);
+                    goto done;
+                }
+                break;
+            }
+            case BF_STRING_EQUAL:
+                out->b = behavior_string_equal(
+                    (const char *)(uintptr_t)behavior_scalar_bits(a),
+                    (const char *)(uintptr_t)behavior_scalar_bits(b)
+                );
+                break;
+            case BF_INDEX: {
+                uintptr_t pointer = (uintptr_t)behavior_scalar_bits(a) +
+                                    (uintptr_t)(intptr_t)b.i * i->offset;
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = pointer;
+                } else {
+                    out->u = (uint32_t)pointer;
+                }
+                break;
+            }
+            case BF_COPY_STRING: {
+                const char *text = a.str ? a.str : i->value.str;
+                out->str = text ? ctx->copy_string(ctx->value_storage, text) : NULL;
+                break;
+            }
+            case BF_COPY_ARRAY: {
+                uintptr_t pointer = (uintptr_t)ctx->copy_array(
+                    ctx->value_storage,
+                    (const pin_array *)(uintptr_t)behavior_scalar_bits(a)
+                );
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = pointer;
+                } else {
+                    out->u = (uint32_t)pointer;
+                }
+                break;
+            }
+            case BF_STATE_SELECT:
+                out->i = ctx->select_state(
+                    ctx->value_owner,
+                    &f->state_selections[i->target],
+                    a.i,
+                    b.i
+                );
+                break;
+            case BF_RETRIGGER:
+                out->b = ctx->retrigger(ctx, i->frame, i->target, a.d) != 0;
+                break;
+            case BF_INTERN_STRING: {
+                const ecs_execution_view *world = (const ecs_execution_view *)(uintptr_t)
+                    behavior_scalar_bits(b);
+                out->str = world->intern_string(world, a.str);
+                break;
+            }
+            case BF_STORE_VALUE:
+                ctx->store_value(ctx->value_owner, i->target, &ctx->data->values[i->left]);
+                break;
+            case BF_HOST_SERVICE: {
+                uintptr_t pointer = (uintptr_t)ctx->data->calls[i->target].service;
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = pointer;
+                } else {
+                    out->u = (uint32_t)pointer;
+                }
+                break;
+            }
+            case BF_HOST_SLOT: {
+                uintptr_t pointer = i->target
+                                      ? (uintptr_t)ctx->data->buffers[i->left]
+                                      : (uintptr_t)&ctx->data->values[i->left];
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = pointer;
+                } else {
+                    out->u = (uint32_t)pointer;
+                }
+                break;
+            }
+            case BF_HOST_CALL: {
+                const behavior_function_host_call *spec = &f->host_calls[i->target];
+                behavior_data_binding *call = &ctx->data->calls[i->target];
+                ctx->error_message = call->value
+                                       ? call->value(
+                                             ctx->value_storage,
+                                             ctx->data->values + spec->first,
+                                             spec->result_first - spec->first,
+                                             ctx->data->values + spec->result_first
+                                         )
+                                       : call->invoke(
+                                             call->service,
+                                             ctx->data->values + spec->first,
+                                             ctx->data->values + spec->result_first
+                                         );
+                if (ctx->error_message) {
+                    result = fail(ctx, i, steps, parents, i->left);
                     goto done;
                 }
                 break;
@@ -226,7 +403,7 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 ) {
                     value = &ctx->arguments[i->left];
                 }
-                uintptr_t pointer = value->container == PIN_CONTAINER_ARRAY
+                uintptr_t pointer = value->container == i->value.container
                                       ? (uintptr_t)value->ptr
                                       : 0;
                 if (BF_POINTER_TYPE == PIN_U64) {
@@ -264,6 +441,9 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                     .ptr = b.b ? ctx->variable_storage[i->target].data : NULL
                 };
                 break;
+            case BF_CONTEXT:
+                memcpy(&out->d, (const char *)ctx + i->offset, behavior_scalar_size(i->type));
+                break;
             case BF_OWNER: out->u64 = ctx->owner; break;
             case BF_WORLD:
                 if (BF_POINTER_TYPE == PIN_U64) {
@@ -279,12 +459,19 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                     b.u64
                 );
                 break;
+            case BF_COLUMN:
             case BF_COMPONENT: {
-                const ecs_execution_column *column = ecs_execution_component(
-                    (const ecs_execution_view *)(uintptr_t)behavior_scalar_bits(a),
-                    b.u,
-                    i->value.u64
-                );
+                const ecs_execution_column
+                    *column = ctx->columns
+                                ? ctx->columns[i->component]
+                                : ecs_execution_find_column(
+                                      (const ecs_execution_view *)(uintptr_t)
+                                          behavior_scalar_bits(a),
+                                      i->value.u64
+                                  );
+                if (i->op == BF_COMPONENT) {
+                    column = ecs_execution_present(column, b.u);
+                }
                 if (i->type == PIN_BOOL) {
                     out->b = column != NULL;
                     break;
@@ -294,7 +481,8 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                     result = fail(ctx, i, steps, parents, i->target);
                     goto done;
                 }
-                uintptr_t row = column ? (uintptr_t)column->data + b.u * column->stride
+                uintptr_t row = i->op == BF_COLUMN ? (uintptr_t)column
+                              : column ? (uintptr_t)column->data + b.u * column->stride
                                        : 0;
                 if (BF_POINTER_TYPE == PIN_U64) {
                     out->u64 = row;
@@ -353,6 +541,14 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                                                                ? slots[i->left].u64
                                                                : slots[i->left].u);
                 break;
+            case BF_RESULT_ARRAY:
+                ctx->results[i->target] = (pin_value){
+                    .type = i->type,
+                    .container = i->value.container,
+                    .type_name = (const char *)(uintptr_t)behavior_scalar_bits(b),
+                    .ptr = (void *)(uintptr_t)behavior_scalar_bits(a)
+                };
+                break;
             case BF_PRESENT:
                 if (i->target == BF_ARGUMENT &&
                     (i->left >= ctx->argument_count ||
@@ -390,6 +586,11 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
             case BF_MOD_F32: out->f = fmodf(a.f, b.f); break;
             case BF_MOD_F64: out->d = fmod(a.d, b.d); break;
             case BF_HYPOT: out->d = hypot(a.d, b.d); break;
+            case BF_FMA: out->d = fma(a.d, b.d, slots[i->target].d); break;
+            case BF_RANDOM: out->i = rand(); break;
+            case BF_RANDOM_RANGE:
+                out->d = behavior_random_range(a.d, b.d);
+                break;
             case BF_CONSTANT: *out = i->value; break;
             case BF_VARIABLE: *out = ctx->variables[i->left]; break;
             case BF_LOCAL: *out = locals[i->left]; break;
@@ -416,13 +617,28 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                     out->d = (double)a.f;
                 }
                 break;
-            case BF_SAVE: locals[i->target] = a; break;
+            case BF_SAVE:
+                locals[i->target] = a;
+                if (behavior_function_inspectable(f) && f->locals[i->target].parameter) {
+                    memcpy(
+                        &activation->values[acount(f->slots) + i->target],
+                        &a.d,
+                        behavior_scalar_size(i->type)
+                    );
+                }
+                break;
             case BF_ENTER:
+                if (behavior_function_inspectable(f)) {
+                    activation->values[acount(f->slots) + acount(f->locals) + i->frame] = steps;
+                }
                 parents[i->frame] = steps;
                 steps = 0;
-                enter(f, locals, i->target);
+                enter(f, locals, i->target, activation);
                 break;
             case BF_LEAVE:
+                if (behavior_function_inspectable(f)) {
+                    activation->values[acount(f->slots) + acount(f->locals) + i->target] = steps;
+                }
                 steps = parents[f->frames[i->target].source.parent];
                 break;
             case BF_CALL_CHECK: {
@@ -466,6 +682,12 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
             case BF_END: goto done;
             case BF_RETURN: ctx->returned_node_id = i->node_id; goto done;
             default: {
+                if ((i->op == BF_EQ || i->op == BF_NE) && a.type != PIN_F32 &&
+                    a.type != PIN_F64) {
+                    bool equal = behavior_scalar_bits(a) == behavior_scalar_bits(b);
+                    out->b = i->op == BF_EQ ? equal : !equal;
+                    break;
+                }
                 /* Address arithmetic uses an unsigned word on both native
                  * and wasm32. It must not pass through floating point. */
                 if (a.type == PIN_U32 || a.type == PIN_U64) {
@@ -581,17 +803,30 @@ done:
     return result;
 }
 
-int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
+int behavior_function_run_once(const behavior_function *f, behavior_function_context *ctx, bool native)
 {
+    ctx->points = f->points;
+    ctx->watches = f->watches;
+    ctx->edges = f->edges;
     bool owned = !ctx->queries && !ctx->commands &&
-                 (acount(f->queries) || acount(f->commands));
+                 (acount(f->queries) || acount(f->commands) ||
+                  (!ctx->data && (acount(f->host_calls) || acount(f->data_values))));
     if (owned) {
         behavior_function_prepare_host(f, ctx);
         ctx->owned_host = true;
     }
     int result = run(f, ctx, native);
-    if (ctx->owned_host && result != FLOW_SUSPENDED_RESULT) {
+    if (ctx->owned_host && result != FLOW_SUSPENDED_RESULT &&
+        result != FLOW_PAUSED_RESULT && result != BEHAVIOR_FUNCTION_CALL_RESULT) {
         behavior_function_release_host(ctx);
     }
     return result;
+}
+
+int behavior_function_run(const behavior_function *f, behavior_function_context *ctx, bool native)
+{
+    if (f->calls || (ctx->activation && ctx->activation->calls)) {
+        return behavior_function_run_calls(f, ctx, native);
+    }
+    return behavior_function_run_once(f, ctx, native);
 }

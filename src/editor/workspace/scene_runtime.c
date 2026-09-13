@@ -363,6 +363,12 @@ const game_behavior_profile_frame *app_scene_authoring_behavior_profile(const ap
     return engine_behavior_profile(runtime);
 }
 
+void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool enabled)
+{
+    engine_set_behavior_profiling(scene->runtime, enabled);
+    engine_set_behavior_profiling(game_prototype_preview_runtime(scene->prototype_preview), enabled);
+}
+
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene)
 {
     app_runtime_state state = { 0 };

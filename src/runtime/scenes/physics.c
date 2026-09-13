@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 typedef struct
 {
@@ -35,6 +36,12 @@ typedef struct
     uint64_t first, second;
 } contact_pair;
 
+typedef struct
+{
+    contact_pair *pairs;
+    b2ContactData *contacts;
+} pair_buffer;
+
 struct game_physics
 {
     ecs_world *world;
@@ -44,8 +51,41 @@ struct game_physics
     physics_body *bodies;
     contact_pair *previous, *current;
     b2ContactData *contacts;
+    bool profiling;
+    game_physics_profile profile;
+    game_task_system tasks;
+    pair_buffer *workers;
     char error[256];
 };
+
+static double clock_ms()
+{
+    struct timespec now;
+    int result = clock_gettime(CLOCK_MONOTONIC, &now);
+    assert(!result);
+    return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
+}
+
+static void profile_phase(game_physics *physics, double *start, double *elapsed)
+{
+    if (!physics->profiling) {
+        return;
+    }
+    double now = clock_ms();
+    *elapsed = now - *start;
+    *start = now;
+}
+
+void game_physics_set_profiling(game_physics *physics, bool enabled)
+{
+    physics->profiling = enabled;
+    physics->profile = (game_physics_profile){ 0 };
+}
+
+const game_physics_profile *game_physics_last_profile(const game_physics *physics)
+{
+    return &physics->profile;
+}
 
 static bool same_entity(ecs_entity a, ecs_entity b)
 {
@@ -76,9 +116,24 @@ static void create_world(game_physics *physics)
 {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = (b2Vec2){ 0 };
+    if (physics->tasks.workers) {
+        def.workerCount = physics->tasks.workers;
+        def.enqueueTask = physics->tasks.enqueue;
+        def.finishTask = physics->tasks.finish;
+        def.userTaskContext = physics->tasks.user;
+    }
     physics->simulation = b2CreateWorld(&def);
     physics->sweeps = b2DynamicTree_Create();
     b2World_SetCustomFilterCallback(physics->simulation, collision_filter, physics);
+}
+
+static void free_workers(game_physics *physics)
+{
+    for (int i = 0; i < acount(physics->workers); i++) {
+        afree(physics->workers[i].pairs);
+        afree(physics->workers[i].contacts);
+    }
+    afree(physics->workers);
 }
 
 game_physics *game_physics_new(ecs_world *world, game_entities *entities)
@@ -108,11 +163,13 @@ void game_physics_free(game_physics *physics)
     afree(physics->previous);
     afree(physics->current);
     afree(physics->contacts);
+    free_workers(physics);
     free(physics);
 }
 
 void game_physics_reset(game_physics *physics)
 {
+    physics->profile = (game_physics_profile){ 0 };
     b2DestroyWorld(physics->simulation);
     b2DynamicTree_Destroy(&physics->sweeps);
     aclear(physics->bodies);
@@ -125,6 +182,19 @@ void game_physics_reset(game_physics *physics)
 const char *game_physics_error(const game_physics *physics)
 {
     return physics->error;
+}
+
+void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks)
+{
+    assert(!acount(physics->bodies));
+    assert(!tasks || (tasks->workers > 0 && tasks->enqueue && tasks->finish));
+    free_workers(physics);
+    physics->tasks = tasks ? *tasks : (game_task_system){ 0 };
+    if (tasks && tasks->workers > 1) {
+        asetlen(physics->workers, tasks->workers);
+        memset(physics->workers, 0, (size_t)tasks->workers * sizeof *physics->workers);
+    }
+    game_physics_reset(physics);
 }
 
 bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out)
@@ -190,7 +260,9 @@ static bool same_configuration(const physics_body *body, const GameCollider *sha
 static void remove_body(game_physics *physics, physics_body *body)
 {
     b2DestroyBody(body->body);
-    b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
+    if (body->proxy >= 0) {
+        b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
+    }
     *body = (physics_body){ 0 };
 }
 
@@ -252,13 +324,7 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
         body->geometry = b2MakeProxy(box.vertices, box.count, box.radius);
     }
     body->start = body->end = b2Body_GetTransform(body->body);
-    body->tree_bounds = bounds(body, body->start);
-    body->proxy = b2DynamicTree_CreateProxy(
-        &physics->sweeps,
-        body->tree_bounds,
-        body->collider.category,
-        body->entity.slot
-    );
+    body->proxy = -1;
 }
 
 static int sync_entity(game_physics *physics, ecs_entity entity)
@@ -348,14 +414,11 @@ static int synchronize(game_physics *physics)
     return result;
 }
 
-static void add_pair(game_physics *physics, const physics_body *a, const physics_body *b)
+static void add_pair(contact_pair **pairs, const physics_body *a, const physics_body *b)
 {
     uint64_t first = ecs_entity_to_u64(a->entity),
              second = ecs_entity_to_u64(b->entity);
-    apush(
-        physics->current,
-        ((contact_pair){ first < second ? first : second, first < second ? second : first })
-    );
+    apush(*pairs, ((contact_pair){ first < second ? first : second, first < second ? second : first }));
 }
 
 static bool continuous_sensor(const physics_body *body)
@@ -526,18 +589,19 @@ typedef struct
 {
     game_physics *physics;
     physics_body *body, *nearest;
+    contact_pair **pairs;
     float fraction;
 } pair_query;
 
-static bool overlap_candidate(int, uint64_t slot, void *user)
+static bool overlap_candidate(b2ShapeId shape, void *user)
 {
     pair_query *query = user;
-    physics_body *a = query->body, *b = &query->physics->bodies[slot];
-    if (slot <= a->entity.slot || continuous_sensor(b) || !eligible(a, b)) {
+    physics_body *a = query->body, *b = shape_body(query->physics, shape);
+    if (b->entity.slot <= a->entity.slot || continuous_sensor(b) || !eligible(a, b)) {
         return true;
     }
     if (distance(a, a->end, b, b->end) == 0) {
-        add_pair(query->physics, a, b);
+        add_pair(query->pairs, a, b);
     }
     return true;
 }
@@ -576,42 +640,103 @@ static bool sweep_candidate(int, uint64_t slot, void *user)
     return true;
 }
 
+typedef struct
+{
+    game_physics *physics;
+    bool solved;
+} collect_context;
+
+static void collect_body(const collect_context *context, int index, pair_buffer *buffer)
+{
+    game_physics *physics = context->physics;
+    physics_body *body = &physics->bodies[index];
+    if (!body->body.index1) {
+        return;
+    }
+    pair_query query = { .physics = physics,
+                         .body = body,
+                         .pairs = &buffer->pairs,
+                         .fraction = 1 };
+    bool swept = continuous_sensor(body);
+    if (swept) {
+        b2DynamicTree_Query(&physics->sweeps, swept_bounds(body), body->collider.mask, sweep_candidate, &query);
+    } else {
+        /* Reuse the solver's spatial index. Keep the exact distance test and
+         * current-pose semantics, including zero-delta synchronization. */
+        b2QueryFilter filter = { .categoryBits = body->collider.category,
+                                 .maskBits = body->collider.mask };
+        b2World_OverlapAABB(physics->simulation, bounds(body, body->end), filter, overlap_candidate, &query);
+    }
+    if (query.nearest) {
+        add_pair(&buffer->pairs, body, query.nearest);
+        body->stop_fraction = query.fraction;
+    }
+    if (!context->solved || swept || body->collider.sensor) {
+        return;
+    }
+    /* Solved solid contacts can have a small separation within Box2D's
+     * contact tolerance. Keep those pairs active instead of retriggering. */
+    int capacity = b2Shape_GetContactCapacity(body->shape);
+    asetlen(buffer->contacts, capacity);
+    int count = b2Shape_GetContactData(body->shape, buffer->contacts, capacity);
+    for (int j = 0; j < count; j++) {
+        b2ContactData contact = buffer->contacts[j];
+        physics_body *a = shape_body(physics, contact.shapeIdA),
+                     *b = shape_body(physics, contact.shapeIdB);
+        /* Box2D exposes this contact through both shapes. Collect it once;
+         * the canonical event order is still established below. */
+        if (body->entity.slot !=
+            (a->entity.slot < b->entity.slot ? a->entity.slot : b->entity.slot)) {
+            continue;
+        }
+        if (eligible(a, b) && !continuous_sensor(a) && !continuous_sensor(b)) {
+            add_pair(&buffer->pairs, a, b);
+        }
+    }
+}
+
+static void collect_range(int start, int end, uint32_t worker, void *user)
+{
+    const collect_context *context = user;
+    assert(worker < (uint32_t)acount(context->physics->workers));
+    pair_buffer *buffer = &context->physics->workers[worker];
+    for (int i = start; i < end; i++) {
+        collect_body(context, i, buffer);
+    }
+}
+
 static void collect_pairs(game_physics *physics, bool solved)
 {
-    for (int i = 0; i < acount(physics->bodies); i++) {
-        physics_body *body = &physics->bodies[i];
-        if (!body->body.index1) {
+    collect_context context = { physics, solved };
+    int count = acount(physics->bodies);
+    if (!acount(physics->workers) || count < 256) {
+        pair_buffer buffer = { physics->current, physics->contacts };
+        for (int i = 0; i < count; i++) {
+            collect_body(&context, i, &buffer);
+        }
+        physics->current = buffer.pairs;
+        physics->contacts = buffer.contacts;
+        return;
+    }
+    /* The solver and swept-tree writes have finished. Queries read immutable
+     * geometry; only each body's own stop fraction and worker scratch change.
+     * Merge after completion, then sort and deliver events on the caller. */
+    for (int i = 0; i < acount(physics->workers); i++) {
+        aclear(physics->workers[i].pairs);
+    }
+    void *task = physics->tasks
+                     .enqueue(collect_range, count, 64, &context, physics->tasks.user);
+    if (task) {
+        physics->tasks.finish(task, physics->tasks.user);
+    }
+    for (int i = 0; i < acount(physics->workers); i++) {
+        const contact_pair *pairs = physics->workers[i].pairs;
+        int length = acount(pairs), at = acount(physics->current);
+        if (!length) {
             continue;
         }
-        pair_query query = { .physics = physics, .body = body, .fraction = 1 };
-        bool swept = continuous_sensor(body);
-        b2DynamicTree_Query(
-            &physics->sweeps,
-            swept ? swept_bounds(body) : bounds(body, body->end),
-            body->collider.mask,
-            swept ? sweep_candidate : overlap_candidate,
-            &query
-        );
-        if (query.nearest) {
-            add_pair(physics, body, query.nearest);
-            body->stop_fraction = query.fraction;
-        }
-        if (!solved || swept || body->collider.sensor) {
-            continue;
-        }
-        /* Solved solid contacts can have a small separation within Box2D's
-         * contact tolerance. Keep those pairs active instead of retriggering. */
-        int capacity = b2Shape_GetContactCapacity(body->shape);
-        asetlen(physics->contacts, capacity);
-        int count = b2Shape_GetContactData(body->shape, physics->contacts, capacity);
-        for (int j = 0; j < count; j++) {
-            b2ContactData contact = physics->contacts[j];
-            physics_body *a = shape_body(physics, contact.shapeIdA),
-                         *b = shape_body(physics, contact.shapeIdB);
-            if (eligible(a, b) && !continuous_sensor(a) && !continuous_sensor(b)) {
-                add_pair(physics, a, b);
-            }
-        }
+        asetlen(physics->current, at + length);
+        memcpy(physics->current + at, pairs, (size_t)length * sizeof *pairs);
     }
 }
 
@@ -645,15 +770,21 @@ static int dispatch_pairs(game_physics *physics)
             compare_pairs
         );
     }
-    int count = 0, result = FLOW_OK;
+    int count = 0, previous = 0, result = FLOW_OK;
     for (int i = 0; i < acount(physics->current); i++) {
         contact_pair pair = physics->current[i];
         if (count && !compare_pairs(&pair, &physics->current[count - 1])) {
             continue;
         }
         physics->current[count++] = pair;
-        if (acount(physics->previous) &&
-            bsearch(&pair, physics->previous, (size_t)acount(physics->previous), sizeof pair, compare_pairs)) {
+        /* Both frames are sorted. Advance through the old frame once rather
+         * than searching it separately for every persistent contact. */
+        while (previous < acount(physics->previous) &&
+               compare_pairs(&physics->previous[previous], &pair) < 0) {
+            previous++;
+        }
+        if (previous < acount(physics->previous) &&
+            !compare_pairs(&physics->previous[previous], &pair)) {
             continue;
         }
         int first = queue_contact(physics, pair.first, pair.second),
@@ -663,37 +794,78 @@ static int dispatch_pairs(game_physics *physics)
         }
     }
     asetlen(physics->current, count);
-    contact_pair *previous = physics->previous;
+    contact_pair *old = physics->previous;
     physics->previous = physics->current;
-    physics->current = previous;
+    physics->current = old;
     aclear(physics->current);
     return result;
+}
+
+static void update_poses(game_physics *physics)
+{
+    bool swept = false;
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1) {
+            continue;
+        }
+        if (physics->profiling) {
+            physics->profile.bodies++;
+        }
+        body->end = b2Body_GetTransform(body->body);
+        swept |= continuous_sensor(body);
+    }
+    if (!swept) {
+        return;
+    }
+    /* Box2D's world queries index current shapes. A moving-target cast needs
+     * bounds covering both endpoints, only while continuous sensors exist. */
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1) {
+            continue;
+        }
+        b2AABB next = swept_bounds(body);
+        if (body->proxy < 0) {
+            body->proxy = b2DynamicTree_CreateProxy(
+                &physics->sweeps,
+                next,
+                body->collider.category,
+                body->entity.slot
+            );
+        } else if (memcmp(&next, &body->tree_bounds, sizeof next)) {
+            b2DynamicTree_MoveProxy(&physics->sweeps, body->proxy, next);
+        }
+        body->tree_bounds = next;
+    }
 }
 
 int game_physics_tick(game_physics *physics, float delta_seconds)
 {
     physics->error[0] = 0;
+    double start = 0;
+    if (physics->profiling) {
+        physics->profile = (game_physics_profile){ 0 };
+        start = clock_ms();
+    }
     if (!isfinite(delta_seconds) || delta_seconds < 0) {
         snprintf(physics->error, sizeof physics->error, "Physics delta must be finite and nonnegative.");
         return FLOW_ERR_ARGUMENT;
     }
     int result = synchronize(physics);
+    profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result < 0) {
         return result;
     }
     b2World_Step(physics->simulation, delta_seconds, 4);
-    for (int i = 0; i < acount(physics->bodies); i++) {
-        physics_body *body = &physics->bodies[i];
-        if (body->body.index1) {
-            body->end = b2Body_GetTransform(body->body);
-            b2AABB next = swept_bounds(body);
-            if (memcmp(&next, &body->tree_bounds, sizeof next)) {
-                b2DynamicTree_MoveProxy(&physics->sweeps, body->proxy, next);
-                body->tree_bounds = next;
-            }
-        }
-    }
+    profile_phase(physics, &start, &physics->profile.solve_ms);
+    update_poses(physics);
+    profile_phase(physics, &start, &physics->profile.sweeps_ms);
     collect_pairs(physics, delta_seconds > 0);
+    profile_phase(physics, &start, &physics->profile.pairs_ms);
+    if (physics->profiling) {
+        physics->profile.pairs = acount(physics->current);
+    }
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics_body *body = &physics->bodies[i];
         if (!body->body.index1) {
@@ -713,5 +885,8 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
             *velocity = (GameVelocity){ solved.x, solved.y };
         }
     }
-    return dispatch_pairs(physics);
+    profile_phase(physics, &start, &physics->profile.writeback_ms);
+    result = dispatch_pairs(physics);
+    profile_phase(physics, &start, &physics->profile.dispatch_ms);
+    return result;
 }

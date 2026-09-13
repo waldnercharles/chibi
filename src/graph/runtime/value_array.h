@@ -23,6 +23,11 @@ pin_array *pin_array_new(pin_type element_type, const char *type_name, int capac
 pin_array *pin_array_clone(const pin_array *src);
 pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src);
 pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src);
+/* Fixed-size typed zero values, owned by the arena. */
+pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
+/* Deep snapshot, including registered struct fields and all nominal names. */
+pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src);
+int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
 int pin_array_push(pin_array *array, const pin_value *value);

@@ -183,7 +183,8 @@ static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
     dst->default_value.type = dst->type;
     dst->default_value.container = dst->container;
     dst->default_value.type_name = dst->type_name;
-    if ((dst->type == PIN_STR || dst->type == PIN_NAME) && !dst->default_value.str) {
+    if (dst->container == PIN_CONTAINER_SINGLE &&
+        (dst->type == PIN_STR || dst->type == PIN_NAME) && !dst->default_value.str) {
         dst->default_value.str = "";
     }
 }
@@ -955,7 +956,8 @@ int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_va
             (const pin_array *)value->ptr
         );
     }
-    if ((value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
+    if (p[index].container == PIN_CONTAINER_SINGLE &&
+        (value->type == PIN_STR || value->type == PIN_NAME) && value->str) {
         char *s = graph_own_str(g, value->str, strlen(value->str));
         if (!s) {
             return -1;

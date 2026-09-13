@@ -17,6 +17,83 @@ static void activation(const behavior_machine *m)
         offsetof(behavior_function_context, activation)
     );
 }
+void behavior_jit_parameter(const behavior_machine *m, const behavior_function_instruction *i)
+{
+    struct sljit_compiler *c = m->compiler;
+    activation(m);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_function_activation, values));
+    int reg = m->registers[i->left], source = reg ? reg : SLJIT_MEM1(SLJIT_SP);
+    sljit_sw offset = reg ? 0 : i->left * sizeof(double);
+    sljit_sw target = (acount(m->function->slots) + i->target) * sizeof(uint64_t);
+    if (i->type == PIN_F32 || i->type == PIN_F64) {
+        sljit_emit_fop1(
+            c,
+            i->type == PIN_F32 ? SLJIT_MOV_F32 : SLJIT_MOV_F64,
+            SLJIT_MEM1(SLJIT_R3),
+            target,
+            source,
+            offset
+        );
+        return;
+    }
+    sljit_emit_op1(c, behavior_jit_integer_move(i->type), SLJIT_MEM1(SLJIT_R3), target, source, offset);
+}
+void behavior_jit_frame_steps(const behavior_machine *m, int frame)
+{
+    struct sljit_compiler *c = m->compiler;
+    activation(m);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_function_activation, values));
+    sljit_sw offset = (acount(m->function->slots) + acount(m->function->locals) + frame) *
+                      sizeof(uint64_t);
+    if (m->countdown) {
+        sljit_emit_op2(
+            c,
+            SLJIT_SUB,
+            SLJIT_MEM1(SLJIT_R3),
+            offset,
+            SLJIT_MEM1(m->context),
+            offsetof(behavior_function_context, budget),
+            m->steps,
+            0
+        );
+        return;
+    }
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_MEM1(SLJIT_R3), offset, m->steps, 0);
+}
+void behavior_jit_wake(const behavior_machine *m, int frame, bool clear)
+{
+    activation(m);
+    sljit_emit_op1(
+        m->compiler,
+        SLJIT_MOV_P,
+        SLJIT_R3,
+        0,
+        SLJIT_MEM1(SLJIT_R3),
+        offsetof(behavior_function_activation, wake_times)
+    );
+    if (clear) {
+        sljit_emit_op1(m->compiler, SLJIT_MOV, SLJIT_MEM1(SLJIT_R3), frame * sizeof(double), SLJIT_IMM, 0);
+        if (sizeof(sljit_sw) == 4) {
+            sljit_emit_op1(
+                m->compiler,
+                SLJIT_MOV,
+                SLJIT_MEM1(SLJIT_R3),
+                frame * sizeof(double) + 4,
+                SLJIT_IMM,
+                0
+            );
+        }
+        return;
+    }
+    sljit_emit_fop1(
+        m->compiler,
+        SLJIT_MOV_F64,
+        SLJIT_MEM1(SLJIT_R3),
+        frame * sizeof(double),
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, wake_time)
+    );
+}
 static void scalar(const behavior_machine *m, int value, bool restore)
 {
     const behavior_function *f = m->function;
@@ -159,7 +236,14 @@ void behavior_jit_suspend(const behavior_machine *m, int pc)
             0
         );
     }
-    sljit_emit_return(m->compiler, SLJIT_MOV32, SLJIT_IMM, FLOW_SUSPENDED_RESULT);
+    sljit_emit_return(
+        m->compiler,
+        SLJIT_MOV32,
+        SLJIT_IMM,
+        i->op == BF_POINT    ? FLOW_PAUSED_RESULT
+        : i->op == BF_INVOKE ? BEHAVIOR_FUNCTION_CALL_RESULT
+                             : FLOW_SUSPENDED_RESULT
+    );
 }
 void behavior_jit_resume(const behavior_machine *m, struct sljit_jump **jumps, struct sljit_label **labels)
 {
@@ -178,7 +262,14 @@ void behavior_jit_resume(const behavior_machine *m, struct sljit_jump **jumps, s
     );
     struct sljit_jump *
         fresh = sljit_emit_cmp(m->compiler, SLJIT_EQUAL | SLJIT_32, SLJIT_R4, 0, SLJIT_IMM, 0);
-    sljit_emit_op1(m->compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)f->resume_addresses);
+    sljit_emit_op1(
+        m->compiler,
+        SLJIT_MOV_P,
+        SLJIT_R0,
+        0,
+        SLJIT_IMM,
+        (sljit_sw)(m->inspected ? f->inspection_addresses : f->resume_addresses)
+    );
     sljit_emit_ijump(
         m->compiler,
         SLJIT_JUMP,

@@ -1064,6 +1064,7 @@ static void native_visual_motion()
     ecs_entity invalid = ecs_world_create_entity(world);
     assert(GAME_GameVisualMotion_add(world, invalid, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
+    motion = GAME_GameVisualMotion_get(world, entity);
     assert(game_visual_motion_tick(world, .1f) == FLOW_ERR_STATE);
     assert(!memcmp(motion, &before, sizeof before));
     assert(GAME_GameVisualTransform_add(world, invalid, 0) == ECS_OK);

@@ -5,6 +5,7 @@
 #include "support/arena.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -187,6 +188,74 @@ pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src)
     return array_clone_arena(a, src);
 }
 
+int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
+{
+    *dst = *src;
+    dst->type_name = arena_string(a, src->type_name);
+    if (src->container >= PIN_CONTAINER_ARRAY) {
+        dst->ptr = pin_array_snapshot_to_arena(a, src->ptr);
+        return src->ptr && !dst->ptr ? -1 : 0;
+    }
+    if (value_string(src->type)) {
+        dst->str = arena_string(a, src->str);
+        return 0;
+    }
+    if (src->type != PIN_STRUCT || !src->ptr) {
+        return 0;
+    }
+    const type_desc *type = registry_type_by_name(src->type_name);
+    if (!type || !type->size) {
+        return -1;
+    }
+    dst->ptr = arena_alloc(a, type->size);
+    memcpy(dst->ptr, src->ptr, type->size);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *f = &type->fields[i];
+        if (f->type != PIN_STRUCT && !value_string(f->type)) {
+            continue;
+        }
+        pin_value value, copy;
+        pin_read_field(src->ptr, f, &value);
+        if (pin_value_snapshot_to_arena(a, &copy, &value)) {
+            return -1;
+        }
+        pin_write_field(dst->ptr, f, copy);
+    }
+    return 0;
+}
+pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count)
+{
+    assert(count >= 0);
+    pin_array *dst = arena_alloc(a, sizeof *dst + (size_t)count * sizeof(pin_value));
+    *dst = (pin_array){ .element_type = type,
+                        .type_name = arena_string(a, name),
+                        .count = count,
+                        .capacity = count,
+                        .items = (pin_value *)(dst + 1) };
+    for (int i = 0; i < count; i++) {
+        dst->items[i] = (pin_value){ .type = type, .type_name = dst->type_name };
+    }
+    return dst;
+}
+pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src)
+{
+    if (!src) {
+        return NULL;
+    }
+    pin_array *dst = arena_alloc(a, sizeof *dst + (size_t)src->count * sizeof(pin_value));
+    *dst = (pin_array){ .element_type = src->element_type,
+                        .type_name = arena_string(a, src->type_name),
+                        .count = src->count,
+                        .capacity = src->count,
+                        .items = (pin_value *)(dst + 1) };
+    for (int i = 0; i < src->count; i++) {
+        if (pin_value_snapshot_to_arena(a, &dst->items[i], &src->items[i])) {
+            return NULL;
+        }
+    }
+    return dst;
+}
+
 void pin_array_free(pin_array *array)
 {
     if (!array) {
@@ -225,6 +294,7 @@ int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src)
         return -1;
     }
     *dst = *src;
+    dst->type_name = graph_string(g, src->type_name);
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone_to_graph(g, (const pin_array *)src->ptr);
         return !src->ptr || dst->ptr ? 0 : -1;
@@ -299,14 +369,47 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
         return strcmp(a->str ? a->str : "", b->str ? b->str : "") == 0;
     }
     if (a->type == PIN_STRUCT) {
-        return a->ptr == b->ptr;
+        if (strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "")) {
+            return 0;
+        }
+        if (!a->ptr || !b->ptr) {
+            return a->ptr == b->ptr;
+        }
+        const type_desc *type = registry_type_by_name(a->type_name);
+        if (!type || !type->field_count) {
+            return a->ptr == b->ptr;
+        }
+        for (int i = 0; i < type->field_count; i++) {
+            pin_value left, right;
+            pin_read_field(a->ptr, &type->fields[i], &left);
+            pin_read_field(b->ptr, &type->fields[i], &right);
+            if (!pin_value_equal(&left, &right)) {
+                return 0;
+            }
+        }
+        return 1;
     }
-    if (a->type == PIN_HANDLE) {
-        return a->u64 == b->u64 &&
-               strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "") ==
-                   0;
+    /* Equality concerns values, not padding, unused union bytes or the address
+     * of a type-name string. Numeric rules match the graph's Equal operation. */
+    switch (a->type) {
+        case PIN_BOOL: return a->b == b->b;
+        case PIN_I8: return a->i8 == b->i8;
+        case PIN_U8: return a->u8 == b->u8;
+        case PIN_I16: return a->i16 == b->i16;
+        case PIN_U16: return a->u16 == b->u16;
+        case PIN_I32: return a->i == b->i;
+        case PIN_U32: return a->u == b->u;
+        case PIN_I64: return a->i64 == b->i64;
+        case PIN_U64: return a->u64 == b->u64;
+        case PIN_F32: return a->f == b->f;
+        case PIN_F64: return a->d == b->d;
+        case PIN_ENUM:
+        case PIN_HANDLE:
+            return (a->type == PIN_ENUM ? a->e == b->e : a->u64 == b->u64) &&
+                   strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "") ==
+                       0;
+        default: return 0;
     }
-    return memcmp(a, b, sizeof *a) == 0;
 }
 
 int pin_array_equal(const pin_array *a, const pin_array *b)

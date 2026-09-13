@@ -182,6 +182,14 @@ void behavior_lower_store_name(builder *b, behavior_function_op op, int value, i
                                              .left = name }
         );
     }
+    if (op == BF_RESULT && behavior_scalar_string(b->function->slots[value])) {
+        name = behavior_lower_value(
+            b,
+            (behavior_function_instruction){ .op = BF_COPY_STRING,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = name }
+        );
+    }
     behavior_lower_emit(
         b,
         (behavior_function_instruction){

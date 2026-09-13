@@ -112,16 +112,25 @@ void behavior_function_optimize(behavior_function *f)
     }
     for (int i = 0; i < acount(f->instructions); i++) {
         const behavior_function_instruction *op = &f->instructions[i];
-        if (behavior_function_math(op->op) || op->indirect || op->op == BF_OWNER ||
-            op->op == BF_WORLD || (op->op >= BF_ENTITY && op->op <= BF_LOAD) ||
-            op->op == BF_ASSERT || op->op == BF_WRITE || op->op == BF_PRESENT ||
-            op->op == BF_TYPE_NAME || op->op == BF_RESULT_TYPE_NAME ||
-            op->op == BF_REQUIRE || op->op == BF_SELECT || op->op == BF_RESULT_PRESENT ||
-            op->op == BF_STORAGE_NAME || op->op == BF_OWN_NAME ||
+        if (behavior_function_math(op->op) || op->op == BF_RANDOM ||
+            op->op == BF_RANDOM_RANGE || op->op == BF_STATE_SELECT ||
+            op->op == BF_RETRIGGER || op->indirect || op->op == BF_OWNER ||
+            op->op == BF_WORLD || op->op == BF_CONTEXT ||
+            (op->op >= BF_ENTITY && op->op <= BF_LOAD) || op->op == BF_ASSERT ||
+            op->op == BF_WRITE || op->op == BF_PRESENT || op->op == BF_TYPE_NAME ||
+            op->op == BF_RESULT_TYPE_NAME || op->op == BF_REQUIRE || op->op == BF_SELECT ||
+            op->op == BF_RESULT_PRESENT || op->op == BF_STORAGE_NAME ||
+            op->op == BF_OWN_NAME || op->op == BF_COPY_STRING ||
+            op->op == BF_COPY_ARRAY || op->op == BF_INTERN_STRING ||
+            op->op == BF_STRING_EQUAL || op->op == BF_STORE_VALUE ||
             op->op == BF_STORE_HEADER || op->op == BF_STORE_TYPE_NAME ||
             op->op == BF_ARRAY || op->op == BF_QUERY || op->op == BF_READ ||
-            op->op == BF_COMMAND_SERVICE || op->op == BF_COMMAND_ARGUMENT ||
-            op->op == BF_COMMAND || op->op == BF_SUSPEND) {
+            op->op == BF_HOST_SLOT || op->op == BF_HOST_SERVICE ||
+            op->op == BF_HOST_CALL || op->op == BF_COMMAND_SERVICE ||
+            op->op == BF_COMMAND_ARGUMENT || op->op == BF_COMMAND ||
+            op->op == BF_COMMAND_OUTPUT || op->op == BF_COMMAND_RESULT ||
+            op->op == BF_COMMAND_BEGIN || op->op == BF_SUSPEND ||
+            op->op == BF_DELAY || op->op == BF_POINT || op->op == BF_INVOKE) {
             return;
         }
     }
@@ -254,6 +263,61 @@ static bool discardable(behavior_function_op op)
 {
     return op <= BF_ARRAY || op == BF_LOAD || op == BF_READ || op == BF_SELECT;
 }
+void behavior_function_runtime_code(behavior_function *f)
+{
+    if (!acount(f->watches) && !acount(f->edges)) {
+        return;
+    }
+    int count = acount(f->instructions), slots = acount(f->slots);
+    bool *live = xcalloc((size_t)(slots + 1), sizeof *live);
+    bool *keep = xcalloc((size_t)count, sizeof *keep);
+    /* Inspection may be enabled at an actual wait. Preserve every saved value
+     * needed after that continuation, including values read only by watches. */
+    for (int j = 0; j < acount(f->suspensions); j++) {
+        const behavior_function_suspension *s = &f->suspensions[j];
+        if (f->instructions[s->pc].op == BF_POINT) {
+            continue;
+        }
+        for (int k = 0; k < acount(s->values); k++) {
+            if (s->values[k] < slots) {
+                live[s->values[k]] = true;
+            }
+        }
+    }
+    for (int pc = count - 1; pc >= 0; pc--) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (behavior_function_observer(i->op) || i->op == BF_POINT ||
+            (discardable(i->op) && !live[i->output])) {
+            continue;
+        }
+        keep[pc] = true;
+        if (behavior_function_left_slot(i->op)) {
+            live[i->left] = true;
+        }
+        if (behavior_function_right_slot(i->op)) {
+            live[i->right] = true;
+        }
+        if (behavior_function_third_slot(i->op)) {
+            live[i->target] = true;
+        }
+    }
+    f->runtime_map = xcalloc((size_t)(count + 1), sizeof *f->runtime_map);
+    for (int pc = 0; pc < count; pc++) {
+        f->runtime_map[pc] = acount(f->runtime_instructions);
+        if (keep[pc]) {
+            apush(f->runtime_instructions, f->instructions[pc]);
+        }
+    }
+    f->runtime_map[count] = acount(f->runtime_instructions);
+    for (int pc = 0; pc < acount(f->runtime_instructions); pc++) {
+        behavior_function_instruction *i = &f->runtime_instructions[pc];
+        if (i->op == BF_JUMP || i->op == BF_BRANCH) {
+            i->target = f->runtime_map[i->target];
+        }
+    }
+    free(keep);
+    free(live);
+}
 void behavior_function_prune_values(behavior_function *f)
 {
     bool *live = xcalloc((size_t)(acount(f->slots) + 1), sizeof *live);
@@ -270,7 +334,7 @@ void behavior_function_prune_values(behavior_function *f)
         if (behavior_function_right_slot(i->op)) {
             live[i->right] = true;
         }
-        if (i->op == BF_SELECT) {
+        if (behavior_function_third_slot(i->op)) {
             live[i->target] = true;
         }
     }
@@ -320,7 +384,7 @@ void behavior_function_prune_values(behavior_function *f)
             i->right = slots[i->right];
         }
         if (((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) ||
-            i->op == BF_SELECT) {
+            behavior_function_third_slot(i->op)) {
             i->target = slots[i->target];
         }
     }
@@ -363,6 +427,9 @@ void behavior_function_reuse_accesses(behavior_function *f)
         pcs[pc] = acount(out);
         if (incoming[pc] != 1 || (pc && (f->instructions[pc - 1].op == BF_BRANCH ||
                                          f->instructions[pc - 1].op == BF_SUSPEND ||
+                                         f->instructions[pc - 1].op == BF_DELAY ||
+                                         f->instructions[pc - 1].op == BF_POINT ||
+                                         f->instructions[pc - 1].op == BF_INVOKE ||
                                          (f->instructions[pc - 1].op == BF_JUMP &&
                                           f->instructions[pc - 1].target != pc)))) {
             start = acount(out);
@@ -376,7 +443,8 @@ void behavior_function_reuse_accesses(behavior_function *f)
         if (behavior_function_right_slot(i.op)) {
             i.right = slots[i.right];
         }
-        if (((i.op == BF_DIV || i.op == BF_MOD) && i.target >= 0) || i.op == BF_SELECT) {
+        if (((i.op == BF_DIV || i.op == BF_MOD) && i.target >= 0) ||
+            behavior_function_third_slot(i.op)) {
             i.target = slots[i.target];
         }
         if (i.op == BF_ENTER) {
@@ -437,7 +505,7 @@ void behavior_function_constant_locals(behavior_function *f)
     const behavior_function_instruction *
         *definitions = xcalloc((size_t)(acount(f->slots) + 1), sizeof *definitions);
     for (int i = 0; i < acount(f->locals); i++) {
-        constant[i] = true;
+        constant[i] = !f->locals[i].array_default;
     }
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];

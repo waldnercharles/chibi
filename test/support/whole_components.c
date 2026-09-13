@@ -9,7 +9,7 @@
 static const ecs_component_desc record_component = {
     .id = UINT64_C(0xbadc0ffee),
     .name = "WholeRecord",
-    .key = "test.record",
+    .key = "test.WholeRecord",
     .element_size = sizeof(whole_record),
     .type = &WHOLE_RECORD_TYPE,
 };
@@ -151,8 +151,50 @@ void whole_component_smoke()
     const whole_record *snapshot = flow_run_input_value(run, ret, 1)->ptr;
     target->weight = 8;
     assert(snapshot->weight == 3.25 && snapshot->stamp == INT64_MAX - 4);
+    flow_run_free(run);
+    const behavior_program *program = a->program;
+    ecs_entity high = other;
+    for (int i = 2; i < 20001; i++) {
+        high = ecs_world_record_create(world, (uint64_t)i);
+        assert(high.slot);
+    }
+    assert(!ecs_world_apply_commands(world));
+    /* Presence checks must reject a high slot before payload storage exists. */
+    handle.u64 = ecs_entity_to_u64(high);
+    run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
+    assert(run && flow_run_resume(run) < 0 && oracle == eval_oracle_calls());
+    flow_run_free(run);
+    assert(!ecs_world_record_add(world, high, record_component.id, NULL, 0));
+    assert(!ecs_world_apply_commands(world));
+    source = ecs_component_data(world, owner, record_component.id);
+    target = ecs_component_data(world, high, record_component.id);
+    *target = (whole_record){ .stamp = INT64_MAX - 4 };
+    handle.u64 = ecs_entity_to_u64(high);
+    run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
+    assert(run && !flow_run_resume(run) && run->whole_function_executed);
+    assert(a->program == program && target->weight == source->weight && target->weight == 3.25);
+    assert(target->stamp == INT64_MAX - 4);
+    assert(oracle == eval_oracle_calls());
+    flow_run_free(run);
+    /* Rebind the same compiled program to read the high row and write a low row. */
+    target->weight = -6.5;
+    assert(!behavior_instance_rebind(bi, &handle));
+    handle.u64 = ecs_entity_to_u64(other);
+    run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
+    assert(run && !flow_run_resume(run) && run->whole_function_executed);
+    assert(a->program == program && oracle == eval_oracle_calls());
+    assert(
+        ((whole_record *)ecs_component_data(world, other, record_component.id))->weight == -6.5
+    );
+    flow_run_free(run);
+    /* Removing the owner's component rejects the next read. */
+    assert(!ecs_world_record_remove(world, high, record_component.id, 0));
+    assert(!ecs_world_apply_commands(world));
+    run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
+    assert(run && flow_run_resume(run) < 0 && oracle == eval_oracle_calls());
     printf(
-        "%s: whole component access, entity handles, nested snapshots; zero "
+        "%s: whole component access across 20,001 entities, nested snapshots; "
+        "zero "
         "oracle calls\n",
         behavior_backend_name(behavior_instance_backend(bi))
     );

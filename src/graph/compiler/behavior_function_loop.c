@@ -84,7 +84,9 @@ static int begin(builder *b, task t)
             return -2;
         }
         loop.entity_snapshot = array->temporary;
-        int pointer = array->pointer;
+        int pointer = array->stable || array->temporary
+                        ? array->pointer
+                        : behavior_lower_array_copy(b, array->pointer);
         int zero_pointer = constant(b, (pin_value){ .type = BF_POINTER_TYPE });
         int present = binary(b, BF_NE, pointer, zero_pointer, PIN_BOOL);
         behavior_lower_emit(
@@ -100,6 +102,7 @@ static int begin(builder *b, task t)
         );
         int count = behavior_lower_read(b, pointer, offsetof(pin_array, count), PIN_I32, false);
         int zero = constant(b, (pin_value){ .type = PIN_I32 });
+        behavior_lower_capture(b, n, false);
         branch(b, binary(b, BF_EQ, count, zero, PIN_BOOL), completed);
         loop.current = behavior_lower_local(b, b->frame, n, 2);
         loop.last = behavior_lower_hidden_local(b, n, 1, PIN_I32);
@@ -160,6 +163,7 @@ int behavior_lower_loop(builder *b, task t)
     }
     lowered_loop loop = b->loops[b->loop];
     if (t.continuation) {
+        behavior_lower_capture(b, n, true);
         branch(b, local(b, loop.broken, PIN_BOOL), loop.completed);
     }
     int body = behavior_lower_successor(b, n, 0, loop.next);
@@ -171,6 +175,7 @@ int behavior_lower_loop(builder *b, task t)
         if (condition < 0 || b->function->slots[condition] != PIN_BOOL) {
             return -2;
         }
+        behavior_lower_capture(b, n, t.continuation);
         branch(b, condition, body);
         return loop.completed;
     }

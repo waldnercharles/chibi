@@ -379,12 +379,7 @@ static int continue_step(engine *engine)
             result = game_entities_dispatch_events(live->entities);
         }
         if (result >= 0) {
-            result = game_behavior_dispatch_all(
-                live->behaviors,
-                graph_host_event_name(GRAPH_HOST_EVENT_TICK),
-                (flow_inputs){ 0 },
-                NULL
-            );
+            result = game_behavior_update(live->behaviors, NULL);
         }
         if (result >= 0) {
             result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
@@ -557,6 +552,13 @@ const engine_frame_timing *engine_last_timing(const engine *engine)
 const game_behavior_profile_frame *engine_behavior_profile(const engine *engine)
 {
     return engine->live ? game_behavior_profile(engine->live->behaviors) : NULL;
+}
+
+void engine_set_behavior_profiling(engine *engine, bool enabled)
+{
+    if (engine->live) {
+        game_behavior_set_profiling(engine->live->behaviors, enabled);
+    }
 }
 
 bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out)

@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define FLOW_DEFAULT_STEP_BUDGET 10000
+
 #ifdef __cplusplus
 extern "C"
 {

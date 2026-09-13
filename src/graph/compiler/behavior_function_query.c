@@ -1,4 +1,5 @@
 #include "graph/compiler/behavior_lower_internal.h"
+#include "graph/runtime/value_array.h"
 #include "support/array.h"
 
 int behavior_lower_query(builder *b, node *n)
@@ -34,10 +35,11 @@ int behavior_lower_query(builder *b, node *n)
                                          .node_id = n->id,
                                          .pin = 0 }
     );
-    int value = behavior_lower_array_value(b, pointer, PIN_HANDLE);
+    int name = behavior_lower_read(b, pointer, offsetof(pin_array, type_name), BF_POINTER_TYPE, true);
+    int value = behavior_lower_array_value(b, pointer, name, &n->output_pins[0]);
     /* One buffer per lowered producer, reused only after its consumers finish.
-     * Recursive loop activation is excluded. Query arrays cannot enter locals,
-     * stored parameters, variables or results until those boundaries own snapshots. */
+     * Recursive loop activation is excluded. Escaping through locals,
+     * parameters, variables or results now takes an owned snapshot. */
     behavior_lower_array(b, value)->temporary = true;
     return value;
 }

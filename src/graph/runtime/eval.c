@@ -452,8 +452,8 @@ int eval_prepared_node(node *n, arena *a, eval_context *ctx)
     /* Reflected wrappers pass structs by value and dereference ptr. */
     if (n->desc->pure_kind == NODE_PURE_CALL) {
         for (int i = 0; i < n->input_count; i++) {
-            if (n->input_pins[i].kind == PIN_DATA &&
-                n->input_pins[i].type == PIN_STRUCT && !inputs[i].ptr) {
+            if (n->input_pins[i].kind == PIN_DATA && n->input_pins[i].type == PIN_STRUCT &&
+                n->input_pins[i].container == PIN_CONTAINER_SINGLE && !inputs[i].ptr) {
                 runtime_node_set_visiting(state, 0);
                 return fail(ctx, n, i, NODE_EVAL_INVALID, "data input has no struct value");
             }

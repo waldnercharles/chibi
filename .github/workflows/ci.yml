@@ -22,7 +22,7 @@ jobs:
         include:
           - build_type: Debug
             sanitizers: "ON"
-            sljit: "OFF"
+            sljit: "ON"
           - build_type: RelWithDebInfo
             sanitizers: "OFF"
             sljit: "ON"
@@ -59,12 +59,20 @@ jobs:
         run: xvfb-run -a make ui-native
       - name: Run focused render checks
         run: xvfb-run -a make render-checks
+      - name: Reject native execution without SLJIT
+        if: matrix.build_type == 'Debug'
+        run: |
+          cmake -S . -B build-nojit -DCMAKE_BUILD_TYPE=Debug \
+            -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=ON \
+            -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
+            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+          cmake --build build-nojit --target check-behavior-backend --parallel 2
       - name: Build and exercise application reload
         if: matrix.build_type == 'Debug'
         run: |
           cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=Debug \
             -DCHIBI_DEVELOPMENT_RELOAD=ON \
-            -DCHIBI_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
+            -DCHIBI_ENABLE_SJLIT=ON -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
           cmake --build build-dev --target chibi_host chibi_application --parallel 2
           xvfb-run -a env ASAN_OPTIONS=detect_leaks=0 \

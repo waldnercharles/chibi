@@ -135,7 +135,7 @@ static void parity(behavior_asset *a, int kind, int length, unsigned budget, int
         behavior_instance_destroy(bi);
     }
 }
-static void mutation_excluded()
+static void variable_write()
 {
     behavior_asset *a = whole_array_fixture(WHOLE_ARRAY_RANGE);
     graph *g = a->graphs[3];
@@ -157,8 +157,12 @@ static void mutation_excluded()
     assert(!graph_connect_exec(g, entry, 0, set, 0, 0));
     assert(!graph_connect_exec(g, set, 0, loop, 0, 0));
     behavior_function_diagnostic diagnostic = { 0 };
-    assert(!behavior_function_lower(a, g, entry, &diagnostic));
-    assert(diagnostic.node == set);
+    behavior_function *function = behavior_function_lower(a, g, entry, &diagnostic);
+    assert(function && !diagnostic.reason);
+    behavior_function_free(function);
+    for (int length = 0; length <= 4; length++) {
+        parity(a, WHOLE_ARRAY_RANGE, length, 100, 2);
+    }
     behavior_asset_free(a);
 }
 void test_compiled_arrays()
@@ -176,7 +180,7 @@ void test_compiled_arrays()
         parity(a, kind, 4, 100, 99);
         behavior_asset_free(a);
     }
-    mutation_excluded();
+    variable_write();
     whole_array_smoke();
     puts("PASS: array views, nulls, fields, bounds, nested loops/calls, Break, Return and budget/source parity");
 }

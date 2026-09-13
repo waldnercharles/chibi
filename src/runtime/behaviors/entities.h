@@ -8,6 +8,18 @@ typedef struct game_entities game_entities;
 
 game_entities *game_entities_new(ecs_world *world, game_behavior_world *behaviors);
 void game_entities_free(game_entities *entities);
+/* Ordered broadcaster only: consecutive proven bodies may reuse query
+ * membership. NULL, an unproven body or the broadcast end invalidates it.
+ * No query scope may survive yielding to user code or structural mutation. */
+void game_entities_query_scope(game_entities *entities, const behavior_function *function);
+bool game_entities_queries_preserved(const behavior_function *function);
+/* Optional diagnostic counters. Enabling collection also clears the counters. */
+typedef struct
+{
+    uint64_t searches, world_candidates, matching_candidates, cache_builds;
+} game_entity_query_profile;
+void game_entities_profile_queries(game_entities *entities, bool enabled);
+game_entity_query_profile game_entities_query_profile(const game_entities *entities);
 /* Replace a caller-owned core array with live host-spawned handles in spawn order. */
 void game_entities_copy_live(const game_entities *entities, ecs_entity **out);
 bool game_entities_owns(const game_entities *entities, ecs_entity entity);

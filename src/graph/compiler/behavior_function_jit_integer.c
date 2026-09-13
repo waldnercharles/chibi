@@ -88,7 +88,9 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
         load(m, i->left, SLJIT_R0);
         sljit_emit_fop1(
             c,
-            from == PIN_I64 ? SLJIT_CONV_F64_FROM_SW : SLJIT_CONV_F64_FROM_S32,
+            from == PIN_I64   ? SLJIT_CONV_F64_FROM_SW
+            : from == PIN_U32 ? SLJIT_CONV_F64_FROM_U32
+                              : SLJIT_CONV_F64_FROM_S32,
             SLJIT_FR0,
             0,
             SLJIT_R0,

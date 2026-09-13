@@ -156,6 +156,38 @@ static void component(const behavior_machine *m, const behavior_function_instruc
     sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_IMM, 0);
     bind(c, done);
 }
+static void row(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
+{
+    struct sljit_compiler *c = m->compiler;
+    slot(m, i->left, SLJIT_R0);
+    slot(m, i->right, SLJIT_R1);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_R0, 0);
+    struct sljit_jump *invalid = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, occupancy));
+    sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 6);
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM2(SLJIT_R0, SLJIT_R3), 3);
+    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 63);
+    sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R3, 0);
+    sljit_emit_op2u(c, SLJIT_AND | SLJIT_SET_Z, SLJIT_R0, 0, SLJIT_IMM, 1);
+    struct sljit_jump *absent = sljit_emit_jump(c, SLJIT_ZERO);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, data));
+    sljit_emit_op2(
+        c,
+        SLJIT_MUL,
+        SLJIT_R1,
+        0,
+        SLJIT_R1,
+        0,
+        SLJIT_IMM,
+        (sljit_sw)i->offset
+    );
+    sljit_emit_op2(c, SLJIT_ADD, dest, offset, SLJIT_R0, 0, SLJIT_R1, 0);
+    struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
+    bind(c, invalid);
+    bind(c, absent);
+    sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_IMM, 0);
+    bind(c, done);
+}
 bool behavior_jit_component(
     const behavior_machine *m,
     const behavior_function_instruction *i,
@@ -200,6 +232,7 @@ bool behavior_jit_component(
             );
             return true;
         case BF_ENTITY: entity(m, i, dest, offset); return true;
+        case BF_ROW: row(m, i, dest, offset); return true;
         case BF_COLUMN:
         case BF_COMPONENT: component(m, i, dest, offset); return true;
         case BF_ASSERT: {

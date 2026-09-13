@@ -2796,6 +2796,17 @@ static void scene_scale_verify_encounter(arena_fixture *f)
             continue;
         }
         behavior_instance *instance = game_behavior_instance(f->live->behaviors, entity, "ArenaWaveBehavior");
+        const behavior_instance_failure *failure = behavior_instance_last_failure(instance);
+        if (failure) {
+            fprintf(
+                stderr,
+                "Scene scale retained failure: %s node=%llu pin=%d\n",
+                failure->message,
+                (unsigned long long)failure->node_id,
+                failure->pin
+            );
+        }
+        assert(!failure);
         flow_run *run = behavior_instance_dispatch(instance, "RefreshEncounter", (flow_inputs){ 0 }, NULL);
         assert(run);
         if (flow_run_status(run) == FLOW_FAILED) {
@@ -2982,6 +2993,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
             game_behavior_attachment_info info;
             assert(!game_behavior_attachment_info_at(f.live->behaviors, enemies[i], j, &info));
             assert(behavior_instance_backend(info.instance) == BEHAVIOR_SLJIT);
+            assert(!behavior_instance_last_failure(info.instance));
         }
     }
     assert(peak_draws > 0 && eval == eval_oracle_calls() && flow == flow_oracle_calls());

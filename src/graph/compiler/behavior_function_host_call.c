@@ -17,7 +17,7 @@ static bool signature(builder *b, node *n, const pin_spec *pins, int count, bool
         bool array = p->container == PIN_CONTAINER_ARRAY ||
                      p->container == PIN_CONTAINER_SET;
         if (p->kind != PIN_DATA || p->container != d->container ||
-            (p->container != PIN_CONTAINER_SINGLE && !(array && owned)) ||
+            (p->container != PIN_CONTAINER_SINGLE && !(array && (owned || !output))) ||
             (!(d->flags & PIN_FLAG_WILDCARD) &&
              (p->type != d->type ||
               (nominal && ((p->type_name == NULL) != (d->type_name == NULL) ||

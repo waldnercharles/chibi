@@ -474,6 +474,7 @@ static bool batch_operation(behavior_function_op op)
         case BF_ENTITY:
         case BF_COMPONENT:
         case BF_COLUMN:
+        case BF_ROW:
         case BF_INDEX:
         case BF_LOAD:
         case BF_READ:

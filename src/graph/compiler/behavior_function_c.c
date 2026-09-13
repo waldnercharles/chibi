@@ -549,6 +549,20 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     i->right
                 );
                 break;
+            case BF_ROW:
+                fprintf(
+                    out,
+                    "{const ecs_execution_column "
+                    "*p=ecs_execution_present((const ecs_execution_column "
+                    "*)(uintptr_t)v%d,v%d);v%d=p?(uintptr_t)p->data+(size_t)v%"
+                    "d*%zu:0;}\n",
+                    i->left,
+                    i->right,
+                    i->output,
+                    i->right,
+                    i->offset
+                );
+                break;
             case BF_COLUMN:
             case BF_COMPONENT:
                 fprintf(

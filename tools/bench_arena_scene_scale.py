@@ -21,6 +21,7 @@ COMBAT = re.compile(r"^scene_scale_combat (.+)$", re.M)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--before", type=Path, required=True)
+    parser.add_argument("--before-root", type=Path, help="asset snapshot used by the before executable")
     parser.add_argument("--after", type=Path, default=Path("build-performance/test_suite"))
     parser.add_argument("--counts", type=int, nargs="+", default=[1000, 5000])
     parser.add_argument("--frames", type=int, default=120)
@@ -65,7 +66,7 @@ def main():
                     env.pop("CBLUEPRINT_BENCH_WORKERS", None)
                 result = subprocess.run([binaries[version], "--bench-arena-scene-scale",
                     str(count), str(args.frames), str(int(args.profile))],
-                    cwd=root, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    cwd=args.before_root.resolve() if version == "before" and args.before_root else root, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 log = result.stdout
                 if result.returncode:
                     raise RuntimeError(f"{version} failed ({result.returncode}):\n{log}")
@@ -119,6 +120,7 @@ def main():
             if s['count'] == count and s['version'] == v) for key in samples[0][kind]}
             for kind in ('metrics', 'physics')} for v in binaries}
     args.output.write_text(json.dumps({"binary_sha256": hashes, "frames": args.frames,
+        "before_root": str(args.before_root.resolve()) if args.before_root else None,
         "warmup_frames": 30, "trials": args.trials, "profile": args.profile,
         "executor": str(args.executor) if args.executor else None,
         "external_workers": args.workers if args.executor else None,

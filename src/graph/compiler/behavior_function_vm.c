@@ -491,6 +491,20 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 }
                 break;
             }
+            case BF_ROW: {
+                const ecs_execution_column *column = ecs_execution_present(
+                    (const ecs_execution_column *)(uintptr_t)behavior_scalar_bits(a),
+                    b.u
+                );
+                uintptr_t row = column ? (uintptr_t)column->data + (size_t)b.u * i->offset
+                                       : 0;
+                if (BF_POINTER_TYPE == PIN_U64) {
+                    out->u64 = row;
+                } else {
+                    out->u = (uint32_t)row;
+                }
+                break;
+            }
             case BF_LOAD:
             case BF_READ:
                 if (i->op == BF_READ && !behavior_scalar_bits(a)) {

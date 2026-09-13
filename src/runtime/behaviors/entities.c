@@ -5,6 +5,7 @@
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/value_array.h"
+#include "runtime/behaviors/entity_query.h"
 #include "runtime/generated.h"
 #include "runtime/rhythm.h"
 #include "runtime/scenes/physics.h"
@@ -998,6 +999,7 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &HAS_ENTITIES_NODE,
                                            &NODE_Normalize_Vector_2,
                                            &FIND_ENTITIES_NODE,
+                                           &NODE_Count_Matching_Entities,
                                            &GAME_NODE_GetContactEntities,
                                            &NODE_Direction_To,
                                            &NODE_Atan2,

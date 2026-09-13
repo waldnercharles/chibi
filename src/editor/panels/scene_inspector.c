@@ -674,6 +674,20 @@ void draw_scene_inspector(app_scene_authoring *scene)
     }
     ImGui_SeparatorText("Runtime");
     ImGui_TextUnformatted(behavior_backend_name(behavior_instance_backend(info.instance)));
+    const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
+    if (failure) {
+        ImGui_TextWrapped("Last failure: %s", failure->message);
+        ImGui_TextDisabled("%s / %s", failure->event_name, failure->graph_name);
+        ImGui_TextDisabled(
+            "Node %llu, pin %d, steps %lu",
+            (unsigned long long)failure->node_id,
+            failure->pin,
+            failure->steps
+        );
+        if (ImGui_Button("Clear failure")) {
+            behavior_instance_clear_failure(info.instance);
+        }
+    }
 
     game_behavior_world *behaviors = scene->live->behaviors;
     int attachment_count = game_behavior_attachment_count_for_entity(behaviors, info.entity);

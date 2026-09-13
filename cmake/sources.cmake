@@ -201,6 +201,8 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/behavior.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/pending.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entities.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entity_query.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entity_query_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/live.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/gameplay.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/physics.c

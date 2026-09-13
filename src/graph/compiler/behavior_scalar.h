@@ -100,9 +100,17 @@ static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
         return out;
     }
     if (type == PIN_F64) {
-        out.d = a.type == PIN_U8  ? a.u8
-              : a.type == PIN_I32 ? a.i
-                                  : (double)a.i64;
+        switch (a.type) {
+            case PIN_BOOL: out.d = a.b; break;
+            case PIN_I8: out.d = a.i8; break;
+            case PIN_U8: out.d = a.u8; break;
+            case PIN_I16: out.d = a.i16; break;
+            case PIN_U16: out.d = a.u16; break;
+            case PIN_I32: out.d = a.i; break;
+            case PIN_U32: out.d = a.u; break;
+            case PIN_I64: out.d = (double)a.i64; break;
+            default: assert(false); break;
+        }
         return out;
     }
     if (a.type == PIN_I32 && type == PIN_I64) {

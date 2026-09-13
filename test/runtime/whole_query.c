@@ -255,6 +255,10 @@ static void escaping_snapshot()
 }
 void test_compiled_queries()
 {
+    extern void test_entity_query(behavior_backend backend);
+    test_entity_query(BEHAVIOR_ORACLE);
+    test_entity_query(BEHAVIOR_BYTECODE);
+    test_entity_query(BEHAVIOR_SLJIT);
     for (int kind = 0; kind < WHOLE_QUERY_COUNT; kind++) {
         for (int missing = 0; missing < 2; missing++) {
             behavior_asset *a = whole_query_fixture(

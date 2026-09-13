@@ -564,11 +564,90 @@ static int delegate_signature_matches(const behavior_delegate_binding *binding, 
     return 1;
 }
 
+void behavior_instance_clear_failure(behavior_instance *bi)
+{
+    if (!bi->failure) {
+        return;
+    }
+    free((char *)bi->failure->event_name);
+    free((char *)bi->failure->graph_name);
+    free((char *)bi->failure->message);
+    free(bi->failure);
+    bi->failure = NULL;
+}
+
+static void instance_capture_failure(behavior_instance *bi, const flow_run *act)
+{
+    if (!bi->alive || flow_run_status(act) != FLOW_FAILED) {
+        return;
+    }
+    const flow_error *error = flow_run_error(act);
+    const graph *source = NULL;
+    int count;
+    const flow_call_frame *stack = flow_run_call_stack(act, &count);
+    for (int i = count - 1; error->node && i >= 0; i--) {
+        if (graph_node_by_id(stack[i].graph, error->node->id) == error->node) {
+            source = stack[i].graph;
+            break;
+        }
+    }
+    for (int i = 0; !source && error->node && i < acount(bi->asset->graphs); i++) {
+        graph *g = bi->asset->graphs[i];
+        if (graph_node_by_id(g, error->node->id) == error->node) {
+            source = g;
+        }
+    }
+    const char *event = flow_run_event_name(act);
+    behavior_instance_failure next = {
+        .code = error->code,
+        .pin = error->pin,
+        .steps = error->steps,
+        .graph_id = source ? source->graph_id : 0,
+        .node_id = error->node ? error->node->id : 0,
+        .program_revision = behavior_program_revision(bi->asset->program),
+        .backend = bi->backend,
+        .event_name = event ? event : "",
+        .graph_name = source && source->name ? source->name : "",
+        .message = error->message ? error->message : "Behavior execution failed"
+    };
+    const behavior_instance_failure *old = bi->failure;
+    if (old && old->code == next.code && old->pin == next.pin &&
+        old->steps == next.steps && old->graph_id == next.graph_id &&
+        old->node_id == next.node_id && old->program_revision == next.program_revision &&
+        old->backend == next.backend && !strcmp(old->event_name, next.event_name) &&
+        !strcmp(old->message, next.message)) {
+        return;
+    }
+    next.event_name = xstrdup(next.event_name);
+    next.graph_name = xstrdup(next.graph_name);
+    next.message = xstrdup(next.message);
+    behavior_instance_clear_failure(bi);
+    bi->failure = xmalloc(sizeof next);
+    *bi->failure = next;
+}
+
+const behavior_instance_failure *behavior_instance_last_failure(const behavior_instance *bi)
+{
+    if (!bi) {
+        return NULL;
+    }
+    for (int i = acount(bi->activations) - 1; i >= 0; i--) {
+        if (flow_run_status(bi->activations[i]) == FLOW_FAILED) {
+            instance_capture_failure((behavior_instance *)bi, bi->activations[i]);
+            break;
+        }
+    }
+    return bi->failure;
+}
+
 int behavior_instance_remove_activation(behavior_instance *bi, flow_run *act)
 {
     if (!bi || !act) {
         return -1;
     }
+    /* Direct function runs borrow instance state without joining its event
+     * queue. Their teardown must retain failures too. */
+    instance_capture_failure(bi, act);
     for (int i = 0; i < acount(bi->activations); i++) {
         if (bi->activations[i] == act) {
             adel(bi->activations, i);
@@ -588,6 +667,7 @@ int behavior_instance_rebind(behavior_instance *bi, const pin_value *owner)
         return -1;
     }
     instance_init_values(bi);
+    behavior_instance_clear_failure(bi);
     aclear(bi->scratch);
     instance_set_owner(bi, owner);
     return 0;
@@ -703,6 +783,7 @@ int behavior_instance_pool_release(behavior_instance *bi)
         flow_run_reset(bi->activation_pool[i]);
     }
     aclear(bi->services);
+    behavior_instance_clear_failure(bi);
     bi->profile = NULL;
     bi->profile_user = NULL;
     instance_trace_clear(bi);

@@ -80,6 +80,7 @@ typedef enum
     BF_ENTITY,
     BF_COMPONENT,
     BF_COLUMN,
+    BF_ROW, /* checked column + live entity slot; no storage-changing effects */
     BF_INDEX,
     BF_LOAD,
     BF_READ,

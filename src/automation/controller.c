@@ -4260,6 +4260,27 @@ static void add_snapshot_behavior(
         behavior_backend_name(behavior_instance_backend(info.instance))
     );
     yyjson_mut_obj_add_bool(doc, object, "debug_hold", info.debug_hold != 0);
+    const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
+    if (failure) {
+        yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "last_failure");
+        yyjson_mut_obj_add_int(doc, value, "code", failure->code);
+        yyjson_mut_obj_add_int(doc, value, "pin", failure->pin);
+        yyjson_mut_obj_add_uint(doc, value, "steps", failure->steps);
+        yyjson_mut_obj_add_uint(doc, value, "graph_id", failure->graph_id);
+        yyjson_mut_obj_add_uint(doc, value, "node_id", failure->node_id);
+        yyjson_mut_obj_add_uint(doc, value, "program_revision", failure->program_revision);
+        yyjson_mut_obj_add_str(
+            doc,
+            value,
+            "backend",
+            behavior_backend_name(failure->backend)
+        );
+        yyjson_mut_obj_add_strcpy(doc, value, "event", failure->event_name);
+        yyjson_mut_obj_add_strcpy(doc, value, "graph", failure->graph_name);
+        yyjson_mut_obj_add_strcpy(doc, value, "message", failure->message);
+    } else {
+        yyjson_mut_obj_add_null(doc, object, "last_failure");
+    }
     game_behavior_entity_state state = { 0 };
     if (game_behavior_entity_state_at(behaviors, entity, info.asset_name, &state) == 0) {
         yyjson_mut_val *state_value = yyjson_mut_obj_add_obj(doc, object, "state");

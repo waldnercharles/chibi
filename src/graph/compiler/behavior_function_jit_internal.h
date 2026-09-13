@@ -20,7 +20,7 @@ static inline bool behavior_jit_call(behavior_function_op op)
 static inline bool behavior_jit_integer_clobber(behavior_function_op op)
 {
     return behavior_jit_call(op) || op == BF_ENTITY || op == BF_COMPONENT ||
-           op == BF_COLUMN;
+           op == BF_COLUMN || op == BF_ROW;
 }
 
 typedef struct

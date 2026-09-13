@@ -1411,7 +1411,7 @@ void flow_run_free(flow_run *run)
     if (!run) {
         return;
     }
-    if (run->instance) {
+    if (run->instance && !run->parent) {
         behavior_instance_remove_activation(run->instance, run);
     }
     flow_run_reset(run);

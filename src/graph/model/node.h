@@ -17,7 +17,8 @@ struct pin_array;
  * must remain valid after the snapshot is released. */
 typedef const char *(*node_query_fn)(void *service, const char *key, struct pin_array *out);
 /* Typed host capability. Arguments borrow scalar values, strings or plain
- * structs for this call. The caller supplies result
+ * structs and arrays for this call. Arrays and their payloads are read-only
+ * borrowed inputs; they cannot be retained by the helper. The caller supplies result
  * headers and non-null struct backing; the callee writes every result payload
  * on success, preserving those headers and pointers. Data nodes are read-only;
  * execution nodes may perform synchronous effects. Neither may execute graphs,

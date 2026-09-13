@@ -118,7 +118,7 @@ static int scalar_local(builder *b, int frame, const node *n, int pin, size_t of
             .node = n,
             .pin = pin,
             .offset = offset,
-            .parameter = frame &&
+            .parameter = pin >= 0 && frame &&
                          n->id == b->function->frames[frame].source.graph->entry_id })
     );
     return acount(b->function->locals) - 1;

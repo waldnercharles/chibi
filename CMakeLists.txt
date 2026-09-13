@@ -493,6 +493,7 @@ add_executable(test_suite
     test/physics.c
     test/dash.c
     test/encounter.c
+    test/encounter_query_benchmark.c
     test/system_arithmetic.c
     test/arena_ui.c
     test/shader_ui.c
@@ -709,7 +710,7 @@ add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${cute_framework_SOURCE_DIR}/include)
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)
-add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c test/support/task_pool.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c)
+add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c test/support/task_pool.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c test/support/entity_query.c)
 target_link_libraries(runtime_backend_smoke PRIVATE runtime_support)
 target_compile_options(runtime_backend_smoke PRIVATE -UNDEBUG)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

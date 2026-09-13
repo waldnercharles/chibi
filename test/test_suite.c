@@ -144,6 +144,21 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 3 && !strcmp(argv[1], "--emit-encounter-query-c")) {
+        extern void encounter_query_code(const char *path, int count, int repeats);
+        encounter_query_code(argv[2], 0, 0);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--encounter-query-code")) {
+        extern void encounter_query_code(const char *path, int count, int repeats);
+        encounter_query_code(argv[2], atoi(argv[3]), atoi(argv[4]));
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--encounter-query")) {
+        extern void bench_encounter_query(int count, unsigned budget, int repeats);
+        bench_encounter_query(atoi(argv[2]), (unsigned)atoi(argv[3]), atoi(argv[4]));
+        return 0;
+    }
     if (argc == 3 && !strcmp(argv[1], "--bench-behavior-destroy")) {
         bench_behavior_destroy(atoi(argv[2]));
         return 0;

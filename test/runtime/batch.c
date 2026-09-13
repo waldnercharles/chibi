@@ -243,6 +243,14 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
         !strcmp(expected_error->message, prepared_error->message)
     );
     assert(prepared->variables[0].d == ordinary->variables[0].d);
+    uint64_t failed_node = prepared_error->node->id;
+    assert(!behavior_instance_release_activation(prepared, prepared_failure));
+    const behavior_instance_failure *saved = behavior_instance_last_failure(prepared);
+    assert(
+        saved && saved->node_id == failed_node &&
+        saved->code == expected_error->code && saved->pin == expected_error->pin &&
+        saved->steps == expected_error->steps && !strcmp(saved->event_name, "Tick")
+    );
     behavior_update_free_code(code);
     behavior_update_free_bindings(bindings);
     behavior_instance_destroy(prepared);

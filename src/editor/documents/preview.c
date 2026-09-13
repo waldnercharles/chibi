@@ -245,6 +245,17 @@ void ed_draw_debug_menu(editor *e)
         ImGui_TextUnformatted(
             behavior_backend_name(behavior_instance_backend(target_instance))
         );
+        const behavior_instance_failure *failure = behavior_instance_last_failure(target_instance);
+        if (failure) {
+            ImGui_TextWrapped("Last failure: %s", failure->message);
+            ImGui_TextDisabled(
+                "%s / %s / node %llu / pin %d",
+                failure->event_name,
+                failure->graph_name,
+                (unsigned long long)failure->node_id,
+                failure->pin
+            );
+        }
     }
     int can_dispatch = !ed_inspection_blocked(e) &&
                        e->active_graph == e->asset->graph && entry &&

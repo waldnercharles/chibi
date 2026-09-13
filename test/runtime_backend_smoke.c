@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
+#include "runtime/behaviors/entity_query.h"
 #include "runtime/rhythm.h"
 #include "runtime/visual_motion.h"
 #include "test/pending_fixture.h"
@@ -17,12 +18,14 @@ extern const registry_pack GAME_REGISTRY_PACK;
 extern void test_physics();
 static const type_desc entity_type = { .name = "ecs.entity", .size = sizeof(uint64_t) };
 static const type_desc *const types[] = { &entity_type };
-static node_desc *const nodes[] = { &NODE_Set_Visual_Reaction, &NODE_Scene_Rhythm };
+static node_desc *const nodes[] = { &NODE_Set_Visual_Reaction,
+                                    &NODE_Scene_Rhythm,
+                                    &NODE_Count_Matching_Entities };
 static const registry_pack capabilities = { .name = "Runtime smoke",
                                             .types = types,
                                             .type_count = 1,
                                             .nodes = nodes,
-                                            .node_count = 2 };
+                                            .node_count = 3 };
 const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK,
                                                 &CORE_FLOW_PACK,
                                                 &GAME_REGISTRY_PACK,
@@ -57,6 +60,8 @@ int main()
     whole_rhythm_smoke();
     whole_reflected_smoke();
     test_pending_backend(behavior_default_backend());
+    extern void test_entity_query(behavior_backend backend);
+    test_entity_query(behavior_default_backend());
     test_physics();
     return 0;
 }

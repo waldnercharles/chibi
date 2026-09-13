@@ -15,6 +15,15 @@
  * the ready/suspended event activations that currently belong to it. */
 typedef struct behavior_instance behavior_instance;
 typedef struct behavior_instance_bank behavior_instance_bank;
+/* Owned snapshot; remains valid after activation release and hot apply. */
+typedef struct
+{
+    int code, pin;
+    unsigned long steps;
+    uint64_t graph_id, node_id, program_revision;
+    behavior_backend backend;
+    const char *event_name, *graph_name, *message;
+} behavior_instance_failure;
 /* Disjoint setup/execution intervals. Execution includes nested functions,
  * excluding other synchronous root events and their setup. No waiting wall time. */
 typedef enum
@@ -104,6 +113,7 @@ struct behavior_instance
     void *profile_user;
     uint64_t schedule_revision; /* Queue edits and asynchronous readiness changes. */
     flow_run **activation_pool; /* idle reusable activations */
+    behavior_instance_failure *failure; /* allocated only after a runtime failure */
     behavior_instance_trace_entry *trace; /* bounded ring; read through behavior_instance_trace */
     behavior_instance_trace_entry *trace_view; /* lazily ordered inspection cache */
     char **trace_names;
@@ -161,6 +171,10 @@ behavior_backend behavior_default_backend();
 /* Explicit parity/debug selection. Only valid before dispatch. */
 int behavior_instance_set_backend(behavior_instance *bi, behavior_backend backend);
 behavior_backend behavior_instance_backend(const behavior_instance *bi);
+/* Inspection also snapshots held failed activations. Borrowed until the next
+ * failure, explicit clear, pool release or destruction. Success retains it. */
+const behavior_instance_failure *behavior_instance_last_failure(const behavior_instance *bi);
+void behavior_instance_clear_failure(behavior_instance *bi);
 
 /* Destroy cancels every ready, running, paused, or suspended activation and
  * releases instance variables, scratch, and activation storage without

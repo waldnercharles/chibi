@@ -1,12 +1,14 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
 #include "runtime/behaviors/behavior.h"
+#include "runtime/behaviors/entities.h"
 #include "support/array.h"
 #include "test/pending_fixture.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <time.h>
 
 static behavior_asset *counter()
 {
@@ -45,11 +47,175 @@ static behavior_asset *emitter()
     assert(!graph_connect_exec(a->graph, entry, 0, print, 0, 0));
     return a;
 }
+void bench_behavior_destroy(int count)
+{
+    assert(count > 0 && count <= 20000);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    game_entities *host = game_entities_new(ecs, world);
+    behavior_asset *assets[5];
+    const char *names[] = { "A", "B", "C", "D", "E" };
+    for (int i = 0; i < 5; i++) {
+        assets[i] = counter();
+        assert(!game_behavior_register_asset(world, names[i], assets[i]));
+    }
+    for (int i = 0; i < count; i++) {
+        ecs_entity entity = ecs_world_create_entity(ecs);
+        for (int j = 0; j < 5; j++) {
+            assert(!game_behavior_attach(world, entity, names[j]));
+        }
+        game_entities_request_destroy(host, entity);
+    }
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    assert(!game_entities_flush(host));
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double ms = (end.tv_sec - start.tv_sec) * 1000.0 +
+                (end.tv_nsec - start.tv_nsec) / 1e6;
+    assert(!ecs_world_live_count(ecs) && !game_behavior_attachment_count(world));
+    assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    printf("behavior_destroy entities=%d attachments=%d ms=%.6f oracle_calls=0\n", count, count * 5, ms);
+    game_entities_free(host);
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    for (int i = 0; i < 5; i++) {
+        behavior_asset_free(assets[i]);
+    }
+}
 static flow_run *enqueue(behavior_instance *bi, bool wait)
 {
     flow_run *run = behavior_instance_enqueue(bi, bi->asset->graph->nodes[wait], (flow_inputs){ 0 }, NULL);
     assert(run);
     return run;
+}
+typedef struct
+{
+    game_behavior_world *behaviors;
+    ecs_entity *entities;
+} destroy_trace;
+static void destroyed(ecs_world *world, ecs_entity entity, void *user)
+{
+    destroy_trace *trace = user;
+    assert(ecs_entity_is_alive(world, entity));
+    assert(!game_behavior_attachment_count_for_entity(trace->behaviors, entity));
+    apush(trace->entities, entity);
+}
+static void test_bulk_destroy(behavior_backend backend)
+{
+    enum
+    {
+        COUNT = 137
+    };
+    behavior_asset *a = counter(), *signal = emitter();
+    node *set = alast(a->graph->nodes);
+    node *tick = graph_add_node(a->graph, &NODE_Event);
+    assert(!graph_set_event_name(a->graph, tick, "Tick"));
+    assert(!graph_connect_exec(a->graph, tick, 0, set, 0, 0));
+    assert(!graph_set_event_name(signal->graph, signal->graph->nodes[0], "Work"));
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    game_entities *host = game_entities_new(ecs, world);
+    assert(!game_behavior_register_asset(world, a->name, a));
+    assert(!game_behavior_register_asset(world, signal->name, signal));
+    ecs_entity stale = ecs_world_create_entity(ecs);
+    assert(!ecs_world_destroy_entity(ecs, stale));
+    ecs_entity entities[COUNT];
+    behavior_instance *instances[COUNT];
+    behavior_backend previous = behavior_debug_backend(backend);
+    for (int i = 0; i < COUNT; i++) {
+        entities[i] = ecs_world_create_entity(ecs);
+        const char *names[] = { i % 2 ? a->name : signal->name,
+                                i % 2 ? signal->name : a->name };
+        assert(!game_behavior_set_attachments(world, entities[i], names, 2));
+        instances[i] = game_behavior_instance(world, entities[i], a->name);
+        assert(!game_entities_request_event(host, entities[i], "Work", (flow_inputs){ 0 }));
+    }
+    assert(entities[0].slot == stale.slot && entities[0].generation != stale.generation);
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+    assert(game_behavior_update(world, NULL) == COUNT);
+    for (int i = 0; i < COUNT; i++) {
+        assert(instances[i]->variables[0].i == 1);
+        enqueue(instances[i], true);
+    }
+    assert(!game_behavior_pump(world, 0));
+    /* Remove odd rows across multiple pending words, leaving the replacement
+     * for a stale handle alive. Queued events must not reach pooled instances. */
+    for (int i = COUNT - 2; i >= 1; i -= 2) {
+        game_entities_request_destroy(host, entities[i]);
+    }
+    game_entities_request_destroy(host, entities[63]);
+    game_entities_request_destroy(host, stale);
+    game_entities_request_destroy(host, (ecs_entity){ 0 });
+    destroy_trace trace = { .behaviors = world };
+    ecs_world_set_destroy_observer(ecs, destroyed, &trace);
+    assert(!game_entities_flush(host));
+    assert(acount(trace.entities) == COUNT / 2);
+    for (int i = 0; i < acount(trace.entities); i++) {
+        assert(
+            ecs_entity_to_u64(trace.entities[i]) ==
+            ecs_entity_to_u64(entities[COUNT - 2 - i * 2])
+        );
+    }
+    ecs_world_set_destroy_observer(ecs, NULL, NULL);
+    afree(trace.entities);
+    assert(ecs_world_live_count(ecs) == (COUNT + 1) / 2);
+    assert(game_behavior_attachment_count(world) == COUNT + 1);
+    for (int i = 0; i < COUNT; i++) {
+        assert(ecs_entity_is_alive(ecs, entities[i]) == !(i % 2));
+        assert(instances[i]->alive == !(i % 2));
+        if (i % 2) {
+            assert(!acount(instances[i]->activations));
+            continue;
+        }
+        assert(game_behavior_instance(world, entities[i], a->name) == instances[i]);
+        game_behavior_attachment_info info;
+        assert(!game_behavior_attachment_info_at(world, entities[i], 0, &info));
+        assert(!strcmp(info.asset_name, signal->name));
+    }
+    assert(!game_behavior_pump(world, .25));
+    assert(game_behavior_last_pump_count(world) == (COUNT + 1) / 2);
+    while (game_entities_pending_events(host)) {
+        assert(!game_entities_dispatch_events(host));
+    }
+    assert(!game_entities_pending_events(host));
+    for (int i = 0; i < COUNT; i += 2) {
+        assert(instances[i]->variables[0].i == 3);
+    }
+    assert(game_behavior_update(world, NULL) == (COUNT + 1) / 2);
+    for (int i = 0; i < COUNT; i += 2) {
+        assert(instances[i]->variables[0].i == 4);
+    }
+    assert(game_behavior_log_count(world) == (COUNT + 1) / 2);
+    for (int i = 0; i < game_behavior_log_count(world); i++) {
+        game_behavior_log_info log;
+        assert(!game_behavior_log_info_at(world, i, &log));
+        assert(ecs_entity_to_u64(log.entity) == ecs_entity_to_u64(entities[i * 2]));
+    }
+    ecs_entity replacement = ecs_world_create_entity(ecs);
+    assert(!game_behavior_attach(world, replacement, a->name));
+    behavior_instance *reused = game_behavior_instance(world, replacement, a->name);
+    assert(!reused->variables[0].i && !acount(reused->activations));
+    enqueue(reused, false);
+    assert(!game_behavior_pump(world, 1) && game_behavior_last_pump_count(world) == 1);
+    assert(reused->variables[0].i == 1);
+    /* A destruction already in the ECS command buffer is applied once and its
+     * behavior is still detached, even when the host queues the same handle. */
+    assert(!ecs_world_record_destroy(ecs, replacement, 0));
+    game_entities_request_destroy(host, replacement);
+    game_entities_request_destroy(host, replacement);
+    assert(!game_entities_flush(host));
+    assert(!ecs_entity_is_alive(ecs, replacement));
+    assert(!game_behavior_instance(world, replacement, a->name));
+    if (backend != BEHAVIOR_ORACLE) {
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    }
+    behavior_debug_backend(previous);
+    game_entities_free(host);
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(a);
+    behavior_asset_free(signal);
 }
 static int parallel_count;
 static void reverse_parallel(int count, void (*worker)(int, void *), void *user)
@@ -197,6 +363,7 @@ static void test_clock_inheritance(behavior_backend backend)
 
 void test_pending_backend(behavior_backend backend)
 {
+    test_bulk_destroy(backend);
     enum
     {
         COUNT = 257,

@@ -108,6 +108,11 @@ int game_behavior_set_debug_hold(
 );
 int game_behavior_detach_entity(game_behavior_world *world, ecs_entity entity);
 int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity);
+/* Structural boundary outside dispatch/queries: cancel and detach the selected
+ * instances, compact the ordered schedule once, then apply destruction in input
+ * order. Surviving attachments retain their order and state. Duplicate, retiring
+ * and stale handles are allowed; stale generations cannot select replacements. */
+int game_behavior_destroy_entities(game_behavior_world *world, const ecs_entity *entities, int count);
 /* Returns INSTANCE_UPDATE_*; all instances pass preflight before any change. */
 int game_behavior_can_preview_asset(
     game_behavior_world *world,

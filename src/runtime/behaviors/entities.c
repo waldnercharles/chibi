@@ -159,11 +159,14 @@ void game_entities_reset(game_entities *entities)
         release_request(request);
     }
     aclear(entities->spawns);
-    for (int i = 0; i < acount(entities->owned); i++) {
-        ecs_entity entity = entities->owned[i];
-        if (ecs_entity_is_alive(entities->world, entity)) {
-            game_behavior_destroy_entity(entities->behaviors, entity);
-        }
+    if (acount(entities->owned)) {
+        int result = game_behavior_destroy_entities(
+            entities->behaviors,
+            entities->owned,
+            acount(entities->owned)
+        );
+        assert(!result);
+        (void)result;
     }
     aclear(entities->owned);
     aclear(entities->destroy);
@@ -488,10 +491,14 @@ int game_entities_flush(game_entities *entities)
     }
     afree(entities->spawns);
     entities->spawns = pending;
-    for (int i = 0; i < acount(entities->destroy); i++) {
-        ecs_entity entity = entities->destroy[i];
-        if (ecs_entity_is_alive(entities->world, entity)) {
-            game_behavior_destroy_entity(entities->behaviors, entity);
+    if (acount(entities->destroy)) {
+        int result = game_behavior_destroy_entities(
+            entities->behaviors,
+            entities->destroy,
+            acount(entities->destroy)
+        );
+        if (result) {
+            return result;
         }
     }
     aclear(entities->destroy);

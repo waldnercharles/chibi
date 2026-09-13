@@ -171,8 +171,10 @@ firing/restart scenario passed on both SLJIT and BYTECODE in three paired runs;
 its timing remained effectively unchanged. The large rendered fixture still
 does not cover projectile-heavy combat or first-sweep creation cost at scale.
 
-Body fusion, safe parallel behavior batches, sleeping-queue scheduling and large
-structural bursts remain unfinished. Combat/restart now passes at 1,000 enemies;
+The [bulk destruction follow-up](bulk-destruction.md) removes repeated attachment
+scans and index rebuilds during deferred removal and reset. Bulk spawn, component
+index maintenance, body fusion, safe parallel behavior batches and sleeping-queue
+scheduling remain unfinished. Combat/restart now passes at 1,000 enemies;
 5,000-enemy acceptance requires fixing the encounter query's execution-budget
 limit and preserving failed-activation diagnostics. The measurements above identify
 useful next changes without claiming that SLJIT status alone means all runtime

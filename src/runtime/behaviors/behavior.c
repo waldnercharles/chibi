@@ -939,24 +939,54 @@ fail:
     return -1;
 }
 
-static int detach_asset_entity(game_behavior_world *world, behavior_asset_record *asset, ecs_entity entity)
+static int detach_entities(
+    game_behavior_world *world,
+    const ecs_entity *entities,
+    int count,
+    const behavior_asset_record *asset
+)
 {
+    int total = acount(world->attachments);
+    if (!total || !count) {
+        return 0;
+    }
+    uint64_t *selected = xcalloc((size_t)(total + 63) / 64, sizeof *selected);
     int detached = 0;
-    for (int i = 0; i < acount(world->attachments);) {
-        behavior_attachment *attachment = &world->attachments[i];
-        if (attachment->asset != asset || attachment->entity.slot != entity.slot ||
-            attachment->entity.generation != entity.generation) {
-            i++;
+    for (int i = 0; i < count; i++) {
+        const int *indices = entity_attachments(world, entities[i]);
+        for (int j = 0; j < acount(indices); j++) {
+            int index = indices[j];
+            const behavior_attachment *attachment = &world->attachments[index];
+            if (attachment_entity(attachment, entities[i]) &&
+                (!asset || attachment->asset == asset)) {
+                uint64_t bit = UINT64_C(1) << (index % 64);
+                detached += !(selected[index / 64] & bit);
+                selected[index / 64] |= bit;
+            }
+        }
+    }
+    if (!detached) {
+        free(selected);
+        return 0;
+    }
+    int retained = 0;
+    for (int i = 0; i < total; i++) {
+        behavior_attachment attachment = world->attachments[i];
+        if (!(selected[i / 64] & (UINT64_C(1) << (i % 64)))) {
+            world->attachments[retained++] = attachment;
             continue;
         }
-        release_instance(asset, attachment->instance);
-        adel(world->attachments, i);
-        detached++;
+        release_instance(attachment.asset, attachment.instance);
     }
-    if (detached) {
-        rebuild_attachment_index(world);
-    }
+    free(selected);
+    asetlen(world->attachments, retained);
+    rebuild_attachment_index(world);
     return detached;
+}
+
+static int detach_asset_entity(game_behavior_world *world, behavior_asset_record *asset, ecs_entity entity)
+{
+    return detach_entities(world, &entity, 1, asset);
 }
 
 int game_behavior_detach_asset(game_behavior_world *world, ecs_entity entity, const char *asset_name)
@@ -1018,11 +1048,7 @@ int game_behavior_detach_entity(game_behavior_world *world, ecs_entity entity)
     if (!world) {
         return -1;
     }
-    int detached = 0;
-    for (int i = 0; i < acount(world->assets); i++) {
-        detached += detach_asset_entity(world, &world->assets[i], entity);
-    }
-    return detached;
+    return detach_entities(world, &entity, 1, NULL);
 }
 
 int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity)
@@ -1032,6 +1058,27 @@ int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity)
     }
     game_behavior_detach_entity(world, entity);
     return ecs_world_destroy_entity(world->ecs, entity);
+}
+
+int game_behavior_destroy_entities(game_behavior_world *world, const ecs_entity *entities, int count)
+{
+    assert(world && count >= 0 && (!count || entities));
+    detach_entities(world, entities, count, NULL);
+    for (int i = 0; i < count; i++) {
+        ecs_entity entity = entities[i];
+        if (!ecs_entity_is_alive(world->ecs, entity)) {
+            continue;
+        }
+        /* Preserve the existing structural boundaries: the ECS command sorter
+         * orders equal-key destroys by slot, not by request order. */
+        int result = ecs_entity_is_retiring(world->ecs, entity)
+                       ? ecs_world_apply_commands(world->ecs)
+                       : ecs_world_destroy_entity(world->ecs, entity);
+        if (result) {
+            return result;
+        }
+    }
+    return ECS_OK;
 }
 
 static int dispatch_attachment(

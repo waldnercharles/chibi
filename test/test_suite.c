@@ -144,6 +144,10 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 3 && !strcmp(argv[1], "--bench-behavior-destroy")) {
+        bench_behavior_destroy(atoi(argv[2]));
+        return 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--pending")) {
         test_pending_backend(BEHAVIOR_SLJIT);
         test_pending_backend(BEHAVIOR_BYTECODE);

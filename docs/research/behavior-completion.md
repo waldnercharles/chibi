@@ -193,6 +193,13 @@ and ordinary dispatch reaps the failed activation. Its encounter count can stay
 stale while other gameplay continues. This remains unfinished acceptance, with
 compiled query reductions and persistent source diagnostics the next priorities.
 
+The [bulk destruction follow-up](bulk-destruction.md) addresses a separate scaling
+cost shared by all scenes: repeated attachment scans and index rebuilding during
+entity removal. Host destruction batches and reset now compact attachments once,
+retaining survivor order, pending queues and compiled Tick schedule invalidation.
+This improves structural bursts without changing graph lowering or the encounter
+query's execution-budget limit.
+
 The September 12 scaling probe found repeated nearest-entity world scans, a
 fixed 10,000-entity ceiling and roughly 1.9 GB peak process memory near that
 ceiling. Query reuse removes the repeated scans. Subsequent

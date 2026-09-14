@@ -112,6 +112,22 @@ set_property(CACHE CHIBI_SANITIZERS PROPERTY STRINGS
     address undefined "address,undefined" thread)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 
+# Native worlds share a lazy task pool. The portable runtime stays serial and
+# does not fetch or link EnkiTS or require browser pthread support.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(ENKITS_BUILD_C_INTERFACE ON CACHE BOOL "" FORCE)
+    set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ENKITS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ENKITS_INSTALL OFF CACHE BOOL "" FORCE)
+    set(ENKITS_SANITIZE ${CHIBI_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
+    FetchContent_Declare(enkits
+        GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
+        GIT_TAG 4cba61a045d8e759bd35e5d85691bf9f7271f822
+        UPDATE_DISCONNECTED TRUE)
+    FetchContent_MakeAvailable(enkits)
+    set_target_properties(enkiTS PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 if(CHIBI_ENABLE_WARNINGS AND
    (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
     CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
@@ -320,6 +336,10 @@ target_include_directories(runtime_support PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime
 )
 target_link_libraries(runtime_support PUBLIC ecs core cute)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_libraries(runtime_support PRIVATE enkiTS)
+    target_compile_definitions(runtime_support PRIVATE CHIBI_HAS_ENKITS=1)
+endif()
 
 # --- headless automation controller ----------------------------------------
 
@@ -488,7 +508,7 @@ endif()
 
 # --- test registry: core, runtime_support, and demo packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-chibi_registry("${TEST_REGISTRY}" DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -504,6 +524,7 @@ add_executable(test_suite
     test/physics.c
     test/dash.c
     test/encounter.c
+    test/encounter_query_benchmark.c
     test/system_arithmetic.c
     test/arena_ui.c
     test/shader_ui.c
@@ -577,6 +598,8 @@ add_executable(test_suite
     test/fixtures/reflection/math.c
     ${TEST_REGISTRY}
 )
+# Generated-C system benchmarks call the same runtime helpers as SLJIT.
+set_target_properties(test_suite PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(test_suite PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(test_suite PRIVATE automation engine runtime_support ecs demo editor chibi_render)
@@ -585,6 +608,17 @@ if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
 endif()
 
 # --- activation benchmark: headless per-instance event dispatch -------------
+set(BENCH_BEHAVIOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/bench_behavior_registry.c)
+chibi_registry("${BENCH_BEHAVIOR_REGISTRY}" WHOLE_VALUE_PACK ${BASE_REGISTRY_PACKS})
+add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c test/bench_aggregate.c test/support/whole_values.c test/support/whole_components.c ${BENCH_BEHAVIOR_REGISTRY})
+target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(bench_behavior PRIVATE ecs core demo ${CMAKE_DL_LIBS})
+target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)
+
+add_executable(bench_scheduler test/bench_scheduler.c ${BASE_REGISTRY})
+target_link_libraries(bench_scheduler PRIVATE core demo)
+target_compile_options(bench_scheduler PRIVATE -UNDEBUG)
+
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
 target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_activation PRIVATE core demo)
@@ -710,3 +744,26 @@ foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner 
         target_compile_options(${driver} PRIVATE -UNDEBUG)
     endif()
 endforeach()
+
+# Backend policy smoke target also runs under Node in the Emscripten build.
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/instance_bank.c test/support/whole_retrigger.c test/support/whole_multigate.c test/support/whole_state.c test/support/whole_switch.c test/support/whole_recursion.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c test/support/whole_delay.c test/support/whole_batch.c test/support/bound_components.c test/support/whole_async.c test/support/whole_motion.c test/support/whole_random.c test/support/whole_data.c test/support/whole_particles.c test/support/whole_managed.c test/support/whole_owned_arrays.c test/support/whole_array_ops.c test/support/value_index.c test/support/whole_names.c test/support/whole_search.c src/graph/nodes/vector_nodes.c src/graph/nodes/particle_nodes.c src/render/particles.c)
+target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${cute_framework_SOURCE_DIR}/include)
+target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
+target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)
+add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c test/support/task_pool.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c test/support/entity_query.c)
+target_link_libraries(runtime_backend_smoke PRIVATE runtime_support)
+target_compile_options(runtime_backend_smoke PRIVATE -UNDEBUG)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_options(behavior_backend_smoke PRIVATE "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    target_link_options(runtime_backend_smoke PRIVATE "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    find_program(CHIBI_NODE_EXECUTABLE node REQUIRED)
+    add_custom_target(check-behavior-backend
+        COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:behavior_backend_smoke>"
+        COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:runtime_backend_smoke>"
+        DEPENDS behavior_backend_smoke runtime_backend_smoke VERBATIM)
+else()
+    add_custom_target(check-behavior-backend
+        COMMAND "$<TARGET_FILE:behavior_backend_smoke>"
+        COMMAND "$<TARGET_FILE:runtime_backend_smoke>"
+        DEPENDS behavior_backend_smoke runtime_backend_smoke VERBATIM)
+endif()

@@ -21,5 +21,7 @@ int render_arena_visuals(
     size_t size
 );
 CF_M4x4 render_arena_visual_model(const arena_visual *visual);
+/* Conservative clip test of the built-in mesh bounds, including part transforms. */
+bool render_arena_visual_visible(const arena_visual *visual, CF_M4x4 view_projection);
 
 #endif

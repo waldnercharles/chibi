@@ -386,11 +386,34 @@ static bool scene_scenario()
     editor_ui_request_focus(EDITOR_UI_FOCUS_WORLD_OUTLINER);
     editor_ui_restore_navigator_tab(EDITOR_UI_PANE_WORLD_OUTLINER);
     bool ok = ui_frame(&fixture);
+    /* Let the initial dock layout settle when this scenario runs alone. */
+    for (int i = 0; i < 6; i++) {
+        ok &= ui_frame(&fixture);
+    }
     bool player_visible = editor_ui_item_rect("scene.actor.Player_1", &(editor_ui_rect){ 0 });
     ok &= player_visible && click_item(&fixture, "scene.actor.Player_1");
     app_runtime_state state = app_scene_authoring_runtime_state(fixture.scene);
     ok &= ecs_entity_is_alive(fixture.world, state.selected_entity);
     ok &= editor_ui_item_rect("viewport.image", &(editor_ui_rect){ 0 });
+    game_physics_settings before = game_physics_configuration(fixture.live->physics);
+    ok &= click_item(&fixture, "scene.physics");
+    ok &= editor_ui_item_rect("scene.physics.workers", &(editor_ui_rect){ 0 });
+    ok &= editor_ui_item_rect("scene.physics.contact_damping", &(editor_ui_rect){ 0 });
+    ok &= click_item(&fixture, "scene.physics.sleep");
+    ok &= game_physics_configuration(fixture.live->physics).sleep != before.sleep;
+    ok &= replay_scene_edit(fixture.scene, false) == 0;
+    ok &= game_physics_settings_equal(
+        before,
+        game_physics_configuration(fixture.live->physics)
+    );
+    ok &= ui_frame(&fixture);
+    ok &= move_to_item(&fixture, "scene.physics");
+    const char *capture = getenv("CHIBI_ASSET_NAV_CAPTURE");
+    if (capture) {
+        char path[1024];
+        snprintf(path, sizeof path, "%s/scene-physics.png", capture);
+        assert(app_save_screenshot(path) == 0);
+    }
     if (!ok) {
         printf(
             "ui-native scene detail: player_visible=%d selected=%llu "
@@ -2077,6 +2100,60 @@ static bool asset_navigation_scenario()
     return ok;
 }
 
+static bool query_diagnostics_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    extern behavior_asset *entity_query_fusion_fixture();
+    behavior_asset *asset = entity_query_fusion_fixture();
+    bool ok = !editor_open_behavior_asset(fixture.graph, asset, asset->graph->graph_id);
+    behavior_asset_free(asset);
+    ok &= !editor_command_apply(fixture.graph, (editor_command){ .kind = EDITOR_COMMAND_COMPILE });
+    editor_query state;
+    editor_query_state(fixture.graph, &state);
+    ok &= state.compile && !state.compile->error_count &&
+          state.compile->note_count >= 4;
+    editor_ui_request_focus(EDITOR_UI_FOCUS_COMPILER_RESULTS);
+    for (int i = 0; i < 12; i++) {
+        ok &= ui_frame(&fixture);
+    }
+    capture_asset_navigation("query-diagnostics");
+    bool clicked = false;
+    for (int i = 0; ok && i < acount(state.compile->items); i++) {
+        compile_diagnostic d = state.compile->items[i];
+        if (d.rule != CMPL_RULE_QUERY_FUSION) {
+            continue;
+        }
+        char id[96];
+        snprintf(
+            id,
+            sizeof id,
+            "compiler.source.%llu.%llu",
+            (unsigned long long)d.graph_id,
+            (unsigned long long)d.node_id
+        );
+        if (!editor_ui_item_rect(id, &(editor_ui_rect){ 0 })) {
+            continue;
+        }
+        clicked = click_item(&fixture, id);
+        ok &= clicked && editor_active_graph(fixture.graph)->graph_id == d.graph_id;
+        for (int frame = 0; frame < 12; frame++) {
+            ok &= ui_frame(&fixture);
+        }
+        editor_node_ui node_ui;
+        ok &= editor_query_node_ui(fixture.graph, d.node_id, &node_ui) &&
+              node_ui.selected;
+        capture_asset_navigation("query-diagnostics-source");
+        break;
+    }
+    ok &= clicked;
+    printf("ui-native query diagnostics %s: fusion notes navigate to the authored source node\n", ok ? "PASS" : "FAIL");
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
 static bool local_alias_scenario()
 {
     ui_fixture fixture;
@@ -2496,6 +2573,18 @@ static bool arithmetic_node_scenario(bool shader)
     cf_app_set_size(UI_WIDTH, UI_HEIGHT);
     ui_fixture_free(&fixture);
     return ok;
+}
+
+int query_diagnostics_ui_run(const char *program)
+{
+    cf_set_assert_handler(stacktrace_assert_handler);
+    if (!native_app_new(program)) {
+        return 1;
+    }
+    bool ok = query_diagnostics_scenario();
+    app_input_shutdown();
+    cf_destroy_app();
+    return ok ? 0 : 1;
 }
 
 int ui_arithmetic_run(const char *program)
@@ -3120,16 +3209,21 @@ int ui_native_run(const char *program)
     if (!native_app_new(program)) {
         return 1;
     }
-    bool ok = vector_fields_scenario() && node_control_alignment_scenario() &&
-              behavior_node_workspace_scenario() &&
-              arithmetic_node_scenario(false) && arithmetic_node_scenario(true) &&
-              graph_framing_scenario() && workspace_scenario() &&
-              workspace_navigation_scenario() && graph_scenario() &&
-              scene_scenario() && asset_navigation_scenario() &&
-              binding_scenario() && movement_component_binding_scenario() &&
-              generic_inline_source_scenario() && material_inline_source_scenario() &&
-              nested_component_binding_scenario() &&
-              shader_node_workspace_scenario() && local_alias_scenario();
+    bool ok = getenv("CHIBI_UI_PHYSICS_ONLY")
+                ? scene_scenario()
+                : vector_fields_scenario() && node_control_alignment_scenario() &&
+                      behavior_node_workspace_scenario() &&
+                      arithmetic_node_scenario(false) &&
+                      arithmetic_node_scenario(true) && graph_framing_scenario() &&
+                      workspace_scenario() && workspace_navigation_scenario() &&
+                      graph_scenario() && scene_scenario() &&
+                      asset_navigation_scenario() && binding_scenario() &&
+                      movement_component_binding_scenario() &&
+                      generic_inline_source_scenario() &&
+                      material_inline_source_scenario() &&
+                      nested_component_binding_scenario() &&
+                      shader_node_workspace_scenario() &&
+                      local_alias_scenario() && query_diagnostics_scenario();
     app_input_shutdown();
     cf_destroy_app();
     return ok ? 0 : 1;

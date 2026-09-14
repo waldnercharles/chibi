@@ -23,6 +23,7 @@ char *scene_authoring_scene_json(app_scene_authoring *scene)
     }
     game_behavior_world *behaviors = scene->live->behaviors;
     document->perspective = scene->perspective;
+    document->physics = game_physics_configuration(scene->live->physics);
     for (int i = 0; i < acount(scene->actors); i++) {
         const scene_actor *actor = &scene->actors[i];
         const game_prototype *snapshot = scene->runtime_snapshot_valid
@@ -371,6 +372,8 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
     invalidate_runtime_snapshot(scene);
     game_entities_reset(scene->live->entities);
     game_physics_reset(scene->live->physics);
+    int configured = game_physics_configure(scene->live->physics, document->physics);
+    assert(configured == 0);
     game_particles_clear(scene->live->particles);
     app_scene_renderer_reset(scene->renderer);
     while (acount(scene->actors)) {

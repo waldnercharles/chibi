@@ -1,10 +1,13 @@
 #ifndef CHIBI_FLOW_H
 #define CHIBI_FLOW_H
 
+#include "graph/compiler/behavior_program.h"
 #include "graph/model/graph.h"
 
 #include <stdbool.h>
 #include <stddef.h>
+
+#define FLOW_DEFAULT_STEP_BUDGET 10000
 
 #ifdef __cplusplus
 extern "C"
@@ -107,7 +110,8 @@ extern "C"
 
     /* Host-selected entry point. The run owns a copy of inputs and remains
      * valid until flow_run_free(). `error` receives failures that happen
-     * before a run exists and may be NULL. */
+     * before a run exists and may be NULL. Without an instance this explicitly
+     * selects the standalone interpreter oracle. Runtime hosts use instances. */
     flow_run *flow_run_start(
         graph *g,
         node *entry,
@@ -131,6 +135,9 @@ extern "C"
 
     /* Continue a run. tick() samples the configured clock; tick_at() lets a
      * host provide an already sampled monotonic value. */
+    uint64_t flow_oracle_calls();
+    behavior_backend flow_run_backend(const flow_run *run);
+
     int flow_run_resume(flow_run *run);
     int flow_run_tick(flow_run *run);
     int flow_run_tick_at(flow_run *run, double monotonic_time);
@@ -153,6 +160,7 @@ extern "C"
     const flow_error *flow_run_error(const flow_run *run);
     unsigned long flow_run_steps(const flow_run *run);
     flow_inputs flow_run_inputs(const flow_run *run);
+    /* NULL when uninstrumented whole-function execution did not record node values. */
     const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin);
     /* Traversal records are ordered oldest to newest and remain available
      * after Stop until the run is reset or freed. The returned storage is

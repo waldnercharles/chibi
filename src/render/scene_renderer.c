@@ -26,7 +26,7 @@ struct app_scene_renderer
     render_arena *arena;
     render_arena_post *post;
     render_fog *fog;
-    bool arena_attempted;
+    bool arena_attempted, parallel_disabled;
     render_material_raster *raster;
     render_radiance *radiance;
     CF_Canvas output;
@@ -95,6 +95,7 @@ static bool arena_ready(app_scene_renderer *renderer)
     if (!renderer->arena_attempted) {
         renderer->arena_attempted = true;
         renderer->arena = render_arena_new();
+        render_arena_set_parallel(renderer->arena, !renderer->parallel_disabled);
         renderer->post = render_arena_post_new();
     }
     return renderer->arena && renderer->post;
@@ -745,4 +746,17 @@ bool app_scene_renderer_preview(
         (CF_V2){ 1, 1 }
     );
     return true;
+}
+
+void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)
+{
+    renderer->parallel_disabled = !enabled;
+    if (renderer->arena) {
+        render_arena_set_parallel(renderer->arena, enabled);
+    }
+}
+render_arena_work app_scene_renderer_last_work(const app_scene_renderer *renderer)
+{
+    return renderer->arena ? render_arena_last_work(renderer->arena)
+                           : (render_arena_work){ 0 };
 }

@@ -283,30 +283,53 @@ void ed_draw_compiler_results(editor *e)
         ImGui_End();
         return;
     }
-    ImGui_Text("Errors: %d  Warnings: %d", e->compile.error_count, e->compile.warning_count);
-    if (!e->compile.error_count && !e->compile.warning_count) {
+    ImGui_Text(
+        "Errors: %d  Warnings: %d  Notes: %d",
+        e->compile.error_count,
+        e->compile.warning_count,
+        e->compile.note_count
+    );
+    if (!acount(e->compile.items)) {
         ImGui_TextUnformatted("No compiler diagnostics.");
     }
-    if (e->compile_text && e->compile_text[0]) {
-        int lines = 1;
-        for (const char *text = e->compile_text; *text; text++) {
-            lines += *text == '\n';
+    for (int i = 0; i < acount(e->compile.items); i++) {
+        const compile_diagnostic *d = &e->compile.items[i];
+        graph *g = behavior_asset_find_graph(e->asset, d->graph_id);
+        node *n = g ? graph_node_by_id(g, d->node_id) : NULL;
+        ImGui_PushIDInt(i);
+        ImGui_Separator();
+        ImGui_TextDisabled("%s  %s", cmpl_severity_name(d->severity), cmpl_rule_name(d->rule));
+        if (n) {
+            char label[256];
+            snprintf(
+                label,
+                sizeof label,
+                "%s / %s",
+                g->name ? g->name : "Events",
+                n->desc->name
+            );
+            if (ImGui_Selectable(label)) {
+                editor_reveal_node_by_id(e, d->graph_id, d->node_id);
+            }
+            char id[96];
+            snprintf(
+                id,
+                sizeof id,
+                "compiler.source.%llu.%llu",
+                (unsigned long long)d->graph_id,
+                (unsigned long long)d->node_id
+            );
+            editor_ui_track_item(id);
+            if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
+                ImGui_SetTooltip(
+                    "Show source node %llu, pin %llu",
+                    (unsigned long long)d->node_id,
+                    (unsigned long long)d->pin_id
+                );
+            }
         }
-        float height = ImGui_GetFontSize() * lines +
-                       ImGui_GetStyle()->FramePadding.y * 2.0f;
-        ImGui_PushStyleColorImVec4(ImGuiCol_FrameBg, (ImVec4){ 0 });
-        ImGui_PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-        ImGui_InputTextMultilineEx(
-            "##compiler_results_text",
-            e->compile_text,
-            e->compile_text_capacity,
-            (ImVec2){ 0.0f, height },
-            ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_NoUndoRedo,
-            NULL,
-            NULL
-        );
-        ImGui_PopStyleVar();
-        ImGui_PopStyleColor();
+        ImGui_TextWrapped("%s", d->message);
+        ImGui_PopID();
     }
     ImGui_End();
 }

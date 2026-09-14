@@ -1,4 +1,5 @@
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/instance.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -40,6 +41,12 @@ void flow_host_release(flow_host_request *request)
 void flow_host_finish(flow_run *run, flow_host_state state)
 {
     flow_host_request *request = run->host_request;
+    /* Inspection may have started after completion. Associate the retained
+     * request with its logical frame before removing the active request. */
+    if (state == FLOW_HOST_FINISHED && request->compiled_outputs &&
+        run->instance->trace_enabled) {
+        flow_compiled_host_output(run, request->compiled_frame, request->node, -1, NULL);
+    }
     request->state = state;
     run->host_request = NULL;
     if (request->references == 1) {
@@ -60,19 +67,25 @@ void flow_host_detach(flow_run *run)
     run->host_request = NULL;
 }
 
-flow_host_request *flow_context_host_wait(struct flow_context *ctx)
+flow_host_request *flow_host_start(flow_run *run, node *n)
 {
-    assert(ctx && ctx->run && !ctx->pause_requested && !ctx->run->host_request);
+    assert(run && !run->host_request);
     flow_host_request *request = xmalloc(sizeof(*request));
     *request = (flow_host_request){
         .references = 2,
         .state = FLOW_HOST_PENDING,
-        .run = ctx->run,
-        .node = ctx->node,
+        .run = run,
+        .node = n,
     };
-    apush(ctx->run->host_requests, request);
-    ctx->run->host_request = request;
+    apush(run->host_requests, request);
+    run->host_request = request;
     return request;
+}
+
+flow_host_request *flow_context_host_wait(struct flow_context *ctx)
+{
+    assert(ctx && ctx->run && !ctx->pause_requested);
+    return flow_host_start(ctx->run, ctx->node);
 }
 
 flow_host_state flow_host_status(const flow_host_request *request)
@@ -113,13 +126,21 @@ bool flow_host_complete(flow_host_request *request, int output_pin, pin_value va
             return false;
         }
         pin_value copy;
-        if (flow_copy_input(&run->scratch, &copy, &value)) {
+        if (pin_value_snapshot_to_arena(&run->scratch, &copy, &value)) {
             return false;
         }
-        runtime_node_outputs(runtime_store_node(run->runtime, n))[output_pin] = copy;
-        flow_watch_capture_outputs(run, n);
+        if (request->compiled_outputs) {
+            request->compiled_outputs[output_pin] = copy;
+            flow_compiled_host_output(run, request->compiled_frame, n, output_pin, &copy);
+        } else {
+            runtime_node_outputs(runtime_store_node(run->runtime, n))[output_pin] = copy;
+            flow_watch_capture_outputs(run, n);
+        }
     }
     request->state = FLOW_HOST_READY;
+    if (run->instance) {
+        run->instance->schedule_revision++;
+    }
     return true;
 }
 

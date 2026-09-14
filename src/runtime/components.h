@@ -532,5 +532,15 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMapMarker)
     bool disabled;
 }
 GameMapMarker;
+/* Count Matching Entities combines these conditions with AND. Presence tests
+ * use "has" or "missing"; scalar fields use ==, !=, <, <=, > or >=. */
+typedef NODE_TYPE(EntityCondition)
+{
+    const char *component;
+    const char *field;
+    const char *test;
+    double value;
+}
+EntityCondition;
 
 #endif

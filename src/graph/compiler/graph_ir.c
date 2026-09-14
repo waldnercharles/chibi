@@ -20,6 +20,9 @@ void graph_ir_free(graph_ir *ir)
     }
     afree(ir->values);
     afree(ir->instructions);
+    afree(ir->behavior);
+    afree(ir->blocks);
+    afree(ir->control);
     ir->event_delta = -1;
 }
 

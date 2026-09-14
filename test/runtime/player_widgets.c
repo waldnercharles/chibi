@@ -139,6 +139,7 @@ void test_player_widgets()
     assert(GAME_GameHealth_get_const(world, target)->current == 7);
     engine_free(runtime);
     game_live_world_free(live);
+    behavior_asset_free(asset);
     ecs_world_free(world);
     ImGui_DestroyContext(context);
     ImGui_SetCurrentContext(previous);

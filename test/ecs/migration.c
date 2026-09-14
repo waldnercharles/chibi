@@ -25,6 +25,16 @@ void run_ecs_migration_checks()
     health->current = 75;
     health->maximum = 100;
 
+    ecs_entity high = entity;
+    for (int i = 1; i < 20001; i++) {
+        high = ecs_world_record_create(world, (uint64_t)i);
+        assert(high.slot);
+    }
+    assert(!ecs_world_apply_commands(world));
+    assert(!GAME_GameHealth_add(world, high, 0));
+    assert(!ecs_world_apply_commands(world));
+    *GAME_GameHealth_get(world, high) = (GameHealth){ 25, 50 };
+
     ecs_component_desc replacement = GAME_COMPONENT_GameHealth;
     replacement.name = "GameHealthV2";
     replacement.type = &health_type;
@@ -37,8 +47,8 @@ void run_ecs_migration_checks()
     );
     migrated_health *migrated = ecs_component_data(world, entity, replacement.id);
     test_check(
-        report.changed && report.preserved_fields == 2 &&
-            report.zeroed_fields == 1 && migrated && migrated->current == 75 &&
+        report.changed && report.preserved_fields == 4 &&
+            report.zeroed_fields == 2 && migrated && migrated->current == 75 &&
             migrated->maximum == 100 && migrated->armor == 0,
         "component migration preserves matching fields and initializes new "
         "fields"
@@ -52,6 +62,12 @@ void run_ecs_migration_checks()
             !report.changed &&
             ecs_component_data(world, entity, replacement.id) == migrated,
         "an unchanged layout preserves its storage"
+    );
+    migrated_health *high_value = ecs_component_data(world, high, replacement.id);
+    test_check(
+        high_value->current == 25 && high_value->maximum == 50 && !high_value->armor,
+        "schema migration preserves component values above the former entity "
+        "limit"
     );
     replacement.key = "different.identity";
     test_check(

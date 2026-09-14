@@ -401,9 +401,13 @@ static void test_system_expression()
     assert(game_system_uses_bytecode(system));
     flow_error error;
     GAME_GameMovement_get(world, entity)->speed = 3;
-    assert(game_system_tick(system, 0, .016, &error) == FLOW_OK);
+    assert(
+        game_system_tick_mode(system, 0, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
+    );
     assert(GAME_GameMovement_get(world, entity)->speed == 7);
-    assert(game_system_tick(system, .016, .016, &error) == FLOW_OK);
+    assert(
+        game_system_tick_mode(system, .016, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
+    );
     assert(GAME_GameMovement_get(world, entity)->speed == 15);
     game_system_free(system);
 
@@ -427,9 +431,13 @@ static void test_system_expression()
     system = game_system_new(world, asset);
     assert(game_system_uses_bytecode(system));
     GAME_GameMovement_get(world, entity)->speed = 3;
-    assert(game_system_tick(system, 0, .016, &error) == FLOW_OK);
+    assert(
+        game_system_tick_mode(system, 0, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
+    );
     assert(GAME_GameMovement_get(world, entity)->speed == 15);
-    assert(game_system_tick(system, .016, .016, &error) == FLOW_OK);
+    assert(
+        game_system_tick_mode(system, .016, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
+    );
     assert(GAME_GameMovement_get(world, entity)->speed == 63);
     game_system_free(system);
 
@@ -448,9 +456,13 @@ static void test_system_expression()
     double expected = (double)rand() / ((double)RAND_MAX + 1);
     expected += (double)rand() / ((double)RAND_MAX + 1);
     srand(912);
-    assert(game_system_tick(system, 0, .016, &error) == FLOW_OK);
+    assert(
+        game_system_tick_mode(system, 0, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
+    );
     assert(GAME_GameMovement_get(world, entity)->speed == (float)expected);
-    assert(game_system_tick(system, .016, .016, &error) == FLOW_OK);
+    assert(
+        game_system_tick_mode(system, .016, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
+    );
     assert(GAME_GameMovement_get(world, entity)->speed != (float)expected);
     game_system_free(system);
     ecs_world_free(world);

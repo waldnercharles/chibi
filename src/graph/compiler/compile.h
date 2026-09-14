@@ -20,6 +20,7 @@ enum
     CMPL_OK = 0,
     CMPL_ERROR = 1,
     CMPL_WARNING = 2,
+    CMPL_NOTE = 3,
 };
 
 /* CMPL-2: stable rule codes equal the spec numbers, so a diagnostic's rule
@@ -44,14 +45,18 @@ enum
     CMPL_RULE_OPERATOR = 19,         /* CMPL-19 */
     CMPL_RULE_FIELD_PROJECTION = 22, /* Output fields retain their aggregate source. */
     CMPL_RULE_CALL_SIGNATURE = 23, /* Calls match nonprojected signature parameters. */
+    CMPL_RULE_BACKEND = 25, /* Selected backend cannot publish a program. */
     CMPL_RULE_INPUT_BINDING = 24, /* Authored input source is missing or incompatible. */
+    CMPL_RULE_QUERY_FUSION = 26,
+    CMPL_RULE_QUERY_SCAN = 27,
+    CMPL_RULE_CONTAINER = 28,
 };
 
 #define CMPL_MESSAGE_MAX 192
 
 typedef struct compile_diagnostic
 {
-    int severity;      /* CMPL_ERROR or CMPL_WARNING */
+    int severity;      /* CMPL_ERROR, CMPL_WARNING or CMPL_NOTE */
     uint64_t graph_id; /* Stable authored graph id; zero is the root graph. */
     uint64_t node_id;  /* 0 when the rule is not node-scoped */
     uint64_t pin_id;   /* 0 when the rule is not pin-scoped */
@@ -76,6 +81,7 @@ typedef struct compile_report
     compile_diagnostic *items; /* dyna buffer; NULL while empty */
     int error_count;
     int warning_count;
+    int note_count;
     compile_effects effects;
 } compile_report;
 
@@ -98,6 +104,8 @@ int behavior_asset_compile_for_system(const behavior_asset *asset, compile_repor
 
 /* Stable rule code spelling, e.g. "CMPL-4". */
 const char *cmpl_rule_name(int rule);
+const char *cmpl_severity_name(int severity);
+void behavior_asset_query_diagnostics(const behavior_asset *asset, compile_report *out);
 const compile_effects *compile_report_effects(const compile_report *out);
 int compile_effects_conflict(const compile_effects *left, const compile_effects *right, int same_instance);
 

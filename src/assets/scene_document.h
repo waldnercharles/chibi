@@ -1,6 +1,8 @@
 #ifndef CHIBI_GAME_SCENE_DOCUMENT_H
 #define CHIBI_GAME_SCENE_DOCUMENT_H
 
+#include "runtime/scenes/physics_settings.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -18,6 +20,7 @@ typedef struct game_scene_document
     char *name;
     game_scene_entity *entities;
     bool perspective;
+    game_physics_settings physics;
 } game_scene_document;
 
 game_scene_document *game_scene_document_new(const char *name);

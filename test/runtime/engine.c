@@ -613,6 +613,7 @@ static void profile_checks()
 {
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
+    game_behavior_set_profiling(world, true);
     ecs_entity parent = ecs_world_create_entity(ecs),
                child = ecs_world_create_entity(ecs);
     behavior_asset *outer = behavior_asset_new("Profile Parent");
@@ -671,7 +672,9 @@ static void profile_checks()
         frame->count == 2 && outer_row.starts == 1 && work_row.starts == 1 &&
             !outer_row.resumes && !work_row.resumes && work_row.cpu_ms > 0 &&
             outer_row.inclusive_cpu_ms >= outer_row.cpu_ms &&
-            work_row.inclusive_cpu_ms >= work_row.cpu_ms && frame->cpu_ms <= wall_ms,
+            work_row.inclusive_cpu_ms >= work_row.cpu_ms && outer_row.dispatches == 1 &&
+            work_row.dispatches == 1 && outer_row.setup_ms > 0 &&
+            work_row.setup_ms > 0 && frame->cpu_ms + frame->setup_ms <= wall_ms,
         "nested functions stay in their event while reentrant events are "
         "separated into inclusive and exclusive caller CPU time"
     );
@@ -686,10 +689,16 @@ static void profile_checks()
     work_row = profile_row(frame, inner->name, "Work");
     test_check(
         slow.starts == 0 && slow.resumes == 1 && slow.cpu_ms > 0 &&
-            work_row.starts == 1 && !work_row.resumes,
+            slow.dispatches == 0 && slow.setup_ms == 0 &&
+            work_row.dispatches == 1 && work_row.starts == 1 && !work_row.resumes,
         "dispatching Work retains Slow attribution when the scheduler first "
         "resumes the older activation"
     );
+    game_behavior_set_profiling(world, false);
+    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    test_check(game_behavior_profile(world)->count == 0, "disabled profiling records no intervals");
+    game_behavior_set_profiling(world, true);
+    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
     ecs_entity second = ecs_world_create_entity(ecs);
     assert(game_behavior_attach(world, second, inner->name) == 0);
     assert(game_behavior_dispatch(world, second, "Work", (flow_inputs){ 0 }, NULL) == 1);
@@ -707,7 +716,8 @@ static void profile_checks()
     game_behavior_profile_begin(world);
     test_check(
         game_behavior_profile(world)->count == 0 &&
-            game_behavior_profile(world)->cpu_ms == 0,
+            game_behavior_profile(world)->cpu_ms == 0 &&
+            game_behavior_profile(world)->setup_ms == 0,
         "a new display frame clears event totals without retaining earlier time"
     );
     game_behavior_world_free(world);
@@ -716,6 +726,7 @@ static void profile_checks()
 
     clock_fixture f = clock_new(false, false);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
+    engine_set_behavior_profiling(f.runtime, true);
     assert(engine_frame(f.runtime, 3 * ENGINE_FIXED_SECONDS) == FLOW_OK);
     test_check(
         profile_row(engine_behavior_profile(f.runtime), "Clock", "Tick").starts == 3,
@@ -786,7 +797,10 @@ void run_parallel_checks(void)
     );
 
     behavior_asset *unsafe = behavior_asset_new("ConservativeEffects");
-    graph_add_node(unsafe->graph, registry_node_by_name("Print String"));
+    node_desc undeclared = NODE_PrintString;
+    undeclared.name = "Undeclared test operation";
+    undeclared.access = NULL;
+    graph_add_node(unsafe->graph, &undeclared);
     compile_report unsafe_report;
     compile_report_init(&unsafe_report);
     behavior_asset_compile(unsafe, &unsafe_report);

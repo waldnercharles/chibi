@@ -450,12 +450,46 @@ static char *inherited_component_before_add(
     return json;
 }
 
+static void apply_physics_settings(app_scene_authoring *scene, game_physics_settings settings)
+{
+    game_physics_reset(scene->live->physics);
+    int result = game_physics_configure(scene->live->physics, settings);
+    assert(result == 0);
+    scene->scene_dirty = true;
+    asset_index_invalidate(scene);
+}
+
+int app_scene_authoring_set_physics(app_scene_authoring *scene, game_physics_settings settings)
+{
+    if (scene->runtime_snapshot_valid || scene->preview_playing ||
+        game_prototype_preview_entity(scene->prototype_preview).slot ||
+        !game_physics_settings_valid(settings)) {
+        return -1;
+    }
+    finish_transform_edit(scene, false);
+    game_physics_settings previous = game_physics_configuration(scene->live->physics);
+    if (!scene_history_push_physics(scene->history, previous, settings)) {
+        return 0;
+    }
+    apply_physics_settings(scene, settings);
+    return 0;
+}
+
 static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
 {
     if (!scene_can_move(scene)) {
         return -1;
     }
     finish_transform_edit(scene, false);
+    const game_physics_settings *physics = scene_history_peek_physics(scene->history, redo);
+    if (physics) {
+        if (game_prototype_preview_entity(scene->prototype_preview).slot) {
+            return -1;
+        }
+        apply_physics_settings(scene, *physics);
+        scene_history_complete_physics(scene->history, redo);
+        return 0;
+    }
     ecs_entity entity;
     bool present;
     const scene_actor_edit

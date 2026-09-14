@@ -615,6 +615,94 @@ static void draw_instance_behaviors(app_scene_authoring *scene, scene_actor *act
     free_behavior_names(names);
 }
 
+static void physics_hint(const char *text)
+{
+    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        if (ImGui_BeginTooltip()) {
+            ImGui_PushTextWrapPos(320);
+            ImGui_TextUnformatted(text);
+            ImGui_PopTextWrapPos();
+            ImGui_EndTooltip();
+        }
+    }
+}
+
+static bool physics_count(const char *id, int *value, int minimum, int maximum)
+{
+    char label[32];
+    snprintf(label, sizeof label, "%d", *value);
+    bool changed = false;
+    if (ImGui_BeginCombo(id, *value ? label : "Auto", 0)) {
+        for (int i = minimum; i <= maximum; i++) {
+            snprintf(label, sizeof label, "%d", i);
+            if (ImGui_SelectableEx(i ? label : "Auto", i == *value, 0, (ImVec2){ 0 })) {
+                *value = i;
+                changed = true;
+            }
+        }
+        ImGui_EndCombo();
+    }
+    return changed;
+}
+
+static void draw_physics_settings(app_scene_authoring *scene)
+{
+    bool open = ImGui_CollapsingHeader("Scene Physics", 0);
+    editor_ui_track_item("scene.physics");
+    if (!open) {
+        return;
+    }
+    game_physics_settings settings = game_physics_configuration(scene->live->physics);
+    bool stopped = !scene->runtime_snapshot_valid &&
+                   !game_prototype_preview_entity(scene->prototype_preview).slot;
+    ImGui_BeginDisabled(!stopped);
+    bool changed = false;
+    editor_ui_property_label("Workers", 0);
+    changed |= physics_count("##physics.workers", &settings.workers, 0, GAME_PHYSICS_WORKER_MAX);
+    editor_ui_track_item("scene.physics.workers");
+    physics_hint("Includes the main thread. Auto uses up to 8 workers, preferring the detected performance-core count on macOS. Hardware limits apply; web runs serially. More workers can be slower.");
+    editor_ui_property_label("Substeps", 0);
+    changed |= physics_count("##physics.substeps", &settings.substeps, 1, GAME_PHYSICS_SUBSTEP_MAX);
+    editor_ui_track_item("scene.physics.substeps");
+    physics_hint("Solver steps within each fixed 60 Hz tick. Fewer steps cost less but reduce contact accuracy.");
+    changed |= ImGui_Checkbox("Allow sleeping", &settings.sleep);
+    editor_ui_track_item("scene.physics.sleep");
+    physics_hint("Resting bodies can leave the active solver. Disabling sleep may help constantly moving crowds.");
+    changed |= ImGui_Checkbox("Solid continuous collision", &settings.continuous);
+    editor_ui_track_item("scene.physics.continuous");
+    physics_hint("Prevents fast solid bodies from tunneling. Authored continuous sensor sweeps remain active independently.");
+    changed |= ImGui_Checkbox("Drive with forces", &settings.force_drive);
+    editor_ui_track_item("scene.physics.force_drive");
+    physics_hint("Reach the authored velocity using force across a tick. Changes acceleration and contact response. Kinematic bodies still set velocity directly.");
+    editor_ui_property_label("Contact Hz", 0);
+    changed |= ImGui_InputFloatEx("##physics.hertz", &settings.contact_hertz, 0, 0, "%.1f Hz", 0);
+    editor_ui_track_item("scene.physics.contact_hertz");
+    physics_hint("Higher frequency resolves overlap faster but can introduce jitter. Zero disables spring recovery.");
+    editor_ui_property_label("Damping", 0);
+    changed |= ImGui_InputFloatEx("##physics.damping", &settings.contact_damping, 0, 0, "%.2f", 0);
+    editor_ui_track_item("scene.physics.contact_damping");
+    physics_hint("Contact damping ratio, not body drag. Lower values make overlap recovery more energetic; they do not reduce solver iterations.");
+    if (ImGui_Button("Reset physics defaults")) {
+        settings = game_physics_defaults();
+        changed = true;
+    }
+    editor_ui_track_item("scene.physics.defaults");
+    ImGui_EndDisabled();
+    if (changed) {
+        if (app_scene_authoring_set_physics(scene, settings) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Physics: contact frequency must be 0..240 Hz and damping ratio 0..100.");
+        }
+    }
+    ImGui_TextDisabled(
+        "Available worker budget: %d",
+        game_physics_worker_budget(scene->live->physics)
+    );
+    if (!stopped) {
+        ImGui_TextDisabled("Stop Play and preview to edit physics.");
+    }
+    ImGui_Separator();
+}
+
 void draw_scene_inspector(app_scene_authoring *scene)
 {
     if (!editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR)) {
@@ -628,6 +716,9 @@ void draw_scene_inspector(app_scene_authoring *scene)
         return;
     }
 
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_SCENE) {
+        draw_physics_settings(scene);
+    }
     scene_actor *actor = selected_actor(scene);
     ecs_entity runtime_entity = scene->runtime_selected.slot
                                   ? selected_scene_entity(scene)
@@ -673,6 +764,21 @@ void draw_scene_inspector(app_scene_authoring *scene)
         return;
     }
     ImGui_SeparatorText("Runtime");
+    ImGui_TextUnformatted(behavior_backend_name(behavior_instance_backend(info.instance)));
+    const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
+    if (failure) {
+        ImGui_TextWrapped("Last failure: %s", failure->message);
+        ImGui_TextDisabled("%s / %s", failure->event_name, failure->graph_name);
+        ImGui_TextDisabled(
+            "Node %llu, pin %d, steps %lu",
+            (unsigned long long)failure->node_id,
+            failure->pin,
+            failure->steps
+        );
+        if (ImGui_Button("Clear failure")) {
+            behavior_instance_clear_failure(info.instance);
+        }
+    }
 
     game_behavior_world *behaviors = scene->live->behaviors;
     int attachment_count = game_behavior_attachment_count_for_entity(behaviors, info.entity);

@@ -18,7 +18,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug mcp mcp-setup run debug debug-san play build-release benchmark web web-serve format check-format test ui-native render-checks dev-smoke clean
+.PHONY: all help build build-debug mcp mcp-setup run debug debug-san play build-release run-release play-release benchmark web web-serve format check-format test ui-native render-checks dev-smoke clean
 
 all: build
 
@@ -91,7 +91,7 @@ benchmark:
 web:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target reflect
 	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
-	cmake --build "$(WEB_BUILD_DIR)" --target app
+	cmake --build "$(WEB_BUILD_DIR)" --target app check-behavior-backend
 
 web-serve: web
 	emrun --no_browser --port 8099 "$(WEB_BUILD_DIR)/app.html"
@@ -104,10 +104,11 @@ check-format:
 
 test:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp
+	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
+	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 	cmake --build $(BUILD_DIR) --target app
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/app --headless --frames 3
 
@@ -133,6 +134,6 @@ dev:
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi_host" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" $(ARGS)
 
 dev-smoke:
-	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON -DCHIBI_ENABLE_SJLIT=OFF
+	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON -DCHIBI_ENABLE_SJLIT=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi_host chibi_application --parallel $(JOBS)
 	$(DEV_DISPLAY_RUNNER) env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 cmake --build "$(DEV_BUILD_DIR)" --target check-dev-smoke

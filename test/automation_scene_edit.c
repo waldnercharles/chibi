@@ -91,6 +91,7 @@ void test_automation_scene_edit(void)
     game_scene_document_free(scene);
     yyjson_mut_doc_free(response);
     free(removed);
+    free(edited);
 
     edited = NULL;
     response = NULL;

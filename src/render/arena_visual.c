@@ -85,3 +85,26 @@ CF_M4x4 render_arena_visual_model(const arena_visual *visual)
     }
     return cf_mul_m4(visual->frame, cf_m4_scale(dimensions));
 }
+
+bool render_arena_visual_visible(const arena_visual *visual, CF_M4x4 view_projection)
+{
+    CF_M4x4 clip = cf_mul_m4(view_projection, render_arena_visual_model(visual));
+    /* Every built-in mesh lies in [-1,1]^3. The wider depth interval also
+     * conservatively contains the zero-to-one clip convention. No perspective
+     * division: bounds crossing the eye or a clip plane must remain visible. */
+    for (int axis = 0; axis < 3; axis++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            float center = clip.elements[15] + sign * clip.elements[12 + axis];
+            float extent = 0;
+            for (int column = 0; column < 3; column++) {
+                extent += fabsf(
+                    clip.elements[column * 4 + 3] + sign * clip.elements[column * 4 + axis]
+                );
+            }
+            if (center + extent < -0.0001f) {
+                return false;
+            }
+        }
+    }
+    return true;
+}

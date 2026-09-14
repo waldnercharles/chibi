@@ -1,6 +1,7 @@
 #include "graph/compiler/compile.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "runtime/components.h"
 #include "support/array.h"
@@ -145,11 +146,18 @@ static void delay_calls(bool nested)
     fixture f = make_fixture(&NODE_Delay, nested);
     double time = 0;
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, now, &time);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     continuations = 0;
-    for (int i = 0; i < 2; i++) {
+    const flow_run *first_leaf = NULL;
+    for (int i = 0; i < 32; i++) {
         assert(behavior_instance_tick(instance, time) >= 0);
         flow_run *run = dispatch(instance, 42 + i);
         assert(flow_run_status(run) == FLOW_SUSPENDED);
+        const flow_run *leaf = flow_run_active_leaf(run);
+        if (!first_leaf) {
+            first_leaf = leaf;
+        }
+        assert(leaf == first_leaf);
         assert(continuations == i);
         assert(!flow_run_ready(run, time + 0.5));
         assert(flow_run_ready(run, time + 1));
@@ -161,6 +169,13 @@ static void delay_calls(bool nested)
         assert(continuations == i + 1 && received == 42 + i);
         pin_value result;
         assert(flow_run_watch_output(run, f.call, 1, &result) == 0 && result.i == 42 + i);
+        assert(behavior_instance_release_activation(instance, run) == 0);
+        /* Repeated calls retain bounded storage instead of allocating new frames. */
+        assert(acount(run->call_pool) == 1);
+        assert(!acount(run->children));
+        if (nested) {
+            assert(acount(run->call_pool[0]->call_pool) == 1);
+        }
     }
     behavior_instance_destroy(instance);
     behavior_asset_free(f.asset);
@@ -260,6 +275,7 @@ static void host_calls(bool cancel)
 {
     fixture f = make_fixture(&waiter, true);
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, NULL, NULL);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     continuations = 0;
     flow_run *run = dispatch(instance, 73);
     assert(flow_run_status(run) == FLOW_SUSPENDED && flow_run_waiting_for_host(run));
@@ -277,8 +293,9 @@ static void host_calls(bool cancel)
         assert(flow_host_resume(request) == FLOW_OK);
         assert(flow_run_status(run) == FLOW_COMPLETED && continuations == 1 && received == 73);
     }
-    behavior_instance_destroy(instance);
+    assert(behavior_instance_release_activation(instance, run) == 0);
     assert(!flow_host_run(request));
+    behavior_instance_destroy(instance);
     flow_host_release(request);
     request = NULL;
     behavior_asset_free(f.asset);
@@ -290,6 +307,7 @@ static void breakpoint_call()
     assert(graph_set_breakpoint(f.function, f.body, true) == 0);
     double time = 0;
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, now, &time);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     behavior_instance_set_breakpoints_enabled(instance, true);
     continuations = 0;
     flow_run *run = dispatch(instance, 91);
@@ -303,6 +321,7 @@ static void breakpoint_call()
     assert(flow_run_status(run) == FLOW_PAUSED && continuations == 0);
     assert(flow_run_resume(run) == FLOW_OK);
     assert(flow_run_status(run) == FLOW_COMPLETED && continuations == 1 && received == 91);
+    assert(behavior_instance_release_activation(instance, run) == 0);
     assert(behavior_instance_tick(instance, time) >= 0);
     run = dispatch(instance, 92);
     assert(flow_run_status(run) == FLOW_PAUSED);
@@ -320,6 +339,7 @@ static void child_error()
 {
     fixture f = make_fixture(&failure, true);
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, NULL, NULL);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     continuations = 0;
     flow_run *run = dispatch(instance, 1);
     assert(flow_run_status(run) == FLOW_FAILED);
@@ -334,6 +354,7 @@ static void bounded_calls()
     fixture f = make_fixture(&NODE_Delay, true);
     f.function->call_depth_limit = 1;
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, NULL, NULL);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     continuations = 0;
     flow_run *run = dispatch(instance, 1);
     assert(flow_run_status(run) == FLOW_FAILED);
@@ -384,16 +405,17 @@ static void stored_struct()
     graph_connect_exec(g, set, 0, graph_node_by_id(g, g->return_id), 0, 0);
     graph_connect_data(g, make, 0, set, 1);
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, NULL, NULL);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     flow_run *run = dispatch(instance, 1);
     assert(flow_run_status(run) == FLOW_COMPLETED);
     expect_stored_vector(instance, id);
     assert(flow_run_stop(run) == FLOW_OK);
     expect_stored_vector(instance, id);
-    flow_run_free(run);
+    assert(behavior_instance_release_activation(instance, run) == 0);
     expect_stored_vector(instance, id);
     run = dispatch(instance, 2);
     assert(flow_run_status(run) == FLOW_COMPLETED);
-    flow_run_free(run);
+    assert(behavior_instance_release_activation(instance, run) == 0);
     expect_stored_vector(instance, id);
     behavior_instance_destroy(instance);
     behavior_asset_free(f.asset);
@@ -406,6 +428,7 @@ static void missing_return()
     assert(graph_remove_edge(g, f.body, 0, graph_node_by_id(g, g->return_id), 0) == 0);
     double time = 0;
     behavior_instance *instance = behavior_instance_create(f.asset, NULL, now, &time);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
     continuations = 0;
     flow_run *run = dispatch(instance, 1);
     assert(flow_run_status(run) == FLOW_SUSPENDED);
@@ -418,8 +441,30 @@ static void missing_return()
     behavior_asset_free(f.asset);
 }
 
+static void pooled_asset_edit()
+{
+    fixture f = make_fixture(&NODE_Delay, false);
+    assert(graph_set_pin_default(f.function, f.body, 0, 1, &(pin_value){ .type = PIN_F64 }) == 0);
+    behavior_instance *instance = behavior_instance_create(f.asset, NULL, NULL, NULL);
+    assert(behavior_instance_set_activation_pool(instance, true) == 0);
+    flow_run *run = dispatch(instance, 7);
+    assert(flow_run_status(run) == FLOW_COMPLETED && received == 7);
+    assert(behavior_instance_release_activation(instance, run) == 0);
+    assert(acount(run->call_pool) == 1);
+    assert(behavior_instance_pool_release(instance) == 0);
+    assert(graph_remove_node(f.asset->graph, f.call) == 0);
+    assert(behavior_asset_delete_graph(f.asset, f.function->graph_id) == 0);
+    assert(behavior_instance_pool_reuse(instance, f.asset, NULL, NULL, NULL) == instance);
+    run = dispatch(instance, 8);
+    assert(flow_run_status(run) == FLOW_COMPLETED);
+    assert(behavior_instance_release_activation(instance, run) == 0);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(f.asset);
+}
+
 void test_function_wait()
 {
+    pooled_asset_edit();
     delay_calls(false);
     delay_calls(true);
     traced_calls(false, false);

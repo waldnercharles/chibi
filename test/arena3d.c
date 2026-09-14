@@ -241,6 +241,8 @@ static bool read_pixels(CF_Canvas canvas, CF_Pixel *pixels)
     return ok;
 }
 
+static bool serial_geometry;
+static render_arena_work geometry_work;
 static bool render(ecs_world *world, const render_arena_camera *camera, CF_Pixel *pixels)
 {
     render_arena_post *post = render_arena_post_new();
@@ -249,11 +251,13 @@ static bool render(ecs_world *world, const render_arena_camera *camera, CF_Pixel
     assert(render_arena_post_prepare(post, SIDE, SIDE, &environment));
     CF_Canvas canvas = render_arena_post_target(post);
     render_arena *arena = render_arena_new();
+    render_arena_set_parallel(arena, !serial_geometry);
     game_particles *particles = game_particles_new();
     assert(canvas.id && arena);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
     cf_app_update(NULL);
     bool ok = render_arena_draw(arena, world, particles, camera, 0, NULL);
+    geometry_work = render_arena_last_work(arena);
     cf_render_to(canvas, true);
     ok &= render_arena_post_process(post);
     cf_app_draw_onto_screen(false);
@@ -721,12 +725,59 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
     return ok;
 }
 
+static bool parallel_geometry(CF_Pixel *first, CF_Pixel *second)
+{
+    ecs_world *world = new_world();
+    for (int i = 0; i < 1537; i++) {
+        ecs_entity entity = add_shape(
+            world,
+            i % 2 ? GAME_PRIMITIVE_BOX : GAME_PRIMITIVE_OCTAHEDRON,
+            (CF_V3){ (i % 32 - 15.5f) * .15f, (i / 32 - 23.5f) * .15f, (i % 3) * .1f },
+            i % 3 ? 0x4080ffffu : 0xff804080u
+        );
+        GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
+        shape->width = shape->height = shape->depth = .1f;
+        if (i % 200 == 0) {
+            GameMeshParts parts = {
+                .parts = "[{\"primitive\":0,\"size\":[0.1,0.1,0.1],"
+                         "\"rotation\":[0,0.3,0]}]"
+            };
+            assert(!ecs_world_record_add(
+                world,
+                entity,
+                GAME_COMPONENT_GameMeshParts.id,
+                &parts,
+                0
+            ));
+            assert(!ecs_world_apply_commands(world));
+        }
+    }
+    render_arena_camera camera = front_camera();
+    serial_geometry = true;
+    bool ok = render(world, &camera, first);
+    assert(!geometry_work.tasks);
+    serial_geometry = false;
+    ok &= render(world, &camera, second);
+    ok &= !memcmp(first, second, PIXELS * sizeof *first);
+    printf(
+        "parallel rendering %s: entities=%d tasks=%d workers=%d, exact "
+        "opaque/transparent pixels\n",
+        ok ? "PASS" : "FAIL",
+        geometry_work.entities,
+        geometry_work.tasks,
+        geometry_work.workers
+    );
+    ecs_world_free(world);
+    return ok;
+}
+
 int test_arena3d()
 {
     bool camera_ok = camera_checks();
     bool picking = pick_checks();
     bool bounds = bounds_checks();
     CF_Pixel first[PIXELS] = { 0 }, second[PIXELS] = { 0 };
+    bool parallel = parallel_geometry(first, second);
     bool fitted = fitted_render_check(first);
     bool prism = prism_checks(first);
     bool octahedron = octahedron_checks(first);
@@ -815,8 +866,8 @@ int test_arena3d()
         commands += stats.commands;
         ecs_world_free(world);
     }
-    bool ok = camera_ok && picking && bounds && fitted && depth && lighting &&
-              primitives && prism && octahedron && composed && batching;
+    bool ok = parallel && camera_ok && picking && bounds && fitted && depth &&
+              lighting && primitives && prism && octahedron && composed && batching;
     printf(
         "arena3d %s: camera %d, picking %d, bounds %d, rendered fit %d, depth "
         "%d, "

@@ -2,6 +2,7 @@
 
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
+#include "graph/runtime/flow_internal.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
@@ -164,6 +165,7 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
     assert(game_behavior_attach(live->behaviors, owner, "parent") == 0);
     behavior_instance *parent = game_behavior_instance(live->behaviors, owner, "parent");
     behavior_instance_set_breakpoints_enabled(parent, pause);
+    uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
     flow_error dispatch_error = { 0 };
     int dispatched = game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, &dispatch_error);
     if (dispatched != 1) {
@@ -177,6 +179,24 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
     assert(dispatched == 1);
     assert(acount(parent->activations) == 1);
     flow_run *run = parent->activations[0];
+    if (behavior_instance_backend(parent) != BEHAVIOR_ORACLE) {
+        if (!run->whole_function_executed) {
+            bool duplicate;
+            node *entry = behavior_program_event(parent->asset->program, "Fire", &duplicate);
+            const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
+                behavior_program_graph(parent->asset->program, parent->asset->graph),
+                entry
+            );
+            fprintf(
+                stderr,
+                "Spawn whole exclusion: %s node=%s pin=%d\n",
+                d ? d->reason : "none",
+                d ? d->node->desc->name : "none",
+                d ? d->pin : -1
+            );
+        }
+        assert(run->whole_function_executed && run->compiled);
+    }
     assert(flow_run_waiting_for_host(run));
     assert(entity_count(ecs) == 1);
     assert(game_behavior_attachment_count(live->behaviors) == 1);
@@ -184,6 +204,9 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
         assert(behavior_instance_stop_activation(parent, run) == 0);
     }
     int blocked = game_entities_flush(live->entities);
+    if (behavior_instance_backend(parent) != BEHAVIOR_ORACLE) {
+        assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
+    }
     if (cancel_before || destroy) {
         assert(blocked == 0);
         assert(entity_count(ecs) == 1);
@@ -586,10 +609,14 @@ static void delayed_spawn_case(bool isolated, int mode)
     assert(parent);
     behavior_instance_set_breakpoints_enabled(parent, mode == 1);
     simulation_fixture simulation = simulation_fixture_new(runtime, preview);
+    uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
     assert(game_behavior_dispatch(behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1);
     assert(acount(parent->activations) == 1);
     flow_run *run = parent->activations[0];
     simulation_frame(&simulation, 0);
+    if (behavior_instance_backend(parent) != BEHAVIOR_ORACLE) {
+        assert(run->whole_function_executed && run->compiled);
+    }
     ecs_query query;
     ecs_component_id transform = GAME_COMPONENT_GameTransform.id;
     ecs_entity spawned;
@@ -649,6 +676,9 @@ static void delayed_spawn_case(bool isolated, int mode)
         );
         behavior_instance *instance = game_behavior_instance(behaviors, spawned, "child");
         assert(instance && value(instance, "ObservedX").f == 73);
+    }
+    if (behavior_instance_backend(parent) != BEHAVIOR_ORACLE) {
+        assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
     }
     if (isolated) {
         game_prototype_preview_free(preview);
@@ -728,6 +758,99 @@ static void test_attachment_lists()
     puts("attachment lists PASS: ordered replay retains state and rejects invalid sets atomically");
 }
 
+static void test_attachment_index()
+{
+    behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE, BEHAVIOR_ORACLE };
+    for (int mode = 0; mode < 3; mode++) {
+        behavior_backend previous = behavior_debug_backend(modes[mode]);
+        ecs_world *ecs = ecs_world_new();
+        game_behavior_world *world = game_behavior_world_new(ecs);
+        behavior_asset *assets[] = { attachment_asset("A"), attachment_asset("B") };
+        for (int i = 0; i < 2; i++) {
+            graph *g = assets[i]->graph;
+            node *event = add(g, "Event"), *print = add(g, "Print String");
+            assert(!graph_set_event_name(g, event, "Log"));
+            input(g, print, 1, (pin_value){ .type = PIN_STR, .str = assets[i]->name });
+            next(g, event, print);
+            assert(!game_behavior_register_asset(world, assets[i]->name, assets[i]));
+        }
+        uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+        ecs_entity first = ecs_world_create_entity(ecs),
+                   second = ecs_world_create_entity(ecs);
+        assert(!game_behavior_attach(world, first, "A"));
+        assert(!game_behavior_attach(world, second, "A"));
+        assert(!game_behavior_attach(world, first, "B"));
+        behavior_instance *original = game_behavior_instance(world, first, "A");
+        const char *ab[] = { "A", "B" };
+        /* Same per-entity names in an interleaved world still need grouping. */
+        assert(!game_behavior_set_attachments(world, first, ab, 2));
+        assert(game_behavior_dispatch_all(world, "Log", (flow_inputs){ 0 }, NULL) == 3);
+        ecs_entity order[] = { first, first, second };
+        const char *names[] = { "A", "B", "A" };
+        for (int i = 0; i < 3; i++) {
+            game_behavior_log_info info;
+            assert(!game_behavior_log_info_at(world, i, &info));
+            assert(ecs_entity_to_u64(info.entity) == ecs_entity_to_u64(order[i]));
+            assert(!strcmp(info.asset_name, names[i]));
+        }
+        ecs_entity *crowd = NULL;
+        for (int i = 0; i < 600; i++) {
+            if (i == 300) {
+                game_behavior_set_deferred(world, true);
+            }
+            ecs_entity entity = ecs_world_create_entity(ecs);
+            assert(!game_behavior_set_attachments(world, entity, ab, 2));
+            apush(crowd, entity);
+            assert(
+                value(game_behavior_instance(world, entity, "A"), "State").i ==
+                (i < 300 ? 9 : 0)
+            );
+        }
+        game_behavior_set_deferred(world, false);
+        assert(!game_behavior_begin_pending(world));
+        for (int i = 0; i < acount(crowd); i++) {
+            assert(game_behavior_attachment_count_for_entity(world, crowd[i]) == 2);
+            game_behavior_attachment_info info;
+            assert(!game_behavior_attachment_info_at(world, crowd[i], 1, &info));
+            assert(
+                !strcmp(info.asset_name, "B") && value(info.instance, "State").i == 9
+            );
+        }
+        assert(game_behavior_instance(world, first, "A") == original);
+        assert(!game_behavior_destroy_entity(world, second));
+        ecs_entity reused = ecs_world_create_entity(ecs);
+        assert(reused.slot == second.slot && reused.generation != second.generation);
+        assert(!game_behavior_set_attachments(world, reused, ab, 2));
+        assert(!game_behavior_instance(world, second, "A"));
+        behavior_asset *replacement = attachment_asset("A"), *old = NULL;
+        assert(!game_behavior_replace_asset(world, "A", replacement, &old) && old == assets[0]);
+        for (int i = 0; i < acount(crowd); i++) {
+            behavior_instance *instance = game_behavior_instance(world, crowd[i], "A");
+            assert(
+                instance && instance->asset == replacement &&
+                value(instance, "State").i == 9
+            );
+            assert(game_behavior_instance(world, crowd[i], "B"));
+        }
+        assert(game_behavior_detach_asset(world, first, "A") == 1);
+        assert(!game_behavior_instance(world, first, "A"));
+        assert(game_behavior_instance(world, first, "B"));
+        assert(game_behavior_detach_entity(world, first) == 1);
+        assert(!game_behavior_attachment_count_for_entity(world, first));
+        if (mode < 2) {
+            assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+        }
+        afree(crowd);
+        game_behavior_world_free(world);
+        ecs_world_free(ecs);
+        behavior_asset_free(assets[0]);
+        behavior_asset_free(assets[1]);
+        behavior_asset_free(replacement);
+        behavior_debug_backend(previous);
+    }
+    puts("attachment index PASS: growth, grouping, Begin, replacement, deletion and stale handles across all backends");
+}
+
 static void test_deferred_attachments()
 {
     ecs_world *ecs = ecs_world_new();
@@ -772,26 +895,38 @@ static void test_deferred_attachments()
     puts("deferred attachments PASS: setup is inert, Begin runs once, runtime spawn stays immediate, failures persist");
 }
 
+void test_compiled_spawns()
+{
+    behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE, BEHAVIOR_ORACLE };
+    for (int i = 0; i < 3; i++) {
+        behavior_backend previous = behavior_debug_backend(modes[i]);
+        run_spawn_case(false, false, false);
+        run_spawn_case(true, false, false);
+        run_spawn_case(false, 1, false);
+        run_spawn_case(false, 2, false);
+        run_spawn_case(false, 3, false);
+        run_spawn_case(false, false, true);
+        for (int isolated = 0; isolated < 2; isolated++) {
+            for (int mode = 0; mode < 3; mode++) {
+                delayed_spawn_case(isolated, mode);
+            }
+        }
+        behavior_debug_backend(previous);
+    }
+    puts("PASS: whole compiled Spawn, initialization before Begin, breakpoints, cancellation and deferred destruction on SLJIT/bytecode/oracle");
+}
+
 void test_entities()
 {
     test_attachment_lists();
+    test_attachment_index();
     test_deferred_attachments();
     const node_desc *get = registry_node_by_name("GetEntity_GameTransform");
     const node_desc *set = registry_node_by_name("SetEntity_GameTransform");
     assert(get && get->access && (get->access->flags & NODE_EFFECT_WORLD_READ));
     assert(set && set->access && set->access->write_count == 1);
     assert(!(set->access->flags & NODE_EFFECT_ENTITY_SCOPED));
-    run_spawn_case(false, false, false);
-    run_spawn_case(true, false, false);
-    run_spawn_case(false, 1, false);
-    run_spawn_case(false, 2, false);
-    run_spawn_case(false, 3, false);
-    run_spawn_case(false, false, true);
-    for (int isolated = 0; isolated < 2; isolated++) {
-        for (int mode = 0; mode < 3; mode++) {
-            delayed_spawn_case(isolated, mode);
-        }
-    }
+    test_compiled_spawns();
     puts("spawn function PASS: Delay and parent setup complete before Begin, with pause and cancellation in both hosts");
     test_queued_events(false);
     test_queued_events(true);

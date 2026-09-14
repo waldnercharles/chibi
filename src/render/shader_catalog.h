@@ -62,3 +62,15 @@ void render_shader_clear_world(ecs_world *world);
 void render_shader_catalog_clear();
 extern const registry_pack SHADER_BINDING_PACK;
 #endif
+
+/* Caller-owned cache. Catalog and overrides remain immutable during collection. */
+typedef struct render_shader_parameter_cache render_shader_parameter_cache;
+void render_shader_parameter_cache_free(render_shader_parameter_cache *cache);
+void render_shader_parameters_cached(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *json,
+    float values[32][4],
+    render_shader_parameter_cache **cache
+);

@@ -420,6 +420,36 @@ try {
   rmSync(systemRoot, { recursive: true, force: true });
 }
 
+const queryRoot = mkdtempSync(join(tmpdir(), "chibi-query-fusion-"));
+try {
+  const document = JSON.parse(readFileSync(resolve(root, "content/behaviors/ArenaWaveBehavior.json"), "utf8"));
+  const query = document.graphs.find((graph) => graph.name === "Count Members Snapshot");
+  if (!query) throw new Error("query fusion fixture is missing");
+  document.name = "QueryFusionCheck";
+  document.variables = [];
+  document.graphs = [{ ...document.graphs[0], nodes: [], edges: [] }, query];
+  const directory = join(queryRoot, "content", "behaviors");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "QueryFusionCheck.json"), JSON.stringify(document));
+  const inspected = nativeRequestAt(queryRoot, "inspect_graph", {
+    kind: "behavior", name: "QueryFusionCheck", graph_name: query.name,
+  });
+  const validated = nativeRequestAt(queryRoot, "validate_asset", {
+    kind: "behavior", name: "QueryFusionCheck",
+  });
+  const nodes = query.nodes.filter((node) => node.type === "Count Matching Entities");
+  for (const result of [inspected.response.result?.validation, validated.response.result]) {
+    const notes = result?.diagnostics?.filter((item) => item.rule_name === "PERF-QUERY-FUSION");
+    if (!result?.valid || result.notes !== 4 || result.warnings !== 0 || notes?.length !== 4 ||
+        notes.some((item) => item.severity !== "note" || item.graph !== query.id ||
+          !nodes.some((node) => node.id === item.node && node.inputs.some((pin) => pin.id === item.pin)))) {
+      throw new Error(`query fusion diagnostics lost severity or source identity: ${JSON.stringify(result)}`);
+    }
+  }
+} finally {
+  rmSync(queryRoot, { recursive: true, force: true });
+}
+
 const scenarioRoot = mkdtempSync(join(tmpdir(), "chibi-scenario-"));
 try {
   const prototypeDirectory = join(scenarioRoot, "content", "prototypes");

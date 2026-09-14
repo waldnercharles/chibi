@@ -138,6 +138,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         s->name
     );
     fprintf(out, "    .pure_kind = NODE_PURE_CALL, .fn = __unwrap_%s_%s,\n", g_prefix, s->name);
+    fprintf(out, "    .jit_kind = NODE_JIT_UNWRAP,\n");
     fprintf(out, "    .conversion_from = \"%s\", .conversion_to = \"%s\",\n", s->name, field_type_name(field));
     fputs("    .display_class = NODE_DISPLAY_PURE, .category = \"Conversion\",\n", out);
     fprintf(out, "    .access = &%s_%s_unwrap_access,\n};\n\n", g_prefix, s->name);
@@ -338,6 +339,14 @@ void emit_component_field_nodes(FILE *out, const struct_info *s)
         fprintf(out, "    .inputs = %s_inputs, .outputs = %s_%s_set_outputs,\n", symbol, g_prefix, name);
         fprintf(out, "    .flow_kind = NODE_FLOW_CUSTOM, .flow = __flow_set_%s,\n", symbol);
         fprintf(out, "    .type = &%s_T_%s, .access = &%s_%s_field_access,\n", g_prefix, name, g_prefix, name);
+        fprintf(
+            out,
+            "    .component_kind = NODE_COMPONENT_SET_FIELD, .component = "
+            "&%s_COMPONENT_%s, .component_field = %d,\n",
+            g_prefix,
+            name,
+            i
+        );
         fprintf(out, "    .display_class = NODE_DISPLAY_FUNCTION, .category = \"Components/%s\",\n", name);
         fprintf(
             out,
@@ -387,7 +396,7 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         ".input_count = 1, .inputs = %s_%s_entity_inputs, .output_count = 1, "
         ".outputs = %s_%s_get_outputs, .pure_kind = NODE_PURE_READ, "
         ".read_inputs = __read_%s_get_entity_%s, .type = &%s_T_%s, .access = "
-        "&%s_%s_entity_read_access };\n",
+        "&%s_%s_entity_read_access, ",
         g_prefix,
         name,
         name,
@@ -402,13 +411,14 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
+    fprintf(out, " .component_kind = NODE_COMPONENT_GET_ENTITY, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
     fprintf(
         out,
         "node_desc %s_NODE_HasEntity_%s = { .name = \"HasEntity_%s\", "
         ".input_count = 1, .inputs = %s_%s_entity_inputs, .output_count = 1, "
         ".outputs = %s_%s_has_outputs, .pure_kind = NODE_PURE_READ, "
         ".read_inputs = __read_%s_has_entity_%s, .access = "
-        "&%s_%s_entity_read_access };\n",
+        "&%s_%s_entity_read_access, ",
         g_prefix,
         name,
         name,
@@ -421,13 +431,14 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
+    fprintf(out, " .component_kind = NODE_COMPONENT_HAS_ENTITY, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
     fprintf(
         out,
         "node_desc %s_NODE_SetEntity_%s = { .name = \"SetEntity_%s\", "
         ".input_count = 3, .inputs = %s_%s_set_entity_inputs, .output_count = "
         "2, .outputs = %s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow "
         "= __flow_%s_set_entity_%s, .type = &%s_T_%s, .access = "
-        "&%s_%s_entity_write_access };\n\n",
+        "&%s_%s_entity_write_access, ",
         g_prefix,
         name,
         name,
@@ -442,6 +453,7 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
+    fprintf(out, " .component_kind = NODE_COMPONENT_SET_ENTITY, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
 }
 
 void emit_component_nodes_desc(FILE *out, const struct_info *s)
@@ -502,7 +514,7 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         ".outputs = %s_%s_get_outputs, .pure_kind = NODE_PURE_READ, .read = "
         "__read_%s_get_%s, "
         ".type = &%s_T_%s, .access = &%s_%s_get_access, .binding_component = "
-        "\"%s\" };\n\n",
+        "\"%s\", ",
         g_prefix,
         name,
         name,
@@ -516,6 +528,7 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         name,
         component_key(s)
     );
+    fprintf(out, " .component_kind = NODE_COMPONENT_GET_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
     fprintf(
         out,
         "static pin_spec %s_%s_set_inputs[] = { { \"Exec\", PIN_FLOW, NULL, "
@@ -545,8 +558,7 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Set_%s = { .name = \"Set_%s\", .input_count = 2, "
         ".output_count = 2, .inputs = %s_%s_set_inputs, .outputs = "
         "%s_%s_set_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
-        "__flow_%s_set_%s, .type = &%s_T_%s, .access = &%s_%s_set_access "
-        "};\n\n",
+        "__flow_%s_set_%s, .type = &%s_T_%s, .access = &%s_%s_set_access, ",
         g_prefix,
         name,
         name,
@@ -561,13 +573,14 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
+    fprintf(out, " .component_kind = NODE_COMPONENT_SET_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
     fprintf(out, "static pin_spec %s_%s_has_outputs[] = { { \"Value\", PIN_BOOL, \"bool\" } };\n", g_prefix, name);
     fprintf(
         out,
         "node_desc %s_NODE_Has_%s = { .name = \"Has_%s\", .output_count = 1, "
         ".outputs = %s_%s_has_outputs, .pure_kind = NODE_PURE_READ, .read = "
         "__read_%s_has_%s, "
-        ".access = &%s_%s_has_access };\n\n",
+        ".access = &%s_%s_has_access, ",
         g_prefix,
         name,
         name,
@@ -578,6 +591,7 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
+    fprintf(out, " .component_kind = NODE_COMPONENT_HAS_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
     fprintf(
         out,
         "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "

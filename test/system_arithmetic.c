@@ -56,6 +56,11 @@ static behavior_asset *asset()
 
 static bool unavailable(game_system *system, int mode)
 {
+#ifndef __EMSCRIPTEN__
+    if (mode == GAME_SYSTEM_EXEC_AUTO && !game_system_uses_sljit(system)) {
+        return true;
+    }
+#endif
     return (mode == GAME_SYSTEM_EXEC_TYPED_BYTECODE &&
             !game_system_uses_typed_bytecode(system)) ||
            (mode == GAME_SYSTEM_EXEC_SJLIT && !game_system_uses_sljit(system));
@@ -293,6 +298,49 @@ static void vectors(
     game_system_free(system);
 }
 
+static int shift_direct(void *out, const void *input)
+{
+    const GameTransform *v = input;
+    *(GameTransform *)out = (GameTransform){ v->x + 10, v->y - 20 };
+    return 0;
+}
+static int shift_fast(void *out, const void *const *inputs)
+{
+    return shift_direct(out, inputs[0]);
+}
+static pin_value shift_value(const pin_value *args, int, arena *storage)
+{
+    pin_value out = { .type = PIN_STRUCT,
+                      .type_name = "CF_V2",
+                      .ptr = arena_alloc(storage, sizeof(GameTransform)) };
+    shift_direct(out.ptr, args[0].ptr);
+    return out;
+}
+static void nonidentity_conversion(ecs_world *world, ecs_entity entity)
+{
+    behavior_asset *definition = asset();
+    node_desc desc = *registry_node_by_name("game_transform_to_cf");
+    desc.jit_kind = NODE_JIT_NONE;
+    desc.fn = shift_value;
+    desc.fast = shift_fast;
+    desc.direct.one = shift_direct;
+    node *read = add(definition->graph, "Get_GameTransform");
+    node *operation = graph_add_node(definition->graph, &desc);
+    assert(!graph_connect_data(definition->graph, read, 0, operation, 0));
+    game_system *system = finish(world, definition, operation, "Set_GameTransform");
+    assert(game_system_uses_sljit(system) == graph_sljit_available());
+    for (int mode = GAME_SYSTEM_EXEC_AUTO; mode <= GAME_SYSTEM_EXEC_SJLIT; mode++) {
+        *GAME_GameTransform_get(world, entity) = (GameTransform){ 3, 4 };
+        check_run(system, mode, operation, false);
+        const GameTransform *actual = GAME_GameTransform_get_const(world, entity);
+        GameTransform expected = unavailable(system, mode)
+                                   ? (GameTransform){ 3, 4 }
+                                   : (GameTransform){ 13, -16 };
+        assert(actual->x == expected.x && actual->y == expected.y);
+    }
+    game_system_free(system);
+}
+
 void test_system_arithmetic()
 {
     _Static_assert(sizeof(GameHealth) == sizeof(int64_t), "capture preserves 64-bit results");
@@ -303,6 +351,7 @@ void test_system_arithmetic()
     assert(GAME_GameHealth_add(world, entity, 0) == ECS_OK);
     assert(GAME_GameTransform_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
+    nonidentity_conversion(world, entity);
 
     health_division(world, entity, 17, 8, 2, false);
     health_division(world, entity, -17, 8, -2, false);

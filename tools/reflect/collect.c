@@ -375,7 +375,8 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             f.jit_kind = annotation_value(c, "node:jit:");
             if (f.jit_kind && strcmp(f.jit_kind, "v2-scale") != 0 &&
                 strcmp(f.jit_kind, "v2-add") != 0 &&
-                strcmp(f.jit_kind, "v2-move") != 0) {
+                strcmp(f.jit_kind, "v2-move") != 0 &&
+                strcmp(f.jit_kind, "identity") != 0) {
                 reflect_error(c, "unknown node JIT lowering kind");
             }
             if (has_annotate(c, "node:jit-fast-math")) {
@@ -407,6 +408,15 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 f.effect_flags |= 1u << 2;
             }
             clang_visitChildren(c, param_visitor, &f);
+            if (f.jit_kind && !strcmp(f.jit_kind, "identity") &&
+                (!pure || !f.ret_pin || strcmp(f.ret_pin, "PIN_STRUCT") ||
+                 acount(f.pname) != 1 || f.pout[0] || f.pservice[0] ||
+                 !clang_equalTypes(
+                     clang_getCanonicalType(result_type),
+                     clang_getCanonicalType(clang_getCursorType(clang_Cursor_getArgument(c, 0)))
+                 ))) {
+                reflect_error(c, "identity requires one struct argument with the same underlying return type");
+            }
             if (read) {
                 int output_count = 0;
                 for (int i = 0; i < acount(f.pname); i++) {

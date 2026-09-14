@@ -5,6 +5,7 @@
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/value_array.h"
+#include "runtime/behaviors/entity_query.h"
 #include "runtime/generated.h"
 #include "runtime/rhythm.h"
 #include "runtime/scenes/physics.h"
@@ -13,6 +14,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +46,16 @@ typedef struct
     pin_value *values;
 } event_request;
 
+enum
+{
+    NEAREST_CACHE_MAX = 8
+};
+typedef struct
+{
+    unsigned categories;
+    ecs_entity *entities;
+} nearest_candidates;
+
 struct game_entities
 {
     ecs_world *world;
@@ -53,6 +65,12 @@ struct game_entities
     spawn_request *spawns;
     ecs_entity *destroy;
     event_request *events;
+    nearest_candidates nearest[NEAREST_CACHE_MAX];
+    int nearest_count;
+    ecs_entity *parallel_candidates[32];
+    bool parallel_queries;
+    bool query_scope, profile_queries;
+    game_entity_query_profile query_profile;
 };
 
 game_entities *game_entities_new(ecs_world *world, game_behavior_world *behaviors)
@@ -61,6 +79,71 @@ game_entities *game_entities_new(ecs_world *world, game_behavior_world *behavior
     entities->world = world;
     entities->behaviors = behaviors;
     return entities;
+}
+
+bool game_entities_queries_preserved(const behavior_function *function)
+{
+    const uint64_t dependencies[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameCollider.id };
+    return behavior_function_preserves_components(function, dependencies, 2);
+}
+
+void game_entities_query_scope(game_entities *entities, const behavior_function *function)
+{
+    if (!entities) {
+        return;
+    }
+    bool stable = game_entities_queries_preserved(function);
+    if (!stable) {
+        entities->nearest_count = 0;
+    }
+    entities->query_scope = stable;
+}
+bool game_entities_parallel_begin(game_entities *entities)
+{
+    if (!entities) {
+        return true;
+    }
+    assert(!entities->parallel_queries);
+    if (entities->profile_queries) {
+        return false;
+    }
+    for (int i = 0; i < 32; i++) {
+        aclear(entities->parallel_candidates[i]);
+    }
+    ecs_component_id components[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameCollider.id };
+    ecs_query query;
+    if (ecs_query_begin(entities->world, &query, components, 2) == ECS_OK) {
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            unsigned categories = GAME_GameCollider_get_const(entities->world, entity)
+                                      ->category;
+            while (categories) {
+                int bit = __builtin_ctz(categories);
+                apush(entities->parallel_candidates[bit], entity);
+                categories &= categories - 1;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    entities->parallel_queries = true;
+    return true;
+}
+void game_entities_parallel_end(game_entities *entities)
+{
+    if (entities) {
+        entities->parallel_queries = false;
+    }
+}
+void game_entities_profile_queries(game_entities *entities, bool enabled)
+{
+    entities->profile_queries = enabled;
+    entities->query_profile = (game_entity_query_profile){ 0 };
+}
+game_entity_query_profile game_entities_query_profile(const game_entities *entities)
+{
+    return entities->query_profile;
 }
 
 static void release_request(spawn_request *request)
@@ -105,6 +188,7 @@ static void release_event(event_request *event)
 
 void game_entities_reset(game_entities *entities)
 {
+    game_entities_query_scope(entities, NULL);
     for (int i = 0; i < acount(entities->events); i++) {
         release_event(&entities->events[i]);
     }
@@ -115,11 +199,14 @@ void game_entities_reset(game_entities *entities)
         release_request(request);
     }
     aclear(entities->spawns);
-    for (int i = 0; i < acount(entities->owned); i++) {
-        ecs_entity entity = entities->owned[i];
-        if (ecs_entity_is_alive(entities->world, entity)) {
-            game_behavior_destroy_entity(entities->behaviors, entity);
-        }
+    if (acount(entities->owned)) {
+        int result = game_behavior_destroy_entities(
+            entities->behaviors,
+            entities->owned,
+            acount(entities->owned)
+        );
+        assert(!result);
+        (void)result;
     }
     aclear(entities->owned);
     aclear(entities->destroy);
@@ -137,6 +224,12 @@ void game_entities_free(game_entities *entities)
     afree(entities->owned);
     afree(entities->destroy);
     afree(entities->events);
+    for (int i = 0; i < NEAREST_CACHE_MAX; i++) {
+        afree(entities->nearest[i].entities);
+    }
+    for (int i = 0; i < 32; i++) {
+        afree(entities->parallel_candidates[i]);
+    }
     free(entities);
 }
 
@@ -176,7 +269,7 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
     return 0;
 }
 
-int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity)
+static game_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
 {
     const game_prototype *prototype = NULL;
     for (int i = 0; identity && i < acount(entities->prototypes); i++) {
@@ -187,12 +280,23 @@ int game_entities_request_spawn(game_entities *entities, flow_context *ctx, cons
         }
     }
     if (!prototype) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Spawn Prototype: unknown prototype");
+        *message = "Spawn Prototype: unknown prototype";
+        return NULL;
     }
     char error[256];
     game_prototype *copy = game_prototype_clone(prototype, error, sizeof error);
     if (!copy) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Spawn Prototype: could not capture defaults");
+        *message = "Spawn Prototype: could not capture defaults";
+    }
+    return copy;
+}
+
+int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity)
+{
+    const char *message = NULL;
+    game_prototype *copy = prepare_spawn(entities, identity, &message);
+    if (!copy) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, message);
     }
     int result = flow_context_continue(ctx, 0);
     flow_host_request *wait = result < 0 ? NULL : flow_context_host_wait(ctx);
@@ -430,10 +534,14 @@ int game_entities_flush(game_entities *entities)
     }
     afree(entities->spawns);
     entities->spawns = pending;
-    for (int i = 0; i < acount(entities->destroy); i++) {
-        ecs_entity entity = entities->destroy[i];
-        if (ecs_entity_is_alive(entities->world, entity)) {
-            game_behavior_destroy_entity(entities->behaviors, entity);
+    if (acount(entities->destroy)) {
+        int result = game_behavior_destroy_entities(
+            entities->behaviors,
+            entities->destroy,
+            acount(entities->destroy)
+        );
+        if (result) {
+            return result;
         }
     }
     aclear(entities->destroy);
@@ -496,6 +604,62 @@ static int spawn_node(node *, flow_context *ctx)
                       : game_entities_request_spawn(entities, ctx, prototype.str);
 }
 
+static int destroy_command(void *service, const char *, const pin_value *arguments, int count)
+{
+    assert(count == 1);
+    (void)count;
+    game_entities_request_destroy(service, ecs_entity_from_u64(arguments[0].u64));
+    return FLOW_OK;
+}
+
+static int spawn_command(
+    void *service,
+    const char *,
+    const pin_value *arguments,
+    int count,
+    flow_host_request *request,
+    const char **message
+)
+{
+    assert(count == 1);
+    (void)count;
+    game_entities *entities = service;
+    game_prototype *copy = prepare_spawn(entities, arguments[0].str, message);
+    if (!copy) {
+        return FLOW_ERR_NODE;
+    }
+    apush(entities->spawns, ((spawn_request){ .prototype = copy, .wait = request }));
+    return FLOW_OK;
+}
+
+static const node_command SPAWN_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "Spawn Prototype requires a game world",
+    .begin = spawn_command
+};
+static int send_command(void *service, const char *reference, const pin_value *arguments, int count)
+{
+    assert(count >= 1);
+    return game_entities_request_event(
+        service,
+        ecs_entity_from_u64(arguments[0].u64),
+        reference,
+        (flow_inputs){ .values = arguments + 1, .count = count - 1 }
+    );
+}
+static const node_command DESTROY_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "Destroy Entity requires a game world",
+    .invoke = destroy_command
+};
+static const node_command SEND_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "Send Event requires a game world",
+    .missing_reference = "Choose an event definition",
+    .failure_message = "Could not queue event payload",
+    .invoke = send_command
+};
+
 static int destroy_node(node *, flow_context *ctx)
 {
     game_entities *entities = flow_context_service(ctx, "game.entities");
@@ -507,7 +671,7 @@ static int destroy_node(node *, flow_context *ctx)
     if (result < 0) {
         return result;
     }
-    game_entities_request_destroy(entities, ecs_entity_from_u64(entity.u64));
+    destroy_command(entities, NULL, &entity, 1);
     return flow_context_continue(ctx, 0);
 }
 
@@ -528,30 +692,54 @@ static int send_event_node(node *n, flow_context *ctx)
             return result;
         }
     }
-    int result = game_entities_request_event(
-        entities,
-        ecs_entity_from_u64(values[0].u64),
-        n->reference_name,
-        (flow_inputs){ .values = &values[1], .count = count - 1 }
-    );
+    int result = send_command(entities, n->reference_name, values, count);
     return result < 0
              ? flow_context_fail(ctx, result, "Could not queue event payload")
              : flow_context_continue(ctx, 0);
 }
 
-static const char *nearest_entity(const eval_context *ctx, const pin_value *inputs, arena *a, pin_value *out)
+static void nearest_candidate(
+    game_entities *entities,
+    ecs_entity entity,
+    const pin_value *inputs,
+    pin_value *out,
+    double *best
+)
 {
-    game_entities *entities = eval_context_service(ctx, "game.entities");
+    uint64_t handle = ecs_entity_to_u64(entity);
+    if (handle == inputs[3].u64 || destroy_requested(entities, entity)) {
+        return;
+    }
+    const GameTransform *transform = GAME_GameTransform_get_const(entities->world, entity);
+    if (!isfinite(transform->x) || !isfinite(transform->y)) {
+        return;
+    }
+    CF_V2 origin = *(const CF_V2 *)inputs[0].ptr;
+    double x = (double)transform->x - origin.x,
+           y = (double)transform->y - origin.y;
+    double distance = x * x + y * y;
+    if (distance > *best || (distance == *best && out[0].b && handle > out[1].u64)) {
+        return;
+    }
+    *best = distance;
+    out[0].b = true;
+    out[1].u64 = handle;
+    *(CF_V2 *)out[2].ptr = *transform;
+    out[3].f = (float)sqrt(distance);
+}
+
+static const char *nearest_entity_data(void *service, const pin_value *inputs, pin_value *out)
+{
+    game_entities *entities = service;
     if (!entities) {
         return "Find Nearest Entity requires a game world";
     }
     CF_V2 origin = inputs[0].ptr ? *(const CF_V2 *)inputs[0].ptr : (CF_V2){ NAN, NAN };
-    CF_V2 *position = arena_alloc(a, sizeof *position);
+    CF_V2 *position = out[2].ptr;
     *position = (CF_V2){ 0 };
-    out[0] = (pin_value){ .type = PIN_BOOL, .type_name = "bool" };
-    out[1] = (pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity" };
-    out[2] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = position };
-    out[3] = (pin_value){ .type = PIN_F32, .type_name = "float" };
+    out[0].b = false;
+    out[1].u64 = 0;
+    out[3].f = 0;
     double radius = inputs[1].f;
     if (!isfinite(origin.x) || !isfinite(origin.y) || !isfinite(radius) ||
         radius < 0 || !inputs[2].u) {
@@ -563,42 +751,94 @@ static const char *nearest_entity(const eval_context *ctx, const pin_value *inpu
         !ecs_world_component(entities->world, required[1])) {
         return NULL;
     }
+    double best = radius * radius;
+    if (entities->parallel_queries) {
+        unsigned categories = inputs[2].u;
+        while (categories) {
+            int bit = __builtin_ctz(categories);
+            const ecs_entity *candidates = entities->parallel_candidates[bit];
+            for (int i = 0; i < acount(candidates); i++) {
+                nearest_candidate(entities, candidates[i], inputs, out, &best);
+            }
+            categories &= categories - 1;
+        }
+        return NULL;
+    }
+    nearest_candidates *cached = NULL;
+    if (entities->profile_queries) {
+        entities->query_profile.searches++;
+    }
+    for (int i = 0; entities->query_scope && i < entities->nearest_count; i++) {
+        if (entities->nearest[i].categories != inputs[2].u) {
+            continue;
+        }
+        cached = &entities->nearest[i];
+        for (int j = 0; j < acount(cached->entities); j++) {
+            nearest_candidate(entities, cached->entities[j], inputs, out, &best);
+        }
+        if (entities->profile_queries) {
+            entities->query_profile.matching_candidates += acount(cached->entities);
+        }
+        return NULL;
+    }
     ecs_query query;
     if (ecs_query_begin(entities->world, &query, required, 2) != ECS_OK) {
         return "Find Nearest Entity could not query the world";
     }
-    double best = radius * radius;
+    if (entities->query_scope && entities->nearest_count < NEAREST_CACHE_MAX) {
+        cached = &entities->nearest[entities->nearest_count++];
+        cached->categories = inputs[2].u;
+        aclear(cached->entities);
+        if (entities->profile_queries) {
+            entities->query_profile.cache_builds++;
+        }
+    }
+    uint64_t candidates = 0, matching = 0;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        uint64_t handle = ecs_entity_to_u64(entity);
-        if (handle == inputs[3].u64 || destroy_requested(entities, entity)) {
-            continue;
-        }
+        candidates++;
         const GameCollider *collider = GAME_GameCollider_get_const(entities->world, entity);
         if (!(collider->category & inputs[2].u)) {
             continue;
         }
-        const GameTransform *transform = GAME_GameTransform_get_const(entities->world, entity);
-        if (!isfinite(transform->x) || !isfinite(transform->y)) {
-            continue;
+        matching++;
+        if (cached) {
+            apush(cached->entities, entity);
         }
-        double x = (double)transform->x - origin.x;
-        double y = (double)transform->y - origin.y;
-        double distance = x * x + y * y;
-        if (distance > best || (distance == best && out[0].b && handle > out[1].u64)) {
-            continue;
-        }
-        best = distance;
-        out[0].b = true;
-        out[1].u64 = handle;
-        *position = *transform;
-        out[3].f = (float)sqrt(distance);
+        nearest_candidate(entities, entity, inputs, out, &best);
     }
     ecs_query_end(&query);
+    if (entities->profile_queries) {
+        entities->query_profile.world_candidates += candidates;
+        entities->query_profile.matching_candidates += matching;
+    }
     return NULL;
 }
 
+static const char *nearest_entity(const eval_context *ctx, const pin_value *inputs, arena *a, pin_value *out)
+{
+    game_entities *entities = eval_context_service(ctx, "game.entities");
+    if (!entities) {
+        return "Find Nearest Entity requires a game world";
+    }
+    out[0] = (pin_value){ .type = PIN_BOOL, .type_name = "bool" };
+    out[1] = (pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    out[2] = (pin_value){ .type = PIN_STRUCT,
+                          .type_name = "CF_V2",
+                          .ptr = arena_alloc(a, sizeof(CF_V2)) };
+    out[3] = (pin_value){ .type = PIN_F32, .type_name = "float" };
+    return nearest_entity_data(entities, inputs, out);
+}
+static const node_host_call NEAREST_CALL = { .service = "game.entities",
+                                             .invoke = nearest_entity_data };
+
 static const node_access NEAREST_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,
+                                                 &GAME_COMPONENT_GameCollider.id,
+                                                 NULL };
+static const node_access NEAREST_PARALLEL_ACCESS = { .read_refs = nearest_reads,
+                                                     .flags = NODE_EFFECT_WORLD_READ |
+                                                              NODE_EFFECT_PARALLEL };
 
 static const ecs_component_desc *query_component(game_entities *entities, const char *key)
 {
@@ -643,18 +883,14 @@ static const char *has_entities_with_component(
     return NULL;
 }
 
-static const char *find_entities_with_component(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *storage,
-    pin_value *out
-)
+static const char *find_entity_snapshot(void *service, const char *key, pin_array *out)
 {
-    game_entities *entities = eval_context_service(ctx, "game.entities");
+    game_entities *entities = service;
+    out->count = 0;
     if (!entities) {
         return "Find Entities With Component requires a game world";
     }
-    const ecs_component_desc *component = query_component(entities, inputs[0].str);
+    const ecs_component_desc *component = query_component(entities, key);
     if (!component) {
         return "Choose a registered component for Find Entities With Component";
     }
@@ -662,28 +898,45 @@ static const char *find_entities_with_component(
     if (ecs_query_begin(entities->world, &query, &component->id, 1) != ECS_OK) {
         return "Find Entities With Component could not query the world";
     }
-    pin_value *items = NULL;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         if (game_entities_is_retiring(entities, entity)) {
             continue;
         }
-        pin_value value = { .type = PIN_HANDLE,
-                            .type_name = "ecs.entity",
-                            .u64 = ecs_entity_to_u64(entity) };
-        apush(items, value);
+        if (out->count == out->capacity) {
+            int result = pin_array_reserve(out, out->capacity ? out->capacity * 2 : 8);
+            assert(!result);
+            (void)result;
+        }
+        /* Handles have no payload ownership; append directly to the snapshot. */
+        out->items[out->count++] = (pin_value){ .type = PIN_HANDLE,
+                                                .type_name = "ecs.entity",
+                                                .u64 = ecs_entity_to_u64(entity) };
     }
     ecs_query_end(&query);
-    pin_array snapshot = { .element_type = PIN_HANDLE,
-                           .type_name = "ecs.entity",
-                           .count = acount(items),
-                           .items = items };
-    *out = (pin_value){ .type = PIN_HANDLE,
-                        .type_name = "ecs.entity",
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = pin_array_clone_to_arena(storage, &snapshot) };
-    afree(items);
     return NULL;
+}
+static const char *find_entities_with_component(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *storage,
+    pin_value *out
+)
+{
+    pin_array snapshot = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" };
+    const char *error = find_entity_snapshot(
+        eval_context_service(ctx, "game.entities"),
+        inputs[0].str,
+        &snapshot
+    );
+    if (!error) {
+        *out = (pin_value){ .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .container = PIN_CONTAINER_ARRAY,
+                            .ptr = pin_array_clone_to_arena(storage, &snapshot) };
+    }
+    free(snapshot.items);
+    return error;
 }
 
 static pin_spec HAS_ENTITIES_IN[] = { { .name = "Component", .type = PIN_NAME } };
@@ -714,6 +967,9 @@ static node_desc FIND_ENTITIES_NODE = {
     .outputs = FIND_ENTITIES_OUT,
     .pure_kind = NODE_PURE_READ,
     .read_inputs = find_entities_with_component,
+    .query_service = "game.entities",
+    .query = find_entity_snapshot,
+    .work = NODE_WORK_WORLD_QUERY,
     .category = "Entities",
     .keywords = "query find component entities array snapshot",
     .access = &NEAREST_ACCESS,
@@ -738,9 +994,11 @@ static node_desc NEAREST_NODE = {
     .outputs = NEAREST_OUT,
     .pure_kind = NODE_PURE_READ,
     .read_inputs = nearest_entity,
+    .host_call = &NEAREST_CALL,
+    .work = NODE_WORK_WORLD_QUERY,
     .category = "Entities",
     .keywords = "nearest find search entity position radius category target",
-    .access = &NEAREST_ACCESS,
+    .access = &NEAREST_PARALLEL_ACCESS,
 };
 
 static const node_access STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
@@ -762,6 +1020,7 @@ static node_desc SPAWN_NODE = { .name = "Spawn Prototype",
                                 .outputs = SPAWN_OUT,
                                 .flow_kind = NODE_FLOW_CUSTOM,
                                 .flow = spawn_node,
+                                .command = &SPAWN_COMMAND,
                                 .latent = 1,
                                 .display_class = NODE_DISPLAY_FLOW,
                                 .category = "Entities",
@@ -773,6 +1032,7 @@ static node_desc DESTROY_NODE = { .name = "Destroy Entity",
                                   .outputs = DESTROY_OUT,
                                   .flow_kind = NODE_FLOW_CUSTOM,
                                   .flow = destroy_node,
+                                  .command = &DESTROY_COMMAND,
                                   .display_class = NODE_DISPLAY_FLOW,
                                   .category = "Entities",
                                   .access = &STRUCTURAL_ACCESS };
@@ -788,6 +1048,7 @@ static node_desc DAMAGE_NODE = {
     .outputs = DESTROY_OUT,
     .flow_kind = NODE_FLOW_CUSTOM,
     .flow = send_event_node,
+    .command = &SEND_COMMAND,
     .display_class = NODE_DISPLAY_EVENT,
     .category = "Events",
     .keywords = "send entity custom event message",
@@ -800,6 +1061,7 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &HAS_ENTITIES_NODE,
                                            &NODE_Normalize_Vector_2,
                                            &FIND_ENTITIES_NODE,
+                                           &NODE_Count_Matching_Entities,
                                            &GAME_NODE_GetContactEntities,
                                            &GAME_NODE_Raycast,
                                            &NODE_Direction_To,

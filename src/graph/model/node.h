@@ -10,6 +10,71 @@ typedef struct node node;
 typedef struct arena arena;
 typedef struct flow_context flow_context;
 typedef struct eval_context eval_context;
+struct pin_array;
+/* Snapshot producer: fills caller-owned reusable ecs.entity handle storage.
+ * Every item is a single PIN_HANDLE with the canonical "ecs.entity" type name.
+ * It cannot mutate membership, layouts or behavior storage. An error message
+ * must remain valid after the snapshot is released. */
+typedef const char *(*node_query_fn)(void *service, const char *key, struct pin_array *out);
+/* Typed host capability. Arguments borrow scalar values, strings or plain
+ * structs and arrays for this call. Arrays and their payloads are read-only
+ * borrowed inputs; they cannot be retained by the helper. The caller supplies result
+ * headers and non-null struct backing; the callee writes every result payload
+ * on success, preserving those headers and pointers. Data nodes are read-only;
+ * execution nodes may perform synchronous effects. Neither may execute graphs,
+ * invalidate component/behavior storage or retain borrowed values. Error text
+ * must outlive the activation. Access metadata describes the host effects. */
+typedef const char *(*node_host_call_fn)(void *service, const pin_value *arguments, pin_value *results);
+/* NODE_PURE_CALL operation with one owned result. Inputs are borrowed for this
+ * call; dynamic result payloads and names belong to storage. It writes the
+ * complete result header, never evaluates graphs or retains inputs, and
+ * returns stable error text on failure. A successful struct result has non-null
+ * backing, matching NODE_PURE_CALL's oracle contract. */
+typedef const char *(*node_value_call_fn)(
+    arena *storage,
+    const pin_value *arguments,
+    int count,
+    pin_value *result
+);
+struct behavior_lower_builder;
+/* Publication-only intrinsic expansion into the shared behavior IR. A data
+ * output returns its typed slot. A synchronous flow node receives pin=-1 and
+ * returns zero after emitting effects; it has one Then output. Negative means
+ * unsupported and must carry a source diagnostic. Never called by execution. */
+typedef int (*node_lower_fn)(struct behavior_lower_builder *, node *, int pin);
+typedef struct
+{
+    /* NULL for a native value operation that requires no host service. */
+    const char *service;
+    node_host_call_fn invoke;
+    /* Optional service check before evaluating arguments, preserving nodes whose
+     * original contract rejects a missing host before input effects or errors. */
+    const char *missing_service;
+    /* Exactly one of invoke/value is set. Value calls have no host service. */
+    node_value_call_fn value;
+    bool variadic;
+} node_host_call;
+/* Synchronous commands may append deferred host effects, but cannot dispatch
+ * graphs, flush structural effects or invalidate behavior/column storage. The
+ * callee owns any retained arguments before returning zero or a negative error. */
+typedef int (*node_command_fn)(void *service, const char *reference, const pin_value *arguments, int count);
+struct flow_host_request;
+/* A successful begin transfers the host reference to the service. On failure
+ * it must neither retain the request nor perform deferred work. */
+typedef int (*node_command_begin_fn)(
+    void *service,
+    const char *reference,
+    const pin_value *arguments,
+    int count,
+    struct flow_host_request *request,
+    const char **error
+);
+typedef struct
+{
+    const char *service, *missing_service, *missing_reference, *failure_message;
+    node_command_fn invoke;
+    node_command_begin_fn begin;
+} node_command;
 
 typedef enum
 {
@@ -41,6 +106,10 @@ typedef struct
     const uint64_t *writes;
     int write_count;
     unsigned flags;
+    /* One-based host argument proven to be Self for entity-scoped writes. */
+    int target_input;
+    /* Additional reads by reference to reflected IDs, NULL terminated. */
+    const uint64_t *const *read_refs;
 } node_access;
 
 enum
@@ -50,6 +119,9 @@ enum
     NODE_EFFECT_HOST_SINK = 1u << 2,
     NODE_EFFECT_PURE = 1u << 3,
     NODE_EFFECT_ENTITY_SCOPED = 1u << 4,
+    /* Host supports concurrent calls while declared read dependencies are
+     * stable. Writes require disjoint Self targets. No hidden world effects. */
+    NODE_EFFECT_PARALLEL = 1u << 5,
 };
 
 enum
@@ -106,6 +178,13 @@ typedef enum
     NODE_JIT_NEG,
     NODE_JIT_ABS,
     NODE_JIT_V2_MOVE,
+    NODE_JIT_V2_NORMALIZE,
+    NODE_JIT_V2_DIRECTION,
+    NODE_JIT_ATAN2_F32,
+    NODE_JIT_RANDOM_VECTOR,
+    NODE_JIT_UNWRAP,
+    /* Explicit promise: copy a fixed-layout struct and retag its nominal type. */
+    NODE_JIT_IDENTITY,
 } node_jit_kind;
 
 enum
@@ -128,6 +207,28 @@ typedef enum
     NODE_PURE_READ,      /* read host state without an execution edge */
 } node_pure_kind;
 
+typedef enum
+{
+    NODE_COMPONENT_NONE,
+    NODE_COMPONENT_GET_SELF,
+    NODE_COMPONENT_HAS_SELF,
+    NODE_COMPONENT_SET_SELF,
+    NODE_COMPONENT_GET_ENTITY,
+    NODE_COMPONENT_HAS_ENTITY,
+    NODE_COMPONENT_SET_ENTITY,
+    NODE_COMPONENT_SET_FIELD,
+} node_component_kind;
+
+typedef enum
+{
+    NODE_WORK_NONE,
+    NODE_WORK_WORLD_QUERY,
+    NODE_WORK_ENTITY_REDUCTION,
+    NODE_WORK_LINEAR_SEARCH,
+    NODE_WORK_SET,
+    NODE_WORK_SET_COPY,
+} node_work_kind;
+
 typedef struct
 {
     const char *name;
@@ -138,6 +239,9 @@ typedef struct
     node_pure_kind pure_kind; /* how to compute DATA outputs; CONST is zero default */
     node_jit_kind jit_kind;
     unsigned jit_flags;
+    node_component_kind component_kind;
+    const struct ecs_component_desc *component;
+    int component_field;
     const type_desc *type;
     node_fn fn;
     node_read_fn read;
@@ -148,6 +252,7 @@ typedef struct
     node_flow_kind flow_kind;
     node_flow_fn flow;
     int latent;
+    bool instance_state; /* One zero-initialized pin_value per node and instance. */
     node_display_class display_class;
     /* CAT-27: spawn-menu category path and space-separated search keywords.
      * Both are static display/search data; NULL means uncategorized. */
@@ -159,6 +264,13 @@ typedef struct
     /* Generated component getter contract; NULL for arbitrary contextual reads. */
     const char *binding_component;
     bool foldable; /* Explicit permission to evaluate constant inputs at authoring time. */
+    const char *query_service;
+    node_query_fn query;
+    const node_command *command;
+    const node_host_call *host_call;
+    node_lower_fn lower;
+    /* Cost semantics supplied by the capability, independent of its label. */
+    node_work_kind work;
 } node_desc;
 
 struct node

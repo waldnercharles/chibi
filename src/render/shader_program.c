@@ -19,6 +19,8 @@ typedef struct
     unsigned ramp_revision;
     unsigned revision;
     unsigned attempted_revision;
+    unsigned checked_revision, checked_ramp_revision;
+    int checked_ramp_count;
     char error[256];
 } program;
 
@@ -178,22 +180,28 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
             break;
         }
     }
-    int ramp_vec4_count = render_shader_ramp_vec4_count(set);
-    if (ramp_vec4_count > RENDER_SHADER_RAMP_VEC4_MAX) {
-        snprintf(
-            programs->error,
-            sizeof programs->error,
-            "Included shader ramps need %d vec4 values; the limit is %d.",
-            ramp_vec4_count,
-            RENDER_SHADER_RAMP_VEC4_MAX
-        );
-        return index < acount(programs->entries) ? index + 1 : 0;
-    }
     if (index == acount(programs->entries)) {
         apush(programs->entries, ((program){ .set = *set }));
     }
     program *entry = &programs->entries[index];
     unsigned current_revision = render_shader_revision();
+    unsigned current_ramp_revision = render_shader_ramp_revision();
+    if (entry->checked_revision != current_revision ||
+        entry->checked_ramp_revision != current_ramp_revision) {
+        entry->checked_ramp_count = render_shader_ramp_vec4_count(set);
+        entry->checked_revision = current_revision;
+        entry->checked_ramp_revision = current_ramp_revision;
+    }
+    if (entry->checked_ramp_count > RENDER_SHADER_RAMP_VEC4_MAX) {
+        snprintf(
+            programs->error,
+            sizeof programs->error,
+            "Included shader ramps need %d vec4 values; the limit is %d.",
+            entry->checked_ramp_count,
+            RENDER_SHADER_RAMP_VEC4_MAX
+        );
+        return entry->draw.id || entry->compute.id ? index + 1 : 0;
+    }
     if (entry->revision != current_revision &&
         entry->attempted_revision != current_revision) {
         entry->attempted_revision = current_revision;

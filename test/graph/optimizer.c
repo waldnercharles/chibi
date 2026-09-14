@@ -373,6 +373,8 @@ static void history_and_cleanup()
     free(redone);
     ed_free_string_stack(&e.undo);
     ed_free_string_stack(&e.redo);
+    eval_view_free(e.ev);
+    afree(e.graph_views);
     behavior_asset_free(e.asset);
 
     asset = behavior_asset_new("Optimizer constants");

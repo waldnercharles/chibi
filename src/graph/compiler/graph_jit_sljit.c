@@ -531,7 +531,7 @@ static int call_kind(const graph_ir_instruction *instruction)
         return 0;
     }
     const node_desc *desc = instruction->node->desc;
-    if (desc->conversion_from && desc->conversion_to && desc->input_count == 1 &&
+    if (desc->jit_kind == NODE_JIT_IDENTITY && desc->input_count == 1 &&
         desc->output_count == 1 && desc->inputs[0].type == PIN_STRUCT &&
         desc->outputs[0].type == PIN_STRUCT &&
         pin_compatible(&desc->inputs[0], &desc->outputs[0])) {

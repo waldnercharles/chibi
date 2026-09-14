@@ -3,12 +3,16 @@
 
 #include "ecs/ecs.h"
 #include "runtime/components.h"
+#include "runtime/scenes/physics_settings.h"
 
 #include <stdbool.h>
 
 typedef struct scene_history scene_history;
 
 scene_history *scene_history_new();
+bool scene_history_push_physics(scene_history *history, game_physics_settings before, game_physics_settings after);
+const game_physics_settings *scene_history_peek_physics(const scene_history *history, bool redo);
+void scene_history_complete_physics(scene_history *history, bool redo);
 void scene_history_free(scene_history *history);
 void scene_history_clear(scene_history *history);
 /* Explicit scopes only; nesting is invalid. Empty scopes preserve redo.

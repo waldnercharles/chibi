@@ -171,6 +171,11 @@ int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char
     char error[256];
     finish_transform_edit(scene, true);
     app_scene_authoring_stop_prototype_preview(scene);
+    int configured = game_prototype_preview_configure_physics(
+        scene->prototype_preview,
+        game_physics_configuration(scene->live->physics)
+    );
+    assert(configured == 0);
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         game_live_definition *definition = game_live_definition_at(scene->live, i);
         if (game_prototype_preview_update_behavior(
@@ -361,6 +366,12 @@ const game_behavior_profile_frame *app_scene_authoring_behavior_profile(const ap
                         ? game_prototype_preview_runtime(scene->prototype_preview)
                         : scene->runtime;
     return engine_behavior_profile(runtime);
+}
+
+void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool enabled)
+{
+    engine_set_behavior_profiling(scene->runtime, enabled);
+    engine_set_behavior_profiling(game_prototype_preview_runtime(scene->prototype_preview), enabled);
 }
 
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene)

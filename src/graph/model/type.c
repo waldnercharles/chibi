@@ -135,3 +135,74 @@ void pin_read_field(const void *base, const type_field *f, pin_value *out)
         case PIN_FLOW: break;
     }
 }
+
+static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)
+{
+    const unsigned char *bytes = (const unsigned char *)data;
+    for (size_t i = 0; i < size; i++) {
+        hash ^= bytes[i];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static uint64_t hash_string(uint64_t hash, const char *text)
+{
+    if (!text) {
+        return hash_bytes(hash, "", 1);
+    }
+    return hash_bytes(hash, text, strlen(text) + 1);
+}
+
+static uint64_t layout_hash(const type_desc *type, int depth)
+{
+    if (!type || depth > 32) {
+        return 0;
+    }
+    uint64_t hash = UINT64_C(1469598103934665603);
+    hash = hash_bytes(hash, &type->size, sizeof type->size);
+    hash = hash_bytes(hash, &type->field_count, sizeof type->field_count);
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        hash = hash_string(hash, field->name);
+        hash = hash_bytes(hash, &field->offset, sizeof field->offset);
+        hash = hash_bytes(hash, &field->size, sizeof field->size);
+        hash = hash_bytes(hash, &field->type, sizeof field->type);
+        hash = hash_string(hash, field->type_name);
+        if (field->type == PIN_STRUCT && field->type_name) {
+            uint64_t nested = layout_hash(registry_type_by_name(field->type_name), depth + 1);
+            hash = hash_bytes(hash, &nested, sizeof nested);
+        }
+    }
+    return hash;
+}
+
+uint64_t type_layout_hash(const type_desc *type)
+{
+    return layout_hash(type, 0);
+}
+
+static bool plain(const type_desc *type, int depth)
+{
+    if (!type || !type->size || !type->field_count || depth > 16) {
+        return false;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *f = &type->fields[i];
+        if (f->offset > type->size || f->size > type->size - f->offset ||
+            f->type == PIN_FLOW || f->type == PIN_STR || f->type == PIN_NAME) {
+            return false;
+        }
+        if (f->type == PIN_STRUCT) {
+            const type_desc *nested = registry_type_by_name(f->type_name);
+            if (!plain(nested, depth + 1) || nested->size != f->size) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+bool type_is_plain(const type_desc *type)
+{
+    return plain(type, 0);
+}

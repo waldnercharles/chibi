@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/profile.h"
 #include "graph/runtime/runtime.h"
 #include "graph/runtime/service.h"
 #include "graph/runtime/value_array.h"
@@ -18,6 +19,29 @@
 #define FLOW_TRAVERSAL_MAX 256
 
 #include "graph/runtime/flow_internal.h"
+
+static node *frame_node(const flow_run *run, const activation_frame *frame)
+{
+    return run->program ? behavior_program_block_node(run->program, frame->block)
+                        : frame->node;
+}
+static const flow_run *active_run(const flow_run *run)
+{
+    while (run && run->active_child) {
+        run = run->active_child;
+    }
+    return run;
+}
+
+static void push_frame(flow_run *run, activation_frame frame)
+{
+    frame.block = run->program ? behavior_program_block(run->program, frame.node)
+                               : -1;
+    if (run->program) {
+        frame.node = NULL;
+    }
+    apush(run->frames, frame);
+}
 
 static void set_event_name(flow_run *run, const char *name)
 {
@@ -35,68 +59,6 @@ static runtime_node *flow_runtime_node(flow_run *run, const node *n)
     return runtime_store_node(run->runtime, n);
 }
 
-static int flow_copy_nested_structs(arena *a, pin_value *value)
-{
-    if (value->container >= PIN_CONTAINER_ARRAY) {
-        if (!value->ptr) {
-            return 0;
-        }
-        pin_array *array = (pin_array *)value->ptr;
-        for (int i = 0; i < array->count; i++) {
-            if (flow_copy_nested_structs(a, &array->items[i])) {
-                return -1;
-            }
-        }
-        return 0;
-    }
-    if (value->type != PIN_STRUCT || !value->ptr) {
-        return 0;
-    }
-    const type_desc *type = value->type_name ? registry_type_by_name(value->type_name)
-                                             : NULL;
-    if (!type || !type->size) {
-        return -1;
-    }
-    void *copy = arena_alloc(a, type->size);
-    if (!copy) {
-        return -1;
-    }
-    memcpy(copy, value->ptr, type->size);
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        if (field->type != PIN_STRUCT && field->type != PIN_STR &&
-            field->type != PIN_NAME) {
-            continue;
-        }
-        pin_value member;
-        pin_value owned;
-        pin_read_field(value->ptr, field, &member);
-        if (flow_copy_input(a, &owned, &member)) {
-            return -1;
-        }
-        pin_write_field(copy, field, owned);
-    }
-    value->ptr = copy;
-    return 0;
-}
-
-int flow_copy_input(arena *a, pin_value *dst, const pin_value *src)
-{
-    if (pin_value_copy_to_arena(a, dst, src)) {
-        return -1;
-    }
-    if (dst->type_name) {
-        size_t size = strlen(dst->type_name) + 1;
-        char *name = arena_alloc(a, size);
-        if (!name) {
-            return -1;
-        }
-        memcpy(name, dst->type_name, size);
-        dst->type_name = name;
-    }
-    return flow_copy_nested_structs(a, dst);
-}
-
 static void set_error(flow_error *error, int code, const node *n, const char *message)
 {
     if (error) {
@@ -109,13 +71,51 @@ static int graph_has_node(const graph *g, const node *n)
     return g && n && graph_node_by_id(g, n->id) == n;
 }
 
-static void flow_fail(flow_run *run, int code, node *n, const char *message)
+void flow_fail(flow_run *run, int code, node *n, const char *message)
 {
     if (run->host_request) {
         flow_host_finish(run, FLOW_HOST_CANCELLED);
     }
     run->state = FLOW_FAILED;
     run->error = (flow_error){ code, n, -1, message, run->steps };
+}
+
+void flow_run_finish_compiled(
+    flow_run *run,
+    const behavior_function *function,
+    const behavior_function_context *ctx,
+    int result
+)
+{
+    if (result && ctx->activation && behavior_function_resumable(function) &&
+        !run->compiled) {
+        flow_compiled_capture_failure(run, function, ctx);
+    }
+    run->whole_function_executed = true;
+    run->whole_function = function;
+    run->steps = ctx->steps;
+    aclear(run->frames);
+    if (result) {
+        run->whole_error_stack = ctx->error_stack;
+        const behavior_function_source *source = behavior_function_source_at(function, ctx->error_source);
+        node *failed = graph_node_by_id(source->graph, ctx->node_id);
+        const char *message = ctx->error_message ? ctx->error_message
+                            : ctx->failure == BEHAVIOR_FUNCTION_DEPTH
+                                ? "function call depth limit exceeded"
+                            : ctx->failure == BEHAVIOR_FUNCTION_NO_RETURN
+                                ? "function completed without Return"
+                            : ctx->failure == BEHAVIOR_FUNCTION_DATA
+                                ? "data function produced an invalid result"
+                                : "flow step budget exceeded";
+        flow_fail(run, result, failed, message);
+        run->error.steps = ctx->error_steps;
+        run->error.pin = ctx->error_pin;
+        return;
+    }
+    run->returned = ctx->returned_node_id
+                      ? graph_node_by_id(run->graph, run->graph->return_id)
+                      : NULL;
+    run->state = FLOW_COMPLETED;
 }
 
 static void graph_pause(flow_run *run)
@@ -145,10 +145,18 @@ static void record_traversal(
     graph_edge_kind kind
 )
 {
+    if (run->instance && !run->instance->trace_enabled) {
+        return;
+    }
     flow_traversal traversal = {
         from_id, from_pin_id,       to_id,      to_pin_id,
         kind,    run->current_time, run->steps,
     };
+    flow_trace_record(run, traversal);
+}
+
+void flow_trace_record(flow_run *run, flow_traversal traversal)
+{
     /* Call ancestors retain each traversal as it happens, including while a
      * child waits and after completed children are pruned or recycled. */
     for (; run; run = run->parent) {
@@ -176,6 +184,21 @@ static int schedule_output(flow_context *ctx, int output_pin)
 
     node *target = NULL;
     int target_pin = -1;
+    if (run->program) {
+        if (!behavior_program_target(run->program, ctx->node, output_pin, &target, &target_pin)) {
+            return FLOW_OK;
+        }
+        record_traversal(
+            run,
+            ctx->node->id,
+            ctx->node->output_pins[output_pin].id,
+            target->id,
+            target->input_pins[target_pin].id,
+            GRAPH_EDGE_EXEC
+        );
+        push_frame(run, ((activation_frame){ .node = target, .kind = ACTIVATION_BLOCK, .input_pin = target_pin }));
+        return FLOW_OK;
+    }
     const edge *e = NULL;
     int found = graph_exec_output_edges(run->graph, ctx->node, output_pin, &e);
     if (found > 1) {
@@ -191,11 +214,11 @@ static int schedule_output(flow_context *ctx, int output_pin)
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "invalid EXEC target");
     }
     record_traversal(run, ctx->node->id, ctx->node->output_pins[output_pin].id, e->to_id, e->to_pin_id, GRAPH_EDGE_EXEC);
-    apush(
-        run->frames,
-        (flow_frame){
+    push_frame(
+        run,
+        (activation_frame){
             .node = target,
-            .kind = FLOW_FRAME_NODE,
+            .kind = ACTIVATION_BLOCK,
             .input_pin = target_pin,
         }
     );
@@ -278,7 +301,7 @@ static int flow_run_advance_child(flow_run *run)
             return FLOW_ERR_INVALID_GRAPH;
         }
         const pin_value *value = flow_run_input_value(child, ret, i);
-        if (flow_copy_input(&run->scratch, &outputs[at], value)) {
+        if (pin_value_snapshot_to_arena(&run->scratch, &outputs[at], value)) {
             flow_fail(run, FLOW_ERR_NODE, ret, "function return copy failed");
             return FLOW_ERR_NODE;
         }
@@ -339,6 +362,9 @@ static int flow_run_wait(flow_run *run)
     int output_pin = run->waiting_output;
     run->waiting_node = NULL;
     run->waiting_output = -1;
+    if (run->compiled) {
+        return FLOW_OK;
+    }
     if (schedule_output_for_node(run, node, output_pin)) {
         return run->error.code;
     }
@@ -348,28 +374,60 @@ static int flow_run_wait(flow_run *run)
 static void frame_arrays_free(flow_run *run)
 {
     for (int i = 0; i < acount(run->frames); i++) {
-        if (run->frames[i].kind == FLOW_FRAME_FOREACH) {
-            pin_array_free(run->frames[i].array);
+        if (run->frames[i].kind == ACTIVATION_FOREACH) {
+            arena_free(&run->frames[i].array_storage);
         }
     }
 }
 
-static void flow_run_free_children(flow_run *run)
+static bool flow_run_observed(const flow_run *run);
+
+static void flow_run_release_call(flow_run *run, flow_run *child)
+{
+    if (!run->instance || !run->instance->pool_enabled || flow_run_observed(child)) {
+        flow_run_free(child);
+        return;
+    }
+    for (int i = 0; i < acount(run->call_pool); i++) {
+        if (run->call_pool[i]->invocation == child->invocation) {
+            flow_run_free(child);
+            return;
+        }
+    }
+    flow_run_stop(child);
+    flow_run_recycle(child);
+    apush(run->call_pool, child);
+}
+
+static void flow_run_release_children(flow_run *run)
 {
     for (int i = 0; i < acount(run->children); i++) {
-        flow_run_free(run->children[i]);
+        flow_run_release_call(run, run->children[i]);
     }
-    afree(run->children);
+    aclear(run->children);
     run->active_child = NULL;
     run->call_node = NULL;
     run->returned = NULL;
 }
 
+static _Thread_local uint64_t oracle_calls;
+
+uint64_t flow_oracle_calls()
+{
+    return oracle_calls;
+}
+
+behavior_backend flow_run_backend(const flow_run *run)
+{
+    return run ? run->backend : BEHAVIOR_UNAVAILABLE;
+}
+
 static int flow_run_activate(flow_run *run)
 {
     if (run->steps >= run->step_budget) {
-        node *n = acount(run->frames) ? run->frames[acount(run->frames) - 1].node
-                                      : NULL;
+        node *n = acount(run->frames)
+                    ? frame_node(run, &run->frames[acount(run->frames) - 1])
+                    : NULL;
         flow_fail(run, FLOW_ERR_STEP_BUDGET, n, "flow step budget exceeded");
         return FLOW_ERR_STEP_BUDGET;
     }
@@ -380,10 +438,16 @@ static int flow_run_activate(flow_run *run)
     runtime_store_reset_memo(run->runtime);
     eval_context_reset(&run->eval);
     run->eval.services = run->services;
+    /* Allowing authored breakpoints is not an inspection subscription. Node
+     * break checks stay active independently of data-edge observation. */
+    run->eval.on_data_edge = !run->instance || run->instance->trace_enabled
+                               ? record_evaluated_data_edge
+                               : NULL;
 
-    flow_frame frame = apop(run->frames);
+    activation_frame frame = apop(run->frames);
+    frame.node = frame_node(run, &frame);
     run->steps++;
-    if (frame.kind == FLOW_FRAME_WHILE) {
+    if (frame.kind == ACTIVATION_WHILE) {
         flow_context ctx = { .run = run, .node = frame.node, .input_pin = -1 };
         return frame.break_requested
                  ? flow_context_continue(&ctx, frame.completed_output)
@@ -394,11 +458,11 @@ static int flow_run_activate(flow_run *run)
                        frame.completed_output
                    );
     }
-    if (frame.kind == FLOW_FRAME_LOOP || frame.kind == FLOW_FRAME_FOREACH) {
-        if (frame.kind == FLOW_FRAME_FOREACH) {
+    if (frame.kind == ACTIVATION_LOOP || frame.kind == ACTIVATION_FOREACH) {
+        if (frame.kind == ACTIVATION_FOREACH) {
             if (frame.break_requested || !frame.array || frame.current > frame.last) {
                 flow_watch_capture_outputs(run, frame.node);
-                pin_array_free(frame.array);
+                arena_free(&frame.array_storage);
                 return schedule_output_for_node(run, frame.node, frame.completed_output);
             }
             int index = frame.current;
@@ -411,12 +475,12 @@ static int flow_run_activate(flow_run *run)
                 .i = index,
             };
             outputs[frame.index_output].container = PIN_CONTAINER_SINGLE;
-            if (flow_copy_input(
+            if (pin_value_snapshot_to_arena(
                     &run->scratch,
                     &outputs[frame.value_output],
                     &frame.array->items[index]
                 )) {
-                pin_array_free(frame.array);
+                arena_free(&frame.array_storage);
                 flow_fail(run, FLOW_ERR_NODE, frame.node, "ForEach element copy failed");
                 return FLOW_ERR_NODE;
             }
@@ -425,7 +489,7 @@ static int flow_run_activate(flow_run *run)
             } else {
                 frame.current = frame.last + 1;
             }
-            apush(run->frames, frame);
+            push_frame(run, frame);
             flow_watch_capture_outputs(run, frame.node);
             return schedule_output_for_node(run, frame.node, frame.body_output);
         }
@@ -440,7 +504,7 @@ static int flow_run_activate(flow_run *run)
         outputs[frame.index_output].type = PIN_I32;
         outputs[frame.index_output].type_name = "int";
         outputs[frame.index_output].i = frame.current;
-        apush(run->frames, frame);
+        push_frame(run, frame);
         flow_watch_capture_outputs(run, frame.node);
         return schedule_output_for_node(run, frame.node, frame.body_output);
     }
@@ -476,7 +540,13 @@ static int flow_run_activate(flow_run *run)
         .node = n,
         .input_pin = frame.input_pin,
     };
-    int result = n->desc->flow(n, &ctx);
+    int result;
+    if (run->program) {
+        result = behavior_program_flow(run->program, n, &ctx, run->backend);
+    } else {
+        oracle_calls++;
+        result = n->desc->flow(n, &ctx);
+    }
     if (ctx.failed || result < 0) {
         if (run->state != FLOW_FAILED) {
             flow_fail(run, result < 0 ? result : FLOW_ERR_NODE, n, "flow node failed");
@@ -515,8 +585,53 @@ static int execute(flow_run *run)
         return waiting;
     }
 
+    if (run->compiled) {
+        return flow_compiled_execute(run);
+    }
+
+    if (run->program && run->instance && run->steps == 0 && acount(run->frames) == 1) {
+        node *entry = frame_node(run, &run->frames[0]);
+        const behavior_function *function = behavior_program_function(run->program, entry);
+        behavior_function_context host = { 0 };
+        bool uninspected = !run->instance->trace_enabled && !run->step_mode &&
+                           !run->pause_requested && !acount(run->watches);
+        if (function && (uninspected || behavior_function_resumable(function)) &&
+            behavior_function_bind(
+                function,
+                &host,
+                run->services,
+                behavior_instance_owner(run->instance).u64
+            )) {
+            if (behavior_function_resumable(function)) {
+                flow_compiled_start(run, function);
+                return flow_compiled_execute(run);
+            }
+            node *ret = graph_node_by_id(run->graph, run->graph->return_id);
+            behavior_function_context ctx = {
+                .arguments = run->inputs,
+                .argument_count = run->input_count,
+                .results = ret ? runtime_node_inputs(flow_runtime_node(run, ret)) : NULL,
+                .delta_seconds = run->eval.delta_seconds,
+                .budget = run->step_budget,
+                .call_depth = run->call_depth,
+                .owner = host.owner,
+                .world = host.world,
+                .binding_world = host.binding_world,
+                .services = host.services,
+            };
+            behavior_instance_bind_values(run->instance, &ctx);
+            behavior_function_prepare_data(function, run->services, &run->data_storage);
+            ctx.data = run->data_storage;
+            behavior_function_bind_storage(&ctx, &run->scratch);
+            behavior_function_prepare_results(function, ctx.results, &run->scratch);
+            int result = behavior_function_run(function, &ctx, run->backend == BEHAVIOR_SLJIT);
+            flow_run_finish_compiled(run, function, &ctx, result);
+            return result;
+        }
+    }
+
     while (run->state == FLOW_RUNNING && acount(run->frames) > 0) {
-        node *next = run->frames[acount(run->frames) - 1].node;
+        node *next = frame_node(run, &run->frames[acount(run->frames) - 1]);
         if (next && next->breakpoint && run->breakpoints_enabled &&
             !run->breakpoint_skipped) {
             run->breakpoint_node = next;
@@ -524,6 +639,7 @@ static int execute(flow_run *run)
             return FLOW_PAUSED_RESULT;
         }
         run->breakpoint_skipped = 0;
+        run->breakpoint_node = NULL;
         if (run->pause_requested) {
             run->pause_requested = 0;
             run->state = FLOW_PAUSED;
@@ -544,13 +660,7 @@ static int execute(flow_run *run)
     return run->state == FLOW_FAILED ? run->error.code : FLOW_OK;
 }
 
-typedef struct profile_scope
-{
-    struct profile_scope *parent;
-    uint64_t children;
-} profile_scope;
-
-static _Thread_local profile_scope *active_profile;
+static _Thread_local behavior_profile_scope *active_profile;
 
 static uint64_t profile_now()
 {
@@ -561,32 +671,44 @@ static uint64_t profile_now()
     return (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
 }
 
+void behavior_profile_enter(behavior_profile_scope *scope)
+{
+    *scope = (behavior_profile_scope){ .parent = active_profile,
+                                       .start = profile_now() };
+    active_profile = scope;
+}
+
+uint64_t behavior_profile_leave(behavior_profile_scope *scope)
+{
+    uint64_t elapsed = profile_now() - scope->start;
+    active_profile = scope->parent;
+    if (scope->parent) {
+        scope->parent->children += elapsed;
+    }
+    assert(elapsed >= scope->children);
+    return elapsed - scope->children;
+}
+
 static int flow_run_execute(flow_run *run)
 {
     behavior_instance *instance = run->instance;
-    const flow_run *leaf = flow_run_active_leaf(run);
+    const flow_run *leaf = active_run(run);
     bool waiting = (leaf->host_request && leaf->host_request->state == FLOW_HOST_PENDING) ||
                    (leaf->waiting_node && run->current_time < leaf->wake_time);
     if (run->parent || !instance || !instance->profile || waiting) {
         return execute(run);
     }
-    profile_scope scope = { .parent = active_profile };
-    active_profile = &scope;
+    behavior_profile_scope scope;
+    behavior_profile_enter(&scope);
     bool first = !run->profile_started;
     run->profile_started = true;
-    uint64_t start = profile_now();
     int result = execute(run);
-    uint64_t elapsed = profile_now() - start;
-    active_profile = scope.parent;
-    if (scope.parent) {
-        scope.parent->children += elapsed;
-    }
-    assert(elapsed >= scope.children);
+    uint64_t elapsed = behavior_profile_leave(&scope);
     instance->profile(
         run->event_name,
         elapsed,
-        elapsed - scope.children,
-        first,
+        elapsed + scope.children,
+        first ? BEHAVIOR_PROFILE_START : BEHAVIOR_PROFILE_RESUME,
         instance->profile_user
     );
     return result;
@@ -608,8 +730,8 @@ flow_run *flow_run_start(graph *g, node *entry, flow_inputs inputs, const flow_o
     run->graph = g;
     run->state = FLOW_IDLE;
     eval_context_init(&run->eval);
-    arena_init(&run->input_arena, 65536);
-    arena_init(&run->scratch, 65536);
+    /* Arenas allocate on first use and retain only the blocks this activation
+     * needed. Most compiled events have no copied payload or scratch values. */
     if (!flow_run_start_reuse(run, g, entry, inputs, options, error)) {
         flow_run_free(run);
         return NULL;
@@ -637,9 +759,25 @@ flow_run *flow_run_start_reuse(
         return NULL;
     }
     run->instance = options ? options->instance : NULL;
+    run->backend = run->instance ? run->instance->backend : BEHAVIOR_ORACLE;
+    run->program = NULL;
+    if (run->instance && run->backend != BEHAVIOR_ORACLE) {
+        behavior_program *program = behavior_program_publish(run->instance->asset);
+        const compile_diagnostic *d = behavior_program_diagnostic(program);
+        if (d) {
+            set_error(error, FLOW_ERR_COMPILE, entry, d->message);
+            return NULL;
+        }
+        run->program = behavior_program_graph(program, g);
+        if (!run->program) {
+            set_error(error, FLOW_ERR_COMPILE, entry, "compiled activation graph is missing");
+            return NULL;
+        }
+    }
     run->graph_guard_owned = run->instance == NULL;
     run->state = FLOW_RUNNING;
-    run->step_budget = options && options->step_budget ? options->step_budget : 10000;
+    run->step_budget = options && options->step_budget ? options->step_budget
+                                                       : FLOW_DEFAULT_STEP_BUDGET;
     run->now = options ? options->now : NULL;
     run->now_user = options ? options->now_user : NULL;
     run->current_time = options ? options->initial_time : 0.0;
@@ -666,6 +804,9 @@ flow_run *flow_run_start_reuse(
     run->parallel_for = options ? options->parallel_for : NULL;
     run->parallel_user = options ? options->parallel_user : NULL;
     run->steps = 0;
+    run->whole_function_executed = false;
+    run->whole_function = NULL;
+    run->whole_error_stack = -1;
     run->profile_started = false;
     run->topology_revision = graph_topology_revision(g);
     run->input_count = inputs.count;
@@ -673,6 +814,7 @@ flow_run *flow_run_start_reuse(
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     aclear(run->frames);
     aclear(run->stack_cache);
+    aclear(run->data_error_stack);
     aclear(run->services);
     if (!run->runtime) {
         run->runtime = runtime_store_create(g);
@@ -682,6 +824,9 @@ flow_run *flow_run_start_reuse(
     eval_context_reset(&run->eval);
     run->eval.delta_seconds = options ? options->delta_seconds : run->eval.delta_seconds;
     run->eval.instance = run->instance;
+    run->eval.program = run->program;
+    run->eval.observer = run;
+    run->eval.backend = run->backend;
     run->eval.on_data_edge = record_evaluated_data_edge;
     run->eval.on_data_edge_user = run;
     arena_reset(&run->input_arena);
@@ -694,14 +839,18 @@ flow_run *flow_run_start_reuse(
     if (inputs.count) {
         memset(run->inputs, 0, (size_t)inputs.count * sizeof *run->inputs);
         for (int i = 0; i < inputs.count; i++) {
-            if (flow_copy_input(&run->input_arena, &run->inputs[i], &inputs.values[i])) {
+            if (pin_value_snapshot_to_arena(
+                    &run->input_arena,
+                    &run->inputs[i],
+                    &inputs.values[i]
+                )) {
                 set_error(error, FLOW_ERR_NODE, entry, "flow input copy failed");
                 flow_run_stop(run);
                 return NULL;
             }
         }
     }
-    apush(run->frames, (flow_frame){ .node = entry, .kind = FLOW_FRAME_NODE, .input_pin = -1 });
+    push_frame(run, (activation_frame){ .node = entry, .kind = ACTIVATION_BLOCK, .input_pin = -1 });
     if (run->graph_guard_owned) {
         graph_pause(run);
     }
@@ -729,9 +878,11 @@ int flow_run_recycle(flow_run *run)
     arena_reset(&run->input_arena);
     arena_reset(&run->scratch);
     run->input_count = 0;
-    run->input_capacity = 0;
     run->input_user_data = NULL;
     run->steps = 0;
+    run->whole_function_executed = false;
+    run->whole_function = NULL;
+    run->whole_error_stack = -1;
     return FLOW_OK;
 }
 
@@ -779,11 +930,14 @@ int flow_run_continue(flow_run *run, int clear_step_mode)
         return run->error.code;
     }
     if (run->breakpoint_node && acount(run->frames) &&
-        run->frames[acount(run->frames) - 1].node == run->breakpoint_node) {
+        frame_node(run, &run->frames[acount(run->frames) - 1]) == run->breakpoint_node) {
         run->breakpoint_skipped = 1;
     }
     run->state = FLOW_RUNNING;
     if (clear_step_mode) {
+        if (run->compiled) {
+            flow_compiled_resume(run);
+        }
         run->step_mode = 0;
         run->activation_budget = 0;
         run->step_over = 0;
@@ -804,6 +958,9 @@ int flow_run_continue(flow_run *run, int clear_step_mode)
 
 int flow_run_resume(flow_run *run)
 {
+    if (run && run->instance) {
+        run->instance->schedule_revision++;
+    }
     return flow_run_continue(run, 1);
 }
 
@@ -840,6 +997,10 @@ int flow_run_pause(flow_run *run)
         return FLOW_OK;
     }
     if (run->state == FLOW_SUSPENDED) {
+        if (run->compiled) {
+            flow_compiled_pause(run);
+            return FLOW_OK;
+        }
         run->step_mode = 1;
         run->activation_budget = 1;
         return FLOW_OK;
@@ -862,13 +1023,16 @@ int flow_run_step(flow_run *run)
         return run->error.code;
     }
     if (run->breakpoint_node && acount(run->frames) &&
-        run->frames[acount(run->frames) - 1].node == run->breakpoint_node) {
+        frame_node(run, &run->frames[acount(run->frames) - 1]) == run->breakpoint_node) {
         run->breakpoint_skipped = 1;
     }
     run->state = FLOW_RUNNING;
     run->pause_requested = 0;
     run->step_mode = 1;
     run->activation_budget = 1;
+    if (run->compiled) {
+        flow_compiled_step(run);
+    }
     for (flow_run *child = run->active_child; child; child = child->active_child) {
         child->step_mode = !run->step_over;
         child->activation_budget = child->step_mode ? 1 : 0;
@@ -896,9 +1060,11 @@ int flow_run_stop(flow_run *run)
         return FLOW_OK;
     }
     flow_host_detach(run);
+    flow_compiled_stop(run);
     run->state = FLOW_IDLE;
     frame_arrays_free(run);
     aclear(run->frames);
+    aclear(run->data_error_stack);
     run->waiting_node = NULL;
     run->waiting_output = -1;
     run->pause_requested = 0;
@@ -906,7 +1072,7 @@ int flow_run_stop(flow_run *run)
     run->activation_budget = 0;
     run->breakpoint_node = NULL;
     run->breakpoint_skipped = 0;
-    flow_run_free_children(run);
+    flow_run_release_children(run);
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     flow_watch_clear(run);
@@ -923,11 +1089,20 @@ int flow_run_reset(flow_run *run)
         return FLOW_ERR_ARGUMENT;
     }
     flow_run_stop(run);
+    flow_compiled_free(run);
+    behavior_function_free_data(run->data_storage);
+    run->data_storage = NULL;
+    for (int i = 0; i < acount(run->call_pool); i++) {
+        flow_run_free(run->call_pool[i]);
+    }
+    afree(run->call_pool);
+    afree(run->children);
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     frame_arrays_free(run);
     afree(run->frames);
     afree(run->stack_cache);
+    afree(run->data_error_stack);
     afree(run->services);
     free(run->inputs);
     run->inputs = NULL;
@@ -945,6 +1120,9 @@ int flow_run_reset(flow_run *run)
     run->traversal_head = 0;
     run->traversal_view_dirty = false;
     run->steps = 0;
+    run->whole_function_executed = false;
+    run->whole_function = NULL;
+    run->whole_error_stack = -1;
     run->topology_revision = graph_topology_revision(run->graph);
     run->error = (flow_error){ 0, NULL, -1, NULL, 0 };
     return FLOW_OK;
@@ -952,6 +1130,7 @@ int flow_run_reset(flow_run *run)
 
 int flow_run_ready(const flow_run *run, double now)
 {
+    run = flow_run_view(run);
     if (!run) {
         return 0;
     }
@@ -976,52 +1155,70 @@ int flow_run_ready(const flow_run *run, double now)
 
 bool flow_run_waiting_for_host(const flow_run *run)
 {
+    run = flow_run_view(run);
     return run && (run->host_request != NULL ||
                    flow_run_waiting_for_host(run->active_child));
 }
 
 const flow_run *flow_run_active_leaf(const flow_run *run)
 {
-    while (run && run->active_child) {
-        run = run->active_child;
-    }
-    return run;
+    run = active_run(run);
+    return run && (run->compiled || run->compiled_owner) ? flow_compiled_leaf(run)
+                                                         : run;
 }
 
 flow_state flow_run_status(const flow_run *run)
 {
+    run = flow_run_view(run);
     if (run && (run->state == FLOW_FAILED || run->state == FLOW_IDLE)) {
         return run->state;
     }
-    run = flow_run_active_leaf(run);
+    run = active_run(run);
     return run ? run->state : FLOW_IDLE;
 }
 
 double flow_run_wake_time(const flow_run *run)
 {
-    run = flow_run_active_leaf(run);
-    return run ? run->wake_time : 0.0;
+    run = flow_run_view(active_run(run));
+    return run && run->compiled ? flow_compiled_wake_time(run)
+         : run                  ? run->wake_time
+                                : 0.0;
 }
 
 const flow_error *flow_run_error(const flow_run *run)
 {
+    run = flow_run_view(run);
     return run ? &run->error : NULL;
 }
 
 unsigned long flow_run_steps(const flow_run *run)
 {
+    run = flow_run_view(run);
     return run ? run->steps : 0;
 }
 
 flow_inputs flow_run_inputs(const flow_run *run)
 {
+    run = flow_run_view(run);
     return run ? (flow_inputs){ run->inputs, run->input_count, run->input_user_data }
                : (flow_inputs){ NULL, 0, NULL };
 }
 
 const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pin)
 {
-    if (!run || !n || pin < 0 || pin >= n->input_count) {
+    run = flow_run_view(run);
+    if (run && (run->compiled || run->compiled_owner) && n && pin >= 0 &&
+        pin < n->input_count) {
+        const pin_value *value = flow_watch_input_value(run, n, pin);
+        if (value) {
+            return value;
+        }
+    }
+    if (run && run->compiled_owner) {
+        return NULL;
+    }
+    if (!run || !n || pin < 0 || pin >= n->input_count ||
+        (run->whole_function_executed && n != run->returned)) {
         return NULL;
     }
     const runtime_node *state = flow_runtime_node((flow_run *)run, n);
@@ -1057,11 +1254,20 @@ const flow_traversal *flow_run_traversals(const flow_run *run, int *count)
 
 const node *flow_run_current_node(const flow_run *run)
 {
-    run = flow_run_active_leaf(run);
+    run = flow_run_view(active_run(run));
+    if (run && run->compiled) {
+        return flow_compiled_current(run);
+    }
+    if (run && run->state == FLOW_FAILED && run->error.node) {
+        return run->error.node;
+    }
+    if (run && run->compiled_owner) {
+        return run->inspection_node;
+    }
     if (!run || !acount(run->frames)) {
         return NULL;
     }
-    return run->frames[acount(run->frames) - 1].node;
+    return frame_node(run, &run->frames[acount(run->frames) - 1]);
 }
 
 const char *flow_run_event_name(const flow_run *run)
@@ -1069,8 +1275,28 @@ const char *flow_run_event_name(const flow_run *run)
     return run ? run->event_name : NULL;
 }
 
+void flow_run_data_call(
+    flow_run *run,
+    const graph *caller,
+    const node *call,
+    const graph *callee,
+    const node *failed
+)
+{
+    if (!run) {
+        return;
+    }
+    if (!acount(run->data_error_stack)) {
+        apush(
+            run->data_error_stack,
+            ((flow_call_frame){ callee, callee->graph_id, failed->id })
+        );
+    }
+    apush(run->data_error_stack, ((flow_call_frame){ caller, caller->graph_id, call->id }));
+}
 const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
 {
+    run = flow_run_view(run);
     if (count) {
         *count = 0;
     }
@@ -1079,8 +1305,38 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
     }
     flow_run *mutable_run = (flow_run *)run;
     aclear(mutable_run->stack_cache);
+    if (run->compiled || run->compiled_owner) {
+        flow_compiled_build_stack(mutable_run);
+        if (count) {
+            *count = acount(mutable_run->stack_cache);
+        }
+        return mutable_run->stack_cache;
+    }
+    if (run->whole_function_executed && run->state == FLOW_FAILED) {
+        for (int frame = run->whole_error_stack; frame >= 0;) {
+            const behavior_function_source
+                *source = behavior_function_stack_at(run->whole_function, frame);
+            apush(
+                mutable_run->stack_cache,
+                ((flow_call_frame){ source->graph,
+                                    source->graph->graph_id,
+                                    source->call->id })
+            );
+            frame = source->parent;
+        }
+        int length = acount(mutable_run->stack_cache);
+        for (int i = 0; i < length / 2; i++) {
+            flow_call_frame swap = mutable_run->stack_cache[i];
+            mutable_run->stack_cache[i] = mutable_run->stack_cache[length - i - 1];
+            mutable_run->stack_cache[length - i - 1] = swap;
+        }
+        if (count) {
+            *count = length;
+        }
+        return mutable_run->stack_cache;
+    }
     for (int i = 0; i < acount(run->frames); i++) {
-        node *n = run->frames[i].node;
+        node *n = frame_node(run, &run->frames[i]);
         apush(
             mutable_run->stack_cache,
             (flow_call_frame){ run->graph, run->graph->graph_id, n ? n->id : 0 }
@@ -1097,6 +1353,9 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
             apush(mutable_run->stack_cache, children[i]);
         }
     }
+    for (int i = acount(run->data_error_stack) - 1; i >= 0; i--) {
+        apush(mutable_run->stack_cache, run->data_error_stack[i]);
+    }
     if (count) {
         *count = acount(mutable_run->stack_cache);
     }
@@ -1105,6 +1364,7 @@ const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count)
 
 unsigned flow_run_call_depth(const flow_run *run)
 {
+    run = flow_run_view(run);
     return run ? run->call_depth : 0;
 }
 
@@ -1152,7 +1412,7 @@ void flow_run_free(flow_run *run)
     if (!run) {
         return;
     }
-    if (run->instance) {
+    if (run->instance && !run->parent) {
         behavior_instance_remove_activation(run->instance, run);
     }
     flow_run_reset(run);
@@ -1176,6 +1436,35 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "EXEC input used as data");
     }
 
+    if (ctx->run->program) {
+        int result = behavior_program_input(
+            ctx->run->program,
+            ctx->node,
+            input_pin,
+            &ctx->run->scratch,
+            out,
+            &ctx->run->eval,
+            ctx->run->backend
+        );
+        if (result) {
+            const eval_status *status = &ctx->run->eval.status;
+            /* A binding on the executing node fails at the flow boundary.
+             * Preserve the oracle's code and pin when inspection selects the
+             * general compiled path. Errors in upstream expressions retain
+             * their data-node source. */
+            bool binding = spec->binding && status->node == ctx->node &&
+                           status->pin == input_pin;
+            flow_context_fail(
+                ctx,
+                binding ? FLOW_ERR_NODE : FLOW_ERR_INVALID_GRAPH,
+                status->message
+            );
+            ctx->run->error.node = status->node;
+            ctx->run->error.pin = binding ? -1 : status->pin;
+            return ctx->run->error.code;
+        }
+        return FLOW_OK;
+    }
     node *src = NULL;
     int src_pin = 0;
     if (graph_input_source(ctx->run->graph, ctx->node, input_pin, &src, &src_pin)) {
@@ -1190,11 +1479,10 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
         );
         if (result) {
             const eval_status *status = eval_context_status(&ctx->run->eval);
-            return flow_context_fail(
-                ctx,
-                FLOW_ERR_INVALID_GRAPH,
-                status && status->message ? status->message : "data evaluation failed"
-            );
+            flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, status->message);
+            ctx->run->error.node = status->node;
+            ctx->run->error.pin = status->pin;
+            return ctx->run->error.code;
         }
         const node_desc *conversion = graph_input_conversion(ctx->run->graph, ctx->node, input_pin);
         if (conversion) {
@@ -1204,13 +1492,15 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
             *out = conversion->fn(out, 1, &ctx->run->scratch);
             pin_coerce(out, spec);
             if (out->type != spec->type || (out->type == PIN_STRUCT && !out->ptr)) {
-                return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion failed");
+                int result = flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "edge conversion failed");
+                ctx->run->error.pin = input_pin;
+                return result;
             }
         }
         pin_coerce(out, spec);
         *flow_context_input_value(ctx, input_pin) = *out;
         if (src->output_pins[src_pin].flags & PIN_FLAG_WATCH) {
-            (void)flow_watch_store(ctx->run, src, 1, src_pin, out);
+            (void)flow_watch_store(ctx->run, ctx->run->graph, src, 1, src_pin, out);
         }
         return FLOW_OK;
     }
@@ -1292,11 +1582,11 @@ int flow_context_loop_range(
         .type_name = "int",
         .i = first,
     };
-    apush(
-        ctx->run->frames,
-        (flow_frame){
+    push_frame(
+        ctx->run,
+        (activation_frame){
             .node = ctx->node,
-            .kind = FLOW_FRAME_LOOP,
+            .kind = ACTIVATION_LOOP,
             .input_pin = -1,
             .current = first,
             .last = last,
@@ -1320,9 +1610,9 @@ int flow_context_break(struct flow_context *ctx)
         return FLOW_ERR_ARGUMENT;
     }
     for (int i = acount(ctx->run->frames) - 1; i >= 0; i--) {
-        flow_frame *frame = &ctx->run->frames[i];
-        if (frame->kind != FLOW_FRAME_LOOP && frame->kind != FLOW_FRAME_FOREACH &&
-            frame->kind != FLOW_FRAME_WHILE) {
+        activation_frame *frame = &ctx->run->frames[i];
+        if (frame->kind != ACTIVATION_LOOP && frame->kind != ACTIVATION_FOREACH &&
+            frame->kind != ACTIVATION_WHILE) {
             continue;
         }
         frame->break_requested = 1;
@@ -1345,33 +1635,45 @@ int flow_context_while(flow_context *ctx, int condition, int body, int completed
     if (!value.b) {
         return flow_context_continue(ctx, completed);
     }
-    apush(
-        ctx->run->frames,
-        ((flow_frame){ .node = ctx->node,
-                       .kind = FLOW_FRAME_WHILE,
-                       .index_output = condition,
-                       .body_output = body,
-                       .completed_output = completed })
+    push_frame(
+        ctx->run,
+        ((activation_frame){ .node = ctx->node,
+                             .kind = ACTIVATION_WHILE,
+                             .index_output = condition,
+                             .body_output = body,
+                             .completed_output = completed })
     );
     return flow_context_continue(ctx, body);
 }
 
-int flow_context_retrigger_delay(flow_context *ctx, double deadline)
+bool flow_run_retrigger_delay(flow_run *current, const node *waiting, double deadline)
 {
-    behavior_instance *instance = ctx->run->instance;
-    if (!instance) {
-        return flow_context_fail(ctx, FLOW_ERR_STATE, "Retriggerable Delay requires an instance");
-    }
+    behavior_instance *instance = current->instance;
+    assert(instance);
     for (int i = 0; i < acount(instance->activations); i++) {
         flow_run *run = instance->activations[i];
         while (run->active_child) {
             run = run->active_child;
         }
-        if (run != ctx->run && run->state == FLOW_SUSPENDED &&
-            !run->host_request && run->waiting_node == ctx->node) {
+        if (run != current && run->state == FLOW_SUSPENDED &&
+            !run->host_request && run->waiting_node == waiting) {
             run->wake_time = deadline;
-            return FLOW_OK;
+            if (run->compiled) {
+                flow_compiled_retime(run, deadline);
+            }
+            return true;
         }
+    }
+    return false;
+}
+
+int flow_context_retrigger_delay(flow_context *ctx, double deadline)
+{
+    if (!ctx->run->instance) {
+        return flow_context_fail(ctx, FLOW_ERR_STATE, "Retriggerable Delay requires an instance");
+    }
+    if (flow_run_retrigger_delay(ctx->run, ctx->node, deadline)) {
+        return FLOW_OK;
     }
     int result = flow_context_pause_until(ctx, deadline);
     return result < 0 ? result : flow_context_continue(ctx, 0);
@@ -1391,8 +1693,10 @@ int flow_context_foreach(
         return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "ForEach input is not an array");
     }
     const pin_array *source = (const pin_array *)value->ptr;
-    pin_array *array = pin_array_clone(source);
+    arena snapshot = { 0 };
+    pin_array *array = pin_array_snapshot_to_arena(&snapshot, source);
     if (!array) {
+        arena_free(&snapshot);
         return flow_context_fail(ctx, FLOW_ERR_NODE, "ForEach array copy failed");
     }
     if (body_output < 0 || value_output < 0 || index_output < 0 ||
@@ -1400,33 +1704,33 @@ int flow_context_foreach(
         value_output >= ctx->node->output_count ||
         index_output >= ctx->node->output_count ||
         completed_output >= ctx->node->output_count) {
-        pin_array_free(array);
+        arena_free(&snapshot);
         return flow_context_fail(ctx, FLOW_ERR_INVALID_NODE, "invalid ForEach descriptor");
     }
     runtime_node *state = flow_runtime_node(ctx->run, ctx->node);
     runtime_node_set_computed(state, 0);
     if (!array->count) {
-        pin_array_free(array);
+        arena_free(&snapshot);
         return flow_context_continue(ctx, completed_output);
     }
     /* Published values can be read by delayed Completed consumers after the
      * iteration array has been released. Keep their data in the run arena. */
-    if (flow_copy_input(
+    if (pin_value_snapshot_to_arena(
             &ctx->run->scratch,
             &runtime_node_outputs(state)[value_output],
             &array->items[0]
         )) {
-        pin_array_free(array);
+        arena_free(&snapshot);
         return flow_context_fail(ctx, FLOW_ERR_NODE, "ForEach element copy failed");
     }
     runtime_node_outputs(state)[index_output] = (pin_value){ .type = PIN_I32,
                                                              .type_name = "int",
                                                              .i = 0 };
-    apush(
-        ctx->run->frames,
-        (flow_frame){
+    push_frame(
+        ctx->run,
+        (activation_frame){
             .node = ctx->node,
-            .kind = FLOW_FRAME_FOREACH,
+            .kind = ACTIVATION_FOREACH,
             .input_pin = -1,
             .current = 1,
             .last = array->count - 1,
@@ -1435,6 +1739,7 @@ int flow_context_foreach(
             .completed_output = completed_output,
             .index_output = index_output,
             .array = array,
+            .array_storage = snapshot,
         }
     );
     return flow_context_continue(ctx, body_output);
@@ -1483,7 +1788,7 @@ static void flow_run_prune_calls(flow_run *run, const node *call)
             flow_run_observed(child)) {
             continue;
         }
-        flow_run_free(child);
+        flow_run_release_call(run, child);
         memmove(
             run->children + i,
             run->children + i + 1,
@@ -1515,7 +1820,23 @@ int flow_context_call(struct flow_context *ctx, graph *target, flow_inputs input
         .parallel_user = parent->parallel_user,
     };
     flow_error error = { 0 };
-    flow_run *child = flow_run_start(target, entry, inputs, &options, &error);
+    flow_run *child = NULL;
+    for (int i = 0; i < acount(parent->call_pool); i++) {
+        flow_run *candidate = parent->call_pool[i];
+        if (candidate->invocation != ctx->node || candidate->graph != target) {
+            continue;
+        }
+        parent->call_pool[i] = apop(parent->call_pool);
+        child = flow_run_start_reuse(candidate, target, entry, inputs, &options, &error);
+        if (!child) {
+            flow_run_free(candidate);
+            return flow_context_fail(ctx, error.code, error.message);
+        }
+        break;
+    }
+    if (!child) {
+        child = flow_run_start(target, entry, inputs, &options, &error);
+    }
     if (!child) {
         return flow_context_fail(ctx, error.code, error.message);
     }

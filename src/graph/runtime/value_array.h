@@ -15,7 +15,17 @@ typedef struct pin_array
     int count;
     int capacity;
     pin_value *items;
+    /* Optional index into immutable, ordered items. Owned by the same arena
+     * as the snapshot; borrowed/mutable host arrays leave this NULL. */
+    const int *buckets;
+    unsigned bucket_mask;
 } pin_array;
+
+/* Small and aggregate collections retain flat storage. Indexes never change
+ * iteration order or first-match equality semantics. */
+void pin_array_index(arena *storage, pin_array *array);
+int pin_array_find(const pin_array *array, const pin_value *value);
+int pin_set_unique(arena *storage, pin_value *out, const pin_value *items, int count);
 
 /* TYPE-8/TYPE-9: arrays own their item storage. Struct elements remain
  * borrowed until a type-specific copy callback exists. */
@@ -23,6 +33,11 @@ pin_array *pin_array_new(pin_type element_type, const char *type_name, int capac
 pin_array *pin_array_clone(const pin_array *src);
 pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src);
 pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src);
+/* Fixed-size typed zero values, owned by the arena. */
+pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
+/* Deep snapshot, including registered struct fields and all nominal names. */
+pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src);
+int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
 void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
 int pin_array_push(pin_array *array, const pin_value *value);

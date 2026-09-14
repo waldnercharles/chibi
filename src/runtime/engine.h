@@ -71,6 +71,8 @@ game_audio *engine_audio(const engine *engine);
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity);
 const engine_frame_timing *engine_last_timing(const engine *engine);
 const game_behavior_profile_frame *engine_behavior_profile(const engine *engine);
+/* Detailed per-behavior timers are opt-in; aggregate frame timing stays active. */
+void engine_set_behavior_profiling(engine *engine, bool enabled);
 bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out);
 
 /* Host viewport surface. Resize requests are coalesced; the target is

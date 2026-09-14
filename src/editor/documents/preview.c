@@ -130,7 +130,7 @@ void ed_compile(editor *e)
         e->compile.error_count++;
     }
     ed_rebuild_compile_text(e);
-    if (e->compile.error_count || e->compile.warning_count) {
+    if (acount(e->compile.items)) {
         editor_ui_set_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS, true);
     }
 }
@@ -241,6 +241,22 @@ void ed_draw_debug_menu(editor *e)
     }
     const behavior_instance *target_instance = ed_display_instance(e);
     int attached = target_instance != NULL;
+    if (target_instance) {
+        ImGui_TextUnformatted(
+            behavior_backend_name(behavior_instance_backend(target_instance))
+        );
+        const behavior_instance_failure *failure = behavior_instance_last_failure(target_instance);
+        if (failure) {
+            ImGui_TextWrapped("Last failure: %s", failure->message);
+            ImGui_TextDisabled(
+                "%s / %s / node %llu / pin %d",
+                failure->event_name,
+                failure->graph_name,
+                (unsigned long long)failure->node_id,
+                failure->pin
+            );
+        }
+    }
     int can_dispatch = !ed_inspection_blocked(e) &&
                        e->active_graph == e->asset->graph && entry &&
                        entry->reference_name;
@@ -546,7 +562,7 @@ void ed_rebuild_compile_text(editor *e)
     size_t needed = 1;
     for (int i = 0; i < count; i++) {
         const compile_diagnostic *item = &e->compile.items[i];
-        const char *severity = item->severity == CMPL_ERROR ? "Error:" : "Warning:";
+        const char *severity = cmpl_severity_name(item->severity);
         needed += strlen(severity) + 2 + strlen(item->message) + (i != 0);
     }
     if (e->compile_text_capacity < needed) {
@@ -556,7 +572,7 @@ void ed_rebuild_compile_text(editor *e)
     size_t used = 0;
     for (int i = 0; i < count; i++) {
         const compile_diagnostic *item = &e->compile.items[i];
-        const char *severity = item->severity == CMPL_ERROR ? "Error:" : "Warning:";
+        const char *severity = cmpl_severity_name(item->severity);
         if (i) {
             e->compile_text[used++] = '\n';
         }

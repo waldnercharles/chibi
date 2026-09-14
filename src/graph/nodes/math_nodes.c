@@ -1,5 +1,7 @@
 #include "graph/nodes/math_nodes.h"
 
+#include "graph/runtime/random.h"
+
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
@@ -108,18 +110,9 @@ static pin_value random_range_real(const pin_value *inputs, int count, arena *)
         min = max;
         max = swap;
     }
-    double sample = (double)rand() / ((double)RAND_MAX + 1);
-    long double fraction = (long double)sample;
-    double value = (double)((long double)min * (1 - fraction) +
-                            (long double)max * fraction);
-    if (value < min) {
-        value = min;
-    } else if (value > max) {
-        value = max;
-    }
     return (pin_value){
         .type = PIN_F64,
-        .d = value,
+        .d = behavior_random_range(min, max),
     };
 }
 

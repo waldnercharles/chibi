@@ -31,6 +31,10 @@ To run the game with a debug profile, pass its normal application arguments:
 
 Run `make help` for the complete target list and the purpose of each target.
 
+The [frame-time optimization roadmap](docs/research/frame-time-roadmap.md)
+records current Arena measurements, remaining performance options and the
+acceptance criteria for consistent 60 FPS and higher refresh rates.
+
 When available, Chibi MCP is the default interface for authoring shaders,
 behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
 the public tools and validation sequence.

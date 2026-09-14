@@ -1,5 +1,9 @@
 # Remaining runtime costs
 
+For the post-editor baseline, prioritized future options and P95/P99 acceptance,
+see the [frame-time optimization roadmap](frame-time-roadmap.md). This report
+retains the earlier measurements and sampling evidence.
+
 September 13, 2026. The final paired 240-frame combat comparison at 20,000
 initial enemies reports these medians. Each value is the median of three trial
 medians, so the phases should not be added to reconstruct the frame median.

@@ -3,13 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static void usage(const char *program)
 {
     fprintf(
         stderr,
         "Usage: %s [--project-root PATH]\n"
-        "Read one preview_shader JSON request from stdin and write one JSON "
+        "Read one preview_shader or preview_scene JSON request from stdin and "
+        "write one JSON "
         "response.\n",
         program
     );
@@ -40,7 +42,17 @@ int main(int argc, char **argv)
         return 2;
     }
     int exit_code = 0;
+    fflush(stdout);
+    int output = dup(STDOUT_FILENO);
+    if (output < 0 || dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
+        abort();
+    }
     char *response = chibi_render_preview_handle(request, project_root, &exit_code);
+    fflush(stdout);
+    if (dup2(output, STDOUT_FILENO) < 0) {
+        abort();
+    }
+    close(output);
     free(request);
     if (!response) {
         fprintf(stderr, "chibi_render_ctl: could not create response\n");

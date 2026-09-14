@@ -307,7 +307,7 @@ int main(int argc, char **argv)
         width,
         height,
         (centered ? CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT : 0) |
-            CF_APP_OPTIONS_RESIZABLE_BIT | CF_APP_OPTIONS_NO_AUDIO_BIT |
+            CF_APP_OPTIONS_RESIZABLE_BIT | (hidden ? CF_APP_OPTIONS_NO_AUDIO_BIT : 0) |
             (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
         argv[0]
     );

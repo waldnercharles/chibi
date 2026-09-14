@@ -44,7 +44,9 @@ int behavior_data_instruction(behavior_data_context *context, const graph_ir_beh
                 if (value.type != PIN_STRUCT || !value.ptr) {
                     return fail(ctx, source, instruction->source_pin, "exposed field has no aggregate value");
                 }
-                pin_read_field(value.ptr, instruction->field, &value);
+                type_field field = *instruction->field;
+                field.offset = instruction->field_offset;
+                pin_read_field(value.ptr, &field, &value);
             }
             if (ctx->on_data_edge) {
                 int source_pin = instruction->target;

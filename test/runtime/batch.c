@@ -352,7 +352,7 @@ static void exclusions(behavior_backend backend)
     }
 }
 
-static void external_profile(const char *, uint64_t, behavior_profile_phase, void *user)
+static void external_profile(const char *, uint64_t, uint64_t, behavior_profile_phase, void *user)
 {
     (*(int *)user)++;
 }

@@ -1,125 +1,128 @@
 {
   "name": "ArenaPlayer",
+  "identity": "prototype-0000000000000001",
   "components": {
-    "GameTransform": {
-      "x": 320,
-      "y": -180
-    },
-    "GameMovement": {
-      "speed": 180
-    },
-    "GameInput": {
-      "move": {
-        "x": 0,
-        "y": 0
-      }
-    },
-    "GameHealth": {
-      "current": 100,
-      "maximum": 100
-    },
-    "GameWeapon": {
-      "damage": 10,
-      "cooldown": 0.125
-    },
-    "GameCollider": {
-      "radius": 12,
-      "category": 1,
-      "mask": 10,
-      "shape": 0,
-      "width": 0,
-      "height": 0,
-      "sensor": false,
-      "ignore_entity": null
-    },
-    "GameOrientation": {
-      "radians": 0.0
-    },
-    "GameGeometry3D": {
-      "primitive": 7,
-      "width": 20,
-      "depth": 18,
-      "height": 18,
-      "elevation": 14
-    },
-    "GameAim": {
+    "GAME.GameAim": {
       "direction": {
-        "x": 1,
-        "y": 0
+        "x": 1.0,
+        "y": 0.0
       },
       "firing": false
     },
-    "GameShader": {
-      "material": "ArenaPlayer",
-      "shape": "",
-      "parameters": "{}",
-      "bounds_x": 0,
-      "bounds_y": 0
+    "GAME.GameBody": {
+      "continuous": true,
+      "type": 1
     },
-    "GameBody": {
-      "type": 1,
-      "continuous": true
+    "GAME.GameCollider": {
+      "category": 1,
+      "height": 0.0,
+      "ignore_entity": null,
+      "mask": 10,
+      "radius": 12.0,
+      "sensor": false,
+      "shape": 0,
+      "width": 0.0
     },
-    "GameVelocity": {
-      "x": 0,
-      "y": 0
-    },
-    "GameEncounterMember": {
+    "GAME.GameEncounterMember": {
       "role": 0
     },
-    "GamePointLight": {
-      "color": 953090047,
-      "intensity": 0.65,
-      "radius": 62,
-      "elevation": 18
-    },
-    "GameSurfaceInfluence": {
-      "color": 953090047,
-      "strength": 0.19,
-      "radius": 22,
-      "linger": 0.22
-    },
-    "GameVisualTransform": {
-      "pitch": 0,
-      "yaw": 0,
-      "roll": 0,
-      "scale": 1
-    },
-    "GameExperience": {
+    "GAME.GameExperience": {
       "current": 0
     },
-    "GameParticleEmitter": {
-      "shape": 0,
-      "color": 3304783871,
-      "end_color": 394308096,
-      "rate": 160,
-      "lifetime": 0.24,
-      "speed": 105,
-      "size": 2.2,
-      "spread": 0.2,
-      "drag": 1.5,
-      "emission": 1.3,
-      "size_exponent": 0.85,
-      "velocity_inherit": 1,
-      "offset": {
-        "x": -11,
-        "y": 0,
-        "z": 0
-      },
-      "direction": {
-        "x": -1,
-        "y": 0,
-        "z": 0
+    "GAME.GameGeometry3D": {
+      "depth": 18.0,
+      "elevation": 14.0,
+      "height": 18.0,
+      "primitive": 7,
+      "width": 20.0
+    },
+    "game.GameHealth": {
+      "current": 100,
+      "maximum": 100
+    },
+    "game.GameInput": {
+      "move": {
+        "x": 0.0,
+        "y": 0.0
       }
+    },
+    "game.GameMovement": {
+      "speed": 180.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "GAME.GameParticleEmitter": {
+      "color": 3304783871,
+      "direction": {
+        "x": -1.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "drag": 1.5,
+      "emission": 1.2999999523162842,
+      "end_color": 394308096,
+      "heading_only": false,
+      "lifetime": 0.23999999463558197,
+      "offset": {
+        "x": -11.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "rate": 160.0,
+      "shape": 0,
+      "size": 2.200000047683716,
+      "size_exponent": 0.8500000238418579,
+      "speed": 105.0,
+      "spread": 0.20000000298023224,
+      "velocity_inherit": 1.0
+    },
+    "GAME.GamePointLight": {
+      "color": 953090047,
+      "elevation": 18.0,
+      "intensity": 0.6499999761581421,
+      "radius": 62.0
+    },
+    "GAME.GameShader": {
+      "bounds_x": 0.0,
+      "bounds_y": 0.0,
+      "material": "ArenaPlayer",
+      "parameters": "{}",
+      "shape": ""
+    },
+    "GAME.GameSurfaceInfluence": {
+      "color": 953090047,
+      "inner_radius": 0.0,
+      "linger": 0.2199999988079071,
+      "radius": 22.0,
+      "strength": 0.1899999976158142
+    },
+    "game.GameTransform": {
+      "x": 320.0,
+      "y": -180.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameVisualTransform": {
+      "pitch": 0.0,
+      "roll": 0.0,
+      "scale": 1.0,
+      "yaw": 0.0
+    },
+    "GAME.GameWeapon": {
+      "cooldown": 0.125,
+      "damage": 10
     }
   },
   "behaviors": [
-    "TwinStickInputBehavior",
-    "TwinStickWeaponBehavior",
-    "HealthBehavior",
-    "PlayerContactBehavior",
+    "ArenaImpactFeedback",
     "ArenaShipMotionBehavior",
     "CombatFeedback",
-    "ArenaImpactFeedback"
+    "HealthBehavior",
+    "PlayerContactBehavior",
+    "TwinStickInputBehavior",
+    "TwinStickWeaponBehavior"
   ]
 }

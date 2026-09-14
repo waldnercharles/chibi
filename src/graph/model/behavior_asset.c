@@ -474,15 +474,15 @@ behavior_variable *behavior_asset_promote_pin_to_variable(
     if (!v) {
         return NULL;
     }
-    node *access = output ? behavior_asset_add_get_node(asset, v->id)
-                          : behavior_asset_add_set_node(asset, v->id);
+    node *access = output ? behavior_asset_add_set_node(asset, v->id)
+                          : behavior_asset_add_get_node(asset, v->id);
     if (!access) {
         return v;
     }
     if (output) {
-        graph_connect_data(asset->graph, access, 0, n, index);
-    } else {
         graph_connect_data(asset->graph, n, index, access, 1);
+    } else {
+        graph_connect_data(asset->graph, access, 0, n, index);
     }
     return v;
 }

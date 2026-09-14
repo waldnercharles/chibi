@@ -32,6 +32,12 @@
       ]
     },
     {
+      "name": "Phase Warden",
+      "prototype": "PhaseWarden",
+      "components": {},
+      "behaviors": []
+    },
+    {
       "name": "Boundary 1",
       "prototype": "ArenaWallHorizontal",
       "components": {
@@ -221,6 +227,79 @@
       "name": "Environment",
       "prototype": "ArenaEnvironment",
       "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Space Dash",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 3,
+          "action": "Dash",
+          "firing": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Shift Dash",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 4,
+          "action": "Dash",
+          "firing": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Pad Dash",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 33,
+          "action": "Dash",
+          "firing": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Stick Fire",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 41,
+          "action": "Fire",
+          "firing": true
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Trigger Fire",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 40,
+          "action": "Fire",
+          "firing": true
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Mouse Fire",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 1,
+          "action": "Fire",
+          "firing": true,
+          "disabled": false
+        }
+      },
       "behaviors": []
     }
   ],

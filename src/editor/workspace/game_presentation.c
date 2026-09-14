@@ -4,6 +4,9 @@
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
+#include "render/audio.h"
+#include "render/widgets.h"
+#include "runtime/camera.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
 
@@ -19,6 +22,8 @@ struct app_game_presentation
     engine_viewport *viewport;
     bool interactive;
     bool render_failed;
+    bool widget_focus;
+    render_audio *audio;
     /* Explicit presentation time; it advances while playing and freezes paused. */
     double showcase_time;
     double showcase_last_time;
@@ -57,6 +62,20 @@ app_game_presentation *app_game_presentation_new(
     bool interactive
 )
 {
+    if (interactive) {
+        const char *directory = cf_fs_get_user_directory("chibi", "game");
+        char save_path[1024];
+        int length = snprintf(save_path, sizeof save_path, "%sprofiles.json", directory ? directory : "");
+        if (!directory || length < 0 || length >= (int)sizeof save_path ||
+            !game_save_open(game_behavior_save(scene->live->behaviors), save_path)) {
+            fprintf(
+                stderr,
+                "Could not open game save storage: %s\n",
+                game_save_error(game_behavior_save(scene->live->behaviors))
+            );
+            return NULL;
+        }
+    }
     if (app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) !=
         0) {
         return NULL;
@@ -65,6 +84,7 @@ app_game_presentation *app_game_presentation_new(
     *game = (app_game_presentation){ .scene = scene,
                                      .viewport = viewport,
                                      .interactive = interactive };
+    game->audio = render_audio_new();
     scene->selected = -1;
     for (int i = 0; i < acount(scene->actors); i++) {
         scene->actors[i].marked = false;
@@ -82,6 +102,7 @@ void app_game_presentation_free(app_game_presentation *game)
     if (game) {
         engine_viewport_clear_arena_camera(game->viewport);
         engine_viewport_set_render_callback(game->viewport, NULL, NULL);
+        render_audio_free(game->audio);
         free(game);
     }
 }
@@ -184,11 +205,6 @@ static int pause_menu(app_game_presentation *game, int status)
     editor_ui_track_item(
         outcome ? (cleared ? "game.outcome.cleared" : "game.outcome.defeated") : "game.paused"
     );
-    if (!outcome) {
-        ImGui_TextDisabled("WASD / arrows   Move");
-        ImGui_TextDisabled("Mouse / right stick   Aim");
-        ImGui_TextDisabled("Click / Space   Fire");
-    }
     ImGui_Dummy((ImVec2){ 0, 2 });
     int result = 0;
     if (!outcome) {
@@ -253,7 +269,16 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     if (size.x > 0 && size.y > 0) {
         engine_viewport_request_resize(game->viewport, (int)size.x, (int)size.y);
     }
-    if (game->scene->perspective) {
+    engine_viewport_view authored_view;
+    int authored_camera = game_camera_view(game->scene->world, game->scene->runtime, &authored_view);
+    if (authored_camera < 0) {
+        fprintf(stderr, "GameCamera requires one enabled camera with positive spans and a Transform.\n");
+        return -1;
+    }
+    if (authored_camera) {
+        engine_viewport_set_view(game->viewport, &authored_view);
+        engine_viewport_clear_arena_camera(game->viewport);
+    } else if (game->scene->perspective) {
         engine_viewport_set_arena_showcase(game->viewport, (float)game->showcase_time);
     } else {
         engine_viewport_clear_arena_camera(game->viewport);
@@ -261,7 +286,14 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     engine_set_focus(game->scene->runtime, playing && focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
     CF_V2 target;
     bool mouse = mouse_target(game, &target);
-    app_gameplay_sample(game->scene, playing && focused, mouse ? &target : NULL);
+    ImVec2 pointer = ImGui_GetIO()->MousePos;
+    bool ui_capture = game->widget_focus || game_widgets_capture(
+                                                game->scene->world,
+                                                (CF_V2){ 0 },
+                                                (CF_V2){ size.x, size.y },
+                                                (CF_V2){ pointer.x, pointer.y }
+                                            );
+    app_gameplay_sample(game->scene, playing && focused && !ui_capture, mouse ? &target : NULL);
     if (engine_frame(game->scene->runtime, now) != FLOW_OK) {
         fprintf(stderr, "Game frame failed: %s\n", engine_error(game->scene->runtime));
         return -1;
@@ -288,9 +320,24 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         NULL,
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
-            ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBringToFrontOnFocus
+            ImGuiWindowFlags_NoBringToFrontOnFocus
     );
     int drawn = engine_viewport_image(game->viewport, size.x, size.y);
+    if (game->interactive) {
+        render_audio_update(
+            game->audio,
+            engine_audio(game->scene->runtime),
+            engine_is_playing(game->scene->runtime)
+        );
+    }
+    game->widget_focus = render_widgets(
+        game->scene->world,
+        game->scene->live->entities,
+        engine_visibility(game->scene->runtime),
+        (CF_V2){ 0 },
+        (CF_V2){ size.x, size.y },
+        playing && focused
+    );
     if (!playing) {
         ImDrawList_AddRectFilled(
             ImGui_GetWindowDrawList(),

@@ -581,6 +581,245 @@ static bool read_geometry(ecs_world *world, ecs_entity entity, physics_body *bod
     return true;
 }
 
+typedef struct
+{
+    ecs_entity entity;
+    bool circle, sensor;
+    b2Transform transform;
+    b2Circle disk;
+    b2Polygon box;
+} ray_shape;
+struct game_ray_scene
+{
+    ray_shape *shapes;
+    b2DynamicTree tree;
+};
+
+game_ray_scene *game_ray_scene_new()
+{
+    game_ray_scene *scene = xcalloc(1, sizeof *scene);
+    scene->tree = b2DynamicTree_Create();
+    return scene;
+}
+void game_ray_scene_free(game_ray_scene *scene)
+{
+    b2DynamicTree_Destroy(&scene->tree);
+    afree(scene->shapes);
+    free(scene);
+}
+
+int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entities *entities)
+{
+    aclear(scene->shapes);
+    b2DynamicTree_Destroy(&scene->tree);
+    scene->tree = b2DynamicTree_Create();
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameCollider.id };
+    if (!ecs_world_component(world, required[0]) ||
+        !ecs_world_component(world, required[1])) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(world, &query, required, 2);
+    if (result != ECS_OK) {
+        return result;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        if (game_entities_is_retiring(entities, entity)) {
+            continue;
+        }
+        physics_body body = { 0 };
+        if (!read_geometry(world, entity, &body)) {
+            result = FLOW_ERR_ARGUMENT;
+            break;
+        }
+        ray_shape shape = { .entity = entity,
+                            .circle = body.collider.shape == GAME_COLLIDER_CIRCLE,
+                            .sensor = body.collider.sensor,
+                            .transform = body.end };
+        if (shape.circle) {
+            shape.disk.radius = body.collider.radius;
+        } else {
+            shape.box = b2MakeBox(body.collider.width * .5f, body.collider.height * .5f);
+        }
+        b2DynamicTree_CreateProxy(
+            &scene->tree,
+            bounds(&body, body.end),
+            body.collider.category,
+            (uint64_t)acount(scene->shapes)
+        );
+        apush(scene->shapes, shape);
+    }
+    ecs_query_end(&query);
+    return result;
+}
+
+typedef struct
+{
+    const game_ray_scene *scene;
+    ecs_entity exclude;
+    bool sensors;
+    float length, nearest;
+    game_ray_hit *out;
+} ray_query;
+static float cast_shape(const b2RayCastInput *ray, int, uint64_t index, void *user)
+{
+    ray_query *query = user;
+    const ray_shape *shape = &query->scene->shapes[index];
+    if (same_entity(shape->entity, query->exclude) ||
+        (!query->sensors && shape->sensor)) {
+        return ray->maxFraction;
+    }
+    b2RayCastInput local = {
+        .origin = b2InvTransformPoint(shape->transform, ray->origin),
+        .translation = b2InvRotateVector(shape->transform.q, ray->translation),
+        .maxFraction = ray->maxFraction
+    };
+    bool inside = shape->circle ? b2PointInCircle(local.origin, &shape->disk)
+                                : b2PointInPolygon(local.origin, &shape->box);
+    b2CastOutput hit = shape->circle ? b2RayCastCircle(&local, &shape->disk)
+                                     : b2RayCastPolygon(&local, &shape->box);
+    if (inside) {
+        hit = (b2CastOutput){ .hit = true,
+                              .point = local.origin,
+                              .normal = b2Neg(b2Normalize(local.translation)) };
+    }
+    game_ray_hit *out = query->out;
+    if (!hit.hit || hit.fraction > query->nearest ||
+        (out->found && hit.fraction == query->nearest &&
+         ecs_entity_to_u64(shape->entity) > ecs_entity_to_u64(out->entity))) {
+        return ray->maxFraction;
+    }
+    query->nearest = hit.fraction;
+    b2Vec2 point = b2TransformPoint(shape->transform, hit.point),
+           normal = b2RotateVector(shape->transform.q, hit.normal);
+    *out = (game_ray_hit){ .found = true,
+                           .entity = shape->entity,
+                           .point = { point.x, point.y },
+                           .normal = { normal.x, normal.y },
+                           .distance = hit.fraction * query->length };
+    /* Keep searching at fraction zero so overlapping origin hits have stable
+     * handle ordering regardless of tree insertion order. */
+    return fmaxf(hit.fraction, 0.0000001f);
+}
+
+int game_ray_scene_cast(
+    const game_ray_scene *scene,
+    CF_V2 start,
+    CF_V2 end,
+    unsigned categories,
+    ecs_entity exclude,
+    bool sensors,
+    game_ray_hit *out
+)
+{
+    *out = (game_ray_hit){ .point = end };
+    b2RayCastInput ray = { .origin = { start.x, start.y },
+                           .translation = { end.x - start.x, end.y - start.y },
+                           .maxFraction = 1 };
+    float maximum = 100000 * GAME_UNITS_PER_METER;
+    if (!b2IsValidRay(&ray) || fabsf(start.x) >= maximum || fabsf(start.y) >= maximum ||
+        fabsf(end.x) >= maximum || fabsf(end.y) >= maximum) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    ray_query query = { scene, exclude, sensors, b2Length(ray.translation),
+                        1,     out };
+    out->distance = query.length;
+    if (categories) {
+        b2DynamicTree_RayCast(&scene->tree, &ray, categories, cast_shape, &query);
+    }
+    return FLOW_OK;
+}
+
+int game_physics_raycast(
+    ecs_world *world,
+    game_entities *entities,
+    CF_V2 start,
+    CF_V2 end,
+    unsigned categories,
+    ecs_entity exclude,
+    bool sensors,
+    game_ray_hit *out
+)
+{
+    game_ray_scene *scene = game_ray_scene_new();
+    int result = game_ray_scene_refresh(scene, world, entities);
+    if (result >= 0) {
+        result = game_ray_scene_cast(scene, start, end, categories, exclude, sensors, out);
+    }
+    game_ray_scene_free(scene);
+    return result;
+}
+
+static const char *raycast_node(
+    const eval_context *ctx,
+    const pin_value *inputs,
+    arena *storage,
+    pin_value *out
+)
+{
+    ecs_world *world = eval_context_service(ctx, "ecs.world");
+    game_entities *entities = eval_context_service(ctx, "game.entities");
+    if (!world || !entities || !inputs[0].ptr || !inputs[1].ptr) {
+        return "Raycast requires a game world and Start and End vectors";
+    }
+    game_ray_hit hit;
+    if (game_physics_raycast(
+            world,
+            entities,
+            *(CF_V2 *)inputs[0].ptr,
+            *(CF_V2 *)inputs[1].ptr,
+            inputs[2].u,
+            ecs_entity_from_u64(inputs[3].u64),
+            inputs[4].b,
+            &hit
+        ) < 0) {
+        return "Raycast requires finite coordinates and valid colliders";
+    }
+    CF_V2 *point = arena_alloc(storage, sizeof *point);
+    CF_V2 *normal = arena_alloc(storage, sizeof *normal);
+    *point = hit.point;
+    *normal = hit.normal;
+    out[0] = (pin_value){ .type = PIN_BOOL, .b = hit.found };
+    out[1] = (pin_value){ .type = PIN_HANDLE,
+                          .type_name = "ecs.entity",
+                          .u64 = ecs_entity_to_u64(hit.entity) };
+    out[2] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = point };
+    out[3] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = normal };
+    out[4] = (pin_value){ .type = PIN_F32, .f = hit.distance };
+    return NULL;
+}
+
+static pin_spec RAY_IN[] = {
+    { .name = "Start", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "End", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Categories", .type = PIN_U32, .type_name = "unsigned int" },
+    { .name = "Exclude", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Include Sensors", .type = PIN_BOOL },
+};
+static pin_spec RAY_OUT[] = {
+    { .name = "Found", .type = PIN_BOOL },
+    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Normal", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Distance", .type = PIN_F32 },
+};
+static const node_access RAY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+node_desc GAME_NODE_Raycast = {
+    .name = "Raycast",
+    .input_count = 5,
+    .inputs = RAY_IN,
+    .output_count = 5,
+    .outputs = RAY_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = raycast_node,
+    .category = "Physics",
+    .keywords = "ray segment visibility line sight wall occlusion ricochet "
+                "normal",
+    .access = &RAY_ACCESS,
+};
+
 int game_physics_contact_entities(
     ecs_world *world,
     game_entities *entities,

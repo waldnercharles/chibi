@@ -1,8 +1,10 @@
 # Point clangd at the CMake compilation database.
 #
-# CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON, so build/ already holds
-# the real compile flags, including the libclang include directory that
-# find_path() resolved for tools/reflect/reflect.c. Without this file clangd searches
+# CMakeLists.txt sets CMAKE_EXPORT_COMPILE_COMMANDS ON and exposes the active
+# build directory's compilation database through the ignored root-level
+# compile_commands.json link. It contains the real compile flags, including the
+# libclang include directory that find_path() resolved for tools/reflect/reflect.c.
+# Without this file clangd searches
 # only the source tree, fails to resolve <clang-c/Index.h> and <dcimgui.h>, and
 # reports missing-header errors that the actual build does not have.
 #
@@ -10,6 +12,6 @@
 # is to hardcode an absolute include path into the source, which trades a real
 # portability property for a quiet editor.
 CompileFlags:
-  CompilationDatabase: build
+  CompilationDatabase: .
   Add:
     - -Ibuild/_deps/cute_framework-src/include

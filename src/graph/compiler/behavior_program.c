@@ -170,11 +170,20 @@ static int lower_input(behavior_graph_program *p, node *n, int pin, int *visited
     }
     int aggregate = source_pin;
     const type_field *field = NULL;
-    if (source->output_pins[source_pin].field_source) {
-        field = graph_output_field(source, source_pin, &aggregate);
-        if (!field) {
+    size_t field_offset = 0;
+    int depth = 0;
+    while (source->output_pins[aggregate].field_source) {
+        if (depth++ >= source->output_count) {
             return -1;
         }
+        const type_field *member = graph_output_field(source, aggregate, &aggregate);
+        if (!member) {
+            return -1;
+        }
+        if (!field) {
+            field = member;
+        }
+        field_offset += member->offset;
     }
     const node_desc *conversion = graph_input_conversion(p->source, n, pin);
     if (conversion && !conversion->fn) {
@@ -190,6 +199,7 @@ static int lower_input(behavior_graph_program *p, node *n, int pin, int *visited
             .source_pin = aggregate,
             .target = source_pin,
             .field = field,
+            .field_offset = field_offset,
             .conversion = conversion ? conversion->fn : NULL,
         }
     );

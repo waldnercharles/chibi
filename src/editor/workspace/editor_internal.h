@@ -4,6 +4,7 @@
 #include "editor/ui/color.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
+#include "graph/authoring/optimize.h"
 
 #include <imgui/dcimgui.h>
 
@@ -23,6 +24,8 @@ typedef struct ed_node_view
     uint64_t id;
     ImVec2 min;
     ImVec2 max;
+    ImVec2 symbol_min;
+    ImVec2 symbol_max;
     float title_height;
     int input_first;
     int output_first;
@@ -145,6 +148,8 @@ struct editor
     int execution_pulse_active;
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
+    char optimize_summary[192];
+    int optimize_skips[GRAPH_OPTIMIZE_SKIP_COUNT];
     char *log_text;
     size_t log_text_capacity;
     char *compile_text;
@@ -205,6 +210,7 @@ struct editor
     node *binding_node;
     uint64_t binding_node_id;
     int binding_pin;
+    int binding_axis;
     char binding_search[128];
     int binding_selected;
     bool binding_focus_search;
@@ -262,18 +268,15 @@ struct editor
 #define ED_PIN_RADIUS 6.0f
 #define ED_GRID_SPACING 32.0f
 #define ED_MIN_ZOOM 0.10f
+#define ED_READABLE_ZOOM 0.85f
 #define ED_MAX_ZOOM 2.5f
 #define ED_FIT_MARGIN 32.0f
+#define ED_OPEN_TOP_MARGIN 76.0f
 #define ED_VALUE_WIDTH 86.0f
+#define ED_NODE_CONTROL_WIDTH 240.0f
 #define ED_PREVIEW_WIDTH 64.0f
 #define ED_TEXT_WIDTH 120.0f
-#define ED_NODE_COMPACT_ROW_EXTRA 2.0f
-#define ED_NODE_ROW_EXTRA 8.0f
-#define ED_SYMBOL_NODE_WIDTH 80.0f
-#define ED_SYMBOL_FUNCTION_WIDTH 96.0f
-#define ED_SYMBOL_NODE_MIN_HEIGHT 56.0f
-#define ED_SYMBOL_NODE_BODY_PADDING_ROWS 2
-#define ED_SYMBOL_NODE_VALUE_GAP 16.0f
+#define ED_NODE_ROW_EXTRA 4.0f
 #define ED_LOG_LINE 512
 #define ED_TOAST_WIDTH 320.0f
 #define ED_TOAST_PAD 10.0f
@@ -319,7 +322,6 @@ typedef struct
 {
     const char *symbol;
     int icon;
-    bool compact;
 } ed_node_presentation;
 
 extern const char ED_ICON_WARNING[], ED_ICON_GRAPH[];
@@ -346,6 +348,9 @@ const char *ed_pin_type_name(const pin_spec *spec);
 ImVec2 ed_world_to_screen(const editor *e, float x, float y);
 ImVec2 ed_screen_to_world(const editor *e, ImVec2 p);
 int ed_edge_index(const editor *e, const ed_link_ref *link);
+int ed_pin_rows(const editor *e, const graph *g, const node *n, int kind, int pin);
+bool ed_node_has_advanced_inputs(const node *n);
+float ed_node_options_height(const node *n);
 int ed_pin_editable(const graph *g, const node *n, int kind, int pin);
 int ed_vector_width(const pin_spec *pin);
 bool ed_pin_visible(const graph *g, const node *n, int kind, int pin);
@@ -387,8 +392,13 @@ void ed_update_hover(editor *e, ImVec2 mouse);
 float ed_font_size(const editor *e);
 ImVec2 ed_text_size(const editor *e, const char *text);
 void ed_draw_text(const editor *e, ImDrawList *dl, ImVec2 pos, ImU32 color, const char *text);
-void ed_begin_value_edit(editor *e, node *n, int kind, int index, ImVec2 pos);
-int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos);
+typedef struct
+{
+    ImVec2 pos;
+    float width;
+    const char *label;
+} ed_value_layout;
+int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layout layout);
 int ed_pin_type_combo(const char *label, pin_type *type);
 int ed_pin_container_combo(const char *label, pin_container *container);
 void ed_details_begin_mutation(editor *e);
@@ -400,12 +410,14 @@ const char *ed_binding_label(const editor *e, const pin_binding *binding, char *
 bool ed_inline_source_for(const editor *e, const node *target, int index, node **source, int *source_pin);
 int ed_expand_inline_source(editor *e, node *target, int index);
 int ed_clear_input_source(editor *e, node *target, int index);
+node *ed_vector_source(const editor *e, const node *n, int index);
+void ed_open_vector_binding_popup(editor *e, node *n, int index, int axis);
 void ed_open_binding_popup(editor *e, node *n, int index);
 bool ed_binding_can_convert(const editor *e);
 bool ed_binding_can_jump(const editor *e);
 int ed_convert_binding(editor *e);
 void ed_jump_binding_source(editor *e);
-int ed_draw_bound_input(editor *e, node *n, int index, ImVec2 pos, float width);
+int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout);
 bool ed_binding_trigger_available(editor *e, node *n, int index);
 bool ed_draw_binding_trigger(editor *e, node *n, int index, ImVec2 pos, float size);
 void ed_draw_binding_popup(editor *e);
@@ -418,7 +430,6 @@ int ed_event_add_declared_params(editor *e, node *n, const editor_event_signatur
 void ed_draw_details(editor *e);
 node *ed_place_graph_call_at(editor *e, graph *target, ImVec2 world);
 void ed_finish_settings(editor *e);
-void ed_draw_controls(editor *e, int on_top);
 void ed_draw_canvas(editor *e);
 void ed_draw_front_nodes(editor *e);
 void ed_draw_selection_overlay(const editor *e);
@@ -455,6 +466,7 @@ bool ed_simplify_component_getter(
     const node_desc *conversion
 );
 int ed_optimize_graph(editor *e);
+void ed_arrange_in_transaction(editor *e);
 void ed_refresh_stale_math_expressions(editor *e);
 void ed_open_context_menu(editor *e, ImVec2 mouse);
 void ed_request_extraction(editor *e);
@@ -467,6 +479,7 @@ void ed_rebuild_log_text(editor *e);
 void ed_rebuild_compile_text(editor *e);
 void ed_auto_arrange(editor *e);
 void ed_zoom_fit(editor *e, bool animate);
+void ed_frame_initial_view(editor *e);
 void ed_apply_field_request(editor *e);
 void ed_resize_fitted_view(editor *e, ImVec2 size);
 void ed_camera_target(editor *e, ImVec2 pan, float zoom, bool animate);

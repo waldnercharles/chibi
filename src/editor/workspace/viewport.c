@@ -2,6 +2,8 @@
 #include "editor/workspace/input.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
+#include "render/audio.h"
+#include "render/widgets.h"
 #include "runtime/engine.h"
 #include "support/xalloc.h"
 
@@ -15,6 +17,10 @@
 
 struct engine_viewport
 {
+    ecs_world *widget_world;
+    game_entities *widget_entities;
+    const engine *widget_runtime;
+    bool widget_focus;
     CF_Canvas canvas;
     int width;
     int height;
@@ -35,9 +41,38 @@ struct engine_viewport
     int stable_resize_frames;
     int focused;
     uint32_t recreate_count;
+    render_audio *audio;
     engine_viewport_render_fn render;
     void *render_user;
 };
+
+void engine_viewport_set_widgets(
+    engine_viewport *viewport,
+    ecs_world *world,
+    game_entities *entities,
+    const engine *runtime
+)
+{
+    if (world != viewport->widget_world) {
+        viewport->widget_focus = false;
+    }
+    viewport->widget_world = world;
+    viewport->widget_entities = entities;
+    viewport->widget_runtime = runtime;
+}
+
+bool engine_viewport_widgets_capture(const engine_viewport *viewport)
+{
+    ImVec2 mouse = ImGui_GetIO()->MousePos;
+    return viewport->widget_world &&
+           (viewport->widget_focus ||
+            game_widgets_capture(
+                viewport->widget_world,
+                (CF_V2){ viewport->image_min.x, viewport->image_min.y },
+                (CF_V2){ viewport->image_size.x, viewport->image_size.y },
+                (CF_V2){ mouse.x, mouse.y }
+            ));
+}
 
 static CF_Canvas viewport_canvas(int width, int height)
 {
@@ -62,6 +97,7 @@ engine_viewport *engine_viewport_new(int width, int height)
         free(viewport);
         return NULL;
     }
+    viewport->audio = render_audio_new();
     viewport->recreate_count = 1;
     return viewport;
 }
@@ -74,6 +110,7 @@ void engine_viewport_free(engine_viewport *viewport)
     if (viewport->canvas.id) {
         cf_destroy_canvas(viewport->canvas);
     }
+    render_audio_free(viewport->audio);
     free(viewport);
 }
 
@@ -620,6 +657,24 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
      * may settle over several frames, but its temporary scaling must not change
      * object proportions or pointer coordinates. */
     draw_viewport_canvas(viewport);
+    if (viewport->widget_world && controls && controls->session) {
+        render_audio_update(
+            viewport->audio,
+            engine_audio(viewport->widget_runtime),
+            controls->playing
+        );
+        viewport->widget_focus = render_widgets(
+            viewport->widget_world,
+            viewport->widget_entities,
+            engine_visibility(viewport->widget_runtime),
+            (CF_V2){ viewport->image_min.x, viewport->image_min.y },
+            (CF_V2){ viewport->image_size.x, viewport->image_size.y },
+            controls->playing
+        );
+        if (engine_viewport_widgets_capture(viewport)) {
+            cancel_viewport_pointer(viewport);
+        }
+    }
     if (controls && controls->error && controls->error[0]) {
         ImGui_SetCursorScreenPos((ImVec2){ viewport->image_min.x + 12,
                                            viewport->image_min.y + 52 });

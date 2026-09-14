@@ -105,7 +105,11 @@ endif()
 option(CHIBI_ENABLE_WARNINGS
        "Enable strict compiler warnings for project targets" ON)
 option(CHIBI_ENABLE_SANITIZERS
-       "Enable AddressSanitizer and UndefinedBehaviorSanitizer" ON)
+       "Enable the selected sanitizer for native targets" ON)
+set(CHIBI_SANITIZERS "address,undefined" CACHE STRING
+    "Sanitizer runtime to use: address, undefined, address,undefined, or thread")
+set_property(CACHE CHIBI_SANITIZERS PROPERTY STRINGS
+    address undefined "address,undefined" thread)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 
 # Native worlds share a lazy task pool. The portable runtime stays serial and
@@ -142,8 +146,13 @@ if(CHIBI_ENABLE_SANITIZERS AND
    NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
    (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
     CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
-    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=address,undefined)
+    set(CHIBI_SUPPORTED_SANITIZERS address undefined "address,undefined" thread)
+    if(NOT CHIBI_SANITIZERS IN_LIST CHIBI_SUPPORTED_SANITIZERS)
+        message(FATAL_ERROR
+            "CHIBI_SANITIZERS must be address, undefined, address,undefined, or thread")
+    endif()
+    add_compile_options("-fsanitize=${CHIBI_SANITIZERS}" -fno-omit-frame-pointer)
+    add_link_options("-fsanitize=${CHIBI_SANITIZERS}")
 endif()
 
 if(CHIBI_ENABLE_CCACHE)
@@ -335,12 +344,13 @@ endif()
 # --- headless automation controller ----------------------------------------
 
 add_library(automation STATIC src/automation/controller.c
-    src/automation/graph_edit.c src/automation/asset_write.c)
+    src/automation/graph_edit.c src/automation/graph_optimize.c
+    src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core)
 
 # --- material rasterization and radiance transport --------------------------
-add_library(chibi_render STATIC src/render/material_raster.c src/render/radiance.c
+add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/radiance.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c src/render/arena_emitters.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
@@ -385,6 +395,9 @@ set(APP_REGISTRY_PACKS
     SHADER_PACK
     CORE_EVENT_PACK
     GAME_ENTITY_PACK
+    GAME_SAVE_PACK
+    GAME_AUDIO_PACK
+    GAME_VISIBILITY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
     CORE_ARRAY_PACK
@@ -449,18 +462,25 @@ set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
 # GPU authoring feedback is optional tooling, separate from the headless controller.
 add_executable(chibi_render_ctl tools/chibi_render_ctl/main.c src/automation/render_preview.c
+    src/automation/scene_preview.c src/render/scene_renderer.c
     src/render/shader_preview.c src/render/shader_fragment.c ${APP_REGISTRY})
 add_dependencies(chibi_render_ctl generate_runtime_registry)
 target_include_directories(chibi_render_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(chibi_render_ctl PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(chibi_render_ctl PRIVATE automation chibi_render engine runtime_support core cute)
+target_link_libraries(chibi_render_ctl PRIVATE automation chibi_render editor engine runtime_support core cute)
 set_target_properties(chibi_render_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
-        COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl> CHIBI_MCP_GPU=1
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
         DEPENDS chibi_ctl chibi_render_ctl
         VERBATIM)
 else()
@@ -495,7 +515,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/automation_asset_write.c test/automation_graph_edit.c test/test_suite.c test/runtime/whole_audit.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
+    test/automation_asset_write.c test/automation_graph_edit.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/ui_native.c
     test/ui_scroll.c
     test/render_checks.c
@@ -648,8 +668,15 @@ file(
     CREATE_LINK
         "${CMAKE_BINARY_DIR}/compile_commands.json"
         "${CMAKE_SOURCE_DIR}/compile_commands.json"
+        RESULT CHIBI_COMPILE_COMMANDS_LINK_RESULT
     SYMBOLIC
 )
+if(NOT CHIBI_COMPILE_COMMANDS_LINK_RESULT STREQUAL "0" AND
+   (NOT IS_SYMLINK "${CMAKE_SOURCE_DIR}/compile_commands.json" OR
+    NOT EXISTS "${CMAKE_SOURCE_DIR}/compile_commands.json"))
+    message(FATAL_ERROR
+        "Could not publish the compile commands link: ${CHIBI_COMPILE_COMMANDS_LINK_RESULT}")
+endif()
 
 # Exercise the actual native loader with separately compiled generations.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

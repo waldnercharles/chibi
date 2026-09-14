@@ -1,3 +1,5 @@
+#include "graph/model/local.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
@@ -422,9 +424,79 @@ static void migration()
     ecs_world_free(world);
 }
 
+static void authoring_bindings()
+{
+    behavior_asset *asset = behavior_asset_new("Nested inline vector");
+    assert(!behavior_asset_set_owner_type(asset, "ecs.entity"));
+    graph *g = behavior_asset_add_function(asset, "Read", false);
+    node *entry = g->nodes[0], *ret = g->nodes[1];
+    pin_spec vector = { .name = "Vector", .type = PIN_STRUCT, .type_name = "CF_V3" };
+    assert(graph_add_pin(g, ret, false, &vector) == 1);
+    node *scalar = graph_add_node(g, registry_node_by_name("Add"));
+    assert(scalar);
+    assert(!graph_set_pin_type(g, scalar, false, 0, PIN_F32, "float"));
+    assert(!graph_set_pin_type(g, scalar, false, 1, PIN_F32, "float"));
+    assert(!graph_set_pin_type(g, scalar, true, 0, PIN_F32, "float"));
+    pin_binding binding = { .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = GAME_COMPONENT_GameAim.key,
+                            .field_name = "direction.y" };
+    assert(!graph_set_pin_binding(g, scalar, false, 0, &binding));
+    assert(!graph_connect_data_conversion(g, scalar, 0, ret, 1, &NODE_Splat_CF_V3));
+    assert(graph_create_local(g, scalar, 0, "AimY"));
+    assert(!graph_connect_exec(g, entry, 0, ret, 0, 0));
+    ecs_world *world = ecs_world_new();
+    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameAim, NULL));
+    ecs_entity owner = ecs_world_create_entity(world);
+    assert(!GAME_GameAim_add(world, owner, 0));
+    assert(!ecs_world_apply_commands(world));
+    *GAME_GameAim_get(world, owner) = (GameAim){ .direction = { 3, -4 } };
+    pin_value handle = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(owner) };
+    eval_component_reader reader;
+    ecs_eval_component_reader_init(&reader, world);
+    behavior_program_publish(asset);
+    const behavior_function *function = behavior_program_function(
+        behavior_program_graph(asset->program, g),
+        entry
+    );
+    assert(function);
+    for (int mode = 0; mode < 3; mode++) {
+        for (int inspected = 0; inspected < 2; inspected++) {
+            behavior_instance *bi = behavior_instance_create(asset, &handle, NULL, NULL);
+            assert(bi);
+            assert(!behavior_instance_set_backend(
+                bi,
+                (behavior_backend[]){ BEHAVIOR_ORACLE,
+                                      BEHAVIOR_BYTECODE,
+                                      behavior_default_backend() }[mode]
+            ));
+            behavior_instance_set_trace_enabled(bi, inspected);
+            assert(!behavior_instance_bind_service(bi, EVAL_COMPONENT_READER_SERVICE, &reader));
+            flow_options options = { .instance = bi };
+            flow_error error = { 0 };
+            flow_run *run = flow_run_start(g, entry, (flow_inputs){ 0 }, &options, &error);
+            assert(run);
+            uint64_t oracle = eval_oracle_calls();
+            assert(!flow_run_resume(run));
+            const pin_value *result = flow_run_input_value(run, ret, 1);
+            assert(result && result->type == PIN_STRUCT && result->ptr);
+            const CF_V3 *value = result->ptr;
+            assert(value->x == -4 && value->y == -4 && value->z == -4);
+            assert(!mode || eval_oracle_calls() == oracle);
+            assert(!mode || inspected || run->whole_function_executed);
+            flow_run_free(run);
+            behavior_instance_destroy(bi);
+        }
+    }
+    ecs_world_free(world);
+    behavior_asset_free(asset);
+}
+
 void test_compiled_components()
 {
     reads();
+    authoring_bindings();
     migration();
     writes();
     for (int portable = 0; portable < 2; portable++) {

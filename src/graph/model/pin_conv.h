@@ -12,5 +12,6 @@ int pin_compatible(const pin_spec *a, const pin_spec *b);
  * F32<->F64, convert in place and return 1; else return 0 unchanged.
  * Other scalar conversions use descriptors from conv_nodes.h. */
 int pin_coerce(pin_value *v, const pin_spec *target);
+int pin_vector_width(const pin_spec *pin);
 
 #endif

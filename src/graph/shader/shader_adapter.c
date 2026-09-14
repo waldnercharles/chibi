@@ -1,4 +1,5 @@
 #include "graph/model/behavior_asset.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "graph/shader/shader_image.h"
 #include "support/array.h"
@@ -131,7 +132,24 @@ static int input(lowering *l, scope *s, const node *n, int pin)
     node *from = NULL;
     int from_pin = 0;
     if (graph_input_source(s->source, n, pin, &from, &from_pin)) {
-        if (graph_input_conversion(s->source, n, pin)) {
+        const node_desc *conversion = graph_input_conversion(s->source, n, pin);
+        if (conversion_is_vector_splat(conversion)) {
+            int value = output(l, s, from, from_pin);
+            if (value < 0) {
+                return value;
+            }
+            int w = width(&n->input_pins[pin]);
+            shader_op op = w == 2 ? SHADER_VECTOR2
+                         : w == 3 ? SHADER_VECTOR3
+                                  : SHADER_VECTOR4;
+            int result = shader_graph_add(l->ir, op, w);
+            l->ir->nodes[result].source_id = n->id;
+            for (int axis = 0; axis < w; axis++) {
+                l->ir->nodes[result].input[axis] = value;
+            }
+            return result;
+        }
+        if (conversion) {
             return error(l, n->id, "Use shader math or vector nodes for GPU conversions");
         }
         return output(l, s, from, from_pin);

@@ -222,6 +222,14 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
                     return -1;
                 }
                 binding.component_key = yyjson_get_str(component);
+            } else if (!strcmp(kind_name, "local")) {
+                binding.kind = PIN_BINDING_LOCAL;
+                yyjson_val *local_id = yyjson_obj_get(binding_json, "local_id");
+                if (!yyjson_is_uint(local_id) || !yyjson_get_uint(local_id)) {
+                    serialize_error_set("local binding has no local_id");
+                    return -1;
+                }
+                binding.local_id = yyjson_get_uint(local_id);
             } else if (!strcmp(kind_name, "delta_time")) {
                 binding.kind = PIN_BINDING_DELTA_TIME;
             } else {
@@ -675,7 +683,8 @@ graph *graph_load_json(const char *json)
     if (load_comment_boxes(g, yyjson_obj_get(root, "comment_boxes"))) {
         goto fail;
     }
-    if (load_nodes(g, nodes, requested_counter) || load_edges(g, edges)) {
+    if (serialize_read_locals(g, root) || load_nodes(g, nodes, requested_counter) ||
+        load_edges(g, edges) || serialize_validate_locals(g)) {
         goto fail;
     }
     yyjson_doc_free(doc);
@@ -755,12 +764,15 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
     }
     yyjson_val *kind_json = yyjson_obj_get(obj, "kind");
     yyjson_val *name_json = yyjson_obj_get(obj, "name");
+    yyjson_val *description_json = yyjson_obj_get(obj, "description");
     yyjson_val *nodes = yyjson_obj_get(obj, "nodes");
     yyjson_val *edges = yyjson_obj_get(obj, "edges");
     graph_kind kind;
     if (!yyjson_is_str(kind_json) ||
         graph_kind_from_name(yyjson_get_str(kind_json), &kind) ||
-        !yyjson_is_str(name_json) || !yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
+        !yyjson_is_str(name_json) ||
+        (description_json && !yyjson_is_str(description_json)) ||
+        !yyjson_is_arr(nodes) || !yyjson_is_arr(edges)) {
         serialize_error_set("graph is missing kind, name, nodes, or edges");
         return -1;
     }
@@ -781,7 +793,6 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
         g->graph_id = graph_id;
         g->kind = kind;
         g->name = graph_own_str(g, yyjson_get_str(name_json), yyjson_get_len(name_json));
-        g->description = graph_own_str(g, "", 0);
         apush(asset->graphs, g);
     } else {
         g->kind = kind;
@@ -790,6 +801,12 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
     }
     if (!g->name) {
         serialize_error_set("graph name allocation failed");
+        return -1;
+    }
+    const char *description = description_json ? yyjson_get_str(description_json) : "";
+    g->description = graph_own_str(g, description, strlen(description));
+    if (!g->description) {
+        serialize_error_set("graph description allocation failed");
         return -1;
     }
     yyjson_val *source_asset = yyjson_obj_get(obj, "source_asset");
@@ -832,7 +849,8 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
     if (load_comment_boxes(g, yyjson_obj_get(obj, "comment_boxes"))) {
         return -1;
     }
-    if (load_nodes(g, nodes, requested_counter) || load_edges(g, edges)) {
+    if (serialize_read_locals(g, obj) || load_nodes(g, nodes, requested_counter) ||
+        load_edges(g, edges) || serialize_validate_locals(g)) {
         return -1;
     }
     if (g->id_counter > asset->graph->id_counter) {

@@ -61,16 +61,7 @@ bool property_shader(const char *label, const GameShader *binding, const char *f
             ImGui_PushIDInt(a * SHADER_PARAMETER_MAX + slot);
             editor_ui_property_label(name, 0);
             int width = render_shader_parameter_width(indices[a], slot);
-            bool edit = ImGui_InputScalarNEx(
-                "##parameter",
-                ImGuiDataType_Float,
-                values[slot],
-                width,
-                NULL,
-                NULL,
-                "%.3f",
-                0
-            );
+            bool edit = editor_ui_vector_float("parameter", values[slot], width, 0, 0);
             if (edit) {
                 bool finite = true;
                 for (int k = 0; k < width; k++) {
@@ -142,6 +133,20 @@ bool appearance_color_field(const type_desc *type, const type_field *field)
         return field->offset == offsetof(GameParticleEmitter, color) ||
                field->offset == offsetof(GameParticleEmitter, end_color);
     }
+    if (type == GAME_COMPONENT_GameWidget.type) {
+        return field->offset == offsetof(GameWidget, color) ||
+               field->offset == offsetof(GameWidget, background) ||
+               field->offset == offsetof(GameWidget, accent);
+    }
+    if (type == GAME_COMPONENT_GameFog.type) {
+        return field->offset == offsetof(GameFog, color);
+    }
+    if (type == GAME_COMPONENT_GameMapMarker.type) {
+        return field->offset == offsetof(GameMapMarker, color);
+    }
+    if (type == GAME_COMPONENT_GameSensorContact.type) {
+        return field->offset == offsetof(GameSensorContact, color);
+    }
     return type == GAME_COMPONENT_GameAppearance.type &&
            (field->offset == offsetof(GameAppearance, color) ||
             field->offset == offsetof(GameAppearance, border_color) ||
@@ -206,7 +211,7 @@ static const editor_choices ENCOUNTER_MEMBERS = { ENCOUNTER_ROLES, 2 };
 static bool part_vector(const char *label, CF_V3 *value)
 {
     editor_ui_property_label(label, 0);
-    return ImGui_InputScalarNEx("##value", ImGuiDataType_Float, value, 3, NULL, NULL, "%.3f", 0);
+    return editor_ui_vector_float("value", (float *)value, 3, 0, 0);
 }
 
 bool property_mesh_parts(char *text, size_t size)
@@ -296,10 +301,71 @@ bool property_mesh_parts(char *text, size_t size)
     return changed;
 }
 
+static const editor_choice CONTROL_SOURCES[] = {
+    { 0, "None" },
+    { 1, "Mouse left" },
+    { 2, "Mouse right" },
+    { 3, "Space" },
+    { 4, "Shift" },
+    { 5, "Tab" },
+    { 6, "Enter" },
+    { 7, "A" },
+    { 8, "B" },
+    { 9, "C" },
+    { 10, "D" },
+    { 11, "E" },
+    { 12, "F" },
+    { 13, "G" },
+    { 14, "H" },
+    { 15, "I" },
+    { 16, "J" },
+    { 17, "K" },
+    { 18, "L" },
+    { 19, "M" },
+    { 20, "N" },
+    { 21, "O" },
+    { 22, "P" },
+    { 23, "Q" },
+    { 24, "R" },
+    { 25, "S" },
+    { 26, "T" },
+    { 27, "U" },
+    { 28, "V" },
+    { 29, "W" },
+    { 30, "X" },
+    { 31, "Y" },
+    { 32, "Z" },
+    { 33, "Pad A" },
+    { 34, "Pad B" },
+    { 35, "Pad X" },
+    { 36, "Pad Y" },
+    { 37, "Left shoulder" },
+    { 38, "Right shoulder" },
+    { 39, "Left trigger" },
+    { 40, "Right trigger" },
+    { 41, "Aim stick" },
+};
+static const editor_choices ACTION_SOURCES = { CONTROL_SOURCES, GAME_CONTROL_COUNT };
+static const editor_choice WIDGET_TYPES[] = {
+    { GAME_WIDGET_LABEL, "Label" },   { GAME_WIDGET_PANEL, "Panel" },
+    { GAME_WIDGET_BUTTON, "Button" }, { GAME_WIDGET_PROGRESS, "Progress" },
+    { GAME_WIDGET_SLIDER, "Slider" }, { GAME_WIDGET_SLOT, "Slot" },
+    { GAME_WIDGET_MAP, "Map" },
+};
+static const editor_choices WIDGET_KINDS = { WIDGET_TYPES, 7 };
+
 const editor_choices *property_choices(const type_desc *type, const type_field *field)
 {
-    if (!field || field->type != PIN_I32) {
+    if (!field || (field->type != PIN_I32 && field->type != PIN_ENUM)) {
         return NULL;
+    }
+    if (type == GAME_COMPONENT_GameActionBinding.type &&
+        field->offset == offsetof(GameActionBinding, source)) {
+        return &ACTION_SOURCES;
+    }
+    if (type == GAME_COMPONENT_GameWidget.type &&
+        field->offset == offsetof(GameWidget, kind)) {
+        return &WIDGET_KINDS;
     }
     if (type == GAME_COMPONENT_GameAppearance.type &&
         field->offset == offsetof(GameAppearance, shape)) {

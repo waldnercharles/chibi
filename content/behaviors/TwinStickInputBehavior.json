@@ -192,46 +192,6 @@
           ]
         },
         {
-          "id": 358,
-          "type": "Get_GameAim",
-          "x": 0.0,
-          "y": 379.5,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
-          "outputs": [
-            {
-              "id": 359,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameAim",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 360,
-              "name": "direction",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "field_source": 359,
-              "field_name": "direction",
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
           "id": 367,
           "type": "Call Pure Function",
           "x": 656.0,
@@ -255,6 +215,11 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
+              "binding": {
+                "kind": "component_field",
+                "component": "GAME.GameAim",
+                "field": "direction.x"
+              },
               "default": 0.0
             },
             {
@@ -268,6 +233,11 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
+              "binding": {
+                "kind": "component_field",
+                "component": "GAME.GameAim",
+                "field": "direction.y"
+              },
               "default": 0.0
             }
           ],
@@ -345,57 +315,6 @@
               "flags": 0,
               "group": 0,
               "default": null
-            }
-          ]
-        },
-        {
-          "id": 376,
-          "type": "Break_CF_V2",
-          "x": 280.0,
-          "y": 238.5,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 377,
-              "name": "Value",
-              "type": 15,
-              "type_name": "CF_V2",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 378,
-              "name": "x",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
-            },
-            {
-              "id": 379,
-              "name": "y",
-              "type": 10,
-              "type_name": "float",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0.0
             }
           ]
         },
@@ -897,31 +816,10 @@
           "order": 0
         },
         {
-          "from": 358,
-          "from_pin": 360,
-          "to": 376,
-          "to_pin": 377,
-          "kind": "data"
-        },
-        {
           "from": 367,
           "from_pin": 370,
           "to": 371,
           "to_pin": 373,
-          "kind": "data"
-        },
-        {
-          "from": 376,
-          "from_pin": 378,
-          "to": 367,
-          "to_pin": 368,
-          "kind": "data"
-        },
-        {
-          "from": 376,
-          "from_pin": 379,
-          "to": 367,
-          "to_pin": 369,
           "kind": "data"
         },
         {

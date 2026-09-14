@@ -168,6 +168,8 @@ const char *eval_context_resolve_input(
             return eval_value_matches(out, spec)
                      ? NULL
                      : "Delta Time type is incompatible with the input";
+        case PIN_BINDING_LOCAL:
+            return "local use is missing its source dependency";
         default: return "unknown input binding kind";
     }
 }
@@ -535,8 +537,11 @@ int eval_prepared_node(node *n, arena *a, eval_context *ctx)
     return 0;
 }
 
-static int projected_output(const node *n, int index, const pin_value *outputs, pin_value *out)
+static int projected_output_inner(const node *n, int index, const pin_value *outputs, pin_value *out, int depth)
 {
+    if (depth >= n->output_count) {
+        return -1;
+    }
     const pin_spec *pin = &n->output_pins[index];
     if (!pin->field_source && !pin->field_name) {
         *out = outputs[index];
@@ -544,13 +549,29 @@ static int projected_output(const node *n, int index, const pin_value *outputs, 
     }
     int source = -1;
     const type_field *field = graph_output_field(n, index, &source);
-    if (!field || outputs[source].type != PIN_STRUCT ||
-        outputs[source].container != PIN_CONTAINER_SINGLE || !outputs[source].ptr) {
+    if (!field) {
         return -1;
     }
-    *out = (pin_value){ 0 };
-    pin_read_field(outputs[source].ptr, field, out);
+    pin_value aggregate;
+    const pin_spec *source_pin = &n->output_pins[source];
+    if (source_pin->field_source || source_pin->field_name) {
+        if (projected_output_inner(n, source, outputs, &aggregate, depth + 1)) {
+            return -1;
+        }
+    } else {
+        aggregate = outputs[source];
+    }
+    if (aggregate.type != PIN_STRUCT ||
+        aggregate.container != PIN_CONTAINER_SINGLE || !aggregate.ptr) {
+        return -1;
+    }
+    pin_read_field(aggregate.ptr, field, out);
     return 0;
+}
+
+static int projected_output(const node *n, int index, const pin_value *outputs, pin_value *out)
+{
+    return projected_output_inner(n, index, outputs, out, 0);
 }
 
 int graph_eval_output(graph *g, node *n, int out_pin, arena *a, pin_value *out, eval_context *ctx)

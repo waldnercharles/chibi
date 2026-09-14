@@ -1,5 +1,6 @@
 #include "editor/graph/eval_view.h"
 
+#include "graph/document/library.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/runtime/eval.h"
@@ -16,6 +17,13 @@ struct eval_view
     arena a;
     eval_context eval;
     const flow_run *run;
+    const behavior_asset *const *catalog;
+    int catalog_count;
+    const behavior_asset *source;
+    behavior_asset *linked;
+    uint64_t revision;
+    bool link_required;
+    char link_error[256];
     const behavior_instance *instance;
     const char *error;
     editor_value_formatter formatter;
@@ -41,6 +49,7 @@ void eval_view_free(eval_view *v)
         return;
     }
     eval_context_free(&v->eval);
+    behavior_asset_free(v->linked);
     arena_free(&v->a);
     free(v);
 }
@@ -62,12 +71,84 @@ static int eval_view_node_safe(const eval_view *v, const graph *g, const node *n
         }
         node *source;
         int source_pin;
-        if (graph_input_source(g, n, i, &source, &source_pin) &&
-            !eval_view_node_safe(v, g, source, depth + 1)) {
+        if (graph_input_source(g, n, i, &source, &source_pin)) {
+            if (!eval_view_node_safe(v, g, source, depth + 1)) {
+                return 0;
+            }
+            continue;
+        }
+        const pin_spec *input = &n->input_pins[i];
+        const pin_binding *binding = input->binding;
+        if (binding && (binding->kind == PIN_BINDING_COMPONENT ||
+                        binding->kind == PIN_BINDING_COMPONENT_FIELD)) {
+            return 0;
+        }
+        if (!v->instance && ((binding && binding->kind == PIN_BINDING_VARIABLE) ||
+                             (!binding && (input->flags & PIN_FLAG_DEFAULT_SELF) &&
+                              !input->default_value.u64))) {
             return 0;
         }
     }
     return 1;
+}
+
+void eval_view_set_catalog(eval_view *v, const behavior_asset *const *assets, int count)
+{
+    v->catalog = assets;
+    v->catalog_count = count;
+}
+
+static bool requires_linking(const behavior_asset *asset)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            if (g->nodes[j]->reference_asset) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static graph *preview_graph(eval_view *v, graph *g)
+{
+    if (!g->owner) {
+        return g;
+    }
+    uint64_t revision = behavior_asset_revision(g->owner);
+    for (int i = 0; i < v->catalog_count; i++) {
+        revision = (revision ^ behavior_asset_revision(v->catalog[i]) ^
+                    (uintptr_t)v->catalog[i]) *
+                   UINT64_C(1099511628211);
+    }
+    if (v->source != g->owner || v->revision != revision) {
+        eval_context_detach_runtime(&v->eval);
+        behavior_asset_free(v->linked);
+        v->source = g->owner;
+        v->revision = revision;
+        v->link_error[0] = '\0';
+        v->link_required = requires_linking(g->owner);
+        v->linked = v->link_required ? behavior_asset_link_libraries(
+                                           g->owner,
+                                           v->catalog,
+                                           v->catalog_count,
+                                           v->link_error,
+                                           sizeof v->link_error
+                                       )
+                                     : NULL;
+    }
+    if (v->link_required && !v->linked) {
+        v->error = v->link_error;
+        return NULL;
+    }
+    return v->linked ? behavior_asset_find_graph(v->linked, g->graph_id) : g;
+}
+
+static const node *preview_node(const eval_view *v, const node *n)
+{
+    const graph *g = v->eval.runtime ? runtime_store_graph(v->eval.runtime) : NULL;
+    return g ? graph_node_by_id(g, n->id) : NULL;
 }
 
 void eval_view_refresh(eval_view *v, graph *g)
@@ -81,6 +162,10 @@ void eval_view_refresh(eval_view *v, graph *g)
     if (g->owner && (g->owner->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                      g->owner->domain == BEHAVIOR_DOMAIN_SHAPE ||
                      g->owner->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY)) {
+        return;
+    }
+    g = preview_graph(v, g);
+    if (!g) {
         return;
     }
     const behavior_graph_program *program = NULL;
@@ -166,7 +251,8 @@ static int has_preview_value(const eval_view *v, const node *n)
     if (!v || !v->eval.runtime) {
         return 0;
     }
-    const runtime_node *state = runtime_store_node_const(v->eval.runtime, n);
+    n = preview_node(v, n);
+    const runtime_node *state = n ? runtime_store_node_const(v->eval.runtime, n) : NULL;
     return state && runtime_node_computed(state);
 }
 
@@ -183,7 +269,8 @@ const char *eval_view_output(const eval_view *v, const node *n, int pin)
         return eval_view_format(v, &value);
     }
     pin_value value;
-    if (!v || eval_context_output(&v->eval, n, pin, &value) != 0 ||
+    n = v ? preview_node(v, n) : NULL;
+    if (!v || !n || eval_context_output(&v->eval, n, pin, &value) != 0 ||
         !has_preview_value(v, n)) {
         return "";
     }
@@ -214,7 +301,8 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
         return NULL;
     }
     pin_value val;
-    if (!v || eval_context_input(&v->eval, n, pin, &val) != 0 ||
+    const node *compiled = v ? preview_node(v, n) : NULL;
+    if (!v || !compiled || eval_context_input(&v->eval, compiled, pin, &val) != 0 ||
         !has_preview_value(v, n)) {
         if (spec->binding) {
             return v && v->error && v->error[0] ? v->error : "Input binding unavailable";

@@ -7,10 +7,10 @@ different commit IDs.
 
 | Work | Integration path | Decision |
 | --- | --- | --- |
-| Compiled behavior runtime, Tick scheduling, rendering and physics performance | PR #78, `cwaldner/compiled-behavior-paths` | Integrate with current main and MCP authoring; validate the combined native and web builds. |
+| Compiled behavior runtime, Tick scheduling, rendering and physics performance | PR #78, `cwaldner/compiled-behavior-paths` | Merged; combined main CI and Pages deployment passed. |
 | Latest scrollbar smoothing and wheel travel | PR #79, `cwaldner/fix-scrollbar-smoothing` | Merged; main CI and Pages deployment passed. Includes the later wheel-travel correction from the primary checkout. |
-| MCP graph authoring, registry discovery and GPU previews | PR #81, `cwaldner/mcp-authoring` | Integrate after Linux sanitizer checks; included in the combined performance branch. |
-| Editor authoring and reusable gameplay changes from the primary checkout | Draft PR #80, `cwaldner/editor-authoring-integration` | Committed and pushed from an isolated snapshot. Must reconcile the newer graph contracts with the compiled runtime before merging. |
+| MCP graph authoring, registry discovery and GPU previews | PR #81, `cwaldner/mcp-authoring` | Merged; main CI and Pages deployment passed. |
+| Editor authoring and reusable gameplay changes from the primary checkout | Draft PR #80, `cwaldner/editor-authoring-integration` | Main is integrated. Native tests, activity-rail navigation and authored whole-function coverage pass; final Linux and browser verification are in progress. |
 | `cwaldner/editor-workspace-ux` | Preserved worktree | Most changes overlap the primary snapshot. The primary has later node-control ordering, graph-local and optimizer fixes; merging this older tree wholesale would lose those fixes. |
 | `cwaldner/issue-8-compiled-behaviors` | Superseded prototype | The complete runtime migration in #78 supersedes the earlier scalar compiler slice. |
 | MCP 50/63/64/65 and PR 74 review worktrees | Historical review work | Their feature work is represented in merged PR history; do not replay stale review branches wholesale. |
@@ -20,14 +20,32 @@ The primary checkout and older dirty worktrees were not reset, cleaned, or
 rewritten. The editor snapshot excludes generated build directories and local
 machine configuration.
 
-## Remaining editor integration
+## Editor integration
 
-The editor snapshot adds `PIN_BINDING_LOCAL`, newer field projection and vector
-binding behavior, plus authored gameplay and tooling changes. Its standalone
-suite does not prove those paths run through the compiled behavior runtime.
-The combined follow-up must preserve those authoring contracts while lowering
-them into the shared behavior program, then exercise native SLJIT and portable
-bytecode, inspection, hot apply, editor interaction and the web build.
+The combined branch preserves the activity rail, stacked vector controls, graph
+locals, optimizer and authoring tools alongside compiled behavior scheduling.
+Nested component bindings and scalar-to-vector conversions lower into the shared
+IR. Instrumented data blocks resolve the full nested field offset at publication.
+An existing optimizer runtime test caught the latter integration bug. Added
+backend parity checks combine nested component fields, graph locals and vector
+broadcasts in both normal and instrumented execution.
+
+The profile callback retains main's separate setup and execution intervals and
+also reports inclusive execution for the authoring profiler. Explicit MCP
+profiling enables those timers; normal execution keeps them disabled.
+
+The combined native UI suite passes, including the Project/Scene/Document activity
+rail and query diagnostic navigation. The authored audit retains 34/34 events,
+32/32 effectful local functions, 39/39 pure local functions, and 4/4 linked library
+functions. Full native checks pass with leak detection. The web bytecode checks
+also pass. Browser interaction confirms Project, Scene Hierarchy and Document
+Outline navigation; final Linux validation and deployment remain pending.
+
+Rendered validation exposed a false missing-graph error in editor previews:
+the preview compiler received authored library references before linking. Each
+view now retains a linked snapshot, rebuilding it when the source or catalog
+generation changes. Preview values map back to authored node IDs. Focused checks
+cover edits, missing-library diagnostics and recovery when a library returns.
 
 The older UI worktree still holds local edits. A content comparison found 177
 identical changed files against the primary snapshot. Differences in node draw

@@ -1299,6 +1299,10 @@ static void place_spatial_prototype(arena_fixture *f, const char *name)
     for (int i = 0; i < 3; i++) {
         frame(f);
     }
+    click_item(f, "content.view");
+    frame(f);
+    click_item(f, "content.view.catalog");
+    frame(f);
     click_item(f, "content.search");
     ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), name);
     frame(f);
@@ -2503,8 +2507,7 @@ static void performance_panel(arena_fixture *f)
         owned.behaviors[0].rows[0].setup_ms == 2
     );
     editor_frame_profile_free(&owned);
-    click_item(f, "view.menu");
-    click_item(f, "view.performance");
+    click_item(f, "activity.performance");
     frame(f);
     assert(game_behavior_profile(f->live->behaviors)->count > 0);
     assert(!game_behavior_last_update(f->live->behaviors).native_loop);

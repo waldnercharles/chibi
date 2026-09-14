@@ -2,6 +2,7 @@
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
+#include "editor/ui/search.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
@@ -370,30 +371,9 @@ const asset_index_reference *asset_index_reference_at(const asset_index *index, 
              : NULL;
 }
 
-bool asset_index_match(const asset_index_asset *asset, const char *query)
+int asset_index_score(const asset_index_asset *asset, const char *query)
 {
-    if (!asset || !query || !query[0]) {
-        return true;
-    }
-    const char *texts[] = { asset->name, asset->path };
-    for (int t = 0; t < 2; t++) {
-        const char *text = texts[t];
-        if (!text) {
-            continue;
-        }
-        for (int start = 0; text[start]; start++) {
-            int i = 0;
-            while (query[i] && text[start + i] &&
-                   tolower((unsigned char)query[i]) ==
-                       tolower((unsigned char)text[start + i])) {
-                i++;
-            }
-            if (!query[i]) {
-                return true;
-            }
-        }
-    }
-    return false;
+    return editor_search_score(query, asset->name, asset->path);
 }
 
 static asset_index_kind kind_for_domain(behavior_domain domain)
@@ -484,7 +464,8 @@ static void add_graph_references(asset_index *index, int source_id, const behavi
             for (int pin = 0; pin < node->input_count; pin++) {
                 const pin_spec *input = &node->input_pins[pin];
                 const pin_binding *binding = input->binding;
-                if (!binding || input->kind != PIN_DATA) {
+                if (!binding || binding->kind == PIN_BINDING_LOCAL ||
+                    input->kind != PIN_DATA) {
                     continue;
                 }
                 behavior_variable *variable = binding->kind == PIN_BINDING_VARIABLE

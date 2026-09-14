@@ -707,6 +707,7 @@ static int flow_run_execute(flow_run *run)
     instance->profile(
         run->event_name,
         elapsed,
+        elapsed + scope.children,
         first ? BEHAVIOR_PROFILE_START : BEHAVIOR_PROFILE_RESUME,
         instance->profile_user
     );

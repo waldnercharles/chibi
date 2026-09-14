@@ -398,15 +398,18 @@ static void component_and_context_bindings()
     assert(world);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameAim, NULL) == ECS_OK);
     ecs_entity owner = ecs_world_create_entity(world);
     GameTransform transform = { 4, -2 };
     GameMovement movement = { .speed = 90 };
+    GameAim aim = { .direction = { 1.25f, -2.5f }, .firing = true };
     assert(
         ecs_world_record_add(world, owner, GAME_COMPONENT_GameTransform.id, &transform, 0) == ECS_OK
     );
     assert(
         ecs_world_record_add(world, owner, GAME_COMPONENT_GameMovement.id, &movement, 0) == ECS_OK
     );
+    assert(ecs_world_record_add(world, owner, GAME_COMPONENT_GameAim.id, &aim, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
 
     behavior_asset *asset = behavior_asset_new("ComponentBindings");
@@ -433,6 +436,32 @@ static void component_and_context_bindings()
         "component input bindings contribute a world read effect"
     );
     compile_report_free(&report);
+
+    behavior_asset *nested = behavior_asset_new("NestedComponentBindings");
+    assert(behavior_asset_set_owner_type(nested, "ecs.entity") == 0);
+    node *nested_target = typed_reroute(nested->graph, PIN_F32, "float");
+    assert(
+        graph_set_pin_binding(
+            nested->graph,
+            nested_target,
+            0,
+            0,
+            &(pin_binding){ .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = GAME_COMPONENT_GameAim.key,
+                            .field_name = "direction.x" }
+        ) == 0
+    );
+    const pin_binding *nested_binding = graph_pin_binding(nested->graph, nested_target, 0, 0);
+    compile_report nested_report;
+    compile_report_init(&nested_report);
+    test_check(
+        nested_binding && nested_binding->field_name &&
+            !strcmp(nested_binding->field_name, "direction.x") &&
+            behavior_asset_compile(nested, &nested_report) == 0 &&
+            nested_report.error_count == 0,
+        "nested component field bindings validate as scalar inputs"
+    );
+    compile_report_free(&nested_report);
 
     behavior_asset *whole = behavior_asset_new("WholeComponentBindings");
     assert(behavior_asset_set_owner_type(whole, "ecs.entity") == 0);
@@ -497,6 +526,22 @@ static void component_and_context_bindings()
     apush(services, ((service_binding){ EVAL_COMPONENT_READER_SERVICE, &reader }));
     float result = 0;
     char message[192];
+    behavior_instance *nested_instance = instance_for(nested, world, owner);
+    float nested_result = 0;
+    test_check(
+        eval_f32(nested, nested_target, nested_instance, services, 0, &nested_result, message, sizeof message) ==
+                0 &&
+            fabsf(nested_result - 1.25f) < .0001f,
+        "nested component field bindings read through the reflected path"
+    );
+    GAME_GameAim_get(world, owner)->direction.x = 3.5f;
+    test_check(
+        eval_f32(nested, nested_target, nested_instance, services, 0, &nested_result, message, sizeof message) ==
+                0 &&
+            fabsf(nested_result - 3.5f) < .0001f,
+        "nested component field bindings observe owner mutations"
+    );
+    behavior_instance_destroy(nested_instance);
     test_check(
         eval_f32(asset, target, instance, services, 0, &result, message, sizeof message) == 0 &&
             fabsf(result - 4) < .0001f,
@@ -661,6 +706,7 @@ static void component_and_context_bindings()
     behavior_instance_destroy(instance);
     afree(services);
     behavior_asset_free(asset);
+    behavior_asset_free(nested);
     ecs_world_free(world);
 
     asset = behavior_asset_new("ContextBinding");

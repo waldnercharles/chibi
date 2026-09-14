@@ -481,6 +481,112 @@ static void current_contact_query()
     dispose(&f);
 }
 
+static void raycasts()
+{
+    fixture f = create();
+    ecs_entity circle = body(&f, 20, 0, GAME_BODY_STATIC, 8, 0);
+    ecs_entity wall = body(&f, 50, 0, GAME_BODY_STATIC, 8, 0);
+    GameCollider *box = GAME_GameCollider_get(f.world, wall);
+    box->shape = GAME_COLLIDER_BOX;
+    box->width = 4;
+    box->height = 40;
+    game_ray_hit hit;
+    assert(
+        game_physics_raycast(
+            f.world,
+            f.live->entities,
+            (CF_V2){ 0 },
+            (CF_V2){ 100, 0 },
+            8,
+            (ecs_entity){ 0 },
+            false,
+            &hit
+        ) == 0
+    );
+    assert(hit.found && ecs_entity_to_u64(hit.entity) == ecs_entity_to_u64(circle));
+    assert(fabsf(hit.distance - 16) < .001f && fabsf(hit.normal.x + 1) < .001f);
+    assert(
+        game_physics_raycast(f.world, f.live->entities, (CF_V2){ 0 }, (CF_V2){ 100, 0 }, 8, circle, false, &hit) ==
+        0
+    );
+    assert(hit.found && fabsf(hit.point.x - 48) < .001f);
+    /* A rotated wall and a teleport are visible before any physics step. */
+    GAME_GameOrientation_get(f.world, wall)->radians = 3.14159265f / 2;
+    assert(
+        game_physics_raycast(f.world, f.live->entities, (CF_V2){ 0 }, (CF_V2){ 100, 0 }, 8, circle, false, &hit) ==
+        0
+    );
+    assert(hit.found && fabsf(hit.point.x - 30) < .001f);
+    GAME_GameTransform_get(f.world, wall)->y = 100;
+    GAME_GameCollider_get(f.world, circle)->sensor = true;
+    assert(
+        game_physics_raycast(
+            f.world,
+            f.live->entities,
+            (CF_V2){ 0 },
+            (CF_V2){ 100, 0 },
+            8,
+            (ecs_entity){ 0 },
+            false,
+            &hit
+        ) == 0
+    );
+    assert(!hit.found && hit.distance == 100 && hit.point.x == 100);
+    assert(
+        game_physics_raycast(
+            f.world,
+            f.live->entities,
+            (CF_V2){ 20, 0 },
+            (CF_V2){ 100, 0 },
+            8,
+            (ecs_entity){ 0 },
+            true,
+            &hit
+        ) == 0
+    );
+    assert(hit.found && hit.distance == 0 && hit.normal.x == -1);
+    assert(
+        game_physics_raycast(
+            f.world,
+            f.live->entities,
+            (CF_V2){ 20, 0 },
+            (CF_V2){ 20, 0 },
+            8,
+            (ecs_entity){ 0 },
+            true,
+            &hit
+        ) == 0
+    );
+    assert(hit.found && hit.distance == 0);
+    game_entities_request_destroy(f.live->entities, circle);
+    assert(
+        game_physics_raycast(
+            f.world,
+            f.live->entities,
+            (CF_V2){ 0 },
+            (CF_V2){ 100, 0 },
+            8,
+            (ecs_entity){ 0 },
+            true,
+            &hit
+        ) == 0
+    );
+    assert(!hit.found);
+    assert(
+        game_physics_raycast(
+            f.world,
+            f.live->entities,
+            (CF_V2){ NAN, 0 },
+            (CF_V2){ 100, 0 },
+            8,
+            (ecs_entity){ 0 },
+            true,
+            &hit
+        ) < 0
+    );
+    dispose(&f);
+}
+
 static void ordered_contacts()
 {
     fixture f = create();
@@ -529,6 +635,7 @@ static void ordered_contacts()
 
 static void physics_cases()
 {
+    raycasts();
     solid_walls();
     sustained_dynamic_contact();
     contact_set_changes();

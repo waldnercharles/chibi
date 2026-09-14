@@ -136,9 +136,11 @@ behavior_update_row *behavior_update_run_c(
             arena_reset(ctx->value_storage);
         }
         if (bi->profile) {
+            uint64_t elapsed = behavior_profile_leave(&scope);
             bi->profile(
                 binding->entry->reference_name,
-                behavior_profile_leave(&scope),
+                elapsed,
+                elapsed + scope.children,
                 BEHAVIOR_PROFILE_SETUP,
                 bi->profile_user
             );
@@ -149,9 +151,11 @@ behavior_update_row *behavior_update_run_c(
                     : behavior_function_run(binding->function, ctx, false);
         assert(*result <= FLOW_OK);
         if (bi->profile) {
+            uint64_t elapsed = behavior_profile_leave(&scope);
             bi->profile(
                 binding->entry->reference_name,
-                behavior_profile_leave(&scope),
+                elapsed,
+                elapsed + scope.children,
                 BEHAVIOR_PROFILE_START,
                 bi->profile_user
             );

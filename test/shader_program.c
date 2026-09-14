@@ -147,7 +147,7 @@ static void draw_fragment(render_programs *programs, int material, CF_Canvas can
     cf_app_update(NULL);
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
-    render_shader_fragment_draw(programs, program, &entity);
+    render_shader_fragment_draw(programs, program, &entity, (CF_V2){ 1, 1 });
     cf_render_to(canvas, true);
     cf_draw_pop();
     cf_app_draw_onto_screen(false);
@@ -204,7 +204,7 @@ static void arena_frame(
 )
 {
     cf_app_update(NULL);
-    assert(render_arena_preview(arena, asset, camera, 0));
+    assert(render_arena_preview(arena, asset, camera, NULL, 0));
     cf_render_to(render_arena_post_target(post), true);
     assert(render_arena_post_process(post));
     cf_app_draw_onto_screen(false);

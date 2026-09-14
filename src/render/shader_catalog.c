@@ -92,6 +92,104 @@ void render_shader_parameter_default(int index, int slot, float value[4])
         memcpy(value, assets[index - 1].defaults[slot], 4 * sizeof(float));
     }
 }
+static int parameter_slot(const shader_asset *asset, const char *name)
+{
+    for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
+        if (asset->names[i] && !strcmp(asset->names[i], name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+bool render_shader_parameters_validate(int index, const char *json, shader_error *error)
+{
+    if (error) {
+        *error = (shader_error){ 0 };
+    }
+    if (!json || !*json) {
+        return true;
+    }
+    if (index <= 0 || index > acount(assets)) {
+        if (error) {
+            snprintf(error->message, sizeof error->message, "Shader asset is not registered.");
+        }
+        return false;
+    }
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
+    if (!root || !yyjson_is_obj(root)) {
+        if (error) {
+            snprintf(error->message, sizeof error->message, "Preview parameters must be a JSON object.");
+        }
+        yyjson_doc_free(doc);
+        return false;
+    }
+    shader_asset *asset = &assets[index - 1];
+    yyjson_obj_iter iterator = yyjson_obj_iter_with(root);
+    yyjson_val *key;
+    int count = 0;
+    while ((key = yyjson_obj_iter_next(&iterator))) {
+        count++;
+        if (count > SHADER_PARAMETER_MAX) {
+            if (error) {
+                snprintf(
+                    error->message,
+                    sizeof error->message,
+                    "Shader preview accepts at most %d parameter overrides.",
+                    SHADER_PARAMETER_MAX
+                );
+            }
+            yyjson_doc_free(doc);
+            return false;
+        }
+        const char *name = yyjson_get_str(key);
+        int slot = parameter_slot(asset, name);
+        if (slot < 0) {
+            if (error) {
+                snprintf(
+                    error->message,
+                    sizeof error->message,
+                    "Unknown shader preview parameter '%s'.",
+                    name ? name : ""
+                );
+            }
+            yyjson_doc_free(doc);
+            return false;
+        }
+        yyjson_val *value = yyjson_obj_iter_get_val(key);
+        int width = asset->widths[slot];
+        bool valid = width == 1 &&
+                     ((yyjson_is_num(value) && isfinite(yyjson_get_num(value))) ||
+                      yyjson_is_bool(value));
+        if (!valid && width > 1 && yyjson_is_arr(value) &&
+            (int)yyjson_arr_size(value) == width) {
+            valid = true;
+            for (int i = 0; i < width; i++) {
+                yyjson_val *component = yyjson_arr_get(value, (size_t)i);
+                valid &= yyjson_is_num(component) &&
+                         isfinite(yyjson_get_num(component));
+            }
+        }
+        if (!valid) {
+            if (error) {
+                snprintf(
+                    error->message,
+                    sizeof error->message,
+                    width == 1 ? "Shader preview parameter '%s' must be a "
+                                 "finite number or boolean."
+                               : "Shader preview parameter '%s' must be an "
+                                 "array of %d finite numbers.",
+                    name ? name : "",
+                    width
+                );
+            }
+            yyjson_doc_free(doc);
+            return false;
+        }
+    }
+    yyjson_doc_free(doc);
+    return true;
+}
 bool render_shader_is_shape(int index)
 {
     return index > 0 && index <= acount(assets) && assets[index - 1].shape;

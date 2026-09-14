@@ -354,6 +354,184 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePickup)
 }
 GamePickup;
 
+/* An optional camera follows its entity's Transform. The authored span is
+ * expanded for the viewport aspect; offsets and spans use project units. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
+{
+    float width;
+    float height;
+    CF_V2 offset;
+    bool disabled;
+}
+GameCamera;
+
+typedef enum
+{
+    GAME_CONTROL_NONE,
+    GAME_CONTROL_MOUSE_LEFT,
+    GAME_CONTROL_MOUSE_RIGHT,
+    GAME_CONTROL_SPACE,
+    GAME_CONTROL_SHIFT,
+    GAME_CONTROL_TAB,
+    GAME_CONTROL_ENTER,
+    GAME_CONTROL_A,
+    GAME_CONTROL_B,
+    GAME_CONTROL_C,
+    GAME_CONTROL_D,
+    GAME_CONTROL_E,
+    GAME_CONTROL_F,
+    GAME_CONTROL_G,
+    GAME_CONTROL_H,
+    GAME_CONTROL_I,
+    GAME_CONTROL_J,
+    GAME_CONTROL_K,
+    GAME_CONTROL_L,
+    GAME_CONTROL_M,
+    GAME_CONTROL_N,
+    GAME_CONTROL_O,
+    GAME_CONTROL_P,
+    GAME_CONTROL_Q,
+    GAME_CONTROL_R,
+    GAME_CONTROL_S,
+    GAME_CONTROL_T,
+    GAME_CONTROL_U,
+    GAME_CONTROL_V,
+    GAME_CONTROL_W,
+    GAME_CONTROL_X,
+    GAME_CONTROL_Y,
+    GAME_CONTROL_Z,
+    GAME_CONTROL_PAD_A,
+    GAME_CONTROL_PAD_B,
+    GAME_CONTROL_PAD_X,
+    GAME_CONTROL_PAD_Y,
+    GAME_CONTROL_PAD_LEFT_SHOULDER,
+    GAME_CONTROL_PAD_RIGHT_SHOULDER,
+    GAME_CONTROL_PAD_LEFT_TRIGGER,
+    GAME_CONTROL_PAD_RIGHT_TRIGGER,
+    GAME_CONTROL_AIM_STICK,
+    GAME_CONTROL_COUNT,
+} GameControl;
+
+/* Multiple sources for the same action are combined before dispatch. Actions
+ * target GameInput owners; firing also controls the continuous Aim state. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
+{
+    GameControl source;
+    const char *action;
+    bool firing;
+    bool disabled;
+}
+GameActionBinding;
+
+typedef enum
+{
+    GAME_WIDGET_LABEL,
+    GAME_WIDGET_PANEL,
+    GAME_WIDGET_BUTTON,
+    GAME_WIDGET_PROGRESS,
+    GAME_WIDGET_SLIDER,
+    GAME_WIDGET_SLOT,
+    GAME_WIDGET_MAP,
+} GameWidgetKind;
+
+/* UI offsets and sizes are logical pixels at a 720-pixel viewport height.
+ * Anchors and pivots are fractions. Behavior owns contents, layout and rules.
+ * An interactive widget sends its named event (Source: entity, Value: float).
+ * Matching nonempty drop groups permit transfers; behaviors decide validity. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameWidget)
+{
+    GameWidgetKind kind;
+    const char *text;
+    const char *tooltip;
+    const char *event;
+    const char *drop_group;
+    CF_V2 anchor;
+    CF_V2 pivot;
+    CF_V2 offset;
+    CF_V2 size;
+    int order;
+    unsigned color;
+    unsigned background;
+    unsigned accent;
+    float font_size;
+    float rounding;
+    float value;
+    float minimum;
+    float maximum;
+    bool hidden;
+    bool disabled;
+    bool draggable;
+    bool block_input;
+}
+GameWidget;
+
+/* One optional finite visibility grid. The main view conceals unseen space;
+ * map widgets display explored cells and remembered obstacle occupancy. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFog)
+{
+    CF_V2 origin;
+    int columns;
+    int rows;
+    float cell_size;
+    float drift; /* Zero disables ambient fog motion. */
+    unsigned color;
+    bool disabled;
+}
+GameFog;
+
+/* Vision sources share current sight. Obstacles in occluders block sight.
+ * A positive duration shrinks a temporary clearing to zero over its lifetime;
+ * duration <= 0 is permanent. Only remembering sources update terrain memory. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameVision)
+{
+    float radius;
+    unsigned occluders;
+    float duration;
+    float age;
+    bool remember;
+    bool disabled;
+}
+GameVision;
+
+/* A sensor observation owns its last detected position, independently of the
+ * observed actor. Behaviors decide what it detects and when it refreshes. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSensorContact)
+{
+    CF_V2 position;
+    float remaining;
+    unsigned color;
+}
+GameSensorContact;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameRenderState)
+{
+    bool hidden;
+    bool visibility_culled;
+}
+GameRenderState;
+
+/* Optional 2D radiance composition; values are nonnegative scene-linear gains. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameLighting2D)
+{
+    float ambient;
+    float emission;
+    float fog;
+    float shadow_floor;
+}
+GameLighting2D;
+
+/* Stored map positions for landmarks and objectives. Hidden until explored,
+ * unless always_visible; movement and discovery rules belong to behaviors. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMapMarker)
+{
+    CF_V2 position;
+    const char *label;
+    unsigned color;
+    float radius;
+    bool always_visible;
+    bool disabled;
+}
+GameMapMarker;
 /* Count Matching Entities combines these conditions with AND. Presence tests
  * use "has" or "missing"; scalar fields use ==, !=, <, <=, > or >=. */
 typedef NODE_TYPE(EntityCondition)

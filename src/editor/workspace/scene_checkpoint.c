@@ -245,6 +245,7 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
     checkpoint_text(doc, root, "scene_search", scene->scene_search);
     checkpoint_text(doc, root, "asset_search", scene->asset_search);
     yyjson_mut_obj_add_bool(doc, root, "navigator_scene", scene->navigator_scene);
+    yyjson_mut_obj_add_bool(doc, root, "content_catalog", scene->content_catalog);
     yyjson_mut_obj_add_int(doc, root, "runtime_target", scene->active_runtime_target);
     yyjson_mut_obj_add_bool(
         doc,
@@ -646,6 +647,7 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->graph_document_kind = yyjson_get_int(yyjson_obj_get(root, "graph_kind"));
     scene_authoring_select_document(scene, kind, document);
     scene->navigator_scene = yyjson_get_bool(yyjson_obj_get(root, "navigator_scene"));
+    scene->content_catalog = yyjson_get_bool(yyjson_obj_get(root, "content_catalog"));
     scene->editor_state_seen = false;
     scene->behavior_apply_pending = false;
     app_scene_authoring_refresh_content(scene);

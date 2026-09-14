@@ -149,23 +149,18 @@ static void expect_path(editor *e, const char *path)
     assert(n && !strcmp(n->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str, path));
 }
 
-static void drag_file(image_files_fixture *f, const char *path, bool inspector)
+static void drag_file(image_files_fixture *f, const char *path, const char *target_id)
 {
     editor_ui_request_focus(EDITOR_UI_FOCUS_CONTENT_DRAWER);
     for (int i = 0; i < 3; i++) {
         frame(f);
     }
-    editor_ui_rect source;
-    if (!editor_ui_item_rect(path, &source)) {
-        click(f, "content.folders");
-        frame(f);
-        source = item(path);
-    }
+    editor_ui_rect source = item(path);
     ImVec2 start = { source.x + source.width * .5f, source.y + source.height * .5f };
     ImVec2 destination = { f->graph->canvas_min.x + f->graph->canvas_size.x * .7f,
                            f->graph->canvas_min.y + f->graph->canvas_size.y * .65f };
-    if (inspector) {
-        editor_ui_rect target = item("shader.image.select");
+    if (target_id) {
+        editor_ui_rect target = item(target_id);
         destination = (ImVec2){ target.x + target.width * .5f,
                                 target.y + target.height * .5f };
     }
@@ -189,7 +184,7 @@ static void canvas_drop(image_files_fixture *f, const char *path, behavior_domai
     open_graph(f, domain);
     editor *e = f->graph;
     int before = acount(e->active_graph->nodes), history = acount(e->undo);
-    drag_file(f, path, false);
+    drag_file(f, path, NULL);
     if (domain == BEHAVIOR_DOMAIN_EVENT) {
         assert(!image_node(e) && acount(e->active_graph->nodes) == before);
         assert(acount(e->undo) == history);
@@ -211,13 +206,45 @@ static void canvas_drop(image_files_fixture *f, const char *path, behavior_domai
     expect_path(e, path);
 }
 
+static void inline_image(image_files_fixture *f, const char *keep, const char *replacement)
+{
+    editor *e = f->graph;
+    uint64_t id = image_node(e)->id;
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    editor_reveal_node(e, image_node(e));
+    for (int i = 0; i < 8; i++) {
+        frame(f);
+    }
+    char control[128], choice[1200];
+    snprintf(control, sizeof control, "shader.node.%llu.shader.image.select", (unsigned long long)id);
+    int count = acount(e->active_graph->nodes), history = acount(e->undo);
+    drag_file(f, replacement, control);
+    expect_path(e, replacement);
+    assert(acount(e->active_graph->nodes) == count && acount(e->undo) == history + 1);
+    click(f, control);
+    frame(f);
+    snprintf(choice, sizeof choice, "shader.node.%llu.shader.image.choice.%s", (unsigned long long)id, keep);
+    click(f, choice);
+    frame(f);
+    expect_path(e, keep);
+    editor_undo(e);
+    frame(f);
+    expect_path(e, replacement);
+    editor_undo(e);
+    frame(f);
+    expect_path(e, keep);
+    assert(!editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR));
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, true);
+    frame(f);
+}
+
 static void refresh_choices(image_files_fixture *f, const char *keep, const char *remove, const char *directory)
 {
     editor *e = f->graph;
     ed_select_node(e, image_node(e), false);
     frame(f);
     int count = acount(e->active_graph->nodes), history = acount(e->undo);
-    drag_file(f, remove, true);
+    drag_file(f, remove, "shader.image.select");
     expect_path(e, remove);
     assert(acount(e->active_graph->nodes) == count && acount(e->undo) == history + 1);
     editor_undo(e);
@@ -296,6 +323,7 @@ void shader_image_files_ui()
     canvas_drop(&f, upper, BEHAVIOR_DOMAIN_SHADER_LIBRARY);
     canvas_drop(&f, upper, BEHAVIOR_DOMAIN_EVENT);
     canvas_drop(&f, upper, BEHAVIOR_DOMAIN_MATERIAL);
+    inline_image(&f, upper, second);
     refresh_choices(&f, upper, second, directory);
     app_scene_authoring_free(f.scene);
     engine_free(f.runtime);

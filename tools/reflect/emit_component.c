@@ -260,9 +260,6 @@ void emit_component_entity_nodes(FILE *out, const struct_info *s)
 
 bool component_field_settable(const field_info *field)
 {
-    if (!strcmp(field->pin, "PIN_STR") || !strcmp(field->pin, "PIN_NAME")) {
-        return false;
-    }
     if (strcmp(field->pin, "PIN_STRUCT")) {
         return true;
     }
@@ -272,7 +269,9 @@ bool component_field_settable(const field_info *field)
             continue;
         }
         for (int j = 0; j < acount(type->fields); j++) {
-            if (!component_field_settable(&type->fields[j])) {
+            if (!strcmp(type->fields[j].pin, "PIN_STR") ||
+                !strcmp(type->fields[j].pin, "PIN_NAME") ||
+                !component_field_settable(&type->fields[j])) {
                 return false;
             }
         }
@@ -308,7 +307,20 @@ void emit_component_field_nodes(FILE *out, const struct_info *s)
         }
         fprintf(out, "    %s *value = %s_%s_get(world, entity);\n", name, g_prefix, name);
         fputs("    if (!value) return flow_context_fail(ctx, FLOW_ERR_NODE, \"Target lacks component\");\n", out);
-        fprintf(out, "    pin_write_field(value, &%s_%s_fields[%d], input);\n", g_prefix, name, i);
+        if (!strcmp(field->pin, "PIN_STR") || !strcmp(field->pin, "PIN_NAME")) {
+            fprintf(
+                out,
+                "    if (ecs_component_write_field(world, entity, "
+                "%s_COMPONENT_%s.id, %d, input) != ECS_OK) return "
+                "flow_context_fail(ctx, FLOW_ERR_NODE, \"Could not write "
+                "component text field\");\n",
+                g_prefix,
+                name,
+                i
+            );
+        } else {
+            fprintf(out, "    pin_write_field(value, &%s_%s_fields[%d], input);\n", g_prefix, name, i);
+        }
         fprintf(out, "    pin_value *output = flow_context_output_value(ctx, 1);\n    *output = (pin_value){ .type = PIN_STRUCT, .type_name = \"%s\" };\n", name);
         fprintf(out, "    output->ptr = flow_context_scratch_alloc(ctx, sizeof(%s));\n", name);
         fprintf(out, "    memcpy(output->ptr, value, sizeof(%s));\n", name);
@@ -501,7 +513,8 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         "node_desc %s_NODE_Get_%s = { .name = \"Get_%s\", .output_count = 1, "
         ".outputs = %s_%s_get_outputs, .pure_kind = NODE_PURE_READ, .read = "
         "__read_%s_get_%s, "
-        ".type = &%s_T_%s, .access = &%s_%s_get_access, ",
+        ".type = &%s_T_%s, .access = &%s_%s_get_access, .binding_component = "
+        "\"%s\", ",
         g_prefix,
         name,
         name,
@@ -512,7 +525,8 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name,
         g_prefix,
-        name
+        name,
+        component_key(s)
     );
     fprintf(out, " .component_kind = NODE_COMPONENT_GET_SELF, .component = &%s_COMPONENT_%s };\n\n", g_prefix, name);
     fprintf(

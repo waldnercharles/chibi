@@ -14,6 +14,7 @@ int render_shader_count();
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
 void render_shader_parameter_default(int index, int slot, float value[4]);
+bool render_shader_parameters_validate(int index, const char *json, shader_error *error);
 bool render_shader_is_shape(int index);
 bool render_shader_may_be_transparent(int index);
 bool render_shader_sample(

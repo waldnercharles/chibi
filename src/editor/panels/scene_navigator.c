@@ -1,5 +1,6 @@
 #include "editor/panels/scene_properties.h"
 #include "editor/ui/labels.h"
+#include "editor/ui/search.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/model/pin_fmt.h"
@@ -9,27 +10,18 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#undef IMGUI_STB_NAMESPACE
+#include <imgui/dcimgui_internal.h>
 
 bool scene_search_matches(const char *query, const char *text)
 {
-    if (!query[0]) {
-        return true;
-    }
-    for (int start = 0; text[start]; start++) {
-        int i = 0;
-        while (query[i] && text[start + i] &&
-               tolower((unsigned char)query[i]) ==
-                   tolower((unsigned char)text[start + i])) {
-            i++;
-        }
-        if (!query[i]) {
-            return true;
-        }
-    }
-    return false;
+    return editor_search_score(query, text, NULL) >= 0;
 }
 
 typedef struct
@@ -81,7 +73,9 @@ static void sidebar_row_end(sidebar_row row, bool selected, const char *icon, co
         true
     );
     ImDrawList_AddText(row.draw, (ImVec2){ row.min.x + inset, y }, ImGui_GetColorU32(ImGuiCol_TextDisabled), icon);
-    ImDrawList_AddText(row.draw, (ImVec2){ row.min.x + inset + 24, y }, ImGui_GetColorU32(ImGuiCol_Text), label);
+    ImVec2 text_min = { row.min.x + inset + 24, y };
+    ImVec2 text_max = { fmaxf(text_min.x, row.min.x + row.width - 8), max.y };
+    ImGui_RenderTextEllipsis(row.draw, text_min, text_max, text_max.x, label, NULL, NULL);
     ImDrawList_PopClipRect(row.draw);
     ImDrawList_ChannelsMerge(row.draw);
 }
@@ -195,14 +189,32 @@ static void draw_scene_outline(app_scene_authoring *scene)
 static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
 {
     bool searching = scene->asset_search[0] != '\0';
-    bool any = false;
-    for (int i = 0; i < acount(scene->content); i++) {
-        scene_content_entry *entry = &scene->content[i];
-        if (searching) {
-            if (entry->directory || asset_search_score(scene, entry->path) < 0) {
+    editor_search_result *results = NULL;
+    if (searching) {
+        for (int i = 0; i < acount(scene->content); i++) {
+            scene_content_entry *entry = &scene->content[i];
+            if (entry->directory) {
                 continue;
             }
-        } else if (!content_path_is_child(parent, entry->path)) {
+            int score = editor_search_score(
+                scene->asset_search,
+                content_basename(entry->path),
+                entry->path
+            );
+            if (score >= 0) {
+                apush(results, ((editor_search_result){ .index = i, .score = score }));
+            }
+        }
+        if (acount(results) > 1) {
+            qsort(results, (size_t)acount(results), sizeof *results, editor_search_compare);
+        }
+    }
+    bool any = false;
+    int count = searching ? acount(results) : acount(scene->content);
+    for (int row = 0; row < count; row++) {
+        int i = searching ? results[row].index : row;
+        scene_content_entry *entry = &scene->content[i];
+        if (!searching && !content_path_is_child(parent, entry->path)) {
             continue;
         }
         any = true;
@@ -239,10 +251,13 @@ static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
             row,
             (flags & ImGuiTreeNodeFlags_Selected) != 0,
             icon,
-            searching ? entry->path : content_basename(entry->path),
+            content_basename(entry->path),
             icon_inset
         );
         editor_ui_track_item(entry->path);
+        if (!entry->directory && ImGui_IsItemHovered(0)) {
+            ImGui_SetTooltip("%s", entry->path);
+        }
         if (ImGui_IsItemClicked()) {
             select_content_entry(scene, entry);
         }
@@ -281,6 +296,7 @@ static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
         }
         ImGui_PopID();
     }
+    afree(results);
     return any;
 }
 
@@ -291,7 +307,7 @@ static void draw_files(app_scene_authoring *scene)
         content_refresh(scene);
         scene->content_scan_time = now;
     }
-    if (editor_ui_icon_button("create_asset", EDITOR_ICON_FA_PLUS, true)) {
+    if (ImGui_Button("+ New")) {
         ImGui_OpenPopup("create_asset", 0);
     }
     editor_ui_track_item("content.create");
@@ -321,19 +337,38 @@ static void draw_files(app_scene_authoring *scene)
         editor_ui_track_item("content.new_prototype");
         ImGui_EndPopup();
     }
-    bool folders = editor_ui_disclosure("Folders", "content.folders");
-    editor_ui_track_item("content.folders");
-    if (folders) {
-        if (ImGui_BeginChild("content_tree", (ImVec2){ 0.0f, 160.0f }, 0, 0)) {
-            if (!draw_content_tree(scene, scene->content_root)) {
-                ImGui_TextUnformatted(scene->asset_search[0] ? "No Results" : "No Files");
-                editor_ui_track_item("content.empty");
-            }
+    ImGui_SameLine();
+    ImGui_SetNextItemWidth(fmaxf(1.0f, ImGui_GetContentRegionAvail().x));
+    if (ImGui_BeginCombo("##project_view", scene->content_catalog ? "Asset catalog" : "Files", 0)) {
+        if (ImGui_SelectableEx("Files", !scene->content_catalog, 0, (ImVec2){ 0 })) {
+            scene->content_catalog = false;
         }
-        ImGui_EndChild();
-        ImGui_TreePop();
+        editor_ui_track_item("content.view.files");
+        if (ImGui_SelectableEx("Asset catalog", scene->content_catalog, 0, (ImVec2){ 0 })) {
+            scene->content_catalog = true;
+        }
+        editor_ui_track_item("content.view.catalog");
+        ImGui_EndCombo();
     }
-    draw_asset_catalog(scene);
+    editor_ui_track_item("content.view");
+    ImGui_SetNextItemWidth(fmaxf(1.0f, ImGui_GetContentRegionAvail().x));
+    editor_ui_search_field(
+        "content.search",
+        scene->asset_search,
+        sizeof scene->asset_search,
+        scene->content_catalog ? "Search assets" : "Search files"
+    );
+    if (scene->content_catalog) {
+        draw_asset_catalog(scene);
+        return;
+    }
+    if (ImGui_BeginChild("content_tree", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
+        if (!draw_content_tree(scene, scene->content_root)) {
+            ImGui_TextDisabled(scene->asset_search[0] ? "No matching files" : "No files");
+            editor_ui_track_item("content.empty");
+        }
+    }
+    ImGui_EndChild();
 }
 
 static void draw_prototype_outline(app_scene_authoring *scene)

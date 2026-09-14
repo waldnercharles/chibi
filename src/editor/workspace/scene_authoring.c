@@ -116,9 +116,6 @@ static const editor_choices *resolve_pin_choices(const node *n, int output, int 
 
 static bool resolve_pin_color(const node *n, int output, int pin, void *)
 {
-    if (!output && pin == 2 && n->desc == registry_node_by_name("Emit Particles")) {
-        return true;
-    }
     const type_desc *type = n->desc->type;
     return !output && type && n->desc->pure_kind == NODE_PURE_MAKE &&
            pin >= 0 && pin < type->field_count &&
@@ -975,13 +972,11 @@ static void draw_debug_header(void *user)
         sync_editor_inspection(scene);
     }
     editor_ui_track_item("graph.debug.pin");
-    const char *status = "Choose a debug target";
+    const char *status = "No debug target";
     switch (scene->debug_status) {
         case APP_DEBUG_AVAILABLE: status = "Live inspection"; break;
         case APP_DEBUG_UNAVAILABLE: status = "Debug target unavailable"; break;
-        case APP_DEBUG_OTHER_GRAPH:
-            status = "Open the bound behavior to inspect";
-            break;
+        case APP_DEBUG_OTHER_GRAPH: status = "Target behavior not open"; break;
         case APP_DEBUG_STALE: status = "Unapplied graph edits"; break;
         case APP_DEBUG_NONE: break;
     }
@@ -1353,6 +1348,9 @@ static int app_ui_command(editor_ui_command command, void *user)
         return -1;
     }
     switch (command) {
+        case EDITOR_UI_COMMAND_QUICK_OPEN:
+            asset_browser_request_quick_open(scene);
+            return 0;
         case EDITOR_UI_COMMAND_RUNTIME_PLAY_PAUSE: {
             app_runtime_state state = app_scene_authoring_runtime_state(scene);
             return app_scene_authoring_runtime_command(

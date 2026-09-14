@@ -25,10 +25,20 @@ typedef struct game_scene_document
 
 game_scene_document *game_scene_document_new(const char *name);
 void game_scene_document_free(game_scene_document *document);
+int game_scene_document_set_perspective(game_scene_document *document, bool perspective);
+int game_scene_document_entity_index(const game_scene_document *document, const char *name);
 int game_scene_document_add_entity(
     game_scene_document *document,
     const char *name,
     const char *prototype,
+    const char *const *behaviors,
+    int behavior_count
+);
+int game_scene_document_remove_entity(game_scene_document *document, int index);
+int game_scene_document_set_entity_prototype(game_scene_document *document, int index, const char *prototype);
+int game_scene_document_set_entity_behaviors(
+    game_scene_document *document,
+    int index,
     const char *const *behaviors,
     int behavior_count
 );

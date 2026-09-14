@@ -1287,7 +1287,7 @@ flow_run *behavior_instance_dispatch(
     if (profile) {
         uint64_t elapsed = behavior_profile_leave(&scope);
         if (act) {
-            bi->profile(name, elapsed, BEHAVIOR_PROFILE_SETUP, bi->profile_user);
+            bi->profile(name, elapsed, elapsed + scope.children, BEHAVIOR_PROFILE_SETUP, bi->profile_user);
         }
     }
     if (act) {

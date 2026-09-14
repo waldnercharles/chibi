@@ -17,6 +17,8 @@ struct render_radiance
     float falloff, bounce_intensity, bounce_hysteresis, radiance_hysteresis;
     int upscale_mode, radiance_ping, frame_count;
     float upscale_threshold;
+    GameLighting2D lighting;
+    bool authored_lighting;
     CF_Texture scene, emission, transmittance, albedo, black;
     CF_Canvas bounce_canvas;
     CF_Texture radiance_tex[2], radiance_raw_tex, radiance_bounce_tex;
@@ -695,6 +697,12 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     return true;
 }
 
+void render_radiance_set_lighting(render_radiance *radiance, GameLighting2D lighting)
+{
+    radiance->lighting = lighting;
+    radiance->authored_lighting = true;
+}
+
 bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, CF_Canvas output)
 {
     assert(hrc);
@@ -717,8 +725,11 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, C
     s_dispatch_gather(hrc);
     s_dispatch_blur(hrc);
     s_render_bounce(hrc);
-    /* Saved Neon-Swarm data/configs/hrc.json overrides header defaults. */
-    float ambient = 0, intensity = 7.5f, shadow_floor = 0, fog = 1, debug = 0;
+    GameLighting2D lighting = hrc->authored_lighting
+                                ? hrc->lighting
+                                : (GameLighting2D){ .emission = 7.5f, .fog = 1 };
+    float ambient = lighting.ambient, intensity = lighting.emission,
+          shadow_floor = lighting.shadow_floor, fog = lighting.fog, debug = 0;
     float phase = (float)(hrc->frame_count & 63);
     cf_draw_push_shader(hrc->composite_shd);
     cf_draw_set_texture("scene_tex", hrc->scene);

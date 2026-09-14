@@ -1,6 +1,7 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/authoring/arrange.h"
+#include "graph/model/registry.h"
 #include "support/math.h"
 
 #include <assert.h>
@@ -11,6 +12,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* Layered auto-arrange. The measurement and the wire topology come from the
  * editor; the layout itself lives in arrange.c, which knows no ImGui. */
@@ -24,7 +26,7 @@ static int ed_node_index(node *const *nodes, const node *n)
     return -1;
 }
 
-void ed_auto_arrange(editor *e)
+static void ed_arrange(editor *e, bool history)
 {
     graph *g = e->active_graph;
     node **nodes = NULL;
@@ -85,7 +87,9 @@ void ed_auto_arrange(editor *e)
     /* An already arranged graph must not push a do-nothing undo entry, and
      * must not destroy the preview instance at the edit choke point. */
     if (moved) {
-        ed_snapshot_before(e);
+        if (history) {
+            ed_snapshot_before(e);
+        }
         for (int i = 0; i < count; i++) {
             nodes[i]->x = pos[i].x;
             nodes[i]->y = pos[i].y;
@@ -94,12 +98,25 @@ void ed_auto_arrange(editor *e)
     /* The arranged graph rarely still sits where the view was looking, so
      * frame it. Fitting moves zoom and pan, so the screen-space layout is
      * rebuilt after it rather than before. */
-    ed_zoom_fit(e, false);
+    if (e->view_initialized) {
+        ed_zoom_fit(e, false);
+    } else {
+        ed_frame_initial_view(e);
+    }
     ed_build_layout(e);
     afree(links);
     afree(pos);
     afree(boxes);
     afree(nodes);
+}
+
+void ed_auto_arrange(editor *e)
+{
+    ed_arrange(e, true);
+}
+void ed_arrange_in_transaction(editor *e)
+{
+    ed_arrange(e, false);
 }
 
 static void ed_curve_axis_bounds(float p0, float p1, float p2, float p3, float *minimum, float *maximum)
@@ -240,6 +257,48 @@ void ed_zoom_fit(editor *e, bool animate)
     ImVec2 pan = ed_sub(ed_scale(e->canvas_size, 0.5f), ed_scale(center, zoom));
     ed_camera_target(e, pan, zoom, animate);
     e->view_initialized = 1;
+}
+
+static node *ed_opening_anchor(const editor *e)
+{
+    node *first = NULL;
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
+        if (graph_node_is_inline(e->active_graph, n)) {
+            continue;
+        }
+        if (n->desc->flow_kind == NODE_FLOW_EVENT || n->desc == &NODE_FunctionEntry ||
+            !strcmp(n->desc->name, "Shader Surface Output") ||
+            !strcmp(n->desc->name, "Shader Shape Output")) {
+            return n;
+        }
+        if (!first || n->x < first->x || (n->x == first->x && n->y < first->y)) {
+            first = n;
+        }
+    }
+    return first;
+}
+
+void ed_frame_initial_view(editor *e)
+{
+    ed_zoom_fit(e, false);
+    ImVec2 middle = ed_scale(e->canvas_size, 0.5f);
+    ImVec2 center = ed_scale(ed_sub(middle, e->pan), 1.0f / e->zoom);
+    float zoom = ed_max(ED_READABLE_ZOOM, ed_min(1.0f, e->zoom));
+    ImVec2 pan = ed_sub(middle, ed_scale(center, zoom));
+    node *anchor = ed_opening_anchor(e);
+    if (e->zoom < ED_READABLE_ZOOM && anchor) {
+        ImVec2 size = ed_node_dimensions(e, e->active_graph, anchor);
+        bool output = !anchor->output_count && anchor->input_count;
+        float x = output
+                    ? ed_max(ED_FIT_MARGIN, e->canvas_size.x - size.x * zoom - ED_FIT_MARGIN)
+                    : ED_FIT_MARGIN;
+        /* Leave the first node row below the floating graph controls. */
+        pan = (ImVec2){ x - anchor->x * zoom, ED_OPEN_TOP_MARGIN - anchor->y * zoom };
+    }
+    ed_camera_target(e, pan, zoom, false);
+    e->view_initialized = true;
+    e->fit_mode = false;
 }
 
 typedef struct ed_field_spacing

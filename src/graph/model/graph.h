@@ -79,6 +79,7 @@ typedef struct graph
     int call_depth_limit;
     node **id_table; /* id -> node*, NULL after removal; O(1) lookup */
     edge *edges;
+    struct graph_local *locals;
     struct graph_edge_index *edge_index; /* Shared lazy edge index; never serialized. */
     graph_comment_box *comment_boxes;
     char **strings;
@@ -138,6 +139,9 @@ int graph_input_source(const graph *g, const node *n, int pin, node **src, int *
 /* A presentation hint for folding a pure source into its single downstream
  * data consumer. The node and edge remain ordinary graph data. */
 bool graph_node_is_inline(const graph *g, const node *n);
+bool graph_node_is_vector_constructor(const node *n);
+const node_desc *graph_vector_constructor(const pin_spec *pin);
+node *graph_inline_owner(const graph *g, node *n);
 int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
@@ -179,7 +183,8 @@ int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, u
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name);
 int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin);
 /* Exposed fields append outputs while retaining the aggregate pin. Hide keeps
- * connected projections. Reflected struct outputs include local function signatures. */
+ * connected projections. Struct outputs include event and local function
+ * signatures and can expose nested struct fields. */
 const type_desc *graph_output_struct(const node *n, int output_index);
 int graph_expose_output_fields(graph *g, node *n, int output_index);
 int graph_hide_output_fields(graph *g, node *n, int output_index);

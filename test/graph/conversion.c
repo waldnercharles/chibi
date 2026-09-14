@@ -49,9 +49,97 @@ static void evaluation_lifetime_checks()
     graph_free(&g);
 }
 
+static void vector_binding_checks()
+{
+    const char *types[] = { "CF_V2", "CF_V3", "ShaderVec2", "ShaderVec3", "ShaderVec4" };
+    arena storage;
+    arena_init(&storage, 4096);
+    for (int i = 0; i < 5; i++) {
+        pin_spec target = { .type = PIN_STRUCT, .type_name = types[i] };
+        pin_spec scalar = { .type = PIN_F64, .type_name = "double" };
+        const node_desc *conversion = conversion_for_pins(&scalar, &target);
+        assert(conversion && conversion_is_vector_splat(conversion));
+        pin_value value = { .type = PIN_F64, .d = -2.75 };
+        pin_value result = conversion->fn(&value, 1, &storage);
+        for (int axis = 0; axis < pin_vector_width(&target); axis++) {
+            test_check(((float *)result.ptr)[axis] == -2.75f, "scalar conversion fills every vector component");
+        }
+    }
+    for (int count = 2; count <= 3; count++) {
+        graph g;
+        graph_init(&g);
+        node *target = graph_add_node(&g, registry_node_by_name(count == 2 ? "Break_CF_V2" : "Break_CF_V3"));
+        node *number = graph_add_node(&g, registry_node_by_name("Integer"));
+        graph_set_pin_default(&g, number, false, 0, &(pin_value){ .type = PIN_I32, .i = 7 });
+        const node_desc *conversion = conversion_for_pins(
+            &number->output_pins[0],
+            &target->input_pins[0]
+        );
+        assert(graph_connect_data_conversion(&g, number, 0, target, 0, conversion) == 0);
+        assert(graph_set_node_inline(&g, number, true) == 0);
+        char *json = graph_save_json(&g);
+        graph *copy = graph_load_json(json);
+        assert(copy);
+        eval_context context;
+        eval_context_init(&context);
+        for (int axis = 0; axis < count; axis++) {
+            pin_value value = { 0 };
+            assert(
+                graph_eval_output(copy, graph_node_by_id(copy, target->id), axis, &storage, &value, &context) ==
+                0
+            );
+            test_check(value.type == PIN_F32 && value.f == 7, "saved inline integer broadcasts through runtime vector inputs");
+        }
+        eval_context_free(&context);
+        graph_free(copy);
+        free(copy);
+        free(json);
+        graph_remove_node(&g, number);
+        node *vector = graph_add_node(&g, graph_vector_constructor(&target->input_pins[0]));
+        assert(graph_connect_data(&g, vector, 0, target, 0) == 0);
+        assert(graph_set_node_inline(&g, vector, true) == 0);
+        graph_set_pin_default(&g, vector, false, 1, &(pin_value){ .type = PIN_F32, .f = 3 });
+        number = graph_add_node(&g, registry_node_by_name("Real"));
+        graph_set_pin_default(&g, number, false, 0, &(pin_value){ .type = PIN_F64, .d = 2 });
+        assert(graph_connect_data(&g, number, 0, vector, 0) == 0);
+        assert(graph_set_node_inline(&g, number, true) == 0);
+        test_check(
+            graph_node_is_inline(&g, vector) && graph_node_is_inline(&g, number) &&
+                graph_inline_owner(&g, number) == target,
+            "vector owns independently bound component sources"
+        );
+        json = graph_save_json(&g);
+        copy = graph_load_json(json);
+        assert(copy && graph_node_is_inline(copy, graph_node_by_id(copy, number->id)));
+        eval_context_init(&context);
+        for (int axis = 0; axis < count; axis++) {
+            pin_value value = { 0 };
+            assert(
+                graph_eval_output(copy, graph_node_by_id(copy, target->id), axis, &storage, &value, &context) ==
+                0
+            );
+            test_check(
+                value.f == (axis == 0   ? 2
+                            : axis == 1 ? 3
+                                        : 0),
+                "saved inline vector combines bound and literal components"
+            );
+        }
+        eval_context_free(&context);
+        graph_free(copy);
+        free(copy);
+        free(json);
+        graph_remove_node(&g, target);
+        test_check(acount(g.nodes) == 0, "removing vector owner removes its nested inline sources");
+        graph_free(&g);
+    }
+    arena_free(&storage);
+}
+
 void run_graph_conversion_checks()
 {
     evaluation_lifetime_checks();
+    vector_binding_checks();
     eval_context eval_ctx;
     eval_context_init(&eval_ctx);
     /* TYPE-7 / CAT-26 / UI-22: explicit conversion nodes. conversion_for()

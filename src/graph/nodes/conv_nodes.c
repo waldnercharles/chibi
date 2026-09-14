@@ -206,6 +206,72 @@ node_desc NODE_To_Integer64 = {
     .keywords = "convert cast integer int64 widen",
 };
 
+static pin_value vector_splat(const pin_value *input, arena *storage, const char *type, int width)
+{
+    float value = 0;
+    switch (input->type) {
+        case PIN_F32: value = input->f; break;
+        case PIN_F64: value = (float)input->d; break;
+        case PIN_U8: value = (float)input->u8; break;
+        case PIN_I32: value = (float)input->i; break;
+        case PIN_I64: value = (float)input->i64; break;
+        default: assert(false); break;
+    }
+    float *result = arena_alloc(storage, (size_t)width * sizeof *result);
+    for (int i = 0; i < width; i++) {
+        result[i] = value;
+    }
+    return (pin_value){ .type = PIN_STRUCT, .type_name = type, .ptr = result };
+}
+
+#define VECTOR_SPLAT(vector_type, width)                                                    \
+    static pin_value splat_##vector_type(const pin_value *input, int count, arena *storage) \
+    {                                                                                       \
+        assert(count == 1);                                                                 \
+        return vector_splat(input, storage, #vector_type, width);                           \
+    }                                                                                       \
+    static pin_spec splat_##vector_type##_out[] = {                                         \
+        { .name = "Vector", .type = PIN_STRUCT, .type_name = #vector_type }                 \
+    };                                                                                      \
+    node_desc NODE_Splat_##vector_type = { .name = "Scalar to " #vector_type,               \
+                                           .input_count = 1,                                \
+                                           .inputs = real_integer_inputs,                   \
+                                           .output_count = 1,                               \
+                                           .outputs = splat_##vector_type##_out,            \
+                                           .pure_kind = NODE_PURE_CALL,                     \
+                                           .fn = splat_##vector_type,                       \
+                                           .category = "Conversion",                        \
+                                           .display_class = NODE_DISPLAY_PURE,              \
+                                           .conversion_from = "double",                     \
+                                           .conversion_to = #vector_type };
+VECTOR_SPLAT(CF_V2, 2)
+VECTOR_SPLAT(CF_V3, 3)
+VECTOR_SPLAT(ShaderVec2, 2)
+VECTOR_SPLAT(ShaderVec3, 3)
+VECTOR_SPLAT(ShaderVec4, 4)
+#undef VECTOR_SPLAT
+
+static const node_desc *const vector_splats[] = {
+    &NODE_Splat_CF_V2,      &NODE_Splat_CF_V3,      &NODE_Splat_ShaderVec2,
+    &NODE_Splat_ShaderVec3, &NODE_Splat_ShaderVec4,
+};
+
+bool conversion_is_vector_splat(const node_desc *conversion)
+{
+    for (int i = 0; i < (int)(sizeof vector_splats / sizeof *vector_splats); i++) {
+        if (conversion == vector_splats[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool splat_source(pin_type type)
+{
+    return type == PIN_F32 || type == PIN_F64 || type == PIN_U8 ||
+           type == PIN_I32 || type == PIN_I64;
+}
+
 /* Sources the To String node accepts. TYPE-7 says "any scalar to string";
  * this is the core scalar set that has a literal node (CAT-30), with F32 in
  * the Real category (TYPE-10). */
@@ -266,6 +332,10 @@ int conversion_matches_pins(const pin_spec *from, const pin_spec *to, const node
         conversion->input_count != 1 || conversion->output_count != 1 ||
         conversion->pure_kind != NODE_PURE_CALL || !conversion->fn) {
         return 0;
+    }
+    if (conversion_is_vector_splat(conversion)) {
+        return splat_source(from->type) &&
+               pin_compatible(&conversion->outputs[0], to);
     }
     if (conversion == conversion_for(from->type, to->type)) {
         return 1;

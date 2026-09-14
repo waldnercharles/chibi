@@ -303,17 +303,11 @@ int behavior_lower_component_binding(builder *b, node *n, int pin)
     if (!desc) {
         return behavior_lower_unsupported(b, n, pin, false, "component binding identity");
     }
-    const type_field *field = NULL;
-    if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
-        for (int i = 0; i < desc->type->field_count; i++) {
-            if (binding->field_name &&
-                !strcmp(desc->type->fields[i].name, binding->field_name)) {
-                field = &desc->type->fields[i];
-            }
-        }
-        if (!field) {
-            return behavior_lower_unsupported(b, n, pin, false, "component binding field");
-        }
+    const type_field *field = binding->kind == PIN_BINDING_COMPONENT_FIELD
+                                ? pin_type_field_path(desc->type, binding->field_name)
+                                : NULL;
+    if (binding->kind == PIN_BINDING_COMPONENT_FIELD && !field) {
+        return behavior_lower_unsupported(b, n, pin, false, "component binding field");
     }
     pin_spec actual = { .type = field ? field->type : PIN_STRUCT,
                         .type_name = field ? field->type_name : desc->type->name };
@@ -329,8 +323,23 @@ int behavior_lower_component_binding(builder *b, node *n, int pin)
     int row = component(b, n, error_pin, w, entity(b, w, owner), desc, false, flow, true, false);
     require(b, row, n, error_pin, flow, "Self does not have the bound component");
     int value = load(b, desc->type, row);
-    if (field && value >= 0) {
-        value = behavior_lower_field(b, value, field, n, pin);
+    const char *path = field ? binding->field_name : NULL;
+    while (path && value >= 0) {
+        const char *end = strchr(path, '.');
+        size_t length = end ? (size_t)(end - path) : strlen(path);
+        const aggregate *shape = behavior_lower_aggregate(b, value);
+        const type_field *member = NULL;
+        for (int i = 0; shape && i < shape->type->field_count; i++) {
+            const type_field *candidate = &shape->type->fields[i];
+            if (strlen(candidate->name) == length &&
+                !strncmp(candidate->name, path, length)) {
+                member = candidate;
+                break;
+            }
+        }
+        assert(member);
+        value = behavior_lower_field(b, value, member, n, pin);
+        path = end ? end + 1 : NULL;
     }
     return behavior_lower_convert(b, value, spec->type);
 }

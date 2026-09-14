@@ -9,22 +9,22 @@
 
 static const type_desc *watch_type(const graph *g, const node *n, int output, int pin)
 {
-    if (!n || !n->desc) {
+    if (!n || !n->desc || pin < 0 ||
+        (output ? pin >= n->output_count : pin >= n->input_count)) {
         return NULL;
     }
-    const type_desc *type = n->desc->type;
+    const pin_spec *spec = output ? &n->output_pins[pin] : &n->input_pins[pin];
+    const type_desc *type = spec->type_name ? registry_type_by_name(spec->type_name)
+                                            : n->desc->type;
     if (!output) {
         node *source = NULL;
         int source_pin = -1;
         if (graph_input_source(g, n, pin, &source, &source_pin) && source &&
             source->desc) {
-            type = source->desc->type;
-        }
-    }
-    if (!type) {
-        const pin_spec *spec = output ? n->output_pins + pin : n->input_pins + pin;
-        if (spec && spec->type_name) {
-            return registry_type_by_name(spec->type_name);
+            const pin_spec *source_spec = &source->output_pins[source_pin];
+            type = source_spec->type_name
+                     ? registry_type_by_name(source_spec->type_name)
+                     : source->desc->type;
         }
     }
     return type;
@@ -234,13 +234,10 @@ void flow_watch_capture_outputs(flow_run *run, node *n)
             continue;
         }
         if (n->output_pins[i].field_source || n->output_pins[i].field_name) {
-            int source = -1;
-            const type_field *field = graph_output_field(n, i, &source);
-            if (!field || outputs[source].type != PIN_STRUCT || !outputs[source].ptr) {
+            pin_value value;
+            if (eval_context_output(&run->eval, n, i, &value)) {
                 continue;
             }
-            pin_value value = { 0 };
-            pin_read_field(outputs[source].ptr, field, &value);
             (void)flow_watch_store(run, run->graph, n, 1, i, &value);
             continue;
         }

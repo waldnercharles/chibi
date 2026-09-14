@@ -1,6 +1,7 @@
 #include "editor/graph/search.h"
 
 #include "editor/ui/labels.h"
+#include "editor/ui/search.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
@@ -35,163 +36,20 @@ static const node_desc ed_math_desc = {
     .output_count = 1
 };
 
-#define ED_SEARCH_MAX 128
-
-static char ed_search_lower(char c)
-{
-    return c >= 'A' && c <= 'Z' ? (char)(c + ('a' - 'A')) : c;
-}
-
-static int ed_search_length(const char *text)
-{
-    int length = 0;
-    while (text && text[length] && length < ED_SEARCH_MAX - 1) {
-        length++;
-    }
-    return length;
-}
-
-static int ed_damerau_levenshtein(const char *a, const char *b)
-{
-    int al = ed_search_length(a), bl = ed_search_length(b);
-    int pp[ED_SEARCH_MAX] = { 0 }, p[ED_SEARCH_MAX] = { 0 }, c[ED_SEARCH_MAX] = { 0 };
-    for (int j = 0; j <= bl; j++) {
-        p[j] = j;
-    }
-    for (int i = 1; i <= al; i++) {
-        c[0] = i;
-        for (int j = 1; j <= bl; j++) {
-            int v = p[j - 1] +
-                    (ed_search_lower(a[i - 1]) != ed_search_lower(b[j - 1]));
-            if (c[j - 1] + 1 < v) {
-                v = c[j - 1] + 1;
-            }
-            if (p[j] + 1 < v) {
-                v = p[j] + 1;
-            }
-            if (i > 1 && j > 1 &&
-                ed_search_lower(a[i - 1]) == ed_search_lower(b[j - 2]) &&
-                ed_search_lower(a[i - 2]) == ed_search_lower(b[j - 1]) &&
-                pp[j - 2] + 1 < v) {
-                v = pp[j - 2] + 1;
-            }
-            c[j] = v;
-        }
-        memcpy(pp, p, sizeof pp);
-        memcpy(p, c, sizeof p);
-    }
-    return p[bl];
-}
-
-static int ed_best_name_distance(const char *name, const char *filter)
-{
-    int nl = ed_search_length(name), fl = ed_search_length(filter), best = ED_SEARCH_MAX;
-    int low = fl > 2 ? fl - 2 : 1, high = fl + 2;
-    for (int start = 0; start < nl; start++) {
-        for (int length = low; length <= high && start + length <= nl; length++) {
-            char window[ED_SEARCH_MAX];
-            memcpy(window, name + start, (size_t)length);
-            window[length] = '\0';
-            int d = ed_damerau_levenshtein(window, filter);
-            if (d < best) {
-                best = d;
-            }
-        }
-    }
-    return best;
-}
-
-static int ed_name_score(const char *name, const char *filter)
-{
-    if (!filter || !filter[0]) {
-        return 0;
-    }
-    int score = 0, previous = -1, first = -1, matched = 1;
-    for (int fi = 0; filter[fi]; fi++) {
-        int found = -1;
-        for (int ni = previous + 1; name[ni]; ni++) {
-            if (ed_search_lower(name[ni]) == ed_search_lower(filter[fi])) {
-                found = ni;
-                break;
-            }
-        }
-        if (found < 0) {
-            matched = 0;
-            break;
-        }
-        if (first < 0) {
-            first = found;
-        }
-        score += found == previous + 1 ? 8 : 1;
-        if (found == 0 || name[found - 1] == ' ' || name[found - 1] == '_') {
-            score += 5;
-        }
-        previous = found;
-    }
-    int fl = ed_search_length(filter), distance = ed_best_name_distance(name, filter);
-    int limit = fl <= 3 ? 1 : fl / 3;
-    if (!matched && distance > limit) {
-        return -1;
-    }
-    if (!matched) {
-        score = 0;
-    }
-    if (matched && first == 0) {
-        score += 120;
-    }
-    if (matched && first > 0 && (name[first - 1] == ' ' || name[first - 1] == '_')) {
-        score += 60;
-    }
-    if (distance == 0) {
-        score += 60;
-    } else if (distance <= limit) {
-        score += 32 - distance * 8;
-    }
-    return score;
-}
-
-/* CAT-27: a descriptor's searchable text is its name plus its declared
- * keyword list. The best keyword match scores below any name match so a
- * keyword hit never outranks the node's own name. */
 static int ed_desc_score(const node_desc *desc, const char *filter)
 {
-    char label[256];
+    char label[256], secondary[768];
     editor_node_label(desc, label, sizeof label);
-    int score = ed_name_score(label, filter);
-    int raw_score = ed_name_score(desc->name, filter);
-    if (raw_score > score) {
-        score = raw_score;
-    }
-    if (score >= 0 || !desc->keywords) {
-        return score;
-    }
-    int best = -1;
-    const char *kw = desc->keywords;
-    while (*kw) {
-        while (*kw == ' ') {
-            kw++;
-        }
-        if (!*kw) {
-            break;
-        }
-        const char *end = kw;
-        while (*end && *end != ' ') {
-            end++;
-        }
-        char word[64];
-        size_t len = (size_t)(end - kw);
-        if (len >= sizeof word) {
-            len = sizeof word - 1;
-        }
-        memcpy(word, kw, len);
-        word[len] = '\0';
-        int s = ed_name_score(word, filter);
-        if (s > best) {
-            best = s;
-        }
-        kw = end;
-    }
-    return best;
+    snprintf(
+        secondary,
+        sizeof secondary,
+        "%s %s",
+        desc->category ? desc->category : "",
+        desc->keywords ? desc->keywords : ""
+    );
+    int score = editor_search_score(filter, label, secondary);
+    int raw = editor_search_score(filter, desc->name, secondary);
+    return score > raw ? score : raw;
 }
 
 static const char *ed_desc_category(const node_desc *d)

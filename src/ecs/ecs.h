@@ -161,7 +161,8 @@ int ecs_component_read_field(
     pin_value *out
 );
 /* Bind the ECS reflected component reader used by authored graph input
- * bindings. Its field_name argument is NULL for a whole component snapshot. */
+ * bindings. Its field_name argument is NULL for a whole component snapshot or
+ * a dot-delimited path for a nested field. */
 void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *world);
 int ecs_component_write_field(
     ecs_world *world,

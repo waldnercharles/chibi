@@ -35,6 +35,7 @@ typedef enum
 typedef void (*behavior_profile_fn)(
     const char *event,
     uint64_t nanoseconds,
+    uint64_t inclusive_nanoseconds,
     behavior_profile_phase phase,
     void *user
 );

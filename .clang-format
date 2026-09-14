@@ -41,7 +41,7 @@ AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
-BinPackParameters: OnePerLine
+BinPackParameters: false
 BreakBeforeBraces: Mozilla
 BreakBeforeTernaryOperators: true
 ColumnLimit: 80

@@ -537,6 +537,32 @@ static int to_name(builder *b, int source)
         "name"
     );
 }
+static int vector_splat(builder *b, int slot, const node_desc *conversion)
+{
+    if (slot < 0) {
+        return -1;
+    }
+    aggregate a = behavior_lower_shape(conversion->outputs[0].type_name);
+    if (!a.type) {
+        return -1;
+    }
+    int value = behavior_lower_convert(b, slot, PIN_F32);
+    if (value < 0) {
+        afree(a.fields);
+        return -1;
+    }
+    a.present = behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_BOOL,
+                                         .value = { .type = PIN_BOOL, .b = true } }
+    );
+    for (int i = 0; i < acount(a.fields); i++) {
+        assert(a.fields[i].type == PIN_F32);
+        a.fields[i].slot = value;
+    }
+    return behavior_lower_aggregate_value(b, a);
+}
 static int output_value(builder *b, node *n, int pin)
 {
     if (pin < 0 || pin >= n->output_count || n->disabled ||
@@ -648,6 +674,8 @@ static int output_value(builder *b, node *n, int pin)
         n->output_pins[pin].default_value.type == type
     ) {
         result = behavior_lower_source(b, BF_CONSTANT, 0, &n->output_pins[pin], n, pin);
+    } else if (conversion_is_vector_splat(n->desc)) {
+        result = vector_splat(b, behavior_lower_input(b, n, 0), n->desc);
     } else if (n->desc->pure_kind == NODE_PURE_CALL) {
         int op = -1;
         switch (n->desc->jit_kind) {
@@ -859,6 +887,9 @@ static int edge_conversion(builder *b, int slot, const node_desc *conversion, no
 {
     if (!conversion || slot < 0) {
         return slot;
+    }
+    if (conversion_is_vector_splat(conversion)) {
+        return vector_splat(b, slot, conversion);
     }
     if (conversion == &NODE_To_Name) {
         return to_name(b, slot);

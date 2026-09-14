@@ -493,9 +493,6 @@ void ed_draw_details(editor *e)
             e->asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
             ImGui_TextUnformatted(e->asset->name);
             editor_ui_track_item("inspector.document");
-            if (e->asset->description && e->asset->description[0]) {
-                ImGui_TextWrapped("%s", e->asset->description);
-            }
             if (e->active_graph->name && e->active_graph->name[0]) {
                 ImGui_TextDisabled("Function: %s", e->active_graph->name);
             }

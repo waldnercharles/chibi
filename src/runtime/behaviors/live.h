@@ -6,6 +6,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/scenes/gameplay.h"
 #include "runtime/scenes/physics.h"
+#include "runtime/visibility.h"
 
 #include <stddef.h>
 
@@ -31,6 +32,7 @@ struct game_live_world
     game_entities *entities;
     game_physics *physics;
     game_particles *particles;
+    game_visibility *visibility;
     game_live_definition **definitions;
 };
 

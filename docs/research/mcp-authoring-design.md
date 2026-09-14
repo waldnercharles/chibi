@@ -29,6 +29,12 @@ The relevant existing seams are [`graph_edit.h`](../../src/automation/graph_edit
 [`shader_graph.h`](../../src/graph/shader/shader_graph.h), and the current
 [`MCP controller`](../../src/automation/controller.c).
 
+Since this note was written, the authoring surface also includes
+`edit_prototype` and `describe_components`. The former applies semantic
+component, reflected-field, and behavior-attachment edits with native defaults
+and round-trip validation; the latter keeps component schema context compact
+while exposing stable keys and defaults.
+
 ## Tool contracts
 
 ### `search_nodes`

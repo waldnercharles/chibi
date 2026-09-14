@@ -18,6 +18,9 @@
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_automation_graph_optimize();
+void test_automation_prototype_edit();
+void test_automation_scene_edit();
 void test_automation_asset_write();
 
 int shader_ui_run(const char *program);
@@ -33,11 +36,15 @@ void test_surface_cpu();
 void test_shader_effects_cpu();
 void test_shader_image_cpu();
 void test_physics();
+void test_game_capabilities();
+void test_player_widgets();
 void test_dash();
 void test_encounter();
 void test_system_arithmetic();
 void test_asset_index();
 void test_input_bindings();
+void test_graph_optimizer();
+int ui_optimizer_run(const char *program);
 int scene_documents_run(const char *program);
 
 static int fails;
@@ -57,6 +64,9 @@ TEST_CASE(all_checks)
     stacktrace_init(program_name);
     registry_validate();
     test_automation_graph_edit();
+    test_automation_graph_optimize();
+    test_automation_prototype_edit();
+    test_automation_scene_edit();
     test_automation_asset_write();
     run_content_catalog_checks();
     test_asset_index();
@@ -88,6 +98,8 @@ TEST_CASE(all_checks)
     test_projectile();
     test_combat();
     test_physics();
+    test_game_capabilities();
+    test_player_widgets();
     test_dash();
     test_encounter();
     test_targeting();
@@ -99,6 +111,7 @@ TEST_CASE(all_checks)
     test_graph_navigation();
     test_extract();
     test_input_bindings();
+    test_graph_optimizer();
     test_shader_graph();
     test_surface_cpu();
     test_shader_effects_cpu();
@@ -149,6 +162,16 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc > 1 && strcmp(argv[1], "--ui-optimizer") == 0) {
+        registry_validate();
+        return ui_optimizer_run(program_name);
+    }
+    if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
+        registry_validate();
+        test_graph_optimizer();
+        test_input_bindings();
+        return fails ? 1 : 0;
+    }
     if (argc == 3 && !strcmp(argv[1], "--emit-encounter-query-c")) {
         extern void encounter_query_code(const char *path, int count, int repeats);
         encounter_query_code(argv[2], 0, 0);
@@ -642,9 +665,17 @@ int main(int argc, char **argv)
             strcmp(argv[1], "--arena-crowd-review") == 0
         );
     }
+    if (argc > 1 && strcmp(argv[1], "--ui-node-controls") == 0) {
+        registry_validate();
+        return ui_node_controls_run(program_name);
+    }
     if (argc > 1 && strcmp(argv[1], "--ui-native") == 0) {
         registry_validate();
         return ui_native_run(program_name);
+    }
+    if (argc > 1 && strcmp(argv[1], "--ui-arithmetic") == 0) {
+        registry_validate();
+        return ui_arithmetic_run(program_name);
     }
     if (argc > 1 && strcmp(argv[1], "--query-diagnostics-ui") == 0) {
         extern int query_diagnostics_ui_run(const char *program);
@@ -679,7 +710,16 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();
         test_automation_graph_edit();
+        test_automation_graph_optimize();
+        test_automation_prototype_edit();
+        test_automation_scene_edit();
         test_automation_asset_write();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {
+        registry_validate();
+        test_game_capabilities();
+        test_player_widgets();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--runtime-execution") == 0) {

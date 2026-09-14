@@ -9,6 +9,14 @@
 
 typedef struct game_prototype_preview game_prototype_preview;
 
+typedef struct
+{
+    const game_prototype *prototype;
+    const char *components_json;
+    const char *const *behaviors;
+    int behavior_count;
+} game_prototype_preview_scene_entity;
+
 game_prototype_preview *game_prototype_preview_new(const game_prototype_registry *registry);
 void game_prototype_preview_free(game_prototype_preview *preview);
 int game_prototype_preview_register_behavior(
@@ -40,6 +48,15 @@ int game_prototype_preview_launch(
     char *error,
     size_t error_size
 );
+/* Launch a scene fixture in authored order. The scene behavior list replaces
+ * the prototype's attached behaviors for each entity, matching scene loading. */
+int game_prototype_preview_launch_scene(
+    game_prototype_preview *preview,
+    const game_prototype_preview_scene_entity *entities,
+    int entity_count,
+    char *error,
+    size_t error_size
+);
 int game_prototype_preview_register_prototype(
     game_prototype_preview *preview,
     const game_prototype *prototype
@@ -65,7 +82,10 @@ int game_prototype_preview_input(
 ecs_world *game_prototype_preview_world(game_prototype_preview *preview);
 game_particles *game_prototype_preview_particles(game_prototype_preview *preview);
 game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *preview);
+game_entities *game_prototype_preview_entities(game_prototype_preview *preview);
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview);
+int game_prototype_preview_entity_count(const game_prototype_preview *preview);
+ecs_entity game_prototype_preview_entity_at(const game_prototype_preview *preview, int index);
 behavior_instance *game_prototype_preview_instance(game_prototype_preview *preview, const char *asset_name);
 
 #endif

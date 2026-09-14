@@ -107,6 +107,31 @@ void test_automation_graph_edit(void)
     edited = NULL;
     response = NULL;
     status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"description\":\"Enemy movement graph\","
+        "\"owner_type\":\"ecs.entity\","
+        "\"graph_description\":\"Runs once per fixed frame\","
+        "\"operations\":[]}",
+        &edited,
+        &response
+    );
+    behavior_asset *metadata = edited ? behavior_asset_load_json(edited) : NULL;
+    bool metadata_ok = status == CHIBI_AUTOMATION_OK && metadata &&
+                       !strcmp(metadata->description, "Enemy movement graph") &&
+                       !strcmp(metadata->owner_type_name, "ecs.entity") &&
+                       !strcmp(metadata->graph->description, "Runs once per fixed frame");
+    test_check(metadata_ok, "MCP graph edits preserve asset and selected graph metadata");
+    behavior_asset_free(metadata);
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
         NULL,
         "material",
         "InvalidMaterial",
@@ -258,6 +283,78 @@ void test_automation_graph_edit(void)
                      strstr(edited, "GraphEditMaterial") &&
                      strstr(edited, "Shader Color Ramp");
     test_check(shader_ok, "MCP graph edits initialize, connect, and configure shader nodes");
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        NULL,
+        "material",
+        "GraphEditConstantMaterial",
+        NULL,
+        0,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"constant\",\"type\":\"Shader "
+        "Constant\"},"
+        "{\"op\":\"set_output\",\"node\":\"constant\",\"pin\":\"Value\","
+        "\"type\":\"ShaderVec3\",\"value\":{\"x\":0.1,\"y\":0.2,\"z\":0.3}},"
+        "{\"op\":\"connect\",\"from\":\"constant\",\"from_pin\":\"Value\","
+        "\"to\":\"output\",\"to_pin\":\"Base Color\",\"kind\":\"data\"}]}",
+        &edited,
+        &response
+    );
+    behavior_asset *constant_material = edited ? behavior_asset_load_json(edited)
+                                               : NULL;
+    node *constant = constant_material
+                       ? find_node_type(constant_material->graph, "Shader Constant")
+                       : NULL;
+    bool constant_ok = status == CHIBI_AUTOMATION_OK && constant &&
+                       constant->output_pins[0].type == PIN_STRUCT &&
+                       constant->output_pins[0].type_name &&
+                       !strcmp(constant->output_pins[0].type_name, "ShaderVec3");
+    test_check(constant_ok, "MCP shader edits set typed values on constant outputs");
+    behavior_asset_free(constant_material);
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        NULL,
+        "material",
+        "GraphEditTypedWildcardMaterial",
+        NULL,
+        0,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"value\",\"type\":\"Shader Parameter\"},"
+        "{\"op\":\"add_node\",\"ref\":\"multiply\",\"type\":\"Shader "
+        "Multiply\"},"
+        "{\"op\":\"connect\",\"from\":\"value\",\"from_pin\":\"Value\","
+        "\"to\":\"multiply\",\"to_pin\":\"A\",\"type\":\"ShaderVec3\",\"kind\":"
+        "\"data\"},"
+        "{\"op\":\"connect\",\"from\":\"multiply\",\"from_pin\":\"Value\","
+        "\"to\":\"output\",\"to_pin\":\"Base Color\",\"kind\":\"data\"}]}",
+        &edited,
+        &response
+    );
+    behavior_asset *typed_wildcard = edited ? behavior_asset_load_json(edited) : NULL;
+    node *typed_value = typed_wildcard
+                          ? find_node_type(typed_wildcard->graph, "Shader Parameter")
+                          : NULL;
+    node *typed_multiply = typed_wildcard
+                             ? find_node_type(typed_wildcard->graph, "Shader Multiply")
+                             : NULL;
+    bool typed_wildcard_ok = status == CHIBI_AUTOMATION_OK && typed_value &&
+                             typed_multiply &&
+                             typed_value->output_pins[0].type == PIN_STRUCT &&
+                             typed_value->output_pins[0].type_name &&
+                             !strcmp(typed_value->output_pins[0].type_name, "ShaderVec3") &&
+                             typed_multiply->input_pins[0].type == PIN_STRUCT &&
+                             typed_multiply->input_pins[0].type_name &&
+                             !strcmp(typed_multiply->input_pins[0].type_name, "ShaderVec3");
+    test_check(typed_wildcard_ok, "MCP shader connections accept explicit wildcard types");
+    behavior_asset_free(typed_wildcard);
     yyjson_mut_doc_free(response);
     free(edited);
 

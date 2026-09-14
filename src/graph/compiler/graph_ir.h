@@ -85,6 +85,7 @@ typedef struct
     const node *source;
     int source_pin;
     const type_field *field;
+    size_t field_offset; /* Full byte offset from the root aggregate. */
     node_fn conversion;
     int target;
 } graph_ir_behavior_instruction;

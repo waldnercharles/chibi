@@ -21,6 +21,8 @@ struct render_shader_preview
     render_arena_camera camera;
     render_programs *programs;
     render_material_entity entity;
+    float center_x, center_y;
+    float span_width, span_height;
     int width, height;
     int program;
     bool material;
@@ -54,11 +56,15 @@ static bool prepare_material_preview(render_shader_preview *preview, int width, 
         corners[i] = (CF_V3){ i & 1 ? 50 : -50, i & 2 ? 50 : -50, i & 4 ? 50 : -50 };
     }
     CF_Aabb bounds = render_arena_fit(corners, 8, (float)width / height);
+    preview->center_x = (bounds.min.x + bounds.max.x) * .5f;
+    preview->center_y = (bounds.min.y + bounds.max.y) * .5f;
+    preview->span_width = bounds.max.x - bounds.min.x;
+    preview->span_height = bounds.max.y - bounds.min.y;
     preview->camera = render_arena_camera_make(
-        (bounds.min.x + bounds.max.x) * .5f,
-        (bounds.min.y + bounds.max.y) * .5f,
-        bounds.max.x - bounds.min.x,
-        bounds.max.y - bounds.min.y
+        preview->center_x,
+        preview->center_y,
+        preview->span_width,
+        preview->span_height
     );
     GameEnvironment settings = render_arena_post_defaults();
     if (!render_arena_post_prepare(preview->post, width, height, &settings)) {
@@ -94,6 +100,9 @@ static bool prepare_shape_preview(render_shader_preview *preview, shader_error *
     preview->entity.extent[0] = bounds[0] + preview->entity.aa;
     preview->entity.extent[1] = bounds[1] + preview->entity.aa;
     preview->entity.reserved[1] = (float)id;
+    float aspect = (float)preview->width / preview->height;
+    preview->span_width = fmaxf(bounds[0] * 2.2f, bounds[1] * 2.2f * aspect);
+    preview->span_height = fmaxf(bounds[1] * 2.2f, bounds[0] * 2.2f / aspect);
     render_shader_parameters(id, NULL, (ecs_entity){ 0 }, NULL, preview->entity.shape_parameters);
     preview->programs = render_programs_new(RENDER_PROGRAM_FRAGMENT);
     if (!preview->programs) {
@@ -109,6 +118,7 @@ render_shader_preview *render_shader_preview_new(
     const behavior_asset *asset,
     int width,
     int height,
+    const render_shader_preview_options *options,
     shader_error *error
 )
 {
@@ -135,17 +145,37 @@ render_shader_preview *render_shader_preview_new(
         render_shader_preview_free(preview);
         return NULL;
     }
+    if (options && options->has_camera) {
+        preview->center_x = options->center_x;
+        preview->center_y = options->center_y;
+        preview->span_width = options->span_width;
+        preview->span_height = options->span_height;
+        if (preview->material) {
+            preview->camera = render_arena_camera_make(
+                preview->center_x,
+                preview->center_y,
+                preview->span_width,
+                preview->span_height
+            );
+        }
+    }
     return preview;
 }
 
-bool render_shader_preview_draw(render_shader_preview *preview, float time)
+bool render_shader_preview_draw(render_shader_preview *preview, float time, const char *parameters_json)
 {
     if (!preview) {
         return false;
     }
     preview->error[0] = 0;
+    int shader = render_shader_find(preview->asset->name);
+    shader_error parameter_error = { 0 };
+    if (!render_shader_parameters_validate(shader, parameters_json, &parameter_error)) {
+        set_preview_error(preview, parameter_error.message);
+        return false;
+    }
     if (preview->material) {
-        if (!render_arena_preview(preview->arena, preview->asset, &preview->camera, time)) {
+        if (!render_arena_preview(preview->arena, preview->asset, &preview->camera, parameters_json, time)) {
             set_preview_error(preview, render_arena_error(preview->arena));
             return false;
         }
@@ -167,14 +197,21 @@ bool render_shader_preview_draw(render_shader_preview *preview, float time)
         return true;
     }
     preview->entity.time[0] = time;
-    float aspect = (float)preview->width / preview->height;
-    float span_x = preview->entity.extent[0] * 2.2f;
-    float span_y = preview->entity.extent[1] * 2.2f;
-    float view_width = fmaxf(span_x, span_y * aspect);
-    float view_height = fmaxf(span_y, span_x / aspect);
+    render_shader_parameters(
+        shader,
+        NULL,
+        (ecs_entity){ 0 },
+        parameters_json,
+        preview->entity.shape_parameters
+    );
     cf_draw_push();
-    cf_draw_projection(cf_ortho_2d(0, 0, view_width, view_height));
-    render_shader_fragment_draw(preview->programs, preview->program, &preview->entity);
+    cf_draw_projection(cf_ortho_2d(
+        preview->center_x,
+        preview->center_y,
+        preview->span_width,
+        preview->span_height
+    ));
+    render_shader_fragment_draw(preview->programs, preview->program, &preview->entity, (CF_V2){ 1, 1 });
     cf_draw_pop();
     return true;
 }

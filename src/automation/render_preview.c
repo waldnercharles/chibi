@@ -40,6 +40,7 @@ enum
     PREVIEW_MAX_SIDE = 512,
     PREVIEW_MAX_SOURCE = 64 * 1024,
     PREVIEW_MAX_ERROR = 256,
+    PREVIEW_MAX_SAMPLE_SIDE = 16,
 };
 
 typedef struct
@@ -67,6 +68,20 @@ typedef struct
 
 typedef struct
 {
+    bool enabled;
+    float center_x, center_y;
+    float span_width, span_height;
+} preview_camera;
+
+typedef struct
+{
+    bool enabled;
+    int columns, rows;
+    float uv_min[2], uv_max[2];
+} preview_sample_grid;
+
+typedef struct
+{
     yyjson_mut_doc *doc;
     yyjson_mut_val *root;
     yyjson_mut_val *result;
@@ -86,6 +101,96 @@ static void set_errorf(char *error, size_t size, const char *format, const char 
     if (size) {
         snprintf(error, size, format, value ? value : "");
     }
+}
+
+static bool read_preview_pair(yyjson_val *object, const char *key, float pair[2], char *error, size_t error_size)
+{
+    yyjson_val *value = yyjson_obj_get(object, key);
+    if (!value || !yyjson_is_arr(value) || yyjson_arr_size(value) != 2) {
+        snprintf(error, error_size, "%s must be an array of two finite numbers", key);
+        return false;
+    }
+    for (int i = 0; i < 2; i++) {
+        yyjson_val *component = yyjson_arr_get(value, (size_t)i);
+        if (!yyjson_is_num(component) || !isfinite(yyjson_get_num(component)) ||
+            !isfinite((float)yyjson_get_num(component))) {
+            snprintf(error, error_size, "%s must be an array of two finite numbers", key);
+            return false;
+        }
+        pair[i] = (float)yyjson_get_num(component);
+    }
+    return true;
+}
+
+static bool parse_preview_camera(yyjson_val *value, preview_camera *camera, char *error, size_t error_size)
+{
+    *camera = (preview_camera){ 0 };
+    if (!value) {
+        return true;
+    }
+    float center[2], span[2];
+    if (!yyjson_is_obj(value) ||
+        !read_preview_pair(value, "center", center, error, error_size) ||
+        !read_preview_pair(value, "span", span, error, error_size)) {
+        if (!error[0]) {
+            set_error(error, error_size, "camera must be an object with center and span arrays");
+        }
+        return false;
+    }
+    camera->center_x = center[0];
+    camera->center_y = center[1];
+    camera->span_width = span[0];
+    camera->span_height = span[1];
+    if (!(camera->span_width > 0) || !(camera->span_height > 0) ||
+        fabsf(camera->center_x) > 1000000.0f || fabsf(camera->center_y) > 1000000.0f ||
+        camera->span_width > 1000000.0f || camera->span_height > 1000000.0f) {
+        set_error(error, error_size, "camera center must be bounded and span must be positive and bounded");
+        return false;
+    }
+    camera->enabled = true;
+    return true;
+}
+
+static bool parse_sample_count(yyjson_val *value, int *out)
+{
+    if (!value || !yyjson_is_int(value) || yyjson_get_sint(value) < 1 ||
+        yyjson_get_sint(value) > PREVIEW_MAX_SAMPLE_SIDE) {
+        return false;
+    }
+    *out = (int)yyjson_get_sint(value);
+    return true;
+}
+
+static bool parse_preview_sample_grid(yyjson_val *value, preview_sample_grid *grid, char *error, size_t error_size)
+{
+    *grid = (preview_sample_grid){ .columns = 5, .rows = 5, .uv_max = { 1, 1 } };
+    if (!value) {
+        return true;
+    }
+    if (!yyjson_is_obj(value)) {
+        set_error(error, error_size, "sample_grid must be an object");
+        return false;
+    }
+    yyjson_val *columns = yyjson_obj_get(value, "columns");
+    yyjson_val *rows = yyjson_obj_get(value, "rows");
+    if ((columns && !parse_sample_count(columns, &grid->columns)) ||
+        (rows && !parse_sample_count(rows, &grid->rows))) {
+        snprintf(error, error_size, "sample_grid columns and rows must be integers from 1 to %d", PREVIEW_MAX_SAMPLE_SIDE);
+        return false;
+    }
+    yyjson_val *uv_min = yyjson_obj_get(value, "uv_min");
+    yyjson_val *uv_max = yyjson_obj_get(value, "uv_max");
+    if ((uv_min && !read_preview_pair(value, "uv_min", grid->uv_min, error, error_size)) ||
+        (uv_max && !read_preview_pair(value, "uv_max", grid->uv_max, error, error_size))) {
+        return false;
+    }
+    if (fabsf(grid->uv_min[0]) > 1000000.0f || fabsf(grid->uv_min[1]) > 1000000.0f ||
+        fabsf(grid->uv_max[0]) > 1000000.0f || fabsf(grid->uv_max[1]) > 1000000.0f) {
+        set_error(error, error_size, "sample_grid UV bounds are too large");
+        return false;
+    }
+    grid->enabled = true;
+    return true;
 }
 
 static const preview_family *family_by_kind(const char *kind)
@@ -464,7 +569,7 @@ static char *base64(const void *data, size_t size)
     return output;
 }
 
-static bool readback_png(int width, int height, char **encoded, char *error, size_t error_size)
+bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
 {
     CF_Readback readback = cf_canvas_readback(cf_app_get_canvas());
     if (!readback.id) {
@@ -512,11 +617,114 @@ static bool readback_png(int width, int height, char **encoded, char *error, siz
     return ok;
 }
 
+static void add_sample_vector(yyjson_mut_doc *doc, yyjson_mut_val *array, const float value[4])
+{
+    yyjson_mut_val *entry = yyjson_mut_arr_add_arr(doc, array);
+    for (int i = 0; i < 4; i++) {
+        yyjson_mut_arr_add_real(doc, entry, value[i]);
+    }
+}
+
+static bool add_sample_grid(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    const behavior_asset *asset,
+    const char *parameters_json,
+    float time,
+    const preview_sample_grid *grid,
+    char *error,
+    size_t error_size
+)
+{
+    int shader = render_shader_find(asset->name);
+    if (!shader) {
+        set_error(error, error_size, "Shader asset is not registered.");
+        return false;
+    }
+    shader_error parameter_error = { 0 };
+    if (!render_shader_parameters_validate(shader, parameters_json, &parameter_error)) {
+        set_error(error, error_size, parameter_error.message);
+        return false;
+    }
+    float parameters[SHADER_PARAMETER_MAX][4];
+    render_shader_parameters(shader, NULL, (ecs_entity){ 0 }, parameters_json, parameters);
+    float scale[2] = { 100, 100 };
+    if (render_shader_is_shape(shader) && !render_shader_bounds(shader, scale)) {
+        set_error(error, error_size, "Shape bounds are unavailable for shader samples.");
+        return false;
+    }
+    yyjson_mut_val *sampled = yyjson_mut_obj_add_obj(doc, result, "sample_grid");
+    yyjson_mut_obj_add_int(doc, sampled, "columns", grid->columns);
+    yyjson_mut_obj_add_int(doc, sampled, "rows", grid->rows);
+    yyjson_mut_val *uv_min = yyjson_mut_obj_add_arr(doc, sampled, "uv_min");
+    yyjson_mut_val *uv_max = yyjson_mut_obj_add_arr(doc, sampled, "uv_max");
+    for (int i = 0; i < 2; i++) {
+        yyjson_mut_arr_add_real(doc, uv_min, grid->uv_min[i]);
+        yyjson_mut_arr_add_real(doc, uv_max, grid->uv_max[i]);
+    }
+    yyjson_mut_obj_add_strcpy(doc, sampled, "evaluation", "CPU shader graph evaluation at the returned UV coordinates");
+    yyjson_mut_val *samples = yyjson_mut_obj_add_arr(doc, sampled, "samples");
+    for (int y = 0; y < grid->rows; y++) {
+        float row = grid->rows == 1 ? 0.5f : (float)y / (float)(grid->rows - 1);
+        for (int x = 0; x < grid->columns; x++) {
+            float column = grid->columns == 1
+                             ? 0.5f
+                             : (float)x / (float)(grid->columns - 1);
+            float u = grid->uv_min[0] + (grid->uv_max[0] - grid->uv_min[0]) * column;
+            float v = grid->uv_min[1] + (grid->uv_max[1] - grid->uv_min[1]) * row;
+            float local_x = (u - 0.5f) * 2.0f * scale[0];
+            float local_y = (0.5f - v) * 2.0f * scale[1];
+            shader_sample_context context = {
+                .position = { local_x, local_y },
+                .uv = { u, v },
+                .object_position = { local_x, 0, local_y },
+                .world_position = { local_x, 0, local_y },
+                .normal = { 0, 1, 0 },
+                .view_direction = { 0, 1, 0 },
+                .time = time,
+            };
+            float output[SHADER_OUTPUT_MAX][4] = { 0 };
+            shader_error sample_error = { 0 };
+            if (!render_shader_sample(shader, &context, parameters, output, &sample_error)) {
+                set_error(
+                    error,
+                    error_size,
+                    sample_error.message[0] ? sample_error.message : "Shader sample failed."
+                );
+                return false;
+            }
+            for (int output_index = 0; output_index < SHADER_OUTPUT_MAX;
+                 output_index++) {
+                for (int component = 0; component < 4; component++) {
+                    if (!isfinite(output[output_index][component])) {
+                        set_error(error, error_size, "Shader sample produced a nonfinite output.");
+                        return false;
+                    }
+                }
+            }
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, samples);
+            yyjson_mut_val *uv = yyjson_mut_obj_add_arr(doc, entry, "uv");
+            yyjson_mut_arr_add_real(doc, uv, u);
+            yyjson_mut_arr_add_real(doc, uv, v);
+            yyjson_mut_val *outputs = yyjson_mut_obj_add_arr(doc, entry, "outputs");
+            for (int output_index = 0; output_index < SHADER_OUTPUT_MAX;
+                 output_index++) {
+                add_sample_vector(doc, outputs, output[output_index]);
+            }
+        }
+    }
+    return true;
+}
+
 static bool render_asset(
     const behavior_asset *asset,
     float time,
     int width,
     int height,
+    const char *parameters_json,
+    const render_shader_preview_options *options,
+    const preview_sample_grid *sample_grid,
+    preview_response *response,
     char **png,
     char *error,
     size_t error_size,
@@ -546,7 +754,7 @@ static bool render_asset(
     cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
     cf_shader_directory("/chibi-render");
     shader_error shader_error = { 0 };
-    render_shader_preview *renderer = render_shader_preview_new(asset, width, height, &shader_error);
+    render_shader_preview *renderer = render_shader_preview_new(asset, width, height, options, &shader_error);
     if (!renderer) {
         set_error(error, error_size, shader_error.message[0] ? shader_error.message : "could not create shader preview");
         cf_destroy_app();
@@ -554,13 +762,20 @@ static bool render_asset(
     }
     cf_app_update(NULL);
     cf_app_set_canvas_size(width, height);
+    if (sample_grid && sample_grid->enabled &&
+        !add_sample_grid(response->doc, response->result, asset, parameters_json, time, sample_grid, error, error_size)) {
+        render_shader_preview_free(renderer);
+        render_shader_catalog_clear();
+        cf_destroy_app();
+        return false;
+    }
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(0, 0, width, height));
-    bool rendered = render_shader_preview_draw(renderer, time);
+    bool rendered = render_shader_preview_draw(renderer, time, parameters_json);
     cf_draw_pop();
     if (rendered) {
         cf_app_draw_onto_screen(true);
-        rendered = readback_png(width, height, png, error, error_size);
+        rendered = chibi_preview_readback(width, height, png, error, error_size);
     } else {
         set_error(error, error_size, render_shader_preview_error(renderer));
     }
@@ -623,6 +838,12 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         return response_finish(&response);
     }
     yyjson_val *operation = yyjson_obj_get(root, "operation");
+    if (yyjson_is_str(operation) &&
+        !strcmp(yyjson_get_str(operation), "preview_scene")) {
+        yyjson_doc_free(document);
+        yyjson_mut_doc_free(response.doc);
+        return chibi_scene_preview_handle(request, default_root, exit_code);
+    }
     if (!yyjson_is_str(operation) ||
         strcmp(yyjson_get_str(operation), "preview_shader")) {
         response_error(&response, PREVIEW_INVALID_REQUEST, "operation must be preview_shader");
@@ -685,6 +906,36 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
             return response_finish(&response);
         }
         time = (float)yyjson_get_num(value);
+    }
+    yyjson_val *parameters = yyjson_obj_get(root, "parameters");
+    if (parameters) {
+        if (!yyjson_is_obj(parameters) ||
+            yyjson_obj_size(parameters) > SHADER_PARAMETER_MAX) {
+            response_error(&response, PREVIEW_INVALID_REQUEST, "parameters must be an object with at most 32 entries");
+            if (exit_code) {
+                *exit_code = response.status;
+            }
+            yyjson_doc_free(document);
+            return response_finish(&response);
+        }
+    }
+    preview_camera camera;
+    if (!parse_preview_camera(yyjson_obj_get(root, "camera"), &camera, error, sizeof error)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, error);
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    preview_sample_grid sample_grid;
+    if (!parse_preview_sample_grid(yyjson_obj_get(root, "sample_grid"), &sample_grid, error, sizeof error)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, error);
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
     }
     bool include_source = false;
     value = yyjson_obj_get(root, "include_source");
@@ -828,11 +1079,11 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     compile_report_free(&report);
     char render_error[PREVIEW_MAX_ERROR] = { 0 };
     char *png = NULL;
-    char original_directory[PATH_MAX];
-    if (!getcwd(original_directory, sizeof original_directory) || chdir(root_abs)) {
-        response_diagnostic(&response, "error", 0, "project root could not be opened for GPU preview");
+    char *parameters_json = parameters ? yyjson_val_write(parameters, 0, NULL) : NULL;
+    if (parameters && !parameters_json) {
+        response_diagnostic(&response, "error", 0, "parameters could not be serialized");
         yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_IO_ERROR, "project root could not be opened");
+        response_error(&response, PREVIEW_INVALID_REQUEST, "parameters could not be serialized");
         behavior_asset_free(linked);
         if (exit_code) {
             *exit_code = response.status;
@@ -840,7 +1091,41 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
-    bool rendered = render_asset(linked, time, width, height, &png, render_error, sizeof render_error, "chibi_render_ctl");
+    render_shader_preview_options preview_options = {
+        .has_camera = camera.enabled,
+        .center_x = camera.center_x,
+        .center_y = camera.center_y,
+        .span_width = camera.span_width,
+        .span_height = camera.span_height,
+    };
+    char original_directory[PATH_MAX];
+    if (!getcwd(original_directory, sizeof original_directory) || chdir(root_abs)) {
+        response_diagnostic(&response, "error", 0, "project root could not be opened for GPU preview");
+        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
+        response_error(&response, PREVIEW_IO_ERROR, "project root could not be opened");
+        free(parameters_json);
+        behavior_asset_free(linked);
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    bool rendered = render_asset(
+        linked,
+        time,
+        width,
+        height,
+        parameters_json,
+        &preview_options,
+        &sample_grid,
+        &response,
+        &png,
+        render_error,
+        sizeof render_error,
+        "chibi_render_ctl"
+    );
+    free(parameters_json);
     chdir(original_directory);
     behavior_asset_free(linked);
     if (!rendered) {

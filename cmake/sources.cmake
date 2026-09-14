@@ -60,12 +60,17 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_adapter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_local.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_clipboard.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_write.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/local.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_set.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/optimize_cleanup.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/pin_conv.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/pin_fmt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/registry.c
@@ -109,11 +114,14 @@ set(ECS_SOURCES
 )
 
 set(ENGINE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/camera.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/engine.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/engine_input.c
 )
 
 set(EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/audio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/widgets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
@@ -146,6 +154,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/choices.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/color.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/flags.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c
@@ -201,6 +210,10 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/particles.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_motion.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/audio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/save.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/widgets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visibility.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_transform.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_motion.c

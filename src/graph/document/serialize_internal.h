@@ -24,6 +24,15 @@ int serialize_read_array(
     pin_value *out,
     graph *g
 );
+int serialize_read_locals(graph *g, yyjson_val *obj);
+int serialize_validate_locals(graph *g);
+void serialize_write_locals(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *obj,
+    const graph *g,
+    node *const *subset,
+    int count
+);
 int serialize_migrate_component_reads(graph *g);
 int serialize_repair_math_calls(behavior_asset *asset);
 

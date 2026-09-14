@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 
+typedef struct yyjson_val yyjson_val;
+
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
 typedef struct
@@ -126,6 +128,16 @@ int game_prototype_write_field(
     const char *component_name,
     const char *field_name,
     pin_value value
+);
+/* Apply one reflected JSON field using the same conversion rules as loading a
+ * prototype document. The JSON value is borrowed for the duration of the call. */
+int game_prototype_write_field_json(
+    game_prototype *prototype,
+    const char *component_name,
+    const char *field_name,
+    yyjson_val *json,
+    char *error,
+    size_t error_size
 );
 int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc);
 int game_prototype_remove_component(game_prototype *prototype, const char *component_name);

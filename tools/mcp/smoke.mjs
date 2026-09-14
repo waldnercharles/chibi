@@ -4,10 +4,39 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
+import { toolCatalog } from "./tool-catalog.mjs";
 
 const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = resolve(root, "build/chibi_ctl");
+const expectedPublicNames = [
+  "buildShader",
+  "buildBehavior",
+  "buildPrototype",
+  "buildScene",
+  "optimizeGraph",
+  "previewShader",
+  "previewScene",
+  "searchAssets",
+  "searchNodes",
+  "inspectGraph",
+  "readAsset",
+  "validateAsset",
+  "listAssets",
+  "getAssetCatalog",
+  "inspectAssetDependencies",
+  "getProjectStatus",
+  "describeComponents",
+  "inspectSystem",
+  "getExecutionStatus",
+  "runScenario",
+  "captureRuntimeSnapshot",
+  "profileScenario",
+  "recordScenario",
+  "replayScenario",
+  "describeRegistry",
+  "describeContract",
+];
 
 function nativeRequestAt(projectRoot, operation, args = {}) {
   const result = spawnSync(controller, ["--project-root", projectRoot], {
@@ -39,22 +68,22 @@ const requests = [
   },
   { jsonrpc: "2.0", method: "notifications/initialized" },
   { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-  { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "project_status", arguments: {} } },
-  { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "list_assets", arguments: {} } },
-  { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "catalog", arguments: {} } },
-  { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "search_assets", arguments: { query: "Health" } } },
-  { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
-  { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
-  { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
-  { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
-  { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describe_contract", arguments: {} } },
-  { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "list_assets", arguments: { limit: 2 } } },
-  { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "catalog", arguments: { limit: 1, summary: true } } },
-  { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "search_assets", arguments: { query: "Health", limit: 1, summary: true } } },
-  { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "catalog", arguments: { cursor: 1, limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "getProjectStatus", arguments: {} } },
+  { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "listAssets", arguments: {} } },
+  { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "getAssetCatalog", arguments: {} } },
+  { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health" } } },
+  { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
+  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
+  { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
+  { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
+  { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
+  { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validateAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
+  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describeRegistry", arguments: {} } },
+  { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describeContract", arguments: {} } },
+  { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "listAssets", arguments: { limit: 2 } } },
+  { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "getAssetCatalog", arguments: { limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health", limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: 1, limit: 1, summary: true } } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
   { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "chibi://project/status" } },
@@ -64,13 +93,15 @@ const requests = [
   { jsonrpc: "2.0", id: 21, method: "resources/read", params: { uri: "chibi://asset/library/DirectionMath/graph/1" } },
   { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "missing_tool", arguments: {} } },
   { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "chibi://asset/behavior/nope" } },
-  { jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior" } } },
-  { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior", direction: "sideways" } } },
+  { jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior" } } },
+  { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior", direction: "sideways" } } },
   { jsonrpc: "2.0", id: 24, method: "resources/read", params: { uri: "chibi://asset/behavior/%ZZ" } },
   { jsonrpc: "2.0", id: 25, method: "resources/read", params: { uri: "chibi://missing" } },
   { jsonrpc: "2.0", id: 26, method: "resources/read", params: {} },
-  { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "catalog", arguments: { limit: 0 } } },
-  { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "catalog", arguments: { cursor: "1" } } },
+  { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "getAssetCatalog", arguments: { limit: 0 } } },
+  { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
+  { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
+  { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
   { jsonrpc: "2.0", method: "ping" },
 ];
 const result = spawnSync(process.execPath, [server], {
@@ -109,34 +140,54 @@ if (responseById.get(1)?.result?.serverInfo?.name !== "chibi" ||
     responseById.get(1)?.result?.protocolVersion !== "2025-06-18") {
   throw new Error("initialize did not identify chibi");
 }
-if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "validate_asset" && tool.outputSchema)) {
-  throw new Error("tools/list did not expose validate_asset");
+if (typeof responseById.get(1)?.result?.instructions !== "string" ||
+    !responseById.get(1).result.instructions.includes("buildShader") ||
+    !responseById.get(1).result.instructions.includes("validateAsset")) {
+  throw new Error("initialize did not expose server instructions");
 }
-if (!responseById.get(2)?.result?.tools?.some((tool) =>
-  tool.name === "describe_contract" && tool.annotations?.readOnlyHint === true)) {
-  throw new Error("tools/list did not expose the reflected contract metadata");
+const listedTools = responseById.get(2)?.result?.tools || [];
+const listedNames = listedTools.map((tool) => tool.name);
+if (JSON.stringify(toolCatalog.map((entry) => entry.name)) !== JSON.stringify(expectedPublicNames) ||
+    JSON.stringify(listedNames) !== JSON.stringify(expectedPublicNames) ||
+    new Set(listedNames).size !== listedNames.length ||
+    listedTools.some((tool) => !/^[a-z][A-Za-z0-9]{0,127}$/.test(tool.name) ||
+      typeof tool.title !== "string" || !tool.title ||
+      typeof tool.description !== "string" || !tool.description ||
+      !tool.inputSchema || !tool.outputSchema || !tool.annotations ||
+      Object.hasOwn(tool, "operation"))) {
+  throw new Error("tools/list did not expose the deterministic public catalog");
 }
-if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" && tool.outputSchema) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "search_assets" && tool.inputSchema?.required?.includes("query")) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "asset_dependencies" && tool.inputSchema?.required?.includes("kind")) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_graph" &&
+if (listedTools.slice(0, 4).map((tool) => tool.name).join(",") !==
+    "buildShader,buildBehavior,buildPrototype,buildScene") {
+  throw new Error("tools/list did not put authoring tools first");
+}
+if (listedTools.some((tool) => tool.name.includes("_") || tool.name.includes("-") ||
+    ["project_status", "edit_graph", "validate_asset", "run_scenario"].includes(tool.name))) {
+  throw new Error("tools/list exposed a legacy public tool name");
+}
+if (!listedTools.some((tool) => tool.name === "validateAsset" &&
+    tool.inputSchema?.required?.includes("kind") && tool.outputSchema) ||
+    !listedTools.some((tool) => tool.name === "getAssetCatalog" && tool.outputSchema) ||
+    !listedTools.some((tool) => tool.name === "searchAssets" && tool.inputSchema?.required?.includes("query")) ||
+    !listedTools.some((tool) => tool.name === "inspectAssetDependencies" && tool.inputSchema?.required?.includes("kind")) ||
+    !listedTools.some((tool) => tool.name === "inspectGraph" &&
       tool.inputSchema?.properties?.graph_id?.type === "integer" &&
       tool.inputSchema?.properties?.graph_name?.type === "string") ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_system" &&
+    !listedTools.some((tool) => tool.name === "inspectSystem" &&
       tool.inputSchema?.required?.includes("kind") &&
       tool.inputSchema?.required?.includes("name")) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "run_scenario" &&
+    !listedTools.some((tool) => tool.name === "runScenario" &&
       tool.inputSchema?.required?.includes("name") &&
-      tool.inputSchema?.properties?.frames?.maximum === 600 &&
+      tool.inputSchema?.properties?.frames?.maximum === 108000 &&
       tool.inputSchema?.properties?.fixed_dt?.type === "number") ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "runtime_snapshot" &&
+    !listedTools.some((tool) => tool.name === "captureRuntimeSnapshot" &&
       tool.inputSchema?.required?.includes("name") &&
       tool.inputSchema?.properties?.entity_limit?.maximum === 256 &&
       tool.inputSchema?.properties?.field_limit?.maximum === 128) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "record_scenario" &&
+    !listedTools.some((tool) => tool.name === "recordScenario" &&
       tool.inputSchema?.required?.includes("name") &&
       tool.inputSchema?.properties?.inputs?.maxItems === 600) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "replay_scenario" &&
+    !listedTools.some((tool) => tool.name === "replayScenario" &&
       tool.inputSchema?.oneOf?.length === 2 &&
       tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
   throw new Error("tools/list did not expose catalog and graph tools");
@@ -157,7 +208,10 @@ const pagedAssets = toolPayload(responseById.get(28));
 const pagedCatalog = toolPayload(responseById.get(29));
 const pagedSearch = toolPayload(responseById.get(30));
 const secondCatalogPage = toolPayload(responseById.get(31));
+const missingAssets = toolPayload(responseById.get(35));
+const missingNodes = toolPayload(responseById.get(36));
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
+    !status.next_steps?.length || !assets.next_steps?.length ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     dependencies.ok !== true || dependencies.result?.asset?.name !== "HealthBehavior" ||
@@ -179,7 +233,11 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     read.result?.name !== "HealthBehavior" || validation.result?.valid !== true ||
     registry.result?.nodes?.length < 1 ||
     contract.ok !== true ||
-    !contract.result?.operations?.some((operation) => operation.name === "describe_contract") ||
+    !contract.result?.operations?.some((operation) => operation.name === "describe_contract" &&
+      operation.public_tools?.includes("describeContract")) ||
+    !contract.result?.operations?.some((operation) => operation.name === "edit_graph" &&
+      operation.public_tools?.includes("buildShader") &&
+      operation.public_tools?.includes("buildBehavior")) ||
     contract.result?.reflection?.nodes < 1 ||
     pagedAssets.ok !== true || pagedAssets.result?.count !== 2 ||
     pagedAssets.result?.has_more !== true || pagedAssets.result?.next_cursor !== 2 ||
@@ -192,6 +250,10 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     pagedSearch.result?.assets?.[0]?.members !== undefined ||
     secondCatalogPage.ok !== true || secondCatalogPage.result?.count !== 1 ||
     secondCatalogPage.result?.next_cursor !== 2 ||
+    missingAssets.ok !== true || missingAssets.result?.assets?.length !== 0 ||
+    !missingAssets.next_steps?.length ||
+    missingNodes.ok !== true || missingNodes.result?.nodes?.length !== 0 ||
+    !missingNodes.next_steps?.length ||
     (responseById.get(14)?.result?.content?.[0]?.text || "").length > 2048) {
   throw new Error("native MCP operations failed");
 }
@@ -243,7 +305,7 @@ const cwdIndependent = spawnSync(process.execPath, [server], {
       jsonrpc: "2.0",
       id: 30,
       method: "tools/call",
-      params: { name: "project_status", arguments: {} },
+      params: { name: "getProjectStatus", arguments: {} },
     },
   ].map((request) => JSON.stringify(request)).join("\n")}\n`,
   encoding: "utf8",
@@ -256,6 +318,27 @@ const cwdResponses = cwdIndependent.stdout.trim().split("\n").filter(Boolean).ma
 if (cwdResponses[0]?.result?.isError ||
     toolPayload(cwdResponses[0]).ok !== true) {
   throw new Error("server did not resolve its project root independently of CWD");
+}
+
+const launcher = resolve(root, "tools/mcp/launch.sh");
+const launcherProbe = spawnSync("/bin/sh", [launcher], {
+  cwd: "/tmp",
+  env: cleanEnvironment,
+  input: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/list",
+    params: {},
+  }) + "\n",
+  encoding: "utf8",
+  maxBuffer: 32 * 1024 * 1024,
+});
+if (launcherProbe.error || launcherProbe.status !== 0) {
+  throw launcherProbe.error || new Error(launcherProbe.stderr || "MCP launcher failed");
+}
+const launcherResponses = launcherProbe.stdout.trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+if (launcherResponses.length !== 1 || launcherResponses[0]?.result?.tools?.length !== expectedPublicNames.length) {
+  throw new Error("MCP launcher did not keep stdout protocol-only from another CWD");
 }
 
 const nativeStatus = nativeRequest("status");
@@ -396,7 +479,7 @@ try {
       id: 2,
       method: "tools/call",
       params: {
-        name: "run_scenario",
+        name: "runScenario",
         arguments: { kind: "prototype", name: "Editor2DPreview", frames: 2, fixed_dt: 1 / 60 },
       },
     },
@@ -405,7 +488,7 @@ try {
       id: 3,
       method: "tools/call",
       params: {
-        name: "run_scenario",
+        name: "runScenario",
         arguments: { kind: "prototype", name: "Editor2DPreview", frames: 2, fixed_dt: 1 / 60 },
       },
     },
@@ -414,8 +497,8 @@ try {
       id: 4,
       method: "tools/call",
       params: {
-        name: "run_scenario",
-        arguments: { name: "Editor2DPreview", frames: 601 },
+        name: "runScenario",
+        arguments: { name: "Editor2DPreview", frames: 108001 },
       },
     },
     {
@@ -423,7 +506,7 @@ try {
       id: 5,
       method: "tools/call",
       params: {
-        name: "runtime_snapshot",
+        name: "captureRuntimeSnapshot",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -442,7 +525,7 @@ try {
       id: 6,
       method: "tools/call",
       params: {
-        name: "runtime_snapshot",
+        name: "captureRuntimeSnapshot",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -461,7 +544,7 @@ try {
       id: 7,
       method: "tools/call",
       params: {
-        name: "runtime_snapshot",
+        name: "captureRuntimeSnapshot",
         arguments: { name: "Editor2DPreview", entity_limit: 0 },
       },
     },
@@ -470,7 +553,7 @@ try {
       id: 8,
       method: "tools/call",
       params: {
-        name: "record_scenario",
+        name: "recordScenario",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -498,7 +581,7 @@ try {
       id: 9,
       method: "tools/call",
       params: {
-        name: "record_scenario",
+        name: "recordScenario",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -526,7 +609,7 @@ try {
       id: 10,
       method: "tools/call",
       params: {
-        name: "replay_scenario",
+        name: "replayScenario",
         arguments: { recording: null },
       },
     },
@@ -535,7 +618,7 @@ try {
       id: 11,
       method: "tools/call",
       params: {
-        name: "replay_scenario",
+        name: "replayScenario",
         arguments: { recording_path: `${scenarioRoot}/missing-recording.json` },
       },
     },
@@ -544,7 +627,7 @@ try {
       id: 12,
       method: "tools/call",
       params: {
-        name: "replay_scenario",
+        name: "replayScenario",
         arguments: { recording: {}, recording_path: "recording.json" },
       },
     },
@@ -606,7 +689,7 @@ try {
     jsonrpc: "2.0",
     id: 13,
     method: "tools/call",
-    params: { name: "replay_scenario", arguments: { recording: firstRecording } },
+    params: { name: "replayScenario", arguments: { recording: firstRecording } },
   };
   const replayProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -624,7 +707,7 @@ try {
     jsonrpc: "2.0",
     id: 15,
     method: "tools/call",
-    params: { name: "replay_scenario", arguments: { recording_path: firstArtifactPath } },
+    params: { name: "replayScenario", arguments: { recording_path: firstArtifactPath } },
   };
   const replayPathProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -669,7 +752,7 @@ try {
     jsonrpc: "2.0",
     id: 14,
     method: "tools/call",
-    params: { name: "replay_scenario", arguments: { recording: mutatedRecording } },
+    params: { name: "replayScenario", arguments: { recording: mutatedRecording } },
   };
   const divergenceProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -686,7 +769,7 @@ try {
   const firstDivergenceFrame = divergenceResult.result?.first_divergence_frame ??
     divergenceResult.result?.first_divergence?.frame ??
     divergenceResult.result?.divergence?.frame;
-  if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "run_scenario") !== true ||
+  if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "runScenario") !== true ||
       firstScenario.ok !== true || secondScenario.ok !== true ||
       firstScenario.result?.kind !== "prototype" ||
       firstScenario.result?.name !== "Editor2DPreview" ||

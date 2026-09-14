@@ -275,4 +275,67 @@ extern int GAME_GamePickup_has(const ecs_world *, ecs_entity);
 extern int GAME_GamePickup_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GamePickup_remove(ecs_world *, ecs_entity, uint64_t);
 
+extern const ecs_component_desc GAME_COMPONENT_GameCamera;
+extern GameCamera *GAME_GameCamera_get(ecs_world *, ecs_entity);
+extern const GameCamera *GAME_GameCamera_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameCamera_has(const ecs_world *, ecs_entity);
+extern int GAME_GameCamera_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameCamera_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameActionBinding;
+extern GameActionBinding *GAME_GameActionBinding_get(ecs_world *, ecs_entity);
+extern const GameActionBinding *GAME_GameActionBinding_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameActionBinding_has(const ecs_world *, ecs_entity);
+extern int GAME_GameActionBinding_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameActionBinding_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameWidget;
+extern GameWidget *GAME_GameWidget_get(ecs_world *, ecs_entity);
+extern const GameWidget *GAME_GameWidget_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameWidget_has(const ecs_world *, ecs_entity);
+extern int GAME_GameWidget_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameWidget_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameFog;
+extern GameFog *GAME_GameFog_get(ecs_world *, ecs_entity);
+extern const GameFog *GAME_GameFog_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameFog_has(const ecs_world *, ecs_entity);
+extern int GAME_GameFog_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameFog_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameVision;
+extern GameVision *GAME_GameVision_get(ecs_world *, ecs_entity);
+extern const GameVision *GAME_GameVision_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameVision_has(const ecs_world *, ecs_entity);
+extern int GAME_GameVision_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameVision_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameSensorContact;
+extern GameSensorContact *GAME_GameSensorContact_get(ecs_world *, ecs_entity);
+extern const GameSensorContact *GAME_GameSensorContact_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameSensorContact_has(const ecs_world *, ecs_entity);
+extern int GAME_GameSensorContact_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameSensorContact_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameRenderState;
+extern GameRenderState *GAME_GameRenderState_get(ecs_world *, ecs_entity);
+extern const GameRenderState *GAME_GameRenderState_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameRenderState_has(const ecs_world *, ecs_entity);
+extern int GAME_GameRenderState_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameRenderState_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameLighting2D;
+extern GameLighting2D *GAME_GameLighting2D_get(ecs_world *, ecs_entity);
+extern const GameLighting2D *GAME_GameLighting2D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameLighting2D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameLighting2D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameLighting2D_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameMapMarker;
+extern GameMapMarker *GAME_GameMapMarker_get(ecs_world *, ecs_entity);
+extern const GameMapMarker *GAME_GameMapMarker_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameMapMarker_has(const ecs_world *, ecs_entity);
+extern int GAME_GameMapMarker_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameMapMarker_remove(ecs_world *, ecs_entity, uint64_t);
+
 #endif

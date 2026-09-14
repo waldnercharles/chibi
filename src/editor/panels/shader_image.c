@@ -1,4 +1,5 @@
 #include "editor/panels/shader_details.h"
+#include "editor/panels/shader_inline.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/shader/shader_graph.h"
 #include "render/shader_images.h"
@@ -76,7 +77,7 @@ static void image_choices(editor *e, node *n, const char *path)
     if (ImGui_SelectableEx("None", !path[0], 0, (ImVec2){ 0 })) {
         chosen = "";
     }
-    editor_ui_track_item("shader.image.none");
+    ed_shader_track_item("shader.image.none");
     int matches = 0;
     for (int i = 0; choices && i < choices->count; i++) {
         const editor_choice *choice = &choices->items[i];
@@ -88,7 +89,7 @@ static void image_choices(editor *e, node *n, const char *path)
         bool selected = ImGui_SelectableEx(choice->label, !strcmp(path, choice->name), 0, (ImVec2){ 0 });
         char id[1200];
         snprintf(id, sizeof id, "shader.image.choice.%s", choice->name);
-        editor_ui_track_item(id);
+        ed_shader_track_item(id);
         if (selected) {
             chosen = choice->name;
         }
@@ -96,7 +97,7 @@ static void image_choices(editor *e, node *n, const char *path)
     }
     if (!matches) {
         ImGui_TextDisabled(e->shader_image_search[0] ? "No matching images" : "No images in content");
-        editor_ui_track_item("shader.image.empty");
+        ed_shader_track_item("shader.image.empty");
     }
     ImGui_EndChild();
     if (chosen) {
@@ -113,12 +114,12 @@ static void image_choices(editor *e, node *n, const char *path)
         sizeof e->shader_image_path,
         ImGuiInputTextFlags_EnterReturnsTrue
     );
-    editor_ui_track_item("shader.image.path");
+    ed_shader_track_item("shader.image.path");
     if (ImGui_Button("Use path") || entered) {
         set_image(e, n, e->shader_image_path);
         ImGui_CloseCurrentPopup();
     }
-    editor_ui_track_item("shader.image.use_path");
+    ed_shader_track_item("shader.image.use_path");
 }
 
 void ed_draw_shader_image(editor *e, node *n)
@@ -128,7 +129,7 @@ void ed_draw_shader_image(editor *e, node *n)
     const char *name = strrchr(path, '/');
     name = name ? name + 1 : path;
     bool open = ImGui_BeginCombo("Image", path[0] ? name : "Choose image...", ImGuiComboFlags_HeightLarge);
-    editor_ui_track_item("shader.image.select");
+    ed_shader_track_item("shader.image.select");
     if (open) {
         image_choices(e, n, path);
         ImGui_EndCombo();
@@ -147,16 +148,19 @@ void ed_draw_shader_image(editor *e, node *n)
     int width, height;
     if (render_image_info(path, &width, &height)) {
         ImGui_TextDisabled("%d × %d", width, height);
-        editor_ui_track_item("shader.image.dimensions");
+        ed_shader_track_item("shader.image.dimensions");
         ImGui_SameLine();
     }
     if (ImGui_SmallButton("Reload image")) {
         render_image_reload(path, message, sizeof message);
     }
-    editor_ui_track_item("shader.image.reload");
+    ed_shader_track_item("shader.image.reload");
     const char *problem = render_image_error(path);
     if (problem[0]) {
-        ImGui_TextWrapped("%s", problem);
-        editor_ui_track_item("shader.image.error");
+        ImGui_TextUnformatted("Image could not load");
+        if (ImGui_IsItemHovered(0)) {
+            ImGui_SetTooltip("%s", problem);
+        }
+        ed_shader_track_item("shader.image.error");
     }
 }

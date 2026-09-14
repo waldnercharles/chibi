@@ -31,5 +31,7 @@ bool type_is_plain(const type_desc *type);
 /* Read and write reflected fields. */
 void pin_write_field(void *base, const type_field *f, pin_value v);
 void pin_read_field(const void *base, const type_field *f, pin_value *out);
+const type_field *pin_type_field_path(const type_desc *type, const char *path);
+int pin_read_field_path(const void *base, const type_desc *type, const char *path, pin_value *out);
 
 #endif

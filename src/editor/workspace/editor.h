@@ -123,7 +123,6 @@ typedef struct
     float left;
     float right;
     float title_bottom;
-    bool compact;
     bool selected;
 } editor_node_ui;
 

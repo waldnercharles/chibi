@@ -72,17 +72,20 @@ typedef enum
     PIN_BINDING_COMPONENT_FIELD,
     PIN_BINDING_DELTA_TIME,
     PIN_BINDING_COMPONENT,
+    PIN_BINDING_LOCAL,
 } pin_binding_kind;
 
 /* Authored source for an unconnected data input. Strings are owned by the
  * containing graph. Variable IDs are stable within their source asset; a
  * source asset is retained so clipboard copies cannot silently bind a local
  * ID from another behavior. Component bindings use component_key as the
- * stable reflected identity; field_name is NULL for a whole component. */
+ * stable reflected identity; field_name is NULL for a whole component or a
+ * dot-delimited path for a nested field. */
 typedef struct pin_binding
 {
     pin_binding_kind kind;
     uint64_t variable_id;
+    uint64_t local_id;
     const char *source_asset;
     const char *component_key;
     const char *field_name;
@@ -96,7 +99,7 @@ enum
     PIN_FLAG_SERVICE = 1u << 3,
     PIN_FLAG_WATCH = 1u << 4,
     PIN_FLAG_DEFAULT_SELF = 1u << 5,
-    PIN_FLAG_COLOR = 1u << 6, /* RGB(A) presentation; the value remains a vector. */
+    PIN_FLAG_COLOR = 1u << 6, /* RGB(A) presentation for vectors and packed colors. */
     PIN_FLAG_SETTING = 1u << 7, /* Authored configuration without a data socket. */
 };
 

@@ -181,6 +181,72 @@ void engine_input_aim(engine_input *input, CF_V2 aim, bool firing, bool point)
     input->aim_sampled = true;
 }
 
+int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
+{
+    _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
+    *firing = false;
+    input_button *sample = NULL;
+    ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
+    ecs_query query;
+    int result = FLOW_OK;
+    if (ecs_world_component(input->world, component) &&
+        ecs_query_begin(input->world, &query, &component, 1) == ECS_OK) {
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            const GameActionBinding
+                *binding = GAME_GameActionBinding_get_const(input->world, entity);
+            if (binding->disabled || ecs_entity_is_retiring(input->world, entity)) {
+                continue;
+            }
+            if (binding->source <= GAME_CONTROL_NONE ||
+                binding->source >= GAME_CONTROL_COUNT || !binding->action ||
+                !binding->action[0]) {
+                result = FLOW_ERR_ARGUMENT;
+                break;
+            }
+            bool down = (controls & (UINT64_C(1) << binding->source)) != 0;
+            *firing |= down && binding->firing;
+            int index = 0;
+            while (index < acount(sample) &&
+                   strcmp(sample[index].action, binding->action)) {
+                index++;
+            }
+            if (index == acount(sample)) {
+                apush(sample, ((input_button){ (char *)binding->action, down }));
+            } else {
+                sample[index].pressed |= down;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    if (result >= 0) {
+        for (int i = 0; i < acount(input->buttons); i++) {
+            int index = 0;
+            while (index < acount(sample) &&
+                   strcmp(sample[index].action, input->buttons[i].action)) {
+                index++;
+            }
+            if (index == acount(sample)) {
+                engine_input_action(input, input->buttons[i].action, false);
+            }
+        }
+        for (int i = 0; i < acount(sample); i++) {
+            int dispatched = engine_input_action(
+                input,
+                sample[i].action,
+                sample[i].pressed
+            );
+            /* Bindings may target an action whose owner is not spawned yet. */
+            if (dispatched < 0 && dispatched != FLOW_ERR_UNKNOWN_EVENT) {
+                result = dispatched;
+                break;
+            }
+        }
+    }
+    afree(sample);
+    return result;
+}
+
 static int apply_aim_sample(engine_input *input)
 {
     if (!input->aim_sampled ||

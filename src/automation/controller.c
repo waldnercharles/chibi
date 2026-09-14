@@ -5,14 +5,21 @@
 #include "assets/system_document.h"
 #include "automation/asset_write.h"
 #include "automation/graph_edit.h"
+#include "automation/graph_optimize.h"
+#include "automation/prototype_edit.h"
+#include "automation/scene_edit.h"
 #include "ecs/ecs.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
+#include "graph/compiler/graph_jit_sljit.h"
+#include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "runtime/systems/system.h"
+#include "runtime/widgets.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -163,9 +170,10 @@ typedef struct
 
 #define SCENARIO_DEFAULT_FRAMES 1
 #define SCENARIO_MAX_FRAMES 600
+#define SCENARIO_RUN_MAX_FRAMES 108000
 #define SCENARIO_MAX_ACTIONS 32
 #define SCENARIO_DEFAULT_FIXED_DT (1.0 / 60.0)
-#define SCENARIO_RECORDING_VERSION 1
+#define SCENARIO_RECORDING_VERSION 2
 #define SCENARIO_RECORDING_FORMAT "chibi.scenario-recording"
 #define SCENARIO_RECORDING_MAX_BYTES (1024 * 1024)
 #define SCENARIO_RECORDING_PATH_PREFIX "/tmp/chibi-recording-"
@@ -226,20 +234,26 @@ static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
 };
 static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "kind", "string", false, "Target family; defaults to prototype." },
-    { "name", "string", true, "Prototype asset name." },
-    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "name", "string", true, "Prototype or scene asset name." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
+    { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
+    { "input_timeline", "array", false, "At most 600 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "kind", "string", false, "Target family; defaults to prototype." },
-    { "name", "string", true, "Prototype asset name." },
-    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "name", "string", true, "Prototype or scene asset name." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "entity_limit", "uint64", false, "Maximum number of ordered entities; maximum 256." },
     { "component_limit", "uint64", false, "Maximum number of components per entity; maximum 64." },
     { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
     { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
     { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
+    { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
+    { "input_timeline", "array", false, "At most 600 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -248,6 +262,7 @@ static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "object[]", false, "Per-frame movement, aim, action, and event input records." },
+    { "saved_state", "object", false, "Isolated initial committed text values." },
 };
 static const contract_field CONTRACT_REPLAY_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -259,11 +274,18 @@ static const contract_field CONTRACT_READ_RECORDING[] = {
 };
 
 static const contract_field CONTRACT_SEARCH_NODES[] = {
-    { "query", "string", false, "Match node name, category or keywords." },
+    { "query", "string", false, "Match node name, category, keywords, or pin names and types." },
     { "domain", "string", false, "Filter to behavior or shader nodes." },
+    { "pin_type", "string", false, "Require a matching pin type or struct type name." },
+    { "pin_container", "string", false, "Require a matching pin container: single, array, set, or map." },
+    { "pin_kind", "string", false, "Require a matching pin kind: data or exec." },
+    { "pure", "boolean", false, "Require pure or impure node descriptors." },
     { "limit", "integer", false, "Page size, default 10, maximum 50." },
     { "offset", "integer", false, "Zero-based page offset." },
     { "include_pins", "boolean", false, "Include typed pins, default true." },
+};
+static const contract_field CONTRACT_DESCRIBE_COMPONENTS[] = {
+    { "names", "string[]", false, "Optional component names or stable keys; omit to describe every reflected component." },
 };
 static const contract_field CONTRACT_EDIT_GRAPH[] = {
     { "project_root", "string", false, "Project directory." },
@@ -275,7 +297,56 @@ static const contract_field CONTRACT_EDIT_GRAPH[] = {
     { "dry_run", "boolean", false, "Validate and return results without writing." },
     { "graph_id", "uint64", false, "Stable graph ID." },
     { "graph_name", "string", false, "Unique graph name." },
+    { "description", "string", false, "Top-level asset description; empty clears it." },
+    { "owner_type", "string", false, "Optional owner handle type for behavior and library assets." },
+    { "graph_description", "string", false, "Description for the selected graph; empty clears it." },
     { "operations", "array", true, "Atomic semantic edit batch, at most 128 operations." },
+};
+static const contract_field CONTRACT_EDIT_PROTOTYPE[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Prototype asset path below content, or use kind/name." },
+    { "kind", "string", false, "Prototype asset family." },
+    { "name", "string", false, "Prototype asset name." },
+    { "create", "boolean", false, "Create a new asset without replacing existing content." },
+    { "expected_hash", "string", false, "Required current asset hash when editing." },
+    { "dry_run", "boolean", false, "Validate and return results without writing." },
+    { "operations", "array", true, "Atomic semantic component, field, and behavior edit batch, at most 128 operations." },
+};
+static const contract_field CONTRACT_EDIT_SCENE[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Scene asset path below content, or use kind/name." },
+    { "kind", "string", false, "Scene asset family." },
+    { "name", "string", false, "Scene asset name." },
+    { "create", "boolean", false, "Create a new scene without replacing existing content." },
+    { "expected_hash", "string", false, "Required current asset hash when editing." },
+    { "dry_run", "boolean", false, "Validate and serialize the proposed edit without publishing it." },
+    { "operations", "array", true, "Atomic semantic scene edit batch, at most 128 operations." },
+};
+static const contract_field CONTRACT_PROFILE_SCENARIO[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", false, "Target family; defaults to prototype." },
+    { "name", "string", true, "Prototype or scene asset name." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
+    { "warmup_frames", "uint64", false, "Frames to run before collecting samples; maximum 600." },
+};
+static const contract_field CONTRACT_EXECUTION_STATUS[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", true, "Behavior or system." },
+    { "name", "string", true, "Asset name." },
+};
+static const contract_field CONTRACT_OPTIMIZE_GRAPH[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Graph asset path below content, or use kind/name." },
+    { "kind", "string", false, "Graph asset family." },
+    { "name", "string", false, "Graph asset name." },
+    { "expected_hash", "string", false, "Required current asset hash when applying an optimization." },
+    { "dry_run", "boolean", false, "Report safe optimizations without publishing them; defaults to true." },
+    { "graph_id", "uint64", false, "Stable graph ID." },
+    { "graph_name", "string", false, "Unique graph name." },
+    { "fanout_threshold", "integer", false, "Minimum compatible fanout for local alias creation; 2 through 64." },
+    { "preserve_debug", "boolean", false, "Keep watched, disabled, and breakpoint graph state intact; defaults to true." },
+    { "local_aliases", "boolean", false, "Create local aliases for safe high-fanout values; defaults to true." },
 };
 static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "project_root", "string", false, "Project directory." },
@@ -285,6 +356,9 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "width", "integer", false, "Preview width, default 256, maximum 512." },
     { "height", "integer", false, "Preview height, default 256, maximum 512." },
     { "time", "number", false, "Deterministic preview simulation time." },
+    { "parameters", "object", false, "Shader Parameter overrides keyed by authored parameter name; scalar values or exact-width numeric arrays." },
+    { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
+    { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
     { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
 };
 
@@ -293,6 +367,15 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       "Find a bounded page of nodes and their typed pins for authoring.",
       CONTRACT_SEARCH_NODES,
       CONTRACT_FIELD_COUNT(CONTRACT_SEARCH_NODES),
+      1,
+      true,
+      true,
+      false },
+    { "describe_components",
+      "Describe reflected component fields, stable keys, and native defaults "
+      "for prototype authoring.",
+      CONTRACT_DESCRIBE_COMPONENTS,
+      CONTRACT_FIELD_COUNT(CONTRACT_DESCRIBE_COMPONENTS),
       1,
       true,
       true,
@@ -306,6 +389,52 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       false,
       false,
       true },
+    { "edit_prototype",
+      "Create or edit a prototype with semantic component, field, and behavior "
+      "operations; validate "
+      "before saving.",
+      CONTRACT_EDIT_PROTOTYPE,
+      CONTRACT_FIELD_COUNT(CONTRACT_EDIT_PROTOTYPE),
+      1,
+      false,
+      false,
+      true },
+    { "edit_scene",
+      "Create or edit a scene with semantic entity composition, overrides, and "
+      "behavior operations; validate before saving.",
+      CONTRACT_EDIT_SCENE,
+      CONTRACT_FIELD_COUNT(CONTRACT_EDIT_SCENE),
+      1,
+      false,
+      false,
+      true },
+    { "optimize_graph",
+      "Apply safe graph folds, local aliases, and cleanup passes and report "
+      "skipped opportunities.",
+      CONTRACT_OPTIMIZE_GRAPH,
+      CONTRACT_FIELD_COUNT(CONTRACT_OPTIMIZE_GRAPH),
+      1,
+      false,
+      false,
+      true },
+    { "execution_status",
+      "Report the actual execution backend available for a behavior or system "
+      "asset.",
+      CONTRACT_EXECUTION_STATUS,
+      CONTRACT_FIELD_COUNT(CONTRACT_EXECUTION_STATUS),
+      1,
+      true,
+      true,
+      false },
+    { "profile_scenario",
+      "Run a bounded deterministic target and return behavior "
+      "inclusive/exclusive and engine timing samples.",
+      CONTRACT_PROFILE_SCENARIO,
+      CONTRACT_FIELD_COUNT(CONTRACT_PROFILE_SCENARIO),
+      1,
+      true,
+      true,
+      false },
     { "preview_shader",
       "Compile a material or shape on the GPU and return a bounded PNG "
       "preview.",
@@ -430,7 +559,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     },
     {
         "run_scenario",
-        "Launch one prototype and return deterministic runtime evidence.",
+        "Launch one prototype or scene and return deterministic runtime "
+        "evidence.",
         CONTRACT_RUN_SCENARIO,
         CONTRACT_FIELD_COUNT(CONTRACT_RUN_SCENARIO),
         1,
@@ -440,7 +570,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     },
     {
         "runtime_snapshot",
-        "Launch one prototype and return a bounded reflected runtime snapshot.",
+        "Launch one prototype or scene and return a bounded reflected runtime "
+        "snapshot.",
         CONTRACT_RUNTIME_SNAPSHOT,
         CONTRACT_FIELD_COUNT(CONTRACT_RUNTIME_SNAPSHOT),
         1,
@@ -450,7 +581,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     },
     {
         "record_scenario",
-        "Record bounded deterministic prototype inputs and per-frame evidence.",
+        "Record bounded deterministic scene or prototype inputs and per-frame "
+        "evidence.",
         CONTRACT_RECORD_SCENARIO,
         CONTRACT_FIELD_COUNT(CONTRACT_RECORD_SCENARIO),
         1,
@@ -488,6 +620,18 @@ static const char *const CONTRACT_ERROR_CATEGORIES[] = {
 
 static int handle_describe_registry(response *result);
 static int handle_describe_contract(response *result);
+static int handle_describe_components(yyjson_val *request, response *result, int *exit_code);
+static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_edit_scene(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_optimize_graph(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_execution_status(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_profile_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
+static int handle_scene_runtime_snapshot(
+    const char *root,
+    yyjson_val *request,
+    response *result,
+    int *exit_code
+);
 static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_runtime_snapshot(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_record_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
@@ -2765,6 +2909,291 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
     return 0;
 }
 
+static void add_execution_status(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const char *backend,
+    bool ready,
+    bool jit_available,
+    bool jit,
+    bool fully_jit,
+    const char *reason
+)
+{
+    yyjson_mut_val *execution = yyjson_mut_obj_add_obj(doc, object, "execution");
+    yyjson_mut_obj_add_strcpy(doc, execution, "backend", backend);
+    yyjson_mut_obj_add_bool(doc, execution, "ready", ready);
+    yyjson_mut_obj_add_bool(doc, execution, "jit_available", jit_available);
+    yyjson_mut_obj_add_bool(doc, execution, "jit", jit);
+    yyjson_mut_obj_add_bool(doc, execution, "fully_jit", fully_jit);
+    yyjson_mut_obj_add_strcpy(doc, execution, "reason", reason ? reason : "");
+}
+
+static bool system_has_tick(const behavior_asset *asset)
+{
+    if (!asset) {
+        return false;
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *graph_value = asset->graphs[i];
+        for (int j = 0; j < acount(graph_value->nodes); j++) {
+            const node *node_value = graph_value->nodes[j];
+            if (node_value->desc && node_value->desc->flow_kind == NODE_FLOW_EVENT &&
+                graph_host_event_is(node_value->reference_name, GRAPH_HOST_EVENT_TICK)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static int add_system_execution_status(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    game_system *system,
+    const behavior_asset *asset,
+    bool *ready
+)
+{
+    const bool jit_available = graph_sljit_available() != 0;
+    const bool has_tick = system_has_tick(asset);
+    const compile_report *report = game_system_compile(system);
+    const bool valid = report && !compile_report_blocked(report);
+    const graph_program *program = game_system_program(system);
+    const bool sljit = game_system_uses_sljit(system) != 0;
+    const bool typed = game_system_uses_typed_bytecode(system) != 0;
+    const bool bytecode = game_system_uses_bytecode(system) != 0;
+    const char *backend = "unavailable";
+    const char *reason = "the system has no runnable Tick execution path";
+    if (sljit) {
+        backend = "sljit";
+        reason = "the system is executing compiled SLJIT machine code";
+    } else if (typed) {
+        backend = "typed_bytecode";
+        reason = jit_available ? "typed bytecode is active; this graph was not "
+                                 "eligible for SLJIT"
+                               : "typed bytecode is active; the SLJIT backend "
+                                 "is unavailable";
+    } else if (bytecode) {
+        backend = "bytecode";
+        reason = "generic bytecode is active; typed storage or SLJIT was "
+                 "unavailable";
+    }
+    const bool interpreter = has_tick && asset && !asset->graph->dataflow;
+    if (interpreter) {
+        backend = "interpreter";
+        reason = "this system graph requires the flow interpreter";
+    }
+    bool runtime_ready = valid && has_tick && (bytecode || interpreter);
+    flow_error runtime_error = { 0 };
+    if (runtime_ready) {
+        runtime_ready = game_system_tick_mode(system, 0, SCENARIO_DEFAULT_FIXED_DT, &runtime_error, GAME_SYSTEM_EXEC_AUTO) ==
+                        FLOW_OK;
+        if (!runtime_ready) {
+            backend = "unavailable";
+            reason = runtime_error.message ? runtime_error.message
+                                           : "system execution failed";
+        }
+    }
+    add_execution_status(doc, object, backend, runtime_ready, jit_available, sljit, sljit, reason);
+    yyjson_mut_val *execution = yyjson_mut_obj_get(object, "execution");
+    yyjson_mut_obj_add_bool(doc, execution, "has_tick", has_tick);
+    yyjson_mut_obj_add_bool(doc, execution, "bytecode", bytecode);
+    yyjson_mut_obj_add_bool(doc, execution, "typed_bytecode", typed);
+    yyjson_mut_obj_add_int(doc, execution, "query_count", game_system_query_count(system));
+    yyjson_mut_obj_add_int(doc, execution, "match_count", game_system_match_count(system));
+    yyjson_mut_val *sljit_value = yyjson_mut_obj_add_obj(doc, execution, "sljit");
+    yyjson_mut_obj_add_bool(doc, sljit_value, "available", jit_available);
+    yyjson_mut_obj_add_bool(doc, sljit_value, "used", sljit);
+    yyjson_mut_obj_add_bool(doc, sljit_value, "batch", game_system_uses_sljit_batch(system) != 0);
+    yyjson_mut_obj_add_bool(doc, sljit_value, "registers", game_system_uses_sljit_registers(system) != 0);
+    yyjson_mut_obj_add_bool(doc, sljit_value, "simd", game_system_uses_sljit_simd(system) != 0);
+    yyjson_mut_obj_add_int(
+        doc,
+        sljit_value,
+        "column_count",
+        program && program->sljit ? graph_sljit_column_count(program->sljit) : 0
+    );
+    if (runtime_error.message) {
+        yyjson_mut_obj_add_strcpy(doc, execution, "runtime_error", runtime_error.message);
+    }
+    if (ready) {
+        *ready = runtime_ready;
+    }
+    return runtime_ready ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_EXECUTION_ERROR;
+}
+
+static int handle_execution_status(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    const char *name = request_string(request, "name");
+    if (!kind || !name || !name[0] ||
+        (strcmp(kind, "behavior") && strcmp(kind, "system"))) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "execution_status requires kind behavior or system and a name");
+        return -1;
+    }
+    asset_ref ref = { 0 };
+    char *json = NULL;
+    size_t bytes = 0;
+    uint64_t hash = 0;
+    char error[256] = { 0 };
+    int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    if ((strcmp(kind, "behavior") == 0 && (ref.family->loader != ASSET_GRAPH ||
+                                           strcmp(ref.family->kind, "behavior"))) ||
+        (strcmp(kind, "system") == 0 && (ref.family->loader != ASSET_SYSTEM ||
+                                         strcmp(ref.family->kind, "system")))) {
+        free(json);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "execution_status kind does not match the asset");
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, hash);
+    if (!strcmp(kind, "behavior")) {
+        behavior_asset *asset = behavior_asset_load_json(json);
+        free(json);
+        if (!asset) {
+            yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+            add_load_diagnostic(result->doc, diagnostics, graph_last_error());
+            add_execution_status(
+                result->doc,
+                value,
+                "unavailable",
+                false,
+                graph_sljit_available() != 0,
+                false,
+                false,
+                "behavior asset could not be loaded"
+            );
+            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior execution status failed");
+            return -1;
+        }
+        compile_report report;
+        compile_report_init(&report);
+        behavior_asset_compile(asset, &report);
+        inspect_add_validation(result->doc, value, &report);
+        int errors = report.error_count;
+        compile_report_free(&report);
+        add_execution_status(
+            result->doc,
+            value,
+            errors ? "unavailable" : "interpreter",
+            errors == 0,
+            graph_sljit_available() != 0,
+            false,
+            false,
+            errors ? "behavior validation failed" : "behavior event graphs execute through the flow interpreter"
+        );
+        behavior_asset_free(asset);
+        if (errors) {
+            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior validation failed");
+            return -1;
+        }
+        return 0;
+    }
+
+    game_system_document *document = game_system_document_load(
+        json,
+        automation_query_component,
+        NULL,
+        error,
+        sizeof error
+    );
+    if (!document) {
+        free(json);
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+        add_load_diagnostic(result->doc, diagnostics, error);
+        add_execution_status(
+            result->doc,
+            value,
+            "unavailable",
+            false,
+            graph_sljit_available() != 0,
+            false,
+            false,
+            "system document could not be loaded"
+        );
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "system execution status failed");
+        return -1;
+    }
+    const behavior_asset *document_asset = game_system_document_behavior_asset(document);
+    char *definition_json = behavior_asset_save_json(document_asset);
+    behavior_asset *definition = definition_json
+                                   ? behavior_asset_load_json(definition_json)
+                                   : NULL;
+    free(definition_json);
+    free(json);
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; definition && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        if (ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) !=
+            ECS_OK) {
+            set_error(error, sizeof error, "could not register system components");
+            behavior_asset_free(definition);
+            definition = NULL;
+        }
+    }
+    game_system *system = definition ? game_system_new(world, definition) : NULL;
+    bool query_failed = false;
+    if (system && game_system_document_query(document) &&
+        game_system_set_query(system, game_system_document_query(document)) != 0) {
+        set_error(error, sizeof error, "could not apply system query");
+        query_failed = true;
+    }
+    bool ready = false;
+    int execution_status = system && !query_failed
+                             ? add_system_execution_status(
+                                   result->doc,
+                                   value,
+                                   system,
+                                   game_system_behavior_asset(system),
+                                   &ready
+                               )
+                             : CHIBI_AUTOMATION_EXECUTION_ERROR;
+    if (!system) {
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+        add_load_diagnostic(result->doc, diagnostics, error[0] ? error : "system could not be created");
+        add_execution_status(
+            result->doc,
+            value,
+            "unavailable",
+            false,
+            graph_sljit_available() != 0,
+            false,
+            false,
+            "system could not be created"
+        );
+    } else if (query_failed) {
+        add_execution_status(
+            result->doc,
+            value,
+            "unavailable",
+            false,
+            graph_sljit_available() != 0,
+            false,
+            false,
+            "system query could not be applied"
+        );
+        yyjson_mut_val *execution = yyjson_mut_obj_get(value, "execution");
+        yyjson_mut_obj_add_bool(result->doc, execution, "query_failed", true);
+        inspect_add_validation(result->doc, value, game_system_compile(system));
+    } else {
+        inspect_add_validation(result->doc, value, game_system_compile(system));
+    }
+    if (system) {
+        game_system_free(system);
+    }
+    game_system_document_free(document);
+    ecs_world_free(world);
+    if (execution_status != CHIBI_AUTOMATION_OK || !ready) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error[0] ? error : "system execution is unavailable");
+        return -1;
+    }
+    return 0;
+}
+
 static int handle_status(const char *root, response *result, int *exit_code)
 {
     asset_entry *entries = NULL;
@@ -3313,22 +3742,242 @@ static char *scenario_prototype_json(const char *json, uint64_t hash)
 
 typedef struct
 {
+    bool scene_target;
     asset_ref prototype_ref;
     size_t prototype_bytes;
     uint64_t prototype_hash;
     game_prototype_registry registry;
     game_prototype *prototype;
+    game_scene_document *scene;
+    game_prototype **scene_prototypes;
+    game_prototype_preview_scene_entity *scene_entities;
     game_prototype_preview *preview;
+    asset_entry *runtime_assets;
+    uint64_t runtime_hash;
+    char *initial_saved_state;
+    CF_V2 aim;
+    bool aim_firing, aim_point, controls_sampled;
+    uint64_t controls;
 } scenario_context;
+
+static uint64_t scenario_state_hash(scenario_context *context)
+{
+    uint64_t hash = scenario_world_hash(game_prototype_preview_world(context->preview));
+    char *saved = game_save_export(
+        game_behavior_save(game_prototype_preview_behaviors(context->preview))
+    );
+    hash = scenario_hash_bytes(hash, saved, strlen(saved));
+    free(saved);
+    engine *runtime = game_prototype_preview_runtime(context->preview);
+    GameFog fog;
+    const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
+    if (cells) {
+        hash = scenario_hash_bytes(
+            hash,
+            cells,
+            (size_t)fog.columns * (size_t)fog.rows * 4
+        );
+    }
+    uint64_t sounds = game_audio_hash(engine_audio(runtime));
+    return scenario_hash_bytes(hash, &sounds, sizeof sounds);
+}
+
+static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
+{
+    engine *runtime = game_prototype_preview_runtime(context->preview);
+    yyjson_mut_obj_add_uint(doc, value, "sound_cues", game_audio_count(engine_audio(runtime)));
+    GameFog fog;
+    const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
+    yyjson_mut_val *sight = yyjson_mut_obj_add_obj(doc, value, "visibility");
+    yyjson_mut_obj_add_bool(doc, sight, "enabled", cells != NULL);
+    if (!cells) {
+        return;
+    }
+    int visible = 0, explored = 0;
+    for (int i = 0; i < fog.columns * fog.rows; i++) {
+        visible += cells[i * 4] != 0;
+        explored += cells[i * 4 + 1] != 0;
+    }
+    yyjson_mut_obj_add_int(doc, sight, "visible_cells", visible);
+    yyjson_mut_obj_add_int(doc, sight, "explored_cells", explored);
+    yyjson_mut_obj_add_int(doc, sight, "columns", fog.columns);
+    yyjson_mut_obj_add_int(doc, sight, "rows", fog.rows);
+}
+
+static int scenario_saved_state(scenario_context *context, yyjson_val *request, char *error, size_t size)
+{
+    yyjson_val *state = yyjson_obj_get(request, "saved_state");
+    char *json = state ? yyjson_val_write(state, 0, NULL) : xstrdup("{}");
+    game_save *save = game_behavior_save(
+        game_prototype_preview_behaviors(context->preview)
+    );
+    bool valid = game_save_import(save, json);
+    free(json);
+    if (!valid) {
+        set_error(error, size, game_save_error(save));
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    free(context->initial_saved_state);
+    context->initial_saved_state = game_save_export(save);
+    return CHIBI_AUTOMATION_OK;
+}
+
+static void add_saved_state(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
+{
+    char *json = game_save_export(
+        game_behavior_save(game_prototype_preview_behaviors(context->preview))
+    );
+    yyjson_doc *state = yyjson_read(json, strlen(json), 0);
+    yyjson_mut_obj_add_val(doc, value, "saved_state", yyjson_val_mut_copy(doc, yyjson_doc_get_root(state)));
+    yyjson_doc_free(state);
+    free(json);
+}
+
+static int advance_scenario(
+    scenario_context *context,
+    uint64_t frames,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+);
+
+static int advance_request_scenario(
+    scenario_context *context,
+    yyjson_val *request,
+    uint64_t frames,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+);
 
 static void scenario_context_free(scenario_context *context)
 {
     if (!context) {
         return;
     }
+    free(context->initial_saved_state);
+    free_asset_entries(context->runtime_assets);
     game_prototype_preview_free(context->preview);
     game_prototype_free(context->prototype);
+    for (int i = 0; i < acount(context->scene_prototypes); i++) {
+        game_prototype_free(context->scene_prototypes[i]);
+    }
+    afree(context->scene_prototypes);
+    afree(context->scene_entities);
+    game_scene_document_free(context->scene);
     *context = (scenario_context){ 0 };
+}
+
+static int register_preview_behavior_name(
+    const char *root,
+    game_prototype_preview *preview,
+    const char *name,
+    char *error,
+    size_t error_size
+)
+{
+    if (game_behavior_asset_registered(game_prototype_preview_behaviors(preview), name)) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    asset_ref behavior_ref = { 0 };
+    char *behavior_json = NULL;
+    int status = load_named_asset(
+        root,
+        family_by_kind("behavior"),
+        name,
+        &behavior_ref,
+        &behavior_json,
+        NULL,
+        NULL,
+        error,
+        error_size
+    );
+    if (status != CHIBI_AUTOMATION_OK) {
+        free(behavior_json);
+        return status;
+    }
+    behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+    free(behavior_json);
+    if (!behavior) {
+        snprintf(error, error_size, "%s", graph_last_error());
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    int result = game_prototype_preview_register_behavior(preview, name, behavior);
+    behavior_asset_free(behavior);
+    if (result != 0) {
+        snprintf(error, error_size, "could not register behavior %s", name);
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+static bool scenario_runtime_asset(const scenario_context *context, const asset_entry *entry)
+{
+    const char *kind = entry->family->kind;
+    return !strcmp(kind, "prototype") || !strcmp(kind, "behavior") ||
+           !strcmp(kind, "library") || !strcmp(kind, "event") ||
+           (context->scene_target &&
+            !strcmp(entry->relative, context->prototype_ref.relative));
+}
+
+static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
+{
+    asset_entry *entries = NULL;
+    int status = enumerate_assets(root, &entries, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        return status;
+    }
+    for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
+        if (strcmp(entries[i].family->kind, "prototype")) {
+            continue;
+        }
+        char *json = NULL;
+        asset_ref ref;
+        uint64_t hash;
+        char *name = asset_name_from_filename(entries[i].filename);
+        status = load_named_asset(root, entries[i].family, name, &ref, &json, NULL, &hash, error, error_size);
+        free(name);
+        if (status != CHIBI_AUTOMATION_OK) {
+            free(json);
+            break;
+        }
+        char *normalized = scenario_prototype_json(json, hash);
+        free(json);
+        game_prototype *prototype = normalized
+                                      ? game_prototype_load(normalized, &context->registry, error, error_size)
+                                      : NULL;
+        free(normalized);
+        if (!prototype) {
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            break;
+        }
+        status = game_prototype_preview_register_prototype(context->preview, prototype) == 0
+                   ? CHIBI_AUTOMATION_OK
+                   : CHIBI_AUTOMATION_EXECUTION_ERROR;
+        for (int j = 0; j < acount(prototype->graphs) && status == CHIBI_AUTOMATION_OK;
+             j++) {
+            status = register_preview_behavior_name(
+                root,
+                context->preview,
+                prototype->graphs[j],
+                error,
+                error_size
+            );
+        }
+        game_prototype_free(prototype);
+    }
+    context->runtime_assets = entries;
+    context->runtime_hash = UINT64_C(14695981039346656037);
+    for (int i = 0; i < acount(entries); i++) {
+        if (!scenario_runtime_asset(context, &entries[i])) {
+            continue;
+        }
+        catalog_hash_text(&context->runtime_hash, entries[i].relative);
+        char hash[17];
+        snprintf(hash, sizeof hash, "%016llx", (unsigned long long)entries[i].hash);
+        catalog_hash_text(&context->runtime_hash, hash);
+    }
+    return status;
 }
 
 static int prepare_scenario(
@@ -3441,196 +4090,232 @@ static int prepare_scenario(
             return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
     }
-    return CHIBI_AUTOMATION_OK;
+    status = register_scenario_prototypes(root, context, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(context);
+    }
+    return status;
 }
 
-static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+static int prepare_scene_scenario(
+    const char *root,
+    const char *name,
+    scenario_context *context,
+    char *error,
+    size_t error_size
+)
 {
-    const char *kind = request_string(request, "kind");
-    if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "run_scenario supports prototype targets only; scenes are not supported yet");
-        return -1;
+    *context = (scenario_context){ .scene_target = true };
+    char *scene_json = NULL;
+    int status = load_named_asset(
+        root,
+        family_by_kind("scene"),
+        name,
+        &context->prototype_ref,
+        &scene_json,
+        &context->prototype_bytes,
+        &context->prototype_hash,
+        error,
+        error_size
+    );
+    if (status != CHIBI_AUTOMATION_OK) {
+        free(scene_json);
+        return status;
     }
+    context->scene = game_scene_document_load(scene_json, error, error_size);
+    free(scene_json);
+    if (!context->scene) {
+        scenario_context_free(context);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    context->registry = (game_prototype_registry){
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    context->preview = game_prototype_preview_new(&context->registry);
+    if (!context->preview) {
+        scenario_context_free(context);
+        set_error(error, error_size, "could not create scene preview");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    behavior_asset **libraries = NULL;
+    behavior_asset **events = NULL;
+    status = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, error_size);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
+    }
+    if (status == CHIBI_AUTOMATION_OK &&
+        register_preview_assets(context->preview, libraries, error, error_size) != 0) {
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (status == CHIBI_AUTOMATION_OK &&
+        register_preview_assets(context->preview, events, error, error_size) != 0) {
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    free_behavior_assets(libraries);
+    free_behavior_assets(events);
+    if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(context);
+        return status;
+    }
+    for (int i = 0; i < acount(context->scene->entities); i++) {
+        game_scene_entity *entity = &context->scene->entities[i];
+        asset_ref prototype_ref = { 0 };
+        char *prototype_json = NULL;
+        uint64_t prototype_hash = 0;
+        status = load_named_asset(
+            root,
+            family_by_kind("prototype"),
+            entity->prototype,
+            &prototype_ref,
+            &prototype_json,
+            NULL,
+            &prototype_hash,
+            error,
+            error_size
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            free(prototype_json);
+            scenario_context_free(context);
+            return status;
+        }
+        char *scenario_json = scenario_prototype_json(prototype_json, prototype_hash);
+        game_prototype *
+            prototype = scenario_json
+                          ? game_prototype_load(scenario_json, &context->registry, error, error_size)
+                          : NULL;
+        free(scenario_json);
+        free(prototype_json);
+        if (!prototype) {
+            scenario_context_free(context);
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        if (game_prototype_preview_register_prototype(context->preview, prototype) != 0) {
+            game_prototype_free(prototype);
+            scenario_context_free(context);
+            set_error(error, error_size, "could not register scene prototype");
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        apush(context->scene_prototypes, prototype);
+        apush(
+            context->scene_entities,
+            ((game_prototype_preview_scene_entity){
+                .prototype = prototype,
+                .components_json = entity->components_json,
+                .behaviors = (const char *const *)entity->behaviors,
+                .behavior_count = acount(entity->behaviors),
+            })
+        );
+        for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {
+            status = register_preview_behavior_name(
+                root,
+                context->preview,
+                prototype->graphs[behavior],
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                scenario_context_free(context);
+                return status;
+            }
+        }
+        for (int behavior = 0; behavior < acount(entity->behaviors); behavior++) {
+            status = register_preview_behavior_name(
+                root,
+                context->preview,
+                entity->behaviors[behavior],
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                scenario_context_free(context);
+                return status;
+            }
+        }
+    }
+    status = register_scenario_prototypes(root, context, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(context);
+    }
+    return status;
+}
+
+static int handle_scene_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
     const char *name = request_string(request, "name");
     if (!name || !name[0]) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "scene name is required");
         return -1;
     }
-
     uint64_t frames = SCENARIO_DEFAULT_FRAMES;
     yyjson_val *frames_value = yyjson_obj_get(request, "frames");
     if (frames_value && (!request_uint(request, "frames", &frames) ||
-                         frames > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+                         frames > SCENARIO_RUN_MAX_FRAMES)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 108000");
         return -1;
     }
     double fixed_dt = SCENARIO_FIXED_DT;
     yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
     if (fixed_dt_value) {
-        if (!yyjson_is_num(fixed_dt_value)) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must be a positive number");
-            return -1;
-        }
-        fixed_dt = yyjson_get_num(fixed_dt_value);
-        if (!isfinite(fixed_dt) || fixed_dt <= 0 || fixed_dt > 0.25 ||
-            fabs(fixed_dt - SCENARIO_FIXED_DT) > 1e-12) {
+        if (!yyjson_is_num(fixed_dt_value) ||
+            !isfinite(yyjson_get_num(fixed_dt_value)) ||
+            fabs(yyjson_get_num(fixed_dt_value) - SCENARIO_FIXED_DT) > 1e-12) {
             response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
             return -1;
         }
+        fixed_dt = yyjson_get_num(fixed_dt_value);
     }
-
-    const asset_family *prototype_family = family_by_kind("prototype");
-    asset_ref prototype_ref = { 0 };
-    char *prototype_json = NULL;
-    size_t prototype_bytes = 0;
-    uint64_t prototype_hash = 0;
+    scenario_context context = { 0 };
     char error[256] = { 0 };
-    int status = load_named_asset(
-        root,
-        prototype_family,
-        name,
-        &prototype_ref,
-        &prototype_json,
-        &prototype_bytes,
-        &prototype_hash,
-        error,
-        sizeof error
-    );
+    const char *kind = request_string(request, "kind");
+    int status = kind && !strcmp(kind, "scene")
+                   ? prepare_scene_scenario(root, name, &context, error, sizeof error)
+                   : prepare_scenario(root, name, &context, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = advance_request_scenario(&context, request, frames, fixed_dt, error, sizeof error);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(&context);
         response_error(result, exit_code, status, error);
         return -1;
     }
-
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
-    char *scenario_json = scenario_prototype_json(prototype_json, prototype_hash);
-    game_prototype *prototype = scenario_json
-                                  ? game_prototype_load(scenario_json, &registry, error, sizeof error)
-                                  : NULL;
-    free(scenario_json);
-    free(prototype_json);
-    if (!prototype) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
-        return -1;
-    }
-
-    game_prototype_preview *preview = game_prototype_preview_new(&registry);
-    if (!preview) {
-        game_prototype_free(prototype);
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, "could not create prototype preview");
-        return -1;
-    }
-
-    behavior_asset **libraries = NULL;
-    behavior_asset **events = NULL;
-    int result_code = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, sizeof error);
-    if (result_code == CHIBI_AUTOMATION_OK) {
-        result_code = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
-    }
-    if (result_code == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(preview, libraries, error, sizeof error) != 0) {
-        result_code = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (result_code == CHIBI_AUTOMATION_OK &&
-        register_preview_assets(preview, events, error, sizeof error) != 0) {
-        result_code = CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    free_behavior_assets(libraries);
-    free_behavior_assets(events);
-    if (result_code != CHIBI_AUTOMATION_OK) {
-        game_prototype_preview_free(preview);
-        game_prototype_free(prototype);
-        response_error(result, exit_code, result_code, error);
-        return -1;
-    }
-
-    for (int i = 0; i < acount(prototype->graphs); i++) {
-        asset_ref behavior_ref = { 0 };
-        char *behavior_json = NULL;
-        status = load_named_asset(
-            root,
-            family_by_kind("behavior"),
-            prototype->graphs[i],
-            &behavior_ref,
-            &behavior_json,
-            NULL,
-            NULL,
-            error,
-            sizeof error
-        );
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-            free(behavior_json);
-            game_prototype_preview_free(preview);
-            game_prototype_free(prototype);
-            return -1;
-        }
-        behavior_asset *behavior = behavior_asset_load_json(behavior_json);
-        free(behavior_json);
-        if (!behavior) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, graph_last_error());
-            game_prototype_preview_free(preview);
-            game_prototype_free(prototype);
-            return -1;
-        }
-        int registered = game_prototype_preview_register_behavior(
-            preview,
-            prototype->graphs[i],
-            behavior
-        );
-        behavior_asset_free(behavior);
-        if (registered != 0) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, "could not register prototype behavior");
-            game_prototype_preview_free(preview);
-            game_prototype_free(prototype);
-            return -1;
-        }
-    }
-
-    char launch_error[256] = { 0 };
-    if (game_prototype_preview_launch(preview, prototype, launch_error, sizeof launch_error) !=
-        ECS_OK) {
-        response_error(
-            result,
-            exit_code,
-            CHIBI_AUTOMATION_EXECUTION_ERROR,
-            launch_error[0] ? launch_error : "could not launch prototype"
-        );
-        game_prototype_preview_free(preview);
-        game_prototype_free(prototype);
-        return -1;
-    }
-    for (uint64_t frame = 0; frame < frames; frame++) {
-        if (game_prototype_preview_tick(preview, (double)(frame + 1) * fixed_dt) != 0) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, "prototype scenario failed");
-            game_prototype_preview_free(preview);
-            game_prototype_free(prototype);
-            return -1;
-        }
-    }
-
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &prototype_ref, prototype_bytes, prototype_hash);
-    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
-    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
-    add_hash_named(
+    add_asset_identity(
         result->doc,
         value,
-        "world_hash",
-        scenario_world_hash(game_prototype_preview_world(preview))
+        &context.prototype_ref,
+        context.prototype_bytes,
+        context.prototype_hash
     );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
     yyjson_mut_obj_add_uint(
         result->doc,
         value,
         "live_entities",
-        ecs_world_live_count(game_prototype_preview_world(preview))
+        ecs_world_live_count(game_prototype_preview_world(context.preview))
+    );
+    yyjson_mut_obj_add_uint(
+        result->doc,
+        value,
+        "authored_entities",
+        game_prototype_preview_entity_count(context.preview)
     );
     add_scenario_timing(result->doc, value, frames, fixed_dt);
-    game_prototype_preview_free(preview);
-    game_prototype_free(prototype);
+    add_saved_state(result->doc, value, &context);
+    scenario_context_free(&context);
     return 0;
+}
+
+static int handle_run_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    if (kind && strcmp(kind, "prototype") && strcmp(kind, "scene")) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "run_scenario supports prototype or scene targets");
+        return -1;
+    }
+    return handle_scene_scenario(root, request, result, exit_code);
 }
 
 #define RUNTIME_SNAPSHOT_MAX_ENTITIES 256
@@ -3664,19 +4349,417 @@ static int advance_scenario(
 )
 {
     char launch_error[256] = { 0 };
-    if (game_prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error) !=
-        ECS_OK) {
+    int launch = context->scene_target ? game_prototype_preview_launch_scene(
+                                             context->preview,
+                                             context->scene_entities,
+                                             acount(context->scene_entities),
+                                             launch_error,
+                                             sizeof launch_error
+                                         )
+                                       : game_prototype_preview_launch(
+                                             context->preview,
+                                             context->prototype,
+                                             launch_error,
+                                             sizeof launch_error
+                                         );
+    if (launch != ECS_OK) {
         set_error(error, error_size, launch_error[0] ? launch_error : "could not launch prototype");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (game_prototype_preview_tick(context->preview, 0) != 0) {
+        set_error(error, error_size, "could not initialize scenario clock");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
         if (game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
             0) {
-            set_error(error, error_size, "prototype scenario failed");
+            set_error(error, error_size, "scenario failed");
             return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
     }
     return CHIBI_AUTOMATION_OK;
+}
+
+#define SCENARIO_PROFILE_MAX_ROWS 1024
+#define SCENARIO_PROFILE_MAX_TOTAL 1200
+
+typedef struct
+{
+    const char *behavior;
+    const char *event;
+    uint64_t starts;
+    uint64_t resumes;
+    double inclusive_cpu_ms;
+    double cpu_ms;
+} scenario_profile_row;
+
+typedef struct
+{
+    uint64_t frames;
+    uint64_t steps;
+    uint64_t command_apply_count;
+    double dropped_seconds;
+    double behavior_ms;
+    double physics_ms;
+    double events_ms;
+    double systems_ms;
+    double rendering_ms;
+} scenario_profile_timing;
+
+typedef struct
+{
+    uint64_t calls;
+    uint64_t requested_bytes;
+} scenario_profile_allocations;
+
+static void profile_add_row(
+    scenario_profile_row **rows,
+    const game_behavior_profile_row *source,
+    bool *truncated
+)
+{
+    if (!source || (!source->starts && !source->resumes && source->cpu_ms == 0)) {
+        return;
+    }
+    for (int i = 0; i < acount(*rows); i++) {
+        scenario_profile_row *row = &(*rows)[i];
+        if (!strcmp(
+                row->behavior ? row->behavior : "",
+                source->behavior ? source->behavior : ""
+            ) &&
+            !strcmp(row->event ? row->event : "", source->event ? source->event : "")) {
+            row->starts += source->starts;
+            row->resumes += source->resumes;
+            row->inclusive_cpu_ms += source->inclusive_cpu_ms;
+            row->cpu_ms += source->cpu_ms;
+            return;
+        }
+    }
+    if (acount(*rows) >= SCENARIO_PROFILE_MAX_ROWS) {
+        *truncated = true;
+        return;
+    }
+    apush(
+        *rows,
+        ((scenario_profile_row){
+            .behavior = source->behavior,
+            .event = source->event,
+            .starts = source->starts,
+            .resumes = source->resumes,
+            .inclusive_cpu_ms = source->inclusive_cpu_ms,
+            .cpu_ms = source->cpu_ms,
+        })
+    );
+}
+
+static int scenario_profile_compare(const void *left, const void *right)
+{
+    const scenario_profile_row *a = left;
+    const scenario_profile_row *b = right;
+    if (a->cpu_ms != b->cpu_ms) {
+        return a->cpu_ms > b->cpu_ms ? -1 : 1;
+    }
+    int behavior = strcmp(a->behavior ? a->behavior : "", b->behavior ? b->behavior : "");
+    if (behavior) {
+        return behavior;
+    }
+    return strcmp(a->event ? a->event : "", b->event ? b->event : "");
+}
+
+static void profile_add_timing(
+    scenario_profile_timing *total,
+    const engine_frame_timing *timing,
+    uint64_t previous_steps,
+    uint64_t previous_commands,
+    double previous_dropped,
+    xalloc_stats previous_allocations,
+    scenario_profile_allocations *allocations
+)
+{
+    xalloc_stats current_allocations;
+    xalloc_stats_get(&current_allocations);
+    total->frames++;
+    total->steps += timing->simulation_steps - previous_steps;
+    total->command_apply_count += timing->command_apply_count - previous_commands;
+    total->dropped_seconds += timing->dropped_seconds - previous_dropped;
+    total->behavior_ms += timing->behavior_ms;
+    total->physics_ms += timing->physics_ms;
+    total->events_ms += timing->events_ms;
+    total->systems_ms += timing->systems_ms;
+    total->rendering_ms += timing->rendering_ms;
+    allocations->calls += current_allocations.calls - previous_allocations.calls;
+    allocations->requested_bytes += current_allocations.requested_bytes -
+                                    previous_allocations.requested_bytes;
+}
+
+static void add_profile_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, const scenario_profile_timing *timing)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "timing");
+    yyjson_mut_obj_add_uint(doc, value, "sampled_frames", timing->frames);
+    yyjson_mut_obj_add_uint(doc, value, "simulation_steps", timing->steps);
+    yyjson_mut_obj_add_uint(doc, value, "command_apply_count", timing->command_apply_count);
+    yyjson_mut_obj_add_real(doc, value, "dropped_seconds", timing->dropped_seconds);
+    yyjson_mut_obj_add_real(doc, value, "behavior_ms", timing->behavior_ms);
+    yyjson_mut_obj_add_real(doc, value, "physics_ms", timing->physics_ms);
+    yyjson_mut_obj_add_real(doc, value, "events_ms", timing->events_ms);
+    yyjson_mut_obj_add_real(doc, value, "systems_ms", timing->systems_ms);
+    yyjson_mut_obj_add_real(doc, value, "rendering_ms", timing->rendering_ms);
+    double total_ms = timing->behavior_ms + timing->physics_ms +
+                      timing->systems_ms + timing->rendering_ms;
+    yyjson_mut_obj_add_real(doc, value, "total_ms", total_ms);
+    yyjson_mut_obj_add_real(
+        doc,
+        value,
+        "average_frame_ms",
+        timing->frames ? total_ms / timing->frames : 0
+    );
+}
+
+static void add_profile_allocations(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const scenario_profile_allocations *allocations,
+    uint64_t frames
+)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "allocations");
+    yyjson_mut_obj_add_strcpy(doc, value, "scope", "xalloc wrappers");
+    yyjson_mut_obj_add_uint(doc, value, "sampled_frames", frames);
+    yyjson_mut_obj_add_uint(doc, value, "calls", allocations->calls);
+    yyjson_mut_obj_add_uint(doc, value, "requested_bytes", allocations->requested_bytes);
+    yyjson_mut_obj_add_real(
+        doc,
+        value,
+        "average_calls_per_frame",
+        frames ? (double)allocations->calls / (double)frames : 0
+    );
+    yyjson_mut_obj_add_real(
+        doc,
+        value,
+        "average_requested_bytes_per_frame",
+        frames ? (double)allocations->requested_bytes / (double)frames : 0
+    );
+}
+
+static void add_profile_rows(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    scenario_profile_row *rows,
+    int row_count,
+    bool truncated
+)
+{
+    if (row_count > 1) {
+        qsort(rows, (size_t)row_count, sizeof *rows, scenario_profile_compare);
+    }
+    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, "behaviors");
+    for (int i = 0; i < row_count; i++) {
+        const scenario_profile_row *row = &rows[i];
+        yyjson_mut_val *value = yyjson_mut_arr_add_obj(doc, array);
+        yyjson_mut_obj_add_strcpy(doc, value, "behavior", row->behavior ? row->behavior : "");
+        yyjson_mut_obj_add_strcpy(doc, value, "event", row->event ? row->event : "");
+        yyjson_mut_obj_add_uint(doc, value, "starts", row->starts);
+        yyjson_mut_obj_add_uint(doc, value, "resumes", row->resumes);
+        yyjson_mut_obj_add_real(doc, value, "inclusive_cpu_ms", row->inclusive_cpu_ms);
+        yyjson_mut_obj_add_real(doc, value, "cpu_ms", row->cpu_ms);
+        uint64_t activations = row->starts + row->resumes;
+        yyjson_mut_obj_add_real(
+            doc,
+            value,
+            "average_cpu_us",
+            activations ? row->cpu_ms * 1000.0 / (double)activations : 0
+        );
+        yyjson_mut_obj_add_real(
+            doc,
+            value,
+            "average_inclusive_cpu_us",
+            activations ? row->inclusive_cpu_ms * 1000.0 / (double)activations : 0
+        );
+    }
+    yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", truncated);
+}
+
+static int handle_profile_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *kind = request_string(request, "kind");
+    if (!kind) {
+        kind = "prototype";
+    }
+    if (strcmp(kind, "prototype") && strcmp(kind, "prototypes") &&
+        strcmp(kind, "scene") && strcmp(kind, "scenes")) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "profile_scenario supports prototype or scene targets");
+        return -1;
+    }
+    const char *name = request_string(request, "name");
+    if (!name || !name[0]) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "profile target name is required");
+        return -1;
+    }
+    uint64_t frames = SCENARIO_DEFAULT_FRAMES;
+    uint64_t warmup = 0;
+    if (yyjson_obj_get(request, "frames") &&
+        (!request_uint(request, "frames", &frames) || frames > SCENARIO_MAX_FRAMES)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+        return -1;
+    }
+    if (yyjson_obj_get(request, "warmup_frames") &&
+        (!request_uint(request, "warmup_frames", &warmup) ||
+         warmup > SCENARIO_MAX_FRAMES)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "warmup_frames must be a non-negative integer no greater than 600");
+        return -1;
+    }
+    if (warmup + frames > SCENARIO_PROFILE_MAX_TOTAL) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "warmup_frames plus frames must not exceed 1200");
+        return -1;
+    }
+    double fixed_dt = SCENARIO_FIXED_DT;
+    yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
+    if (fixed_dt_value) {
+        if (!yyjson_is_num(fixed_dt_value) ||
+            !isfinite(yyjson_get_num(fixed_dt_value)) ||
+            fabs(yyjson_get_num(fixed_dt_value) - SCENARIO_FIXED_DT) > 1e-12) {
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
+            return -1;
+        }
+        fixed_dt = yyjson_get_num(fixed_dt_value);
+    }
+    scenario_context context = { 0 };
+    char error[256] = { 0 };
+    bool scene = !strcmp(kind, "scene") || !strcmp(kind, "scenes");
+    int status = scene
+                   ? prepare_scene_scenario(root, name, &context, error, sizeof error)
+                   : prepare_scenario(root, name, &context, error, sizeof error);
+    scenario_profile_row *rows = NULL;
+    scenario_profile_timing timing = { 0 };
+    scenario_profile_allocations allocations = { 0 };
+    bool rows_truncated = false;
+    if (status == CHIBI_AUTOMATION_OK) {
+        char launch_error[256] = { 0 };
+        int launch = context.scene_target ? game_prototype_preview_launch_scene(
+                                                context.preview,
+                                                context.scene_entities,
+                                                acount(context.scene_entities),
+                                                launch_error,
+                                                sizeof launch_error
+                                            )
+                                          : game_prototype_preview_launch(
+                                                context.preview,
+                                                context.prototype,
+                                                launch_error,
+                                                sizeof launch_error
+                                            );
+        if (launch != ECS_OK) {
+            snprintf(error, sizeof error, "%s", launch_error[0] ? launch_error : "could not launch scenario");
+            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), true);
+    }
+    if (status == CHIBI_AUTOMATION_OK &&
+        game_prototype_preview_tick(context.preview, 0) != 0) {
+        snprintf(error, sizeof error, "could not initialize scenario clock");
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    uint64_t previous_steps = 0;
+    uint64_t previous_commands = 0;
+    double previous_dropped = 0;
+    xalloc_stats previous_allocations = { 0 };
+    if (status == CHIBI_AUTOMATION_OK) {
+        const engine_frame_timing *initial = engine_last_timing(
+            game_prototype_preview_runtime(context.preview)
+        );
+        previous_steps = initial->simulation_steps;
+        previous_commands = initial->command_apply_count;
+        previous_dropped = initial->dropped_seconds;
+        xalloc_stats_get(&previous_allocations);
+        for (uint64_t frame = 0; frame < warmup + frames; frame++) {
+            if (game_prototype_preview_tick(context.preview, (double)(frame + 1) * fixed_dt) !=
+                0) {
+                snprintf(error, sizeof error, "scenario profiling failed");
+                status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+                break;
+            }
+            if (frame < warmup) {
+                const engine_frame_timing *sample = engine_last_timing(
+                    game_prototype_preview_runtime(context.preview)
+                );
+                previous_steps = sample->simulation_steps;
+                previous_commands = sample->command_apply_count;
+                previous_dropped = sample->dropped_seconds;
+                xalloc_stats_get(&previous_allocations);
+                continue;
+            }
+            const engine *runtime = game_prototype_preview_runtime(context.preview);
+            const engine_frame_timing *sample = engine_last_timing(runtime);
+            profile_add_timing(
+                &timing,
+                sample,
+                previous_steps,
+                previous_commands,
+                previous_dropped,
+                previous_allocations,
+                &allocations
+            );
+            previous_steps = sample->simulation_steps;
+            previous_commands = sample->command_apply_count;
+            previous_dropped = sample->dropped_seconds;
+            xalloc_stats_get(&previous_allocations);
+            const game_behavior_profile_frame *profile = engine_behavior_profile(runtime);
+            if (profile) {
+                for (int row = 0; row < profile->count; row++) {
+                    profile_add_row(&rows, &profile->rows[row], &rows_truncated);
+                }
+                profile_add_row(&rows, &profile->overflow, &rows_truncated);
+            }
+        }
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        afree(rows);
+        scenario_context_free(&context);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(
+        result->doc,
+        value,
+        &context.prototype_ref,
+        context.prototype_bytes,
+        context.prototype_hash
+    );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_uint(result->doc, value, "warmup_frames", warmup);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
+    yyjson_mut_obj_add_uint(
+        result->doc,
+        value,
+        "live_entities",
+        ecs_world_live_count(game_prototype_preview_world(context.preview))
+    );
+    yyjson_mut_obj_add_uint(
+        result->doc,
+        value,
+        "authored_entities",
+        game_prototype_preview_entity_count(context.preview)
+    );
+    add_execution_status(
+        result->doc,
+        value,
+        "interpreter",
+        true,
+        graph_sljit_available() != 0,
+        false,
+        false,
+        "behavior event graphs execute through the flow interpreter"
+    );
+    add_profile_timing(result->doc, value, &timing);
+    add_profile_allocations(result->doc, value, &allocations, timing.frames);
+    add_profile_rows(result->doc, value, rows, acount(rows), rows_truncated);
+    afree(rows);
+    scenario_context_free(&context);
+    return 0;
 }
 
 typedef struct
@@ -3693,10 +4776,13 @@ typedef struct
     double aim_y;
     bool aim_firing;
     bool aim_point;
-    bool has_aim;
+    bool has_aim, has_movement;
     yyjson_val *events;
     scenario_action actions[SCENARIO_MAX_ACTIONS];
     int action_count;
+    bool has_controls;
+    uint64_t controls;
+    yyjson_val *ui;
 } scenario_input;
 
 typedef struct
@@ -3804,16 +4890,75 @@ static bool parse_scenario_action_array(yyjson_val *actions, scenario_input *inp
     return true;
 }
 
-static bool parse_scenario_action_object(yyjson_val *actions, scenario_input *input, char *error, size_t error_size)
+static ecs_entity scenario_entity(const scenario_context *context, const char *name)
 {
-    yyjson_obj_iter iter = yyjson_obj_iter_with(actions);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iter))) {
-        if (!add_scenario_action(input, yyjson_obj_iter_get_val(key), yyjson_get_str(key), error, error_size)) {
+    if (!name) {
+        return game_prototype_preview_entity(context->preview);
+    }
+    if (!context->scene_target) {
+        return (ecs_entity){ 0 };
+    }
+    int index = game_scene_document_entity_index(context->scene, name);
+    return index < 0 ? (ecs_entity){ 0 }
+                     : game_prototype_preview_entity_at(context->preview, index);
+}
+
+static bool scenario_event_value(const scenario_context *context, yyjson_val *item, pin_value *out)
+{
+    if (!yyjson_is_obj(item)) {
+        return false;
+    }
+    const char *type = request_string(item, "type");
+    yyjson_val *value = yyjson_obj_get(item, "value");
+    if (!type || !value) {
+        return false;
+    }
+    if (!strcmp(type, "bool") && yyjson_is_bool(value)) {
+        *out = (pin_value){ .type = PIN_BOOL, .b = yyjson_get_bool(value) };
+        return true;
+    }
+    if ((!strcmp(type, "name") || !strcmp(type, "string")) &&
+        yyjson_is_str(value) && yyjson_get_len(value) <= 4096) {
+        *out = (pin_value){ .type = !strcmp(type, "name") ? PIN_NAME : PIN_STR,
+                            .str = yyjson_get_str(value) };
+        return true;
+    }
+    if (!strcmp(type, "entity") && yyjson_is_str(value) && yyjson_get_len(value)) {
+        ecs_entity entity = context
+                              ? scenario_entity(context, yyjson_get_str(value))
+                              : (ecs_entity){ 0 };
+        if (context &&
+            !ecs_entity_is_alive(game_prototype_preview_world(context->preview), entity)) {
             return false;
         }
+        *out = (pin_value){ .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .u64 = ecs_entity_to_u64(entity) };
+        return true;
     }
-    return true;
+    if (!yyjson_is_num(value) || !isfinite(yyjson_get_num(value))) {
+        return false;
+    }
+    double number = yyjson_get_num(value);
+    if (!strcmp(type, "int") && yyjson_is_int(value) && number >= INT32_MIN &&
+        number <= INT32_MAX) {
+        *out = (pin_value){ .type = PIN_I32, .i = (int32_t)number };
+        return true;
+    }
+    if (!strcmp(type, "uint") && yyjson_is_int(value) && number >= 0 &&
+        number <= UINT32_MAX) {
+        *out = (pin_value){ .type = PIN_U32, .u = (uint32_t)number };
+        return true;
+    }
+    if (!strcmp(type, "float") && fabs(number) <= FLT_MAX) {
+        *out = (pin_value){ .type = PIN_F32, .f = (float)number };
+        return true;
+    }
+    if (!strcmp(type, "double")) {
+        *out = (pin_value){ .type = PIN_F64, .d = number };
+        return true;
+    }
+    return false;
 }
 
 static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *error, size_t error_size)
@@ -3824,8 +4969,10 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
     }
     *out = (scenario_input){ 0 };
     yyjson_val *movement = yyjson_obj_get(value, "movement");
+    out->has_movement = movement != NULL;
     if (movement &&
-        (!yyjson_is_obj(movement) ||
+        (!yyjson_is_obj(movement) || !yyjson_obj_get(movement, "x") ||
+         !yyjson_obj_get(movement, "y") ||
          !scenario_input_number(movement, "x", &out->movement_x, error, error_size) ||
          !scenario_input_number(movement, "y", &out->movement_y, error, error_size))) {
         if (!error[0]) {
@@ -3835,7 +4982,7 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
     }
     yyjson_val *aim = yyjson_obj_get(value, "aim");
     if (aim &&
-        (!yyjson_is_obj(aim) ||
+        (!yyjson_is_obj(aim) || !yyjson_obj_get(aim, "x") || !yyjson_obj_get(aim, "y") ||
          !scenario_input_number(aim, "x", &out->aim_x, error, error_size) ||
          !scenario_input_number(aim, "y", &out->aim_y, error, error_size) ||
          !scenario_input_bool(aim, "firing", &out->aim_firing, error, error_size) ||
@@ -3845,18 +4992,19 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         }
         return false;
     }
+    if (fabs(out->movement_x) > 1 || fabs(out->movement_y) > 1 ||
+        (!out->aim_point && (fabs(out->aim_x) > 1 || fabs(out->aim_y) > 1))) {
+        snprintf(error, error_size, "movement and directional aim must be within [-1, 1]");
+        return false;
+    }
     out->has_aim = aim != NULL;
     yyjson_val *actions = yyjson_obj_get(value, "actions");
     if (actions && yyjson_is_arr(actions)) {
         if (!parse_scenario_action_array(actions, out, error, error_size)) {
             return false;
         }
-    } else if (actions && yyjson_is_obj(actions)) {
-        if (!parse_scenario_action_object(actions, out, error, error_size)) {
-            return false;
-        }
     } else if (actions) {
-        snprintf(error, error_size, "actions must be an array or object");
+        snprintf(error, error_size, "actions must be an array");
         return false;
     }
     yyjson_val *events = yyjson_obj_get(value, "events");
@@ -3875,12 +5023,69 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
                                    ? yyjson_obj_get(event, "values")
                                    : NULL;
             if (!name || !name[0] || strlen(name) > 128 ||
-                (values && (!yyjson_is_arr(values) || yyjson_arr_size(values) != 0))) {
-                snprintf(error, error_size, "events require a bounded name and no payload values");
+                (values && (!yyjson_is_arr(values) || yyjson_arr_size(values) > 16))) {
+                snprintf(error, error_size, "events require a bounded name and at most 16 typed payload values");
+                return false;
+            }
+            yyjson_val *target = yyjson_obj_get(event, "target");
+            if (target && (!yyjson_is_str(target) || !yyjson_get_len(target) ||
+                           yyjson_get_len(target) > 512)) {
+                snprintf(error, error_size, "event target must be a scene entity name");
+                return false;
+            }
+            for (size_t j = 0; j < yyjson_arr_size(values); j++) {
+                pin_value parsed;
+                if (!scenario_event_value(NULL, yyjson_arr_get(values, j), &parsed)) {
+                    snprintf(error, error_size, "event payload requires a supported type and matching value");
+                    return false;
+                }
+            }
+        }
+    }
+    yyjson_val *controls = yyjson_obj_get(value, "controls");
+    if (controls) {
+        if (!yyjson_is_arr(controls) || yyjson_arr_size(controls) >= GAME_CONTROL_COUNT) {
+            snprintf(error, error_size, "controls must be an array of GameControl values");
+            return false;
+        }
+        out->has_controls = true;
+        for (size_t i = 0; i < yyjson_arr_size(controls); i++) {
+            yyjson_val *source = yyjson_arr_get(controls, i);
+            int64_t code = yyjson_get_sint(source);
+            if (!yyjson_is_int(source) || code <= GAME_CONTROL_NONE ||
+                code >= GAME_CONTROL_COUNT) {
+                snprintf(error, error_size, "control code is outside GameControl");
+                return false;
+            }
+            out->controls |= UINT64_C(1) << code;
+        }
+    }
+    yyjson_val *ui = yyjson_obj_get(value, "ui");
+    if (ui) {
+        if (!yyjson_is_arr(ui) || yyjson_arr_size(ui) > 32) {
+            snprintf(error, error_size, "ui must contain at most 32 interactions");
+            return false;
+        }
+        for (size_t i = 0; i < yyjson_arr_size(ui); i++) {
+            yyjson_val *action = yyjson_arr_get(ui, i);
+            const char *kind = request_string(action, "action");
+            const char *target = request_string(action, "target");
+            const char *source = request_string(action, "source");
+            double number = 0;
+            if (!target || !target[0] || strlen(target) > 512 || !kind ||
+                (strcmp(kind, "activate") && strcmp(kind, "change") &&
+                 strcmp(kind, "drop")) ||
+                (!strcmp(kind, "change") &&
+                 !yyjson_is_num(yyjson_obj_get(action, "value"))) ||
+                (!strcmp(kind, "drop") &&
+                 (!source || !source[0] || strlen(source) > 512)) ||
+                !scenario_input_number(action, "value", &number, error, error_size)) {
+                snprintf(error, error_size, "ui requires a target and activate, change with value, or drop with source");
                 return false;
             }
         }
     }
+    out->ui = ui;
     out->events = events;
     return true;
 }
@@ -3888,9 +5093,22 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
 static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *array, const scenario_input *input)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    yyjson_mut_val *movement = yyjson_mut_obj_add_obj(doc, object, "movement");
-    yyjson_mut_obj_add_real(doc, movement, "x", input->movement_x);
-    yyjson_mut_obj_add_real(doc, movement, "y", input->movement_y);
+    if (input->has_controls) {
+        yyjson_mut_val *controls = yyjson_mut_obj_add_arr(doc, object, "controls");
+        for (int i = 1; i < GAME_CONTROL_COUNT; i++) {
+            if (input->controls & (UINT64_C(1) << i)) {
+                yyjson_mut_arr_add_int(doc, controls, i);
+            }
+        }
+    }
+    if (input->ui) {
+        yyjson_mut_obj_add_val(doc, object, "ui", yyjson_val_mut_copy(doc, input->ui));
+    }
+    if (input->has_movement) {
+        yyjson_mut_val *movement = yyjson_mut_obj_add_obj(doc, object, "movement");
+        yyjson_mut_obj_add_real(doc, movement, "x", input->movement_x);
+        yyjson_mut_obj_add_real(doc, movement, "y", input->movement_y);
+    }
     if (input->has_aim) {
         yyjson_mut_val *aim = yyjson_mut_obj_add_obj(doc, object, "aim");
         yyjson_mut_obj_add_real(doc, aim, "x", input->aim_x);
@@ -3922,55 +5140,80 @@ static int apply_scenario_input(
     size_t error_size
 )
 {
-    int result = game_prototype_preview_sample_movement(
-        context->preview,
-        (float)input->movement_x,
-        (float)input->movement_y
-    );
-    if (result < 0) {
+    engine *runtime = game_prototype_preview_runtime(context->preview);
+    if (input->has_movement &&
+        engine_sample_movement(runtime, (float)input->movement_x, (float)input->movement_y) <
+            0) {
         snprintf(error, error_size, "scenario movement input failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    result = game_prototype_preview_sample_aim(
-        context->preview,
-        (CF_V2){ (float)input->aim_x, (float)input->aim_y },
-        input->aim_firing,
-        input->aim_point
-    );
-    if (result < 0) {
+    if (input->has_aim) {
+        context->aim = (CF_V2){ (float)input->aim_x, (float)input->aim_y };
+        context->aim_point = input->aim_point;
+        context->aim_firing = input->aim_firing;
+    }
+    if (input->has_controls) {
+        context->controls = input->controls;
+        context->controls_sampled = true;
+    }
+    bool firing = context->aim_firing;
+    if (context->controls_sampled &&
+        engine_sample_controls(runtime, context->controls, &firing) < 0) {
+        snprintf(error, error_size, "invalid authored action binding");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (engine_sample_aim(runtime, context->aim, firing, context->aim_point) < 0) {
         snprintf(error, error_size, "scenario aim input failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    ecs_entity entity = game_prototype_preview_entity(context->preview);
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
-    flow_error flow = { 0 };
-    if (input->has_aim) {
-        CF_V2 aim = { (float)input->aim_x, (float)input->aim_y };
-        pin_value aim_value = {
-            .type = PIN_STRUCT,
-            .type_name = "CF_V2",
-            .ptr = &aim,
-        };
-        flow = (flow_error){ 0 };
-        if (game_behavior_dispatch(
-                behaviors,
-                entity,
-                "Aim",
-                (flow_inputs){ .values = &aim_value, .count = 1 },
-                &flow
-            ) < 0) {
-            snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario aim input failed");
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    for (size_t i = 0; i < yyjson_arr_size(input->ui); i++) {
+        yyjson_val *action = yyjson_arr_get(input->ui, i);
+        const char *kind = request_string(action, "action");
+        game_widget_action type = !strcmp(kind, "drop") ? GAME_WIDGET_DROP
+                                : !strcmp(kind, "change") ? GAME_WIDGET_CHANGE
+                                                          : GAME_WIDGET_ACTIVATE;
+        int applied = game_widget_interact(
+            game_prototype_preview_world(context->preview),
+            game_prototype_preview_entities(context->preview),
+            scenario_entity(context, request_string(action, "target")),
+            type,
+            scenario_entity(context, request_string(action, "source")),
+            (float)yyjson_get_num(yyjson_obj_get(action, "value"))
+        );
+        if (applied < 0) {
+            snprintf(error, error_size, "UI interaction is unavailable or incompatible");
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
     }
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
+    flow_error flow = { 0 };
     if (input->events) {
         size_t count = yyjson_arr_size(input->events);
         for (size_t i = 0; i < count; i++) {
             yyjson_val *event = yyjson_arr_get(input->events, i);
             const char *name = request_string(event, "name");
+            ecs_entity entity = scenario_entity(context, request_string(event, "target"));
+            if (!ecs_entity_is_alive(game_prototype_preview_world(context->preview), entity)) {
+                snprintf(error, error_size, "event target is missing or no longer alive");
+                return CHIBI_AUTOMATION_INVALID_REQUEST;
+            }
+            yyjson_val *values = yyjson_obj_get(event, "values");
+            pin_value payload[16];
+            int value_count = (int)yyjson_arr_size(values);
+            for (int j = 0; j < value_count; j++) {
+                if (!scenario_event_value(context, yyjson_arr_get(values, (size_t)j), &payload[j])) {
+                    snprintf(error, error_size, "event payload contains an unresolved entity");
+                    return CHIBI_AUTOMATION_INVALID_REQUEST;
+                }
+            }
             flow = (flow_error){ 0 };
-            if (game_behavior_dispatch(behaviors, entity, name, (flow_inputs){ 0 }, &flow) <
-                0) {
+            if (game_behavior_dispatch(
+                    behaviors,
+                    entity,
+                    name,
+                    (flow_inputs){ .values = payload, .count = value_count },
+                    &flow
+                ) < 0) {
                 snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario event failed");
                 return CHIBI_AUTOMATION_EXECUTION_ERROR;
             }
@@ -4003,15 +5246,9 @@ static int run_scenario_inputs(
     size_t error_size
 )
 {
-    char launch_error[256] = { 0 };
-    if (game_prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error) !=
-        ECS_OK) {
-        snprintf(error, error_size, "%s", launch_error[0] ? launch_error : "could not launch prototype");
-        return CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    if (game_prototype_preview_tick(context->preview, 0) != 0) {
-        snprintf(error, error_size, "could not initialize prototype clock");
-        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    int launch = advance_scenario(context, 0, fixed_dt, error, error_size);
+    if (launch != CHIBI_AUTOMATION_OK) {
+        return launch;
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
         if (apply_scenario_input(context, &inputs[frame], error, error_size) !=
@@ -4023,15 +5260,137 @@ static int run_scenario_inputs(
             }
             return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
-        observations->world_hash[frame] = scenario_world_hash(
-            game_prototype_preview_world(context->preview)
-        );
+        observations->world_hash[frame] = scenario_state_hash(context);
         observations->live_entities[frame] = ecs_world_live_count(
             game_prototype_preview_world(context->preview)
         );
     }
     observations->has_live_entities = true;
     return CHIBI_AUTOMATION_OK;
+}
+
+static int advance_request_scenario(
+    scenario_context *context,
+    yyjson_val *request,
+    uint64_t frames,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+)
+{
+    int prepared = scenario_saved_state(context, request, error, error_size);
+    if (prepared != CHIBI_AUTOMATION_OK) {
+        return prepared;
+    }
+    yyjson_val *values = yyjson_obj_get(request, "inputs");
+    yyjson_val *timeline = yyjson_obj_get(request, "input_timeline");
+    if (!values && !timeline) {
+        return advance_scenario(context, frames, fixed_dt, error, error_size);
+    }
+    yyjson_val *entries = timeline ? timeline : values;
+    size_t count = yyjson_arr_size(entries);
+    if ((values && timeline) || !yyjson_is_arr(entries) ||
+        count > SCENARIO_MAX_FRAMES || count > frames) {
+        set_error(error, error_size, "Use inputs or input_timeline with at most 600 entries and no more entries than frames");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    scenario_input *inputs = xcalloc(count + 1, sizeof *inputs);
+    uint64_t *at = xcalloc(count + 1, sizeof *at);
+    int status = CHIBI_AUTOMATION_OK;
+    for (size_t i = 0; i < count; i++) {
+        yyjson_val *entry = yyjson_arr_get(entries, i);
+        at[i] = i;
+        bool valid = !timeline || (request_uint(entry, "frame", &at[i]) &&
+                                   at[i] < frames && (!i || at[i] > at[i - 1]));
+        if (!valid || !parse_scenario_input(
+                          timeline ? yyjson_obj_get(entry, "input") : entry,
+                          &inputs[i],
+                          error,
+                          error_size
+                      )) {
+            if (!valid) {
+                set_error(error, error_size, "Timeline frames must be unique, increasing and below frames");
+            }
+            status = CHIBI_AUTOMATION_INVALID_REQUEST;
+            break;
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = advance_scenario(context, 0, fixed_dt, error, error_size);
+    }
+    size_t next = 0;
+    for (uint64_t frame = 0; frame < frames && status == CHIBI_AUTOMATION_OK; frame++) {
+        const scenario_input *sample = next < count && at[next] == frame
+                                         ? &inputs[next++]
+                                         : &(scenario_input){ 0 };
+        status = apply_scenario_input(context, sample, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK &&
+            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
+                0) {
+            set_error(error, error_size, "Scenario input frame failed");
+            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+    }
+    free(inputs);
+    free(at);
+    return status;
+}
+
+int chibi_automation_preview(
+    const char *root,
+    const char *request,
+    game_prototype_preview **preview,
+    bool *perspective,
+    char *error,
+    size_t error_size
+)
+{
+    *preview = NULL;
+    *perspective = false;
+    yyjson_doc *doc = yyjson_read(request, strlen(request), 0);
+    yyjson_val *value = doc ? yyjson_doc_get_root(doc) : NULL;
+    const char *kind = request_string(value, "kind"),
+               *name = request_string(value, "name");
+    yyjson_val *frame_value = yyjson_obj_get(value, "frames");
+    uint64_t frames = frame_value ? yyjson_get_uint(frame_value) : 1;
+    if (!kind || (strcmp(kind, "scene") && strcmp(kind, "prototype")) ||
+        !name || !name[0] ||
+        (frame_value && (!yyjson_is_int(frame_value) || yyjson_get_sint(frame_value) < 0 ||
+                         frames > SCENARIO_MAX_FRAMES))) {
+        set_error(error, error_size, "preview_scene requires scene/prototype kind, name and 0-600 frames");
+        yyjson_doc_free(doc);
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    scenario_context context = { 0 };
+    int status = !strcmp(kind, "scene")
+                   ? prepare_scene_scenario(root, name, &context, error, error_size)
+                   : prepare_scenario(root, name, &context, error, error_size);
+    const char *families[] = { "shader-library", "material", "shape" };
+    for (int i = 0; status == CHIBI_AUTOMATION_OK && i < 3; i++) {
+        behavior_asset **assets = NULL;
+        status = load_behavior_family_assets(root, family_by_kind(families[i]), &assets, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK &&
+            register_preview_assets(context.preview, assets, error, error_size)) {
+            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        free_behavior_assets(assets);
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = advance_request_scenario(&context, value, frames, 1.0 / 60.0, error, error_size);
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        *perspective = context.scene
+                         ? context.scene->perspective
+                         : GAME_GameGeometry3D_has(
+                               game_prototype_preview_world(context.preview),
+                               game_prototype_preview_entity(context.preview)
+                           );
+        *preview = context.preview;
+        context.preview = NULL;
+    }
+    scenario_context_free(&context);
+    yyjson_doc_free(doc);
+    return status;
 }
 
 static bool safe_recording_path(const char *path)
@@ -4153,14 +5512,12 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_val *recording = yyjson_mut_obj_add_obj(doc, parent, "recording");
     yyjson_mut_obj_add_strcpy(doc, recording, "format", SCENARIO_RECORDING_FORMAT);
     yyjson_mut_obj_add_uint(doc, recording, "version", SCENARIO_RECORDING_VERSION);
-    yyjson_mut_obj_add_uint(doc, recording, "recording_version", SCENARIO_RECORDING_VERSION);
     yyjson_mut_obj_add_uint(doc, recording, "contract_version", CHIBI_AUTOMATION_CONTRACT);
     const char *id = artifact_path
                        ? artifact_path + strlen(SCENARIO_RECORDING_PATH_PREFIX)
                        : "";
     yyjson_mut_obj_add_strcpy(doc, recording, "id", id);
-    yyjson_mut_obj_add_strcpy(doc, recording, "recording_id", id);
-    yyjson_mut_obj_add_strcpy(doc, recording, "kind", "prototype");
+    yyjson_mut_obj_add_strcpy(doc, recording, "kind", context->scene_target ? "scene" : "prototype");
     size_t name_size = strlen(context->prototype_ref.filename) -
                        (sizeof ".json" - 1) + 1;
     char *name = xmalloc(name_size);
@@ -4169,15 +5526,21 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_obj_add_strcpy(doc, recording, "name", name);
     free(name);
     add_hash_named(doc, recording, "content_hash", context->prototype_hash);
-    yyjson_mut_val *content_hashes = yyjson_mut_obj_add_arr(doc, recording, "content_hashes");
-    char content_hash[32];
-    snprintf(
-        content_hash,
-        sizeof content_hash,
-        "%016llx",
-        (unsigned long long)context->prototype_hash
+    add_hash_named(doc, recording, "runtime_content_hash", context->runtime_hash);
+    yyjson_doc *saved = yyjson_read(context->initial_saved_state, strlen(context->initial_saved_state), 0);
+    yyjson_mut_obj_add_val(
+        doc,
+        recording,
+        "saved_state",
+        yyjson_val_mut_copy(doc, yyjson_doc_get_root(saved))
     );
-    yyjson_mut_arr_add_strcpy(doc, content_hashes, content_hash);
+    yyjson_doc_free(saved);
+    yyjson_mut_val *assets = yyjson_mut_obj_add_arr(doc, recording, "assets");
+    for (int i = 0; i < acount(context->runtime_assets); i++) {
+        if (scenario_runtime_asset(context, &context->runtime_assets[i])) {
+            add_asset_entry(doc, assets, &context->runtime_assets[i]);
+        }
+    }
     yyjson_mut_obj_add_uint(doc, recording, "frames", frames);
     yyjson_mut_obj_add_real(doc, recording, "fixed_dt", fixed_dt);
     if (artifact_path) {
@@ -4186,17 +5549,6 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_val *input_values = yyjson_mut_obj_add_arr(doc, recording, "inputs");
     for (uint64_t frame = 0; frame < frames; frame++) {
         add_scenario_input(doc, input_values, &inputs[frame]);
-    }
-    yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, recording, "events");
-    for (uint64_t frame = 0; frame < frames; frame++) {
-        if (inputs[frame].events) {
-            yyjson_mut_arr_add_val(
-                events,
-                yyjson_val_mut_copy(doc, inputs[frame].events)
-            );
-        } else {
-            yyjson_mut_arr_add_arr(doc, events);
-        }
     }
     yyjson_mut_val *frame_hashes = yyjson_mut_obj_add_arr(doc, recording, "frame_hashes");
     yyjson_mut_val *live_entities = yyjson_mut_obj_add_arr(doc, recording, "live_entities");
@@ -4424,7 +5776,7 @@ static void add_snapshot_behavior(
     }
 }
 
-static void add_snapshot_entity(
+static yyjson_mut_val *add_snapshot_entity(
     yyjson_mut_doc *doc,
     yyjson_mut_val *array,
     ecs_world *world,
@@ -4489,13 +5841,175 @@ static void add_snapshot_entity(
     }
     yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", behavior_count > emitted_behaviors);
     free(present);
+    return object;
+}
+
+static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *name = request_string(request, "name");
+    if (!name || !name[0]) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "scene name is required");
+        return -1;
+    }
+    uint64_t frames = SCENARIO_DEFAULT_FRAMES;
+    if (yyjson_obj_get(request, "frames") &&
+        (!request_uint(request, "frames", &frames) || frames > SCENARIO_RUN_MAX_FRAMES)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 108000");
+        return -1;
+    }
+    double fixed_dt = SCENARIO_FIXED_DT;
+    yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
+    if (fixed_dt_value) {
+        if (!yyjson_is_num(fixed_dt_value) ||
+            !isfinite(yyjson_get_num(fixed_dt_value)) ||
+            fabs(yyjson_get_num(fixed_dt_value) - SCENARIO_FIXED_DT) > 1e-12) {
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
+            return -1;
+        }
+        fixed_dt = yyjson_get_num(fixed_dt_value);
+    }
+    uint64_t entity_limit = 0;
+    uint64_t component_limit = 0;
+    uint64_t field_limit = 0;
+    uint64_t behavior_limit = 0;
+    if (!runtime_snapshot_limit(
+            request,
+            "entity_limit",
+            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            RUNTIME_SNAPSHOT_MAX_ENTITIES,
+            &entity_limit
+        ) ||
+        !runtime_snapshot_limit(
+            request,
+            "component_limit",
+            RUNTIME_SNAPSHOT_MAX_COMPONENTS,
+            RUNTIME_SNAPSHOT_MAX_COMPONENTS,
+            &component_limit
+        ) ||
+        !runtime_snapshot_limit(request, "field_limit", RUNTIME_SNAPSHOT_MAX_FIELDS, RUNTIME_SNAPSHOT_MAX_FIELDS, &field_limit) ||
+        !runtime_snapshot_limit(
+            request,
+            "behavior_limit",
+            RUNTIME_SNAPSHOT_MAX_BEHAVIORS,
+            RUNTIME_SNAPSHOT_MAX_BEHAVIORS,
+            &behavior_limit
+        )) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "snapshot limits must be positive integers within their supported bounds");
+        return -1;
+    }
+    yyjson_val *field_selectors = yyjson_obj_get(request, "fields");
+    if (field_selectors) {
+        if (!yyjson_is_arr(field_selectors) || yyjson_arr_size(field_selectors) > 32) {
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fields must be an array with at most 32 selectors");
+            return -1;
+        }
+        for (size_t i = 0; i < yyjson_arr_size(field_selectors); i++) {
+            yyjson_val *selector = yyjson_arr_get(field_selectors, i);
+            if (!yyjson_is_str(selector) || strlen(yyjson_get_str(selector)) > 128) {
+                response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "field selectors must be strings no longer than 128 characters");
+                return -1;
+            }
+        }
+    }
+    scenario_context context = { 0 };
+    char error[256] = { 0 };
+    int status = prepare_scene_scenario(root, name, &context, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = advance_request_scenario(&context, request, frames, fixed_dt, error, sizeof error);
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(&context);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    ecs_world *world = game_prototype_preview_world(context.preview);
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context.preview);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(
+        result->doc,
+        value,
+        &context.prototype_ref,
+        context.prototype_bytes,
+        context.prototype_hash
+    );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
+    add_saved_state(result->doc, value, &context);
+    add_presentation_state(result->doc, value, &context);
+    uint32_t live_entities = ecs_world_live_count(world);
+    yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
+    yyjson_mut_obj_add_uint(result->doc, value, "entity_count", live_entities);
+    yyjson_mut_val *entities = yyjson_mut_obj_add_arr(result->doc, value, "entities");
+    uint32_t emitted_entities = 0;
+    for (uint32_t slot = 1; slot <= ecs_world_high_water_mark(world); slot++) {
+        ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+        if (!ecs_entity_is_alive(world, entity) ||
+            (uint64_t)emitted_entities >= entity_limit) {
+            continue;
+        }
+        yyjson_mut_val *record = add_snapshot_entity(
+            result->doc,
+            entities,
+            world,
+            entity,
+            behaviors,
+            &context.registry,
+            field_selectors,
+            component_limit,
+            field_limit,
+            behavior_limit
+        );
+        for (int i = 0; i < acount(context.scene->entities); i++) {
+            ecs_entity authored = game_prototype_preview_entity_at(context.preview, i);
+            if (ecs_entity_to_u64(authored) == ecs_entity_to_u64(entity)) {
+                yyjson_mut_obj_add_strcpy(
+                    result->doc,
+                    record,
+                    "name",
+                    context.scene->entities[i].name
+                );
+                yyjson_mut_obj_add_strcpy(
+                    result->doc,
+                    record,
+                    "prototype",
+                    context.scene->entities[i].prototype
+                );
+                break;
+            }
+        }
+        emitted_entities++;
+    }
+    yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
+    int log_count = game_behavior_log_count(behaviors);
+    yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
+    yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
+    int emitted_logs = 0;
+    for (int i = 0; i < log_count && emitted_logs < RUNTIME_SNAPSHOT_MAX_LOGS; i++) {
+        game_behavior_log_info info = { 0 };
+        if (game_behavior_log_info_at(behaviors, i, &info) != 0) {
+            continue;
+        }
+        yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
+        yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
+        yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
+        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
+        emitted_logs++;
+    }
+    yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
+    add_scenario_timing(result->doc, value, frames, fixed_dt);
+    scenario_context_free(&context);
+    return 0;
 }
 
 static int handle_runtime_snapshot(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *kind = request_string(request, "kind");
+    if (kind && (!strcmp(kind, "scene") || !strcmp(kind, "scenes"))) {
+        return handle_scene_runtime_snapshot(root, request, result, exit_code);
+    }
     if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "runtime_snapshot supports prototype targets only");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "runtime_snapshot supports prototype or scene targets");
         return -1;
     }
     const char *name = request_string(request, "name");
@@ -4507,8 +6021,8 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     uint64_t frames = SCENARIO_DEFAULT_FRAMES;
     yyjson_val *frames_value = yyjson_obj_get(request, "frames");
     if (frames_value && (!request_uint(request, "frames", &frames) ||
-                         frames > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+                         frames > SCENARIO_RUN_MAX_FRAMES)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 108000");
         return -1;
     }
     double fixed_dt = SCENARIO_FIXED_DT;
@@ -4578,7 +6092,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         response_error(result, exit_code, status, error);
         return -1;
     }
-    status = advance_scenario(&context, frames, fixed_dt, error, sizeof error);
+    status = advance_request_scenario(&context, request, frames, fixed_dt, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
@@ -4597,7 +6111,9 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     );
     yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
     yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
-    add_hash_named(result->doc, value, "world_hash", scenario_world_hash(world));
+    add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
+    add_saved_state(result->doc, value, &context);
+    add_presentation_state(result->doc, value, &context);
     uint32_t live_entities = ecs_world_live_count(world);
     yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
     yyjson_mut_obj_add_uint(result->doc, value, "entity_count", live_entities);
@@ -4693,8 +6209,8 @@ static bool parse_scenario_timing(
 static int handle_record_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *kind = request_string(request, "kind");
-    if (kind && strcmp(kind, "prototype") && strcmp(kind, "prototypes")) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "record_scenario supports prototype targets only");
+    if (kind && strcmp(kind, "prototype") && strcmp(kind, "scene")) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "record_scenario supports prototype or scene targets");
         return -1;
     }
     const char *name = request_string(request, "name");
@@ -4727,13 +6243,18 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
     }
 
     scenario_context context = { 0 };
-    int status = prepare_scenario(root, name, &context, error, sizeof error);
+    int status = kind && !strcmp(kind, "scene")
+                   ? prepare_scene_scenario(root, name, &context, error, sizeof error)
+                   : prepare_scenario(root, name, &context, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     scenario_observations observations = { 0 };
-    status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &observations, error, sizeof error);
+    status = scenario_saved_state(&context, request, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &observations, error, sizeof error);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
@@ -4807,30 +6328,23 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     }
     const char *format = request_string(recording, "format");
     uint64_t version = 0;
-    uint64_t recording_version = 0;
     uint64_t contract = 0;
     if (!format || strcmp(format, SCENARIO_RECORDING_FORMAT) ||
         !request_uint(recording, "version", &version) ||
         version != SCENARIO_RECORDING_VERSION ||
-        !request_uint(recording, "recording_version", &recording_version) ||
-        recording_version != SCENARIO_RECORDING_VERSION ||
         !request_uint(recording, "contract_version", &contract) ||
         contract != CHIBI_AUTOMATION_CONTRACT) {
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording format, version, or contract is incompatible");
         return -1;
     }
-    yyjson_val *prototype = yyjson_obj_get(recording, "prototype");
-    const char *name = prototype && yyjson_is_obj(prototype)
-                         ? request_string(prototype, "name")
-                         : request_string(recording, "name");
-    uint64_t expected_prototype_hash = 0;
-    bool has_hash = prototype && yyjson_is_obj(prototype)
-                      ? recording_hash(prototype, "hash", &expected_prototype_hash)
-                      : recording_hash(recording, "content_hash", &expected_prototype_hash);
-    if (!name || !name[0] || !has_hash) {
+    const char *name = request_string(recording, "name");
+    uint64_t expected_prototype_hash = 0, expected_runtime_hash = 0;
+    if (!name || !name[0] ||
+        !recording_hash(recording, "content_hash", &expected_prototype_hash) ||
+        !recording_hash(recording, "runtime_content_hash", &expected_runtime_hash)) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording prototype identity and content hash are required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording target identity and runtime content hash are required");
         return -1;
     }
     uint64_t frames = 0;
@@ -4841,84 +6355,62 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
         return -1;
     }
     yyjson_val *input_values = yyjson_obj_get(recording, "inputs");
-    yyjson_val *observation_values = yyjson_obj_get(recording, "observations");
     yyjson_val *frame_hashes = yyjson_obj_get(recording, "frame_hashes");
     yyjson_val *live_entities_values = yyjson_obj_get(recording, "live_entities");
-    bool object_observations = observation_values && yyjson_is_arr(observation_values);
-    bool array_observations = frame_hashes && yyjson_is_arr(frame_hashes);
-    if (!input_values || !yyjson_is_arr(input_values) ||
-        yyjson_arr_size(input_values) != frames ||
-        ((!object_observations || yyjson_arr_size(observation_values) != frames) &&
-         (!array_observations || yyjson_arr_size(frame_hashes) != frames))) {
+    if (!yyjson_is_arr(input_values) || yyjson_arr_size(input_values) != frames ||
+        !yyjson_is_arr(frame_hashes) || yyjson_arr_size(frame_hashes) != frames ||
+        !yyjson_is_arr(live_entities_values) ||
+        yyjson_arr_size(live_entities_values) != frames) {
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording inputs and observations must contain exactly frames entries");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording inputs, frame_hashes and live_entities must contain exactly frames entries");
         return -1;
     }
     scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
-    scenario_observations expected = { 0 };
+    scenario_observations expected = { .has_live_entities = true };
     for (uint64_t frame = 0; frame < frames; frame++) {
-        if (!parse_scenario_input(yyjson_arr_get(input_values, frame), &inputs[frame], error, sizeof error)) {
+        yyjson_val *live = yyjson_arr_get(live_entities_values, frame);
+        if (!parse_scenario_input(yyjson_arr_get(input_values, frame), &inputs[frame], error, sizeof error) ||
+            !recording_hash_value(yyjson_arr_get(frame_hashes, frame), &expected.world_hash[frame]) ||
+            !yyjson_is_uint(live) || yyjson_get_uint(live) > UINT32_MAX) {
             yyjson_doc_free(recording_doc);
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
-            return -1;
-        }
-        uint64_t live_entities = 0;
-        bool valid_observation = false;
-        if (object_observations) {
-            yyjson_val *observation = yyjson_arr_get(observation_values, frame);
-            uint64_t recorded_frame = 0;
-            valid_observation = observation && yyjson_is_obj(observation) &&
-                                request_uint(observation, "frame", &recorded_frame) &&
-                                recorded_frame == frame &&
-                                recording_hash(
-                                    observation,
-                                    "world_hash",
-                                    &expected.world_hash[frame]
-                                ) &&
-                                request_uint(observation, "live_entities", &live_entities) &&
-                                live_entities <= UINT32_MAX;
-        } else {
-            valid_observation = recording_hash_value(
-                yyjson_arr_get(frame_hashes, frame),
-                &expected.world_hash[frame]
+            response_error(
+                result,
+                exit_code,
+                CHIBI_AUTOMATION_VALIDATION_ERROR,
+                error[0] ? error : "recording observations are invalid"
             );
-            if (live_entities_values && yyjson_is_arr(live_entities_values) &&
-                yyjson_arr_size(live_entities_values) == frames) {
-                yyjson_val *live_value = yyjson_arr_get(live_entities_values, frame);
-                valid_observation = valid_observation && yyjson_is_uint(live_value);
-                if (valid_observation) {
-                    live_entities = yyjson_get_uint(live_value);
-                }
-            }
-        }
-        if (!valid_observation) {
-            yyjson_doc_free(recording_doc);
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording observations are invalid");
             return -1;
         }
-        if (object_observations ||
-            (live_entities_values && yyjson_is_arr(live_entities_values) &&
-             yyjson_arr_size(live_entities_values) == frames)) {
-            expected.live_entities[frame] = (uint32_t)live_entities;
-            expected.has_live_entities = true;
-        }
+        expected.live_entities[frame] = (uint32_t)yyjson_get_uint(live);
     }
 
     scenario_context context = { 0 };
-    int status = prepare_scenario(root, name, &context, error, sizeof error);
+    const char *kind = request_string(recording, "kind");
+    if (!kind || (strcmp(kind, "scene") && strcmp(kind, "prototype"))) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording kind must be scene or prototype");
+        return -1;
+    }
+    int status = !strcmp(kind, "scene")
+                   ? prepare_scene_scenario(root, name, &context, error, sizeof error)
+                   : prepare_scenario(root, name, &context, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, status, error);
         return -1;
     }
-    if (context.prototype_hash != expected_prototype_hash) {
+    if (context.prototype_hash != expected_prototype_hash ||
+        context.runtime_hash != expected_runtime_hash) {
         scenario_context_free(&context);
         yyjson_doc_free(recording_doc);
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording prototype content hash does not match the current asset");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording runtime content changed; create a new recording for the current assets");
         return -1;
     }
     scenario_observations actual = { 0 };
-    status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &actual, error, sizeof error);
+    status = scenario_saved_state(&context, recording, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = run_scenario_inputs(&context, inputs, frames, fixed_dt, &actual, error, sizeof error);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         yyjson_doc_free(recording_doc);
@@ -5012,6 +6504,115 @@ static int handle_read_recording(yyjson_val *request, response *result, int *exi
     return 0;
 }
 
+static void add_component_schema(
+    response *result,
+    yyjson_mut_val *components,
+    const ecs_component_desc *component,
+    const game_prototype_registry *registry
+)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, components);
+    yyjson_mut_obj_add_strcpy(
+        result->doc,
+        object,
+        "key",
+        component->key ? component->key : component->name
+    );
+    yyjson_mut_obj_add_strcpy(result->doc, object, "name", component->name);
+    yyjson_mut_obj_add_uint(result->doc, object, "id", component->id);
+    yyjson_mut_obj_add_uint(result->doc, object, "bytes", component->element_size);
+    yyjson_mut_obj_add_uint(result->doc, object, "layout_hash", component->layout_hash);
+    if (component->type) {
+        yyjson_mut_obj_add_strcpy(result->doc, object, "type", component->type->name);
+    }
+    yyjson_mut_val *fields = yyjson_mut_obj_add_arr(result->doc, object, "fields");
+    for (int i = 0; component->type && i < component->type->field_count; i++) {
+        const type_field *field = &component->type->fields[i];
+        yyjson_mut_val *entry = yyjson_mut_arr_add_obj(result->doc, fields);
+        yyjson_mut_obj_add_strcpy(result->doc, entry, "name", field->name);
+        yyjson_mut_obj_add_strcpy(
+            result->doc,
+            entry,
+            "type",
+            pin_json_name(field->type)
+        );
+        yyjson_mut_obj_add_uint(result->doc, entry, "bytes", field->size);
+        yyjson_mut_obj_add_bool(
+            result->doc,
+            entry,
+            "writable",
+            field->type != PIN_HANDLE && field->type != PIN_FLOW
+        );
+        if (field->type_name) {
+            yyjson_mut_obj_add_strcpy(result->doc, entry, "type_name", field->type_name);
+        }
+    }
+    char *defaults_json = game_prototype_component_defaults_json(registry, component);
+    if (!defaults_json) {
+        return;
+    }
+    yyjson_doc *defaults_doc = yyjson_read(defaults_json, strlen(defaults_json), 0);
+    yyjson_val *defaults_root = defaults_doc ? yyjson_doc_get_root(defaults_doc) : NULL;
+    yyjson_val *defaults = defaults_root && yyjson_is_obj(defaults_root)
+                             ? yyjson_obj_get(
+                                   defaults_root,
+                                   component->key ? component->key : component->name
+                               )
+                             : NULL;
+    if (!defaults && defaults_root && yyjson_is_obj(defaults_root)) {
+        defaults = yyjson_obj_get(defaults_root, component->name);
+    }
+    if (defaults) {
+        yyjson_mut_obj_add_val(
+            result->doc,
+            object,
+            "defaults",
+            yyjson_val_mut_copy(result->doc, defaults)
+        );
+    }
+    yyjson_doc_free(defaults_doc);
+    free(defaults_json);
+}
+
+static int handle_describe_components(yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *names = yyjson_obj_get(request, "names");
+    if (names && (!yyjson_is_arr(names) || yyjson_arr_size(names) > 64)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "names must be an array with at most 64 entries");
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_val *components = yyjson_mut_obj_add_arr(result->doc, value, "components");
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    if (names) {
+        yyjson_arr_iter iterator = yyjson_arr_iter_with(names);
+        yyjson_val *name;
+        while ((name = yyjson_arr_iter_next(&iterator))) {
+            if (!yyjson_is_str(name) || !yyjson_get_len(name) ||
+                yyjson_get_len(name) > 256) {
+                response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "component names must be non-empty bounded strings");
+                return -1;
+            }
+            const ecs_component_desc
+                *component = automation_query_component(yyjson_get_str(name), NULL);
+            if (!component) {
+                response_error(result, exit_code, CHIBI_AUTOMATION_NOT_FOUND, "component was not found in the reflected registry");
+                return -1;
+            }
+            add_component_schema(result, components, component, &registry);
+        }
+    } else {
+        for (int i = 0; i < registry.component_count; i++) {
+            add_component_schema(result, components, registry.components[i], &registry);
+        }
+    }
+    yyjson_mut_obj_add_uint(result->doc, value, "count", yyjson_mut_arr_size(components));
+    return 0;
+}
+
 static int handle_describe_registry(response *result)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -5088,24 +6689,100 @@ static int handle_describe_registry(response *result)
     return 0;
 }
 
+static bool search_pin_matches(
+    const pin_spec *pin,
+    const char *pin_type,
+    const char *pin_container,
+    const char *pin_kind
+)
+{
+    if (pin_type && strcmp(pin_json_name(pin->type), pin_type) &&
+        (!pin->type_name || strcmp(pin->type_name, pin_type))) {
+        return false;
+    }
+    if (pin_container && strcmp(container_json_name(pin->container), pin_container)) {
+        return false;
+    }
+    if (pin_kind && strcmp(pin->kind == PIN_EXEC ? "exec" : "data", pin_kind)) {
+        return false;
+    }
+    return true;
+}
+
+static bool search_pin_contains(const pin_spec *pin, const char *query)
+{
+    return text_contains_casefold(pin->name, query) ||
+           text_contains_casefold(pin_json_name(pin->type), query) ||
+           text_contains_casefold(pin->type_name, query);
+}
+
+static bool search_node_matches(
+    const node_desc *node,
+    const char *query,
+    const char *pin_type,
+    const char *pin_container,
+    const char *pin_kind,
+    yyjson_val *pure_value
+)
+{
+    if (pure_value && node_desc_is_pure(node) != yyjson_get_bool(pure_value)) {
+        return false;
+    }
+    bool pin_filter = pin_type || pin_container || pin_kind;
+    bool pin_match = !pin_filter;
+    bool query_pin_match = false;
+    for (int output = 0; output < 2; output++) {
+        const pin_spec *pins = output ? node->outputs : node->inputs;
+        int count = output ? node->output_count : node->input_count;
+        for (int i = 0; i < count; i++) {
+            const pin_spec *pin = &pins[i];
+            if (pin_filter &&
+                search_pin_matches(pin, pin_type, pin_container, pin_kind)) {
+                pin_match = true;
+            }
+            if (query && search_pin_contains(pin, query)) {
+                query_pin_match = true;
+            }
+        }
+    }
+    if (!pin_match) {
+        return false;
+    }
+    return !query || !query[0] || text_contains_casefold(node->name, query) ||
+           text_contains_casefold(node->category, query) ||
+           text_contains_casefold(node->keywords, query) || query_pin_match;
+}
+
 static int handle_search_nodes(yyjson_val *request, response *result, int *exit_code)
 {
     const char *query = request_string(request, "query");
     const char *domain = request_string(request, "domain");
+    const char *pin_type = request_string(request, "pin_type");
+    const char *pin_container = request_string(request, "pin_container");
+    const char *pin_kind = request_string(request, "pin_kind");
     yyjson_val *limit_value = yyjson_obj_get(request, "limit");
     yyjson_val *offset_value = yyjson_obj_get(request, "offset");
     yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
+    yyjson_val *pure_value = yyjson_obj_get(request, "pure");
     if ((yyjson_obj_get(request, "query") && !query) ||
         (yyjson_obj_get(request, "domain") &&
          (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior")))) ||
+        (yyjson_obj_get(request, "pin_type") && (!pin_type || strlen(pin_type) > 128)) ||
+        (yyjson_obj_get(request, "pin_container") &&
+         (!pin_container ||
+          (strcmp(pin_container, "single") && strcmp(pin_container, "array") &&
+           strcmp(pin_container, "set") && strcmp(pin_container, "map")))) ||
+        (yyjson_obj_get(request, "pin_kind") &&
+         (!pin_kind || (strcmp(pin_kind, "data") && strcmp(pin_kind, "exec")))) ||
         (limit_value && (!yyjson_is_int(limit_value) || yyjson_get_sint(limit_value) < 1 ||
                          yyjson_get_sint(limit_value) > 50)) ||
         (offset_value &&
          (!yyjson_is_int(offset_value) || yyjson_get_sint(offset_value) < 0 ||
           yyjson_get_sint(offset_value) > 100000)) ||
         (pins_value && !yyjson_is_bool(pins_value)) ||
+        (pure_value && !yyjson_is_bool(pure_value)) ||
         (query && strlen(query) > 256)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, domain, page or include_pins");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page or include_pins");
         return -1;
     }
     int limit = limit_value ? (int)yyjson_get_sint(limit_value) : 10;
@@ -5118,9 +6795,7 @@ static int handle_search_nodes(yyjson_val *request, response *result, int *exit_
         const node_desc *node = registry_node(i);
         bool shader = node->category && !strncmp(node->category, "Shader", 6);
         if ((domain && shader != !strcmp(domain, "shader")) ||
-            (query && query[0] && !text_contains_casefold(node->name, query) &&
-             !text_contains_casefold(node->category, query) &&
-             !text_contains_casefold(node->keywords, query))) {
+            !search_node_matches(node, query, pin_type, pin_container, pin_kind, pure_value)) {
             continue;
         }
         if (total++ < offset || returned == limit) {
@@ -5212,6 +6887,14 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         error,
         sizeof error
     );
+    if (status == CHIBI_AUTOMATION_OK && !shader) {
+        behavior_asset **events = NULL;
+        status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
+        for (int i = 0; i < acount(events); i++) {
+            apush(libraries, events[i]);
+        }
+        afree(events);
+    }
     if (status == CHIBI_AUTOMATION_OK) {
         status = automation_graph_edit(
             source,
@@ -5270,9 +6953,595 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
     return status == CHIBI_AUTOMATION_OK ? 0 : -1;
 }
 
+static int validate_prototype_behaviors(const char *root, const char *json, char *error, size_t error_size)
+{
+    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root_value = document ? yyjson_doc_get_root(document) : NULL;
+    yyjson_val *behaviors = root_value && yyjson_is_obj(root_value)
+                              ? yyjson_obj_get(root_value, "behaviors")
+                              : NULL;
+    if (!document || (behaviors && !yyjson_is_arr(behaviors))) {
+        yyjson_doc_free(document);
+        snprintf(error, error_size, "edited prototype has an invalid behaviors array");
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    if (!behaviors) {
+        yyjson_doc_free(document);
+        return CHIBI_AUTOMATION_OK;
+    }
+    yyjson_arr_iter iterator = yyjson_arr_iter_with(behaviors);
+    yyjson_val *name;
+    while ((name = yyjson_arr_iter_next(&iterator))) {
+        if (!yyjson_is_str(name) || !yyjson_get_len(name)) {
+            yyjson_doc_free(document);
+            snprintf(error, error_size, "prototype behavior names must be non-empty strings");
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        asset_ref ref = { 0 };
+        char *behavior_json = NULL;
+        int status = load_named_asset(
+            root,
+            family_by_kind("behavior"),
+            yyjson_get_str(name),
+            &ref,
+            &behavior_json,
+            NULL,
+            NULL,
+            error,
+            error_size
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            yyjson_doc_free(document);
+            free(behavior_json);
+            return status;
+        }
+        behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+        free(behavior_json);
+        if (!behavior) {
+            yyjson_doc_free(document);
+            snprintf(error, error_size, "%s", graph_last_error());
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        behavior_asset_free(behavior);
+    }
+    yyjson_doc_free(document);
+    return CHIBI_AUTOMATION_OK;
+}
+
+static char *new_prototype_json(const char *name)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_strcpy(doc, root, "name", name);
+    char identity[32];
+    snprintf(
+        identity,
+        sizeof identity,
+        "prototype-%016llx",
+        (unsigned long long)automation_content_hash(name, strlen(name))
+    );
+    yyjson_mut_obj_add_strcpy(doc, root, "identity", identity);
+    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
+{
+    asset_ref ref = { 0 };
+    char *json = NULL;
+    int status = load_named_asset(root, family_by_kind("behavior"), name, &ref, &json, NULL, NULL, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        free(json);
+        return status;
+    }
+    behavior_asset *behavior = behavior_asset_load_json(json);
+    free(json);
+    if (!behavior) {
+        snprintf(error, error_size, "%s", graph_last_error());
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    if (behavior->owner_type_name && strcmp(behavior->owner_type_name, "ecs.entity")) {
+        snprintf(error, error_size, "behavior %s cannot attach to a scene entity", name);
+        behavior_asset_free(behavior);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    behavior_asset_free(behavior);
+    return CHIBI_AUTOMATION_OK;
+}
+
+static int validate_scene_dependencies(const char *root, const char *json, char *error, size_t error_size)
+{
+    game_scene_document *scene = game_scene_document_load(json, error, error_size);
+    if (!scene) {
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    int status = CHIBI_AUTOMATION_OK;
+    for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
+        game_scene_entity *entity = &scene->entities[i];
+        asset_ref prototype_ref = { 0 };
+        char *prototype_json = NULL;
+        status = load_named_asset(
+            root,
+            family_by_kind("prototype"),
+            entity->prototype,
+            &prototype_ref,
+            &prototype_json,
+            NULL,
+            NULL,
+            error,
+            error_size
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            free(prototype_json);
+            break;
+        }
+        game_prototype *prototype = game_prototype_load(prototype_json, &registry, error, error_size);
+        if (!prototype) {
+            free(prototype_json);
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            break;
+        }
+        status = validate_prototype_behaviors(root, prototype_json, error, error_size);
+        free(prototype_json);
+        if (status == CHIBI_AUTOMATION_OK) {
+            ecs_world *world = ecs_world_new();
+            for (int component = 0; component < registry.component_count &&
+                                    status == CHIBI_AUTOMATION_OK;
+                 component++) {
+                if (ecs_world_register_component(world, registry.components[component], NULL) !=
+                    ECS_OK) {
+                    snprintf(error, error_size, "could not register scene components");
+                    status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+                }
+            }
+            ecs_entity actor = { 0 };
+            if (status == CHIBI_AUTOMATION_OK &&
+                game_prototype_spawn_components(prototype, world, &actor, error, error_size) !=
+                    ECS_OK) {
+                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            }
+            if (status == CHIBI_AUTOMATION_OK &&
+                game_prototype_apply_components_json(
+                    world,
+                    actor,
+                    entity->components_json ? entity->components_json : "{}",
+                    &registry,
+                    error,
+                    error_size
+                ) != 0) {
+                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            }
+            ecs_world_free(world);
+        }
+        game_prototype_free(prototype);
+        for (int behavior = 0;
+             behavior < acount(entity->behaviors) && status == CHIBI_AUTOMATION_OK;
+             behavior++) {
+            status = validate_scene_behavior(root, entity->behaviors[behavior], error, error_size);
+        }
+    }
+    game_scene_document_free(scene);
+    return status;
+}
+
+static char *new_scene_json(const char *name)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_uint(doc, root, "version", 1);
+    yyjson_mut_obj_add_strcpy(doc, root, "name", name);
+    yyjson_mut_obj_add_str(doc, root, "presentation", "2d");
+    yyjson_mut_obj_add_arr(doc, root, "entities");
+    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *create_value = yyjson_obj_get(request, "create");
+    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
+    const char *expected = request_string(request, "expected_hash");
+    bool create = create_value && yyjson_get_bool(create_value);
+    bool dry = dry_value && yyjson_get_bool(dry_value);
+    if ((create_value && !yyjson_is_bool(create_value)) ||
+        (dry_value && !yyjson_is_bool(dry_value)) ||
+        (!create && (!expected || strlen(expected) != 16))) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
+        return -1;
+    }
+    asset_ref ref = { 0 };
+    char error[256] = { 0 };
+    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
+        ref.family->loader != ASSET_PROTOTYPE) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            error[0] ? error : "edit_prototype requires a prototype asset"
+        );
+        return -1;
+    }
+    char *source = NULL;
+    size_t bytes = 0;
+    uint64_t before = 0;
+    int status = CHIBI_AUTOMATION_OK;
+    if (!create) {
+        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
+    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    } else {
+        char *path = asset_full_path(root, &ref);
+        struct stat info;
+        if (!lstat(path, &info)) {
+            status = CHIBI_AUTOMATION_CONFLICT;
+            snprintf(error, sizeof error, "asset already exists");
+        } else if (errno != ENOENT) {
+            status = CHIBI_AUTOMATION_IO_ERROR;
+            snprintf(error, sizeof error, "cannot inspect asset destination");
+        }
+        free(path);
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, before);
+    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
+    add_hash_named(result->doc, value, "before_hash", before);
+    char actual[17];
+    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
+    if (!create && strcmp(expected, actual)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
+        free(source);
+        return -1;
+    }
+    if (create) {
+        char *name = asset_name_from_filename(ref.filename);
+        source = new_prototype_json(name);
+        free(name);
+    }
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    char *edited = NULL;
+    status = automation_prototype_edit(source, &registry, request, result->doc, value, &edited, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        free(edited);
+        return -1;
+    }
+    status = validate_prototype_behaviors(root, edited, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        free(edited);
+        return -1;
+    }
+    size_t after_bytes = strlen(edited);
+    uint64_t after = automation_content_hash(edited, after_bytes);
+    bool changed = !source || strcmp(source, edited);
+    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
+    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+    add_hash_named(result->doc, value, "after_hash", after);
+    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
+    if (!dry && changed) {
+        status = automation_asset_publish(
+            root,
+            ref.family->folder,
+            ref.filename,
+            edited,
+            expected,
+            create,
+            error,
+            sizeof error
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK && !dry) {
+        yyjson_mut_obj_remove_key(value, "published");
+        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
+        yyjson_mut_obj_remove_key(value, "hash");
+        add_hash(result->doc, value, after);
+        yyjson_mut_obj_remove_key(value, "bytes");
+        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
+    }
+    free(edited);
+    free(source);
+    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
+/* Resolve creation defaults before the IO-free scene edit transaction. An
+ * explicit empty list still opts out of the prototype's attached behaviors. */
+static char *scene_request_defaults(const char *root, yyjson_val *request, char *error, size_t size)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *copy = yyjson_val_mut_copy(doc, request);
+    yyjson_mut_doc_set_root(doc, copy);
+    yyjson_mut_val *operations = yyjson_mut_obj_get(copy, "operations");
+    size_t index, count;
+    yyjson_mut_val *operation;
+    bool valid = true;
+    yyjson_mut_arr_foreach(operations, index, count, operation)
+    {
+        const char *op = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "op"));
+        if (!op || strcmp(op, "add_entity") ||
+            yyjson_mut_obj_get(operation, "behaviors")) {
+            continue;
+        }
+        const char *name = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "prototype"));
+        if (!name) {
+            continue;
+        }
+        asset_ref ref = { 0 };
+        char *json = NULL;
+        if (load_named_asset(root, family_by_kind("prototype"), name, &ref, &json, NULL, NULL, error, size) !=
+            CHIBI_AUTOMATION_OK) {
+            valid = false;
+            break;
+        }
+        yyjson_doc *prototype = yyjson_read(json, strlen(json), 0);
+        yyjson_val *behaviors = yyjson_obj_get(yyjson_doc_get_root(prototype), "behaviors");
+        yyjson_mut_obj_add_val(
+            doc,
+            operation,
+            "behaviors",
+            behaviors ? yyjson_val_mut_copy(doc, behaviors) : yyjson_mut_arr(doc)
+        );
+        yyjson_doc_free(prototype);
+        free(json);
+    }
+    char *json = valid ? yyjson_mut_write(doc, 0, NULL) : NULL;
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+static int handle_edit_scene(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *create_value = yyjson_obj_get(request, "create");
+    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
+    const char *expected = request_string(request, "expected_hash");
+    bool create = create_value && yyjson_get_bool(create_value);
+    bool dry = dry_value && yyjson_get_bool(dry_value);
+    if ((create_value && !yyjson_is_bool(create_value)) ||
+        (dry_value && !yyjson_is_bool(dry_value)) ||
+        (!create && (!expected || strlen(expected) != 16))) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
+        return -1;
+    }
+    asset_ref ref = { 0 };
+    char error[256] = { 0 };
+    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
+        ref.family->loader != ASSET_SCENE) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_scene requires a scene asset");
+        return -1;
+    }
+    char *source = NULL;
+    size_t bytes = 0;
+    uint64_t before = 0;
+    int status = CHIBI_AUTOMATION_OK;
+    if (!create) {
+        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
+    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    } else {
+        char *path = asset_full_path(root, &ref);
+        struct stat info;
+        if (!lstat(path, &info)) {
+            status = CHIBI_AUTOMATION_CONFLICT;
+            snprintf(error, sizeof error, "asset already exists");
+        } else if (errno != ENOENT) {
+            status = CHIBI_AUTOMATION_IO_ERROR;
+            snprintf(error, sizeof error, "cannot inspect asset destination");
+        }
+        free(path);
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, before);
+    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
+    add_hash_named(result->doc, value, "before_hash", before);
+    char actual[17];
+    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
+    if (!create && strcmp(expected, actual)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
+        free(source);
+        return -1;
+    }
+    if (create) {
+        char *name = asset_name_from_filename(ref.filename);
+        source = new_scene_json(name);
+        free(name);
+    }
+    char *edited = NULL;
+    char *defaulted = scene_request_defaults(root, request, error, sizeof error);
+    yyjson_doc *defaults = defaulted ? yyjson_read(defaulted, strlen(defaulted), 0)
+                                     : NULL;
+    status = defaults ? automation_scene_edit(
+                            source,
+                            yyjson_doc_get_root(defaults),
+                            result->doc,
+                            value,
+                            &edited,
+                            error,
+                            sizeof error
+                        )
+                      : CHIBI_AUTOMATION_VALIDATION_ERROR;
+    yyjson_doc_free(defaults);
+    free(defaulted);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = validate_scene_dependencies(root, edited, error, sizeof error);
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        free(edited);
+        return -1;
+    }
+    size_t after_bytes = strlen(edited);
+    uint64_t after = automation_content_hash(edited, after_bytes);
+    bool changed = !source || strcmp(source, edited);
+    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
+    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+    add_hash_named(result->doc, value, "after_hash", after);
+    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
+    if (!dry && changed) {
+        status = automation_asset_publish(
+            root,
+            ref.family->folder,
+            ref.filename,
+            edited,
+            expected,
+            create,
+            error,
+            sizeof error
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK && !dry) {
+        yyjson_mut_obj_remove_key(value, "published");
+        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
+        yyjson_mut_obj_remove_key(value, "hash");
+        add_hash(result->doc, value, after);
+        yyjson_mut_obj_remove_key(value, "bytes");
+        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
+    }
+    free(edited);
+    free(source);
+    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
+static int handle_optimize_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *create_value = yyjson_obj_get(request, "create");
+    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
+    const char *expected = request_string(request, "expected_hash");
+    bool dry = !dry_value || yyjson_get_bool(dry_value);
+    if ((create_value && !yyjson_is_bool(create_value)) ||
+        (create_value && yyjson_get_bool(create_value)) ||
+        (dry_value && !yyjson_is_bool(dry_value)) ||
+        (expected && strlen(expected) != 16) || (!dry && !expected)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "optimize_graph requires a graph asset, expected_hash unless dry_run, and boolean dry_run");
+        return -1;
+    }
+    asset_ref ref = { 0 };
+    char error[256] = { 0 };
+    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
+        ref.family->loader != ASSET_GRAPH) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            error[0] ? error : "optimize_graph requires a graph asset"
+        );
+        return -1;
+    }
+    char *source = NULL;
+    size_t bytes = 0;
+    uint64_t before = 0;
+    int status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, before);
+    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
+    add_hash_named(result->doc, value, "before_hash", before);
+    char actual[17];
+    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
+    if (expected && strcmp(expected, actual)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
+        free(source);
+        return -1;
+    }
+    char *edited = NULL;
+    status = automation_graph_optimize(source, request, result->doc, value, &edited, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        behavior_asset *asset = behavior_asset_load_json(edited);
+        if (!asset) {
+            snprintf(error, sizeof error, "optimized graph asset could not be loaded: %s", graph_last_error());
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+        } else {
+            compile_report report;
+            compile_report_init(&report);
+            behavior_asset_compile(asset, &report);
+            inspect_add_validation(result->doc, value, &report);
+            if (report.error_count) {
+                snprintf(error, sizeof error, "optimized graph asset failed validation");
+                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            }
+            compile_report_free(&report);
+            behavior_asset_free(asset);
+        }
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        free(edited);
+        return -1;
+    }
+    size_t after_bytes = strlen(edited);
+    uint64_t after = automation_content_hash(edited, after_bytes);
+    bool changed = strcmp(source, edited) != 0;
+    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
+    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+    add_hash_named(result->doc, value, "after_hash", after);
+    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
+    if (!dry && changed) {
+        status = automation_asset_publish(
+            root,
+            ref.family->folder,
+            ref.filename,
+            edited,
+            expected,
+            false,
+            error,
+            sizeof error
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK && !dry) {
+        yyjson_mut_obj_remove_key(value, "published");
+        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
+        yyjson_mut_obj_remove_key(value, "hash");
+        add_hash(result->doc, value, after);
+        yyjson_mut_obj_remove_key(value, "bytes");
+        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
+    }
+    free(edited);
+    free(source);
+    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
 static int operation_requires_root(const char *operation)
 {
-    return !strcmp(operation, "edit_graph") || !strcmp(operation, "status") ||
+    return !strcmp(operation, "edit_graph") || !strcmp(operation, "edit_prototype") ||
+           !strcmp(operation, "edit_scene") || !strcmp(operation, "optimize_graph") ||
+           !strcmp(operation, "execution_status") ||
+           !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
@@ -5331,8 +7600,20 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     }
     if (!strcmp(operation, "edit_graph")) {
         handle_edit_graph(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "edit_prototype")) {
+        handle_edit_prototype(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "edit_scene")) {
+        handle_edit_scene(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "optimize_graph")) {
+        handle_optimize_graph(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "execution_status")) {
+        handle_execution_status(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "profile_scenario")) {
+        handle_profile_scenario(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "search_nodes")) {
         handle_search_nodes(root_value, &result, exit_code);
+    } else if (!strcmp(operation, "describe_components")) {
+        handle_describe_components(root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_shader")) {
         response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires the separate chibi_render_ctl executable");
     } else if (!strcmp(operation, "describe_contract")) {

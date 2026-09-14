@@ -269,6 +269,9 @@ void render_arena_trails_collect(arena_trails *trails, ecs_world *world, const e
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
+            if (!engine_entity_visible(runtime, world, entity)) {
+                continue;
+            }
             GameTransform position = *GAME_GameTransform_get_const(world, entity);
             if (runtime) {
                 engine_render_position(runtime, entity, &position);

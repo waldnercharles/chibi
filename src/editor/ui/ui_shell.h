@@ -25,6 +25,7 @@ void editor_ui_property_label(const char *label, float action_width);
 bool editor_ui_begin_vector(const char *label);
 void editor_ui_next_axis();
 void editor_ui_end_vector();
+bool editor_ui_vector_float(const char *id, float *value, int count, float min, float max);
 bool editor_ui_axis_float(const char *label, float *value, int axis, bool overridden);
 /* Section heading and bounded searchable checkbox popover. Pair true with end. */
 bool editor_ui_begin_attachment_picker(const char *label, const char *id, char *query, size_t query_size);
@@ -32,6 +33,7 @@ void editor_ui_end_attachment_picker(int selected);
 
 typedef enum
 {
+    EDITOR_UI_COMMAND_QUICK_OPEN,
     EDITOR_UI_COMMAND_SAVE,
     EDITOR_UI_COMMAND_SAVE_AS,
     EDITOR_UI_COMMAND_SAVE_ALL,
@@ -90,6 +92,7 @@ typedef enum editor_ui_focus_target
     EDITOR_UI_FOCUS_INSPECTOR,
     EDITOR_UI_FOCUS_COMPILER_RESULTS,
     EDITOR_UI_FOCUS_OUTPUT_LOG,
+    EDITOR_UI_FOCUS_PERFORMANCE,
 } editor_ui_focus_target;
 
 /* Pending until the window takes it immediately before Begin. NONE clears. */
@@ -116,6 +119,7 @@ void editor_ui_set_navigation_available(bool back, bool forward);
 int editor_ui_take_navigation();
 void editor_ui_request_navigation(int direction);
 void editor_ui_set_document_bar_visible(bool visible);
+bool editor_ui_document_bar_visible();
 /* Pair with ImGui_End(), even when the contents are clipped. */
 bool editor_ui_begin_document_bar();
 bool editor_ui_navigator_visible(void);
@@ -181,6 +185,8 @@ void editor_ui_end_popup();
 
 bool editor_ui_icon_button(const char *id, editor_icon glyph, bool enabled);
 /* Square icon control for floating toolbars; size is in logical pixels. */
+void editor_ui_value_label(const char *label, const char *number);
+bool editor_ui_slider_float(const char *id, const char *label, float *value, float min, float max);
 bool editor_ui_icon_button_sized(const char *id, editor_icon glyph, bool enabled, float size);
 bool editor_ui_right_icon_button(const char *id, editor_icon glyph);
 /* Tracks id and id.clear; clearing returns true and restores input focus. */

@@ -2,11 +2,15 @@
 
 #include "graph/authoring/layout.h"
 #include "graph/compiler/compile.h"
+#include "graph/document/events.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
+#include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -314,14 +318,82 @@ static int refresh_call_reference(edit_context *ctx, node *call, uint64_t refere
         return 0;
     }
     const graph *target = reference_graph(ctx, reference_id, reference_asset);
+    if (!reference_id && call->reference_name) {
+        const behavior_asset *owner = ctx->asset;
+        if (reference_asset) {
+            owner = NULL;
+            for (int i = 0; i < ctx->library_count; i++) {
+                if (!strcmp(ctx->libraries[i]->name, reference_asset)) {
+                    owner = ctx->libraries[i];
+                    break;
+                }
+            }
+        }
+        target = owner ? behavior_asset_find_graph_by_name(owner, call->reference_name)
+                       : NULL;
+        if (!target && !reference_asset) {
+            for (int i = 0; i < acount(ctx->graphs); i++) {
+                if (!strcmp(ctx->graphs[i].name, call->reference_name)) {
+                    target = ctx->graphs[i].graph;
+                    break;
+                }
+            }
+        }
+    }
     if (!target) {
         set_error(ctx, "referenced graph %llu does not exist", (unsigned long long)reference_id);
+        return -1;
+    }
+    if (graph_set_node_reference(ctx->graph, call, target->graph_id, target->name)) {
+        set_error(ctx, "could not apply function reference");
         return -1;
     }
     const char *error = graph_library_refresh_call(ctx->graph, call, target);
     if (error) {
         set_error(ctx, "%s", error);
         return -1;
+    }
+    return 0;
+}
+
+static int refresh_event(edit_context *ctx, node *n)
+{
+    if (!n->reference_name || (n->desc != &NODE_Event && n->desc != &NODE_CallEvent &&
+                               strcmp(n->desc->name, "Send Event"))) {
+        return 0;
+    }
+    if (n->desc == &NODE_Event && n->output_count == 1) {
+        pin_spec parameter = { 0 };
+        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_TICK)) {
+            parameter = (pin_spec){ .name = "DeltaSeconds",
+                                    .type = PIN_F32,
+                                    .type_name = "float" };
+        }
+        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_INPUT)) {
+            parameter = (pin_spec){ .name = "Direction",
+                                    .type = PIN_STRUCT,
+                                    .type_name = "CF_V2" };
+        }
+        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_CONTACT_BEGIN)) {
+            parameter = (pin_spec){ .name = "Other",
+                                    .type = PIN_HANDLE,
+                                    .type_name = "ecs.entity" };
+        }
+        if (parameter.name && graph_add_pin(ctx->graph, n, true, &parameter) < 0) {
+            set_error(ctx, "could not apply host event payload");
+            return -1;
+        }
+    }
+    for (int i = 0; i < ctx->library_count; i++) {
+        const behavior_asset *event = ctx->libraries[i];
+        if (event->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION &&
+            !strcmp(event->name, n->reference_name)) {
+            if (graph_event_apply(ctx->graph, n, event)) {
+                set_error(ctx, "event signature changed; disconnect incompatible payload pins first");
+                return -1;
+            }
+            break;
+        }
     }
     return 0;
 }
@@ -343,6 +415,10 @@ static node *node_by_selector(edit_context *ctx, yyjson_val *selector)
     }
     for (int i = 0; i < acount(ctx->nodes); i++) {
         if (!strcmp(ctx->nodes[i].name, name)) {
+            if (graph_node_by_id(ctx->graph, ctx->nodes[i].id) != ctx->nodes[i].node) {
+                set_error(ctx, "node ref '%s' belongs to another graph; select that graph first", name);
+                return NULL;
+            }
             return ctx->nodes[i].node;
         }
     }
@@ -601,6 +677,38 @@ static int set_input(edit_context *ctx, node *n, yyjson_val *pin_json, yyjson_va
     return graph_set_pin_default(ctx->graph, n, 0, index, &value);
 }
 
+static int set_output(edit_context *ctx, node *n, yyjson_val *op)
+{
+    if (n->desc->pure_kind != NODE_PURE_CONST) {
+        set_error(ctx, "set_output only applies to constant nodes");
+        return -1;
+    }
+    yyjson_val *value_json = yyjson_obj_get(op, "value");
+    if (!value_json) {
+        set_error(ctx, "set_output.value is required");
+        return -1;
+    }
+    const pin_spec *pin = NULL;
+    int index = pin_index(ctx, n, yyjson_obj_get(op, "pin"), 1, &pin);
+    if (index < 0) {
+        return -1;
+    }
+    if (pin->kind != PIN_DATA) {
+        set_error(ctx, "output pin '%s' is an execution pin", pin->name ? pin->name : "?");
+        return -1;
+    }
+    pin_value value;
+    if (parse_pin_value(ctx, pin, value_json, yyjson_obj_get(op, "type"), &value)) {
+        return -1;
+    }
+    if (value.type != pin->type && (pin->flags & PIN_FLAG_WILDCARD) &&
+        graph_set_pin_type(ctx->graph, n, 1, index, value.type, value.type_name)) {
+        set_error(ctx, "could not resolve wildcard output pin '%s'", pin->name ? pin->name : "?");
+        return -1;
+    }
+    return graph_set_pin_default(ctx->graph, n, 1, index, &value);
+}
+
 static int add_node_inputs(edit_context *ctx, node *n, yyjson_val *inputs)
 {
     if (!inputs) {
@@ -636,6 +744,13 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
     node *n = graph_add_node(ctx->graph, desc);
     if (!n) {
         set_error(ctx, "could not add node '%s'", type);
+        return -1;
+    }
+    yyjson_val *event_name = yyjson_obj_get(op, "event_name");
+    if (event_name &&
+        (!yyjson_is_str(event_name) ||
+         graph_set_event_name(ctx->graph, n, yyjson_get_str(event_name)))) {
+        set_error(ctx, "event_name requires an Event node and a valid event name");
         return -1;
     }
     if (type[0] == 'S' && !strncmp(type, "Shader ", 7) &&
@@ -676,7 +791,7 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "add_node.reference_asset requires reference_id");
         return -1;
     }
-    if (add_node_ref(ctx, yyjson_obj_get(op, "ref"), n)) {
+    if (refresh_event(ctx, n) || add_node_ref(ctx, yyjson_obj_get(op, "ref"), n)) {
         return -1;
     }
     if (add_node_inputs(ctx, n, yyjson_obj_get(op, "inputs"))) {
@@ -732,11 +847,90 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             set_error(ctx, "data connection requires data pins");
             return -1;
         }
+        yyjson_val *type_json = yyjson_obj_get(op, "type");
+        if (type_json && !disconnect) {
+            pin_type type;
+            const char *type_name = NULL;
+            if (type_from_value(type_json, &type, &type_name) ||
+                type == PIN_FLOW || (type == PIN_STRUCT && !type_name)) {
+                set_error(ctx, "data connection type must be a scalar or named struct");
+                return -1;
+            }
+            if (!(from_pin->flags & PIN_FLAG_WILDCARD)) {
+                pin_spec requested = *from_pin;
+                requested.type = type;
+                requested.type_name = type_name;
+                if (!pin_compatible(from_pin, &requested)) {
+                    set_error(
+                        ctx,
+                        "explicit connection type does not match source pin "
+                        "'%s'",
+                        from_pin->name ? from_pin->name : "?"
+                    );
+                    return -1;
+                }
+            }
+            if (!(to_pin->flags & PIN_FLAG_WILDCARD)) {
+                pin_spec requested = *to_pin;
+                requested.type = type;
+                requested.type_name = type_name;
+                if (!pin_compatible(to_pin, &requested)) {
+                    set_error(
+                        ctx,
+                        "explicit connection type does not match destination "
+                        "pin '%s'",
+                        to_pin->name ? to_pin->name : "?"
+                    );
+                    return -1;
+                }
+            }
+            if ((from_pin->flags & PIN_FLAG_WILDCARD) &&
+                graph_set_pin_type(ctx->graph, from, 1, from_index, type, type_name)) {
+                set_error(
+                    ctx,
+                    "could not resolve source wildcard pin '%s'",
+                    from_pin->name ? from_pin->name : "?"
+                );
+                return -1;
+            }
+            if ((to_pin->flags & PIN_FLAG_WILDCARD) &&
+                graph_set_pin_type(ctx->graph, to, 0, to_index, type, type_name)) {
+                set_error(
+                    ctx,
+                    "could not resolve destination wildcard pin '%s'",
+                    to_pin->name ? to_pin->name : "?"
+                );
+                return -1;
+            }
+        }
+        const node_desc *conversion = NULL;
+        if (!disconnect && !(from_pin->flags & PIN_FLAG_WILDCARD) &&
+            !(to_pin->flags & PIN_FLAG_WILDCARD) &&
+            ctx->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
+            ctx->asset->domain != BEHAVIOR_DOMAIN_SHAPE) {
+            conversion = conversion_for_pins(from_pin, to_pin);
+        }
         int result = disconnect
                        ? graph_remove_edge(ctx->graph, from, from_index, to, to_index)
+                   : conversion
+                       ? graph_connect_data_conversion(ctx->graph, from, from_index, to, to_index, conversion)
                        : graph_connect_data(ctx->graph, from, from_index, to, to_index);
         if (result) {
-            set_error(ctx, "data connection was rejected");
+            if (!disconnect &&
+                (ctx->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                 ctx->asset->domain == BEHAVIOR_DOMAIN_SHAPE) &&
+                ((from_pin->flags | to_pin->flags) & PIN_FLAG_WILDCARD)) {
+                set_error(ctx, "data connection was rejected: shader wildcard pins need an explicit type such as ShaderVec3 or a fixed typed shader node");
+            } else if (
+                !disconnect &&
+                (ctx->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                 ctx->asset->domain == BEHAVIOR_DOMAIN_SHAPE) &&
+                !pin_compatible(from_pin, to_pin)
+            ) {
+                set_error(ctx, "data connection was rejected: shader pins need matching types; use a shader vector or math node for conversion");
+            } else {
+                set_error(ctx, "data connection was rejected");
+            }
             return -1;
         }
         return 0;
@@ -827,7 +1021,7 @@ static int operation_set_node(edit_context *ctx, yyjson_val *op)
             return -1;
         }
     }
-    return 0;
+    return refresh_event(ctx, n);
 }
 
 static int shader_stop_value(edit_context *ctx, yyjson_val *json, float out[4])
@@ -1144,6 +1338,13 @@ static int operation_set_variable(edit_context *ctx, yyjson_val *op)
     if (!variable) {
         return -1;
     }
+    yyjson_val *category = yyjson_obj_get(op, "category");
+    if (category &&
+        (!yyjson_is_str(category) ||
+         behavior_asset_set_variable_category(ctx->asset, variable->id, yyjson_get_str(category)))) {
+        set_error(ctx, "could not set variable category");
+        return -1;
+    }
     yyjson_val *name_json = yyjson_obj_get(op, "name");
     if (name_json) {
         const char *name = NULL;
@@ -1286,6 +1487,184 @@ static int operation_add_self_node(edit_context *ctx, yyjson_val *op)
     return add_node_ref(ctx, yyjson_obj_get(op, "ref"), n);
 }
 
+static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operation)
+{
+    node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
+    const char *side = "input";
+    yyjson_val *side_json = yyjson_obj_get(op, "side");
+    if (!n || (side_json && !string_value(side_json, &side)) ||
+        (strcmp(side, "input") && strcmp(side, "output"))) {
+        set_error(ctx, "pin operation requires a node and input or output side");
+        return -1;
+    }
+    int output = !strcmp(side, "output");
+    const pin_spec *pin = NULL;
+    int index = pin_index(ctx, n, yyjson_obj_get(op, "pin"), output, &pin);
+    if (index < 0) {
+        return -1;
+    }
+    int result = -1;
+    if (!strcmp(operation, "remove_pin")) {
+        result = graph_remove_pin(ctx->graph, n, output, index);
+    } else if (!strcmp(operation, "split_pin")) {
+        result = graph_split_pin(ctx->graph, n, output, index);
+    } else if (!strcmp(operation, "recombine_pin")) {
+        result = graph_recombine_pin(ctx->graph, n, output, index);
+    } else if (!strcmp(operation, "expose_fields")) {
+        result = output ? graph_expose_output_fields(ctx->graph, n, index) : -1;
+    } else if (!strcmp(operation, "hide_fields")) {
+        result = output ? graph_hide_output_fields(ctx->graph, n, index) : -1;
+    } else if (!strcmp(operation, "clear_binding")) {
+        result = graph_set_pin_binding(ctx->graph, n, output, index, NULL);
+    } else if (!strcmp(operation, "create_local")) {
+        const char *name = NULL;
+        if (output && string_value(yyjson_obj_get(op, "name"), &name)) {
+            result = graph_create_local(ctx->graph, n, index, name) ? 0 : -1;
+        }
+    } else if (!strcmp(operation, "set_pin")) {
+        result = 0;
+        yyjson_val *name = yyjson_obj_get(op, "name");
+        if (name &&
+            (!yyjson_is_str(name) ||
+             graph_set_pin_name(ctx->graph, n, output, index, yyjson_get_str(name)))) {
+            result = -1;
+        }
+        yyjson_val *type_json = yyjson_obj_get(op, "type");
+        if (!result && type_json) {
+            pin_type type;
+            const char *type_name = NULL;
+            yyjson_val *named = yyjson_obj_get(op, "type_name");
+            if (type_from_value(type_json, &type, &type_name) ||
+                (named && !string_value(named, &type_name)) ||
+                (type == PIN_STRUCT && !type_name) ||
+                graph_set_pin_type(ctx->graph, n, output, index, type, type_name)) {
+                result = -1;
+            }
+        }
+        yyjson_val *container_json = yyjson_obj_get(op, "container");
+        if (!result && container_json) {
+            pin_container container;
+            if (container_from_value(container_json, &container) ||
+                graph_set_pin_container(ctx->graph, n, output, index, container)) {
+                result = -1;
+            }
+        }
+        yyjson_val *order = yyjson_obj_get(op, "order");
+        int target;
+        if (!result && order &&
+            (!value_nonnegative_int(order, &target) ||
+             graph_move_pin(ctx->graph, n, output, index, target))) {
+            result = -1;
+        }
+    } else if (!strcmp(operation, "bind_input")) {
+        const char *kind = NULL;
+        pin_binding binding = { 0 };
+        if (output || !string_value(yyjson_obj_get(op, "kind"), &kind)) {
+            set_error(ctx, "bind_input requires an input pin and binding kind");
+            return -1;
+        }
+        if (!strcmp(kind, "variable")) {
+            behavior_variable *variable = variable_by_selector(ctx, yyjson_obj_get(op, "variable"));
+            if (!variable) {
+                return -1;
+            }
+            binding.kind = PIN_BINDING_VARIABLE;
+            binding.variable_id = variable->id;
+            binding.source_asset = ctx->asset->name;
+        } else if (!strcmp(kind, "delta_time")) {
+            binding.kind = PIN_BINDING_DELTA_TIME;
+        } else if (!strcmp(kind, "component")) {
+            if (!string_value(yyjson_obj_get(op, "component"), &binding.component_key)) {
+                set_error(ctx, "component binding requires the reflected stable component key");
+                return -1;
+            }
+            yyjson_val *field = yyjson_obj_get(op, "field");
+            if (field && !string_value(field, &binding.field_name)) {
+                set_error(ctx, "component field must be a string");
+                return -1;
+            }
+            binding.kind = field ? PIN_BINDING_COMPONENT_FIELD : PIN_BINDING_COMPONENT;
+        } else {
+            set_error(ctx, "binding kind must be variable, component, or delta_time");
+            return -1;
+        }
+        result = graph_set_pin_binding(ctx->graph, n, 0, index, &binding);
+    }
+    if (result < 0) {
+        set_error(ctx, "%s could not be applied to the selected pin", operation);
+        return -1;
+    }
+    return 0;
+}
+
+static graph *operation_graph(edit_context *ctx, yyjson_val *op)
+{
+    yyjson_val *selector = yyjson_obj_get(op, "graph");
+    if (yyjson_is_uint(selector)) {
+        return behavior_asset_find_graph(ctx->asset, yyjson_get_uint(selector));
+    }
+    if (!yyjson_is_str(selector)) {
+        return NULL;
+    }
+    const char *name = yyjson_get_str(selector);
+    for (int i = 0; i < acount(ctx->graphs); i++) {
+        if (!strcmp(ctx->graphs[i].name, name)) {
+            return ctx->graphs[i].graph;
+        }
+    }
+    return behavior_asset_find_graph_by_name(ctx->asset, name);
+}
+
+static int operation_graph_declaration(edit_context *ctx, yyjson_val *op, const char *operation)
+{
+    graph *g = operation_graph(ctx, op);
+    if (!g) {
+        set_error(ctx, "graph must select an existing graph ID, name, or request ref");
+        return -1;
+    }
+    if (!strcmp(operation, "select_graph")) {
+        ctx->graph = g;
+        return add_layout_graph(ctx, g);
+    }
+    if (!strcmp(operation, "rename_graph")) {
+        const char *name = NULL;
+        if (!string_value(yyjson_obj_get(op, "name"), &name) ||
+            behavior_asset_rename_graph(ctx->asset, g->graph_id, name)) {
+            set_error(ctx, "could not rename graph");
+            return -1;
+        }
+        return 0;
+    }
+    if (g == ctx->asset->graph) {
+        set_error(ctx, "the default graph cannot be removed");
+        return -1;
+    }
+    /* Remove request aliases before freeing their graph-owned names and nodes. */
+    for (int i = acount(ctx->nodes) - 1; i >= 0; i--) {
+        if (graph_node_by_id(g, ctx->nodes[i].id) == ctx->nodes[i].node) {
+            adel(ctx->nodes, i);
+        }
+    }
+    for (int i = acount(ctx->graphs) - 1; i >= 0; i--) {
+        if (ctx->graphs[i].graph == g) {
+            adel(ctx->graphs, i);
+        }
+    }
+    for (int i = acount(ctx->layout_graphs) - 1; i >= 0; i--) {
+        if (ctx->layout_graphs[i] == g) {
+            adel(ctx->layout_graphs, i);
+        }
+    }
+    if (ctx->graph == g) {
+        ctx->graph = ctx->asset->graph;
+    }
+    if (behavior_asset_delete_graph(ctx->asset, g->graph_id)) {
+        set_error(ctx, "could not remove graph");
+        return -1;
+    }
+    return 0;
+}
+
 static int apply_operation(edit_context *ctx, yyjson_val *op)
 {
     if (!yyjson_is_obj(op)) {
@@ -1296,6 +1675,25 @@ static int apply_operation(edit_context *ctx, yyjson_val *op)
     if (!string_value(yyjson_obj_get(op, "op"), &name)) {
         set_error(ctx, "operation.op is required");
         return -1;
+    }
+    if (!strcmp(name, "select_graph") || !strcmp(name, "rename_graph") ||
+        !strcmp(name, "remove_graph")) {
+        return operation_graph_declaration(ctx, op, name);
+    }
+    if (!strcmp(name, "remove_variable")) {
+        behavior_variable *variable = variable_by_selector(ctx, yyjson_obj_get(op, "variable"));
+        if (!variable || behavior_asset_delete_variable(ctx->asset, variable->id)) {
+            set_error(ctx, "could not remove variable");
+            return -1;
+        }
+        return 0;
+    }
+    if (!strcmp(name, "set_pin") || !strcmp(name, "remove_pin") ||
+        !strcmp(name, "split_pin") || !strcmp(name, "recombine_pin") ||
+        !strcmp(name, "expose_fields") || !strcmp(name, "hide_fields") ||
+        !strcmp(name, "bind_input") || !strcmp(name, "clear_binding") ||
+        !strcmp(name, "create_local")) {
+        return operation_pin(ctx, op, name);
     }
     if (!strcmp(name, "add_node")) {
         return operation_add_node(ctx, op);
@@ -1320,6 +1718,10 @@ static int apply_operation(edit_context *ctx, yyjson_val *op)
             return -1;
         }
         return set_input(ctx, n, yyjson_obj_get(op, "pin"), value, yyjson_obj_get(op, "type"));
+    }
+    if (!strcmp(name, "set_output")) {
+        node *n = node_by_selector(ctx, yyjson_obj_get(op, "node"));
+        return n ? set_output(ctx, n, op) : -1;
     }
     if (!strcmp(name, "set_node")) {
         return operation_set_node(ctx, op);
@@ -1390,7 +1792,8 @@ static int validate_asset(edit_context *ctx)
     behavior_asset *linked = NULL;
     const behavior_asset *validation_asset = ctx->asset;
     char link_error[256] = { 0 };
-    if (asset_has_external_graph_reference(ctx->asset)) {
+    if (asset_has_external_graph_reference(ctx->asset) ||
+        (ctx->library_count && ctx->asset->domain == BEHAVIOR_DOMAIN_EVENT)) {
         linked = behavior_asset_link_libraries(
             ctx->asset,
             ctx->libraries,
@@ -1532,6 +1935,43 @@ static graph *select_graph(edit_context *ctx, yyjson_val *request)
     return ctx->asset->graph;
 }
 
+static int apply_metadata(edit_context *ctx, yyjson_val *request)
+{
+    yyjson_val *description = yyjson_obj_get(request, "description");
+    if (description) {
+        if (!yyjson_is_str(description) || yyjson_get_len(description) > 2048) {
+            set_error(ctx, "description must be a string of at most 2048 characters");
+            return -1;
+        }
+        behavior_asset_set_description(ctx->asset, yyjson_get_str(description));
+    }
+
+    yyjson_val *owner_type = yyjson_obj_get(request, "owner_type");
+    if (owner_type) {
+        if (!yyjson_is_str(owner_type) || !yyjson_get_len(owner_type) ||
+            yyjson_get_len(owner_type) > 256 ||
+            behavior_asset_set_owner_type(ctx->asset, yyjson_get_str(owner_type))) {
+            set_error(ctx, "owner_type must be a non-empty string of at most 256 characters");
+            return -1;
+        }
+    }
+
+    yyjson_val *graph_description = yyjson_obj_get(request, "graph_description");
+    if (graph_description) {
+        if (!yyjson_is_str(graph_description) ||
+            yyjson_get_len(graph_description) > 2048 ||
+            graph_set_metadata(
+                ctx->graph,
+                ctx->graph->name ? ctx->graph->name : "",
+                yyjson_get_str(graph_description)
+            )) {
+            set_error(ctx, "graph_description must be a string of at most 2048 characters");
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int automation_graph_edit(
     const char *source_json,
     const char *kind,
@@ -1623,6 +2063,11 @@ int automation_graph_edit(
         free_edit_context(&ctx);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
+    if (apply_metadata(&ctx, request)) {
+        add_failure(&ctx);
+        free_edit_context(&ctx);
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
     yyjson_val *operations = yyjson_obj_get(request, "operations");
     if (!operations || !yyjson_is_arr(operations) ||
         yyjson_arr_size(operations) > GRAPH_EDIT_MAX_OPERATIONS) {
@@ -1665,6 +2110,21 @@ int automation_graph_edit(
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     yyjson_mut_obj_add_uint(doc, result, "graph_id", ctx.graph->graph_id);
+    yyjson_mut_obj_add_strcpy(
+        doc,
+        result,
+        "description",
+        ctx.asset->description ? ctx.asset->description : ""
+    );
+    yyjson_mut_obj_add_strcpy(
+        doc,
+        result,
+        "graph_description",
+        ctx.graph->description ? ctx.graph->description : ""
+    );
+    if (ctx.asset->owner_type_name) {
+        yyjson_mut_obj_add_strcpy(doc, result, "owner_type", ctx.asset->owner_type_name);
+    }
     yyjson_mut_obj_add_int(doc, result, "operation_count", index);
     add_refs(&ctx);
     *edited_json = serialized;

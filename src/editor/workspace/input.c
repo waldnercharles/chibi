@@ -11,22 +11,24 @@ static bool ready;
 static bool first_frame;
 static bool held_at_reload[APP_INPUT_COUNT];
 static bool controller_aim;
+static uint64_t held_controls;
+static uint64_t raw_controls();
 
 void app_input_initialize()
 {
     if (ready) {
         return;
     }
-    const CF_KeyButton keys[] = { CF_KEY_SPACE,  CF_KEY_ESCAPE, CF_KEY_Z,
-                                  CF_KEY_Y,      CF_KEY_C,      CF_KEY_X,
-                                  CF_KEY_V,      CF_KEY_D,      CF_KEY_S,
-                                  CF_KEY_DELETE, CF_KEY_LSHIFT, CF_KEY_LCTRL,
+    const CF_KeyButton keys[] = {
+        CF_KEY_ESCAPE, CF_KEY_Z,      CF_KEY_Y,     CF_KEY_C,
+        CF_KEY_X,      CF_KEY_V,      CF_KEY_D,     CF_KEY_S,
+        CF_KEY_DELETE, CF_KEY_LSHIFT, CF_KEY_LCTRL,
 #ifdef __APPLE__
-                                  CF_KEY_LGUI,
+        CF_KEY_LGUI,
 #else
-                                  CF_KEY_LCTRL,
+        CF_KEY_LCTRL,
 #endif
-                                  CF_KEY_LSHIFT };
+    };
     _Static_assert(sizeof keys / sizeof *keys == APP_INPUT_COUNT, "action keys");
     for (int i = 0; i < APP_INPUT_COUNT; i++) {
         buttons[i] = cf_make_button_binding(0, 0);
@@ -38,9 +40,6 @@ void app_input_initialize()
     cf_button_binding_add_key(buttons[APP_INPUT_DELETE], CF_KEY_BACKSPACE);
     cf_button_binding_add_key(buttons[APP_INPUT_SHIFT], CF_KEY_RSHIFT);
     cf_button_binding_add_key(buttons[APP_INPUT_CONTROL], CF_KEY_RCTRL);
-    cf_button_binding_add_mouse_button(buttons[APP_INPUT_FIRE], CF_MOUSE_BUTTON_LEFT);
-    cf_button_binding_add_key(buttons[APP_INPUT_DASH], CF_KEY_RSHIFT);
-    cf_button_binding_add_joypad_button(buttons[APP_INPUT_DASH], CF_JOYPAD_BUTTON_A);
 #ifdef __APPLE__
     cf_button_binding_add_key(buttons[APP_INPUT_COMMAND], CF_KEY_RGUI);
 #else
@@ -82,12 +81,14 @@ void app_input_frame()
             held_at_reload[i] = false;
         }
     }
+    uint64_t controls = raw_controls();
+    held_controls = first_frame ? controls : held_controls & controls;
     first_frame = false;
     float aim_x = cf_axis_binding_value(aim_horizontal);
     float aim_y = cf_axis_binding_value(aim_vertical);
     if (aim_x != 0 || aim_y != 0) {
         controller_aim = true;
-    } else if (cf_mouse_motion_x() != 0 || cf_mouse_motion_y() != 0 || app_input_firing()) {
+    } else if (cf_mouse_motion_x() != 0 || cf_mouse_motion_y() != 0 || cf_mouse_down(CF_MOUSE_BUTTON_LEFT)) {
         controller_aim = false;
     }
 }
@@ -151,10 +152,53 @@ bool app_input_aim(float *x, float *y)
     return true;
 }
 
-bool app_input_firing()
+static bool control_down(GameControl source)
 {
-    return ready && !held_at_reload[APP_INPUT_FIRE] &&
-           cf_button_binding_down(buttons[APP_INPUT_FIRE]);
+    if (source >= GAME_CONTROL_A && source <= GAME_CONTROL_Z) {
+        return cf_key_down(CF_KEY_A + source - GAME_CONTROL_A);
+    }
+    if (source >= GAME_CONTROL_PAD_A && source <= GAME_CONTROL_PAD_Y) {
+        return cf_joypad_button_down(0, CF_JOYPAD_BUTTON_A + source - GAME_CONTROL_PAD_A);
+    }
+    switch (source) {
+        case GAME_CONTROL_MOUSE_LEFT:
+            return cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
+        case GAME_CONTROL_MOUSE_RIGHT:
+            return cf_mouse_down(CF_MOUSE_BUTTON_RIGHT);
+        case GAME_CONTROL_SPACE: return cf_key_down(CF_KEY_SPACE);
+        case GAME_CONTROL_SHIFT: return cf_key_shift();
+        case GAME_CONTROL_TAB: return cf_key_down(CF_KEY_TAB);
+        case GAME_CONTROL_ENTER: return cf_key_down(CF_KEY_RETURN);
+        case GAME_CONTROL_PAD_LEFT_SHOULDER:
+            return cf_joypad_button_down(0, CF_JOYPAD_BUTTON_LEFTSHOULDER);
+        case GAME_CONTROL_PAD_RIGHT_SHOULDER:
+            return cf_joypad_button_down(0, CF_JOYPAD_BUTTON_RIGHTSHOULDER);
+        case GAME_CONTROL_PAD_LEFT_TRIGGER:
+            return cf_joypad_axis(0, CF_JOYPAD_AXIS_TRIGGERLEFT) > 8192;
+        case GAME_CONTROL_PAD_RIGHT_TRIGGER:
+            return cf_joypad_axis(0, CF_JOYPAD_AXIS_TRIGGERRIGHT) > 8192;
+        case GAME_CONTROL_AIM_STICK: {
+            float x, y;
+            return app_input_aim(&x, &y);
+        }
+        default: return false;
+    }
+}
+
+static uint64_t raw_controls()
+{
+    uint64_t controls = 0;
+    for (int i = 1; i < GAME_CONTROL_COUNT; i++) {
+        if (control_down(i)) {
+            controls |= UINT64_C(1) << i;
+        }
+    }
+    return controls;
+}
+
+uint64_t app_input_controls()
+{
+    return ready ? raw_controls() & ~held_controls : 0;
 }
 
 bool app_input_mouse_aiming()

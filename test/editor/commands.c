@@ -81,6 +81,58 @@ static void search_popup_insert(editor *e, const char *query)
     search_popup_frame(e, false);
 }
 
+static void check_linked_preview()
+{
+    behavior_asset *library = behavior_asset_new("PreviewMath");
+    library->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    graph *identity = behavior_asset_add_function(library, "Identity", 1);
+    pin_spec value = { .name = "Value", .type = PIN_F64, .type_name = "double", .kind = PIN_DATA };
+    node *entry = graph_node_by_id(identity, identity->entry_id);
+    node *ret = graph_node_by_id(identity, identity->return_id);
+    assert(graph_add_pin(identity, entry, 1, &value) == 0);
+    assert(graph_add_pin(identity, ret, 0, &value) == 0);
+    assert(graph_connect_data(identity, entry, 0, ret, 0) == 0);
+
+    behavior_asset *asset = behavior_asset_new("Linked preview");
+    node *number = graph_add_node(asset->graph, registry_node_by_name("Real"));
+    assert(
+        graph_set_pin_default(asset->graph, number, 0, 0, &(pin_value){ .type = PIN_F64, .d = 7 }) == 0
+    );
+    node *call = behavior_asset_add_function_call_node_to_graph(asset, asset->graph, identity);
+    assert(call->reference_asset);
+    assert(graph_connect_data(asset->graph, number, 0, call, 0) == 0);
+    const behavior_asset *catalog[] = { library };
+    eval_view *view = eval_view_new();
+    eval_view_set_catalog(view, catalog, 1);
+    eval_view_refresh(view, asset->graph);
+    test_check(!eval_view_error(view)[0], "preview links authored library references before compilation");
+    test_check(!strcmp(eval_view_output(view, number, 0), "7"), "linked preview maps values back to authored nodes");
+
+    assert(
+        graph_set_pin_default(asset->graph, number, 0, 0, &(pin_value){ .type = PIN_F64, .d = 11 }) == 0
+    );
+    eval_view_refresh(view, asset->graph);
+    test_check(
+        !eval_view_error(view)[0] && !strcmp(eval_view_output(view, number, 0), "11"),
+        "preview replaces its linked generation after graph edits"
+    );
+    eval_view_set_catalog(view, NULL, 0);
+    eval_view_refresh(view, asset->graph);
+    test_check(
+        strstr(eval_view_error(view), "PreviewMath") != NULL,
+        "preview reports a missing library instead of hiding compilation errors"
+    );
+    eval_view_set_catalog(view, catalog, 1);
+    eval_view_refresh(view, asset->graph);
+    test_check(
+        !eval_view_error(view)[0] && !strcmp(eval_view_output(view, number, 0), "11"),
+        "preview recovers when its library returns to the catalog"
+    );
+    eval_view_free(view);
+    behavior_asset_free(asset);
+    behavior_asset_free(library);
+}
+
 static void check_search_catalog()
 {
     behavior_asset *asset = behavior_asset_new("Search catalog");
@@ -115,6 +167,21 @@ static void check_search_catalog()
                               "On Impact",
                               "Call Impact",
                               "Send Impact" };
+    const char *fuzzy_queries[] = { "velocity compute",
+                                    "CV",
+                                    "compute velcoity",
+                                    "budget trail get",
+                                    "math formula" };
+    const char *fuzzy_names[] = { "Compute Velocity",
+                                  "Compute Velocity",
+                                  "Compute Velocity",
+                                  "Get Trail Budget",
+                                  "Math Expression" };
+    for (int i = 0; i < 5; i++) {
+        ed_search_match *matches = ed_search_matches(e, fuzzy_queries[i]);
+        test_check(acount(matches) > 0 && !strcmp(matches[0].name, fuzzy_names[i]), "ranked node search handles reordered words, initials and transposed letters");
+        afree(matches);
+    }
     node *expected[9] = { 0 };
     for (int i = 0; i < 9; i++) {
         ed_search_match *matches = ed_search_matches(e, queries[i]);
@@ -277,6 +344,7 @@ void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
     editor_ui_initialize(false);
+    check_linked_preview();
     check_search_catalog();
     check_library_search_snapshot();
     char save_path[512];

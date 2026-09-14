@@ -9,6 +9,9 @@
 
 extern node_desc NODE_To_String, NODE_To_Real, NODE_To_Byte, NODE_To_Integer,
     NODE_To_Integer64, NODE_To_Name;
+extern node_desc NODE_Splat_CF_V2, NODE_Splat_CF_V3, NODE_Splat_ShaderVec2,
+    NODE_Splat_ShaderVec3, NODE_Splat_ShaderVec4;
+bool conversion_is_vector_splat(const node_desc *conversion);
 
 /* Returns the conversion descriptor permitted for `from` feeding `to`, or
  * NULL when the pair is compatible or no conversion is registered. */

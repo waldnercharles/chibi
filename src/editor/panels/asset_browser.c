@@ -1,9 +1,14 @@
+#include "editor/ui/search.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 
+#include <float.h>
 #include <imgui/dcimgui.h>
+#undef IMGUI_STB_NAMESPACE
+#include <imgui/dcimgui_internal.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *asset_kind_label(asset_index_kind kind)
@@ -37,16 +42,27 @@ void asset_browser_request_quick_open(app_scene_authoring *scene)
     scene->quick_open_focus = true;
 }
 
-static int quick_open_asset_count(const asset_index *index, asset_index_kind kind, const char *query)
+static editor_search_result *ranked_assets(
+    const asset_index *index,
+    asset_index_kind kind,
+    const char *query
+)
 {
-    int count = 0;
+    editor_search_result *results = NULL;
     for (int i = 0; i < asset_index_asset_count(index); i++) {
         const asset_index_asset *asset = asset_index_asset_at(index, i);
-        if (asset_kind_matches(asset, kind) && asset_index_match(asset, query)) {
-            count++;
+        if (!asset_kind_matches(asset, kind)) {
+            continue;
+        }
+        int score = asset_index_score(asset, query);
+        if (score >= 0) {
+            apush(results, ((editor_search_result){ .index = i, .score = score }));
         }
     }
-    return count;
+    if (acount(results) > 1) {
+        qsort(results, (size_t)acount(results), sizeof *results, editor_search_compare);
+    }
+    return results;
 }
 
 static bool draw_asset_kind_combo(const char *id, asset_index_kind *kind)
@@ -120,51 +136,62 @@ void draw_quick_open(app_scene_authoring *scene)
         return;
     }
     ImGui_SetNextItemWidth(fmaxf(320.0f, ImGui_GetContentRegionAvail().x));
+    bool follow_selection = scene->quick_open_focus;
     if (scene->quick_open_focus) {
         ImGui_SetKeyboardFocusHere();
         scene->quick_open_focus = false;
     }
-    editor_ui_search_field(
+    bool changed = editor_ui_search_field(
         "quick.open.search",
         scene->quick_open_query,
         sizeof scene->quick_open_query,
         "Search assets"
     );
     editor_ui_track_item("quick.open.search");
-    draw_asset_kind_combo("quick.open.kind", &scene->quick_open_kind);
+    if (ImGui_IsItemActive()) {
+        ImGui_GetCurrentContext()->ActiveIdUsingNavDirMask |= (1 << ImGuiDir_Up) |
+                                                              (1 << ImGuiDir_Down);
+        ImGui_SetKeyOwner(ImGuiKey_UpArrow, ImGui_GetItemID(), 0);
+        ImGui_SetKeyOwner(ImGuiKey_DownArrow, ImGui_GetItemID(), 0);
+    }
+
+    changed |= draw_asset_kind_combo("quick.open.kind", &scene->quick_open_kind);
     editor_ui_track_item("quick.open.kind");
     const asset_index *index = app_scene_authoring_asset_index(scene);
-    int count = index
-                  ? quick_open_asset_count(index, scene->quick_open_kind, scene->quick_open_query)
-                  : 0;
+    editor_search_result
+        *results = ranked_assets(index, scene->quick_open_kind, scene->quick_open_query);
+    int count = acount(results);
+    if (changed) {
+        scene->quick_open_selected = 0;
+        follow_selection = true;
+    }
     if (count > 0) {
         if (scene->quick_open_selected >= count) {
             scene->quick_open_selected = count - 1;
         }
         if (ImGui_IsKeyPressed(ImGuiKey_DownArrow)) {
             scene->quick_open_selected = (scene->quick_open_selected + 1) % count;
+            follow_selection = true;
         }
         if (ImGui_IsKeyPressed(ImGuiKey_UpArrow)) {
             scene->quick_open_selected = (scene->quick_open_selected + count - 1) % count;
+            follow_selection = true;
         }
     }
     bool activate_enter = ImGui_IsKeyPressed(ImGuiKey_Enter);
     int activate = -1;
     int visible = 0;
     if (ImGui_BeginChild("quick.open.results", (ImVec2){ 0.0f, 300.0f }, 0, 0)) {
-        for (int i = 0; index && i < asset_index_asset_count(index); i++) {
+        for (int row = 0; row < count; row++) {
+            int i = results[row].index;
             const asset_index_asset *asset = asset_index_asset_at(index, i);
-            if (!asset_kind_matches(asset, scene->quick_open_kind) ||
-                !asset_index_match(asset, scene->quick_open_query)) {
-                continue;
-            }
             char label[256];
             snprintf(
                 label,
                 sizeof label,
                 "%s  %s",
-                asset_kind_label(asset->kind),
-                asset->name
+                asset->name,
+                asset_kind_label(asset->kind)
             );
             ImGui_BeginDisabled(asset->unresolved);
             char row_id[64];
@@ -180,7 +207,7 @@ void draw_quick_open(app_scene_authoring *scene)
             } else if (activate_enter && selected && !asset->unresolved) {
                 activate = i;
             }
-            if (selected) {
+            if (selected && follow_selection) {
                 ImGui_SetScrollHereY(0.5f);
             }
             ImGui_PopID();
@@ -188,6 +215,9 @@ void draw_quick_open(app_scene_authoring *scene)
             char item_id[96];
             snprintf(item_id, sizeof item_id, "quick.open.result.%d", visible);
             editor_ui_track_item(item_id);
+            if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui_SetTooltip("%s", asset->path ? asset->path : "Unsaved asset");
+            }
             if (asset->unresolved) {
                 ImGui_SameLine();
                 ImGui_TextDisabled("Missing");
@@ -196,6 +226,7 @@ void draw_quick_open(app_scene_authoring *scene)
         }
     }
     ImGui_EndChild();
+    afree(results);
     if (!visible) {
         ImGui_TextDisabled("No matching assets");
         editor_ui_track_item("quick.open.empty");
@@ -245,7 +276,7 @@ static bool draw_index_asset_row(
     if (asset->kind == ASSET_INDEX_PROTOTYPE && !asset->unresolved &&
         ImGui_BeginDragDropSource(0)) {
         ImGui_SetDragDropPayload("CHIBI_PROTOTYPE", asset->name, strlen(asset->name) + 1, 0);
-        ImGui_Text("Place %s in Scene", asset->name);
+        ImGui_TextUnformatted(asset->name);
         ImGui_EndDragDropSource();
     }
     bool activate = pressed && ImGui_IsMouseDoubleClicked(0) && !asset->unresolved;
@@ -259,21 +290,16 @@ static bool draw_index_asset_row(
 void draw_asset_catalog(app_scene_authoring *scene)
 {
     ImGui_SetNextItemWidth(fmaxf(1, ImGui_GetContentRegionAvail().x));
-    editor_ui_search_field("content.search", scene->asset_search, sizeof scene->asset_search, "Search assets");
     draw_asset_kind_combo("content.kind", &scene->content_kind);
     editor_ui_track_item("content.kind");
     const asset_index *index = app_scene_authoring_asset_index(scene);
-    int assets = 0;
-    ImGui_SeparatorText("Assets");
+    editor_search_result
+        *results = ranked_assets(index, scene->content_kind, scene->asset_search);
+    int assets = acount(results);
     if (ImGui_BeginChild("content_assets", (ImVec2){ 0.0f, 0.0f }, 0, 0)) {
-        for (int i = 0; index && i < asset_index_asset_count(index); i++) {
-            const asset_index_asset *asset = asset_index_asset_at(index, i);
-            if (!asset_kind_matches(asset, scene->content_kind) ||
-                !asset_index_match(asset, scene->asset_search)) {
-                continue;
-            }
-            assets++;
-            draw_index_asset_row(scene, asset, i, "content.asset");
+        for (int row = 0; row < assets; row++) {
+            int i = results[row].index;
+            draw_index_asset_row(scene, asset_index_asset_at(index, i), i, "content.asset");
         }
         if (!assets) {
             ImGui_TextDisabled(scene->asset_search[0] ? "No matching assets" : "No authored assets");
@@ -281,4 +307,5 @@ void draw_asset_catalog(app_scene_authoring *scene)
         }
     }
     ImGui_EndChild();
+    afree(results);
 }

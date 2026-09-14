@@ -4,6 +4,9 @@
 #include "editor/ui/labels.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/layout.h"
+#include "graph/authoring/optimize.h"
+#include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
@@ -28,6 +31,7 @@ typedef struct
     bool generic_source;
     char label[256];
     char search[256];
+    char component_field_path[256];
     const char *group;
 } ed_binding_choice;
 
@@ -106,6 +110,129 @@ static const ecs_component_desc *ed_component_by_key(const char *key)
         }
     }
     return NULL;
+}
+
+enum
+{
+    ED_COMPONENT_FIELD_PATH_MAX_DEPTH = 16,
+};
+
+static bool ed_field_path_append(const char *path, const char *name, char *out, size_t cap)
+{
+    int length = snprintf(out, cap, "%s%s%s", path && path[0] ? path : "", path && path[0] ? "." : "", name);
+    return length >= 0 && (size_t)length < cap;
+}
+
+static bool ed_field_path_label(const char *path, char *out, size_t cap)
+{
+    if (!path || !path[0] || !cap) {
+        return false;
+    }
+    size_t used = 0;
+    for (const char *at = path; at && *at;) {
+        const char *end = strchr(at, '.');
+        size_t length = end ? (size_t)(end - at) : strlen(at);
+        char segment[128];
+        if (!length || length >= sizeof segment) {
+            return false;
+        }
+        memcpy(segment, at, length);
+        segment[length] = '\0';
+        char label[128];
+        editor_identifier_label(segment, label, sizeof label);
+        int written = snprintf(out + used, cap - used, "%s%s", used ? "." : "", label);
+        if (written < 0 || (size_t)written >= cap - used) {
+            return false;
+        }
+        used += (size_t)written;
+        if (!end) {
+            return true;
+        }
+        at = end + 1;
+    }
+    return false;
+}
+
+static void ed_add_component_field_choice(
+    const ecs_component_desc *component,
+    const char *component_label,
+    const type_field *field,
+    const char *path,
+    const pin_spec *target,
+    ed_binding_choice **out
+)
+{
+    if (!field || !field->name ||
+        !ed_binding_compatible(target, field->type, field->type_name)) {
+        return;
+    }
+    char path_label[128];
+    if (!ed_field_path_label(path, path_label, sizeof path_label)) {
+        return;
+    }
+    ed_binding_choice choice = {
+        .binding = { .kind = PIN_BINDING_COMPONENT_FIELD,
+                     .component_key = component->key },
+        .group = "Self Components",
+    };
+    int path_length = snprintf(choice.component_field_path, sizeof choice.component_field_path, "%s", path);
+    if (path_length < 0 || (size_t)path_length >= sizeof choice.component_field_path) {
+        return;
+    }
+    snprintf(choice.label, sizeof choice.label, "Self.%s.%s", component->name, path);
+    if (strchr(path, '.')) {
+        snprintf(
+            choice.search,
+            sizeof choice.search,
+            "Get %s.%s Get %s %s Self.%s.%s",
+            component_label,
+            path_label,
+            component_label,
+            path_label,
+            component->name,
+            path
+        );
+    } else {
+        snprintf(choice.search, sizeof choice.search, "Get %s %s", component_label, path_label);
+    }
+    apush(*out, choice);
+}
+
+static void ed_add_nested_component_field_choices(
+    const ecs_component_desc *component,
+    const char *component_label,
+    const type_desc *type,
+    const char *path,
+    int depth,
+    const pin_spec *target,
+    ed_binding_choice **out
+)
+{
+    if (!type || depth >= ED_COMPONENT_FIELD_PATH_MAX_DEPTH) {
+        return;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (!field->name) {
+            continue;
+        }
+        char child_path[256];
+        if (!ed_field_path_append(path, field->name, child_path, sizeof child_path)) {
+            continue;
+        }
+        ed_add_component_field_choice(component, component_label, field, child_path, target, out);
+        if (field->type == PIN_STRUCT && field->type_name) {
+            ed_add_nested_component_field_choices(
+                component,
+                component_label,
+                registry_type_by_name(field->type_name),
+                child_path,
+                depth + 1,
+                target,
+                out
+            );
+        }
+    }
 }
 
 static const pin_spec *ed_source_match_output(
@@ -316,27 +443,14 @@ static void ed_binding_choices(
             }
             for (int field = 0; field < type->field_count; field++) {
                 const type_field *member = &type->fields[field];
-                if (!member->name ||
-                    !ed_binding_compatible(target, member->type, member->type_name)) {
-                    continue;
-                }
-                ed_binding_choice choice = {
-                    .binding = { .kind = PIN_BINDING_COMPONENT_FIELD,
-                                 .component_key = component->key,
-                                 .field_name = member->name },
-                    .group = "Self Components",
-                };
-                snprintf(
-                    choice.label,
-                    sizeof choice.label,
-                    "Self.%s.%s",
-                    component->name,
-                    member->name
+                ed_add_component_field_choice(
+                    component,
+                    component_label,
+                    member,
+                    member->name,
+                    target,
+                    out
                 );
-                char field_label[128];
-                editor_identifier_label(member->name, field_label, sizeof field_label);
-                snprintf(choice.search, sizeof choice.search, "Get %s %s", component_label, field_label);
-                apush(*out, choice);
             }
         }
         if (target->container == PIN_CONTAINER_SINGLE &&
@@ -348,6 +462,30 @@ static void ed_binding_choices(
             snprintf(choice.label, sizeof choice.label, "Delta Time");
             apush(*out, choice);
         }
+        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+            const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+            const type_desc *type = component ? component->type : NULL;
+            if (!component || !component->key || !component->name || !type) {
+                continue;
+            }
+            char component_label[128];
+            editor_component_label(component->name, component_label, sizeof component_label);
+            for (int field = 0; field < type->field_count; field++) {
+                const type_field *member = &type->fields[field];
+                if (!member->name || member->type != PIN_STRUCT || !member->type_name) {
+                    continue;
+                }
+                ed_add_nested_component_field_choices(
+                    component,
+                    component_label,
+                    registry_type_by_name(member->type_name),
+                    member->name,
+                    1,
+                    target,
+                    out
+                );
+            }
+        }
     }
     ed_source_choices(e, target, out, matches_out);
 }
@@ -356,6 +494,10 @@ const char *ed_binding_label(const editor *e, const pin_binding *binding, char *
 {
     if (!binding) {
         return "Literal";
+    }
+    if (binding->kind == PIN_BINDING_LOCAL) {
+        const graph_local *local = graph_local_by_id(e->active_graph, binding->local_id);
+        return local ? local->name : "Missing local";
     }
     if (binding->kind == PIN_BINDING_DELTA_TIME) {
         return "Delta Time";
@@ -464,10 +606,56 @@ void ed_open_binding_popup(editor *e, node *n, int index)
     e->binding_node = n;
     e->binding_node_id = n->id;
     e->binding_pin = index;
+    e->binding_axis = -1;
     e->binding_search[0] = '\0';
     e->binding_selected = 0;
     e->binding_focus_search = true;
     ImGui_OpenPopup("pin_binding_popup", 0);
+}
+
+void ed_open_vector_binding_popup(editor *e, node *n, int index, int axis)
+{
+    ed_open_binding_popup(e, n, index);
+    e->binding_axis = axis;
+}
+
+node *ed_vector_source(const editor *e, const node *n, int index)
+{
+    node *source = NULL;
+    int pin = -1;
+    return ed_inline_source_for(e, n, index, &source, &pin) &&
+                   graph_node_is_vector_constructor(source)
+             ? source
+             : NULL;
+}
+
+static node *ed_make_inline_vector(editor *e, node *target, int index)
+{
+    node *source = ed_vector_source(e, target, index);
+    if (source) {
+        return source;
+    }
+    const pin_spec *pin = &target->input_pins[index];
+    const node_desc *desc = graph_vector_constructor(pin);
+    assert(desc);
+    source = graph_add_node(e->active_graph, desc);
+    const float *value = pin->default_value.ptr;
+    for (int axis = 0; axis < source->input_count; axis++) {
+        pin_value scalar = { .type = PIN_F32,
+                             .type_name = "float",
+                             .f = value ? value[axis] : 0 };
+        pin_coerce(&scalar, &source->input_pins[axis]);
+        int result = graph_set_pin_default(e->active_graph, source, false, axis, &scalar);
+        assert(result == 0);
+    }
+    int result = graph_connect_data(e->active_graph, source, 0, target, index);
+    assert(result == 0);
+    (void)result;
+    result = graph_set_node_inline(e->active_graph, source, true);
+    assert(result == 0);
+    source->x = target->x - 190;
+    source->y = target->y;
+    return source;
 }
 
 static node *ed_binding_target(editor *e)
@@ -503,109 +691,8 @@ bool ed_inline_source_for(const editor *e, const node *target, int index, node *
            );
 }
 
-static const ecs_component_desc *ed_getter_component(const node *source)
+static void ed_forget_removed_node(editor *e, node *removed, uint64_t id)
 {
-    if (!source || !source->desc || source->desc->pure_kind != NODE_PURE_READ ||
-        source->desc->input_count != 0 || source->desc->output_count != 1 ||
-        source->output_count != 1 || !source->desc->name ||
-        strncmp(source->desc->name, "Get_", 4) != 0 || !source->desc->access ||
-        source->desc->access->read_count != 1 || !source->desc->access->reads) {
-        return NULL;
-    }
-    const char *name = source->desc->name + 4;
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
-        if (component && component->name && component->type && component->key &&
-            !strcmp(component->name, name) &&
-            component->id == source->desc->access->reads[0]) {
-            return component;
-        }
-    }
-    return NULL;
-}
-
-static bool ed_getter_has_single_consumer(
-    const graph *g,
-    const node *source,
-    const node *target,
-    int source_pin,
-    int target_pin
-)
-{
-    if (!g || !source || !target || source_pin != 0 || target_pin < 0 ||
-        source->output_count != 1) {
-        return false;
-    }
-    int data_edges = 0;
-    for (int i = 0; i < acount(g->edges); i++) {
-        const edge *candidate = &g->edges[i];
-        if (candidate->to_id == source->id) {
-            return false;
-        }
-        if (candidate->from_id != source->id) {
-            continue;
-        }
-        if (candidate->kind != GRAPH_EDGE_DATA ||
-            candidate->from_pin_id != source->output_pins[source_pin].id) {
-            return false;
-        }
-        data_edges++;
-        if (candidate->to_id != target->id ||
-            candidate->to_pin_id != target->input_pins[target_pin].id) {
-            return false;
-        }
-    }
-    return data_edges == 1;
-}
-
-static bool ed_getter_binding(
-    const ecs_component_desc *component,
-    const pin_spec *output,
-    const pin_spec *target,
-    const node_desc *conversion,
-    pin_binding *binding
-)
-{
-    if (!component || !component->type || !output || !target || !binding ||
-        (target->flags & (PIN_FLAG_SETTING | PIN_FLAG_WILDCARD)) ||
-        target->binding || output->kind != PIN_DATA || target->kind != PIN_DATA) {
-        return false;
-    }
-    pin_spec whole = { .type = PIN_STRUCT,
-                       .type_name = component->type->name,
-                       .kind = PIN_DATA,
-                       .container = PIN_CONTAINER_SINGLE };
-    if (!conversion && pin_types_compatible(&whole, target) &&
-        pin_types_compatible(output, &whole)) {
-        *binding = (pin_binding){ .kind = PIN_BINDING_COMPONENT,
-                                  .component_key = component->key };
-        return true;
-    }
-    if (!conversion || component->type->field_count != 1) {
-        return false;
-    }
-    char conversion_name[128];
-    snprintf(conversion_name, sizeof conversion_name, "Unwrap_%s", component->name);
-    if (conversion != registry_node_by_name(conversion_name)) {
-        return false;
-    }
-    const type_field *field = &component->type->fields[0];
-    pin_spec value = { .type = field->type,
-                       .type_name = field->type_name,
-                       .kind = PIN_DATA,
-                       .container = PIN_CONTAINER_SINGLE };
-    if (!pin_types_compatible(output, &whole) || !pin_types_compatible(&value, target)) {
-        return false;
-    }
-    *binding = (pin_binding){ .kind = PIN_BINDING_COMPONENT_FIELD,
-                              .component_key = component->key,
-                              .field_name = field->name };
-    return true;
-}
-
-static void ed_forget_removed_node(editor *e, node *removed)
-{
-    uint64_t id = removed->id;
     ed_remove_selected(e, removed);
     if (e->reveal_target == removed) {
         e->reveal_target = NULL;
@@ -677,100 +764,82 @@ bool ed_simplify_component_getter(
     const node_desc *conversion
 )
 {
-    if (!ed_binding_scope_available(e) || !e->active_graph || !source ||
-        !target || source == target || source->disabled || source->breakpoint ||
-        source->breakpoint_enabled || target->disabled || target->breakpoint ||
-        target->breakpoint_enabled || target_pin < 0 || target_pin >= target->input_count ||
-        graph_node_by_id(e->active_graph, source->id) != source ||
-        graph_node_by_id(e->active_graph, target->id) != target) {
+    if (!ed_binding_scope_available(e) || !e->active_graph || !source || !target) {
         return false;
     }
     node *connected = NULL;
     int connected_pin = -1;
     if (!graph_input_source(e->active_graph, target, target_pin, &connected, &connected_pin) ||
         connected != source || connected_pin != source_pin ||
-        graph_input_conversion(e->active_graph, target, target_pin) != conversion ||
-        !ed_getter_has_single_consumer(e->active_graph, source, target, source_pin, target_pin)) {
+        graph_input_conversion(e->active_graph, target, target_pin) != conversion) {
         return false;
     }
-    const ecs_component_desc *component = ed_getter_component(source);
-    pin_binding binding = { 0 };
-    if (!component || !ed_getter_binding(
-                          component,
-                          &source->output_pins[source_pin],
-                          &target->input_pins[target_pin],
-                          conversion,
-                          &binding
-                      )) {
+    uint64_t id = source->id;
+    if (!graph_fold_component_getter(e->active_graph, source)) {
         return false;
     }
-    if (graph_remove_edge(e->active_graph, source, source_pin, target, target_pin) != 0) {
-        return false;
-    }
-    if (graph_set_pin_binding(e->active_graph, target, 0, target_pin, &binding) != 0) {
-        assert(
-            graph_connect_data_conversion(e->active_graph, source, source_pin, target, target_pin, conversion) ==
-            0
-        );
-        return false;
-    }
-    ed_forget_removed_node(e, source);
-    if (graph_remove_node(e->active_graph, source) != 0) {
-        assert(graph_set_pin_binding(e->active_graph, target, 0, target_pin, NULL) == 0);
-        assert(
-            graph_connect_data_conversion(e->active_graph, source, source_pin, target, target_pin, conversion) ==
-            0
-        );
-        return false;
-    }
+    ed_forget_removed_node(e, source, id);
     return true;
 }
 
 int ed_optimize_graph(editor *e)
 {
-    if (!ed_binding_scope_available(e) || !e->active_graph) {
+    if (!e->active_graph || e->active_graph->math_expression ||
+        e->active_graph->flow_pause_count) {
         return 0;
     }
     char *before = ed_snapshot(e);
     if (!before) {
         return -1;
     }
-    int optimized = 0;
-    bool repeat = true;
-    while (repeat) {
-        repeat = false;
-        for (int i = 0; i < acount(e->active_graph->nodes) && !repeat; i++) {
-            node *target = e->active_graph->nodes[i];
-            for (int pin = 0; pin < target->input_count; pin++) {
-                node *source = NULL;
-                int source_pin = -1;
-                if (!graph_input_source(e->active_graph, target, pin, &source, &source_pin)) {
-                    continue;
-                }
-                if (!ed_simplify_component_getter(
-                        e,
-                        source,
-                        source_pin,
-                        target,
-                        pin,
-                        graph_input_conversion(e->active_graph, target, pin)
-                    )) {
-                    continue;
-                }
-                optimized++;
-                repeat = true;
-                break;
+    typedef struct
+    {
+        node *pointer;
+        uint64_t id;
+    } original_node;
+    original_node *original = NULL;
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        node *n = e->active_graph->nodes[i];
+        apush(original, ((original_node){ n, n->id }));
+    }
+    graph_optimize_report report = { 0 };
+    int result = graph_optimize(e->active_graph, NULL, &report);
+    snprintf(
+        e->optimize_summary,
+        sizeof e->optimize_summary,
+        "%d inputs folded, %d nodes removed, %d locals created. %d candidates "
+        "skipped.",
+        report.folded_inputs,
+        report.removed_nodes,
+        report.created_aliases,
+        acount(report.skipped)
+    );
+    memset(e->optimize_skips, 0, sizeof e->optimize_skips);
+    for (int i = 0; i < acount(report.skipped); i++) {
+        e->optimize_skips[report.skipped[i].reason]++;
+    }
+    if (result > 0) {
+        for (int i = 0; i < acount(original); i++) {
+            if (!graph_node_by_id(e->active_graph, original[i].id)) {
+                ed_forget_removed_node(e, original[i].pointer, original[i].id);
             }
         }
-    }
-    if (!optimized) {
+        asetlen(e->selected_links, 0);
+        e->has_context_link = e->has_hovered_link = 0;
+        if (ImGui_GetCurrentContext() && e->canvas_size.x > 0) {
+            ed_arrange_in_transaction(e);
+        } else {
+            graph_layout(e->active_graph);
+        }
+        ed_push_string(&e->undo, before);
+        ed_free_string_stack(&e->redo);
+        e->edit_pending = 1;
+    } else {
         free(before);
-        return 0;
     }
-    ed_push_string(&e->undo, before);
-    ed_free_string_stack(&e->redo);
-    e->edit_pending = 1;
-    return optimized;
+    graph_optimize_report_free(&report);
+    afree(original);
+    return result;
 }
 
 static int ed_remove_inline_source(editor *e, node *target, int index)
@@ -811,17 +880,14 @@ static const char *ed_inline_source_label(const editor *e, const node *target, i
 
 static int ed_choose_source(editor *e, node *target, int target_pin, const ed_binding_choice *choice)
 {
-    char *before = ed_snapshot(e);
     node *old_source = NULL;
     int old_pin = -1;
     bool had_inline = ed_inline_source_for(e, target, target_pin, &old_source, &old_pin);
     node *source = ed_spawn_match(e, &choice->match);
-    if (!before || !source || choice->source_pin < 0 ||
-        choice->source_pin >= source->output_count) {
+    if (!source || choice->source_pin < 0 || choice->source_pin >= source->output_count) {
         if (source) {
             graph_remove_node(e->active_graph, source);
         }
-        free(before);
         return -1;
     }
     bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
@@ -829,7 +895,6 @@ static int ed_choose_source(editor *e, node *target, int target_pin, const ed_bi
                   e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     if (shader && !shader_graph_init_node(e->active_graph, source)) {
         graph_remove_node(e->active_graph, source);
-        free(before);
         return -1;
     }
     const pin_spec *output = &source->output_pins[choice->source_pin];
@@ -841,25 +906,53 @@ static int ed_choose_source(editor *e, node *target, int target_pin, const ed_bi
         graph_connect_data_conversion(e->active_graph, source, choice->source_pin, target, target_pin, conversion) !=
             0) {
         graph_remove_node(e->active_graph, source);
-        free(before);
         return -1;
     }
     int cleared = graph_set_pin_binding(e->active_graph, target, 0, target_pin, NULL);
-    int target_visible = graph_set_node_inline(e->active_graph, target, false);
     int folded = graph_set_node_inline(e->active_graph, source, true);
-    assert(cleared == 0 && target_visible == 0 && folded == 0);
+    assert(cleared == 0 && folded == 0);
     (void)cleared;
-    (void)target_visible;
     (void)folded;
     source->x = target->x - 190.0f;
     source->y = target->y;
     if (had_inline && old_source != source) {
         graph_remove_node(e->active_graph, old_source);
     }
+    return 0;
+}
+
+static int ed_choose_binding(editor *e, node *target, int index, const ed_binding_choice *choice)
+{
+    char *before = ed_snapshot(e);
+    node *owner = graph_inline_owner(e->active_graph, target);
+    node *created = NULL;
+    if (e->binding_axis >= 0) {
+        bool existed = ed_vector_source(e, target, index) != NULL;
+        target = ed_make_inline_vector(e, target, index);
+        created = existed ? NULL : target;
+        index = e->binding_axis;
+    }
+    pin_binding binding = choice->binding;
+    if (binding.kind == PIN_BINDING_COMPONENT_FIELD) {
+        binding.field_name = choice->component_field_path;
+    }
+    int result = choice->generic_source
+                   ? ed_choose_source(e, target, index, choice)
+                   : graph_set_pin_binding(e->active_graph, target, false, index, &binding);
+    if (!choice->generic_source && result == 0) {
+        result = ed_remove_inline_source(e, target, index);
+    }
+    if (result != 0) {
+        if (created) {
+            graph_remove_node(e->active_graph, created);
+        }
+        free(before);
+        return result;
+    }
     ed_push_string(&e->undo, before);
     ed_free_string_stack(&e->redo);
     e->edit_pending = 1;
-    ed_select_node(e, target, false);
+    ed_select_node(e, owner, false);
     return 0;
 }
 
@@ -883,7 +976,20 @@ int ed_expand_inline_source(editor *e, node *target, int index)
 
 int ed_clear_input_source(editor *e, node *target, int index)
 {
-    ed_snapshot_before(e);
+    node *vector = ed_vector_source(e, target, index);
+    if (vector) {
+        float components[4] = { 0 };
+        for (int axis = 0; axis < vector->input_count; axis++) {
+            pin_value value = vector->input_pins[axis].default_value;
+            components[axis] = value.type == PIN_F64 ? (float)value.d : value.f;
+        }
+        ed_snapshot_before(e);
+        pin_value value = target->input_pins[index].default_value;
+        value.ptr = components;
+        graph_set_pin_default(e->active_graph, target, false, index, &value);
+    } else {
+        ed_snapshot_before(e);
+    }
     if (ed_remove_inline_source(e, target, index) != 0 ||
         graph_set_pin_binding(e->active_graph, target, 0, index, NULL) != 0) {
         return -1;
@@ -896,6 +1002,7 @@ static void ed_close_binding_popup(editor *e)
     e->binding_node = NULL;
     e->binding_node_id = 0;
     e->binding_pin = -1;
+    e->binding_axis = -1;
     e->binding_search[0] = '\0';
     e->binding_selected = 0;
     e->binding_focus_search = false;
@@ -910,13 +1017,7 @@ static const type_field *ed_binding_component_field(const pin_binding *binding)
     if (!component || !component->type || !binding->field_name) {
         return NULL;
     }
-    for (int i = 0; i < component->type->field_count; i++) {
-        const type_field *field = &component->type->fields[i];
-        if (field->name && !strcmp(field->name, binding->field_name)) {
-            return field;
-        }
-    }
-    return NULL;
+    return pin_type_field_path(component->type, binding->field_name);
 }
 
 int ed_convert_binding(editor *e)
@@ -977,7 +1078,7 @@ int ed_convert_binding(editor *e)
     } else if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
         const ecs_component_desc *component = ed_component_by_key(binding->component_key);
         const type_field *field = ed_binding_component_field(binding);
-        if (!component || !field) {
+        if (!component || !field || strchr(binding->field_name, '.')) {
             free(before);
             return -1;
         }
@@ -1076,7 +1177,8 @@ bool ed_binding_can_convert(const editor *e)
     if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
         const type_field *field = ed_binding_component_field(binding);
         const ecs_component_desc *component = ed_component_by_key(binding->component_key);
-        if (!field || !component || !component->name) {
+        if (!field || !component || !component->name ||
+            strchr(binding->field_name, '.')) {
             return false;
         }
         char get_name[128];
@@ -1110,7 +1212,36 @@ void ed_draw_binding_popup(editor *e)
     if (!ImGui_BeginPopup("pin_binding_popup", 0)) {
         return;
     }
-    pin_spec *target = &n->input_pins[e->binding_pin];
+    pin_spec component = { .name = "Component", .type = PIN_F32, .type_name = "float" };
+    const char *axes[] = { "X", "Y", "Z", "W" };
+    if (e->binding_axis >= 0) {
+        component.name = axes[e->binding_axis];
+    }
+    pin_spec *target = e->binding_axis >= 0 ? &component
+                                            : &n->input_pins[e->binding_pin];
+    const graph_local *local = graph_input_local(e->active_graph, n, e->binding_pin);
+    if (local) {
+        ImGui_Text("%s", local->name);
+        if (ImGui_ButtonEx("Go to source", (ImVec2){ 0, 0 })) {
+            node *source = graph_node_by_id(e->active_graph, local->source_id);
+            ed_clear_selection(e);
+            ed_add_selected(e, source);
+            e->reveal_target = source;
+            ed_close_binding_popup(e);
+        }
+        editor_ui_track_item("graph.local.jump");
+        ImGui_SameLine();
+        if (ImGui_ButtonEx("Expand local", (ImVec2){ 0, 0 })) {
+            ed_snapshot_before(e);
+            int expand_local_result = graph_expand_local(e->active_graph, local->id);
+            assert(expand_local_result == 0);
+            (void)expand_local_result;
+            ed_close_binding_popup(e);
+        }
+        editor_ui_track_item("graph.local.expand");
+        ImGui_EndPopup();
+        return;
+    }
     ed_binding_choice *choices = NULL;
     ed_search_match *matches = NULL;
     ed_binding_choices(e, target, &choices, &matches);
@@ -1173,20 +1304,18 @@ void ed_draw_binding_popup(editor *e)
             i
         );
         editor_ui_track_item(track);
+        if (choice->generic_source) {
+            snprintf(
+                track,
+                sizeof track,
+                "graph.binding.source.%s.%d",
+                choice->match.desc->name,
+                choice->source_pin
+            );
+            editor_ui_track_item(track);
+        }
         if (clicked || (choose && row == e->binding_selected)) {
-            int result = choice->generic_source
-                           ? ed_choose_source(e, n, e->binding_pin, choice)
-                           : (ed_snapshot_before(e),
-                              graph_set_pin_binding(
-                                  e->active_graph,
-                                  n,
-                                  0,
-                                  e->binding_pin,
-                                  &choice->binding
-                              ) == 0 &&
-                                      ed_remove_inline_source(e, n, e->binding_pin) == 0
-                                  ? 0
-                                  : -1);
+            int result = ed_choose_binding(e, n, e->binding_pin, choice);
             if (result == 0) {
                 ed_close_binding_popup(e);
             }
@@ -1197,6 +1326,12 @@ void ed_draw_binding_popup(editor *e)
     ImGui_EndChild();
     if (!visible) {
         ImGui_TextDisabled("No compatible sources");
+    }
+    if (e->binding_axis >= 0) {
+        afree(choices);
+        afree(matches);
+        ImGui_EndPopup();
+        return;
     }
     node *inline_source = NULL;
     int inline_pin = -1;
@@ -1237,8 +1372,33 @@ void ed_draw_binding_popup(editor *e)
     ImGui_EndPopup();
 }
 
-int ed_draw_bound_input(editor *e, node *n, int index, ImVec2 pos, float width)
+int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
 {
+    ImVec2 pos = layout.pos;
+    float width = layout.width;
+    const char *axes[] = { "X", "Y", "Z", "W" };
+    const char *axis = layout.label                        ? layout.label
+                     : graph_node_is_vector_constructor(n) ? axes[index]
+                                                           : NULL;
+    node *literal = NULL;
+    int literal_pin = -1;
+    if (ed_inline_source_for(e, n, index, &literal, &literal_pin) &&
+        (literal->desc->display_class == NODE_DISPLAY_LITERAL ||
+         ed_pin_editable(e->active_graph, literal, ED_PIN_OUTPUT, literal_pin)) &&
+        !ed_vector_width(&literal->output_pins[literal_pin])) {
+        int kind = literal->input_count == 1 ? ED_PIN_INPUT : ED_PIN_OUTPUT;
+        int pin = kind == ED_PIN_INPUT ? 0 : literal_pin;
+        float button = ImGui_GetFrameHeight() * e->zoom;
+        int changed = ed_draw_value_editor(
+            e,
+            literal,
+            kind,
+            pin,
+            (ed_value_layout){ pos, width - button - 4 * e->zoom, axis }
+        );
+        ed_draw_binding_trigger(e, n, index, (ImVec2){ pos.x + width - button, pos.y }, button);
+        return changed;
+    }
     const pin_binding *binding = n->input_pins[index].binding;
     char source[256];
     char chip[128];
@@ -1247,6 +1407,11 @@ int ed_draw_bound_input(editor *e, node *n, int index, ImVec2 pos, float width)
                                ? ed_binding_label(e, binding, source, sizeof source)
                                : ed_inline_source_label(e, n, index, source, sizeof source);
     const char *short_label = ed_binding_chip_label(e, binding, full_label, chip, sizeof chip);
+    char component_label[160];
+    if (axis) {
+        snprintf(component_label, sizeof component_label, "%s: %s", axis, short_label);
+        short_label = component_label;
+    }
     ImGui_SetCursorScreenPos(pos);
     ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
     ImGui_PushStyleVarImVec2(
@@ -1272,7 +1437,7 @@ int ed_draw_bound_input(editor *e, node *n, int index, ImVec2 pos, float width)
         ed_open_binding_popup(e, n, index);
     }
     if (ImGui_IsItemHovered(0)) {
-        ImGui_SetItemTooltip("Source: %s\nClick to choose another source or use the literal value.", full_label);
+        ImGui_SetItemTooltip("Source: %s", full_label);
     }
     e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
     ImGui_PopStyleVar();
@@ -1284,7 +1449,9 @@ bool ed_binding_trigger_available(editor *e, node *n, int index)
 {
     if (!ed_source_scope_available(e) || !e->active_graph || !n || index < 0 ||
         index >= n->input_count || n->input_pins[index].kind != PIN_DATA ||
-        n->input_pins[index].binding) {
+        n->input_pins[index].binding ||
+        (graph_node_is_inline(e->active_graph, n) &&
+         !graph_node_is_vector_constructor(n))) {
         return false;
     }
     node *source = NULL;
@@ -1306,7 +1473,7 @@ bool ed_draw_binding_trigger(editor *e, node *n, int index, ImVec2 pos, float si
     bool clicked = editor_ui_icon_button_sized(id, EDITOR_ICON_FA_CODE_FORK, true, size);
     editor_ui_track_item(id);
     if (ImGui_IsItemHovered(ImGuiHoveredFlags_None)) {
-        ImGui_SetTooltip("Bind a source to this input");
+        ImGui_SetTooltip("Choose source");
     }
     e->controls_hovered |= ImGui_IsItemHovered(ImGuiHoveredFlags_None) ||
                            ImGui_IsItemActive();

@@ -93,7 +93,7 @@ bool behavior_instance_dispatch_batch(
     if (profile) {
         uint64_t elapsed = behavior_profile_leave(&scope);
         if (bound) {
-            bi->profile(name, elapsed, BEHAVIOR_PROFILE_SETUP, bi->profile_user);
+            bi->profile(name, elapsed, elapsed + scope.children, BEHAVIOR_PROFILE_SETUP, bi->profile_user);
         }
     }
     if (!bound) {
@@ -121,7 +121,7 @@ bool behavior_instance_dispatch_batch(
     }
     if (profile) {
         uint64_t elapsed = behavior_profile_leave(&scope);
-        bi->profile(name, elapsed, BEHAVIOR_PROFILE_START, bi->profile_user);
+        bi->profile(name, elapsed, elapsed + scope.children, BEHAVIOR_PROFILE_START, bi->profile_user);
     }
     return true;
 }

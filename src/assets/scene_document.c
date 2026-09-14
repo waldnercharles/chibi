@@ -114,6 +114,28 @@ void game_scene_document_free(game_scene_document *document)
     free(document);
 }
 
+int game_scene_document_set_perspective(game_scene_document *document, bool perspective)
+{
+    if (!document) {
+        return -1;
+    }
+    document->perspective = perspective;
+    return 0;
+}
+
+int game_scene_document_entity_index(const game_scene_document *document, const char *name)
+{
+    if (!document || !name || !name[0]) {
+        return -1;
+    }
+    for (int i = 0; i < acount(document->entities); i++) {
+        if (!strcmp(document->entities[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int game_scene_document_add_entity(
     game_scene_document *document,
     const char *name,
@@ -141,6 +163,57 @@ int game_scene_document_add_entity(
         return -1;
     }
     apush(document->entities, entity);
+    return 0;
+}
+
+int game_scene_document_remove_entity(game_scene_document *document, int index)
+{
+    if (!document || index < 0 || index >= acount(document->entities)) {
+        return -1;
+    }
+    free_entity(&document->entities[index]);
+    int remaining = acount(document->entities) - index - 1;
+    if (remaining > 0) {
+        memmove(
+            &document->entities[index],
+            &document->entities[index + 1],
+            (size_t)remaining * sizeof *document->entities
+        );
+    }
+    asetlen(document->entities, acount(document->entities) - 1);
+    return 0;
+}
+
+int game_scene_document_set_entity_prototype(game_scene_document *document, int index, const char *prototype)
+{
+    if (!document || index < 0 || index >= acount(document->entities) ||
+        !prototype || !prototype[0]) {
+        return -1;
+    }
+    char *copy = xstrdup(prototype);
+    free(document->entities[index].prototype);
+    document->entities[index].prototype = copy;
+    return 0;
+}
+
+int game_scene_document_set_entity_behaviors(
+    game_scene_document *document,
+    int index,
+    const char *const *behaviors,
+    int behavior_count
+)
+{
+    if (!document || index < 0 || index >= acount(document->entities) ||
+        behavior_count < 0 || (behavior_count && !behaviors)) {
+        return -1;
+    }
+    char **copy = NULL;
+    if (copy_names(&copy, behaviors, behavior_count) != 0) {
+        free_names(&copy);
+        return -1;
+    }
+    free_names(&document->entities[index].behaviors);
+    document->entities[index].behaviors = copy;
     return 0;
 }
 

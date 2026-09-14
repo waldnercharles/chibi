@@ -46,6 +46,7 @@ const requests = [
   { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
   { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
+  { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
   { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
   { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
@@ -87,6 +88,23 @@ if (responses.length !== expectedResponses) {
   throw new Error(`expected ${expectedResponses} responses, got ${responses.length}`);
 }
 const responseById = new Map(responses.map((response) => [response.id, response]));
+
+function toolPayload(response) {
+  const structured = response?.result?.structuredContent;
+  if (structured !== undefined) {
+    return structured;
+  }
+  const text = response?.result?.content?.[0]?.text;
+  if (typeof text !== "string" || !text) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
 if (responseById.get(1)?.result?.serverInfo?.name !== "chibi" ||
     responseById.get(1)?.result?.protocolVersion !== "2025-06-18") {
   throw new Error("initialize did not identify chibi");
@@ -123,21 +141,22 @@ if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" 
       tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
-const status = JSON.parse(responseById.get(3).result.content[0].text);
-const assets = JSON.parse(responseById.get(4).result.content[0].text);
-const catalog = JSON.parse(responseById.get(14).result.content[0].text);
-const search = JSON.parse(responseById.get(15).result.content[0].text);
-const dependencies = JSON.parse(responseById.get(16).result.content[0].text);
-const healthGraph = JSON.parse(responseById.get(19).result.content[0].text);
-const libraryGraph = JSON.parse(responseById.get(20).result.content[0].text);
-const read = JSON.parse(responseById.get(5).result.content[0].text);
-const validation = JSON.parse(responseById.get(6).result.content[0].text);
-const registry = JSON.parse(responseById.get(7).result.content[0].text);
-const contract = JSON.parse(responseById.get(27).result.content[0].text);
-const pagedAssets = JSON.parse(responseById.get(28).result.content[0].text);
-const pagedCatalog = JSON.parse(responseById.get(29).result.content[0].text);
-const pagedSearch = JSON.parse(responseById.get(30).result.content[0].text);
-const secondCatalogPage = JSON.parse(responseById.get(31).result.content[0].text);
+const status = toolPayload(responseById.get(3));
+const assets = toolPayload(responseById.get(4));
+const catalog = toolPayload(responseById.get(14));
+const search = toolPayload(responseById.get(15));
+const dependencies = toolPayload(responseById.get(16));
+const healthGraph = toolPayload(responseById.get(19));
+const libraryGraph = toolPayload(responseById.get(20));
+const healthGraphLayout = toolPayload(responseById.get(34));
+const read = toolPayload(responseById.get(5));
+const validation = toolPayload(responseById.get(6));
+const registry = toolPayload(responseById.get(7));
+const contract = toolPayload(responseById.get(27));
+const pagedAssets = toolPayload(responseById.get(28));
+const pagedCatalog = toolPayload(responseById.get(29));
+const pagedSearch = toolPayload(responseById.get(30));
+const secondCatalogPage = toolPayload(responseById.get(31));
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -148,6 +167,12 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     catalog.result?.content_hash !== dependencies.result?.content_hash ||
     healthGraph.ok !== true || healthGraph.result?.name !== "HealthBehavior" ||
     !healthGraph.result?.graph || !Array.isArray(healthGraph.result.graph.nodes) ||
+    healthGraph.result?.layout_included !== false ||
+    healthGraph.result.graph.nodes.some((node) => Object.hasOwn(node, "x") || Object.hasOwn(node, "y")) ||
+    !Array.isArray(healthGraph.result?.graphs) ||
+    healthGraph.result.graphs.some((graph) => Object.hasOwn(graph, "nodes") || Object.hasOwn(graph, "edges")) ||
+    healthGraphLayout.ok !== true || healthGraphLayout.result?.layout_included !== true ||
+    !healthGraphLayout.result?.graph?.nodes?.some((node) => Object.hasOwn(node, "x") && Object.hasOwn(node, "y")) ||
     !healthGraph.result?.validation ||
     libraryGraph.ok !== true || libraryGraph.result?.name !== "DirectionMath" ||
     libraryGraph.result?.graph?.name !== "Direction Orientation" ||
@@ -166,7 +191,8 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     pagedSearch.result?.has_more !== (search.result?.assets?.length > 1) ||
     pagedSearch.result?.assets?.[0]?.members !== undefined ||
     secondCatalogPage.ok !== true || secondCatalogPage.result?.count !== 1 ||
-    secondCatalogPage.result?.next_cursor !== 2) {
+    secondCatalogPage.result?.next_cursor !== 2 ||
+    (responseById.get(14)?.result?.content?.[0]?.text || "").length > 2048) {
   throw new Error("native MCP operations failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
@@ -228,7 +254,7 @@ if (cwdIndependent.error || cwdIndependent.status !== 0) {
 }
 const cwdResponses = cwdIndependent.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
 if (cwdResponses[0]?.result?.isError ||
-    JSON.parse(cwdResponses[0]?.result?.content?.[0]?.text || "{}").ok !== true) {
+    toolPayload(cwdResponses[0]).ok !== true) {
   throw new Error("server did not resolve its project root independently of CWD");
 }
 
@@ -241,6 +267,12 @@ const nativeHealthGraph = nativeRequest("inspect_graph", {
   kind: "behavior",
   name: "HealthBehavior",
   graph_name: "",
+});
+const nativeHealthGraphLayout = nativeRequest("inspect_graph", {
+  kind: "behavior",
+  name: "HealthBehavior",
+  graph_name: "",
+  include_layout: true,
 });
 const nativeLibraryGraph = nativeRequest("inspect_graph", {
   kind: "library",
@@ -258,6 +290,13 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeDependencies.response.ok !== true || nativeDependencies.response.result?.asset?.name !== "HealthBehavior" ||
     nativeHealthGraph.response.ok !== true || nativeHealthGraph.response.result?.graph?.name !== "" ||
     nativeHealthGraph.response.result?.graph?.nodes?.length < 1 ||
+    nativeHealthGraph.response.result?.layout_included !== false ||
+    nativeHealthGraph.response.result.graph.nodes.some((node) => Object.hasOwn(node, "x") || Object.hasOwn(node, "y")) ||
+    !Array.isArray(nativeHealthGraph.response.result?.graphs) ||
+    nativeHealthGraph.response.result.graphs.some((graph) => Object.hasOwn(graph, "nodes") || Object.hasOwn(graph, "edges")) ||
+    nativeHealthGraphLayout.response.ok !== true ||
+    nativeHealthGraphLayout.response.result?.layout_included !== true ||
+    !nativeHealthGraphLayout.response.result?.graph?.nodes?.some((node) => Object.hasOwn(node, "x") && Object.hasOwn(node, "y")) ||
     nativeLibraryGraph.response.ok !== true || nativeLibraryGraph.response.result?.graph?.name !== "Direction Orientation" ||
     nativeRead.response.result?.name !== "HealthBehavior" ||
     nativeValidation.response.result?.valid !== true ||
@@ -492,12 +531,12 @@ try {
   }
   const scenarioResponses = scenarioProcess.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
   const scenarioById = new Map(scenarioResponses.map((response) => [response.id, response]));
-  const firstScenario = JSON.parse(scenarioById.get(2)?.result?.content?.[0]?.text || "{}");
-  const secondScenario = JSON.parse(scenarioById.get(3)?.result?.content?.[0]?.text || "{}");
-  const firstSnapshot = JSON.parse(scenarioById.get(5)?.result?.content?.[0]?.text || "{}");
-  const secondSnapshot = JSON.parse(scenarioById.get(6)?.result?.content?.[0]?.text || "{}");
-  const firstRecord = JSON.parse(scenarioById.get(8)?.result?.content?.[0]?.text || "{}");
-  const secondRecord = JSON.parse(scenarioById.get(9)?.result?.content?.[0]?.text || "{}");
+  const firstScenario = toolPayload(scenarioById.get(2));
+  const secondScenario = toolPayload(scenarioById.get(3));
+  const firstSnapshot = toolPayload(scenarioById.get(5));
+  const secondSnapshot = toolPayload(scenarioById.get(6));
+  const firstRecord = toolPayload(scenarioById.get(8));
+  const secondRecord = toolPayload(scenarioById.get(9));
   if (firstRecord.ok !== true || secondRecord.ok !== true) {
     throw new Error(`scenario recording failed: ${JSON.stringify([firstRecord.error, secondRecord.error])}`);
   }
@@ -550,7 +589,7 @@ try {
     throw replayProcess.error || new Error(replayProcess.stderr || "replay MCP server failed");
   }
   const replayResponse = JSON.parse(replayProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
-  const replayResult = JSON.parse(replayResponse.result?.content?.[0]?.text || "{}");
+  const replayResult = toolPayload(replayResponse);
   const replayPathRequest = {
     jsonrpc: "2.0",
     id: 15,
@@ -568,7 +607,7 @@ try {
     throw replayPathProcess.error || new Error(replayPathProcess.stderr || "recording path replay MCP server failed");
   }
   const replayPathResponse = JSON.parse(replayPathProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
-  const replayPathResult = JSON.parse(replayPathResponse.result?.content?.[0]?.text || "{}");
+  const replayPathResult = toolPayload(replayPathResponse);
   const recordingId = firstRecord.result?.recording_id || firstRecording?.recording_id || firstRecording?.id;
   const recordingResourceRequest = {
     jsonrpc: "2.0",
@@ -613,7 +652,7 @@ try {
     throw divergenceProcess.error || new Error(divergenceProcess.stderr || "divergence MCP server failed");
   }
   const divergenceResponse = JSON.parse(divergenceProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
-  const divergenceResult = JSON.parse(divergenceResponse.result?.content?.[0]?.text || "{}");
+  const divergenceResult = toolPayload(divergenceResponse);
   const firstDivergenceFrame = divergenceResult.result?.first_divergence_frame ??
     divergenceResult.result?.first_divergence?.frame ??
     divergenceResult.result?.divergence?.frame;

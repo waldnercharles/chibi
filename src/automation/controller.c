@@ -3,6 +3,8 @@
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
+#include "automation/asset_write.h"
+#include "automation/graph_edit.h"
 #include "ecs/ecs.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
@@ -212,6 +214,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "name", "string", false, "Graph asset name, required with kind when path is omitted." },
     { "graph_id", "uint64", false, "Select one graph by its stable authored ID." },
     { "graph_name", "string", false, "Select one graph by its authored name." },
+    { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -253,7 +256,63 @@ static const contract_field CONTRACT_READ_RECORDING[] = {
     { "id", "string", true, "Generated recording identifier." },
 };
 
+static const contract_field CONTRACT_SEARCH_NODES[] = {
+    { "query", "string", false, "Match node name, category or keywords." },
+    { "domain", "string", false, "Filter to behavior or shader nodes." },
+    { "limit", "integer", false, "Page size, default 10, maximum 50." },
+    { "offset", "integer", false, "Zero-based page offset." },
+    { "include_pins", "boolean", false, "Include typed pins, default true." },
+};
+static const contract_field CONTRACT_EDIT_GRAPH[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Graph asset path below content, or use kind/name." },
+    { "kind", "string", false, "Graph asset family." },
+    { "name", "string", false, "Graph asset name." },
+    { "create", "boolean", false, "Create a new asset without replacing existing content." },
+    { "expected_hash", "string", false, "Required current asset hash when editing." },
+    { "dry_run", "boolean", false, "Validate and return results without writing." },
+    { "graph_id", "uint64", false, "Stable graph ID." },
+    { "graph_name", "string", false, "Unique graph name." },
+    { "operations", "array", true, "Atomic semantic edit batch, at most 128 operations." },
+};
+static const contract_field CONTRACT_PREVIEW_SHADER[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Shader asset path, or use kind/name." },
+    { "kind", "string", false, "Material or shape; preview shader libraries through a consumer." },
+    { "name", "string", false, "Shader asset name." },
+    { "width", "integer", false, "Preview width, default 256, maximum 512." },
+    { "height", "integer", false, "Preview height, default 256, maximum 512." },
+    { "time", "number", false, "Deterministic preview simulation time." },
+    { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
+};
+
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
+    { "search_nodes",
+      "Find a bounded page of nodes and their typed pins for authoring.",
+      CONTRACT_SEARCH_NODES,
+      CONTRACT_FIELD_COUNT(CONTRACT_SEARCH_NODES),
+      1,
+      true,
+      true,
+      false },
+    { "edit_graph",
+      "Create or edit a graph asset with one atomic semantic batch; validate "
+      "before saving.",
+      CONTRACT_EDIT_GRAPH,
+      CONTRACT_FIELD_COUNT(CONTRACT_EDIT_GRAPH),
+      1,
+      false,
+      false,
+      true },
+    { "preview_shader",
+      "Compile a material or shape on the GPU and return a bounded PNG "
+      "preview.",
+      CONTRACT_PREVIEW_SHADER,
+      CONTRACT_FIELD_COUNT(CONTRACT_PREVIEW_SHADER),
+      1,
+      true,
+      true,
+      false },
     {
         "describe_contract",
         "Describe the native automation contract and reflected capabilities.",
@@ -604,6 +663,7 @@ static void response_error(response *result, int *exit_code, int code, const cha
         : code == CHIBI_AUTOMATION_IO_ERROR         ? "io_error"
         : code == CHIBI_AUTOMATION_VALIDATION_ERROR ? "validation_failed"
         : code == CHIBI_AUTOMATION_NOT_FOUND        ? "asset_not_found"
+        : code == CHIBI_AUTOMATION_CONFLICT         ? "asset_conflict"
                                                     : "execution_failed"
     );
     yyjson_mut_obj_add_strcpy(result->doc, error, "message", message ? message : "unknown error");
@@ -2228,7 +2288,8 @@ static void inspect_add_sorted_array(
     yyjson_mut_val *object,
     const char *key,
     yyjson_val *source,
-    bool edges
+    bool edges,
+    bool include_layout
 )
 {
     yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, key);
@@ -2250,7 +2311,33 @@ static void inspect_add_sorted_array(
     }
     qsort(items, (size_t)item_count, sizeof *items, edges ? inspect_edge_compare : inspect_item_compare);
     for (int i = 0; i < item_count; i++) {
-        yyjson_mut_arr_add_val(array, yyjson_val_mut_copy(doc, items[i].value));
+        yyjson_mut_val *copy = yyjson_val_mut_copy(doc, items[i].value);
+        if (!include_layout) {
+            if (edges) {
+                const char *const layout_keys[] = {
+                    "from_handle_x", "from_handle_y", "to_handle_x",
+                    "to_handle_y",   "reroutes",
+                };
+                for (int layout = 0;
+                     layout < (int)(sizeof layout_keys / sizeof *layout_keys);
+                     layout++) {
+                    yyjson_mut_obj_remove_key(copy, layout_keys[layout]);
+                }
+            } else {
+                const char *const layout_keys[] = {
+                    "x",
+                    "y",
+                    "inline_source",
+                    "show_advanced",
+                };
+                for (int layout = 0;
+                     layout < (int)(sizeof layout_keys / sizeof *layout_keys);
+                     layout++) {
+                    yyjson_mut_obj_remove_key(copy, layout_keys[layout]);
+                }
+            }
+        }
+        yyjson_mut_arr_add_val(array, copy);
     }
     free(items);
 }
@@ -2361,7 +2448,8 @@ static yyjson_mut_val *inspect_graph_value(
     yyjson_mut_doc *doc,
     const behavior_asset *asset,
     const graph *source,
-    const compile_report *report
+    const compile_report *report,
+    bool include_layout
 )
 {
     char *serialized = graph_save_json(source);
@@ -2375,6 +2463,7 @@ static yyjson_mut_val *inspect_graph_value(
     yyjson_mut_obj_add_uint(doc, object, "entry_id", source->entry_id);
     yyjson_mut_obj_add_uint(doc, object, "return_id", source->return_id);
     yyjson_mut_obj_add_uint(doc, object, "revision", source->topology_revision);
+    yyjson_mut_obj_add_bool(doc, object, "layout_included", include_layout);
     yyjson_mut_obj_add_bool(doc, object, "breakpoints_enabled", source->breakpoints_enabled != 0);
     yyjson_mut_obj_add_bool(doc, object, "dataflow", source->dataflow != 0);
     yyjson_mut_obj_add_int(doc, object, "call_depth_limit", source->call_depth_limit);
@@ -2386,15 +2475,18 @@ static yyjson_mut_val *inspect_graph_value(
         yyjson_mut_obj_add_strcpy(doc, object, "math_expression", source->math_expression);
     }
     yyjson_val *serialized_root = document ? yyjson_doc_get_root(document) : NULL;
-    const char *const keys[] = { "description", "comment_boxes" };
-    for (int i = 0; i < (int)(sizeof keys / sizeof *keys); i++) {
-        yyjson_val *value = yyjson_obj_get(serialized_root, keys[i]);
-        if (value) {
-            yyjson_mut_obj_add_val(doc, object, keys[i], yyjson_val_mut_copy(doc, value));
+    yyjson_val *description = yyjson_obj_get(serialized_root, "description");
+    if (description) {
+        yyjson_mut_obj_add_val(doc, object, "description", yyjson_val_mut_copy(doc, description));
+    }
+    if (include_layout) {
+        yyjson_val *comment_boxes = yyjson_obj_get(serialized_root, "comment_boxes");
+        if (comment_boxes) {
+            yyjson_mut_obj_add_val(doc, object, "comment_boxes", yyjson_val_mut_copy(doc, comment_boxes));
         }
     }
-    inspect_add_sorted_array(doc, object, "nodes", yyjson_obj_get(serialized_root, "nodes"), false);
-    inspect_add_sorted_array(doc, object, "edges", yyjson_obj_get(serialized_root, "edges"), true);
+    inspect_add_sorted_array(doc, object, "nodes", yyjson_obj_get(serialized_root, "nodes"), false, include_layout);
+    inspect_add_sorted_array(doc, object, "edges", yyjson_obj_get(serialized_root, "edges"), true, include_layout);
     inspect_add_calls(doc, object, asset, source, report);
     if (document) {
         yyjson_doc_free(document);
@@ -2448,6 +2540,12 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     size_t bytes = 0;
     uint64_t hash = 0;
     char error[256] = { 0 };
+    yyjson_val *layout_value = yyjson_obj_get(request, "include_layout");
+    if (layout_value && !yyjson_is_bool(layout_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_layout must be a boolean");
+        return -1;
+    }
+    bool include_layout = layout_value && yyjson_get_bool(layout_value);
     int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
@@ -2462,6 +2560,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     behavior_asset *asset = behavior_asset_load_json(json);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
+    yyjson_mut_obj_add_bool(result->doc, value, "layout_included", include_layout);
     if (!source_document || !asset) {
         yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
         add_load_diagnostic(result->doc, diagnostics, source_document ? graph_last_error() : "asset is not valid JSON");
@@ -2516,20 +2615,30 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     );
     yyjson_mut_val *graphs = yyjson_mut_obj_add_arr(result->doc, value, "graphs");
     for (int i = 0; i < acount(asset->graphs); i++) {
-        yyjson_mut_val *
-            graph_value = inspect_graph_value(result->doc, asset, asset->graphs[i], &report);
-        yyjson_mut_arr_add_val(graphs, graph_value);
-        if (selected < 0 && i == 0) {
-            selected = 0;
-        }
+        const graph *source = asset->graphs[i];
+        yyjson_mut_val *summary = yyjson_mut_arr_add_obj(result->doc, graphs);
+        yyjson_mut_obj_add_uint(result->doc, summary, "id", source->graph_id);
+        yyjson_mut_obj_add_strcpy(
+            result->doc,
+            summary,
+            "name",
+            source->name ? source->name : ""
+        );
+        yyjson_mut_obj_add_strcpy(
+            result->doc,
+            summary,
+            "kind",
+            graph_kind_name(source->kind)
+        );
+        yyjson_mut_obj_add_int(result->doc, summary, "node_count", acount(source->nodes));
+        yyjson_mut_obj_add_int(result->doc, summary, "edge_count", acount(source->edges));
     }
     if (selected >= 0) {
-        yyjson_mut_val *selected_graph = yyjson_mut_arr_get(graphs, (size_t)selected);
         yyjson_mut_obj_add_val(
             result->doc,
             value,
             "graph",
-            yyjson_mut_val_mut_copy(result->doc, selected_graph)
+            inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout)
         );
     }
     inspect_add_validation(result->doc, value, &report);
@@ -4927,10 +5036,193 @@ static int handle_describe_registry(response *result)
     return 0;
 }
 
+static int handle_search_nodes(yyjson_val *request, response *result, int *exit_code)
+{
+    const char *query = request_string(request, "query");
+    const char *domain = request_string(request, "domain");
+    yyjson_val *limit_value = yyjson_obj_get(request, "limit");
+    yyjson_val *offset_value = yyjson_obj_get(request, "offset");
+    yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
+    if ((yyjson_obj_get(request, "query") && !query) ||
+        (yyjson_obj_get(request, "domain") &&
+         (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior")))) ||
+        (limit_value && (!yyjson_is_int(limit_value) || yyjson_get_sint(limit_value) < 1 ||
+                         yyjson_get_sint(limit_value) > 50)) ||
+        (offset_value &&
+         (!yyjson_is_int(offset_value) || yyjson_get_sint(offset_value) < 0 ||
+          yyjson_get_sint(offset_value) > 100000)) ||
+        (pins_value && !yyjson_is_bool(pins_value)) ||
+        (query && strlen(query) > 256)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, domain, page or include_pins");
+        return -1;
+    }
+    int limit = limit_value ? (int)yyjson_get_sint(limit_value) : 10;
+    int offset = offset_value ? (int)yyjson_get_sint(offset_value) : 0;
+    bool pins = !pins_value || yyjson_get_bool(pins_value);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
+    int total = 0, returned = 0;
+    for (int i = 0; i < registry_node_count(); i++) {
+        const node_desc *node = registry_node(i);
+        bool shader = node->category && !strncmp(node->category, "Shader", 6);
+        if ((domain && shader != !strcmp(domain, "shader")) ||
+            (query && query[0] && !text_contains_casefold(node->name, query) &&
+             !text_contains_casefold(node->category, query) &&
+             !text_contains_casefold(node->keywords, query))) {
+            continue;
+        }
+        if (total++ < offset || returned == limit) {
+            continue;
+        }
+        returned++;
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, nodes);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "name", node->name);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "category", node->category ? node->category : "");
+        yyjson_mut_obj_add_bool(result->doc, item, "pure", node_desc_is_pure(node));
+        if (pins) {
+            add_pins(result->doc, item, "inputs", node->inputs, node->input_count);
+            add_pins(result->doc, item, "outputs", node->outputs, node->output_count);
+        }
+    }
+    yyjson_mut_obj_add_int(result->doc, value, "total", total);
+    yyjson_mut_obj_add_int(result->doc, value, "offset", offset);
+    yyjson_mut_obj_add_int(result->doc, value, "count", returned);
+    yyjson_mut_obj_add_bool(result->doc, value, "has_more", offset + returned < total);
+    return 0;
+}
+
+static int handle_edit_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    yyjson_val *create_value = yyjson_obj_get(request, "create");
+    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
+    const char *expected = request_string(request, "expected_hash");
+    bool create = create_value && yyjson_get_bool(create_value);
+    bool dry = dry_value && yyjson_get_bool(dry_value);
+    if ((create_value && !yyjson_is_bool(create_value)) ||
+        (dry_value && !yyjson_is_bool(dry_value)) || yyjson_obj_get(request, "layout") ||
+        (!create && (!expected || strlen(expected) != 16))) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run; placement is automatic");
+        return -1;
+    }
+    asset_ref ref = { 0 };
+    char error[256] = { 0 };
+    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
+        ref.family->loader != ASSET_GRAPH) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_graph requires a graph asset");
+        return -1;
+    }
+    char *source = NULL;
+    size_t bytes = 0;
+    uint64_t before = 0;
+    int status = CHIBI_AUTOMATION_OK;
+    if (!create) {
+        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
+    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    } else {
+        char *path = asset_full_path(root, &ref);
+        struct stat info;
+        if (!lstat(path, &info)) {
+            status = CHIBI_AUTOMATION_CONFLICT;
+            snprintf(error, sizeof error, "asset already exists");
+        } else if (errno != ENOENT) {
+            status = CHIBI_AUTOMATION_IO_ERROR;
+            snprintf(error, sizeof error, "cannot inspect asset destination");
+        }
+        free(path);
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, before);
+    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
+    add_hash_named(result->doc, value, "before_hash", before);
+    char actual[17];
+    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
+    if (!create && strcmp(expected, actual)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
+        free(source);
+        return -1;
+    }
+    char *name = asset_name_from_filename(ref.filename);
+    char *edited = NULL;
+    behavior_asset **libraries = NULL;
+    bool shader = !strcmp(ref.family->kind, "material") ||
+                  !strcmp(ref.family->kind, "shape") ||
+                  !strcmp(ref.family->kind, "shader-library");
+    status = load_behavior_family_assets(
+        root,
+        family_by_kind(shader ? "shader-library" : "library"),
+        &libraries,
+        error,
+        sizeof error
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = automation_graph_edit(
+            source,
+            ref.family->kind,
+            name,
+            (const behavior_asset *const *)libraries,
+            acount(libraries),
+            request,
+            result->doc,
+            value,
+            &edited,
+            error,
+            sizeof error
+        );
+    }
+    free_behavior_assets(libraries);
+    free(name);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        free(source);
+        free(edited);
+        return -1;
+    }
+    size_t after_bytes = strlen(edited);
+    uint64_t after = automation_content_hash(edited, after_bytes);
+    bool changed = !source || strcmp(source, edited);
+    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
+    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+    add_hash_named(result->doc, value, "after_hash", after);
+    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
+    if (!dry && changed) {
+        status = automation_asset_publish(
+            root,
+            ref.family->folder,
+            ref.filename,
+            edited,
+            expected,
+            create,
+            error,
+            sizeof error
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+        }
+    }
+    if (status == CHIBI_AUTOMATION_OK && !dry) {
+        yyjson_mut_obj_remove_key(value, "published");
+        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
+        yyjson_mut_obj_remove_key(value, "hash");
+        add_hash(result->doc, value, after);
+        yyjson_mut_obj_remove_key(value, "bytes");
+        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
+    }
+    free(edited);
+    free(source);
+    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
 static int operation_requires_root(const char *operation)
 {
-    return !strcmp(operation, "status") || !strcmp(operation, "list_assets") ||
-           !strcmp(operation, "read_asset") || !strcmp(operation, "validate_asset") ||
+    return !strcmp(operation, "edit_graph") || !strcmp(operation, "status") ||
+           !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
+           !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "inspect_graph") ||
@@ -4985,7 +5277,13 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
             return response_finish(&result);
         }
     }
-    if (!strcmp(operation, "describe_contract")) {
+    if (!strcmp(operation, "edit_graph")) {
+        handle_edit_graph(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "search_nodes")) {
+        handle_search_nodes(root_value, &result, exit_code);
+    } else if (!strcmp(operation, "preview_shader")) {
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires the separate chibi_render_ctl executable");
+    } else if (!strcmp(operation, "describe_contract")) {
         handle_describe_contract(&result);
     } else if (!strcmp(operation, "status")) {
         handle_status(root, &result, exit_code);

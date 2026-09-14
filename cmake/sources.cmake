@@ -1,6 +1,8 @@
 # Explicit compilation ownership, independent of conceptual folder boundaries.
 
 set(CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/layout.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow_visual.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/compile.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/graph_ir.c
@@ -58,12 +60,12 @@ set(ECS_SOURCES
 )
 
 set(ENGINE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/engine.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/engine_input.c
 )
 
 set(EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/query_editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/commands.c
@@ -71,7 +73,6 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/mutations.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/navigation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/preview.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/arrange.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/camera.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/eval_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow.c

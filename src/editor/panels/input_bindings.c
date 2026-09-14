@@ -503,6 +503,276 @@ bool ed_inline_source_for(const editor *e, const node *target, int index, node *
            );
 }
 
+static const ecs_component_desc *ed_getter_component(const node *source)
+{
+    if (!source || !source->desc || source->desc->pure_kind != NODE_PURE_READ ||
+        source->desc->input_count != 0 || source->desc->output_count != 1 ||
+        source->output_count != 1 || !source->desc->name ||
+        strncmp(source->desc->name, "Get_", 4) != 0 || !source->desc->access ||
+        source->desc->access->read_count != 1 || !source->desc->access->reads) {
+        return NULL;
+    }
+    const char *name = source->desc->name + 4;
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        if (component && component->name && component->type && component->key &&
+            !strcmp(component->name, name) &&
+            component->id == source->desc->access->reads[0]) {
+            return component;
+        }
+    }
+    return NULL;
+}
+
+static bool ed_getter_has_single_consumer(
+    const graph *g,
+    const node *source,
+    const node *target,
+    int source_pin,
+    int target_pin
+)
+{
+    if (!g || !source || !target || source_pin != 0 || target_pin < 0 ||
+        source->output_count != 1) {
+        return false;
+    }
+    int data_edges = 0;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *candidate = &g->edges[i];
+        if (candidate->to_id == source->id) {
+            return false;
+        }
+        if (candidate->from_id != source->id) {
+            continue;
+        }
+        if (candidate->kind != GRAPH_EDGE_DATA ||
+            candidate->from_pin_id != source->output_pins[source_pin].id) {
+            return false;
+        }
+        data_edges++;
+        if (candidate->to_id != target->id ||
+            candidate->to_pin_id != target->input_pins[target_pin].id) {
+            return false;
+        }
+    }
+    return data_edges == 1;
+}
+
+static bool ed_getter_binding(
+    const ecs_component_desc *component,
+    const pin_spec *output,
+    const pin_spec *target,
+    const node_desc *conversion,
+    pin_binding *binding
+)
+{
+    if (!component || !component->type || !output || !target || !binding ||
+        (target->flags & (PIN_FLAG_SETTING | PIN_FLAG_WILDCARD)) ||
+        target->binding || output->kind != PIN_DATA || target->kind != PIN_DATA) {
+        return false;
+    }
+    pin_spec whole = { .type = PIN_STRUCT,
+                       .type_name = component->type->name,
+                       .kind = PIN_DATA,
+                       .container = PIN_CONTAINER_SINGLE };
+    if (!conversion && pin_types_compatible(&whole, target) &&
+        pin_types_compatible(output, &whole)) {
+        *binding = (pin_binding){ .kind = PIN_BINDING_COMPONENT,
+                                  .component_key = component->key };
+        return true;
+    }
+    if (!conversion || component->type->field_count != 1) {
+        return false;
+    }
+    char conversion_name[128];
+    snprintf(conversion_name, sizeof conversion_name, "Unwrap_%s", component->name);
+    if (conversion != registry_node_by_name(conversion_name)) {
+        return false;
+    }
+    const type_field *field = &component->type->fields[0];
+    pin_spec value = { .type = field->type,
+                       .type_name = field->type_name,
+                       .kind = PIN_DATA,
+                       .container = PIN_CONTAINER_SINGLE };
+    if (!pin_types_compatible(output, &whole) || !pin_types_compatible(&value, target)) {
+        return false;
+    }
+    *binding = (pin_binding){ .kind = PIN_BINDING_COMPONENT_FIELD,
+                              .component_key = component->key,
+                              .field_name = field->name };
+    return true;
+}
+
+static void ed_forget_removed_node(editor *e, node *removed)
+{
+    uint64_t id = removed->id;
+    ed_remove_selected(e, removed);
+    if (e->reveal_target == removed) {
+        e->reveal_target = NULL;
+    }
+    if (e->drag_toggle_node == removed) {
+        e->drag_toggle_node = NULL;
+        e->drag_toggle_selected = 0;
+    }
+    if (e->edit_text_node == removed) {
+        e->edit_text_node = NULL;
+    }
+    if (e->binding_node == removed || e->binding_node_id == id) {
+        e->binding_node = NULL;
+        e->binding_node_id = 0;
+        e->binding_pin = -1;
+    }
+    if (e->context_node == removed) {
+        e->context_node = NULL;
+    }
+    if (e->hovered_node == removed) {
+        e->hovered_node = NULL;
+    }
+    if (e->front_node == removed) {
+        e->front_node = NULL;
+    }
+    if (e->fields_node == id) {
+        e->fields_node = 0;
+        e->fields_pin = 0;
+    }
+    if (e->open_call_node == id) {
+        e->open_call_node = 0;
+    }
+    if (e->math_node_id == id) {
+        e->math_node_id = 0;
+    }
+    if (e->link_pin.n == removed) {
+        e->link_pin = (ed_pin_view){ 0 };
+    }
+    if (e->spawn_link_pin.n == removed) {
+        e->spawn_link_pin = (ed_pin_view){ 0 };
+    }
+    for (int i = acount(e->drag_nodes) - 1; i >= 0; i--) {
+        if (e->drag_nodes[i].n == removed) {
+            adel(e->drag_nodes, i);
+        }
+    }
+    for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
+        ed_link_ref link = e->selected_links[i];
+        if (link.from_id == id || link.to_id == id) {
+            adel(e->selected_links, i);
+        }
+    }
+    if (e->has_context_link &&
+        (e->context_link.from_id == id || e->context_link.to_id == id)) {
+        e->has_context_link = 0;
+    }
+    if (e->has_hovered_link &&
+        (e->hovered_link.from_id == id || e->hovered_link.to_id == id)) {
+        e->has_hovered_link = 0;
+    }
+}
+
+bool ed_simplify_component_getter(
+    editor *e,
+    node *source,
+    int source_pin,
+    node *target,
+    int target_pin,
+    const node_desc *conversion
+)
+{
+    if (!ed_binding_scope_available(e) || !e->active_graph || !source ||
+        !target || source == target || source->disabled || source->breakpoint ||
+        source->breakpoint_enabled || target->disabled || target->breakpoint ||
+        target->breakpoint_enabled || target_pin < 0 || target_pin >= target->input_count ||
+        graph_node_by_id(e->active_graph, source->id) != source ||
+        graph_node_by_id(e->active_graph, target->id) != target) {
+        return false;
+    }
+    node *connected = NULL;
+    int connected_pin = -1;
+    if (!graph_input_source(e->active_graph, target, target_pin, &connected, &connected_pin) ||
+        connected != source || connected_pin != source_pin ||
+        graph_input_conversion(e->active_graph, target, target_pin) != conversion ||
+        !ed_getter_has_single_consumer(e->active_graph, source, target, source_pin, target_pin)) {
+        return false;
+    }
+    const ecs_component_desc *component = ed_getter_component(source);
+    pin_binding binding = { 0 };
+    if (!component || !ed_getter_binding(
+                          component,
+                          &source->output_pins[source_pin],
+                          &target->input_pins[target_pin],
+                          conversion,
+                          &binding
+                      )) {
+        return false;
+    }
+    if (graph_remove_edge(e->active_graph, source, source_pin, target, target_pin) != 0) {
+        return false;
+    }
+    if (graph_set_pin_binding(e->active_graph, target, 0, target_pin, &binding) != 0) {
+        assert(
+            graph_connect_data_conversion(e->active_graph, source, source_pin, target, target_pin, conversion) ==
+            0
+        );
+        return false;
+    }
+    ed_forget_removed_node(e, source);
+    if (graph_remove_node(e->active_graph, source) != 0) {
+        assert(graph_set_pin_binding(e->active_graph, target, 0, target_pin, NULL) == 0);
+        assert(
+            graph_connect_data_conversion(e->active_graph, source, source_pin, target, target_pin, conversion) ==
+            0
+        );
+        return false;
+    }
+    return true;
+}
+
+int ed_optimize_graph(editor *e)
+{
+    if (!ed_binding_scope_available(e) || !e->active_graph) {
+        return 0;
+    }
+    char *before = ed_snapshot(e);
+    if (!before) {
+        return -1;
+    }
+    int optimized = 0;
+    bool repeat = true;
+    while (repeat) {
+        repeat = false;
+        for (int i = 0; i < acount(e->active_graph->nodes) && !repeat; i++) {
+            node *target = e->active_graph->nodes[i];
+            for (int pin = 0; pin < target->input_count; pin++) {
+                node *source = NULL;
+                int source_pin = -1;
+                if (!graph_input_source(e->active_graph, target, pin, &source, &source_pin)) {
+                    continue;
+                }
+                if (!ed_simplify_component_getter(
+                        e,
+                        source,
+                        source_pin,
+                        target,
+                        pin,
+                        graph_input_conversion(e->active_graph, target, pin)
+                    )) {
+                    continue;
+                }
+                optimized++;
+                repeat = true;
+                break;
+            }
+        }
+    }
+    if (!optimized) {
+        free(before);
+        return 0;
+    }
+    ed_push_string(&e->undo, before);
+    ed_free_string_stack(&e->redo);
+    e->edit_pending = 1;
+    return optimized;
+}
+
 static int ed_remove_inline_source(editor *e, node *target, int index)
 {
     node *source = NULL;

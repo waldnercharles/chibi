@@ -190,6 +190,8 @@ int shader_graph_ramp_vec4_count(const shader_graph *g);
 void shader_graph_ramp_payload(const shader_graph *g, float (*payload)[4]);
 /* result must be initialized; failure preserves its last valid program. */
 bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_error *error);
+/* Validates a pure shader function without requiring a material or shape output. */
+bool shader_graph_validate_function(const graph *source, shader_error *error);
 /* Available input fallback, independent of wiring or an explicit default value.
  * Returns a shader_op, or -1 when the input has no sample context fallback. */
 int shader_node_input_context(const node *n, int input, const char **label);

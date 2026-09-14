@@ -4,6 +4,15 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  authoringToolCall,
+  authoringToolDefinitions,
+  authoringToolResult,
+  cancelAuthoringRequest,
+  isAuthoringTool,
+  renderRequest,
+  validateAuthoringArguments,
+} from "./authoring.mjs";
 
 const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
@@ -303,7 +312,11 @@ function rawToolDefinitions() {
       },
       graph_name: {
         type: "string",
-        description: "Optional graph name selector. Omit both selectors to inspect all graphs and select the first graph.",
+        description: "Optional graph name selector. The selected graph is returned in full; other graphs are returned as compact summaries.",
+      },
+      include_layout: {
+        type: "boolean",
+        description: "Include editor coordinates, inline hints, comment boxes, and wire routing. Omit for semantic graph data.",
       },
     },
   };
@@ -703,6 +716,7 @@ function rawToolDefinitions() {
       inputSchema: noArguments,
       outputSchema,
     },
+    ...authoringToolDefinitions(),
   ];
 }
 
@@ -713,7 +727,7 @@ async function nativeRequest(operation, args = {}) {
     controllerSession = new ControllerSession();
   }
   return controllerSession.request(
-    { contract: 1, operation, ...args },
+    { ...args, contract: 1, operation },
     timeout,
   );
 }
@@ -754,6 +768,19 @@ async function toolDefinitions() {
 }
 
 function validateSchema(value, schema, path) {
+  if (schema.oneOf) {
+    const matches = schema.oneOf.filter((candidate) => {
+      try {
+        validateSchema(value, candidate, path);
+        return true;
+      } catch {
+        return false;
+      }
+    }).length;
+    if (matches !== 1) {
+      throw protocolError(-32602, `${path} must match exactly one supported form`);
+    }
+  }
   if (schema.type === "object") {
     if (!isObject(value)) {
       throw protocolError(-32602, `${path} must be an object`);
@@ -773,19 +800,6 @@ function validateSchema(value, schema, path) {
     for (const [name, child] of Object.entries(schema.properties || {})) {
       if (Object.hasOwn(value, name)) {
         validateSchema(value[name], child, `${path}.${name}`);
-      }
-    }
-    if (schema.oneOf) {
-      const matches = schema.oneOf.filter((candidate) => {
-        try {
-          validateSchema(value, candidate, path);
-          return true;
-        } catch {
-          return false;
-        }
-      }).length;
-      if (matches !== 1) {
-        throw protocolError(-32602, `${path} must match exactly one supported form`);
       }
     }
     return;
@@ -814,6 +828,9 @@ function validateSchema(value, schema, path) {
     if (!Array.isArray(value)) {
       throw protocolError(-32602, `${path} must be an array`);
     }
+    if (schema.minItems !== undefined && value.length < schema.minItems) {
+      throw protocolError(-32602, `${path} must contain at least ${schema.minItems} items`);
+    }
     if (schema.maxItems !== undefined && value.length > schema.maxItems) {
       throw protocolError(-32602, `${path} has too many items`);
     }
@@ -832,13 +849,19 @@ function validateToolArguments(name, args) {
     throw protocolError(-32602, "tools/call requires a known tool name");
   }
   validateSchema(args === undefined ? {} : args, tool.inputSchema, "arguments");
+  if (isAuthoringTool(name)) {
+    validateAuthoringArguments(name, args === undefined ? {} : args);
+  }
 }
 
-async function toolCall(name, args) {
+async function toolCall(name, args, requestId) {
   if (typeof name !== "string") {
     throw protocolError(-32602, "tools/call requires a tool name");
   }
   validateToolArguments(name, args);
+  if (isAuthoringTool(name)) {
+    return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
+  }
   switch (name) {
     case "project_status": return nativeRequest("status");
     case "list_assets": return nativeRequest("list_assets", args || {});
@@ -864,12 +887,70 @@ async function toolCall(name, args) {
 }
 
 function toolResult(response) {
-  const text = boundedJson(response, "tool result");
+  const authoringResult = authoringToolResult(response);
+  if (authoringResult) {
+    return authoringResult;
+  }
+  const text = response.ok === true
+    ? boundedJson(toolSummary(response), "tool summary")
+    : boundedJson(response, "tool result");
   return {
     content: [{ type: "text", text }],
     structuredContent: response,
     isError: response.ok !== true,
   };
+}
+
+function toolSummary(response) {
+  const summary = { ok: true };
+  if (typeof response.operation === "string") {
+    summary.operation = response.operation;
+  }
+  const result = response.result;
+  if (!isObject(result)) {
+    return summary;
+  }
+  const scalarKeys = [
+    "kind",
+    "name",
+    "path",
+    "graph_id",
+    "layout_included",
+    "offset",
+    "total",
+    "count",
+    "has_more",
+    "next_cursor",
+    "operation_count",
+    "before_hash",
+    "after_hash",
+    "after_bytes",
+    "published",
+    "changed",
+    "dry_run",
+    "frames",
+    "fixed_dt",
+    "world_hash",
+    "live_entities",
+    "valid",
+    "deterministic",
+    "recording_id",
+    "recording_path",
+    "first_divergence_frame",
+  ];
+  for (const key of scalarKeys) {
+    if (Object.hasOwn(result, key) &&
+        (typeof result[key] === "string" || typeof result[key] === "number" ||
+         typeof result[key] === "boolean")) {
+      summary[key] = result[key];
+    }
+  }
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics"]) {
+    if (Array.isArray(result[key])) {
+      summary[`${key}_count`] = result[key].length;
+    }
+  }
+  return summary;
 }
 
 function boundedJson(value, label) {
@@ -954,6 +1035,12 @@ async function dispatch(message) {
   if (message.method === "notifications/initialized") {
     return null;
   }
+  if (message.method === "notifications/cancelled") {
+    if (isObject(message.params) && message.params.requestId !== undefined) {
+      cancelAuthoringRequest(message.params.requestId);
+    }
+    return null;
+  }
   if (message.method === "initialize") {
     const params = message.params;
     if (!params || typeof params.protocolVersion !== "string" ||
@@ -1022,7 +1109,7 @@ async function dispatch(message) {
       if (!isObject(message.params)) {
         throw protocolError(-32602, "tools/call params are required");
       }
-      const response = await toolCall(message.params?.name, message.params?.arguments);
+      const response = await toolCall(message.params?.name, message.params?.arguments, message.id);
       return reply(message, { jsonrpc: "2.0", id: message.id, result: toolResult(response) });
     } catch (error) {
       return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));

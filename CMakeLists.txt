@@ -314,7 +314,8 @@ target_link_libraries(runtime_support PUBLIC ecs core cute)
 
 # --- headless automation controller ----------------------------------------
 
-add_library(automation STATIC src/automation/controller.c)
+add_library(automation STATIC src/automation/controller.c
+    src/automation/graph_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core)
 
@@ -427,11 +428,21 @@ target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_ctl PRIVATE automation runtime_support core engine)
 set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
+# GPU authoring feedback is optional tooling, separate from the headless controller.
+add_executable(chibi_render_ctl tools/chibi_render_ctl/main.c src/automation/render_preview.c
+    src/render/shader_preview.c src/render/shader_fragment.c ${APP_REGISTRY})
+add_dependencies(chibi_render_ctl generate_runtime_registry)
+target_include_directories(chibi_render_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(chibi_render_ctl PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(chibi_render_ctl PRIVATE automation chibi_render engine runtime_support core cute)
+set_target_properties(chibi_render_ctl PROPERTIES LINKER_LANGUAGE CXX)
+
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
         COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS chibi_ctl
+        COMMAND ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
+        DEPENDS chibi_ctl chibi_render_ctl
         VERBATIM)
 else()
     add_custom_target(check-mcp
@@ -465,7 +476,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
-    test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
+    test/automation_asset_write.c test/automation_graph_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/ui_native.c
     test/ui_scroll.c
     test/render_checks.c
@@ -549,7 +560,7 @@ add_executable(test_suite
 )
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(test_suite PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(test_suite PRIVATE engine runtime_support ecs demo editor chibi_render)
+target_link_libraries(test_suite PRIVATE automation engine runtime_support ecs demo editor chibi_render)
 if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
     target_compile_definitions(test_suite PRIVATE CHIBI_SKIP_PERFORMANCE_TESTS=1)
 endif()

@@ -12,6 +12,7 @@ enum
     CHIBI_AUTOMATION_VALIDATION_ERROR = 4,
     CHIBI_AUTOMATION_EXECUTION_ERROR = 5,
     CHIBI_AUTOMATION_NOT_FOUND = 6,
+    CHIBI_AUTOMATION_CONFLICT = 7,
 };
 
 /* The short controller API is also used by the native regression suite. Keep

@@ -971,6 +971,8 @@ static void component_getter_optimization()
         "component getter optimization replaces a single consumer with a Self "
         "binding"
     );
+    ed_free_string_stack(&e.undo);
+    afree(e.selected);
     behavior_asset_free(asset);
 }
 

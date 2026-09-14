@@ -294,6 +294,7 @@ void editor_draw(editor *e)
     const behavior_instance *display_instance = ed_display_instance(e);
     const flow_run *display_run = ed_display_run(e);
     eval_view_set_instance(e->ev, display_instance);
+    eval_view_set_catalog(e->ev, e->asset_catalog, acount(e->asset_catalog));
     if (ed_inspection_blocked(e) ||
         (!e->inspection_run && editor_preview_allowed(preview_state))) {
         eval_view_refresh(e->ev, e->active_graph);

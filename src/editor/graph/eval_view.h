@@ -24,6 +24,8 @@ void eval_view_free(eval_view *v);
 /* Re-evaluates every output pin for preview. The editor MUST skip this while
  * editor_preview_allowed() is false. */
 void eval_view_refresh(eval_view *v, graph *g);
+/* Borrow the project catalog; linked preview generations are owned by the view. */
+void eval_view_set_catalog(eval_view *v, const behavior_asset *const *assets, int count);
 void eval_view_set_run(eval_view *v, const flow_run *run);
 void eval_view_set_instance(eval_view *v, const behavior_instance *bi);
 const char *eval_view_error(const eval_view *v);

@@ -37,8 +37,15 @@ profiling enables those timers; normal execution keeps them disabled.
 The combined native UI suite passes, including the Project/Scene/Document activity
 rail and query diagnostic navigation. The authored audit retains 34/34 events,
 32/32 effectful local functions, 39/39 pure local functions, and 4/4 linked library
-functions. Full native checks pass with leak detection. Browser and Linux
-validation are still required before merge.
+functions. Full native checks pass with leak detection. The web bytecode checks
+also pass. Browser interaction confirms Project, Scene Hierarchy and Document
+Outline navigation; final Linux validation and deployment remain pending.
+
+Rendered validation exposed a false missing-graph error in editor previews:
+the preview compiler received authored library references before linking. Each
+view now retains a linked snapshot, rebuilding it when the source or catalog
+generation changes. Preview values map back to authored node IDs. Focused checks
+cover edits, missing-library diagnostics and recovery when a library returns.
 
 The older UI worktree still holds local edits. A content comparison found 177
 identical changed files against the primary snapshot. Differences in node draw

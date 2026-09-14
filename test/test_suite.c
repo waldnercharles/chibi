@@ -17,6 +17,9 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "suite_internal.h"
 
+void test_automation_graph_edit();
+void test_automation_asset_write();
+
 int shader_ui_run(const char *program);
 int arena_ui_run(const char *program, bool profile_only);
 int compiled_arena_run(const char *program);
@@ -53,6 +56,8 @@ TEST_CASE(all_checks)
 {
     stacktrace_init(program_name);
     registry_validate();
+    test_automation_graph_edit();
+    test_automation_asset_write();
     run_content_catalog_checks();
     test_asset_index();
     run_graph_model_checks();
@@ -670,6 +675,12 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--ui-scroll") == 0) {
         return test_ui_scroll_smoothing() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
+        registry_validate();
+        test_automation_graph_edit();
+        test_automation_asset_write();
+        return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--runtime-execution") == 0) {
         registry_validate();

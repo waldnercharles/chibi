@@ -12,12 +12,18 @@ RELEASE_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZE
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all build run play build-release run-release play-release benchmark web web-serve format check-format test ui-native render-checks dev-smoke review clean
+.PHONY: all build mcp run play build-release run-release play-release benchmark web web-serve format check-format test ui-native render-checks dev-smoke review clean
 
 all: build
 
 build:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
+
+mcp:
+	cmake -S . -B "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	cmake --build "$(BUILD_DIR)" --target chibi_ctl chibi_render_ctl
+	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
+	@CHIBI_ROOT="$(CURDIR)" CHIBI_CTL="$(abspath $(BUILD_DIR))/chibi_ctl" node tools/mcp/server.mjs
 
 run: build
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/app $(ARGS)

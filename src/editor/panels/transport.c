@@ -130,6 +130,14 @@ void ed_draw_toolbar(editor *e)
                     )) {
                     ed_zoom_fit(e, true);
                 }
+                if (ImGui_MenuItemEx(
+                        "Optimize graph",
+                        NULL,
+                        false,
+                        acount(e->active_graph->nodes) > 0 && ed_binding_scope_available(e)
+                    )) {
+                    (void)ed_optimize_graph(e);
+                }
                 ImGui_Separator();
                 if (ImGui_MenuItemEx("Undo", NULL, false, acount(e->undo) > 0)) {
                     ed_undo(e);

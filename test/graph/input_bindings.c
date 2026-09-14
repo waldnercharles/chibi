@@ -1,3 +1,4 @@
+#include "editor/workspace/editor_internal.h"
 #include "graph/document/extract.h"
 #include "test/suite_internal.h"
 
@@ -884,6 +885,79 @@ static void inline_source_graphs()
     graph_free(&shared);
 }
 
+static void component_getter_optimization()
+{
+    behavior_asset *asset = behavior_asset_new("GetterOptimization");
+    editor e = { .asset = asset,
+                 .active_graph = asset ? asset->graph : NULL,
+                 .ui_context = EDITOR_UI_CONTEXT_BEHAVIOR };
+    node *getter = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Get_GameMovement"))
+                     : NULL;
+    node *target = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Set_GameMovement"))
+                     : NULL;
+    if (getter) {
+        ed_add_selected(&e, getter);
+        e.front_node = getter;
+        e.fields_node = getter->id;
+        e.link_pin.n = getter;
+        e.spawn_link_pin.n = getter;
+    }
+    bool connected = getter && target &&
+                     graph_connect_data(asset->graph, getter, 0, target, 1) == 0;
+    bool optimized = connected && ed_optimize_graph(&e) == 1;
+    const pin_binding *binding = optimized
+                                   ? graph_pin_binding(asset->graph, target, 0, 1)
+                                   : NULL;
+    node *remaining_source = NULL;
+    int remaining_pin = -1;
+    test_check(
+        optimized && binding && binding->kind == PIN_BINDING_COMPONENT &&
+            binding->component_key &&
+            !strcmp(binding->component_key, GAME_COMPONENT_GameMovement.key) &&
+            !binding->field_name && acount(asset->graph->nodes) == 1 &&
+            graph_input_source(asset->graph, target, 1, &remaining_source, &remaining_pin) ==
+                0 &&
+            !remaining_source && remaining_pin == -1 &&
+            acount(e.selected) == 0 && !e.front_node && e.fields_node == 0 &&
+            !e.link_pin.n && !e.spawn_link_pin.n,
+        "component getter optimization replaces a single consumer with a Self "
+        "binding"
+    );
+    ed_free_string_stack(&e.undo);
+    afree(e.selected);
+    behavior_asset_free(asset);
+}
+
+static void component_getter_auto_simplification()
+{
+    behavior_asset *asset = behavior_asset_new("GetterAutoSimplification");
+    editor e = { .asset = asset,
+                 .active_graph = asset ? asset->graph : NULL,
+                 .ui_context = EDITOR_UI_CONTEXT_BEHAVIOR };
+    node *getter = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Get_GameMovement"))
+                     : NULL;
+    node *target = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Set_GameMovement"))
+                     : NULL;
+    ed_pin_view output = { getter, ED_PIN_OUTPUT, 0, { 0.0f, 0.0f } };
+    ed_pin_view input = { target, ED_PIN_INPUT, 1, { 0.0f, 0.0f } };
+    bool connected = getter && target && ed_connect(&e, &output, &input);
+    const pin_binding *binding = connected
+                                   ? graph_pin_binding(asset->graph, target, 0, 1)
+                                   : NULL;
+    test_check(
+        connected && binding && binding->kind == PIN_BINDING_COMPONENT &&
+            binding->component_key &&
+            !strcmp(binding->component_key, GAME_COMPONENT_GameMovement.key) &&
+            acount(asset->graph->nodes) == 1,
+        "connecting a single-consumer component getter stores a Self binding"
+    );
+    behavior_asset_free(asset);
+}
+
 static void inline_source_extraction()
 {
     behavior_asset *asset = behavior_asset_new("InlineExtraction");
@@ -1279,6 +1353,8 @@ void test_input_bindings()
     component_and_context_bindings();
     serialization_and_clipboard_ownership();
     inline_source_graphs();
+    component_getter_optimization();
+    component_getter_auto_simplification();
     inline_source_extraction();
     extraction_preserves_bindings();
     executable_extraction_preserves_timing();

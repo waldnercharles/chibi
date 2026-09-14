@@ -734,6 +734,24 @@ static void pass_duplicates(compile_report *out, const behavior_asset *asset)
     }
 }
 
+static void pass_shader_library_functions(compile_report *out, const behavior_asset *asset)
+{
+    if (asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        return;
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *g = asset->graphs[i];
+        if (g->kind != GRAPH_FUNCTION) {
+            continue;
+        }
+        compile_graph_id = g->graph_id;
+        shader_error error = { 0 };
+        if (!shader_graph_validate_function(g, &error)) {
+            emit(out, CMPL_ERROR, error.node, 0, CMPL_RULE_OPERATOR, "%s", error.message);
+        }
+    }
+}
+
 /* CMPL-12: an unresolved wildcard pin that carries an edge. Unresolved means
  * the pin still carries its wildcard marker with the flow/unknown type; a
  * resolved wildcard has adopted a concrete type (NODE-10). Edges whose other
@@ -1116,6 +1134,7 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
     compile_graph_id = asset->graph->graph_id;
     pass_references(out, asset, system);
     pass_duplicates(out, asset);
+    pass_shader_library_functions(out, asset);
     if (!out->error_count && !system) {
         behavior_asset_query_diagnostics(asset, out);
     }

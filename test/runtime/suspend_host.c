@@ -124,6 +124,25 @@ void test_suspended_commands(void *library)
                     }
                     assert(++count < 5000);
                 } while (status == FLOW_SUSPENDED_RESULT);
+                if (status != expected_status || capture.calls != expected.calls) {
+                    fprintf(
+                        stderr,
+                        "suspended command mismatch: kind=%d fail=%d mode=%d "
+                        "resumes=%d status=%d/%d calls=%llu/%llu failure=%d "
+                        "source=%d pin=%d\n",
+                        kind,
+                        fail,
+                        mode,
+                        count,
+                        status,
+                        expected_status,
+                        (unsigned long long)capture.calls,
+                        (unsigned long long)expected.calls,
+                        ctx.failure,
+                        ctx.error_source,
+                        ctx.error_pin
+                    );
+                }
                 assert(status == expected_status && capture.calls == expected.calls);
                 assert(
                     capture.checksum == expected.checksum &&

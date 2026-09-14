@@ -112,7 +112,8 @@ struct behavior_instance
     void *sink_user;
     void *profile_user;
     uint64_t schedule_revision; /* Queue edits and asynchronous readiness changes. */
-    flow_run **activation_pool; /* idle reusable activations */
+    /* Idle reusable activations. */
+    flow_run **activation_pool;
     behavior_instance_failure *failure; /* allocated only after a runtime failure */
     behavior_instance_trace_entry *trace; /* bounded ring; read through behavior_instance_trace */
     behavior_instance_trace_entry *trace_view; /* lazily ordered inspection cache */

@@ -3,10 +3,13 @@
 
 #include "ecs/ecs.h"
 #include "graph/runtime/instance.h"
+#include "runtime/audio.h"
+#include "runtime/save.h"
 
 #include <stdint.h>
 
 typedef struct game_behavior_world game_behavior_world;
+game_audio *game_behavior_audio(game_behavior_world *world);
 
 #define GAME_BEHAVIOR_PROFILE_MAX 256
 typedef struct
@@ -15,6 +18,7 @@ typedef struct
     const char *event;
     uint64_t starts;
     uint64_t resumes;
+    double inclusive_cpu_ms;
     double cpu_ms;
 } game_behavior_profile_row;
 
@@ -23,18 +27,22 @@ typedef struct
     game_behavior_profile_row rows[GAME_BEHAVIOR_PROFILE_MAX];
     int count;
     game_behavior_profile_row overflow;
+    double inclusive_cpu_ms;
     double cpu_ms;
 } game_behavior_profile_frame;
 
 /* Per display frame, including every fixed step. Labels belong to the world.
- * Snapshot remains valid until the next read or world destruction. Execution
- * intervals exclude nested root events; host dispatch/setup remains unassigned. */
+ * Snapshot remains valid until the next read or world destruction. Row cpu_ms
+ * is exclusive; inclusive_cpu_ms includes nested root events. Host
+ * dispatch/setup remains unassigned. */
 void game_behavior_profile_begin(game_behavior_world *world);
 const game_behavior_profile_frame *game_behavior_profile(const game_behavior_world *world);
 struct game_entities;
 void game_behavior_bind_entities(game_behavior_world *world, struct game_entities *entities);
 struct game_particles;
 void game_behavior_bind_particles(game_behavior_world *world, struct game_particles *particles);
+struct game_visibility;
+void game_behavior_bind_visibility(game_behavior_world *world, struct game_visibility *visibility);
 
 #define GAME_BEHAVIOR_LOG_MESSAGE_MAX 256
 
@@ -48,6 +56,7 @@ typedef struct
 
 game_behavior_world *game_behavior_world_new(ecs_world *world);
 void game_behavior_world_free(game_behavior_world *world);
+game_save *game_behavior_save(game_behavior_world *world);
 int game_behavior_register_asset(game_behavior_world *world, const char *asset_name, behavior_asset *definition);
 int game_behavior_unregister_asset(
     game_behavior_world *world,

@@ -16,6 +16,7 @@ typedef struct
 {
     char *behavior;
     char *event;
+    _Atomic uint64_t inclusive_nanoseconds;
     _Atomic uint64_t nanoseconds;
     _Atomic uint64_t starts;
     _Atomic uint64_t resumes;
@@ -49,9 +50,12 @@ typedef struct
 struct game_behavior_world
 {
     ecs_world *ecs;
+    game_save *save;
+    game_audio *audio;
     eval_component_reader component_reader;
     struct game_entities *entities;
     struct game_particles *particles;
+    struct game_visibility *visibility;
     behavior_asset_record *assets;
     behavior_attachment *attachments;
     game_behavior_log_info *logs;
@@ -111,7 +115,13 @@ static void profile_instance(behavior_instance *instance)
     }
 }
 
-static void record_profile(const char *event, uint64_t nanoseconds, bool first, void *user)
+static void record_profile(
+    const char *event,
+    uint64_t inclusive_nanoseconds,
+    uint64_t exclusive_nanoseconds,
+    bool first,
+    void *user
+)
 {
     behavior_sink_context *context = user;
     behavior_profile_record *record = &context->world->profile_overflow;
@@ -122,7 +132,8 @@ static void record_profile(const char *event, uint64_t nanoseconds, bool first, 
             break;
         }
     }
-    atomic_fetch_add_explicit(&record->nanoseconds, nanoseconds, memory_order_relaxed);
+    atomic_fetch_add_explicit(&record->inclusive_nanoseconds, inclusive_nanoseconds, memory_order_relaxed);
+    atomic_fetch_add_explicit(&record->nanoseconds, exclusive_nanoseconds, memory_order_relaxed);
     atomic_fetch_add_explicit(first ? &record->starts : &record->resumes, 1, memory_order_relaxed);
 }
 
@@ -133,6 +144,7 @@ void game_behavior_profile_begin(game_behavior_world *world)
                                             ? &world->profile[i]
                                             : &world->profile_overflow;
         atomic_store_explicit(&record->nanoseconds, 0, memory_order_relaxed);
+        atomic_store_explicit(&record->inclusive_nanoseconds, 0, memory_order_relaxed);
         atomic_store_explicit(&record->starts, 0, memory_order_relaxed);
         atomic_store_explicit(&record->resumes, 0, memory_order_relaxed);
     }
@@ -154,13 +166,17 @@ const game_behavior_profile_frame *game_behavior_profile(const game_behavior_wor
             .event = record->event,
             .starts = atomic_load_explicit(&record->starts, memory_order_relaxed),
             .resumes = atomic_load_explicit(&record->resumes, memory_order_relaxed),
+            .inclusive_cpu_ms = atomic_load_explicit(&record->inclusive_nanoseconds, memory_order_relaxed) /
+                                1000000.0,
             .cpu_ms = atomic_load_explicit(&record->nanoseconds, memory_order_relaxed) /
                       1000000.0,
         };
+        view->inclusive_cpu_ms += row.inclusive_cpu_ms;
         view->cpu_ms += row.cpu_ms;
         if (i == world->profile_count) {
             view->overflow.starts = row.starts;
             view->overflow.resumes = row.resumes;
+            view->overflow.inclusive_cpu_ms = row.inclusive_cpu_ms;
             view->overflow.cpu_ms = row.cpu_ms;
         } else if (row.starts || row.resumes) {
             view->rows[view->count++] = row;
@@ -256,6 +272,9 @@ static behavior_instance *acquire_instance(
     if (world->particles) {
         behavior_instance_bind_service(instance, "game.particles", world->particles);
     }
+    behavior_instance_bind_service(instance, "game.save", world->save);
+    behavior_instance_bind_service(instance, "game.audio", world->audio);
+    behavior_instance_bind_service(instance, "game.visibility", world->visibility);
     behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
     context->world = world;
     context->entity = entity;
@@ -302,9 +321,21 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     }
     game_behavior_world *result = (game_behavior_world *)xcalloc(1, sizeof *result);
     result->ecs = world;
+    result->save = game_save_new();
+    result->audio = game_audio_new();
     ecs_eval_component_reader_init(&result->component_reader, world);
     result->next_sequence = 1;
     return result;
+}
+
+game_audio *game_behavior_audio(game_behavior_world *world)
+{
+    return world->audio;
+}
+
+game_save *game_behavior_save(game_behavior_world *world)
+{
+    return world->save;
 }
 
 void game_behavior_bind_entities(game_behavior_world *world, struct game_entities *entities)
@@ -320,6 +351,14 @@ void game_behavior_bind_particles(game_behavior_world *world, struct game_partic
     world->particles = particles;
     for (int i = 0; i < acount(world->attachments); i++) {
         behavior_instance_bind_service(world->attachments[i].instance, "game.particles", particles);
+    }
+}
+
+void game_behavior_bind_visibility(game_behavior_world *world, struct game_visibility *visibility)
+{
+    world->visibility = visibility;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_instance_bind_service(world->attachments[i].instance, "game.visibility", visibility);
     }
 }
 
@@ -365,6 +404,8 @@ void game_behavior_world_free(game_behavior_world *world)
         free(world->profile[i].event);
     }
     free(world->pump_results);
+    game_save_free(world->save);
+    game_audio_free(world->audio);
     free(world);
 }
 

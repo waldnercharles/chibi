@@ -36,6 +36,7 @@ void ed_reset_node_interaction(editor *e)
     e->binding_node = NULL;
     e->binding_node_id = 0;
     e->binding_pin = -1;
+    e->binding_axis = -1;
     e->binding_selected = 0;
     e->binding_focus_search = false;
     e->link_pin = (ed_pin_view){ 0 };
@@ -133,8 +134,8 @@ int ed_switch_graph(editor *e, graph *graph)
     e->extract_requested = false;
     e->fields_node = 0;
     e->open_call_node = 0;
-    e->arrange_pending = true;
     ed_load_graph_view(e);
+    e->arrange_pending = !e->view_initialized;
     ed_clear_selection(e);
     e->selected_variable = NULL;
     e->reveal_target = NULL;

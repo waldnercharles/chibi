@@ -341,7 +341,7 @@ static bool graph_material_pixels(render_material_raster *raster)
         cf_app_update(NULL);
         cf_draw_push();
         cf_draw_projection(cf_ortho_2d(0, 0, 16, 16));
-        render_shader_fragment_draw(fragment, program, &entity);
+        render_shader_fragment_draw(fragment, program, &entity, (CF_V2){ 1, 1 });
         cf_render_to(canvas, true);
         cf_draw_pop();
         cf_app_draw_onto_screen(false);

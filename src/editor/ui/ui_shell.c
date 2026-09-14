@@ -24,11 +24,11 @@
 
 static const ImVec4 UI_TEXT = { 0.910f, 0.920f, 0.940f, 1.000f };
 static const ImVec4 UI_TEXT_MUTED = { 0.590f, 0.610f, 0.650f, 1.000f };
-static const ImVec4 UI_WINDOW = { 0.105f, 0.109f, 0.120f, 1.000f };
-static const ImVec4 UI_CHILD = { 0.105f, 0.109f, 0.120f, 1.000f };
+static const ImVec4 UI_WINDOW = { 0.105f, 0.118f, 0.137f, 1.000f };
+static const ImVec4 UI_CHILD = { 0.105f, 0.118f, 0.137f, 1.000f };
 static const ImVec4 UI_POPUP = { 0.150f, 0.155f, 0.170f, 1.000f };
-static const ImVec4 UI_BORDER = { 0.220f, 0.230f, 0.250f, 1.000f };
-static const ImVec4 UI_FRAME = { 0.075f, 0.079f, 0.090f, 1.000f };
+static const ImVec4 UI_BORDER = { 0.175f, 0.190f, 0.215f, 1.000f };
+static const ImVec4 UI_FRAME = { 0.140f, 0.155f, 0.180f, 1.000f };
 static const ImVec4 UI_FRAME_HOVER = { 0.190f, 0.200f, 0.220f, 1.000f };
 static const ImVec4 UI_FRAME_ACTIVE = { 0.220f, 0.250f, 0.300f, 1.000f };
 static const ImVec4 UI_TITLE = { 0.095f, 0.098f, 0.110f, 1.000f };
@@ -40,7 +40,7 @@ static const ImVec4 UI_HEADER = { 0.180f, 0.200f, 0.240f, 1.000f };
 static const ImVec4 UI_HEADER_HOVER = { 0.230f, 0.250f, 0.290f, 1.000f };
 static const ImVec4 UI_HEADER_ACTIVE = { 0.250f, 0.310f, 0.400f, 1.000f };
 static const ImVec4 UI_TAB = { 0.105f, 0.109f, 0.120f, 1.000f };
-static const ImVec4 UI_TAB_SELECTED = { 0.200f, 0.210f, 0.240f, 1.000f };
+static const ImVec4 UI_TAB_SELECTED = { 0.155f, 0.180f, 0.220f, 1.000f };
 static const ImVec4 UI_TAB_HOVER = { 0.230f, 0.240f, 0.270f, 1.000f };
 static const ImVec4 UI_ACCENT = { 0.45f, 0.67f, 1.0f, 1.0f };
 static const ImVec4 UI_DOCK_PREVIEW = { 0.36f, 0.60f, 0.92f, 0.55f };
@@ -69,6 +69,7 @@ static float ui_sidebar_size[2];
 static ImGuiViewport ui_workspace;
 static float ui_menu_bottom;
 static void ui_sidebar_begin(int side);
+static void ui_activity_rail(editor_ui_pane outline, bool has_document);
 static bool ui_navigation_back;
 static bool ui_navigation_forward;
 static int ui_navigation_request;
@@ -77,7 +78,7 @@ static ImVec2 ui_document_bar_pos;
 static ImVec2 ui_document_bar_size;
 static const float UI_DOCUMENT_BAR_HEIGHT = 40.0f;
 
-static void ui_sidebar_heading(int side);
+static void ui_inspector_heading();
 static bool ui_navigator_visible(void);
 static bool ui_focus_visibility[EDITOR_UI_PANE_COUNT];
 static bool ui_reduce_motion;
@@ -306,7 +307,7 @@ static editor_ui_focus_target ui_pane_focus(editor_ui_pane pane)
         case EDITOR_UI_PANE_COMPILER_RESULTS:
             return EDITOR_UI_FOCUS_COMPILER_RESULTS;
         case EDITOR_UI_PANE_OUTPUT_LOG: return EDITOR_UI_FOCUS_OUTPUT_LOG;
-        case EDITOR_UI_PANE_PERFORMANCE:
+        case EDITOR_UI_PANE_PERFORMANCE: return EDITOR_UI_FOCUS_PERFORMANCE;
         case EDITOR_UI_PANE_COUNT: break;
     }
     return EDITOR_UI_FOCUS_NONE;
@@ -319,8 +320,8 @@ void editor_ui_request_focus(editor_ui_focus_target target)
         target == EDITOR_UI_FOCUS_WORLD_OUTLINER ||
         target == EDITOR_UI_FOCUS_NODE_CANVAS || target == EDITOR_UI_FOCUS_CONTENT_DRAWER ||
         target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
-        target == EDITOR_UI_FOCUS_INSPECTOR ||
-        target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
+        target == EDITOR_UI_FOCUS_INSPECTOR || target == EDITOR_UI_FOCUS_COMPILER_RESULTS ||
+        target == EDITOR_UI_FOCUS_OUTPUT_LOG || target == EDITOR_UI_FOCUS_PERFORMANCE
     );
     for (int pane = EDITOR_UI_PANE_CONTENT; pane < EDITOR_UI_PANE_COUNT; pane++) {
         if (target == ui_pane_focus((editor_ui_pane)pane) &&
@@ -337,8 +338,8 @@ bool editor_ui_take_focus(editor_ui_focus_target target)
         target == EDITOR_UI_FOCUS_SCENE || target == EDITOR_UI_FOCUS_WORLD_OUTLINER ||
         target == EDITOR_UI_FOCUS_NODE_CANVAS || target == EDITOR_UI_FOCUS_CONTENT_DRAWER ||
         target == EDITOR_UI_FOCUS_MY_BEHAVIOR_ASSET ||
-        target == EDITOR_UI_FOCUS_INSPECTOR ||
-        target == EDITOR_UI_FOCUS_COMPILER_RESULTS || target == EDITOR_UI_FOCUS_OUTPUT_LOG
+        target == EDITOR_UI_FOCUS_INSPECTOR || target == EDITOR_UI_FOCUS_COMPILER_RESULTS ||
+        target == EDITOR_UI_FOCUS_OUTPUT_LOG || target == EDITOR_UI_FOCUS_PERFORMANCE
     );
     if (ui_focus_request != target) {
         return false;
@@ -421,7 +422,7 @@ bool editor_ui_begin_pane(editor_ui_pane pane, const char *name, int flags)
     bool open = true;
     bool visible = ImGui_Begin(name, pane == EDITOR_UI_PANE_INSPECTOR ? NULL : &open, flags);
     if (visible && pane == EDITOR_UI_PANE_INSPECTOR) {
-        ui_sidebar_heading(1);
+        ui_inspector_heading();
     }
     if (!open) {
         editor_ui_set_pane_visible(pane, false);
@@ -462,6 +463,7 @@ bool editor_ui_begin_navigator(editor_ui_pane *outline, bool has_document, edito
 {
     assert(outline && selected);
     assert(*outline == EDITOR_UI_PANE_WORLD_OUTLINER || *outline == EDITOR_UI_PANE_MY_BEHAVIOR_ASSET);
+    ui_activity_rail(*outline, has_document);
     if (!ui_navigator_visible()) {
         return false;
     }
@@ -501,43 +503,14 @@ bool editor_ui_begin_navigator(editor_ui_pane *outline, bool has_document, edito
     if (focus) {
         ImGui_SetNextWindowFocus();
     }
-    bool visible = ImGui_Begin("Navigator", NULL, 0);
-    if (!visible) {
+    editor_ui_pane chosen = ui_navigator_outline ? *outline : EDITOR_UI_PANE_CONTENT;
+    const char *title = chosen == EDITOR_UI_PANE_CONTENT ? "Project###Navigator"
+                      : chosen == EDITOR_UI_PANE_WORLD_OUTLINER
+                          ? "Scene Hierarchy###Navigator"
+                          : "Document Outline###Navigator";
+    if (!ImGui_Begin(title, NULL, 0)) {
         ImGui_End();
         return false;
-    }
-    ui_sidebar_heading(0);
-    editor_ui_pane chosen = ui_navigator_outline ? *outline : EDITOR_UI_PANE_CONTENT;
-    const struct
-    {
-        const char *label;
-        const char *id;
-        editor_ui_pane pane;
-        bool visible;
-    } tabs[] = {
-        { "Content", "navigator.files", EDITOR_UI_PANE_CONTENT, files },
-        { "Scene", "navigator.scene", EDITOR_UI_PANE_WORLD_OUTLINER, scene },
-        { "Document", "navigator.document", EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, document },
-    };
-    if (ImGui_BeginTabBar("navigator_tabs", 0)) {
-        for (int i = 0; i < 3; i++) {
-            if (!tabs[i].visible) {
-                continue;
-            }
-            int flags = chosen == tabs[i].pane ? ImGuiTabItemFlags_SetSelected : 0;
-            bool active = ImGui_BeginTabItem(tabs[i].label, NULL, flags);
-            editor_ui_track_item(tabs[i].id);
-            if (ImGui_IsItemClicked()) {
-                ui_navigator_outline = tabs[i].pane != EDITOR_UI_PANE_CONTENT;
-                if (ui_navigator_outline) {
-                    *outline = tabs[i].pane;
-                }
-            }
-            if (active) {
-                ImGui_EndTabItem();
-            }
-        }
-        ImGui_EndTabBar();
     }
     if (previous != ui_navigator_outline) {
         ui_settings_changed();
@@ -569,6 +542,11 @@ void editor_ui_request_navigation(int direction)
 void editor_ui_set_document_bar_visible(bool visible)
 {
     ui_document_bar_visible = visible;
+}
+
+bool editor_ui_document_bar_visible()
+{
+    return ui_document_bar_visible;
 }
 
 bool editor_ui_begin_document_bar()
@@ -984,12 +962,11 @@ void editor_ui_end_attachment_picker(int selected)
 
 bool editor_ui_begin_vector(const char *label)
 {
-    if (!ImGui_BeginTable("vector", 3, ImGuiTableFlags_SizingStretchProp)) {
+    if (!ImGui_BeginTable("vector", 2, ImGuiTableFlags_SizingStretchProp)) {
         return false;
     }
     ImGui_TableSetupColumnEx("label", 0, 0.28f, 0);
-    ImGui_TableSetupColumnEx("x", 0, 0.36f, 0);
-    ImGui_TableSetupColumnEx("y", 0, 0.36f, 0);
+    ImGui_TableSetupColumnEx("value", 0, 0.72f, 0);
     ImGui_TableNextRow();
     ImGui_TableNextColumn();
     ImGui_AlignTextToFramePadding();
@@ -1000,20 +977,37 @@ bool editor_ui_begin_vector(const char *label)
 
 void editor_ui_next_axis()
 {
-    ImGui_TableNextColumn();
+    ImGui_TableNextRow();
+    ImGui_TableSetColumnIndex(1);
 }
 void editor_ui_end_vector()
 {
     ImGui_EndTable();
 }
 
+bool editor_ui_vector_float(const char *id, float *value, int count, float min, float max)
+{
+    const char *axes[] = { "X", "Y", "Z", "W" };
+    float width = ImGui_CalcItemWidth();
+    bool changed = false;
+    ImGui_PushID(id);
+    ImGui_BeginGroup();
+    for (int axis = 0; axis < count; axis++) {
+        ImGui_PushIDInt(axis);
+        ImGui_SetNextItemWidth(width);
+        changed |= ImGui_DragFloatEx("##axis", &value[axis], .01f, min, max, "", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoRoundToFormat);
+        char number[64];
+        snprintf(number, sizeof number, "%.4g", value[axis]);
+        editor_ui_value_label(count > 1 ? axes[axis] : "", number);
+        ImGui_PopID();
+    }
+    ImGui_EndGroup();
+    ImGui_PopID();
+    return changed;
+}
+
 bool editor_ui_axis_float(const char *label, float *value, int axis, bool overridden)
 {
-    static const ImVec4 colors[] = {
-        { 0.93f, 0.47f, 0.47f, 1.0f },
-        { 0.47f, 0.79f, 0.58f, 1.0f },
-        { 0.45f, 0.67f, 1.0f, 1.0f },
-    };
     assert(axis >= 0 && axis < 3);
     ImGui_AlignTextToFramePadding();
     ImGui_TextUnformatted(label);
@@ -1021,20 +1015,7 @@ bool editor_ui_axis_float(const char *label, float *value, int axis, bool overri
     ImGui_SetNextItemWidth(
         fmaxf(1.0f, ImGui_GetContentRegionAvail().x - (overridden ? 28.0f : 0.0f))
     );
-    ImGui_PushStyleVarImVec2(
-        ImGuiStyleVar_FramePadding,
-        (ImVec2){ 4.0f, ImGui_GetStyle()->FramePadding.y }
-    );
     bool changed = ImGui_InputFloatEx("###field_value", value, 0.0f, 0.0f, "%.6g", 0);
-    ImGui_PopStyleVar();
-    ImVec2 min = ImGui_GetItemRectMin(), max = ImGui_GetItemRectMax();
-    ImDrawList_AddLineEx(
-        ImGui_GetWindowDrawList(),
-        min,
-        (ImVec2){ min.x, max.y },
-        ui_color(colors[axis]),
-        2.0f
-    );
     return changed;
 }
 
@@ -1105,6 +1086,55 @@ static bool ui_icon_button(const char *id, editor_icon glyph, bool enabled, ImVe
 bool editor_ui_icon_button(const char *id, editor_icon glyph, bool enabled)
 {
     return ui_icon_button(id, glyph, enabled, (ImVec2){ 26.0f, 24.0f }, ImGui_GetFontSize() - 1.0f);
+}
+
+bool editor_ui_slider_float(const char *id, const char *label, float *value, float min, float max)
+{
+    ImGui_PushStyleColorImVec4(ImGuiCol_SliderGrab, (ImVec4){ 0 });
+    ImGui_PushStyleColorImVec4(ImGuiCol_SliderGrabActive, (ImVec4){ 0 });
+    bool changed = ImGui_SliderFloatEx(id, value, min, max, "", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoRoundToFormat);
+    ImGui_PopStyleColorEx(2);
+    if (!ImGui_IsItemVisible() || ImGui_TempInputIsActive(ImGui_GetItemID())) {
+        return changed;
+    }
+    ImVec2 a = ImGui_GetItemRectMin(), b = ImGui_GetItemRectMax();
+    ImDrawList *draw = ImGui_GetWindowDrawList();
+    float fraction = max > min ? fminf(1, fmaxf(0, (*value - min) / (max - min))) : 0;
+    if (fraction > 0) {
+        ImVec4 fill = ImGui_GetStyle()->Colors[ImGui_IsItemActive() ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab];
+        fill.w *= .55f;
+        ImDrawList_PushClipRect(draw, a, (ImVec2){ a.x + (b.x - a.x) * fraction, b.y }, true);
+        ImDrawList_AddRectFilledEx(draw, a, b, ui_color(fill), ImGui_GetStyle()->FrameRounding, 0);
+        ImDrawList_PopClipRect(draw);
+    }
+    char number[32];
+    snprintf(number, sizeof number, "%.3f", *value);
+    editor_ui_value_label(label, number);
+    return changed;
+}
+
+void editor_ui_value_label(const char *label, const char *number)
+{
+    if (!ImGui_IsItemVisible() || ImGui_TempInputIsActive(ImGui_GetItemID())) {
+        return;
+    }
+    ImVec2 a = ImGui_GetItemRectMin(), b = ImGui_GetItemRectMax();
+    ImDrawList *draw = ImGui_GetWindowDrawList();
+    ImVec2 padding = ImGui_GetStyle()->FramePadding;
+    float y = a.y + (b.y - a.y - ImGui_GetFontSize()) * .5f;
+    float number_x = b.x - padding.x - ImGui_CalcTextSize(number).x;
+    ImDrawList_PushClipRect(
+        draw,
+        (ImVec2){ a.x + padding.x, a.y },
+        (ImVec2){ fmaxf(a.x + padding.x, number_x - padding.x), b.y },
+        true
+    );
+    ImDrawList_AddText(draw, (ImVec2){ a.x + padding.x, y }, ImGui_GetColorU32(ImGuiCol_Text), label);
+    ImDrawList_PopClipRect(draw);
+    ImDrawList_PushClipRect(draw, a, b, true);
+    ImDrawList_AddText(draw, (ImVec2){ number_x, y }, ImGui_GetColorU32(ImGuiCol_Text), number);
+    ImDrawList_PopClipRect(draw);
+    ImGui_RenderNavCursor((ImRect){ a, b }, ImGui_GetItemID());
 }
 
 bool editor_ui_icon_button_sized(const char *id, editor_icon glyph, bool enabled, float size)
@@ -1461,6 +1491,7 @@ static void ui_apply_theme(void)
     style->GrabRounding = 3.0f;
     style->TabRounding = 5.0f;
     style->TabBorderSize = 0.0f;
+    style->TabBarBorderSize = 0.0f;
     style->DockingSeparatorSize = 5.0f;
     style->Colors[ImGuiCol_Text] = UI_TEXT;
     style->Colors[ImGuiCol_TextDisabled] = UI_TEXT_MUTED;
@@ -1561,7 +1592,8 @@ static void ui_build_default_layout(void)
      * rather than for the temporary document above the hidden bottom node. */
     ImGui_DockBuilderSplitNode(document, ImGuiDir_Down, 1.0f - UI_GRAPH_HEIGHT_RATIO, &scene, &graph);
     if (!ui_pane_visibility[EDITOR_UI_PANE_OUTPUT_LOG] &&
-        !ui_pane_visibility[EDITOR_UI_PANE_COMPILER_RESULTS]) {
+        !ui_pane_visibility[EDITOR_UI_PANE_COMPILER_RESULTS] &&
+        !ui_pane_visibility[EDITOR_UI_PANE_PERFORMANCE]) {
         ImVec2 scene_size = ImGui_DockBuilderGetNode(scene)->Size;
         scene_size.y = ImGui_DockBuilderGetNode(center)->Size.y *
                        (1.0f - UI_GRAPH_HEIGHT_RATIO);
@@ -1569,6 +1601,7 @@ static void ui_build_default_layout(void)
     }
     ImGui_DockBuilderDockWindow("Output Log", bottom);
     ImGui_DockBuilderDockWindow("Compiler Results", bottom);
+    ImGui_DockBuilderDockWindow("Performance", bottom);
     ImGui_DockBuilderDockWindow("Node Canvas", graph);
     ImGui_DockBuilderDockWindow("Scene", scene);
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
@@ -1792,21 +1825,6 @@ static void ui_update_scene_central_node()
     ui_settings_changed();
 }
 
-static bool ui_sidebar_open(int side)
-{
-    return side ? editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR)
-                : ui_navigator_visible();
-}
-
-static void ui_sidebar_toggle(int side)
-{
-    if (side) {
-        editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, !ui_sidebar_open(side));
-        return;
-    }
-    ui_set_navigator_visible(!ui_sidebar_open(side));
-}
-
 static void ui_sidebar_begin(int side)
 {
     float x = ui_workspace.WorkPos.x;
@@ -1822,56 +1840,147 @@ static void ui_sidebar_begin(int side)
     );
 }
 
-static void ui_sidebar_heading(int side)
+static void ui_inspector_heading()
 {
-    if (editor_ui_icon_button(
-            "collapse",
-            side ? EDITOR_ICON_CODICON_CHEVRON_LEFT : EDITOR_ICON_CODICON_CHEVRON_RIGHT,
-            true
-        )) {
-        ui_sidebar_toggle(side);
+    if (editor_ui_icon_button("collapse", EDITOR_ICON_CODICON_SIDEBAR_RIGHT_OFF, true)) {
+        editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
     }
-    editor_ui_track_item(side ? "inspector.collapse" : "navigator.collapse");
-    if (!side) {
-        ImGui_SameLine();
-        ImGui_TextUnformatted("Navigator");
-    }
+    editor_ui_track_item("inspector.collapse");
     ImGui_Separator();
+}
+
+static bool ui_activity_button(const char *id, editor_icon icon, const char *label, bool selected, bool enabled)
+{
+    ImVec2 min = ImGui_GetCursorScreenPos();
+    ImVec2 max = { min.x + 40.0f, min.y + 40.0f };
+    ImGui_BeginDisabled(!enabled);
+    bool pressed = ImGui_InvisibleButton(id, (ImVec2){ 40.0f, 40.0f }, ImGuiButtonFlags_EnableNav);
+    bool hovered = ImGui_IsItemHovered(0);
+    ImDrawList *draw = ImGui_GetWindowDrawList();
+    if (selected || hovered) {
+        ImDrawList_AddRectFilledEx(draw, min, max, ui_color(selected ? UI_TAB_SELECTED : UI_HEADER), 6.0f, 0);
+    }
+    if (selected) {
+        ImDrawList_AddRectFilled(
+            draw,
+            (ImVec2){ min.x - 4.0f, min.y + 10.0f },
+            (ImVec2){ min.x - 1.0f, max.y - 10.0f },
+            ui_color(UI_ACCENT)
+        );
+    }
+    ui_draw_centered_icon(
+        draw,
+        ImGui_GetFont(),
+        19.0f,
+        min,
+        max,
+        ui_color(selected ? UI_ACCENT : UI_TEXT_MUTED),
+        (ImWchar)icon
+    );
+    ImGui_RenderNavCursor((ImRect){ min, max }, ImGui_GetItemID());
+    editor_ui_track_item(id);
+    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui_SetTooltip("%s", label);
+    }
+    ImGui_EndDisabled();
+    return pressed;
+}
+
+static void ui_activity_rail(editor_ui_pane outline, bool has_document)
+{
+    ui_sidebar_begin(0);
+    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 4.0f, 8.0f });
+    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowMinSize, (ImVec2){ 24.0f, 24.0f });
+    ImGui_PushStyleColorImVec4(ImGuiCol_WindowBg, UI_TITLE);
+    if (ImGui_Begin(
+            "Activity Rail",
+            NULL,
+            ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings
+        )) {
+        editor_ui_pane chosen = editor_ui_navigator_tab(outline);
+        const struct
+        {
+            const char *id;
+            const char *label;
+            editor_icon icon;
+            editor_ui_pane pane;
+        } activities[] = {
+            { "navigator.files", "Project", EDITOR_ICON_FA_FOLDER_OPEN, EDITOR_UI_PANE_CONTENT },
+            { "navigator.scene", "Scene Hierarchy", EDITOR_ICON_FA_SITEMAP, EDITOR_UI_PANE_WORLD_OUTLINER },
+            { "navigator.document",
+              "Document Outline",
+              EDITOR_ICON_FA_CODE_FORK,
+              EDITOR_UI_PANE_MY_BEHAVIOR_ASSET },
+        };
+        for (int i = 0; i < 3; i++) {
+            bool selected = ui_navigator_visible() && chosen == activities[i].pane;
+            bool enabled = activities[i].pane != EDITOR_UI_PANE_MY_BEHAVIOR_ASSET ||
+                           has_document;
+            char tooltip[96];
+            snprintf(
+                tooltip,
+                sizeof tooltip,
+                "%s%s",
+                activities[i].label,
+                selected  ? " (click to hide)"
+                : enabled ? ""
+                          : " (open a document)"
+            );
+            if (ui_activity_button(activities[i].id, activities[i].icon, tooltip, selected, enabled)) {
+                ui_set_navigator_visible(!selected);
+                if (!selected) {
+                    editor_ui_request_focus(ui_pane_focus(activities[i].pane));
+                }
+            }
+        }
+        ImGui_Separator();
+        if (ui_activity_button(
+                "activity.search",
+                EDITOR_ICON_FA_SEARCH,
+                "Search Assets (Cmd/Ctrl+P)",
+                false,
+                ui_command_handler != NULL
+            )) {
+            editor_ui_run_command(EDITOR_UI_COMMAND_QUICK_OPEN);
+        }
+        ImGui_SetCursorPosY(fmaxf(ImGui_GetCursorPosY(), ImGui_GetWindowHeight() - 48.0f));
+        bool performance = editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE);
+        if (ui_activity_button("activity.performance", EDITOR_ICON_FA_TACHOMETER, "Performance", performance, true)) {
+            editor_ui_set_pane_visible(EDITOR_UI_PANE_PERFORMANCE, !performance);
+        }
+    }
+    ImGui_End();
+    ImGui_PopStyleColor();
+    ImGui_PopStyleVarEx(2);
 }
 
 static void ui_prepare_sidebars()
 {
-    for (int side = 0; side < 2; side++) {
-        bool open = ui_sidebar_open(side);
-        /* Reopen rails have separate identities so they never overwrite the
-         * movable panes' saved positions or docking assignments. */
-        ui_sidebar_size[side] = open ? 0.0f : 32.0f;
-        if (open) {
-            continue;
-        }
-        ui_sidebar_begin(side);
-        ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 4.0f, 8.0f });
-        ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowMinSize, (ImVec2){ 24.0f, 24.0f });
-        if (ImGui_Begin(
-                side ? "Inspector Rail" : "Navigator Rail",
-                NULL,
-                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking |
-                    ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
-            )) {
-            if (editor_ui_icon_button_sized(
-                    "expand",
-                    side ? EDITOR_ICON_CODICON_CHEVRON_UP : EDITOR_ICON_CODICON_CHEVRON_DOWN,
-                    true,
-                    24.0f
-                )) {
-                ui_sidebar_toggle(side);
-            }
-            editor_ui_track_item(side ? "inspector.expand" : "navigator.expand");
-        }
-        ImGui_End();
-        ImGui_PopStyleVarEx(2);
+    ui_sidebar_size[0] = 48.0f;
+    bool inspector = editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR);
+    ui_sidebar_size[1] = inspector ? 0.0f : 32.0f;
+    if (inspector) {
+        return;
     }
+    /* The reopen rail has its own identity to preserve the Inspector's dock. */
+    ui_sidebar_begin(1);
+    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 4.0f, 8.0f });
+    ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowMinSize, (ImVec2){ 24.0f, 24.0f });
+    if (ImGui_Begin(
+            "Inspector Rail",
+            NULL,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
+        )) {
+        if (editor_ui_icon_button_sized("expand", EDITOR_ICON_CODICON_SIDEBAR_RIGHT, true, 24.0f)) {
+            editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, true);
+        }
+        editor_ui_track_item("inspector.expand");
+    }
+    ImGui_End();
+    ImGui_PopStyleVarEx(2);
 }
 
 void editor_ui_prepare(void)

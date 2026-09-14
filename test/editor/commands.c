@@ -115,6 +115,21 @@ static void check_search_catalog()
                               "On Impact",
                               "Call Impact",
                               "Send Impact" };
+    const char *fuzzy_queries[] = { "velocity compute",
+                                    "CV",
+                                    "compute velcoity",
+                                    "budget trail get",
+                                    "math formula" };
+    const char *fuzzy_names[] = { "Compute Velocity",
+                                  "Compute Velocity",
+                                  "Compute Velocity",
+                                  "Get Trail Budget",
+                                  "Math Expression" };
+    for (int i = 0; i < 5; i++) {
+        ed_search_match *matches = ed_search_matches(e, fuzzy_queries[i]);
+        test_check(acount(matches) > 0 && !strcmp(matches[0].name, fuzzy_names[i]), "ranked node search handles reordered words, initials and transposed letters");
+        afree(matches);
+    }
     node *expected[9] = { 0 };
     for (int i = 0; i < 9; i++) {
         ed_search_match *matches = ed_search_matches(e, queries[i]);

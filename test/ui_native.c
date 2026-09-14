@@ -1,12 +1,17 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
+#include "editor/workspace/editor_internal.h"
 #include "editor/workspace/event_catalog.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_authoring.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/authoring/optimize.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
+#include "graph/runtime/eval.h"
 #include "graph/shader/shader_graph.h"
 #include "host/stacktrace.h"
 #include "platform/cute.h"
@@ -17,12 +22,17 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "support/arena.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <cute_defines.h>
 #define CF_MATH_H
 #include <imgui/dcimgui.h>
 #undef CF_MATH_H
+#undef IMGUI_STB_NAMESPACE
+#include <imgui/dcimgui_internal.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -472,6 +482,226 @@ static void capture_asset_navigation(const char *name)
     assert(app_save_screenshot(path) == 0);
 }
 
+static void capture_workspace(ui_fixture *fixture, const char *name)
+{
+    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), UI_WIDTH - 20, 10);
+    for (int i = 0; i < 18; i++) {
+        ui_frame(fixture);
+    }
+    capture_asset_navigation(name);
+}
+
+static bool graph_framing_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    const asset_index *index = app_scene_authoring_asset_index(fixture.scene);
+    int position = asset_index_find_name(index, ASSET_INDEX_BEHAVIOR, "ArenaEnemyVisualBehavior");
+    ok &= position >= 0 && open_indexed_asset(&fixture, position);
+    editor *e = fixture.graph;
+    for (int i = 0; i < 8; i++) {
+        ok &= ui_frame(&fixture);
+    }
+    bool opening = e->zoom >= ED_READABLE_ZOOM && e->zoom <= 1 && !e->fit_mode;
+    ImGuiWindow *window = ImGui_FindWindowByName("Node Canvas");
+    bool hidden = window && window->DockNode &&
+                  (window->DockNode->MergedFlags & ImGuiDockNodeFlags_HiddenTabBar);
+    capture_workspace(&fixture, "graph-opening-readable");
+    ed_zoom_fit(e, false);
+    ok &= ui_frame(&fixture);
+    bool overview = e->fit_mode && e->zoom < ED_READABLE_ZOOM &&
+                    editor_graph_wires_visible(e);
+    capture_workspace(&fixture, "graph-opening-overview");
+
+    node *call = NULL;
+    for (int i = 0; i < acount(e->active_graph->nodes); i++) {
+        if (ed_is_graph_call(e->active_graph->nodes[i])) {
+            call = e->active_graph->nodes[i];
+            break;
+        }
+    }
+    assert(call);
+    uint64_t call_id = call->id, root_id = e->active_graph->graph_id;
+    editor_reveal_node(e, call);
+    for (int i = 0; i < 40; i++) {
+        ok &= ui_frame(&fixture);
+    }
+    bool reveal = e->zoom >= ED_READABLE_ZOOM - .001f && !e->fit_mode;
+    e->zoom = 1.15f;
+    e->pan = (ImVec2){ 67, -31 };
+    e->camera_moving = false;
+    ok &= editor_open_graph_call(e, call_id) == 0 && ui_frame(&fixture) &&
+          ui_frame(&fixture);
+    uint64_t function_id = e->active_graph->graph_id;
+    window = ImGui_FindWindowByName("Node Canvas");
+    bool nested = function_id != root_id && strstr(window->Name, " / Bump###") &&
+                  !(window->DockNode->MergedFlags & ImGuiDockNodeFlags_HiddenTabBar);
+    capture_workspace(&fixture, "graph-nested-context");
+    e->zoom = .94f;
+    e->pan = (ImVec2){ 12, 23 };
+    e->camera_moving = false;
+    ok &= editor_graph_back(e) == 0;
+    for (int i = 0; i < 40; i++) {
+        ok &= ui_frame(&fixture);
+    }
+    bool root_restored = e->active_graph->graph_id == root_id &&
+                         e->zoom == 1.15f && e->pan.x == 67 && e->pan.y == -31;
+    ok &= editor_open_graph_call(e, call_id) == 0 && ui_frame(&fixture) &&
+          ui_frame(&fixture);
+    bool function_restored = e->active_graph->graph_id == function_id &&
+                             e->zoom == .94f && e->pan.x == 12 && e->pan.y == 23;
+    ok &= editor_graph_back(e) == 0 && ui_frame(&fixture) && ui_frame(&fixture);
+
+    window = ImGui_FindWindowByName("Node Canvas");
+    ImGuiDockNode *dock = window->DockNode;
+    /* The native tab-bar reveal affordance remains available for undocking. */
+    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), dock->Pos.x + 6, dock->Pos.y + 6);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    bool tab_revealed = !(dock->MergedFlags & ImGuiDockNodeFlags_HiddenTabBar);
+    ImRect tab = window->DC.DockTabItemRect;
+    ImVec2 center = { (tab.Min.x + tab.Max.x) * .5f, (tab.Min.y + tab.Max.y) * .5f };
+    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), center.x, center.y);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), 460, 330);
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    window = ImGui_FindWindowByName("Node Canvas");
+    bool detached = !window->DockIsActive && window->TitleBarHeight > 0 &&
+                    strstr(window->Name, "ArenaEnemyVisualBehavior###");
+    capture_workspace(&fixture, "graph-detached");
+    editor_ui_reset_layout();
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    window = ImGui_FindWindowByName("Node Canvas");
+    ImGuiWindow *scene_window = ImGui_FindWindowByName("Scene");
+    ImGui_DockBuilderDockWindow("Node Canvas", scene_window->DockId);
+    ImGui_DockBuilderFinish(scene_window->DockId);
+    ok &= ui_frame(&fixture) && ui_frame(&fixture) && ui_frame(&fixture);
+    bool shared = window->DockNode->Windows.Size == 2 &&
+                  !(window->DockNode->MergedFlags & ImGuiDockNodeFlags_HiddenTabBar);
+    capture_workspace(&fixture, "graph-shared-dock");
+    ok &= opening && hidden && overview && reveal && nested && root_restored &&
+          function_restored && tab_revealed && detached && shared;
+    printf(
+        "ui-native graph framing %s: readable=%d hidden=%d fit=%d reveal=%d "
+        "nested=%d root=%d function=%d tab=%d detached=%d shared=%d\n",
+        ok ? "PASS" : "FAIL",
+        opening,
+        hidden,
+        overview,
+        reveal,
+        nested,
+        root_restored,
+        function_restored,
+        tab_revealed,
+        detached,
+        shared
+    );
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+static bool workspace_navigation_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    editor_ui_request_focus(EDITOR_UI_FOCUS_WORLD_OUTLINER);
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture) && ui_frame(&fixture);
+    char *document = xstrdup(fixture.scene->tabs[fixture.scene->active_tab].key);
+    editor_ui_rect after;
+    ok &= click_item(&fixture, "navigator.files") && ui_frame(&fixture);
+    ok &= editor_ui_pane_rect(EDITOR_UI_PANE_CONTENT, &after);
+    capture_workspace(&fixture, "workspace-project");
+    ok &= click_item(&fixture, "navigator.files") && ui_frame(&fixture);
+    ok &= !editor_ui_navigator_visible() &&
+          editor_ui_item_rect("navigator.files", &after);
+    capture_workspace(&fixture, "workspace-collapsed");
+    ok &= click_item(&fixture, "navigator.scene") && ui_frame(&fixture);
+    ok &= editor_ui_pane_rect(EDITOR_UI_PANE_WORLD_OUTLINER, &after);
+    ok &= click_item(&fixture, "navigator.document") && ui_frame(&fixture);
+    ok &= editor_ui_pane_rect(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, &after);
+    ok &= click_item(&fixture, "activity.performance") && ui_frame(&fixture);
+    ok &= editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE);
+    ok &= click_item(&fixture, "activity.performance") && ui_frame(&fixture);
+    ok &= !editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE);
+    ok &= !strcmp(fixture.scene->tabs[fixture.scene->active_tab].key, document);
+    ok &= click_item(&fixture, "activity.search") && ui_frame(&fixture) &&
+          ui_frame(&fixture);
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "player arena");
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    ok &= editor_ui_item_rect("quick.open.result.0", &after);
+    ImGuiIO *io = ImGui_GetIO();
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_DownArrow, true);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_DownArrow, false);
+    ok &= ui_frame(&fixture) && fixture.scene->quick_open_selected == 1;
+    ImGuiKey modifier = io->ConfigMacOSXBehaviors ? ImGuiMod_Super : ImGuiMod_Ctrl;
+    ImGuiIO_AddKeyEvent(io, modifier, true);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_A, true);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_A, false);
+    ImGuiIO_AddKeyEvent(io, modifier, false);
+    ImGuiIO_AddInputCharactersUTF8(io, "prototypes player arena");
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    ok &= fixture.scene->quick_open_selected == 0;
+    capture_workspace(&fixture, "workspace-search");
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_Enter, true);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_Enter, false);
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    ok &= fixture.scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
+          !strcmp(fixture.scene->document_id, "ArenaPlayer");
+    ok &= !fixture.scene->quick_open;
+    ok &= click_item(&fixture, "navigator.files") && ui_frame(&fixture);
+    ok &= click_item(&fixture, "content.search");
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "ArenaPlayer");
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    ok &= editor_ui_item_rect("content/prototypes/ArenaPlayer.json", &after);
+    ok &= click_item(&fixture, "content.view") && ui_frame(&fixture);
+    ok &= click_item(&fixture, "content.view.catalog") && ui_frame(&fixture);
+    ok &= editor_ui_item_rect("content.kind", &after) &&
+          !strcmp(fixture.scene->asset_search, "ArenaPlayer");
+    capture_workspace(&fixture, "workspace-catalog");
+    ok &= click_item(&fixture, "content.view") && ui_frame(&fixture);
+    ok &= click_item(&fixture, "content.view.files") && ui_frame(&fixture);
+    ok &= editor_ui_item_rect("content/prototypes/ArenaPlayer.json", &after);
+    fixture.scene->asset_search[0] = '\0';
+
+    ok &= app_scene_authoring_open_behavior(fixture.scene, "AutoWeaponBehavior") == 0;
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    const char *prototypes[] = { "Player", "Enemy", "Projectile", "InputEntity", "StaticEntity" };
+    for (int i = 0; i < 5; i++) {
+        ok &= app_scene_authoring_open_prototype(fixture.scene, prototypes[i]) == 0;
+        ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    }
+    ok &= acount(fixture.scene->tabs) >= 8;
+    ok &= click_item(&fixture, "workspace.documents.list") && ui_frame(&fixture);
+    capture_workspace(&fixture, "workspace-documents");
+    char id[320];
+    snprintf(id, sizeof id, "workspace.document.%s", document);
+    ok &= click_item(&fixture, id) && ui_frame(&fixture);
+    ok &= !strcmp(fixture.scene->tabs[fixture.scene->active_tab].key, document);
+    free(document);
+    printf(
+        "ui-native workspace navigation %s: activity rail retains the "
+        "document, file and catalog search, document menu activation\n",
+        ok ? "PASS" : "FAIL"
+    );
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
 static editor_ui_rect inspector_input_rect()
 {
     editor_ui_rect inspector;
@@ -587,9 +817,25 @@ static int binding_choice_index(
     return -1;
 }
 
+static bool reveal_graph_node(ui_fixture *fixture, node *target)
+{
+    editor_reveal_node(fixture->graph, target);
+    for (int i = 0; i < 60; i++) {
+        if (!ui_frame(fixture)) {
+            return false;
+        }
+        if (!fixture->graph->camera_moving) {
+            return ui_frame(fixture);
+        }
+    }
+    return false;
+}
+
 static bool choose_binding_source(ui_fixture *fixture, node *target, const char *search, int choice_index)
 {
-    editor_select_node(fixture->graph, target);
+    if (!reveal_graph_node(fixture, target)) {
+        return false;
+    }
     char open_id[112];
     snprintf(
         open_id,
@@ -632,6 +878,9 @@ static bool choose_binding_source(ui_fixture *fixture, node *target, const char 
 static bool open_binding_popup_at(ui_fixture *fixture, node *target, int pin)
 {
     editor_select_node(fixture->graph, target);
+    if (!reveal_graph_node(fixture, target)) {
+        return false;
+    }
     bool frames = ui_frame(fixture) && ui_frame(fixture) && ui_frame(fixture);
     if (!frames) {
         return false;
@@ -656,8 +905,6 @@ static bool open_binding_popup_at(ui_fixture *fixture, node *target, int pin)
         search = settled &&
                  editor_ui_item_rect("graph.binding.search", &(editor_ui_rect){ 0 });
     }
-    if (!search) {
-    }
     return search;
 }
 
@@ -681,6 +928,9 @@ static bool binding_popup_action(ui_fixture *fixture, const char *filter, const 
 static bool choose_binding_search_enter(ui_fixture *fixture, node *target, int pin, const char *search)
 {
     editor_select_node(fixture->graph, target);
+    if (!reveal_graph_node(fixture, target)) {
+        return false;
+    }
     char open_id[112];
     snprintf(
         open_id,
@@ -887,8 +1137,7 @@ static bool inline_source_rendering_shape(ui_fixture *fixture, node *target, nod
 static bool binding_search_has_no_choice(ui_fixture *fixture, node *target, int target_pin, const char *search)
 {
     editor_select_node(fixture->graph, target);
-    editor_reveal_node(fixture->graph, target);
-    if (!ui_frame(fixture) || !ui_frame(fixture) || !ui_frame(fixture)) {
+    if (!reveal_graph_node(fixture, target)) {
         return false;
     }
     char open_id[112];
@@ -1224,6 +1473,64 @@ static bool material_inline_source_scenario()
         compact,
         cleared,
         constant
+    );
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+static bool nested_component_binding_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    graph *active = (graph *)editor_active_graph(fixture.graph);
+    node *target = editor_spawn(fixture.graph, registry_node_by_name("Reroute Data"), 250.0f, 300.0f);
+    bool target_ready = target &&
+                        graph_set_pin_type(active, target, 0, 0, PIN_F32, "float") == 0;
+    if (target_ready) {
+        editor_reveal_node(fixture.graph, target);
+    }
+    bool chosen = target_ready &&
+                  choose_binding_search_enter(&fixture, target, 0, "Get Aim.Direction.X");
+    active = (graph *)editor_active_graph(fixture.graph);
+    const pin_binding *binding = chosen ? graph_pin_binding(active, target, 0, 0)
+                                        : NULL;
+    bool direct = chosen && binding && binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+                  binding->component_key &&
+                  !strcmp(binding->component_key, GAME_COMPONENT_GameAim.key) &&
+                  binding->field_name && !strcmp(binding->field_name, "direction.x");
+    node *source = NULL;
+    int source_pin = -1;
+    bool no_graph_source = direct &&
+                           !graph_input_source(active, target, 0, &source, &source_pin);
+    char *json = behavior_asset_save_json(editor_behavior_asset(fixture.graph));
+    behavior_asset *roundtrip = json ? behavior_asset_load_json(json) : NULL;
+    node *loaded_target = roundtrip && direct
+                            ? graph_node_by_id(roundtrip->graph, target->id)
+                            : NULL;
+    const pin_binding *loaded_binding = loaded_target
+                                          ? graph_pin_binding(roundtrip->graph, loaded_target, 0, 0)
+                                          : NULL;
+    bool saved = loaded_binding &&
+                 loaded_binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+                 loaded_binding->component_key &&
+                 !strcmp(loaded_binding->component_key, GAME_COMPONENT_GameAim.key) &&
+                 loaded_binding->field_name &&
+                 !strcmp(loaded_binding->field_name, "direction.x");
+    behavior_asset_free(roundtrip);
+    free(json);
+    bool ok = target_ready && chosen && direct && no_graph_source && saved;
+    printf(
+        "ui-native nested component binding %s: Get Aim.Direction.X picker, "
+        "direct path, save/reload "
+        "(target=%d chosen=%d direct=%d no-source=%d saved=%d)\n",
+        ok ? "PASS" : "FAIL",
+        target_ready,
+        chosen,
+        direct,
+        no_graph_source,
+        saved
     );
     ui_fixture_free(&fixture);
     return ok;
@@ -1770,16 +2077,1059 @@ static bool asset_navigation_scenario()
     return ok;
 }
 
+static bool local_alias_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    graph *g = (graph *)editor_active_graph(fixture.graph);
+    node *source = graph_add_node(g, registry_node_by_name("Integer"));
+    assert(source);
+    assert(graph_set_pin_default(g, source, 0, 0, &(pin_value){ .type = PIN_I32, .i = 17 }) == 0);
+    node *consumers[3];
+    for (int i = 0; i < 3; i++) {
+        consumers[i] = graph_add_node(g, &NODE_Delay);
+        assert(graph_connect_data_conversion(g, source, 0, consumers[i], 1, &NODE_To_Real) == 0);
+    }
+    uint64_t consumer_id = consumers[0]->id;
+    editor_select_node(fixture.graph, consumers[0]);
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    capture_asset_navigation("graph-locals-before");
+    bool actions = click_item(&fixture, "graph.actions");
+    actions = actions && ui_frame(&fixture) && ui_frame(&fixture);
+    capture_asset_navigation("graph-optimize-menu");
+    bool optimized = actions && click_item(&fixture, "graph.optimize");
+    ok &= optimized;
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    const graph_local *local = graph_input_local(g, consumers[0], 1);
+    ok &= local != NULL;
+    if (ok) {
+        capture_asset_navigation("graph-locals");
+        char chip[96];
+        snprintf(chip, sizeof chip, "graph.input.binding.%llu.1", (unsigned long long)consumer_id);
+        ok &= click_item(&fixture, chip) && ui_frame(&fixture);
+        capture_asset_navigation("graph-local-actions");
+        ok &= click_item(&fixture, "graph.local.jump") && ui_frame(&fixture);
+        ok &= selected_reference_node(fixture.graph, g->graph_id, source->id);
+        ok &= click_item(&fixture, chip) && ui_frame(&fixture);
+        ok &= click_item(&fixture, "graph.local.expand") && ui_frame(&fixture);
+        ok &= !graph_input_local(g, consumers[0], 1);
+        editor_undo(fixture.graph);
+        ok &= ui_frame(&fixture) && ui_frame(&fixture);
+        g = (graph *)editor_active_graph(fixture.graph);
+        node *consumer = graph_node_by_id(g, consumer_id);
+        ok &= consumer && graph_input_local(g, consumer, 1);
+    }
+    printf("%s: native local chip navigation, expansion, and undo\n", ok ? "PASS" : "FAIL");
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+static bool optimizer_sources_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    const asset_index *index = app_scene_authoring_asset_index(fixture.scene);
+    int position = asset_index_find_name(index, ASSET_INDEX_BEHAVIOR, "ArenaShardBehavior");
+    ok &= position >= 0 && open_indexed_asset(&fixture, position);
+    if (ok) {
+        const behavior_asset *asset = editor_behavior_asset(fixture.graph);
+        graph *g = (graph *)editor_active_graph(fixture.graph);
+        behavior_variable *age = behavior_asset_find_variable_by_name(asset, "Age");
+        assert(age);
+        char *before = behavior_asset_save_json(asset);
+        capture_workspace(&fixture, "arena-shard-before");
+        ok &= click_item(&fixture, "graph.actions") && ui_frame(&fixture);
+        ok &= click_item(&fixture, "graph.optimize") && ui_frame(&fixture) &&
+              ui_frame(&fixture);
+        int age_inputs = 0, self_inputs = 0;
+        for (int i = 0; i < acount(g->nodes); i++) {
+            node *n = g->nodes[i];
+            for (int p = 0; p < n->input_count; p++) {
+                const pin_binding *binding = graph_pin_binding(g, n, 0, p);
+                node *source = NULL;
+                int output = -1;
+                bool is_age = binding && binding->kind == PIN_BINDING_VARIABLE &&
+                              binding->variable_id == age->id;
+                bool is_self = graph_inline_source(g, n, p, &source, &output) &&
+                               source->desc == &NODE_Self;
+                if (!is_age && !is_self) {
+                    continue;
+                }
+                char chip[96];
+                snprintf(
+                    chip,
+                    sizeof chip,
+                    "graph.input.binding.%llu.%d",
+                    (unsigned long long)n->id,
+                    p
+                );
+                bool rendered = editor_ui_item_rect(chip, &(editor_ui_rect){ 0 });
+                age_inputs += is_age && rendered;
+                self_inputs += is_self && rendered;
+            }
+        }
+        ok &= age_inputs >= 3 && self_inputs == 1;
+        capture_workspace(&fixture, "arena-shard-optimized");
+        editor_undo(fixture.graph);
+        ok &= ui_frame(&fixture) && ui_frame(&fixture);
+        char *undone = behavior_asset_save_json(editor_behavior_asset(fixture.graph));
+        ok &= !strcmp(before, undone);
+        free(before);
+        free(undone);
+        printf(
+            "%s: native ArenaShard Optimize renders Age and Self inputs and "
+            "Undo restores the graph (%d/%d)\n",
+            ok ? "PASS" : "FAIL",
+            age_inputs,
+            self_inputs
+        );
+    }
+    if (!ok) {
+        fprintf(stderr, "native ArenaShard optimization failed (asset position %d)\n", position);
+    }
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+int ui_optimizer_run(const char *program)
+{
+    cf_set_assert_handler(stacktrace_assert_handler);
+    if (!native_app_new(program)) {
+        return 1;
+    }
+    bool ok = local_alias_scenario() && optimizer_sources_scenario();
+    app_input_shutdown();
+    cf_destroy_app();
+    return ok ? 0 : 1;
+}
+
+static bool shader_node_workspace_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    const asset_index *index = app_scene_authoring_asset_index(fixture.scene);
+    int position = asset_index_find_name(index, ASSET_INDEX_MATERIAL, "ArenaFloor");
+    ok &= position >= 0 && open_indexed_asset(&fixture, position);
+    editor *e = fixture.graph;
+    ed_clear_selection(e);
+    graph *g = e->active_graph;
+    while (acount(g->nodes)) {
+        graph_remove_node(g, g->nodes[0]);
+    }
+    const char *names[] = { "Shader Gradient",
+                            "Shader Color Ramp",
+                            "Shader Image Texture",
+                            "Shader Parameter" };
+    uint64_t ids[4];
+    for (int i = 0; i < 4; i++) {
+        node *n = graph_add_node(g, registry_node_by_name(names[i]));
+        ok &= shader_graph_init_node(g, n);
+        n->x = i < 3 ? i * 390 : 0;
+        n->y = i < 3 ? 0 : 440;
+        ids[i] = n->id;
+    }
+    node *surface = shader_graph_add_output(g, false);
+    surface->x = 390;
+    surface->y = 440;
+    uint64_t surface_id = surface->id;
+    node *gradient = graph_node_by_id(g, ids[0]),
+         *ramp = graph_node_by_id(g, ids[1]);
+    ok &= graph_connect_data(g, gradient, 0, ramp, 0) == 0;
+    ok &= graph_connect_data(g, ramp, 0, surface, 0) == 0;
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+    cf_app_set_size(1920, 1080);
+    e->zoom = 1;
+    e->pan = (ImVec2){ 40, 40 };
+    ok &= ui_frame(&fixture) && ui_frame(&fixture) && ui_frame(&fixture);
+    for (int i = 0; i < acount(e->views); i++) {
+        ed_node_view *view = &e->views[i];
+        float last_output = 0;
+        for (int p = 0; p < view->n->output_count; p++) {
+            float y = e->pins[view->output_first + p].pos.y;
+            if (y > last_output) {
+                last_output = y;
+            }
+        }
+        for (int p = 0; p < view->n->input_count; p++) {
+            if (ed_pin_visible(g, view->n, ED_PIN_INPUT, p)) {
+                ok &= e->pins[view->input_first + p].pos.y > last_output;
+            }
+        }
+    }
+    capture_workspace(&fixture, "shader-node-workspace");
+    char control[192], choice[208];
+    snprintf(
+        control,
+        sizeof control,
+        "shader.node.%llu.shader.parameter.type",
+        (unsigned long long)ids[3]
+    );
+    snprintf(choice, sizeof choice, "%s.4", control);
+    ok &= click_item(&fixture, control) && ui_frame(&fixture) &&
+          click_item(&fixture, choice) && ui_frame(&fixture);
+    ok &= (graph_node_by_id(e->active_graph, ids[3])->output_pins[0].flags &
+           PIN_FLAG_COLOR) != 0;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    ok &= !(graph_node_by_id(e->active_graph, ids[3])->output_pins[0].flags & PIN_FLAG_COLOR);
+    snprintf(control, sizeof control, "shader.node.%llu.shader.ramp.add", (unsigned long long)ids[1]);
+    ok &= click_item(&fixture, control) && ui_frame(&fixture);
+    shader_ramp_stop stops[SHADER_RAMP_MAX];
+    ok &= shader_node_ramp_get(graph_node_by_id(e->active_graph, ids[1]), stops) == 3;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    ok &= shader_node_ramp_get(graph_node_by_id(e->active_graph, ids[1]), stops) == 2;
+    snprintf(control, sizeof control, "shader.node.%llu.shader.setting.2", (unsigned long long)ids[2]);
+    snprintf(choice, sizeof choice, "%s.1", control);
+    ok &= click_item(&fixture, control) && ui_frame(&fixture) &&
+          click_item(&fixture, choice) && ui_frame(&fixture);
+    ok &= graph_node_by_id(e->active_graph, ids[2])
+              ->input_pins[SHADER_IMAGE_INPUT_COLOR_SPACE]
+              .default_value.i == SHADER_IMAGE_LINEAR;
+    snprintf(control, sizeof control, "shader.context.node.%llu.0", (unsigned long long)ids[0]);
+    snprintf(choice, sizeof choice, "%s.value", control);
+    ok &= click_item(&fixture, control) && ui_frame(&fixture) &&
+          click_item(&fixture, choice) && ui_frame(&fixture);
+    ok &= graph_node_by_id(e->active_graph, ids[0])->input_pins[0].default_value.ptr !=
+          NULL;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    ok &= graph_node_by_id(e->active_graph, ids[0])->input_pins[0].default_value.ptr ==
+          NULL;
+    snprintf(control, sizeof control, "graph.value.%llu.0.2", (unsigned long long)surface_id);
+    editor_ui_rect slider;
+    ok &= editor_ui_item_rect(control, &slider) && slider.width > 150;
+    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), slider.x + slider.width * .78f, slider.y + slider.height * .5f);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+    ok &= ui_frame(&fixture);
+    ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+    ok &= ui_frame(&fixture);
+    float roughness = graph_node_by_id(e->active_graph, surface_id)
+                          ->input_pins[2]
+                          .default_value.f;
+    ok &= roughness > .6f && roughness < .9f;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    ok &= graph_node_by_id(e->active_graph, surface_id)
+              ->input_pins[2]
+              .default_value.f == .5f;
+    ok &= !editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR);
+    char *json = behavior_asset_save_json(e->asset);
+    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
+    ok &= copy && graph_node_by_id(copy->graph, ids[2])
+                          ->input_pins[SHADER_IMAGE_INPUT_COLOR_SPACE]
+                          .default_value.i == SHADER_IMAGE_LINEAR;
+    behavior_asset_free(copy);
+    free(json);
+    printf(
+        "ui-native shader nodes %s: outputs above inputs, full-width controls, "
+        "parameter type, ramp stops, texture settings, context defaults and "
+        "Undo with Inspector hidden\n",
+        ok ? "PASS" : "FAIL"
+    );
+    cf_app_set_size(UI_WIDTH, UI_HEIGHT);
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+static bool arithmetic_node_scenario(bool shader)
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    if (shader) {
+        const asset_index *index = app_scene_authoring_asset_index(fixture.scene);
+        int position = asset_index_find_name(index, ASSET_INDEX_MATERIAL, "ArenaFloor");
+        ok &= position >= 0 && open_indexed_asset(&fixture, position);
+    }
+    cf_app_set_size(1600, 1200);
+    editor *e = fixture.graph;
+    graph *g = e->active_graph;
+    ed_clear_selection(e);
+    while (acount(g->nodes)) {
+        graph_remove_node(g, g->nodes[0]);
+    }
+    const char *names[] = { "Add",    "Subtract", "Multiply", "Divide",  "Sine",
+                            "Cosine", "Add",      "Sine",     "Multiply" };
+    node *nodes[9];
+    for (int i = 0; i < (shader ? 4 : 9); i++) {
+        char name[64];
+        snprintf(name, sizeof name, "%s%s", shader ? "Shader " : "", names[i]);
+        node *n = graph_add_node(g, registry_node_by_name(name));
+        nodes[i] = n;
+        if (shader) {
+            ok &= shader_graph_init_node(g, n);
+        }
+        n->x = (i % (shader ? 2 : 3)) * (shader ? 320 : 340);
+        n->y = (i / (shader ? 2 : 3)) * (shader ? 220 : 260);
+        for (int p = 0; p < n->input_count; p++) {
+            pin_value value = n->input_pins[p].type == PIN_F32
+                                ? (pin_value){ .type = PIN_F32, .f = p + 2 }
+                                : (pin_value){ .type = PIN_F64, .d = p + 2 };
+            ok &= graph_set_pin_default(g, n, false, p, &value) == 0;
+        }
+    }
+    if (!shader) {
+        CF_V2 vector = { 1, 2 };
+        for (int p = 0; p < 2; p++) {
+            ok &= graph_set_pin_type(g, nodes[6], false, p, PIN_STRUCT, "CF_V2") == 0;
+            ok &= graph_set_pin_default(
+                      g,
+                      nodes[6],
+                      false,
+                      p,
+                      &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &vector }
+                  ) == 0;
+        }
+        ok &= graph_set_pin_binding(g, nodes[7], false, 0, &(pin_binding){ .kind = PIN_BINDING_DELTA_TIME }) ==
+              0;
+        ok &= graph_connect_data(g, nodes[0], 0, nodes[8], 0) == 0;
+        ok &= graph_connect_data(g, nodes[1], 0, nodes[8], 1) == 0;
+    }
+    ok &= graph_connect_data(g, nodes[0], 0, nodes[2], 0) == 0;
+    bool setup = ok;
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+    int overlaps = 0;
+    const float zooms[] = { 0.65f, 1.35f, 1.0f };
+    for (int z = 0; z < 3; z++) {
+        e->zoom = zooms[z];
+        e->pan = (ImVec2){ 30, 76 };
+        e->fit_mode = false;
+        e->camera_moving = false;
+        ok &= ui_frame(&fixture) && ui_frame(&fixture);
+        for (int i = 0; i < acount(e->views); i++) {
+            ed_node_view *view = &e->views[i];
+            ok &= view->symbol_max.x > view->symbol_min.x &&
+                  view->symbol_min.x >= view->min.x &&
+                  view->symbol_max.x <= view->max.x &&
+                  view->symbol_min.y >= view->min.y &&
+                  view->symbol_max.y <= view->max.y;
+            if (shader) {
+                ok &= view->symbol_max.y < e->pins[view->output_first].pos.y &&
+                      e->pins[view->output_first].pos.y <
+                          e->pins[view->input_first].pos.y;
+            }
+            for (int p = 0; p < view->n->input_count; p++) {
+                if (!ed_pin_editable(g, view->n, ED_PIN_INPUT, p)) {
+                    continue;
+                }
+                char id[96];
+                snprintf(
+                    id,
+                    sizeof id,
+                    "graph.input.%llu.%d",
+                    (unsigned long long)view->id,
+                    p
+                );
+                editor_ui_rect control;
+                if (!editor_ui_item_rect(id, &control)) {
+                    ok = false;
+                    continue;
+                }
+                overlaps += control.x < view->symbol_max.x &&
+                            control.x + control.width > view->symbol_min.x &&
+                            control.y < view->symbol_max.y &&
+                            control.y + control.height > view->symbol_min.y;
+                ok &= control.x >= view->min.x &&
+                      control.x + control.width <= view->max.x &&
+                      control.y >= view->min.y &&
+                      control.y + control.height <= view->max.y;
+            }
+            ok &= view->symbol_max.y <= view->drawn.title_bottom &&
+                  view->symbol_max.y < e->pins[view->output_first].pos.y &&
+                  e->pins[view->output_first].pos.y <
+                      e->pins[view->input_first].pos.y;
+        }
+    }
+    capture_workspace(&fixture, shader ? "shader-arithmetic-nodes" : "arithmetic-nodes");
+    ok &= overlaps == 0;
+    bool layout = ok;
+    if (!shader) {
+        editor_node_ui drawn;
+        ok &= editor_query_node_ui(e, nodes[0]->id, &drawn);
+        ImGuiIO_AddMousePosEvent(ImGui_GetIO(), drawn.title_x, drawn.title_y);
+        ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+        ok &= ui_frame(&fixture);
+        ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+        ok &= ui_frame(&fixture) && ed_node_selected(e, nodes[0]);
+        char id[96];
+        snprintf(
+            id,
+            sizeof id,
+            "graph.input.binding.%llu.0",
+            (unsigned long long)nodes[7]->id
+        );
+        ok &= click_item(&fixture, id) && ui_frame(&fixture);
+        ok &= editor_ui_item_rect("graph.binding.search", &(editor_ui_rect){ 0 });
+    }
+    printf(
+        "ui-native %sarithmetic %s: header symbols, %d input/glyph "
+        "overlaps at 65%%, 100%% and "
+        "135%% zoom "
+        "(setup=%d layout=%d interactions=%d)\n",
+        shader ? "shader " : "",
+        ok ? "PASS" : "FAIL",
+        overlaps,
+        setup,
+        layout,
+        ok
+    );
+    cf_app_set_size(UI_WIDTH, UI_HEIGHT);
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+int ui_arithmetic_run(const char *program)
+{
+    cf_set_assert_handler(stacktrace_assert_handler);
+    if (!native_app_new(program)) {
+        return 1;
+    }
+    bool ok = arithmetic_node_scenario(false);
+    ok &= arithmetic_node_scenario(true);
+    app_input_shutdown();
+    cf_destroy_app();
+    return ok ? 0 : 1;
+}
+
+static bool enter_node_number(ui_fixture *fixture, const char *id, const char *value)
+{
+    bool ok = click_item(fixture, id) && click_item(fixture, id);
+    ImGuiKey modifier = ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super
+                                                             : ImGuiMod_Ctrl;
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, true);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, true);
+    ok &= ui_frame(fixture);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_A, false);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, false);
+    ok &= ui_frame(fixture);
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), value);
+    ok &= ui_frame(fixture);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, true);
+    ok &= ui_frame(fixture);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, false);
+    return ui_frame(fixture) && ok;
+}
+
+static bool vector_choose_source(ui_fixture *fixture, const char *trigger, const char *source)
+{
+    bool ok = click_item(fixture, trigger) && ui_frame(fixture) &&
+              click_item(fixture, "graph.binding.search");
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), !strncmp(source, "Shader ", 7) ? source + 7 : source);
+    ok &= ui_frame(fixture);
+    char id[112];
+    snprintf(id, sizeof id, "graph.binding.source.%s.0", source);
+    return click_item(fixture, id) && ui_frame(fixture) && ok;
+}
+
+static float triangle_cross(ImVec2 a, ImVec2 b, ImVec2 p)
+{
+    return (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+}
+
+static bool point_in_triangle(ImVec2 p, ImVec2 a, ImVec2 b, ImVec2 c)
+{
+    float ab = triangle_cross(a, b, p);
+    float bc = triangle_cross(b, c, p);
+    float ca = triangle_cross(c, a, p);
+    return (ab >= 0.0f && bc >= 0.0f && ca >= 0.0f) ||
+           (ab <= 0.0f && bc <= 0.0f && ca <= 0.0f);
+}
+
+static ImU32 draw_list_color_at(const ImDrawList *draw, ImVec2 point)
+{
+    ImU32 color = 0;
+    for (int c = 0; c < draw->CmdBuffer.Size; c++) {
+        const ImDrawCmd *command = &draw->CmdBuffer.Data[c];
+        if (command->UserCallback || point.x < command->ClipRect.x ||
+            point.y < command->ClipRect.y || point.x > command->ClipRect.z ||
+            point.y > command->ClipRect.w) {
+            continue;
+        }
+        unsigned int first = command->IdxOffset;
+        unsigned int last = first + command->ElemCount;
+        for (unsigned int i = first; i + 2 < last; i += 3) {
+            ImDrawIdx i0 = draw->IdxBuffer.Data[i] + command->VtxOffset;
+            ImDrawIdx i1 = draw->IdxBuffer.Data[i + 1] + command->VtxOffset;
+            ImDrawIdx i2 = draw->IdxBuffer.Data[i + 2] + command->VtxOffset;
+            const ImDrawVert *v0 = &draw->VtxBuffer.Data[i0];
+            const ImDrawVert *v1 = &draw->VtxBuffer.Data[i1];
+            const ImDrawVert *v2 = &draw->VtxBuffer.Data[i2];
+            if (point_in_triangle(point, v0->pos, v1->pos, v2->pos)) {
+                color = v0->col;
+            }
+        }
+    }
+    return color;
+}
+
+static bool node_overlap_render()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    editor *e = fixture.graph;
+    behavior_asset *asset = behavior_asset_new("Node overlap");
+    bool ok = asset &&
+              editor_open_behavior_asset(e, asset, asset->graph->graph_id) == 0;
+    behavior_asset_free(asset);
+    graph *g = ok ? e->active_graph : NULL;
+    node *controls = g ? graph_add_node(g, registry_node_by_name("Break_CF_V3")) : NULL;
+    node *occluded = g ? graph_add_node(g, registry_node_by_name("Event")) : NULL;
+    ok &= controls && occluded;
+    if (ok) {
+        float initial[3] = { 1, 2, 3 };
+        ok &= graph_set_pin_default(
+                  g,
+                  controls,
+                  false,
+                  0,
+                  &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = initial }
+              ) == 0;
+        controls->x = 300.0f;
+        controls->y = 100.0f;
+        occluded->x = 350.0f;
+        occluded->y = 215.0f;
+        occluded->disabled = true;
+        e->arrange_pending = false;
+        e->view_initialized = true;
+        e->fit_mode = false;
+        e->camera_moving = false;
+        e->front_node = NULL;
+        e->zoom = 1.0f;
+        e->pan = (ImVec2){ 0, 0 };
+        ImGuiIO_AddMousePosEvent(ImGui_GetIO(), 0, 0);
+        ok &= ui_frame(&fixture);
+    }
+    const ed_node_view *controls_view = NULL;
+    const ed_node_view *occluded_view = NULL;
+    for (int i = 0; ok && i < acount(e->views); i++) {
+        if (e->views[i].n == controls) {
+            controls_view = &e->views[i];
+        }
+        if (e->views[i].n == occluded) {
+            occluded_view = &e->views[i];
+        }
+    }
+    bool pair = controls_view && occluded_view &&
+                controls_view->min.x < occluded_view->max.x &&
+                controls_view->max.x > occluded_view->min.x &&
+                controls_view->min.y < occluded_view->max.y &&
+                controls_view->max.y > occluded_view->min.y;
+    bool control_in_pair = false;
+    ImU32 pixel = 0;
+    if (pair) {
+        const ed_pin_view *pin = &e->pins[controls_view->input_first];
+        ImVec2 control_min = { controls_view->min.x + ED_PAD * e->zoom,
+                               pin->pos.y - ImGui_GetFrameHeight() * e->zoom * 0.5f };
+        ImVec2 control_max = { controls_view->max.x - ED_PAD * e->zoom,
+                               control_min.y + ImGui_GetFrameHeight() * e->zoom };
+        float left = ed_max(control_min.x, occluded_view->min.x);
+        float right = ed_min(control_max.x, occluded_view->max.x);
+        ImVec2 point = { left + (right - left) * 0.25f,
+                         control_min.y + ImGui_GetFrameHeight() * e->zoom * 0.8f };
+        control_in_pair = right > left && point.x > control_min.x &&
+                          point.x < control_max.x &&
+                          point.x > occluded_view->min.x &&
+                          point.x < occluded_view->max.x &&
+                          point.y > control_min.y && point.y < control_max.y &&
+                          point.y > occluded_view->min.y + occluded_view->title_height &&
+                          point.y < occluded_view->max.y;
+        ImGuiWindow *window = ImGui_FindWindowByName("Node Canvas");
+        if (control_in_pair && window) {
+            pixel = draw_list_color_at(window->DrawList, point);
+        }
+    }
+    ImU32 body = ed_dim_color(ed_color(ED_NODE_BODY), 0.55f);
+    bool clean = control_in_pair && pixel == body;
+    printf("ui-native node overlap render: overlap=%d control=%d pixel=0x%08x body=0x%08x\n", pair, control_in_pair, pixel, body);
+    ui_fixture_free(&fixture);
+    return ok && pair && clean;
+}
+
+static bool vector_fields_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    editor *e = fixture.graph;
+    behavior_asset *asset = behavior_asset_new("Vector controls");
+    ok &= editor_open_behavior_asset(e, asset, asset->graph->graph_id) == 0;
+    behavior_asset_free(asset);
+    graph *g = e->active_graph;
+    node *target = graph_add_node(g, registry_node_by_name("Break_CF_V3"));
+    uint64_t id = target->id;
+    float initial[3] = { 1, 2, 3 };
+    graph_set_pin_default(
+        g,
+        target,
+        false,
+        0,
+        &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = initial }
+    );
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+    e->zoom = 1;
+    e->pan = (ImVec2){ 80, 100 };
+    e->view_initialized = true;
+    e->fit_mode = e->arrange_pending = e->camera_moving = false;
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    editor_ui_rect fields[3];
+    char control[112];
+    bool stacked = true;
+    for (int axis = 0; axis < 3; axis++) {
+        snprintf(control, sizeof control, "vector.axis.%llu.0.0.%d", (unsigned long long)id, axis);
+        stacked &= editor_ui_item_rect(control, &fields[axis]);
+    }
+    stacked &= fields[0].width > 180 && fields[0].width == fields[2].width &&
+               fields[0].x == fields[2].x &&
+               fields[0].y + fields[0].height < fields[1].y &&
+               fields[1].y + fields[1].height < fields[2].y;
+    capture_workspace(&fixture, "vector-stacked-fields");
+    snprintf(control, sizeof control, "vector.source.%llu.0.0", (unsigned long long)id);
+    bool bound = vector_choose_source(&fixture, control, "Real");
+    node *vector = ed_vector_source(e, target, 0);
+    node *number = NULL;
+    int source_pin = -1;
+    bound &= vector && graph_inline_source(g, vector, 0, &number, &source_pin);
+    if (number) {
+        snprintf(
+            control,
+            sizeof control,
+            "graph.value.%llu.0.0",
+            (unsigned long long)number->id
+        );
+        bound &= enter_node_number(&fixture, control, "4.5");
+        bound &= number->input_pins[0].default_value.d == 4.5;
+        snprintf(
+            control,
+            sizeof control,
+            "graph.value.%llu.0.1",
+            (unsigned long long)vector->id
+        );
+        bound &= enter_node_number(&fixture, control, "6.25");
+        bound &= vector->input_pins[1].default_value.f == 6.25f &&
+                 vector->input_pins[2].default_value.f == 3;
+    }
+    capture_workspace(&fixture, "vector-component-source");
+    snprintf(control, sizeof control, "graph.input.binding.open.%llu.0", (unsigned long long)id);
+    bool splat = vector_choose_source(&fixture, control, "Real");
+    number = NULL;
+    splat &= graph_inline_source(g, target, 0, &number, &source_pin);
+    if (number) {
+        snprintf(
+            control,
+            sizeof control,
+            "graph.value.%llu.0.0",
+            (unsigned long long)number->id
+        );
+        splat &= enter_node_number(&fixture, control, "8.5");
+        arena storage;
+        arena_init(&storage, 4096);
+        eval_context context;
+        eval_context_init(&context);
+        for (int axis = 0; axis < 3; axis++) {
+            pin_value value = { 0 };
+            splat &= graph_eval_output(g, target, axis, &storage, &value, &context) == 0 &&
+                     value.type == PIN_F32 && value.f == 8.5f;
+        }
+        eval_context_free(&context);
+        arena_free(&storage);
+    }
+    splat &= acount(g->nodes) == 2;
+    capture_workspace(&fixture, "vector-scalar-source");
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    target = graph_node_by_id(e->active_graph, id);
+    vector = ed_vector_source(e, target, 0);
+    bool undo = vector && vector->input_pins[1].default_value.f == 6.25f;
+    number = NULL;
+    undo &= vector &&
+            graph_inline_source(e->active_graph, vector, 0, &number, &source_pin) &&
+            number->input_pins[0].default_value.d == 4.5;
+    asset = behavior_asset_new("Shader vector controls");
+    asset->domain = BEHAVIOR_DOMAIN_SHAPE;
+    ok &= editor_open_behavior_asset(e, asset, asset->graph->graph_id) == 0;
+    behavior_asset_free(asset);
+    g = e->active_graph;
+    target = graph_add_node(g, registry_node_by_name("Shader Fractal Noise"));
+    shader_graph_init_node(g, target);
+    graph_set_pin_default(
+        g,
+        target,
+        false,
+        0,
+        &(pin_value){ .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = initial }
+    );
+    node *output = shader_graph_add_output(g, true);
+    output->x = 360;
+    graph_connect_data(g, target, 0, output, 0);
+    e->zoom = 1;
+    e->pan = (ImVec2){ 80, 100 };
+    e->view_initialized = true;
+    e->fit_mode = e->arrange_pending = e->camera_moving = false;
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    snprintf(
+        control,
+        sizeof control,
+        "vector.source.%llu.0.0",
+        (unsigned long long)target->id
+    );
+    bool shader = vector_choose_source(&fixture, control, "Shader Constant");
+    vector = ed_vector_source(e, target, 0);
+    number = NULL;
+    shader &= vector && !strcmp(vector->desc->name, "Shader Vector3") &&
+              graph_inline_source(g, vector, 0, &number, &source_pin);
+    if (number) {
+        snprintf(
+            control,
+            sizeof control,
+            "graph.value.%llu.1.0",
+            (unsigned long long)number->id
+        );
+        shader &= enter_node_number(&fixture, control, "0.125");
+        shader &= number->output_pins[0].default_value.f == .125f;
+    }
+    capture_workspace(&fixture, "shader-vector-component-source");
+    snprintf(
+        control,
+        sizeof control,
+        "graph.input.binding.open.%llu.0",
+        (unsigned long long)target->id
+    );
+    shader &= vector_choose_source(&fixture, control, "Shader Constant");
+    number = NULL;
+    shader &= graph_inline_source(g, target, 0, &number, &source_pin);
+    if (number) {
+        snprintf(
+            control,
+            sizeof control,
+            "graph.value.%llu.1.0",
+            (unsigned long long)number->id
+        );
+        shader &= enter_node_number(&fixture, control, "0.25");
+        shader &= number->output_pins[0].default_value.f == .25f;
+    }
+    char *json = behavior_asset_save_json(e->asset);
+    behavior_asset *copy = behavior_asset_load_json(json);
+    shader_graph ir = { 0 };
+    shader_error error = { 0 };
+    shader &= copy && shader_graph_from_graph(copy->graph, &ir, &error);
+    shader_graph_free(&ir);
+    behavior_asset_free(copy);
+    free(json);
+    ok &= shader;
+    ok &= stacked && bound && splat && undo;
+    printf(
+        "ui-native vector fields %s: stacked=%d axis source=%d scalar splat=%d "
+        "undo=%d shader=%d\n",
+        ok ? "PASS" : "FAIL",
+        stacked,
+        bound,
+        splat,
+        undo,
+        shader
+    );
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+static bool behavior_node_workspace_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    editor *e = fixture.graph;
+    behavior_asset *asset = behavior_asset_new("Node controls");
+    ok &= editor_open_behavior_asset(e, asset, asset->graph->graph_id) == 0;
+    behavior_asset_free(asset);
+    graph *g = e->active_graph;
+    const char *names[] = {
+        "Add",   "Random Range Vector",         "Emit Particles",
+        "Delay", "Has Entities With Component", "Emit Directed Particles"
+    };
+    uint64_t ids[6];
+    for (int i = 0; i < 6; i++) {
+        node *n = graph_add_node(g, registry_node_by_name(names[i]));
+        assert(n);
+        n->x = (i % 3) * 360;
+        n->y = (i / 3) * 400;
+        ids[i] = n->id;
+    }
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+    cf_app_set_size(1600, 1080);
+    e->zoom = 1;
+    e->pan = (ImVec2){ 40, 76 };
+    e->view_initialized = true;
+    e->fit_mode = false;
+    e->arrange_pending = false;
+    e->camera_moving = false;
+    ok &= ui_frame(&fixture) && ui_frame(&fixture) && ui_frame(&fixture);
+    bool layout = true;
+    for (int i = 0; i < acount(e->views); i++) {
+        ed_node_view *view = &e->views[i];
+        float last_output = 0;
+        for (int p = 0; p < view->n->output_count; p++) {
+            if (view->n->output_pins[p].kind != PIN_EXEC) {
+                last_output = fmaxf(
+                    last_output,
+                    e->pins[view->output_first + p].pos.y
+                );
+            }
+        }
+        for (int p = 0; p < view->n->input_count; p++) {
+            if (view->n->input_pins[p].kind != PIN_EXEC &&
+                ed_pin_visible(g, view->n, ED_PIN_INPUT, p)) {
+                layout &= e->pins[view->input_first + p].pos.y > last_output;
+            }
+        }
+        if (view->n->input_count && view->n->input_pins[0].kind == PIN_EXEC) {
+            layout &= e->pins[view->input_first].pos.y ==
+                      e->pins[view->output_first].pos.y;
+        }
+    }
+    char control[128];
+    snprintf(control, sizeof control, "graph.value.%llu.0.0", (unsigned long long)ids[0]);
+    editor_ui_rect rect;
+    bool scalar = editor_ui_item_rect(control, &rect) && rect.width > 180 &&
+                  enter_node_number(&fixture, control, "2.75");
+    scalar &= graph_node_by_id(e->active_graph, ids[0])
+                  ->input_pins[0]
+                  .default_value.f == 2.75f;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    scalar &= graph_node_by_id(e->active_graph, ids[0])
+                  ->input_pins[0]
+                  .default_value.f == 0;
+    editor_redo(e);
+    ok &= ui_frame(&fixture);
+    scalar &= graph_node_by_id(e->active_graph, ids[0])
+                  ->input_pins[0]
+                  .default_value.f == 2.75f;
+
+    snprintf(control, sizeof control, "graph.value.%llu.0.3", (unsigned long long)ids[2]);
+    bool integer = enter_node_number(&fixture, control, "24");
+    integer &= graph_node_by_id(e->active_graph, ids[2])
+                   ->input_pins[3]
+                   .default_value.i == 24;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    integer &= graph_node_by_id(e->active_graph, ids[2])
+                   ->input_pins[3]
+                   .default_value.i == 12;
+
+    snprintf(control, sizeof control, "vector.axis.%llu.0.0.0", (unsigned long long)ids[1]);
+    bool vector = editor_ui_item_rect(control, &rect) && rect.width > 180;
+    if (vector) {
+        ImGuiIO_AddMousePosEvent(ImGui_GetIO(), rect.x + rect.width / 6, rect.y + rect.height * .5f);
+        ok &= ui_frame(&fixture);
+        ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
+        ok &= ui_frame(&fixture);
+        ImGuiIO_AddMousePosEvent(ImGui_GetIO(), rect.x + rect.width / 6 + 60, rect.y + rect.height * .5f);
+        ok &= ui_frame(&fixture);
+        ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+        ok &= ui_frame(&fixture);
+        const float *value = graph_node_by_id(e->active_graph, ids[1])
+                                 ->input_pins[0]
+                                 .default_value.ptr;
+        vector &= value && value[0] > 0 && value[1] == 0 && value[2] == 0;
+        editor_undo(e);
+        ok &= ui_frame(&fixture);
+        value = graph_node_by_id(e->active_graph, ids[1])
+                    ->input_pins[0]
+                    .default_value.ptr;
+        vector &= !value || value[0] == 0;
+    }
+    snprintf(control, sizeof control, "choices.%llu.0.0", (unsigned long long)ids[4]);
+    assert(fixture.scene->component_choices.count);
+    const char *component_key = fixture.scene->component_choices.items[0].name;
+    char choice[256];
+    snprintf(choice, sizeof choice, "choice.%s", component_key);
+    bool choices = click_item(&fixture, control) && ui_frame(&fixture) &&
+                   click_item(&fixture, choice) && ui_frame(&fixture);
+    const char *component = graph_node_by_id(e->active_graph, ids[4])
+                                ->input_pins[0]
+                                .default_value.str;
+    choices &= component && !strcmp(component, component_key);
+    snprintf(control, sizeof control, "color.%llu.0.2", (unsigned long long)ids[2]);
+    bool color = click_item(&fixture, control) && ui_frame(&fixture) &&
+                 editor_ui_item_rect("color.picker", &rect) &&
+                 click_item(&fixture, "color.done");
+    capture_workspace(&fixture, "behavior-node-workspace");
+    snprintf(control, sizeof control, "graph.advanced.%llu", (unsigned long long)ids[5]);
+    bool advanced = click_item(&fixture, control) && ui_frame(&fixture);
+    advanced &= graph_node_by_id(e->active_graph, ids[5])->show_advanced;
+    snprintf(control, sizeof control, "color.%llu.0.4", (unsigned long long)ids[5]);
+    advanced &= editor_ui_item_rect(control, &rect) && rect.width > 180;
+    editor_undo(e);
+    ok &= ui_frame(&fixture);
+    advanced &= !graph_node_by_id(e->active_graph, ids[5])->show_advanced &&
+                !editor_ui_item_rect(control, &rect);
+    char *json = behavior_asset_save_json(e->asset);
+    behavior_asset *copy = behavior_asset_load_json(json);
+    bool saved = copy && graph_node_by_id(copy->graph, ids[0])
+                                 ->input_pins[0]
+                                 .default_value.f == 2.75f;
+    free(json);
+    behavior_asset_free(copy);
+    ok &= layout && scalar && integer && vector && choices && color &&
+          advanced && saved && !editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR);
+    printf(
+        "ui-native behavior nodes %s: layout=%d scalar=%d integer=%d vector=%d "
+        "choices=%d color=%d advanced=%d saved=%d\n",
+        ok ? "PASS" : "FAIL",
+        layout,
+        scalar,
+        integer,
+        vector,
+        choices,
+        color,
+        advanced,
+        saved
+    );
+    cf_app_set_size(UI_WIDTH, UI_HEIGHT);
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+static bool node_control_alignment_scenario()
+{
+    ui_fixture fixture;
+    if (!ui_fixture_new(&fixture)) {
+        return false;
+    }
+    bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    editor *e = fixture.graph;
+    graph *g = e->active_graph;
+    ed_clear_selection(e);
+    while (acount(g->nodes)) {
+        graph_remove_node(g, g->nodes[0]);
+    }
+    node *source = graph_add_node(g, registry_node_by_name("Random Range Vector"));
+    node *target = graph_add_node(g, registry_node_by_name("Set_GameVisualMotion_rotation"));
+    assert(source && target);
+    source->x = 0;
+    target->x = 340;
+    source->y = target->y = 0;
+    ok &= graph_connect_data(g, source, 0, target, 1) == 0;
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_WORLD_OUTLINER, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_MY_BEHAVIOR_ASSET, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, false);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    e->zoom = 1;
+    e->pan = (ImVec2){ 70, 100 };
+    e->view_initialized = true;
+    e->fit_mode = e->arrange_pending = e->camera_moving = false;
+    ok &= ui_frame(&fixture) && ui_frame(&fixture);
+    char id[112];
+    snprintf(
+        id,
+        sizeof id,
+        "graph.input.binding.open.%llu.2",
+        (unsigned long long)target->id
+    );
+    editor_ui_rect button = { 0 };
+    bool visible = editor_ui_item_rect(id, &button);
+    float offset = 0, gap = 0;
+    for (int i = 0; i < acount(e->views); i++) {
+        const ed_node_view *view = &e->views[i];
+        if (view->n != target) {
+            continue;
+        }
+        float target_y = e->pins[view->input_first + 2].pos.y;
+        offset = visible ? button.y + button.height * .5f - target_y : -1000;
+        gap = e->pins[view->input_first + 1].pos.y -
+              e->pins[view->output_first + 1].pos.y;
+    }
+    capture_workspace(&fixture, "node-control-alignment");
+    bool aligned = visible && fabsf(offset) < 1;
+    bool spacing = gap <= ed_row_height(target) + 1;
+    bool runtime_output = !ed_pin_editable(g, target, ED_PIN_OUTPUT, 1);
+    snprintf(id, sizeof id, "graph.value.%llu.0.2", (unsigned long long)target->id);
+    editor_ui_rect value;
+    bool source_field = editor_ui_item_rect(id, &value) && value.width > 180 &&
+                        fabsf(value.y - button.y) < 1 &&
+                        click_item(&fixture, id) && ui_frame(&fixture) &&
+                        editor_ui_item_rect("graph.binding.search", &(editor_ui_rect){ 0 });
+    ok &= aligned && spacing && runtime_output && source_field;
+    printf(
+        "ui-native node alignment %s: target button offset=%.1fpx, data "
+        "gap=%.1fpx, aligned=%d spacing=%d\n",
+        ok ? "PASS" : "FAIL",
+        offset,
+        gap,
+        aligned,
+        spacing
+    );
+    ui_fixture_free(&fixture);
+    return ok;
+}
+
+int ui_node_controls_run(const char *program)
+{
+    cf_set_assert_handler(stacktrace_assert_handler);
+    if (!native_app_new(program)) {
+        return 1;
+    }
+    bool ok = vector_fields_scenario();
+    ok &= node_control_alignment_scenario();
+    ok &= behavior_node_workspace_scenario();
+    ok &= node_overlap_render();
+    app_input_shutdown();
+    cf_destroy_app();
+    return ok ? 0 : 1;
+}
+
 int ui_native_run(const char *program)
 {
     cf_set_assert_handler(stacktrace_assert_handler);
     if (!native_app_new(program)) {
         return 1;
     }
-    bool ok = workspace_scenario() && graph_scenario() && scene_scenario() &&
-              asset_navigation_scenario() && binding_scenario() &&
-              movement_component_binding_scenario() &&
-              generic_inline_source_scenario() && material_inline_source_scenario();
+    bool ok = vector_fields_scenario() && node_control_alignment_scenario() &&
+              behavior_node_workspace_scenario() &&
+              arithmetic_node_scenario(false) && arithmetic_node_scenario(true) &&
+              graph_framing_scenario() && workspace_scenario() &&
+              workspace_navigation_scenario() && graph_scenario() &&
+              scene_scenario() && asset_navigation_scenario() &&
+              binding_scenario() && movement_component_binding_scenario() &&
+              generic_inline_source_scenario() && material_inline_source_scenario() &&
+              nested_component_binding_scenario() &&
+              shader_node_workspace_scenario() && local_alias_scenario();
     app_input_shutdown();
     cf_destroy_app();
     return ok ? 0 : 1;

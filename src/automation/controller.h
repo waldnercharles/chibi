@@ -1,7 +1,20 @@
 #ifndef CHIBI_AUTOMATION_CONTROLLER_H
 #define CHIBI_AUTOMATION_CONTROLLER_H
 
+#include <stdbool.h>
 #include <stddef.h>
+
+typedef struct game_prototype_preview game_prototype_preview;
+/* Tooling scene preparation shared by headless scenarios and GPU previews.
+ * Returns an owned running preview; the caller must initialize rendering first. */
+int chibi_automation_preview(
+    const char *root,
+    const char *request,
+    game_prototype_preview **preview,
+    bool *perspective,
+    char *error,
+    size_t error_size
+);
 
 enum
 {
@@ -12,6 +25,7 @@ enum
     CHIBI_AUTOMATION_VALIDATION_ERROR = 4,
     CHIBI_AUTOMATION_EXECUTION_ERROR = 5,
     CHIBI_AUTOMATION_NOT_FOUND = 6,
+    CHIBI_AUTOMATION_CONFLICT = 7,
 };
 
 /* The short controller API is also used by the native regression suite. Keep

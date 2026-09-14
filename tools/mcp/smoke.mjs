@@ -4,10 +4,39 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
+import { toolCatalog } from "./tool-catalog.mjs";
 
 const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = resolve(root, "build/chibi_ctl");
+const expectedPublicNames = [
+  "buildShader",
+  "buildBehavior",
+  "buildPrototype",
+  "buildScene",
+  "optimizeGraph",
+  "previewShader",
+  "previewScene",
+  "searchAssets",
+  "searchNodes",
+  "inspectGraph",
+  "readAsset",
+  "validateAsset",
+  "listAssets",
+  "getAssetCatalog",
+  "inspectAssetDependencies",
+  "getProjectStatus",
+  "describeComponents",
+  "inspectSystem",
+  "getExecutionStatus",
+  "runScenario",
+  "captureRuntimeSnapshot",
+  "profileScenario",
+  "recordScenario",
+  "replayScenario",
+  "describeRegistry",
+  "describeContract",
+];
 
 function nativeRequestAt(projectRoot, operation, args = {}) {
   const result = spawnSync(controller, ["--project-root", projectRoot], {
@@ -39,21 +68,22 @@ const requests = [
   },
   { jsonrpc: "2.0", method: "notifications/initialized" },
   { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-  { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "project_status", arguments: {} } },
-  { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "list_assets", arguments: {} } },
-  { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "catalog", arguments: {} } },
-  { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "search_assets", arguments: { query: "Health" } } },
-  { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
-  { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspect_graph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
-  { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validate_asset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
-  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describe_registry", arguments: {} } },
-  { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describe_contract", arguments: {} } },
-  { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "list_assets", arguments: { limit: 2 } } },
-  { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "catalog", arguments: { limit: 1, summary: true } } },
-  { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "search_assets", arguments: { query: "Health", limit: 1, summary: true } } },
-  { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "catalog", arguments: { cursor: 1, limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "getProjectStatus", arguments: {} } },
+  { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "listAssets", arguments: {} } },
+  { jsonrpc: "2.0", id: 14, method: "tools/call", params: { name: "getAssetCatalog", arguments: {} } },
+  { jsonrpc: "2.0", id: 15, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health" } } },
+  { jsonrpc: "2.0", id: 16, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior" } } },
+  { jsonrpc: "2.0", id: 19, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "" } } },
+  { jsonrpc: "2.0", id: 20, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "library", name: "DirectionMath", graph_name: "Direction Orientation" } } },
+  { jsonrpc: "2.0", id: 34, method: "tools/call", params: { name: "inspectGraph", arguments: { kind: "behavior", name: "HealthBehavior", graph_name: "", include_layout: true } } },
+  { jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
+  { jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "validateAsset", arguments: { kind: "behavior", name: "HealthBehavior" } } },
+  { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "describeRegistry", arguments: {} } },
+  { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "describeContract", arguments: {} } },
+  { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "listAssets", arguments: { limit: 2 } } },
+  { jsonrpc: "2.0", id: 29, method: "tools/call", params: { name: "getAssetCatalog", arguments: { limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 30, method: "tools/call", params: { name: "searchAssets", arguments: { query: "Health", limit: 1, summary: true } } },
+  { jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: 1, limit: 1, summary: true } } },
   { jsonrpc: "2.0", id: 8, method: "resources/list", params: {} },
   { jsonrpc: "2.0", id: 12, method: "resources/templates/list", params: {} },
   { jsonrpc: "2.0", id: 9, method: "resources/read", params: { uri: "chibi://project/status" } },
@@ -63,13 +93,15 @@ const requests = [
   { jsonrpc: "2.0", id: 21, method: "resources/read", params: { uri: "chibi://asset/library/DirectionMath/graph/1" } },
   { jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "missing_tool", arguments: {} } },
   { jsonrpc: "2.0", id: 13, method: "resources/read", params: { uri: "chibi://asset/behavior/nope" } },
-  { jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "read_asset", arguments: { kind: "behavior" } } },
-  { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "asset_dependencies", arguments: { kind: "behavior", name: "HealthBehavior", direction: "sideways" } } },
+  { jsonrpc: "2.0", id: 22, method: "tools/call", params: { name: "readAsset", arguments: { kind: "behavior" } } },
+  { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "inspectAssetDependencies", arguments: { kind: "behavior", name: "HealthBehavior", direction: "sideways" } } },
   { jsonrpc: "2.0", id: 24, method: "resources/read", params: { uri: "chibi://asset/behavior/%ZZ" } },
   { jsonrpc: "2.0", id: 25, method: "resources/read", params: { uri: "chibi://missing" } },
   { jsonrpc: "2.0", id: 26, method: "resources/read", params: {} },
-  { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "catalog", arguments: { limit: 0 } } },
-  { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "catalog", arguments: { cursor: "1" } } },
+  { jsonrpc: "2.0", id: 32, method: "tools/call", params: { name: "getAssetCatalog", arguments: { limit: 0 } } },
+  { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
+  { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
+  { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
   { jsonrpc: "2.0", method: "ping" },
 ];
 const result = spawnSync(process.execPath, [server], {
@@ -87,58 +119,99 @@ if (responses.length !== expectedResponses) {
   throw new Error(`expected ${expectedResponses} responses, got ${responses.length}`);
 }
 const responseById = new Map(responses.map((response) => [response.id, response]));
+
+function toolPayload(response) {
+  const structured = response?.result?.structuredContent;
+  if (structured !== undefined) {
+    return structured;
+  }
+  const text = response?.result?.content?.[0]?.text;
+  if (typeof text !== "string" || !text) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
 if (responseById.get(1)?.result?.serverInfo?.name !== "chibi" ||
     responseById.get(1)?.result?.protocolVersion !== "2025-06-18") {
   throw new Error("initialize did not identify chibi");
 }
-if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "validate_asset" && tool.outputSchema)) {
-  throw new Error("tools/list did not expose validate_asset");
+if (typeof responseById.get(1)?.result?.instructions !== "string" ||
+    !responseById.get(1).result.instructions.includes("buildShader") ||
+    !responseById.get(1).result.instructions.includes("validateAsset")) {
+  throw new Error("initialize did not expose server instructions");
 }
-if (!responseById.get(2)?.result?.tools?.some((tool) =>
-  tool.name === "describe_contract" && tool.annotations?.readOnlyHint === true)) {
-  throw new Error("tools/list did not expose the reflected contract metadata");
+const listedTools = responseById.get(2)?.result?.tools || [];
+const listedNames = listedTools.map((tool) => tool.name);
+if (JSON.stringify(toolCatalog.map((entry) => entry.name)) !== JSON.stringify(expectedPublicNames) ||
+    JSON.stringify(listedNames) !== JSON.stringify(expectedPublicNames) ||
+    new Set(listedNames).size !== listedNames.length ||
+    listedTools.some((tool) => !/^[a-z][A-Za-z0-9]{0,127}$/.test(tool.name) ||
+      typeof tool.title !== "string" || !tool.title ||
+      typeof tool.description !== "string" || !tool.description ||
+      !tool.inputSchema || !tool.outputSchema || !tool.annotations ||
+      Object.hasOwn(tool, "operation"))) {
+  throw new Error("tools/list did not expose the deterministic public catalog");
 }
-if (!responseById.get(2)?.result?.tools?.some((tool) => tool.name === "catalog" && tool.outputSchema) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "search_assets" && tool.inputSchema?.required?.includes("query")) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "asset_dependencies" && tool.inputSchema?.required?.includes("kind")) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_graph" &&
+if (listedTools.slice(0, 4).map((tool) => tool.name).join(",") !==
+    "buildShader,buildBehavior,buildPrototype,buildScene") {
+  throw new Error("tools/list did not put authoring tools first");
+}
+if (listedTools.some((tool) => tool.name.includes("_") || tool.name.includes("-") ||
+    ["project_status", "edit_graph", "validate_asset", "run_scenario"].includes(tool.name))) {
+  throw new Error("tools/list exposed a legacy public tool name");
+}
+if (!listedTools.some((tool) => tool.name === "validateAsset" &&
+    tool.inputSchema?.required?.includes("kind") && tool.outputSchema) ||
+    !listedTools.some((tool) => tool.name === "getAssetCatalog" && tool.outputSchema) ||
+    !listedTools.some((tool) => tool.name === "searchAssets" && tool.inputSchema?.required?.includes("query")) ||
+    !listedTools.some((tool) => tool.name === "inspectAssetDependencies" && tool.inputSchema?.required?.includes("kind")) ||
+    !listedTools.some((tool) => tool.name === "inspectGraph" &&
       tool.inputSchema?.properties?.graph_id?.type === "integer" &&
       tool.inputSchema?.properties?.graph_name?.type === "string") ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "inspect_system" &&
+    !listedTools.some((tool) => tool.name === "inspectSystem" &&
       tool.inputSchema?.required?.includes("kind") &&
       tool.inputSchema?.required?.includes("name")) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "run_scenario" &&
+    !listedTools.some((tool) => tool.name === "runScenario" &&
       tool.inputSchema?.required?.includes("name") &&
-      tool.inputSchema?.properties?.frames?.maximum === 600 &&
+      tool.inputSchema?.properties?.frames?.maximum === 108000 &&
       tool.inputSchema?.properties?.fixed_dt?.type === "number") ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "runtime_snapshot" &&
+    !listedTools.some((tool) => tool.name === "captureRuntimeSnapshot" &&
       tool.inputSchema?.required?.includes("name") &&
       tool.inputSchema?.properties?.entity_limit?.maximum === 256 &&
       tool.inputSchema?.properties?.field_limit?.maximum === 128) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "record_scenario" &&
+    !listedTools.some((tool) => tool.name === "recordScenario" &&
       tool.inputSchema?.required?.includes("name") &&
       tool.inputSchema?.properties?.inputs?.maxItems === 600) ||
-    !responseById.get(2)?.result?.tools?.some((tool) => tool.name === "replay_scenario" &&
+    !listedTools.some((tool) => tool.name === "replayScenario" &&
       tool.inputSchema?.oneOf?.length === 2 &&
       tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
   throw new Error("tools/list did not expose catalog and graph tools");
 }
-const status = JSON.parse(responseById.get(3).result.content[0].text);
-const assets = JSON.parse(responseById.get(4).result.content[0].text);
-const catalog = JSON.parse(responseById.get(14).result.content[0].text);
-const search = JSON.parse(responseById.get(15).result.content[0].text);
-const dependencies = JSON.parse(responseById.get(16).result.content[0].text);
-const healthGraph = JSON.parse(responseById.get(19).result.content[0].text);
-const libraryGraph = JSON.parse(responseById.get(20).result.content[0].text);
-const read = JSON.parse(responseById.get(5).result.content[0].text);
-const validation = JSON.parse(responseById.get(6).result.content[0].text);
-const registry = JSON.parse(responseById.get(7).result.content[0].text);
-const contract = JSON.parse(responseById.get(27).result.content[0].text);
-const pagedAssets = JSON.parse(responseById.get(28).result.content[0].text);
-const pagedCatalog = JSON.parse(responseById.get(29).result.content[0].text);
-const pagedSearch = JSON.parse(responseById.get(30).result.content[0].text);
-const secondCatalogPage = JSON.parse(responseById.get(31).result.content[0].text);
+const status = toolPayload(responseById.get(3));
+const assets = toolPayload(responseById.get(4));
+const catalog = toolPayload(responseById.get(14));
+const search = toolPayload(responseById.get(15));
+const dependencies = toolPayload(responseById.get(16));
+const healthGraph = toolPayload(responseById.get(19));
+const libraryGraph = toolPayload(responseById.get(20));
+const healthGraphLayout = toolPayload(responseById.get(34));
+const read = toolPayload(responseById.get(5));
+const validation = toolPayload(responseById.get(6));
+const registry = toolPayload(responseById.get(7));
+const contract = toolPayload(responseById.get(27));
+const pagedAssets = toolPayload(responseById.get(28));
+const pagedCatalog = toolPayload(responseById.get(29));
+const pagedSearch = toolPayload(responseById.get(30));
+const secondCatalogPage = toolPayload(responseById.get(31));
+const missingAssets = toolPayload(responseById.get(35));
+const missingNodes = toolPayload(responseById.get(36));
 if (status.ok !== true || assets.result?.assets?.length < 1 ||
+    !status.next_steps?.length || !assets.next_steps?.length ||
     catalog.ok !== true || !catalog.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     search.ok !== true || !search.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
     dependencies.ok !== true || dependencies.result?.asset?.name !== "HealthBehavior" ||
@@ -148,13 +221,23 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     catalog.result?.content_hash !== dependencies.result?.content_hash ||
     healthGraph.ok !== true || healthGraph.result?.name !== "HealthBehavior" ||
     !healthGraph.result?.graph || !Array.isArray(healthGraph.result.graph.nodes) ||
+    healthGraph.result?.layout_included !== false ||
+    healthGraph.result.graph.nodes.some((node) => Object.hasOwn(node, "x") || Object.hasOwn(node, "y")) ||
+    !Array.isArray(healthGraph.result?.graphs) ||
+    healthGraph.result.graphs.some((graph) => Object.hasOwn(graph, "nodes") || Object.hasOwn(graph, "edges")) ||
+    healthGraphLayout.ok !== true || healthGraphLayout.result?.layout_included !== true ||
+    !healthGraphLayout.result?.graph?.nodes?.some((node) => Object.hasOwn(node, "x") && Object.hasOwn(node, "y")) ||
     !healthGraph.result?.validation ||
     libraryGraph.ok !== true || libraryGraph.result?.name !== "DirectionMath" ||
     libraryGraph.result?.graph?.name !== "Direction Orientation" ||
     read.result?.name !== "HealthBehavior" || validation.result?.valid !== true ||
     registry.result?.nodes?.length < 1 ||
     contract.ok !== true ||
-    !contract.result?.operations?.some((operation) => operation.name === "describe_contract") ||
+    !contract.result?.operations?.some((operation) => operation.name === "describe_contract" &&
+      operation.public_tools?.includes("describeContract")) ||
+    !contract.result?.operations?.some((operation) => operation.name === "edit_graph" &&
+      operation.public_tools?.includes("buildShader") &&
+      operation.public_tools?.includes("buildBehavior")) ||
     contract.result?.reflection?.nodes < 1 ||
     pagedAssets.ok !== true || pagedAssets.result?.count !== 2 ||
     pagedAssets.result?.has_more !== true || pagedAssets.result?.next_cursor !== 2 ||
@@ -166,7 +249,12 @@ if (status.ok !== true || assets.result?.assets?.length < 1 ||
     pagedSearch.result?.has_more !== (search.result?.assets?.length > 1) ||
     pagedSearch.result?.assets?.[0]?.members !== undefined ||
     secondCatalogPage.ok !== true || secondCatalogPage.result?.count !== 1 ||
-    secondCatalogPage.result?.next_cursor !== 2) {
+    secondCatalogPage.result?.next_cursor !== 2 ||
+    missingAssets.ok !== true || missingAssets.result?.assets?.length !== 0 ||
+    !missingAssets.next_steps?.length ||
+    missingNodes.ok !== true || missingNodes.result?.nodes?.length !== 0 ||
+    !missingNodes.next_steps?.length ||
+    (responseById.get(14)?.result?.content?.[0]?.text || "").length > 2048) {
   throw new Error("native MCP operations failed");
 }
 if (!responseById.get(12)?.result?.resourceTemplates?.some((template) =>
@@ -217,7 +305,7 @@ const cwdIndependent = spawnSync(process.execPath, [server], {
       jsonrpc: "2.0",
       id: 30,
       method: "tools/call",
-      params: { name: "project_status", arguments: {} },
+      params: { name: "getProjectStatus", arguments: {} },
     },
   ].map((request) => JSON.stringify(request)).join("\n")}\n`,
   encoding: "utf8",
@@ -228,8 +316,29 @@ if (cwdIndependent.error || cwdIndependent.status !== 0) {
 }
 const cwdResponses = cwdIndependent.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
 if (cwdResponses[0]?.result?.isError ||
-    JSON.parse(cwdResponses[0]?.result?.content?.[0]?.text || "{}").ok !== true) {
+    toolPayload(cwdResponses[0]).ok !== true) {
   throw new Error("server did not resolve its project root independently of CWD");
+}
+
+const launcher = resolve(root, "tools/mcp/launch.sh");
+const launcherProbe = spawnSync("/bin/sh", [launcher], {
+  cwd: "/tmp",
+  env: cleanEnvironment,
+  input: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/list",
+    params: {},
+  }) + "\n",
+  encoding: "utf8",
+  maxBuffer: 32 * 1024 * 1024,
+});
+if (launcherProbe.error || launcherProbe.status !== 0) {
+  throw launcherProbe.error || new Error(launcherProbe.stderr || "MCP launcher failed");
+}
+const launcherResponses = launcherProbe.stdout.trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
+if (launcherResponses.length !== 1 || launcherResponses[0]?.result?.tools?.length !== expectedPublicNames.length) {
+  throw new Error("MCP launcher did not keep stdout protocol-only from another CWD");
 }
 
 const nativeStatus = nativeRequest("status");
@@ -241,6 +350,12 @@ const nativeHealthGraph = nativeRequest("inspect_graph", {
   kind: "behavior",
   name: "HealthBehavior",
   graph_name: "",
+});
+const nativeHealthGraphLayout = nativeRequest("inspect_graph", {
+  kind: "behavior",
+  name: "HealthBehavior",
+  graph_name: "",
+  include_layout: true,
 });
 const nativeLibraryGraph = nativeRequest("inspect_graph", {
   kind: "library",
@@ -258,6 +373,13 @@ if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeDependencies.response.ok !== true || nativeDependencies.response.result?.asset?.name !== "HealthBehavior" ||
     nativeHealthGraph.response.ok !== true || nativeHealthGraph.response.result?.graph?.name !== "" ||
     nativeHealthGraph.response.result?.graph?.nodes?.length < 1 ||
+    nativeHealthGraph.response.result?.layout_included !== false ||
+    nativeHealthGraph.response.result.graph.nodes.some((node) => Object.hasOwn(node, "x") || Object.hasOwn(node, "y")) ||
+    !Array.isArray(nativeHealthGraph.response.result?.graphs) ||
+    nativeHealthGraph.response.result.graphs.some((graph) => Object.hasOwn(graph, "nodes") || Object.hasOwn(graph, "edges")) ||
+    nativeHealthGraphLayout.response.ok !== true ||
+    nativeHealthGraphLayout.response.result?.layout_included !== true ||
+    !nativeHealthGraphLayout.response.result?.graph?.nodes?.some((node) => Object.hasOwn(node, "x") && Object.hasOwn(node, "y")) ||
     nativeLibraryGraph.response.ok !== true || nativeLibraryGraph.response.result?.graph?.name !== "Direction Orientation" ||
     nativeRead.response.result?.name !== "HealthBehavior" ||
     nativeValidation.response.result?.valid !== true ||
@@ -327,7 +449,7 @@ try {
       id: 2,
       method: "tools/call",
       params: {
-        name: "run_scenario",
+        name: "runScenario",
         arguments: { kind: "prototype", name: "Editor2DPreview", frames: 2, fixed_dt: 1 / 60 },
       },
     },
@@ -336,7 +458,7 @@ try {
       id: 3,
       method: "tools/call",
       params: {
-        name: "run_scenario",
+        name: "runScenario",
         arguments: { kind: "prototype", name: "Editor2DPreview", frames: 2, fixed_dt: 1 / 60 },
       },
     },
@@ -345,8 +467,8 @@ try {
       id: 4,
       method: "tools/call",
       params: {
-        name: "run_scenario",
-        arguments: { name: "Editor2DPreview", frames: 601 },
+        name: "runScenario",
+        arguments: { name: "Editor2DPreview", frames: 108001 },
       },
     },
     {
@@ -354,7 +476,7 @@ try {
       id: 5,
       method: "tools/call",
       params: {
-        name: "runtime_snapshot",
+        name: "captureRuntimeSnapshot",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -373,7 +495,7 @@ try {
       id: 6,
       method: "tools/call",
       params: {
-        name: "runtime_snapshot",
+        name: "captureRuntimeSnapshot",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -392,7 +514,7 @@ try {
       id: 7,
       method: "tools/call",
       params: {
-        name: "runtime_snapshot",
+        name: "captureRuntimeSnapshot",
         arguments: { name: "Editor2DPreview", entity_limit: 0 },
       },
     },
@@ -401,7 +523,7 @@ try {
       id: 8,
       method: "tools/call",
       params: {
-        name: "record_scenario",
+        name: "recordScenario",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -429,7 +551,7 @@ try {
       id: 9,
       method: "tools/call",
       params: {
-        name: "record_scenario",
+        name: "recordScenario",
         arguments: {
           kind: "prototype",
           name: "Editor2DPreview",
@@ -457,7 +579,7 @@ try {
       id: 10,
       method: "tools/call",
       params: {
-        name: "replay_scenario",
+        name: "replayScenario",
         arguments: { recording: null },
       },
     },
@@ -466,7 +588,7 @@ try {
       id: 11,
       method: "tools/call",
       params: {
-        name: "replay_scenario",
+        name: "replayScenario",
         arguments: { recording_path: `${scenarioRoot}/missing-recording.json` },
       },
     },
@@ -475,7 +597,7 @@ try {
       id: 12,
       method: "tools/call",
       params: {
-        name: "replay_scenario",
+        name: "replayScenario",
         arguments: { recording: {}, recording_path: "recording.json" },
       },
     },
@@ -492,12 +614,12 @@ try {
   }
   const scenarioResponses = scenarioProcess.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
   const scenarioById = new Map(scenarioResponses.map((response) => [response.id, response]));
-  const firstScenario = JSON.parse(scenarioById.get(2)?.result?.content?.[0]?.text || "{}");
-  const secondScenario = JSON.parse(scenarioById.get(3)?.result?.content?.[0]?.text || "{}");
-  const firstSnapshot = JSON.parse(scenarioById.get(5)?.result?.content?.[0]?.text || "{}");
-  const secondSnapshot = JSON.parse(scenarioById.get(6)?.result?.content?.[0]?.text || "{}");
-  const firstRecord = JSON.parse(scenarioById.get(8)?.result?.content?.[0]?.text || "{}");
-  const secondRecord = JSON.parse(scenarioById.get(9)?.result?.content?.[0]?.text || "{}");
+  const firstScenario = toolPayload(scenarioById.get(2));
+  const secondScenario = toolPayload(scenarioById.get(3));
+  const firstSnapshot = toolPayload(scenarioById.get(5));
+  const secondSnapshot = toolPayload(scenarioById.get(6));
+  const firstRecord = toolPayload(scenarioById.get(8));
+  const secondRecord = toolPayload(scenarioById.get(9));
   if (firstRecord.ok !== true || secondRecord.ok !== true) {
     throw new Error(`scenario recording failed: ${JSON.stringify([firstRecord.error, secondRecord.error])}`);
   }
@@ -537,7 +659,7 @@ try {
     jsonrpc: "2.0",
     id: 13,
     method: "tools/call",
-    params: { name: "replay_scenario", arguments: { recording: firstRecording } },
+    params: { name: "replayScenario", arguments: { recording: firstRecording } },
   };
   const replayProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -550,12 +672,12 @@ try {
     throw replayProcess.error || new Error(replayProcess.stderr || "replay MCP server failed");
   }
   const replayResponse = JSON.parse(replayProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
-  const replayResult = JSON.parse(replayResponse.result?.content?.[0]?.text || "{}");
+  const replayResult = toolPayload(replayResponse);
   const replayPathRequest = {
     jsonrpc: "2.0",
     id: 15,
     method: "tools/call",
-    params: { name: "replay_scenario", arguments: { recording_path: firstArtifactPath } },
+    params: { name: "replayScenario", arguments: { recording_path: firstArtifactPath } },
   };
   const replayPathProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -568,7 +690,7 @@ try {
     throw replayPathProcess.error || new Error(replayPathProcess.stderr || "recording path replay MCP server failed");
   }
   const replayPathResponse = JSON.parse(replayPathProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
-  const replayPathResult = JSON.parse(replayPathResponse.result?.content?.[0]?.text || "{}");
+  const replayPathResult = toolPayload(replayPathResponse);
   const recordingId = firstRecord.result?.recording_id || firstRecording?.recording_id || firstRecording?.id;
   const recordingResourceRequest = {
     jsonrpc: "2.0",
@@ -600,7 +722,7 @@ try {
     jsonrpc: "2.0",
     id: 14,
     method: "tools/call",
-    params: { name: "replay_scenario", arguments: { recording: mutatedRecording } },
+    params: { name: "replayScenario", arguments: { recording: mutatedRecording } },
   };
   const divergenceProcess = spawnSync(process.execPath, [server], {
     cwd: root,
@@ -613,11 +735,11 @@ try {
     throw divergenceProcess.error || new Error(divergenceProcess.stderr || "divergence MCP server failed");
   }
   const divergenceResponse = JSON.parse(divergenceProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
-  const divergenceResult = JSON.parse(divergenceResponse.result?.content?.[0]?.text || "{}");
+  const divergenceResult = toolPayload(divergenceResponse);
   const firstDivergenceFrame = divergenceResult.result?.first_divergence_frame ??
     divergenceResult.result?.first_divergence?.frame ??
     divergenceResult.result?.divergence?.frame;
-  if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "run_scenario") !== true ||
+  if (scenarioById.get(1)?.result?.tools?.some((tool) => tool.name === "runScenario") !== true ||
       firstScenario.ok !== true || secondScenario.ok !== true ||
       firstScenario.result?.kind !== "prototype" ||
       firstScenario.result?.name !== "Editor2DPreview" ||

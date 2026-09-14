@@ -61,8 +61,21 @@ static int eval_view_node_safe(const eval_view *v, const graph *g, const node *n
         }
         node *source;
         int source_pin;
-        if (graph_input_source(g, n, i, &source, &source_pin) &&
-            !eval_view_node_safe(v, g, source, depth + 1)) {
+        if (graph_input_source(g, n, i, &source, &source_pin)) {
+            if (!eval_view_node_safe(v, g, source, depth + 1)) {
+                return 0;
+            }
+            continue;
+        }
+        const pin_spec *input = &n->input_pins[i];
+        const pin_binding *binding = input->binding;
+        if (binding && (binding->kind == PIN_BINDING_COMPONENT ||
+                        binding->kind == PIN_BINDING_COMPONENT_FIELD)) {
+            return 0;
+        }
+        if (!v->instance && ((binding && binding->kind == PIN_BINDING_VARIABLE) ||
+                             (!binding && (input->flags & PIN_FLAG_DEFAULT_SELF) &&
+                              !input->default_value.u64))) {
             return 0;
         }
     }

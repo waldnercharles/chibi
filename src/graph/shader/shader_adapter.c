@@ -1,4 +1,5 @@
 #include "graph/model/behavior_asset.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "graph/shader/shader_image.h"
 #include "support/array.h"
@@ -131,7 +132,24 @@ static int input(lowering *l, scope *s, const node *n, int pin)
     node *from = NULL;
     int from_pin = 0;
     if (graph_input_source(s->source, n, pin, &from, &from_pin)) {
-        if (graph_input_conversion(s->source, n, pin)) {
+        const node_desc *conversion = graph_input_conversion(s->source, n, pin);
+        if (conversion_is_vector_splat(conversion)) {
+            int value = output(l, s, from, from_pin);
+            if (value < 0) {
+                return value;
+            }
+            int w = width(&n->input_pins[pin]);
+            shader_op op = w == 2 ? SHADER_VECTOR2
+                         : w == 3 ? SHADER_VECTOR3
+                                  : SHADER_VECTOR4;
+            int result = shader_graph_add(l->ir, op, w);
+            l->ir->nodes[result].source_id = n->id;
+            for (int axis = 0; axis < w; axis++) {
+                l->ir->nodes[result].input[axis] = value;
+            }
+            return result;
+        }
+        if (conversion) {
             return error(l, n->id, "Use shader math or vector nodes for GPU conversions");
         }
         return output(l, s, from, from_pin);
@@ -396,6 +414,75 @@ static int output(lowering *l, scope *s, const node *n, int pin)
         apush(s->cache, ((typeof(*s->cache)){ n->id, pin, result }));
     }
     return result;
+}
+bool shader_graph_validate_function(const graph *source, shader_error *err)
+{
+    shader_graph ir;
+    shader_graph_init(&ir);
+    lowering l = { .ir = &ir, .error = err };
+    scope s = { .source = source };
+    if (!source || source->kind != GRAPH_FUNCTION) {
+        error(&l, 0, "Shader function graph is invalid");
+        goto failed;
+    }
+    const node *entry = graph_node_by_id(source, source->entry_id);
+    const node *ret = graph_node_by_id(source, source->return_id);
+    if (!entry || entry->desc != &NODE_FunctionEntry) {
+        error(&l, source->entry_id, "Shader function needs a Function Entry node");
+        goto failed;
+    }
+    if (!ret || ret->desc != &NODE_Return) {
+        error(&l, source->return_id, "Shader function needs a Return node");
+        goto failed;
+    }
+    int ordinal = 0;
+    for (int i = 0; i < entry->output_count; i++) {
+        const pin_spec *pin = &entry->output_pins[i];
+        if (pin->kind != PIN_DATA) {
+            continue;
+        }
+        int w = width(pin);
+        if (!w) {
+            error(&l, entry->id, "Shader function arguments require scalar or vector values");
+            goto failed;
+        }
+        if (ordinal >= SHADER_PARAMETER_MAX) {
+            error(&l, entry->id, "Shader function has too many arguments");
+            goto failed;
+        }
+        int argument = shader_graph_add(&ir, SHADER_PARAMETER, w);
+        ir.nodes[argument].source_id = entry->id;
+        ir.nodes[argument].parameter = ordinal++;
+        apush(s.arguments, argument);
+    }
+    for (int i = 0; i < ret->input_count; i++) {
+        if (ret->input_pins[i].kind != PIN_DATA) {
+            continue;
+        }
+        if (ir.output_count >= SHADER_OUTPUT_MAX) {
+            error(&l, ret->id, "Shader function has too many results");
+            goto failed;
+        }
+        int value = input(&l, &s, ret, i);
+        if (value < 0) {
+            goto failed;
+        }
+        ir.output[ir.output_count++] = value;
+    }
+    if (!shader_graph_validate(&ir, err)) {
+        goto failed;
+    }
+    afree(s.arguments);
+    afree(s.cache);
+    afree(s.visiting);
+    shader_graph_free(&ir);
+    return true;
+failed:
+    afree(s.arguments);
+    afree(s.cache);
+    afree(s.visiting);
+    shader_graph_free(&ir);
+    return false;
 }
 bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_error *err)
 {

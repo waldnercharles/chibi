@@ -3,6 +3,7 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/fog.h"
 #include "render/material.h"
 #include "render/material_raster.h"
 #include "render/radiance.h"
@@ -24,6 +25,7 @@ struct app_scene_renderer
 {
     render_arena *arena;
     render_arena_post *post;
+    render_fog *fog;
     bool arena_attempted;
     render_material_raster *raster;
     render_radiance *radiance;
@@ -56,6 +58,7 @@ unsigned app_scene_renderer_shader_compile_count()
 app_scene_renderer *app_scene_renderer_new()
 {
     app_scene_renderer *renderer = xcalloc(1, sizeof *renderer);
+    renderer->fog = render_fog_new();
     if (cf_query_backend() == CF_BACKEND_TYPE_GLES3) {
         return renderer;
     }
@@ -76,6 +79,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_material_raster_free(renderer->raster);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
+    render_fog_free(renderer->fog);
     render_radiance_free(renderer->radiance);
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
@@ -209,10 +213,19 @@ bool app_scene_renderer_draw3d(
     if (!arena_prepare(renderer, width, height, &settings)) {
         return false;
     }
-    return arena_finish(
+    bool drawn = arena_finish(
         renderer,
         render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime)
     );
+    engine_viewport_camera frame;
+    engine_viewport_get_camera(viewport, &frame);
+    return drawn && render_fog_draw(
+                        renderer->fog,
+                        engine_visibility(runtime),
+                        &frame,
+                        camera,
+                        renderer->time
+                    );
 }
 
 void app_scene_renderer_reset(app_scene_renderer *renderer)
@@ -390,6 +403,9 @@ static void collect(
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
+            if (!engine_entity_visible(runtime, world, entity)) {
+                continue;
+            }
             const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
             const GameShader *binding = GAME_GameShader_get_const(world, entity);
             GameAppearance appearance = *GAME_GameAppearance_get_const(world, entity);
@@ -499,6 +515,47 @@ static void collect(
     }
 }
 
+static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2 *flat)
+{
+    GameLighting2D lighting = renderer->radiance
+                                ? (GameLighting2D){ .emission = 7.5f, .fog = 1 }
+                                : (GameLighting2D){ .ambient = 1, .emission = 1 };
+    ecs_component_id component = GAME_COMPONENT_GameLighting2D.id;
+    ecs_query query;
+    bool found = false, valid = true;
+    if (ecs_world_component(world, component) &&
+        ecs_query_begin(world, &query, &component, 1) == ECS_OK) {
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (ecs_entity_is_retiring(world, entity)) {
+                continue;
+            }
+            const GameLighting2D *source = GAME_GameLighting2D_get_const(world, entity);
+            if (found || !isfinite(source->ambient) || !isfinite(source->emission) ||
+                !isfinite(source->fog) || !isfinite(source->shadow_floor) ||
+                source->ambient < 0 || source->emission < 0 ||
+                source->fog < 0 || source->shadow_floor < 0 ||
+                source->ambient > 100 || source->emission > 100 ||
+                source->fog > 100 || source->shadow_floor > 100) {
+                valid = false;
+                break;
+            }
+            lighting = *source;
+            found = true;
+        }
+        ecs_query_end(&query);
+    }
+    if (!valid) {
+        snprintf(renderer->error, sizeof renderer->error, "GameLighting2D requires one settings entity and finite gains from 0 to 100");
+        return false;
+    }
+    *flat = (CF_V2){ lighting.ambient, lighting.emission };
+    if (renderer->radiance) {
+        render_radiance_set_lighting(renderer->radiance, lighting);
+    }
+    return true;
+}
+
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -524,6 +581,10 @@ bool app_scene_renderer_draw(
         renderer->world = world;
         renderer->camera = camera;
     }
+    CF_V2 flat;
+    if (!scene_lighting(renderer, world, &flat)) {
+        return false;
+    }
     if (!renderer->raster) {
         renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                              0.5f;
@@ -535,10 +596,17 @@ bool app_scene_renderer_draw(
             render_shader_fragment_draw(
                 renderer->fragment,
                 renderer->fragment_programs[i],
-                &renderer->entities[i]
+                &renderer->entities[i],
+                flat
             );
         }
-        return true;
+        return render_fog_draw(
+            renderer->fog,
+            engine_visibility(runtime),
+            &camera,
+            NULL,
+            renderer->time
+        );
     }
     if (renderer->width != width || renderer->height != height) {
         if (!render_material_raster_resize(renderer->raster, width, height) ||
@@ -591,7 +659,13 @@ bool app_scene_renderer_draw(
         (CF_V2){ camera.center_x, camera.center_y },
         (CF_V2){ camera.span_width, camera.span_height }
     );
-    return true;
+    return render_fog_draw(
+        renderer->fog,
+        engine_visibility(runtime),
+        &camera,
+        NULL,
+        renderer->time
+    );
 }
 
 bool app_scene_renderer_preview(
@@ -627,7 +701,7 @@ bool app_scene_renderer_preview(
         if (!arena_prepare(renderer, width, height, &settings)) {
             return false;
         }
-        return arena_finish(renderer, render_arena_preview(renderer->arena, asset, &camera, time));
+        return arena_finish(renderer, render_arena_preview(renderer->arena, asset, &camera, NULL, time));
     }
     if (!render_shader_upsert(asset, &error)) {
         snprintf(renderer->error, sizeof renderer->error, "%s", error.message);
@@ -664,6 +738,11 @@ bool app_scene_renderer_preview(
     if (!prepare_fragments(renderer)) {
         return false;
     }
-    render_shader_fragment_draw(renderer->fragment, renderer->fragment_programs[0], draw);
+    render_shader_fragment_draw(
+        renderer->fragment,
+        renderer->fragment_programs[0],
+        draw,
+        (CF_V2){ 1, 1 }
+    );
     return true;
 }

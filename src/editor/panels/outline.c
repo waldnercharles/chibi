@@ -194,7 +194,7 @@ static int ed_draw_graph_member(editor *e, graph *g, int index, const char *filt
     if (ImGui_BeginDragDropSource(0)) {
         uint64_t graph_id = g->graph_id;
         (void)ImGui_SetDragDropPayload("CB_GRAPH_CALL", &graph_id, sizeof graph_id, 0);
-        ImGui_Text("Place call: %s", ed_graph_display_name(g));
+        ImGui_TextUnformatted(ed_graph_display_name(g));
         ImGui_EndDragDropSource();
     }
     int delete_requested = 0;

@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,7 +64,12 @@ static char *tab_label(app_editor_document_kind kind, const char *id, const char
     if (!value || !value[0]) {
         value = kind == APP_EDITOR_DOCUMENT_SCENE ? "Scene" : "Document";
     }
-    return xstrdup(value);
+    char *label = xstrdup(value);
+    size_t length = strlen(label);
+    if (length > 5 && !strcmp(label + length - 5, ".json")) {
+        label[length - 5] = '\0';
+    }
+    return label;
 }
 
 static int tab_find(const app_scene_authoring *scene, const char *key)
@@ -905,44 +911,92 @@ void scene_tabs_draw(app_scene_authoring *scene)
         return;
     }
     bool visible = editor_ui_begin_document_bar();
+    int activate = -1;
+    int close = -1;
     if (visible) {
         if (ImGui_Button("Quick Open")) {
             asset_browser_request_quick_open(scene);
         }
         editor_ui_track_item("content.quick_open");
+        if (ImGui_IsItemHovered(0)) {
+            ImGui_SetTooltip("Open an asset (Cmd+P / Ctrl+P)");
+        }
         ImGui_SameLine();
-        if (ImGui_BeginTabBar("workspace.documents", 0)) {
+        if (editor_ui_icon_button("workspace.documents.list", EDITOR_ICON_CODICON_CHEVRON_DOWN, true)) {
+            ImGui_OpenPopup("workspace.document_list", 0);
+        }
+        editor_ui_track_item("workspace.documents.list");
+        if (ImGui_IsItemHovered(0)) {
+            ImGui_SetTooltip("Open documents");
+        }
+        if (ImGui_BeginPopup("workspace.document_list", 0)) {
+            for (int i = 0; i < acount(scene->tabs); i++) {
+                scene_document_tab *tab = &scene->tabs[i];
+                ImGui_PushID(tab->key);
+                if (ImGui_MenuItemEx(
+                        tab->label,
+                        tab_dirty(scene, tab) ? "Modified" : NULL,
+                        i == scene->active_tab,
+                        true
+                    )) {
+                    activate = i;
+                }
+                char item_id[320];
+                snprintf(item_id, sizeof item_id, "workspace.document.%s", tab->key);
+                editor_ui_track_item(item_id);
+                if (ImGui_IsItemHovered(0)) {
+                    ImGui_SetTooltip("%s", tab->path ? tab->path : tab->label);
+                }
+                ImGui_PopID();
+            }
+            ImGui_EndPopup();
+        }
+        ImGui_SameLine();
+        if (ImGui_BeginTabBar("workspace.documents", ImGuiTabBarFlags_FittingPolicyScroll)) {
             for (int i = 0; i < acount(scene->tabs); i++) {
                 scene_document_tab *tab = &scene->tabs[i];
                 bool open = true;
                 char label[256];
-                snprintf(
-                    label,
-                    sizeof label,
-                    "%s%s###%s",
-                    tab->label,
-                    tab_dirty(scene, tab) ? " *" : "",
-                    tab->key
-                );
+                snprintf(label, sizeof label, "%s###%s", tab->label, tab->key);
                 ImGui_PushID(tab->key);
                 int flags = i == scene->active_tab ? ImGuiTabItemFlags_SetSelected : 0;
+                if (tab_dirty(scene, tab)) {
+                    flags |= ImGuiTabItemFlags_UnsavedDocument;
+                }
+                ImGui_SetNextItemWidth(
+                    fminf(220.0f, ImGui_CalcTextSize(tab->label).x + 40.0f)
+                );
                 bool active = ImGui_BeginTabItem(label, can_close_tab(scene, i) ? &open : NULL, flags);
                 char item_id[320];
                 snprintf(item_id, sizeof item_id, "workspace.tab.%s", tab->key);
                 editor_ui_track_item(item_id);
                 if ((ImGui_IsItemClicked() || ImGui_IsItemActivated()) &&
                     i != scene->active_tab) {
-                    scene->close_tab = -2 - i;
+                    activate = i;
+                }
+                if (ImGui_IsItemHovered(0)) {
+                    ImGui_SetTooltip("%s", tab->path ? tab->path : tab->label);
+                }
+                if (ImGui_BeginPopupContextItemEx("tab_actions", 1)) {
+                    if (ImGui_MenuItemEx("Close", NULL, false, can_close_tab(scene, i))) {
+                        close = i;
+                    }
+                    editor_ui_track_item("workspace.tab.close");
+                    ImGui_EndPopup();
                 }
                 if (active) {
                     ImGui_EndTabItem();
                 }
                 ImGui_PopID();
                 if (!open) {
-                    request_close(scene, i);
+                    close = i;
                 }
             }
             ImGui_EndTabBar();
+        }
+        if (close >= 0) {
+            request_close(scene, close);
+            activate = -1;
         }
         if (scene->close_tab >= 0 && scene->close_tab < acount(scene->tabs) &&
             tab_dirty(scene, &scene->tabs[scene->close_tab])) {
@@ -951,7 +1005,6 @@ void scene_tabs_draw(app_scene_authoring *scene)
         }
     }
     ImGui_End();
-    int activate = scene->close_tab <= -2 ? -2 - scene->close_tab : -1;
     if (activate >= 0) {
         scene->close_tab = -1;
         scene_tabs_activate(scene, activate);

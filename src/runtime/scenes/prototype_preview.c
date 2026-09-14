@@ -18,8 +18,14 @@ struct game_prototype_preview
     ecs_world *world;
     game_live_world *live;
     ecs_entity entity;
+    ecs_entity *entities;
     engine *runtime;
 };
+
+game_entities *game_prototype_preview_entities(game_prototype_preview *preview)
+{
+    return preview->live->entities;
+}
 
 static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user)
 {
@@ -36,10 +42,12 @@ static void clear_entity(game_prototype_preview *preview)
     engine_reset(preview->runtime);
     game_particles_clear(preview->live->particles);
     game_entities_reset(preview->live->entities);
-    if (!preview->entity.slot) {
-        return;
+    for (int i = 0; i < acount(preview->entities); i++) {
+        if (preview->entities[i].slot) {
+            game_behavior_destroy_entity(preview->live->behaviors, preview->entities[i]);
+        }
     }
-    game_behavior_destroy_entity(preview->live->behaviors, preview->entity);
+    afree(preview->entities);
     preview->entity = (ecs_entity){ 0 };
 }
 
@@ -181,6 +189,7 @@ int game_prototype_preview_launch(
         return ECS_ERR_ARGUMENT;
     }
     clear_entity(preview);
+    game_behavior_set_deferred(preview->live->behaviors, false);
     engine_set_playing(preview->runtime, true);
     int result = game_prototype_spawn(
         prototype,
@@ -192,8 +201,91 @@ int game_prototype_preview_launch(
     );
     if (result != ECS_OK) {
         engine_set_playing(preview->runtime, false);
+    } else {
+        apush(preview->entities, preview->entity);
     }
     return result;
+}
+
+int game_prototype_preview_launch_scene(
+    game_prototype_preview *preview,
+    const game_prototype_preview_scene_entity *entities,
+    int entity_count,
+    char *error,
+    size_t error_size
+)
+{
+    if (!preview || !entities || entity_count <= 0) {
+        return ECS_ERR_ARGUMENT;
+    }
+    clear_entity(preview);
+    engine_set_playing(preview->runtime, false);
+    game_behavior_set_deferred(preview->live->behaviors, true);
+    for (int i = 0; i < entity_count; i++) {
+        if (!entities[i].prototype || entities[i].behavior_count < 0 ||
+            (entities[i].behavior_count && !entities[i].behaviors)) {
+            snprintf(error, error_size, "scene fixture entity %d is invalid", i);
+            game_behavior_set_deferred(preview->live->behaviors, false);
+            clear_entity(preview);
+            return ECS_ERR_ARGUMENT;
+        }
+        ecs_entity entity = { 0 };
+        int result = game_prototype_spawn(
+            entities[i].prototype,
+            preview->world,
+            &(game_prototype_spawn_hooks){ attach_behavior, preview },
+            &entity,
+            error,
+            error_size
+        );
+        if (result != ECS_OK) {
+            game_behavior_set_deferred(preview->live->behaviors, false);
+            clear_entity(preview);
+            return result;
+        }
+        if (entities[i].components_json && game_prototype_apply_components_json(
+                                               preview->world,
+                                               entity,
+                                               entities[i].components_json,
+                                               entities[i].prototype->registry,
+                                               error,
+                                               error_size
+                                           ) != 0) {
+            game_behavior_set_deferred(preview->live->behaviors, false);
+            clear_entity(preview);
+            return ECS_ERR_COMPONENT;
+        }
+        game_behavior_detach_entity(preview->live->behaviors, entity);
+        for (int behavior = 0; behavior < entities[i].behavior_count; behavior++) {
+            if (game_behavior_attach(
+                    preview->live->behaviors,
+                    entity,
+                    entities[i].behaviors[behavior]
+                ) != 0) {
+                snprintf(
+                    error,
+                    error_size,
+                    "scene behavior %s could not attach",
+                    entities[i].behaviors[behavior]
+                );
+                game_behavior_set_deferred(preview->live->behaviors, false);
+                clear_entity(preview);
+                return ECS_ERR_COMMAND;
+            }
+        }
+        apush(preview->entities, entity);
+        if (!preview->entity.slot) {
+            preview->entity = entity;
+        }
+    }
+    game_behavior_set_deferred(preview->live->behaviors, false);
+    if (game_behavior_begin_pending(preview->live->behaviors) != 0) {
+        snprintf(error, error_size, "scene behavior Begin failed");
+        clear_entity(preview);
+        return ECS_ERR_COMMAND;
+    }
+    engine_set_playing(preview->runtime, true);
+    return ECS_OK;
 }
 
 int game_prototype_preview_register_prototype(game_prototype_preview *preview, const game_prototype *prototype)
@@ -270,6 +362,18 @@ game_behavior_world *game_prototype_preview_behaviors(game_prototype_preview *pr
 ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview)
 {
     return preview ? preview->entity : (ecs_entity){ 0 };
+}
+
+int game_prototype_preview_entity_count(const game_prototype_preview *preview)
+{
+    return preview ? acount(preview->entities) : 0;
+}
+
+ecs_entity game_prototype_preview_entity_at(const game_prototype_preview *preview, int index)
+{
+    return preview && index >= 0 && index < acount(preview->entities)
+             ? preview->entities[index]
+             : (ecs_entity){ 0 };
 }
 
 behavior_instance *game_prototype_preview_instance(game_prototype_preview *preview, const char *asset_name)

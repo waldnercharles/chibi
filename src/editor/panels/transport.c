@@ -1,5 +1,6 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/optimize.h"
 #include "graph/document/extract.h"
 
 #include <imgui/dcimgui.h>
@@ -129,6 +130,32 @@ void ed_draw_toolbar(editor *e)
                         acount(e->active_graph->nodes) > 0
                     )) {
                     ed_zoom_fit(e, true);
+                }
+                if (ImGui_MenuItemEx(
+                        "Optimize graph",
+                        NULL,
+                        false,
+                        acount(e->active_graph->nodes) > 0 && !e->active_graph->math_expression
+                    )) {
+                    (void)ed_optimize_graph(e);
+                }
+                editor_ui_track_item("graph.optimize");
+                if (e->optimize_summary[0]) {
+                    ImGui_TextWrapped("%s", e->optimize_summary);
+                    const char *reasons[GRAPH_OPTIMIZE_SKIP_COUNT] = {
+                        "Debug state",
+                        "Conversion cannot be preserved",
+                        "Existing input source",
+                        "Source must remain",
+                        "Graph domain unsupported",
+                        "Pin type unsupported",
+                        "Custom wire route"
+                    };
+                    for (int i = 0; i < GRAPH_OPTIMIZE_SKIP_COUNT; i++) {
+                        if (e->optimize_skips[i]) {
+                            ImGui_TextDisabled("%s: %d", reasons[i], e->optimize_skips[i]);
+                        }
+                    }
                 }
                 ImGui_Separator();
                 if (ImGui_MenuItemEx("Undo", NULL, false, acount(e->undo) > 0)) {

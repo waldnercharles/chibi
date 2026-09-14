@@ -5,6 +5,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/type.h"
+#include "graph/nodes/conv_nodes.h"
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
 #include "runtime/behaviors/live.h"
@@ -129,6 +130,38 @@ static void examples()
     assert(behavior_asset_compile(flash, &report) == 0);
     compile_report_free(&report);
     behavior_asset_free(flash);
+}
+
+static void preview_parameter_validation()
+{
+    behavior_asset *asset = behavior_asset_new("Preview parameters");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *color = add(g, "Shader Parameter");
+    node *opacity = add(g, "Shader Parameter");
+    assert(graph_set_node_reference(g, color, 0, "Tint") == 0);
+    assert(graph_set_node_reference(g, opacity, 1, "Opacity") == 0);
+    assert(graph_set_pin_type(g, color, 1, 0, PIN_STRUCT, "ShaderVec3") == 0);
+    float tint[3] = { 1, 1, 1 };
+    pin_value color_default = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = tint };
+    assert(graph_set_pin_default(g, color, 1, 0, &color_default) == 0);
+    scalar(g, opacity, 1, 0, 1);
+    assert(graph_connect_data(g, color, 0, output, 0) == 0);
+    assert(graph_connect_data(g, opacity, 0, output, 5) == 0);
+    shader_error error = { 0 };
+    assert(render_shader_upsert(asset, &error));
+    int shader = render_shader_find(asset->name);
+    assert(shader);
+    assert(render_shader_parameters_validate(shader, "{\"Tint\":[1,-2,0.5],\"Opacity\":4}", &error));
+    assert(!render_shader_parameters_validate(shader, "{\"Tint\":[1]}", &error));
+    assert(strstr(error.message, "array of 3"));
+    assert(!render_shader_parameters_validate(shader, "{\"Opacity\":[4]}", &error));
+    assert(strstr(error.message, "finite number or boolean"));
+    assert(!render_shader_parameters_validate(shader, "{\"Missing\":1}", &error));
+    assert(strstr(error.message, "Unknown shader preview parameter"));
+    behavior_asset_free(asset);
+    render_shader_catalog_clear();
 }
 
 static void live_shader_library()
@@ -467,9 +500,50 @@ static void parameter_slots()
     behavior_asset_free(asset);
 }
 
+static void vector_inline_sources()
+{
+    behavior_asset *asset = behavior_asset_new("Vector sources");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *root = shader_graph_add_output(g, false);
+    node *constant = add(g, "Shader Constant");
+    scalar(g, constant, true, 0, .375f);
+    const node_desc *conversion = conversion_for_pins(&constant->output_pins[0], &root->input_pins[0]);
+    assert(conversion && graph_connect_data_conversion(g, constant, 0, root, 0, conversion) == 0);
+    assert(graph_set_node_inline(g, constant, true) == 0);
+    for (int mixed = 0; mixed < 2; mixed++) {
+        if (mixed) {
+            node *vector = add(g, "Shader Vector3");
+            scalar(g, vector, false, 1, .5f);
+            scalar(g, vector, false, 2, .75f);
+            assert(graph_connect_data(g, vector, 0, root, 0) == 0);
+            assert(graph_set_node_inline(g, vector, true) == 0);
+            assert(graph_connect_data(g, constant, 0, vector, 0) == 0);
+            assert(graph_node_is_inline(g, constant));
+        }
+        char *json = behavior_asset_save_json(asset);
+        behavior_asset *copy = behavior_asset_load_json(json);
+        shader_graph ir = { 0 };
+        shader_error error = { 0 };
+        assert(copy && shader_graph_from_graph(copy->graph, &ir, &error));
+        float out[8][4];
+        shader_sample_context sample = { 0 };
+        assert(shader_graph_eval_outputs(&ir, &sample, NULL, out, &error));
+        near(out[0][0], .375f);
+        near(out[0][1], mixed ? .5f : .375f);
+        near(out[0][2], mixed ? .75f : .375f);
+        shader_graph_free(&ir);
+        behavior_asset_free(copy);
+        free(json);
+    }
+    behavior_asset_free(asset);
+}
+
 void test_shader_graph()
 {
+    vector_inline_sources();
     parameter_slots();
+    preview_parameter_validation();
     /* Reflected scalar reads must clear a previous array tag before serialization. */
     float component = 0.6f;
     type_field field = { .name = "x",

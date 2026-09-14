@@ -967,15 +967,9 @@ static int eval_read_component_field(
         };
         return EVAL_COMPONENT_READ_OK;
     }
-    for (int i = 0; i < component->desc.type->field_count; i++) {
-        if (component->desc.type->fields[i].name &&
-            strcmp(component->desc.type->fields[i].name, field_name) == 0) {
-            return ecs_component_read_field(world, entity, component->desc.id, i, out) == ECS_OK
-                     ? EVAL_COMPONENT_READ_OK
-                     : EVAL_COMPONENT_READ_MISSING_COMPONENT;
-        }
-    }
-    return EVAL_COMPONENT_READ_MISSING_FIELD;
+    return pin_read_field_path(data, component->desc.type, field_name, out) == 0
+             ? EVAL_COMPONENT_READ_OK
+             : EVAL_COMPONENT_READ_MISSING_FIELD;
 }
 
 void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *world)

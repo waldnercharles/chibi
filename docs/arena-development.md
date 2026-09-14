@@ -599,12 +599,15 @@ WASM bytecode integration remain unfinished acceptance in #8; see
 [behavior execution](research/behavior-execution.md). The existing compiled
 System arithmetic tests are not proof of compiled Scene behaviors.
 
-Use `make run-release` for the optimized editor or `make play-release` for the
-optimized standalone game. Both use RelWithDebInfo with symbols and sanitizers
-disabled; ordinary `make build`/`make play` retain the development configuration.
-`make benchmark` uses the same optimized flags. Test drivers keep assertions
-enabled in optimized builds because their fixture setup and checks require them;
-runtime libraries retain normal optimized flags.
+Use `make run` for the optimized editor or `make play` for the optimized
+standalone game. `make debug` runs the plain Debug editor, and `make debug-san`
+runs the sanitizer-enabled Debug editor. The latter defaults to ASan and UBSan;
+pass `SANITIZERS=thread` to use TSan. TSan and ASan cannot share one binary, so
+the target switches the sanitizer mode in the shared Debug build directory.
+`make benchmark` uses a separate RelWithDebInfo profile so sampling keeps
+symbols without changing the interactive release build. Test drivers keep
+assertions enabled in optimized builds because their fixture setup and checks
+require them; runtime libraries retain normal optimized flags.
 
 The native CI matrix now exercises sanitized Debug and optimized
 RelWithDebInfo with SLJIT enabled in the optimized job. Optimized validation

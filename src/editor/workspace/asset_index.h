@@ -96,7 +96,7 @@ int asset_index_asset_count(const asset_index *index);
 const asset_index_asset *asset_index_asset_at(const asset_index *index, int position);
 int asset_index_reference_count(const asset_index *index);
 const asset_index_reference *asset_index_reference_at(const asset_index *index, int position);
-bool asset_index_match(const asset_index_asset *asset, const char *query);
+int asset_index_score(const asset_index_asset *asset, const char *query);
 
 /* Rebuild the index from authored scene, prototype, graph and tab state. */
 struct app_scene_authoring;

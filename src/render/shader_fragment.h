@@ -9,5 +9,10 @@ int render_shader_fragment_prepare(
     const render_material_entity *entity,
     shader_error *error
 );
-void render_shader_fragment_draw(render_programs *programs, int program, const render_material_entity *entity);
+void render_shader_fragment_draw(
+    render_programs *programs,
+    int program,
+    const render_material_entity *entity,
+    CF_V2 lighting
+);
 #endif

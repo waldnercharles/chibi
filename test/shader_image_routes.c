@@ -249,7 +249,7 @@ static void fragment_checks(const int materials[IMAGES], const CF_Pixel colors[I
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
     for (int i = 0; i < IMAGES; i++) {
-        render_shader_fragment_draw(programs, programs_for_actor[i], &actors[i]);
+        render_shader_fragment_draw(programs, programs_for_actor[i], &actors[i], (CF_V2){ 1, 1 });
     }
     cf_render_to(canvas, true);
     cf_draw_pop();
@@ -324,7 +324,7 @@ static void fragment_sampling(const char *key)
             cf_draw_TSR_absolute((CF_V2){ 0 }, (CF_V2){ 1, 1 }, 0);
             cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
             cf_draw_push_filter(draw_filter ? CF_DRAW_FILTER_LINEAR : CF_DRAW_FILTER_NEAREST);
-            render_shader_fragment_draw(programs, program, &actor);
+            render_shader_fragment_draw(programs, program, &actor, (CF_V2){ 1, 1 });
             cf_render_to(canvas, true);
             cf_draw_pop_filter();
             cf_draw_pop();

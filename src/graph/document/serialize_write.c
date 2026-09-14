@@ -1,4 +1,5 @@
 #include "graph/document/serialize_internal.h"
+#include "graph/model/local.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -32,7 +33,8 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
     yyjson_mut_obj_add_uint(doc, o, "flags", p->flags);
     yyjson_mut_obj_add_int(doc, o, "group", p->group);
     if (p->binding) {
-        const char *kind = p->binding->kind == PIN_BINDING_VARIABLE ? "variable"
+        const char *kind = p->binding->kind == PIN_BINDING_LOCAL    ? "local"
+                         : p->binding->kind == PIN_BINDING_VARIABLE ? "variable"
                          : p->binding->kind == PIN_BINDING_COMPONENT_FIELD
                              ? "component_field"
                          : p->binding->kind == PIN_BINDING_COMPONENT
@@ -40,6 +42,9 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
                              : "delta_time";
         yyjson_mut_val *binding = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_str(doc, binding, "kind", kind);
+        if (p->binding->local_id) {
+            yyjson_mut_obj_add_uint(doc, binding, "local_id", p->binding->local_id);
+        }
         if (p->binding->variable_id) {
             yyjson_mut_obj_add_uint(doc, binding, "variable_id", p->binding->variable_id);
         }
@@ -208,7 +213,21 @@ static void write_nodes(yyjson_mut_doc *doc, yyjson_mut_val *arr, const graph *g
     qsort(ordered_nodes, (size_t)node_total, sizeof *ordered_nodes, compare_nodes);
     for (int i = 0; i < node_total; i++) {
         if (ordered_nodes[i]) {
-            write_node(doc, arr, ordered_nodes[i]);
+            node copy = *ordered_nodes[i];
+            pin_spec *pins = copy.input_count
+                               ? xmalloc((size_t)copy.input_count * sizeof *pins)
+                               : NULL;
+            for (int p = 0; p < copy.input_count; p++) {
+                pins[p] = copy.input_pins[p];
+                const graph_local *local = graph_input_local(g, &copy, p);
+                if (subset && local &&
+                    !subset_contains(subset, count, graph_node_by_id(g, local->source_id))) {
+                    pins[p].binding = NULL;
+                }
+            }
+            copy.input_pins = pins;
+            write_node(doc, arr, &copy);
+            free(pins);
         }
     }
     free(ordered_nodes);
@@ -299,6 +318,7 @@ static char *write_graph(const graph *g, node *const *subset, int count)
     yyjson_mut_val *edges = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, root, "edges", edges);
     write_edges(doc, edges, g, subset, count);
+    serialize_write_locals(doc, root, g, subset, count);
     char *out = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
     yyjson_mut_doc_free(doc);
     free(expanded);
@@ -340,6 +360,7 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     }
     yyjson_mut_obj_add_str(doc, obj, "kind", graph_kind_name(g->kind));
     yyjson_mut_obj_add_str(doc, obj, "name", g->name ? g->name : "");
+    yyjson_mut_obj_add_str(doc, obj, "description", g->description ? g->description : "");
     yyjson_mut_obj_add_bool(doc, obj, "breakpoints_enabled", g->breakpoints_enabled != 0);
     if (g->dataflow) {
         yyjson_mut_obj_add_bool(doc, obj, "dataflow", true);
@@ -367,6 +388,7 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     yyjson_mut_val *edges = yyjson_mut_arr(doc);
     yyjson_mut_obj_add_val(doc, obj, "edges", edges);
     write_edges(doc, edges, g, NULL, 0);
+    serialize_write_locals(doc, obj, g, NULL, 0);
     yyjson_mut_arr_add_val(graphs, obj);
 }
 

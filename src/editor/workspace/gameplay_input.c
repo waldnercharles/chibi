@@ -2,35 +2,34 @@
 
 #include "editor/workspace/editor.h"
 #include "editor/workspace/input.h"
+#include "editor/workspace/scene_internal.h"
+
+#include <stdio.h>
 
 void app_gameplay_sample(app_scene_authoring *scene, bool accepts_input, const CF_V2 *mouse_target)
 {
+    engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
+                        ? game_prototype_preview_runtime(scene->prototype_preview)
+                        : scene->runtime;
+    bool firing = false;
+    if (engine_sample_controls(runtime, accepts_input ? app_input_controls() : 0, &firing) <
+        0) {
+        snprintf(scene->message, sizeof scene->message, "Action binding requires a source and event name.");
+    }
     if (!accepts_input) {
         app_scene_authoring_move(scene, 0, 0);
         app_scene_authoring_aim(scene, (CF_V2){ 0 }, false);
-        app_scene_authoring_input(scene, "Fire", 0, 0);
-        app_scene_authoring_input(scene, "Dash", 0, 0);
         return;
     }
     float x, y;
     app_input_movement(&x, &y);
     app_scene_authoring_move(scene, x, y);
     if (app_input_aim(&x, &y)) {
-        app_scene_authoring_aim(scene, (CF_V2){ x, y }, true);
+        app_scene_authoring_aim(scene, (CF_V2){ x, y }, firing);
     } else if (app_input_mouse_aiming() && mouse_target) {
-        app_scene_authoring_aim_at(scene, *mouse_target, app_input_firing());
+        app_scene_authoring_aim_at(scene, *mouse_target, firing);
     } else {
-        app_scene_authoring_aim(scene, (CF_V2){ 0 }, false);
-    }
-    const app_input_action buttons[] = { APP_INPUT_FIRE, APP_INPUT_DASH };
-    const char *actions[] = { "Fire", "Dash" };
-    for (int i = 0; i < 2; i++) {
-        if (app_input_pressed(buttons[i])) {
-            app_scene_authoring_input(scene, actions[i], 1, 1);
-        }
-        if (app_input_released(buttons[i])) {
-            app_scene_authoring_input(scene, actions[i], 0, 0);
-        }
+        app_scene_authoring_aim(scene, (CF_V2){ 0 }, firing);
     }
 }
 
@@ -41,7 +40,8 @@ void app_gameplay_input(app_scene_authoring *scene, engine *runtime, engine_view
         engine_viewport_release_focus();
         focused = false;
     }
-    bool accepts_input = focused && !editor_host_captures_keyboard();
+    bool accepts_input = focused && !editor_host_captures_keyboard() &&
+                         !engine_viewport_widgets_capture(viewport);
     if (!accepts_input) {
         app_gameplay_sample(scene, false, NULL);
     }

@@ -78,59 +78,6 @@ static void draw_preview(editor *e)
     }
 }
 
-static void parameter_type(editor *e, node *n)
-{
-    const char *names[] = { "Scalar",   "Vector 2", "Vector 3",
-                            "Vector 4", "Color",    "Boolean" };
-    const char *types[] = { NULL,         "ShaderVec2", "ShaderVec3",
-                            "ShaderVec4", "ShaderVec3", NULL };
-    pin_spec *pin = &n->output_pins[0];
-    int current = pin->type == PIN_BOOL ? 5 : 0;
-    for (int i = 1; i < 4; i++) {
-        if (pin->type_name && !strcmp(pin->type_name, types[i])) {
-            current = i;
-        }
-    }
-    if ((pin->flags & PIN_FLAG_COLOR) && current >= 2) {
-        current = 4;
-    }
-    bool open = ImGui_BeginCombo("Type", names[current], 0);
-    editor_ui_track_item("shader.parameter.type");
-    if (!open) {
-        return;
-    }
-    for (int i = 0; i < 6; i++) {
-        bool selected = ImGui_SelectableEx(names[i], i == current, 0, (ImVec2){ 0 });
-        char id[64];
-        snprintf(id, sizeof id, "shader.parameter.type.%d", i);
-        editor_ui_track_item(id);
-        if (!selected || i == current) {
-            continue;
-        }
-        float components[4] = { 0 };
-        if (!current) {
-            components[0] = pin->default_value.f;
-        } else if (current == 5) {
-            components[0] = pin->default_value.b ? 1 : 0;
-        } else if (pin->default_value.ptr) {
-            memcpy(components, pin->default_value.ptr, (size_t)ed_vector_width(pin) * sizeof(float));
-        }
-        ed_snapshot_before(e);
-        pin_type type = i == 5 ? PIN_BOOL : i ? PIN_STRUCT : PIN_F32;
-        graph_set_pin_type(e->active_graph, n, 1, 0, type, types[i]);
-        pin->flags = (pin->flags & ~PIN_FLAG_COLOR) | (i == 4 ? PIN_FLAG_COLOR : 0);
-        pin_value value = { .type = type, .type_name = types[i] };
-        if (i == 5) {
-            value.b = components[0] != 0;
-        } else if (i) {
-            value.ptr = components;
-        } else {
-            value.f = components[0];
-        }
-        graph_set_pin_default(e->active_graph, n, 1, 0, &value);
-    }
-    ImGui_EndCombo();
-}
 void ed_draw_shader_details(editor *e, node *n)
 {
     if (n) {
@@ -154,7 +101,9 @@ void ed_draw_shader_details(editor *e, node *n)
         ImGui_TextUnformatted(e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ? "Shape" : "Material");
         if (e->asset->domain == BEHAVIOR_DOMAIN_SHAPE) {
             float bounds[2] = { e->asset->bounds[0], e->asset->bounds[1] };
-            if (ImGui_DragFloat2Ex("Half extents", bounds, 0.1f, 0.01f, 100000, "%.3g", ImGuiSliderFlags_AlwaysClamp)) {
+            ImGui_TextUnformatted("Half extents");
+            bool changed = editor_ui_vector_float("bounds", bounds, 2, .01f, 100000);
+            if (changed) {
                 ed_details_begin_mutation(e);
                 e->asset->bounds[0] = bounds[0];
                 e->asset->bounds[1] = bounds[1];
@@ -163,19 +112,8 @@ void ed_draw_shader_details(editor *e, node *n)
             ed_details_finish_mutation(e, ImGui_IsItemEdited());
         }
     }
-    if (n && (!strcmp(n->desc->name, "Shader Parameter") ||
-              !strcmp(n->desc->name, "Shader Constant"))) {
-        if (!strcmp(n->desc->name, "Shader Parameter")) {
-            char name[128];
-            snprintf(name, sizeof name, "%s", n->reference_name ? n->reference_name : "");
-            if (ImGui_InputText("Name", name, sizeof name, 0)) {
-                ed_details_begin_mutation(e);
-                graph_set_node_reference(e->active_graph, n, n->reference_id, name);
-            }
-            editor_ui_track_item("shader.parameter.name");
-            ed_details_finish_mutation(e, ImGui_IsItemEdited());
-        }
-        parameter_type(e, n);
+    if (n && (!strcmp(n->desc->name, "Shader Constant") ||
+              !strcmp(n->desc->name, "Shader Parameter"))) {
         ed_draw_details_pin(e, n, 1, 0);
     }
     shader_graph ir;

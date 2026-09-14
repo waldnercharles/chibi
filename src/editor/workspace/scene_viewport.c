@@ -5,6 +5,7 @@
 #include "render/arena3d.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
+#include "runtime/camera.h"
 #include "runtime/generated.h"
 
 #include <assert.h>
@@ -394,6 +395,14 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     app_runtime_target target = scene->active_runtime_target;
     scene_prototype_asset *prototype = previewed_prototype(scene);
     bool preview = target == APP_RUNTIME_PREVIEW && prototype;
+    engine_viewport_set_widgets(
+        viewport,
+        preview ? game_prototype_preview_world(scene->prototype_preview) : scene->world,
+        preview ? game_prototype_preview_entities(scene->prototype_preview)
+                : scene->live->entities,
+        preview ? game_prototype_preview_runtime(scene->prototype_preview)
+                : scene->runtime
+    );
     bool perspective = scene->perspective;
     if (preview) {
         ecs_world *world = game_prototype_preview_world(scene->prototype_preview);
@@ -451,6 +460,23 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         .playing = target == APP_RUNTIME_PREVIEW ? scene->preview_playing
                                                  : scene->runtime_playing,
     };
+    if (controls.session && !controls.editing) {
+        engine_viewport_view view;
+        int authored = game_camera_view(
+            preview ? game_prototype_preview_world(scene->prototype_preview)
+                    : scene->world,
+            preview ? game_prototype_preview_runtime(scene->prototype_preview)
+                    : scene->runtime,
+            &view
+        );
+        if (authored > 0) {
+            engine_viewport_set_view(viewport, &view);
+            engine_viewport_clear_arena_camera(viewport);
+        }
+        if (authored < 0) {
+            snprintf(scene->message, sizeof scene->message, "GameCamera requires one active camera with positive spans.");
+        }
+    }
     app_runtime_command command;
     engine_viewport_action action = engine_viewport_draw(viewport, &controls);
     edit_scene_pointer(scene, viewport);

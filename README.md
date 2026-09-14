@@ -5,14 +5,45 @@ A C23 visual programming editor for authored game behaviors, prototypes, and sce
 ## Development
 
 ```sh
-make build        # static native application, warnings and sanitizers enabled
-make run
+make run          # optimized editor for normal interaction
+make play         # optimized standalone game
+make debug        # plain Debug editor
+make debug-san    # Debug editor with ASan and UBSan
+make build        # build the sanitizer-enabled Debug profile
 make test         # model, runtime, native UI, generation, and loader checks
+make mcp          # run the local MCP authoring server over stdio
+make mcp-setup    # generate local Codex MCP configuration
 make dev          # watch sources, rebuild, and reload the running editor
 make format       # explicitly format project C sources
 make check-format
 make web          # static browser application; requires Emscripten
 ```
+
+`make run` and `make play` use the fully optimized `Release` profile. The
+`make debug` target uses a plain `Debug` profile, while `make debug-san` uses
+ASan and UBSan by default. Use `make debug-san SANITIZERS=thread` when a TSan
+run is useful; TSan cannot be linked into the same binary as ASan, so the one
+target switches the sanitizer mode in the shared Debug build directory.
+
+To run the game with a debug profile, pass its normal application arguments:
+`make debug ARGS='--play --scene content/scenes/Arena3D.json'` or
+`make debug-san ARGS='--play --scene content/scenes/Arena3D.json'`.
+
+Run `make help` for the complete target list and the purpose of each target.
+
+When available, Chibi MCP is the default interface for authoring shaders,
+behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
+the public tools and validation sequence.
+
+### Zed
+
+Open the repository root in Zed and run `Build (Debug)` from `task: spawn` once
+after cloning. The project settings use clangd and the checked-in
+`.clang-format`; the build creates the compilation database that powers
+completion, diagnostics, navigation, and formatting. `.zed/tasks.json` also
+provides editor, Arena3D, development-reload, test, render-check, and release
+tasks. `.zed/debug.json` provides CodeLLDB launch profiles for the editor,
+Arena3D, and the test suite.
 
 Native builds require CMake, a C23 compiler, and libclang. Dependencies
 are pinned in CMake. On macOS, the Makefile uses Homebrew

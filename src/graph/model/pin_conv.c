@@ -54,3 +54,19 @@ int pin_coerce(pin_value *v, const pin_spec *target)
     }
     return 0;
 }
+
+int pin_vector_width(const pin_spec *pin)
+{
+    if (pin->type != PIN_STRUCT || pin->container != PIN_CONTAINER_SINGLE ||
+        !pin->type_name) {
+        return 0;
+    }
+    const char *name = type_root(pin->type_name);
+    if (!strcmp(name, "CF_V2") || !strcmp(name, "ShaderVec2")) {
+        return 2;
+    }
+    if (!strcmp(name, "CF_V3") || !strcmp(name, "ShaderVec3")) {
+        return 3;
+    }
+    return !strcmp(name, "ShaderVec4") ? 4 : 0;
+}

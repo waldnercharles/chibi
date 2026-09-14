@@ -304,8 +304,37 @@ void editor_draw(editor *e)
         if (editor_ui_take_focus(EDITOR_UI_FOCUS_NODE_CANVAS)) {
             ImGui_SetNextWindowFocus();
         }
-        char title[256];
-        snprintf(title, sizeof title, "%s###Node Canvas", e->asset->name);
+        bool root = e->active_graph == e->asset->graph;
+        bool hide_tab = root && editor_ui_document_bar_visible();
+        ImGuiWindowClass window_class = { .DockingAllowUnclassed = true,
+                                          .DockNodeFlagsOverrideSet = hide_tab ? ImGuiDockNodeFlags_AutoHideTabBar
+                                                                               : 0 };
+        ImGuiWindow *window = ImGui_FindWindowByName("Node Canvas");
+        if (window && window->DockNode &&
+            window->WindowClass.DockNodeFlagsOverrideSet !=
+                window_class.DockNodeFlagsOverrideSet) {
+            if (hide_tab) {
+                window->DockNode->WantHiddenTabBarUpdate = true;
+            } else {
+                ImGuiDockNode_SetLocalFlags(
+                    window->DockNode,
+                    window->DockNode->LocalFlags & ~ImGuiDockNodeFlags_HiddenTabBar
+                );
+            }
+        }
+        ImGui_SetNextWindowClass(&window_class);
+        char title[512];
+        if (root) {
+            snprintf(title, sizeof title, "%s###Node Canvas", e->asset->name);
+        } else {
+            snprintf(
+                title,
+                sizeof title,
+                "%s / %s###Node Canvas",
+                e->asset->name,
+                e->active_graph->name
+            );
+        }
         if (!editor_ui_begin_pane(
                 EDITOR_UI_PANE_NODE_CANVAS,
                 title,
@@ -349,9 +378,7 @@ void editor_draw(editor *e)
                 ed_update_hover(e, hover_mouse);
             }
             ed_draw_canvas(e);
-            ed_draw_controls(e, 0);
             ed_draw_front_nodes(e);
-            ed_draw_controls(e, 1);
             ed_draw_connect_error(e);
             const char *error = eval_view_error(e->ev);
             if (error[0]) {

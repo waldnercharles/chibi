@@ -1,10 +1,11 @@
 #ifndef CHIBI_INPUT_H
 #define CHIBI_INPUT_H
+#include "runtime/components.h"
+
 #include <stdbool.h>
 
 typedef enum
 {
-    APP_INPUT_FIRE,
     APP_INPUT_ESCAPE,
     APP_INPUT_UNDO,
     APP_INPUT_REDO,
@@ -17,7 +18,6 @@ typedef enum
     APP_INPUT_SHIFT,
     APP_INPUT_CONTROL,
     APP_INPUT_COMMAND,
-    APP_INPUT_DASH,
     APP_INPUT_COUNT
 } app_input_action;
 
@@ -33,6 +33,6 @@ bool app_input_down(app_input_action action);
 void app_input_movement(float *x, float *y);
 /* Returns true while the controller aim stick is outside its dead zone. */
 bool app_input_aim(float *x, float *y);
-bool app_input_firing();
+uint64_t app_input_controls();
 bool app_input_mouse_aiming();
 #endif

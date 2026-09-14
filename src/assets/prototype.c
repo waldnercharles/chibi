@@ -1315,6 +1315,34 @@ int game_prototype_write_field(
     return 0;
 }
 
+int game_prototype_write_field_json(
+    game_prototype *prototype,
+    const char *component_name,
+    const char *field_name,
+    yyjson_val *json,
+    char *error,
+    size_t error_size
+)
+{
+    if (!prototype || !component_name || !field_name || !json) {
+        set_error(error, error_size, "prototype field arguments are required");
+        return -1;
+    }
+    game_prototype_component *component = find_component(prototype, component_name);
+    const type_field *field = component
+                                ? find_field(component->desc->type, field_name)
+                                : NULL;
+    if (!component) {
+        set_error(error, error_size, "component %s is not attached", component_name);
+        return -1;
+    }
+    if (!field) {
+        set_error(error, error_size, "component %s has unknown field %s", component_name, field_name);
+        return -1;
+    }
+    return parse_field(prototype, prototype->registry, component->data, field, json, error, error_size);
+}
+
 static yyjson_mut_val *rebase_fields(
     yyjson_mut_doc *doc,
     yyjson_val *values,

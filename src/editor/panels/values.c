@@ -1,8 +1,10 @@
 #include "editor/graph/eval_view.h"
+#include "editor/panels/shader_inline.h"
 #include "editor/ui/color.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/pin_conv.h"
+#include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/generated.h"
@@ -99,12 +101,11 @@ static bool ed_draw_choice_input(node *n, int index, pin_value *value, const edi
 
 static bool ed_pin_color_input(editor *e, node *n, int output, int index)
 {
-    if (output || !e->color_resolver) {
-        return false;
-    }
-    const pin_spec *spec = &n->input_pins[index];
+    const pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
     return spec->type == PIN_U32 && spec->container == PIN_CONTAINER_SINGLE &&
-           e->color_resolver(n, output, index, e->color_user);
+           ((spec->flags & PIN_FLAG_COLOR) ||
+            (!output && e->color_resolver &&
+             e->color_resolver(n, output, index, e->color_user)));
 }
 
 static bool ed_draw_color_input(editor *e, node *n, int index, unsigned *value, bool details)
@@ -131,6 +132,18 @@ static bool float_color(const pin_spec *pin)
     return (pin->flags & PIN_FLAG_COLOR) && ed_vector_width(pin) >= 3;
 }
 
+static bool ed_draw_scalar(const char *id, const char *label, ImGuiDataType type, void *value, float speed)
+{
+    bool changed = ImGui_DragScalarEx(id, type, value, speed, NULL, NULL, "", ImGuiSliderFlags_NoRoundToFormat);
+    char number[64];
+    const char *format = type == ImGuiDataType_Float || type == ImGuiDataType_Double
+                           ? "%.4g"
+                           : ImGui_DataTypeGetInfo(type)->PrintFmt;
+    ImGui_DataTypeFormatString(number, sizeof number, type, value, format);
+    editor_ui_value_label(label, number);
+    return changed;
+}
+
 static bool ed_draw_vector_input(editor *e, node *n, int output, int index, float value[4], bool details)
 {
     const pin_spec *pin = output ? &n->output_pins[index] : &n->input_pins[index];
@@ -154,9 +167,30 @@ static bool ed_draw_vector_input(editor *e, node *n, int output, int index, floa
         }
         return changed;
     }
-    char label[100];
-    snprintf(label, sizeof label, "##%s", id);
-    bool changed = ImGui_InputScalarNEx(label, ImGuiDataType_Float, value, width, NULL, NULL, "%.4g", 0);
+    bool endpoints = width == 2 && strstr(pin->name, "Range");
+    const char *axes[] = { "X", "Y", "Z", "W" };
+    const char *range[] = { "Min", "Max" };
+    float field_width = ImGui_CalcItemWidth();
+    bool changed = false;
+    ImGui_PushID(id);
+    ImGui_BeginGroup();
+    for (int i = 0; i < width; i++) {
+        ImGui_PushIDInt(i);
+        ImGui_SetNextItemWidth(field_width);
+        changed |= ed_draw_scalar(
+            "##axis",
+            endpoints ? range[i] : axes[i],
+            ImGuiDataType_Float,
+            &value[i],
+            .01f
+        );
+        char component[112];
+        snprintf(component, sizeof component, "%s.axis.%d", id, i);
+        editor_ui_track_item(component);
+        ImGui_PopID();
+    }
+    ImGui_EndGroup();
+    ImGui_PopID();
     editor_ui_track_item(id);
     return changed;
 }
@@ -179,7 +213,7 @@ static const char *input_context(const node *n, int output, int index)
     return label;
 }
 
-static bool draw_context_choice(editor *e, node *n, int index, const char *context)
+static bool draw_context_choice(editor *e, node *n, int index, const char *context, float width, bool details)
 {
     pin_spec *pin = &n->input_pins[index];
     bool has_value = pin->default_value.ptr != NULL;
@@ -187,11 +221,12 @@ static bool draw_context_choice(editor *e, node *n, int index, const char *conte
     snprintf(
         id,
         sizeof id,
-        "shader.context.details.%llu.%d",
+        "shader.context.%s.%llu.%d",
+        details ? "details" : "node",
         (unsigned long long)n->id,
         index
     );
-    ImGui_SetNextItemWidth(ImGui_GetContentRegionAvail().x);
+    ImGui_SetNextItemWidth(width);
     bool open = ImGui_BeginCombo("##context", has_value ? "Value" : context, 0);
     editor_ui_track_item(id);
     if (!open) {
@@ -217,7 +252,7 @@ static bool draw_context_choice(editor *e, node *n, int index, const char *conte
     return changed;
 }
 
-void ed_begin_value_edit(editor *e, node *n, int kind, int index, ImVec2 pos)
+static void ed_begin_value_edit(editor *e, node *n, int kind, int index, ed_value_layout layout)
 {
     const pin_spec *pin = kind == ED_PIN_OUTPUT ? &n->output_pins[index]
                                                 : &n->input_pins[index];
@@ -229,7 +264,7 @@ void ed_begin_value_edit(editor *e, node *n, int kind, int index, ImVec2 pos)
     }
     ImGuiIO *io = ImGui_GetIO();
     if (!e->edit_history_open && ImGui_IsMouseClicked(0) &&
-        ed_edit_hit(e, io->MousePos, pos, ed_pin_value_width(e->active_graph, n, kind, index) * e->zoom)) {
+        ed_edit_hit(e, io->MousePos, layout.pos, layout.width)) {
         e->pending_snapshot = ed_snapshot(e);
         e->edit_history_open = 1;
         e->edit_changed = 0;
@@ -241,7 +276,8 @@ static void ed_finish_value_edit(editor *e, int changed)
     if (changed) {
         e->edit_changed = 1;
     }
-    if (e->edit_history_open && ImGui_IsItemDeactivated()) {
+    /* A group may report deactivation while another child is still active. */
+    if (e->edit_history_open && ImGui_IsItemDeactivated() && !ImGui_IsItemActive()) {
         if (e->edit_changed) {
             ed_commit_snapshot(e);
         } else {
@@ -252,19 +288,151 @@ static void ed_finish_value_edit(editor *e, int changed)
     }
 }
 
-int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
+static int ed_draw_vector_value(editor *e, node *n, int kind, int index, ed_value_layout layout)
 {
+    bool output = kind == ED_PIN_OUTPUT;
+    const pin_spec *spec = output ? &n->output_pins[index] : &n->input_pins[index];
+    int count = ed_vector_width(spec);
+    node *source = output ? NULL : ed_vector_source(e, n, index);
+    float row = ed_row_height(n) * e->zoom;
+    float button = ImGui_GetFrameHeight() * e->zoom;
+    bool bind = !output && (source || ed_binding_trigger_available(e, n, index));
+    float control = layout.width - (bind ? button + 4 * e->zoom : 0);
+    ImVec2 pos = layout.pos;
+    if (bind) {
+        ed_draw_binding_trigger(e, n, index, (ImVec2){ pos.x + layout.width - button, pos.y - row }, button);
+    }
+    const char *context = source ? NULL : input_context(n, output, index);
+    if (context) {
+        ImGui_SetCursorScreenPos(pos);
+        ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
+        ImGui_PushStyleVarImVec2(
+            ImGuiStyleVar_FramePadding,
+            ed_scale(ImGui_GetStyle()->FramePadding, e->zoom)
+        );
+        ImGui_PushIDPtr(n);
+        ImGui_PushIDInt(index);
+        bool changed = draw_context_choice(e, n, index, context, layout.width, false);
+        ImGui_PopID();
+        ImGui_PopID();
+        ImGui_PopStyleVar();
+        ImGui_PopFont();
+        if (changed || !spec->default_value.ptr) {
+            return changed;
+        }
+        pos.y += row;
+    }
+    float vector[4] = { 0 };
+    if (spec->default_value.ptr) {
+        memcpy(vector, spec->default_value.ptr, (size_t)count * sizeof(float));
+    }
+    const char *axes[] = { "X", "Y", "Z", "W" };
+    const char *range[] = { "Min", "Max" };
+    bool endpoints = count == 2 && strstr(spec->name, "Range");
+    int changed = 0;
+    ImGui_SetCursorScreenPos(pos);
+    ImGui_BeginGroup();
+    for (int axis = 0; axis < count; axis++) {
+        ImVec2 at = { pos.x, pos.y + axis * row };
+        const char *label = endpoints ? range[axis] : axes[axis];
+        if (source) {
+            changed |= ed_draw_value_editor(
+                e,
+                source,
+                ED_PIN_INPUT,
+                axis,
+                (ed_value_layout){ at, layout.width, label }
+            );
+        } else {
+            ed_begin_value_edit(e, n, kind, index, (ed_value_layout){ at, control });
+            ImGui_SetCursorScreenPos(at);
+            ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
+            ImGui_PushStyleVarImVec2(
+                ImGuiStyleVar_FramePadding,
+                ed_scale(ImGui_GetStyle()->FramePadding, e->zoom)
+            );
+            ImGui_PushIDPtr(n);
+            ImGui_PushIDInt(kind * 1000 + index);
+            ImGui_PushIDInt(axis);
+            ImGui_SetNextItemWidth(control);
+            bool edit = ed_draw_scalar("##axis", label, ImGuiDataType_Float, &vector[axis], .01f);
+            char id[112];
+            snprintf(
+                id,
+                sizeof id,
+                "vector.axis.%llu.%d.%d.%d",
+                (unsigned long long)n->id,
+                output,
+                index,
+                axis
+            );
+            editor_ui_track_item(id);
+            snprintf(
+                id,
+                sizeof id,
+                "vector.%llu.%d.%d.axis.%d",
+                (unsigned long long)n->id,
+                output,
+                index,
+                axis
+            );
+            editor_ui_track_item(id);
+            ed_finish_value_edit(e, edit);
+            ImGui_PopID();
+            ImGui_PopID();
+            ImGui_PopID();
+            ImGui_PopStyleVar();
+            ImGui_PopFont();
+            if (edit) {
+                pin_value value = spec->default_value;
+                value.ptr = vector;
+                graph_set_pin_default(e->active_graph, n, output, index, &value);
+                changed = 1;
+            }
+            if (bind) {
+                snprintf(
+                    id,
+                    sizeof id,
+                    "vector.source.%llu.%d.%d",
+                    (unsigned long long)n->id,
+                    index,
+                    axis
+                );
+                ImGui_SetCursorScreenPos((ImVec2){ at.x + control + 4 * e->zoom, at.y });
+                bool clicked = editor_ui_icon_button_sized(id, EDITOR_ICON_FA_CODE_FORK, true, button);
+                editor_ui_track_item(id);
+                e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
+                if (ImGui_IsItemHovered(0)) {
+                    ImGui_SetTooltip("Choose %s source", label);
+                }
+                if (clicked) {
+                    ed_open_vector_binding_popup(e, n, index, axis);
+                }
+            }
+        }
+    }
+    ImGui_EndGroup();
+    char id[96];
+    snprintf(id, sizeof id, "vector.%llu.%d.%d", (unsigned long long)n->id, output, index);
+    editor_ui_track_item(id);
+    snprintf(id, sizeof id, "graph.value.%llu.%d.%d", (unsigned long long)n->id, kind, index);
+    editor_ui_track_item(id);
+    return changed;
+}
+
+int ed_draw_value_editor(editor *e, node *n, int kind, int index, ed_value_layout layout)
+{
+    ImVec2 pos = layout.pos;
     const pin_spec *bound_spec = kind == ED_PIN_OUTPUT ? &n->output_pins[index]
                                                        : &n->input_pins[index];
-    if (kind == ED_PIN_INPUT &&
-        (bound_spec->binding || ed_inline_source_for(e, n, index, NULL, NULL))) {
-        return ed_draw_bound_input(
-            e,
-            n,
-            index,
-            pos,
-            ed_pin_value_width(e->active_graph, n, kind, index) * e->zoom
-        );
+    bool inline_source = kind == ED_PIN_INPUT &&
+                         ed_inline_source_for(e, n, index, NULL, NULL);
+    if (ed_vector_width(bound_spec) && !float_color(bound_spec) &&
+        !bound_spec->binding && (!inline_source || ed_vector_source(e, n, index))) {
+        return ed_draw_vector_value(e, n, kind, index, layout);
+    }
+    if (kind == ED_PIN_INPUT && (bound_spec->binding || inline_source)) {
+        return ed_draw_bound_input(e, n, index, layout);
     }
     pin_value authored = *ed_pin_authored(n, kind, index);
     pin_value *v = &authored;
@@ -274,9 +442,11 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
     const pin_spec *spec = bound_spec;
     float vector[4] = { 0 };
     int changed = 0;
+    bool source_clicked = false;
     char id[32];
     snprintf(id, sizeof id, "##value_%d_%d", kind, index);
-    float width = ed_pin_value_width(e->active_graph, n, kind, index) * e->zoom;
+    float row_height = ed_row_height(n) * e->zoom;
+    float width = layout.width;
     bool binding_trigger = kind == ED_PIN_INPUT &&
                            ed_binding_trigger_available(e, n, index);
     float binding_size = ImGui_GetFrameHeight() * e->zoom;
@@ -286,6 +456,7 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
         control_width = width;
         binding_trigger = false;
     }
+    ed_begin_value_edit(e, n, kind, index, (ed_value_layout){ pos, control_width });
     ImGui_SetCursorScreenPos(pos);
     ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
     ImGui_SetNextItemWidth(control_width);
@@ -295,29 +466,38 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
     );
     ImGui_PushIDPtr(n);
     ImGui_PushIDInt(kind * 1000 + index);
+    char pin_label[256];
+    ed_pin_label(n, spec, pin_label, sizeof pin_label);
+    const char *value_label = layout.label ? layout.label
+                            : kind == ED_PIN_INPUT &&
+                                      ed_pin_rows(e, e->active_graph, n, kind, index) == 1
+                                ? pin_label
+                                : "";
     switch (v->type) {
-        case PIN_BOOL: changed = ImGui_Checkbox(id, &v->b); break;
+        case PIN_BOOL:
+            changed = ImGui_Checkbox(value_label[0] ? value_label : id, &v->b);
+            break;
         case PIN_I8:
-            changed = ImGui_InputScalar(id, ImGuiDataType_S8, &v->i8);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_S8, &v->i8, .1f);
             break;
         case PIN_U8:
-            changed = ImGui_InputScalar(id, ImGuiDataType_U8, &v->u8);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_U8, &v->u8, .1f);
             break;
         case PIN_I16:
-            changed = ImGui_InputScalar(id, ImGuiDataType_S16, &v->i16);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_S16, &v->i16, .1f);
             break;
         case PIN_U16:
-            changed = ImGui_InputScalar(id, ImGuiDataType_U16, &v->u16);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_U16, &v->u16, .1f);
             break;
         case PIN_I32:
             if (choices) {
                 changed = ed_draw_choice_input(n, index, v, choices, false);
                 break;
             }
-            changed = ImGui_InputScalar(id, ImGuiDataType_S32, &v->i);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_S32, &v->i, .1f);
             break;
         case PIN_ENUM:
-            changed = ImGui_InputScalar(id, ImGuiDataType_S32, &v->e);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_S32, &v->e, .1f);
             break;
         case PIN_U32:
             if (color) {
@@ -336,19 +516,27 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
                 changed = editor_flags_draw(flag_id, &v->u, flags);
                 break;
             }
-            changed = ImGui_InputScalar(id, ImGuiDataType_U32, &v->u);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_U32, &v->u, .1f);
             break;
         case PIN_I64:
-            changed = ImGui_InputScalar(id, ImGuiDataType_S64, &v->i64);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_S64, &v->i64, .1f);
             break;
         case PIN_U64:
-            changed = ImGui_InputScalar(id, ImGuiDataType_U64, &v->u64);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_U64, &v->u64, .1f);
             break;
-        case PIN_F32:
-            changed = ImGui_InputFloatEx(id, &v->f, 0.0f, 0.0f, "%.6g", 0);
+        case PIN_F32: {
+            bool fraction = ed_shader_graph(e) &&
+                            (!strcmp(spec->name, "Factor") ||
+                             !strcmp(spec->name, "Roughness") ||
+                             !strcmp(spec->name, "Metallic") ||
+                             !strcmp(spec->name, "Opacity"));
+            changed = fraction
+                        ? editor_ui_slider_float(id, value_label, &v->f, 0, 1)
+                        : ed_draw_scalar(id, value_label, ImGuiDataType_Float, &v->f, .01f);
             break;
+        }
         case PIN_F64:
-            changed = ImGui_InputDoubleEx(id, &v->d, 0.0, 0.0, "%.12g", 0);
+            changed = ed_draw_scalar(id, value_label, ImGuiDataType_Double, &v->d, .01f);
             break;
         case PIN_STR: {
             if (e->edit_text_node != n || e->edit_text_kind != kind ||
@@ -397,6 +585,19 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
         case PIN_STRUCT:
             if (ed_vector_width(spec)) {
                 const char *context = input_context(n, kind == ED_PIN_OUTPUT, index);
+                if (context) {
+                    if (v->ptr) {
+                        ImGui_SetCursorScreenPos((ImVec2){ pos.x, pos.y - row_height });
+                    }
+                    if (draw_context_choice(e, n, index, context, control_width, false)) {
+                        break;
+                    }
+                    if (!v->ptr) {
+                        break;
+                    }
+                    ImGui_SetCursorScreenPos(pos);
+                    ImGui_SetNextItemWidth(control_width);
+                }
                 if (!v->ptr && context) {
                     ImGui_AlignTextToFramePadding();
                     ImGui_TextDisabled("%s", context);
@@ -416,15 +617,45 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
                 }
                 changed = ed_draw_vector_input(e, n, kind == ED_PIN_OUTPUT, index, vector, false);
                 v->ptr = vector;
+                break;
             }
-            break;
+            [[fallthrough]];
         case PIN_FLOW:
+        case PIN_HANDLE: {
+            const char *text = kind == ED_PIN_INPUT
+                                 ? eval_view_input(e->ev, e->active_graph, n, index)
+                                 : NULL;
+            if (!text || !text[0]) {
+                text = v->u64 ? pin_value_to_string(v) : "None";
+            }
+            ImGui_BeginDisabled(!binding_trigger);
+            source_clicked = ImGui_ButtonEx(id, (ImVec2){ control_width, ImGui_GetFrameHeight() });
+            editor_ui_value_label(value_label, text);
+            ImGui_EndDisabled();
+            break;
+        }
         default: break;
     }
+    char control_id[96];
+    snprintf(
+        control_id,
+        sizeof control_id,
+        "graph.value.%llu.%d.%d",
+        (unsigned long long)n->id,
+        kind,
+        index
+    );
+    editor_ui_track_item(control_id);
     ImGui_PopID();
     ImGui_PopID();
     ImGui_PopStyleVar();
     ImGui_PopFont();
+    if (!color && !float_color(spec) && !flags && !choices) {
+        ed_finish_value_edit(e, changed);
+    }
+    if (source_clicked) {
+        ed_open_binding_popup(e, n, index);
+    }
     bool binding_clicked = binding_trigger &&
                            ed_draw_binding_trigger(
                                e,
@@ -450,7 +681,6 @@ int ed_draw_value_editor(editor *e, node *n, int kind, int index, ImVec2 pos)
     if (changed) {
         graph_set_pin_default(e->active_graph, n, kind == ED_PIN_OUTPUT, index, v);
     }
-    ed_finish_value_edit(e, changed);
     (void)binding_clicked;
     return changed;
 }
@@ -512,7 +742,14 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
         return 0;
     }
     const char *context = input_context(n, output, index);
-    bool context_changed = context && draw_context_choice(e, n, index, context);
+    bool context_changed = context && draw_context_choice(
+                                          e,
+                                          n,
+                                          index,
+                                          context,
+                                          ImGui_GetContentRegionAvail().x,
+                                          true
+                                      );
     if (context && !spec->default_value.ptr) {
         return context_changed;
     }
@@ -615,7 +852,7 @@ static int ed_draw_details_default(editor *e, node *n, int output, int index)
             const char *text = output
                                  ? eval_view_output(e->ev, n, index)
                                  : eval_view_input(e->ev, e->active_graph, n, index);
-            ImGui_TextDisabled("%s", text && text[0] ? text : "Connect a value");
+            ImGui_TextDisabled("%s", text && text[0] ? text : "No value");
             break;
         }
     }
@@ -681,7 +918,11 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
         if (value && value[0]) {
             ImGui_TextDisabled("%s", value);
         }
-        if (spec->binding) {
+        if (spec->binding && spec->binding->kind == PIN_BINDING_LOCAL) {
+            char name[256];
+            ImGui_TextDisabled("Local: %s", ed_binding_label(e, spec->binding, name, sizeof name));
+        }
+        if (spec->binding && spec->binding->kind != PIN_BINDING_LOCAL) {
             char dormant[256];
             ImGui_TextDisabled(
                 "Dormant source: %s",
@@ -711,7 +952,6 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
         char source_label[256];
         ImGui_TextWrapped("Source: %s", ed_binding_label(e, spec->binding, source_label, sizeof source_label));
         editor_ui_track_item("inspector.input.binding.source");
-        ImGui_SetItemTooltip("Literal fallback remains available while this source is active.");
         e->binding_node = n;
         e->binding_node_id = n->id;
         e->binding_pin = index;

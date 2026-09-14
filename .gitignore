@@ -27,3 +27,10 @@ build-dev/
 .DS_Store
 
 __pycache__/
+node_modules/
+
+# Temporary atomic authoring writes.
+content/*/.authoring-*.tmp
+
+# Machine-local Codex MCP configuration.
+.codex/

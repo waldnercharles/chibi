@@ -218,30 +218,6 @@ static int spawn_selected_prototype(app_scene_authoring *scene)
                  : -1;
 }
 
-int asset_search_score(const app_scene_authoring *scene, const char *path)
-{
-    const char *search = scene->asset_search;
-    const char *name = content_basename(path);
-    if (!search[0]) {
-        return 0;
-    }
-    int score = 0;
-    int query = 0;
-    int run = 0;
-    for (int i = 0; name[i] && search[query]; i++) {
-        if (tolower((unsigned char)name[i]) != tolower((unsigned char)search[query])) {
-            run = 0;
-            continue;
-        }
-        bool boundary = i == 0 || name[i - 1] == '_' || name[i - 1] == '-' ||
-                        name[i - 1] == ' ';
-        score += 10 + (boundary ? 12 : 0) + run * 4;
-        run++;
-        query++;
-    }
-    return search[query] ? -1 : score;
-}
-
 int content_prototype_index(const app_scene_authoring *scene, const char *path)
 {
     for (int i = 0; i < acount(scene->prototypes); i++) {

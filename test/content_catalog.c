@@ -62,6 +62,7 @@ void run_content_catalog_checks()
         "CombatFeedback.json",
         "EnemyBehavior.json",
         "HealthBehavior.json",
+        "PhaseWardenBehavior.json",
         "PlayerContactBehavior.json",
         "ProjectileBehavior.json",
         "ProjectileHitBehavior.json",
@@ -81,16 +82,17 @@ void run_content_catalog_checks()
         "WeaponActions.json",
     };
     static const char *const materials[] = {
-        "ArenaEnemy.json",       "ArenaExperience.json", "ArenaFloor.json",
-        "ArenaPlayer.json",      "ArenaProjectile.json", "ArenaRim.json",
-        "ArenaSpawnMarker.json",
+        "ArenaEnemy.json",       "ArenaExperience.json",     "ArenaFloor.json",
+        "ArenaPlayer.json",      "ArenaProjectile.json",     "ArenaRim.json",
+        "ArenaSpawnMarker.json", "PhaseWardenMaterial.json",
     };
     static const char *const prototypes[] = {
-        "ArenaDeathPulse.json",  "ArenaEncounter.json",
-        "ArenaEnemy.json",       "ArenaEnemyShard.json",
-        "ArenaEnvironment.json", "ArenaExperience.json",
-        "ArenaFloor.json",       "ArenaHitPulse.json",
-        "ArenaPlayer.json",      "ArenaProjectile.json",
+        "ActionBinding.json",    "ArenaDeathPulse.json",
+        "ArenaEncounter.json",   "ArenaEnemy.json",
+        "ArenaEnemyShard.json",  "ArenaEnvironment.json",
+        "ArenaExperience.json",  "ArenaFloor.json",
+        "ArenaHitPulse.json",    "ArenaPlayer.json",
+        "ArenaProjectile.json",  "PhaseWarden.json",
         "ArenaSpawnMarker.json", "ArenaWallHorizontal.json",
         "ArenaWavePulse.json",
     };
@@ -107,7 +109,8 @@ void run_content_catalog_checks()
         shader_libraries,
         (int)(sizeof shader_libraries / sizeof *shader_libraries)
     );
-    valid &= folder_matches("shapes", NULL, 0);
+    static const char *const shapes[] = { "PhaseWardenShape.json" };
+    valid &= folder_matches("shapes", shapes, (int)(sizeof shapes / sizeof *shapes));
     valid &= folder_matches("textures", NULL, 0);
     test_check(valid, "Arena3D content catalog contains only reachable shipped assets");
 }

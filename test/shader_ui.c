@@ -210,8 +210,12 @@ static void choose_type(editor *e, int type)
 
 static void enter_component(editor *e, const char *id, int width, int component, const char *text)
 {
-    editor_ui_rect rect = item(id);
-    click_at(e, rect.x + rect.width * (component + 0.5f) / width, rect.y + rect.height * 0.5f);
+    assert(component >= 0 && component < width);
+    char field[128];
+    snprintf(field, sizeof field, "%s.axis.%d", id, component);
+    editor_ui_rect rect = item(width == 1 ? id : field);
+    click_at(e, rect.x + rect.width * .5f, rect.y + rect.height * .5f);
+    click_at(e, rect.x + rect.width * .5f, rect.y + rect.height * .5f);
     ImGuiKey modifier = ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super
                                                              : ImGuiMod_Ctrl;
     ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, true);
@@ -276,6 +280,17 @@ static void expect_vector(editor *e, uint64_t id, const float *expected, int wid
     assert(pin->default_value.ptr);
     const float *value = pin->default_value.ptr;
     for (int i = 0; i < width; i++) {
+        if (fabsf(value[i] - expected[i]) >= .00001f) {
+            fprintf(
+                stderr,
+                "vector %llu axis %d: got %g expected %g\n",
+                (unsigned long long)id,
+                i,
+                value[i],
+                expected[i]
+            );
+            capture("vector-value-failure");
+        }
         assert(fabsf(value[i] - expected[i]) < 0.00001f);
     }
 }
@@ -502,11 +517,14 @@ static void inline_ramp_is_editable(editor *e, uint64_t ramp_id)
     shader_ramp_stop before[SHADER_RAMP_MAX], after[SHADER_RAMP_MAX];
     assert(ramp_stops(e, ramp_id, before) == 3);
     char strip_id[96];
-    snprintf(strip_id, sizeof strip_id, "shader.ramp.inline.%llu.strip", (unsigned long long)ramp_id);
+    snprintf(strip_id, sizeof strip_id, "shader.node.%llu.shader.ramp.strip", (unsigned long long)ramp_id);
     assert(editor_ui_item_rect(strip_id, &(editor_ui_rect){ 0 }));
     editor_ui_rect strip = item(strip_id);
-    item("shader.ramp.inline.position");
-    item("shader.ramp.inline.color");
+    char control[128];
+    snprintf(control, sizeof control, "shader.node.%llu.shader.ramp.position", (unsigned long long)ramp_id);
+    item(control);
+    snprintf(control, sizeof control, "shader.node.%llu.shader.ramp.color", (unsigned long long)ramp_id);
+    item(control);
     float y = strip.y + strip.height - 5.0f;
     ImGuiIO_AddMousePosEvent(ImGui_GetIO(), strip.x + strip.width * .5f, y);
     shader_frame(e);
@@ -538,7 +556,7 @@ static void inline_ramp_selection_is_per_node(editor *e, uint64_t first_id)
     uint64_t second_id = second->id;
     select_node(e, second_id);
     char strip_id[96];
-    snprintf(strip_id, sizeof strip_id, "shader.ramp.inline.%llu.strip", (unsigned long long)second_id);
+    snprintf(strip_id, sizeof strip_id, "shader.node.%llu.shader.ramp.strip", (unsigned long long)second_id);
     editor_ui_rect strip = item(strip_id);
     click_at(e, strip.x + strip.width * .98f, strip.y + strip.height - 5.0f);
     assert(e->shader_ramp_node == second_id && e->shader_ramp_stop == 1);
@@ -580,6 +598,131 @@ static void ramp_settings_are_private(editor *e, uint64_t ramp, uint64_t source)
     assert(acount(g->edges) == edges);
 }
 
+static void ramp_action(editor *e, const char *id)
+{
+    click(e, "shader.ramp.tools");
+    shader_frame(e);
+    click(e, id);
+    shader_frame(e);
+}
+
+static void ramp_stop_controls(editor *e, uint64_t id)
+{
+    shader_ramp_stop stops[SHADER_RAMP_MAX];
+    editor_ui_rect strip = item("shader.ramp.strip");
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Ctrl, true);
+    shader_frame(e);
+    click_at(e, strip.x + 5 + (strip.width - 10) * .25f, strip.y + 4);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Ctrl, false);
+    shader_frame(e);
+    assert(
+        ramp_stops(e, id, stops) == 4 &&
+        fabsf(stops[1].position - .25f) <= 1.0f / (strip.width - 10)
+    );
+    assert(fabsf(stops[1].color[0] - stops[1].position * 2.5f) < .001f);
+    editor_undo(e);
+    shader_frame(e);
+    assert(ramp_stops(e, id, stops) == 3);
+    editor_redo(e);
+    shader_frame(e);
+    assert(ramp_stops(e, id, stops) == 4);
+    editor_undo(e);
+    select_node(e, id);
+
+    int history = acount(e->undo);
+    enter_component(e, "shader.ramp.stop", 1, 0, "2");
+    assert(e->shader_ramp_stop == 2 && acount(e->undo) == history);
+    click(e, "shader.ramp.add");
+    assert(ramp_stops(e, id, stops) == 4 && stops[2].position == .75f);
+    editor_undo(e);
+    select_node(e, id);
+    enter_component(e, "shader.ramp.stop", 1, 0, "0");
+    ramp_action(e, "shader.ramp.flip");
+    assert(ramp_stops(e, id, stops) == 3);
+    assert(stops[0].color[0] == 2.5f && stops[2].color[0] == 0 && e->shader_ramp_stop == 2);
+    editor_undo(e);
+    select_node(e, id);
+    assert(ramp_stops(e, id, stops) == 3 && stops[0].color[0] == 0);
+    enter_component(e, "shader.ramp.stop", 1, 0, "1");
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    select_node(e, id);
+    ed_clear_selection(e);
+    ImGuiIO_AddMousePosEvent(ImGui_GetIO(), 20, 10);
+    for (int i = 0; i < 18; i++) {
+        shader_frame(e);
+    }
+    capture("shader-ramp-blender");
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, true);
+    select_node(e, id);
+}
+
+static void ramp_numeric_position(editor *e, uint64_t id)
+{
+    shader_ramp_stop stops[SHADER_RAMP_MAX];
+    int count = ramp_stops(e, id, stops);
+    float before = stops[1].position;
+    ImGuiKey modifier = ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super
+                                                             : ImGuiMod_Ctrl;
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, true);
+    shader_frame(e);
+    click(e, "shader.ramp.position");
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, false);
+    shader_frame(e);
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "2");
+    shader_frame(e);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, true);
+    shader_frame(e);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Enter, false);
+    shader_frame(e);
+    assert(
+        ramp_stops(e, id, stops) == count && stops[1].position > .99f &&
+        stops[1].position < 1
+    );
+    editor_undo(e);
+    select_node(e, id);
+    assert(ramp_stops(e, id, stops) == count && stops[1].position == before);
+}
+
+static void ramp_tools_history(editor *e, uint64_t id)
+{
+    shader_ramp_stop before[SHADER_RAMP_MAX], stops[SHADER_RAMP_MAX];
+    int count = ramp_stops(e, id, before);
+    ramp_action(e, "shader.ramp.even");
+    assert(ramp_stops(e, id, stops) == count);
+    for (int i = 0; i < count; i++) {
+        assert(stops[i].position == (float)i / (count - 1));
+        assert(!memcmp(stops[i].color, before[i].color, sizeof stops[i].color));
+    }
+    editor_undo(e);
+    select_node(e, id);
+    assert(
+        ramp_stops(e, id, stops) == count &&
+        !memcmp(stops, before, (size_t)count * sizeof *stops)
+    );
+    ramp_action(e, "shader.ramp.left");
+    assert(
+        ramp_stops(e, id, stops) == count &&
+        stops[count - 1].position == (float)(count - 1) / count
+    );
+    editor_undo(e);
+    select_node(e, id);
+    ramp_action(e, "shader.ramp.reset");
+    assert(ramp_stops(e, id, stops) == 2 && stops[1].color[0] == 1);
+    assert(graph_node_by_id(e->active_graph, id)->input_pins[2].default_value.i == 0);
+    editor_undo(e);
+    select_node(e, id);
+    assert(
+        ramp_stops(e, id, stops) == count &&
+        !memcmp(stops, before, (size_t)count * sizeof *stops)
+    );
+    assert(graph_node_by_id(e->active_graph, id)->input_pins[2].default_value.i == 2);
+    editor_redo(e);
+    select_node(e, id);
+    assert(ramp_stops(e, id, stops) == 2 && stops[1].color[0] == 1);
+    editor_undo(e);
+    select_node(e, id);
+}
+
 static void shader_ramp_ui(editor *e)
 {
     behavior_asset *asset = behavior_asset_new("Ramp authoring");
@@ -615,6 +758,7 @@ static void shader_ramp_ui(editor *e)
     assert(compile_after_add > compile_before_add);
     assert(ramp_stops(e, ramp_id, stops) == 3);
     assert(stops[1].position == 0.5f && stops[1].color[0] == 1.25f);
+    ramp_stop_controls(e, ramp_id);
     ramp_gesture_baseline(e, ramp_id);
     inline_ramp_is_editable(e, ramp_id);
     inline_ramp_selection_is_per_node(e, ramp_id);
@@ -756,6 +900,8 @@ static void shader_ramp_ui(editor *e)
     );
     ramp_settings_are_private(e, ramp_id, source_id);
     assert(unlink(path) == 0);
+    ramp_numeric_position(e, ramp_id);
+    ramp_tools_history(e, ramp_id);
     capture("shader-ramp-editor");
 }
 
@@ -808,10 +954,12 @@ static void shader_context_ui(editor *e)
     assert(mapping);
     uint64_t id = mapping->id;
     select_node(e, id);
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, false);
+    shader_frame(e);
     char context[96], choice[112], numeric[96], label[96];
-    snprintf(context, sizeof context, "shader.context.details.%llu.0", (unsigned long long)id);
-    snprintf(numeric, sizeof numeric, "vector.details.%llu.0.0", (unsigned long long)id);
-    snprintf(label, sizeof label, "shader.context.%llu.0", (unsigned long long)id);
+    snprintf(context, sizeof context, "shader.context.node.%llu.0", (unsigned long long)id);
+    snprintf(numeric, sizeof numeric, "vector.%llu.0.0", (unsigned long long)id);
+    snprintf(label, sizeof label, "shader.context.node.%llu.0", (unsigned long long)id);
     item(label);
     editor_ui_rect rect;
     assert(!editor_ui_item_rect(numeric, &rect));
@@ -827,7 +975,7 @@ static void shader_context_ui(editor *e)
     context_result(e, (float[]){ .125f, 0, 0 });
     assert(editor_query_node_ui(e, id, &after));
     assert(fabsf((before.right - before.left) - (after.right - after.left)) < .1f);
-    assert(fabsf((before.bottom - before.top) - (after.bottom - after.top)) < .1f);
+    assert(after.bottom - after.top > before.bottom - before.top);
     click(e, context);
     shader_frame(e);
     snprintf(choice, sizeof choice, "%s.context", context);
@@ -850,8 +998,10 @@ static void shader_context_ui(editor *e)
     shader_frame(e);
     assert(editor_query_node_ui(e, id, &after));
     assert(fabsf((before.right - before.left) - (after.right - after.left)) < .1f);
-    assert(fabsf((before.bottom - before.top) - (after.bottom - after.top)) < .1f);
+    assert(after.bottom - after.top > before.bottom - before.top);
     context_result(e, (float[]){ .25f, .5f, .75f });
+    assert(!editor_ui_pane_visible(EDITOR_UI_PANE_INSPECTOR));
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_INSPECTOR, true);
 }
 
 static void write_image_fixture(const char *path, unsigned char gray)

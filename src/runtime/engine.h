@@ -61,9 +61,14 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
 /* Host input ingress: hold the latest movement/aim sample across fixed steps. */
 int engine_sample_movement(engine *engine, float x, float y);
 int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
+/* Held physical controls interpreted through authored GameActionBinding entities. */
+int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
 int engine_frame(engine *engine, double monotonic_time);
 /* Borrowed diagnostic from the last frame failure, or NULL after success. */
 const char *engine_error(const engine *engine);
+const game_visibility *engine_visibility(const engine *engine);
+game_audio *engine_audio(const engine *engine);
+bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity);
 const engine_frame_timing *engine_last_timing(const engine *engine);
 const game_behavior_profile_frame *engine_behavior_profile(const engine *engine);
 bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out);
@@ -123,6 +128,13 @@ typedef struct engine_viewport_pointer
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer);
 /* Sample this frame's mouse against the last displayed image rectangle. */
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
+void engine_viewport_set_widgets(
+    engine_viewport *viewport,
+    ecs_world *world,
+    game_entities *entities,
+    const engine *runtime
+);
+bool engine_viewport_widgets_capture(const engine_viewport *viewport);
 
 /* ENG-3: whether the scene panel held the keyboard as of the last draw, and a
  * way to hand focus back so Escape can release the viewport. */

@@ -156,6 +156,9 @@ typedef struct
     const char *conversion_from;
     const char *conversion_to;
     const node_access *access;
+    /* Generated component getter contract; NULL for arbitrary contextual reads. */
+    const char *binding_component;
+    bool foldable; /* Explicit permission to evaluate constant inputs at authoring time. */
 } node_desc;
 
 struct node

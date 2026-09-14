@@ -249,6 +249,9 @@ bool render_arena_emitters_collect(
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
+            if (!engine_entity_visible(runtime, world, entity)) {
+                continue;
+            }
             const GameParticleEmitter *style = GAME_GameParticleEmitter_get_const(world, entity);
             if (!valid(style)) {
                 snprintf(error, error_size, "Particle Emitter needs finite ranges, a valid shape and a nonzero direction.");

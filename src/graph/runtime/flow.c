@@ -582,7 +582,13 @@ static int flow_run_execute(flow_run *run)
         scope.parent->children += elapsed;
     }
     assert(elapsed >= scope.children);
-    instance->profile(run->event_name, elapsed - scope.children, first, instance->profile_user);
+    instance->profile(
+        run->event_name,
+        elapsed,
+        elapsed - scope.children,
+        first,
+        instance->profile_user
+    );
     return result;
 }
 

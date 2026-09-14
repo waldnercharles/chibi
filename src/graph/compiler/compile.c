@@ -5,6 +5,7 @@
  * signatures arrive with the reflection v2 widening ladder. */
 #include "graph/compiler/compile.h"
 
+#include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
@@ -585,16 +586,9 @@ static void pass_references(compile_report *out, const behavior_asset *asset, bo
                     }
                 } else if (binding->kind == PIN_BINDING_COMPONENT_FIELD) {
                     const type_desc *type = component_type_by_key(binding->component_key);
-                    const type_field *field = NULL;
-                    if (type) {
-                        for (int f = 0; f < type->field_count; f++) {
-                            if (type->fields[f].name && binding->field_name &&
-                                !strcmp(type->fields[f].name, binding->field_name)) {
-                                field = &type->fields[f];
-                                break;
-                            }
-                        }
-                    }
+                    const type_field
+                        *field = type ? pin_type_field_path(type, binding->field_name)
+                                      : NULL;
                     if (!field) {
                         emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input binding references a missing component field");
                     } else {
@@ -713,6 +707,24 @@ static void pass_duplicates(compile_report *out, const behavior_asset *asset)
                 emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_DUPLICATE_NAME, "duplicate variable name '%s'", name);
                 break;
             }
+        }
+    }
+}
+
+static void pass_shader_library_functions(compile_report *out, const behavior_asset *asset)
+{
+    if (asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        return;
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *g = asset->graphs[i];
+        if (g->kind != GRAPH_FUNCTION) {
+            continue;
+        }
+        compile_graph_id = g->graph_id;
+        shader_error error = { 0 };
+        if (!shader_graph_validate_function(g, &error)) {
+            emit(out, CMPL_ERROR, error.node, 0, CMPL_RULE_OPERATOR, "%s", error.message);
         }
     }
 }
@@ -1083,6 +1095,10 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
     for (int i = 0; i < acount(asset->graphs); i++) {
         g = asset->graphs[i];
         compile_graph_id = g->graph_id;
+        const char *local_error = graph_validate_locals(g);
+        if (local_error) {
+            emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_INPUT_BINDING, "%s", local_error);
+        }
         pass_disabled(out, g);
         pass_unconnected_exec(out, g);
         pass_incompatible_edges(out, g);
@@ -1099,6 +1115,7 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
     compile_graph_id = asset->graph->graph_id;
     pass_references(out, asset, system);
     pass_duplicates(out, asset);
+    pass_shader_library_functions(out, asset);
     sort_diagnostics(out, asset->graph);
     arena_free(&tmp);
     return out->error_count;

@@ -228,6 +228,9 @@ static void collect_entity(
 )
 {
     GameTransform position = *GAME_GameTransform_get_const(world, entity);
+    if (!engine_entity_visible(runtime, world, entity)) {
+        return;
+    }
     if (runtime) {
         engine_render_position(runtime, entity, &position);
     }
@@ -358,6 +361,9 @@ static void collect_lights(
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        if (!engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
         const GamePointLight *light = GAME_GamePointLight_get_const(world, entity);
         GameTransform position = *GAME_GameTransform_get_const(world, entity);
         if (runtime) {
@@ -639,6 +645,7 @@ bool render_arena_preview(
     render_arena *arena,
     const behavior_asset *asset,
     const render_arena_camera *camera,
+    const char *parameters_json,
     float time
 )
 {
@@ -659,7 +666,7 @@ bool render_arena_preview(
         return false;
     }
     float parameters[SHADER_PARAMETER_MAX][4];
-    render_shader_parameters(material, NULL, (ecs_entity){ 0 }, NULL, parameters);
+    render_shader_parameters(material, NULL, (ecs_entity){ 0 }, parameters_json, parameters);
     game_material_coefficients color = { .scene = { 1, 1, 1, 1 } };
     arena_draw draw = { .frame = cf_m4_identity(),
                         .shape = { .primitive = GAME_PRIMITIVE_SPHERE,

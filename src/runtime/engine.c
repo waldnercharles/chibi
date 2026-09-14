@@ -4,6 +4,7 @@
 #include "render/sdf_motion.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
+#include "runtime/generated.h"
 #include "runtime/scenes/physics.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
@@ -46,6 +47,31 @@ struct engine
     bool debug_paused;
     char error[256];
 };
+
+const game_visibility *engine_visibility(const engine *engine)
+{
+    return engine && engine->live ? engine->live->visibility : NULL;
+}
+
+game_audio *engine_audio(const engine *engine)
+{
+    return game_behavior_audio(engine->live->behaviors);
+}
+
+bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity)
+{
+    const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
+    if (!engine || !state) {
+        return true;
+    }
+    if (state->hidden) {
+        return false;
+    }
+    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+    const game_visibility *visibility = engine_visibility(engine);
+    return !state->visibility_culled || !position || !visibility ||
+           game_visibility_at(visibility, *position).visible;
+}
 
 static double elapsed_ms(struct timespec start, struct timespec end)
 {
@@ -115,9 +141,12 @@ void engine_reset(engine *engine)
     engine->error[0] = 0;
     engine_input_reset(engine->input);
     if (engine->live) {
+        game_save_discard(game_behavior_save(engine->live->behaviors));
         game_behavior_set_time(engine->live->behaviors, 0);
         game_behavior_set_delta_seconds(engine->live->behaviors, ENGINE_FIXED_SECONDS);
         game_physics_reset(engine->live->physics);
+        game_visibility_reset(engine->live->visibility);
+        game_audio_reset(engine_audio(engine));
     }
 }
 
@@ -141,6 +170,11 @@ engine_focus engine_get_focus(const engine *engine)
 int engine_route_escape(engine *engine)
 {
     return engine_set_focus(engine, ENGINE_FOCUS_NONE);
+}
+
+int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
+{
+    return engine_input_controls(engine->input, controls, firing);
 }
 
 int engine_set_playing(engine *engine, bool playing)
@@ -326,6 +360,13 @@ static int finish_systems(engine *engine)
     if (engine->live && (result = update_visual_motion(engine, 0)) < 0) {
         return result;
     }
+    if (engine->live) {
+        const char *error = game_visibility_update(engine->live->visibility, ENGINE_FIXED_SECONDS);
+        if (error) {
+            snprintf(engine->error, sizeof engine->error, "%s", error);
+            return FLOW_ERR_NODE;
+        }
+    }
     engine->phase = STEP_IDLE;
     return FLOW_OK;
 }
@@ -505,6 +546,13 @@ static int advance_frame(engine *engine, double monotonic_time)
     }
     engine->debug_paused = engine->live &&
                            game_behavior_paused(engine->live->behaviors);
+    if (engine->live && engine->timing.simulation_steps == 0) {
+        const char *error = game_visibility_update(engine->live->visibility, 0);
+        if (error) {
+            snprintf(engine->error, sizeof engine->error, "%s", error);
+            return FLOW_ERR_NODE;
+        }
+    }
     engine->timing.alpha = engine->playing && !engine->debug_paused
                              ? (float)(engine->accumulator / ENGINE_FIXED_SECONDS)
                              : 1;

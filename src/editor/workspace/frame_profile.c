@@ -245,8 +245,8 @@ static void draw_behaviors(const editor_frame_profile *p, const editor_frame_sam
         }
         ImGui_EndTable();
     }
-    ImGui_TextDisabled("Counts span %d captured frames. Nested events are counted once.", p->count);
-    ImGui_TextDisabled("Parallel execution intervals may overlap in wall time.");
+    ImGui_TextDisabled("%d frames", p->count);
+    ImGui_SetItemTooltip("Nested events counted once; parallel durations may overlap.");
 }
 
 const editor_frame_sample *editor_frame_latest(const editor_frame_profile *p)
@@ -323,6 +323,10 @@ void editor_frame_profile_draw(editor_frame_profile *p)
     ImGui_Checkbox("Freeze capture", &p->frozen);
     editor_ui_track_item("performance.freeze");
     if (p->count) {
+        bool wide = ImGui_GetContentRegionAvail().x >= 900.0f;
+        if (wide) {
+            ImGui_SameLine();
+        }
         editor_frame_sample mean = { 0 };
         double sorted[EDITOR_FRAME_HISTORY];
         for (int i = 0; i < p->count; i++) {
@@ -343,8 +347,23 @@ void editor_frame_profile_draw(editor_frame_profile *p)
             mean.total_ms,
             sorted[(p->count - 1) * 95 / 100]
         );
+        bool columns = wide &&
+                       ImGui_BeginTable("performance.columns", 3, ImGuiTableFlags_SizingStretchProp);
+        if (columns) {
+            ImGui_TableSetupColumnEx("History", ImGuiTableColumnFlags_WidthStretch, 1.1f, 0);
+            ImGui_TableSetupColumnEx("Scopes", ImGuiTableColumnFlags_WidthStretch, 0.8f, 0);
+            ImGui_TableSetupColumnEx("Simulation", ImGuiTableColumnFlags_WidthStretch, 1.2f, 0);
+            ImGui_TableNextColumn();
+            ImGui_BeginChild("performance.history_area", (ImVec2){ 0, 0 }, 0, 0);
+        }
         draw_history(p, fmax(33.333, sorted[(p->count - 1) * 95 / 100] * 1.25));
-        ImGui_Separator();
+        if (columns) {
+            ImGui_EndChild();
+            ImGui_TableNextColumn();
+            ImGui_BeginChild("performance.scopes", (ImVec2){ 0, 0 }, 0, 0);
+        } else {
+            ImGui_Separator();
+        }
         if (ImGui_BeginTable("frame_scopes", 2, ImGuiTableFlags_SizingStretchProp)) {
             ImGui_TableSetupColumnEx("Scope", ImGuiTableColumnFlags_WidthStretch, 1, 0);
             ImGui_TableSetupColumnEx("Time", ImGuiTableColumnFlags_WidthFixed, 90, 0);
@@ -363,6 +382,11 @@ void editor_frame_profile_draw(editor_frame_profile *p)
             }
             ImGui_EndTable();
         }
+        if (columns) {
+            ImGui_EndChild();
+            ImGui_TableNextColumn();
+            ImGui_BeginChild("performance.details", (ImVec2){ 0, 0 }, 0, 0);
+        }
         if (p->simulation_expanded) {
             draw_behaviors(p, &mean);
         }
@@ -375,7 +399,11 @@ void editor_frame_profile_draw(editor_frame_profile *p)
             last->event_backlog,
             last->dropped_seconds
         );
-        ImGui_TextDisabled("CPU scopes; Present includes GPU and display waits.");
+        ImGui_SetItemTooltip("CPU time; Present includes GPU and display waits.");
+        if (columns) {
+            ImGui_EndChild();
+            ImGui_EndTable();
+        }
     }
     ImGui_End();
     editor_ui_set_pane_visible(EDITOR_UI_PANE_PERFORMANCE, open);

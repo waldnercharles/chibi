@@ -1,6 +1,81 @@
 #include "graph/model/type.h"
 
+#include "graph/model/registry.h"
+
 #include <string.h>
+
+enum
+{
+    PIN_FIELD_PATH_MAX_DEPTH = 16,
+};
+
+static const type_field *type_field_segment(const type_desc *type, const char *name, size_t length)
+{
+    if (!type || !name || !length) {
+        return NULL;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->name && strlen(field->name) == length &&
+            !strncmp(field->name, name, length)) {
+            return field;
+        }
+    }
+    return NULL;
+}
+
+const type_field *pin_type_field_path(const type_desc *type, const char *path)
+{
+    const char *at = path;
+    for (int depth = 0; type && at && *at && depth < PIN_FIELD_PATH_MAX_DEPTH; depth++) {
+        const char *end = strchr(at, '.');
+        size_t length = end ? (size_t)(end - at) : strlen(at);
+        const type_field *field = type_field_segment(type, at, length);
+        if (!field) {
+            return NULL;
+        }
+        if (!end) {
+            return field;
+        }
+        if (field->type != PIN_STRUCT || !field->type_name) {
+            return NULL;
+        }
+        type = registry_type_by_name(field->type_name);
+        at = end + 1;
+    }
+    return NULL;
+}
+
+int pin_read_field_path(const void *base, const type_desc *type, const char *path, pin_value *out)
+{
+    const char *at = path;
+    const void *current = base;
+    for (int depth = 0; current && type && at && *at && depth < PIN_FIELD_PATH_MAX_DEPTH;
+         depth++) {
+        const char *end = strchr(at, '.');
+        size_t length = end ? (size_t)(end - at) : strlen(at);
+        const type_field *field = type_field_segment(type, at, length);
+        if (!field) {
+            return -1;
+        }
+        pin_value value;
+        pin_read_field(current, field, &value);
+        if (!end) {
+            if (out) {
+                *out = value;
+            }
+            return out ? 0 : -1;
+        }
+        if (value.type != PIN_STRUCT || value.container != PIN_CONTAINER_SINGLE ||
+            !value.ptr || !value.type_name) {
+            return -1;
+        }
+        current = value.ptr;
+        type = registry_type_by_name(value.type_name);
+        at = end + 1;
+    }
+    return -1;
+}
 
 void pin_write_field(void *base, const type_field *f, pin_value v)
 {

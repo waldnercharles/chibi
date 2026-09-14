@@ -5,6 +5,8 @@
  * an agent can search the source by the published icon name or codepoint. */
 typedef enum editor_icon
 {
+    EDITOR_ICON_FA_FOLDER_OPEN = 0xf07c,        /* nf-fa-folder_open */
+    EDITOR_ICON_FA_TACHOMETER = 0xf0e4,         /* nf-fa-tachometer */
     EDITOR_ICON_FA_SEARCH = 0xf002,             /* nf-fa-search */
     EDITOR_ICON_FA_CLOSE = 0xf00d,              /* nf-fa-close */
     EDITOR_ICON_FA_REFRESH = 0xf01e,            /* nf-fa-refresh */
@@ -33,10 +35,14 @@ typedef enum editor_icon
     EDITOR_ICON_FA_TRASH = 0xf1f8,              /* nf-fa-trash */
     EDITOR_ICON_FA_UNDO = 0xf0e2,               /* nf-fa-undo */
     EDITOR_ICON_MD_ARROW_TOP_RIGHT = 0xf005c,   /* nf-md-arrow_top_right */
-    EDITOR_ICON_CODICON_CHEVRON_DOWN = 0xebf3,  /* nf-cod-chevron_down */
-    EDITOR_ICON_CODICON_CHEVRON_UP = 0xebf4,    /* nf-cod-chevron_up */
-    EDITOR_ICON_CODICON_CHEVRON_LEFT = 0xec00,  /* nf-cod-chevron_left */
-    EDITOR_ICON_CODICON_CHEVRON_RIGHT = 0xec02, /* nf-cod-chevron_right */
+    EDITOR_ICON_CODICON_CHEVRON_DOWN = 0xeab4,  /* nf-cod-chevron_down */
+    EDITOR_ICON_CODICON_CHEVRON_UP = 0xeab7,    /* nf-cod-chevron_up */
+    EDITOR_ICON_CODICON_CHEVRON_LEFT = 0xeab5,  /* nf-cod-chevron_left */
+    EDITOR_ICON_CODICON_CHEVRON_RIGHT = 0xeab6, /* nf-cod-chevron_right */
+    EDITOR_ICON_CODICON_SIDEBAR_LEFT = 0xebf3,
+    EDITOR_ICON_CODICON_SIDEBAR_RIGHT = 0xebf4,
+    EDITOR_ICON_CODICON_SIDEBAR_RIGHT_OFF = 0xec00,
+    EDITOR_ICON_CODICON_SIDEBAR_LEFT_OFF = 0xec02,
 } editor_icon;
 
 #endif

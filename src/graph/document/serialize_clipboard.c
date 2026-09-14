@@ -1,6 +1,8 @@
 #include "graph/document/serialize_internal.h"
+#include "graph/model/local.h"
 #include "support/xalloc.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -42,7 +44,7 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
         }
     }
     int node_count = acount(tmp->nodes);
-    int id_count = node_count;
+    int id_count = node_count + acount(tmp->locals);
     for (int i = 0; i < node_count; i++) {
         id_count += tmp->nodes[i]->input_count + tmp->nodes[i]->output_count;
     }
@@ -53,6 +55,11 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
         (size_t)(id_count ? id_count : 1) * sizeof *new_ids
     );
     int k = 0;
+    for (int i = 0; i < acount(tmp->locals); i++) {
+        old_ids[k] = tmp->locals[i].id;
+        new_ids[k] = graph_alloc_id(g);
+        tmp->locals[i].id = new_ids[k++];
+    }
     for (int i = 0; i < node_count; i++) {
         node *n = tmp->nodes[i];
         old_ids[k] = n->id;
@@ -87,6 +94,33 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
         e->to_id = remap_id(e->to_id, old_ids, new_ids, k);
         e->from_pin_id = remap_id(e->from_pin_id, old_ids, new_ids, k);
         e->to_pin_id = remap_id(e->to_pin_id, old_ids, new_ids, k);
+    }
+    for (int i = 0; i < acount(tmp->locals); i++) {
+        graph_local local = tmp->locals[i];
+        local.source_id = remap_id(local.source_id, old_ids, new_ids, k);
+        local.source_pin_id = remap_id(local.source_pin_id, old_ids, new_ids, k);
+        char name[160];
+        snprintf(name, sizeof name, "%s", local.name);
+        for (int suffix = 2;; suffix++) {
+            bool conflict = false;
+            for (int j = 0; j < acount(g->locals); j++) {
+                conflict |= !strcmp(g->locals[j].name, name);
+            }
+            if (!conflict) {
+                break;
+            }
+            snprintf(name, sizeof name, "%.128s%d", local.name, suffix);
+        }
+        local.name = graph_own_str(g, name, strlen(name));
+        apush(g->locals, local);
+    }
+    for (int i = 0; i < node_count; i++) {
+        for (int p = 0; p < tmp->nodes[i]->input_count; p++) {
+            pin_binding *b = tmp->nodes[i]->input_pins[p].binding;
+            if (b && b->kind == PIN_BINDING_LOCAL) {
+                b->local_id = remap_id(b->local_id, old_ids, new_ids, k);
+            }
+        }
     }
     free(old_ids);
     free(new_ids);
@@ -132,6 +166,7 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     asetlen(g->blocks, nb);
     graph_reindex(g);
     g->topology_revision++;
+    graph_prune_locals(g);
     afree(tmp->nodes);
     afree(tmp->edges);
     afree(tmp->strings);

@@ -13,9 +13,16 @@
  * defaults, per-node scratch keyed by node ID, an optional owner handle, and
  * the ready/suspended event activations that currently belong to it. */
 typedef struct behavior_instance behavior_instance;
-/* One executed root-event interval. Nested functions are included; other root
- * events called synchronously are excluded. Waiting wall time is never sampled. */
-typedef void (*behavior_profile_fn)(const char *event, uint64_t nanoseconds, bool first, void *user);
+/* One executed root-event interval. Inclusive time includes nested root events;
+ * exclusive time removes their measured intervals. Waiting wall time is never
+ * sampled. */
+typedef void (*behavior_profile_fn)(
+    const char *event,
+    uint64_t inclusive_nanoseconds,
+    uint64_t exclusive_nanoseconds,
+    bool first,
+    void *user
+);
 typedef enum
 {
     INSTANCE_UPDATE_READY,

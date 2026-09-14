@@ -157,6 +157,7 @@ struct app_scene_authoring
     int edit_field;
     float selection_scale;
     bool navigator_scene;
+    bool content_catalog;
     char asset_search[128];
     char quick_open_query[128];
     asset_index_kind quick_open_kind;
@@ -219,8 +220,6 @@ const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
 void scene_tabs_draw(app_scene_authoring *scene);
 int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload);
 /* Scene model operations used by its native panels. */
-
-int asset_search_score(const app_scene_authoring *scene, const char *path);
 
 void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity);
 

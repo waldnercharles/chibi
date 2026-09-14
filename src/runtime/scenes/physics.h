@@ -33,4 +33,43 @@ int game_physics_contact_entities(
 );
 extern node_desc GAME_NODE_GetContactEntities;
 
+typedef struct
+{
+    bool found;
+    ecs_entity entity;
+    CF_V2 point, normal;
+    float distance;
+} game_ray_hit;
+
+/* Segment query against authored circle/rotated-box colliders, including
+ * teleports before the next physics tick. Nearest hit wins; ties use handle
+ * order. An origin inside a collider hits at zero with normal against the ray.
+ * Categories filter targets independently of their contact masks. */
+int game_physics_raycast(
+    ecs_world *world,
+    struct game_entities *entities,
+    CF_V2 start,
+    CF_V2 end,
+    unsigned categories,
+    ecs_entity exclude,
+    bool sensors,
+    game_ray_hit *out
+);
+/* Reuse one authored collider snapshot for a batch of visibility/sensor rays.
+ * Refresh after movement; queries allocate nothing and do not iterate ECS. */
+typedef struct game_ray_scene game_ray_scene;
+game_ray_scene *game_ray_scene_new();
+void game_ray_scene_free(game_ray_scene *scene);
+int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, struct game_entities *entities);
+int game_ray_scene_cast(
+    const game_ray_scene *scene,
+    CF_V2 start,
+    CF_V2 end,
+    unsigned categories,
+    ecs_entity exclude,
+    bool sensors,
+    game_ray_hit *out
+);
+extern node_desc GAME_NODE_Raycast;
+
 #endif

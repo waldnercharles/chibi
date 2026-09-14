@@ -19,16 +19,17 @@ void ed_center_initial_view(editor *e)
         e->fit_mode = false;
         e->fit_resize_pending = false;
         node *n = e->reveal_target;
+        float zoom = ed_max(e->zoom, ED_READABLE_ZOOM);
         ImVec2 size = ed_node_dimensions(e, e->active_graph, n);
         ImVec2 center = ed_add((ImVec2){ n->x, n->y }, ed_scale(size, 0.5f));
-        ImVec2 pan = ed_sub(ed_scale(e->canvas_size, 0.5f), ed_scale(center, e->zoom));
-        ed_camera_target(e, pan, e->zoom, e->view_initialized);
+        ImVec2 pan = ed_sub(ed_scale(e->canvas_size, 0.5f), ed_scale(center, zoom));
+        ed_camera_target(e, pan, zoom, e->view_initialized);
         e->reveal_target = NULL;
         e->view_initialized = 1;
         return;
     }
     if (!e->view_initialized) {
-        ed_zoom_fit(e, false);
+        ed_frame_initial_view(e);
     }
 }
 

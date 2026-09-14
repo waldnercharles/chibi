@@ -64,8 +64,11 @@ char *render_shader_fragment_source()
         "fill=e.border_thickness>0.0?1.0-smoothstep(-e.border_thickness,-e."
         "border_thickness+aa,d):coverage;\n"
         " float border=coverage-fill;\n"
-        " vec4 a=vec4(sc.rgb*sc.a+em.rgb*em.a,sc.a)*fill; vec4 "
-        "b=vec4(bs.rgb*bs.a+be.rgb*be.a,bs.a)*border;\n"
+        " vec4 "
+        "a=vec4(sc.rgb*sc.a*sg_lighting.x+em.rgb*em.a*sg_lighting.y,sc.a)*fill;"
+        " vec4 "
+        "b=vec4(bs.rgb*bs.a*sg_lighting.x+be.rgb*be.a*sg_lighting.y,bs.a)*"
+        "border;\n"
         " return vec4(a.rgb+b.rgb,a.a+b.a);\n}\n";
     char *entity = render_shader_source("entity.shd"),
          *sdf = render_shader_source("sdf.shd");
@@ -101,7 +104,12 @@ int render_shader_fragment_prepare(
     return program;
 }
 
-void render_shader_fragment_draw(render_programs *programs, int program, const render_material_entity *entity)
+void render_shader_fragment_draw(
+    render_programs *programs,
+    int program,
+    const render_material_entity *entity,
+    CF_V2 lighting
+)
 {
     float data[336];
     memcpy(data, entity, sizeof data);
@@ -109,6 +117,7 @@ void render_shader_fragment_draw(render_programs *programs, int program, const r
     data[13] = (float)entity->point_count;
     render_programs_bind2d(programs, program);
     cf_draw_set_uniform("sg_entity", data, CF_UNIFORM_TYPE_FLOAT4, 84);
+    cf_draw_set_uniform("sg_lighting", &lighting, CF_UNIFORM_TYPE_FLOAT2, 1);
     CF_Aabb bounds = {
         { entity->pos[0] - entity->extent[0], entity->pos[1] - entity->extent[1] },
         { entity->pos[0] + entity->extent[0], entity->pos[1] + entity->extent[1] }

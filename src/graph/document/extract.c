@@ -308,6 +308,12 @@ static bool same_optional_binding(
     const pin_spec *expected_right
 )
 {
+    if (left && left->kind == PIN_BINDING_LOCAL) {
+        left = NULL;
+    }
+    if (right && right->kind == PIN_BINDING_LOCAL) {
+        right = NULL;
+    }
     if (!left || !right) {
         return !left && !right;
     }
@@ -566,6 +572,7 @@ static const char *build_function(
                                              [pin_index(consumer, crossing->to_pin_id)]
                                       : NULL;
                 if (consumer_pin && consumer_pin->binding &&
+                    consumer_pin->binding->kind != PIN_BINDING_LOCAL &&
                     graph_set_pin_binding(source, call, 0, p.index, consumer_pin->binding) !=
                         0) {
                     error = "Could not preserve a dormant input binding.";

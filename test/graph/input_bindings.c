@@ -1,3 +1,4 @@
+#include "editor/workspace/editor_internal.h"
 #include "graph/document/extract.h"
 #include "test/suite_internal.h"
 
@@ -397,15 +398,18 @@ static void component_and_context_bindings()
     assert(world);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameAim, NULL) == ECS_OK);
     ecs_entity owner = ecs_world_create_entity(world);
     GameTransform transform = { 4, -2 };
     GameMovement movement = { .speed = 90 };
+    GameAim aim = { .direction = { 1.25f, -2.5f }, .firing = true };
     assert(
         ecs_world_record_add(world, owner, GAME_COMPONENT_GameTransform.id, &transform, 0) == ECS_OK
     );
     assert(
         ecs_world_record_add(world, owner, GAME_COMPONENT_GameMovement.id, &movement, 0) == ECS_OK
     );
+    assert(ecs_world_record_add(world, owner, GAME_COMPONENT_GameAim.id, &aim, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
 
     behavior_asset *asset = behavior_asset_new("ComponentBindings");
@@ -432,6 +436,32 @@ static void component_and_context_bindings()
         "component input bindings contribute a world read effect"
     );
     compile_report_free(&report);
+
+    behavior_asset *nested = behavior_asset_new("NestedComponentBindings");
+    assert(behavior_asset_set_owner_type(nested, "ecs.entity") == 0);
+    node *nested_target = typed_reroute(nested->graph, PIN_F32, "float");
+    assert(
+        graph_set_pin_binding(
+            nested->graph,
+            nested_target,
+            0,
+            0,
+            &(pin_binding){ .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = GAME_COMPONENT_GameAim.key,
+                            .field_name = "direction.x" }
+        ) == 0
+    );
+    const pin_binding *nested_binding = graph_pin_binding(nested->graph, nested_target, 0, 0);
+    compile_report nested_report;
+    compile_report_init(&nested_report);
+    test_check(
+        nested_binding && nested_binding->field_name &&
+            !strcmp(nested_binding->field_name, "direction.x") &&
+            behavior_asset_compile(nested, &nested_report) == 0 &&
+            nested_report.error_count == 0,
+        "nested component field bindings validate as scalar inputs"
+    );
+    compile_report_free(&nested_report);
 
     behavior_asset *whole = behavior_asset_new("WholeComponentBindings");
     assert(behavior_asset_set_owner_type(whole, "ecs.entity") == 0);
@@ -496,6 +526,22 @@ static void component_and_context_bindings()
     apush(services, ((service_binding){ EVAL_COMPONENT_READER_SERVICE, &reader }));
     float result = 0;
     char message[192];
+    behavior_instance *nested_instance = instance_for(nested, world, owner);
+    float nested_result = 0;
+    test_check(
+        eval_f32(nested, nested_target, nested_instance, services, 0, &nested_result, message, sizeof message) ==
+                0 &&
+            fabsf(nested_result - 1.25f) < .0001f,
+        "nested component field bindings read through the reflected path"
+    );
+    GAME_GameAim_get(world, owner)->direction.x = 3.5f;
+    test_check(
+        eval_f32(nested, nested_target, nested_instance, services, 0, &nested_result, message, sizeof message) ==
+                0 &&
+            fabsf(nested_result - 3.5f) < .0001f,
+        "nested component field bindings observe owner mutations"
+    );
+    behavior_instance_destroy(nested_instance);
     test_check(
         eval_f32(asset, target, instance, services, 0, &result, message, sizeof message) == 0 &&
             fabsf(result - 4) < .0001f,
@@ -660,6 +706,7 @@ static void component_and_context_bindings()
     behavior_instance_destroy(instance);
     afree(services);
     behavior_asset_free(asset);
+    behavior_asset_free(nested);
     ecs_world_free(world);
 
     asset = behavior_asset_new("ContextBinding");
@@ -882,6 +929,77 @@ static void inline_source_graphs()
     assert(graph_set_node_inline(&shared, source, 1) == 0);
     test_check(!graph_node_is_inline(&shared, source), "shared sources expand instead of hiding a fanout");
     graph_free(&shared);
+}
+
+static void component_getter_optimization()
+{
+    behavior_asset *asset = behavior_asset_new("GetterOptimization");
+    editor e = { .asset = asset,
+                 .active_graph = asset ? asset->graph : NULL,
+                 .ui_context = EDITOR_UI_CONTEXT_BEHAVIOR };
+    node *getter = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Get_GameMovement"))
+                     : NULL;
+    node *target = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Set_GameMovement"))
+                     : NULL;
+    if (getter) {
+        ed_add_selected(&e, getter);
+        e.front_node = getter;
+        e.fields_node = getter->id;
+        e.link_pin.n = getter;
+        e.spawn_link_pin.n = getter;
+    }
+    bool connected = getter && target &&
+                     graph_connect_data(asset->graph, getter, 0, target, 1) == 0;
+    bool optimized = connected && ed_optimize_graph(&e) == 1;
+    const pin_binding *binding = optimized
+                                   ? graph_pin_binding(asset->graph, target, 0, 1)
+                                   : NULL;
+    node *remaining_source = NULL;
+    int remaining_pin = -1;
+    test_check(
+        optimized && binding && binding->kind == PIN_BINDING_COMPONENT &&
+            binding->component_key &&
+            !strcmp(binding->component_key, GAME_COMPONENT_GameMovement.key) &&
+            !binding->field_name && acount(asset->graph->nodes) == 1 &&
+            graph_input_source(asset->graph, target, 1, &remaining_source, &remaining_pin) ==
+                0 &&
+            !remaining_source && remaining_pin == -1 &&
+            acount(e.selected) == 0 && !e.front_node && e.fields_node == 0 &&
+            !e.link_pin.n && !e.spawn_link_pin.n,
+        "component getter optimization replaces a single consumer with a Self "
+        "binding"
+    );
+    behavior_asset_free(asset);
+}
+
+static void component_getter_auto_simplification()
+{
+    behavior_asset *asset = behavior_asset_new("GetterAutoSimplification");
+    editor e = { .asset = asset,
+                 .active_graph = asset ? asset->graph : NULL,
+                 .ui_context = EDITOR_UI_CONTEXT_BEHAVIOR };
+    node *getter = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Get_GameMovement"))
+                     : NULL;
+    node *target = asset
+                     ? graph_add_node(asset->graph, registry_node_by_name("Set_GameMovement"))
+                     : NULL;
+    ed_pin_view output = { getter, ED_PIN_OUTPUT, 0, { 0.0f, 0.0f } };
+    ed_pin_view input = { target, ED_PIN_INPUT, 1, { 0.0f, 0.0f } };
+    bool connected = getter && target && ed_connect(&e, &output, &input);
+    const pin_binding *binding = connected
+                                   ? graph_pin_binding(asset->graph, target, 0, 1)
+                                   : NULL;
+    test_check(
+        connected && binding && binding->kind == PIN_BINDING_COMPONENT &&
+            binding->component_key &&
+            !strcmp(binding->component_key, GAME_COMPONENT_GameMovement.key) &&
+            acount(asset->graph->nodes) == 1,
+        "connecting a single-consumer component getter stores a Self binding"
+    );
+    behavior_asset_free(asset);
 }
 
 static void inline_source_extraction()
@@ -1279,6 +1397,8 @@ void test_input_bindings()
     component_and_context_bindings();
     serialization_and_clipboard_ownership();
     inline_source_graphs();
+    component_getter_optimization();
+    component_getter_auto_simplification();
     inline_source_extraction();
     extraction_preserves_bindings();
     executable_extraction_preserves_timing();

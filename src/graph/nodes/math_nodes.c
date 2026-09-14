@@ -25,7 +25,8 @@ static pin_spec result[] = { { .name = "Result", .type = PIN_F64, .type_name = "
                               .pure_kind = NODE_PURE_CALL,                     \
                               .fn = NAME##_value,                              \
                               .access = &pure,                                 \
-                              .category = "Math/Functions" };
+                              .category = "Math/Functions",                    \
+                              .foldable = true };
 UNARY(Sine, "Sine", sin)
 UNARY(Cosine, "Cosine", cos)
 UNARY(Tangent, "Tangent", tan)
@@ -55,7 +56,8 @@ UNARY(Round, "Round", round)
                               .pure_kind = NODE_PURE_CALL,                            \
                               .fn = NAME##_value,                                     \
                               .access = &pure,                                        \
-                              .category = "Math/Functions" };
+                              .category = "Math/Functions",                           \
+                              .foldable = true };
 BINARY(Power, "Power", pow)
 BINARY(ArcTangent2, "Arc Tangent 2", atan2)
 #undef BINARY

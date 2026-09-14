@@ -670,9 +670,10 @@ static void profile_checks()
     test_check(
         frame->count == 2 && outer_row.starts == 1 && work_row.starts == 1 &&
             !outer_row.resumes && !work_row.resumes && work_row.cpu_ms > 0 &&
-            frame->cpu_ms <= wall_ms,
+            outer_row.inclusive_cpu_ms >= outer_row.cpu_ms &&
+            work_row.inclusive_cpu_ms >= work_row.cpu_ms && frame->cpu_ms <= wall_ms,
         "nested functions stay in their event while reentrant events are "
-        "excluded from the caller's CPU time"
+        "separated into inclusive and exclusive caller CPU time"
     );
     assert(game_behavior_dispatch(world, child, "Slow", (flow_inputs){ 0 }, NULL) == 1);
     game_behavior_profile_begin(world);

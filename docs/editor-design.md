@@ -178,7 +178,7 @@ and results. Function entries with several vectors provide a field menu; labels
 such as Direction X identify the source. Expanding fields never adds arguments.
 Call signatures ignore projection rows and report stale signatures explicitly.
 Fire Projectile now wires Direction X/Y straight from its entry, removing its
-last Break node. Nested field expansion and dynamic event signatures remain work.
+last Break node. Nested field expansion and dynamic event signatures are supported.
 
 Health has 10 top-level nodes after its MathExpression conversion; Automatic Weapon has eight. Native tests cover
 field expansion, connected-pin preservation, and choosing Origin fields without
@@ -1275,3 +1275,117 @@ so narrowing does not invoke undefined C behavior. The registered conversion
 nodes are To Byte, To Integer, and To Integer64; integer widening remains
 available through To Integer64. This supersedes the earlier TYPE-7 policy that
 excluded lossy Real-to-Integer conversion.
+
+
+## Workspace navigation and shader node authoring
+
+The left activity rail contains Project, Scene Hierarchy, and Document Outline,
+with Quick Open below them and Performance at the bottom. Clicking the active
+navigation destination collapses the sidebar; selecting another opens it without
+changing the active document. The Project sidebar uses its full height for Files
+or Asset catalog. Graph / Scene / Split mode controls have been removed. Docking
+and View remain the layout controls, and Reset Layout places Performance in a
+bottom dock, initially hidden.
+
+Asset and node search share local ranking: exact names, word prefixes, CamelCase
+initials, reordered terms, and small spelling errors. Names rank ahead of paths
+and keywords. Node search retains compatible-pin filtering and authored aliases.
+Quick Open keeps keyboard navigation in the result list and selects the best
+result after query changes.
+
+Material, Shape, and Shader Library nodes stack outputs above options and inputs.
+Inputs use the node width for labeled numeric values, vector axes, range endpoints,
+colors, context defaults, and binding controls. Normalized shader properties use
+sliders. Parameter names and types, constants, gradient modes, ramp interpolation
+and stops, and image selection/filtering/wrapping are editable directly on nodes.
+Inspector remains available for previews, diagnostics, and document properties;
+shader node editing does not require it. Execution graphs use the same data-pin
+layout with execution pins paired above it. Native tests cover editing with
+Inspector hidden, Undo/Redo, image drop/picker replacement, serialization, and
+live shader output changes.
+
+## Blender references and Color Ramp
+
+For node controls with a direct Blender equivalent, use Blender's layout and
+interaction conventions as the default reference. Check the official manual and
+its images before inventing a different arrangement. Apply the reference to the
+capabilities the editor actually supports; shader authoring stays on the node.
+
+Color Ramp follows Blender's
+[Color Ramp widget](https://docs.blender.org/manual/en/latest/interface/controls/templates/color_ramp.html):
+compact add/remove and tools controls above the strip, color-filled handles below
+it, a dashed marker for the active stop, a zero-based stop selector beside
+Position, and a full-width color swatch. Ctrl-click inserts a sampled stop;
+Add inserts beside the selected stop. The tools menu supports Flip, both stop
+distribution modes, and Reset, with Undo/Redo. RGB is the current color mode;
+interpolation offers Linear, Constant, and Ease. Shader sliders use a filled
+track with the label on the left and value on the right, retaining keyboard and
+numeric entry.
+
+## Graph opening and dock context
+
+New graph views open at 85–100% zoom. Large graphs start near an event/function
+entry or shader output, with room for the floating toolbar. Explicit Fit still
+frames every node and wire. Revealing a node brings an overview back to at least
+85% zoom. Re-entering a local function restores its camera instead of arranging
+and fitting it again.
+
+A sole root graph pane hides its duplicate dock tab when the global document bar
+already identifies it. The dock's corner affordance can reveal the tab for
+undocking. Shared docks retain their tabs, detached panes retain their title,
+and nested graphs show both asset and function names. Standalone graph editors
+without the global document bar keep their title.
+
+## Shared node controls
+
+Behavior, function, and shader graphs share the same node measurements, data-pin
+ordering, and value controls. Execution inputs and outputs occupy paired rows at
+the top. Data outputs follow, then inline options and full-width data inputs.
+Math operators use the common titled node shape with their symbol in the header.
+Connecting values preserves node width. Behavior and shader arithmetic retain
+their separate runtime and shader lowering paths. The native arithmetic check
+covers glyph/control separation at 65%, 100%, and 135% zoom, vector and bound
+inputs, wired inputs, selection, and opening the source picker.
+
+Numeric fields put labels on the left and values on the right. Dragging and direct
+numeric entry use native ImGui input handling. Vectors use labeled axes; ranges
+use endpoint labels; strings, dropdowns, colors, and bound sources get a full-width
+row beneath their pin label. Node controls retain separate Undo steps. Particle
+colors use explicit pin metadata and existing assets carry that metadata.
+
+Nodes with optional advanced inputs show an Advanced inputs disclosure on the
+node itself. Bound and connected inputs remain visible when it is collapsed.
+Document properties and function/event signature editing remain in Inspector;
+ordinary input and shader-option authoring stays on the canvas.
+
+## Copy and vector input polish
+
+Keep editor copy to names, actions, states, and actionable errors. Asset
+descriptions remain metadata and are no longer displayed as paragraphs in
+Inspector or event/library overviews. Source tooltips show the source name;
+the pause menu omits its control tutorial. Performance notes are compact and
+available on hover.
+
+Vector components occupy separate full-width rows, with X/Y/Z/W on the left and
+values on the right. Fields use the shared neutral background, rounded corners,
+and padding, with no colored axis borders. Range endpoints retain Min/Max labels.
+
+Each component can use a literal or an inline source. The vector's source action
+applies to the whole value. Component sources are owned by an inline vector
+constructor, using ordinary graph nodes and connections; save/load, expansion,
+replacement, deletion, and Undo follow the existing graph ownership rules.
+Assigning a scalar to a whole vector evaluates that scalar once and broadcasts it
+to every component. Shader lowering uses the same broadcast behavior. Inline
+scalar constants remain editable on the node.
+
+Node rows use four pixels of extra spacing. Only literal outputs are editable;
+runtime-written outputs do not reserve empty control rows. Entity, aggregate,
+and unresolved inputs show their value or default in the pin row, with the
+source button beside it. Clicking the value also opens the source picker. A
+default entity target reads Self.
+
+The focused native `--ui-node-controls` check covers the Set Visual Motion
+Rotation layout, runtime output ownership, Target alignment and source picking,
+and scalar/integer/vector authoring with independent Undo/Redo. It also checks
+stacked component bounds, component and whole-vector sources, scalar broadcast,
+source replacement, and shader source editing with Inspector hidden.

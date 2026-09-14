@@ -4,6 +4,8 @@
 - Name shared modules for their capability. Turn game-specific geometry, camera choreography, and outcome handling into authored data and behaviors; add native capabilities when authoring exposes a concrete gap.
 - Keep reusable gameplay features optional so scenes can use rendering, physics, and input independently of combat, encounters, or rhythm.
 - Keep debugging UI, capture/scenario tooling, and MCP adapters in clearly named modules and separate build targets where practical. Tooling consumes explicit runtime inspection/control APIs; shared runtime code stays independent of tooling and editor UI.
+- MCP graph edits express nodes, values, and connections; automatically arrange affected graphs so agents never need to choose node positions.
+- When Chibi MCP is available, use it as the default authoring interface for shaders, behavior and event graphs, prototypes, scenes, and authored assets. Search or inspect first, then use the matching `build*` tool, validate, and preview or run as needed. See `docs/mcp.md` for the public catalog and workflow.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
 - Prefer `make build` when building, and `make test` to test.
 - Keep code small: remove dead code/abstractions; use small functions, narrow APIs, few parameters, guards, and no `else` after `return` or `break`.

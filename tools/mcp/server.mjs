@@ -4,10 +4,28 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  authoringToolCall,
+  authoringToolDefinitions,
+  authoringToolResult,
+  cancelAuthoringRequest,
+  isAuthoringTool,
+  renderRequest,
+  validateAuthoringArguments,
+} from "./authoring.mjs";
+import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
-const serverVersion = "0.1.0";
+const serverVersion = "0.2.0";
+const serverInstructions = [
+  "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
+  "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, describeComponents, or getProjectStatus.",
+  "2. Build with buildShader, buildBehavior, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
+  "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
+  "4. Use previewShader, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
+  "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
+].join(" ");
 const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const configuredRoot = process.env.CHIBI_ROOT;
 const root = configuredRoot
@@ -303,7 +321,11 @@ function rawToolDefinitions() {
       },
       graph_name: {
         type: "string",
-        description: "Optional graph name selector. Omit both selectors to inspect all graphs and select the first graph.",
+        description: "Optional graph name selector. The selected graph is returned in full; other graphs are returned as compact summaries.",
+      },
+      include_layout: {
+        type: "boolean",
+        description: "Include editor coordinates, inline hints, comment boxes, and wire routing. Omit for semantic graph data.",
       },
     },
   };
@@ -312,17 +334,17 @@ function rawToolDefinitions() {
     properties: {
       kind: {
         type: "string",
-        enum: ["prototype"],
-        description: "Target asset family. Only prototype scenarios are supported currently.",
+        enum: ["prototype", "scene"],
+        description: "Target asset family; defaults to prototype.",
       },
       name: {
         type: "string",
-        description: "Prototype asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .json suffix.",
       },
       frames: {
         type: "integer",
         minimum: 0,
-        maximum: 600,
+        maximum: 108000,
         description: "Number of deterministic fixed steps to run.",
       },
       fixed_dt: {
@@ -340,18 +362,18 @@ function rawToolDefinitions() {
     properties: {
       kind: {
         type: "string",
-        enum: ["prototype"],
-        description: "Target asset family. Only prototype snapshots are supported currently.",
+        enum: ["prototype", "scene"],
+        description: "Target asset family; defaults to prototype.",
       },
       name: {
         type: "string",
         maxLength: 128,
-        description: "Prototype asset name without the .json suffix.",
+        description: "Prototype or scene asset name without the .json suffix.",
       },
       frames: {
         type: "integer",
         minimum: 0,
-        maximum: 600,
+        maximum: 108000,
         description: "Number of deterministic fixed steps to run before capturing the snapshot.",
       },
       fixed_dt: {
@@ -394,6 +416,58 @@ function rawToolDefinitions() {
     required: ["name"],
     additionalProperties: false,
   };
+  const profileScenarioArguments = {
+    type: "object",
+    properties: {
+      kind: {
+        type: "string",
+        enum: ["prototype", "scene"],
+        description: "Target asset family; defaults to prototype.",
+      },
+      name: {
+        type: "string",
+        maxLength: 128,
+        description: "Prototype or scene asset name without the .json suffix.",
+      },
+      frames: {
+        type: "integer",
+        minimum: 0,
+        maximum: 600,
+        description: "Number of fixed steps to sample after warmup.",
+      },
+      warmup_frames: {
+        type: "integer",
+        minimum: 0,
+        maximum: 600,
+        description: "Fixed steps to run before collecting timing and behavior samples.",
+      },
+      fixed_dt: {
+        type: "number",
+        minimum: 0.000001,
+        maximum: 0.25,
+        description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
+      },
+    },
+    required: ["name"],
+    additionalProperties: false,
+  };
+  const executionStatusArguments = {
+    type: "object",
+    properties: {
+      kind: {
+        type: "string",
+        enum: ["behavior", "system"],
+        description: "Asset family to inspect.",
+      },
+      name: {
+        type: "string",
+        maxLength: 128,
+        description: "Behavior or system asset name without the .json suffix.",
+      },
+    },
+    required: ["kind", "name"],
+    additionalProperties: false,
+  };
   const normalizedVector = {
     type: "object",
     properties: {
@@ -410,6 +484,7 @@ function rawToolDefinitions() {
         description: "Normalized vertical input.",
       },
     },
+    required: ["x", "y"],
     additionalProperties: false,
   };
   const normalizedAim = {
@@ -417,19 +492,16 @@ function rawToolDefinitions() {
     properties: {
       x: {
         type: "number",
-        minimum: -1,
-        maximum: 1,
-        description: "Normalized horizontal aim input.",
+        description: "Horizontal direction in [-1, 1], or world coordinate when point is true.",
       },
       y: {
         type: "number",
-        minimum: -1,
-        maximum: 1,
-        description: "Normalized vertical aim input.",
+        description: "Vertical direction in [-1, 1], or world coordinate when point is true.",
       },
       firing: { type: "boolean" },
       point: { type: "boolean" },
     },
+    required: ["x", "y"],
     additionalProperties: false,
   };
   const normalizedAction = {
@@ -452,7 +524,18 @@ function rawToolDefinitions() {
     type: "object",
     properties: {
       name: { type: "string", maxLength: 128 },
-      values: { type: "array", maxItems: 0 },
+      target: { type: "string", minLength: 1, maxLength: 512, description: "Scene entity name; omit to target the prototype owner or first scene entity." },
+      values: {
+        type: "array", maxItems: 16,
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["bool", "int", "uint", "float", "double", "name", "string", "entity"] },
+            value: {},
+          },
+          required: ["type", "value"], additionalProperties: false,
+        },
+      },
     },
     required: ["name"],
     additionalProperties: false,
@@ -460,6 +543,15 @@ function rawToolDefinitions() {
   const normalizedInput = {
     type: "object",
     properties: {
+      controls: { type: "array", maxItems: 41, items: { type: "integer", minimum: 1, maximum: 41 },
+        description: "Held physical GameControl codes, interpreted by authored action bindings." },
+      ui: { type: "array", maxItems: 32, items: { type: "object", properties: {
+        target: { type: "string", minLength: 1, maxLength: 512 },
+        action: { type: "string", enum: ["activate", "change", "drop"] },
+        source: { type: "string", minLength: 1, maxLength: 512 },
+        value: { type: "number" },
+      }, required: ["target", "action"], additionalProperties: false },
+        description: "Player UI interactions. Change requires value; drop requires a source widget name. Uses normal widget validation and behavior events." },
       movement: normalizedVector,
       aim: normalizedAim,
       actions: {
@@ -483,72 +575,54 @@ function rawToolDefinitions() {
     items: normalizedInput,
     description: "One normalized input sample per fixed frame.",
   };
+  const savedState = { type: "object", maxProperties: 1024, additionalProperties: { type: "string", maxLength: 65536 },
+    description: "Initial committed save values in an isolated scenario store. Use returned saved_state for the next run." };
+  const scenePreview = authoringToolDefinitions().find(tool => tool.name === "previewScene");
+  scenePreview.inputSchema.properties.inputs = normalizedInputs;
+  scenePreview.inputSchema.properties.saved_state = savedState;
+  scenarioArguments.properties.saved_state = savedState;
+  runtimeSnapshotArguments.properties.saved_state = savedState;
+  const timeline = { type: "array", maxItems: 600, items: { type: "object", additionalProperties: false,
+    required: ["frame", "input"], properties: { frame: { type: "integer", minimum: 0, maximum: 107999 }, input: normalizedInputs.items } } };
+  scenarioArguments.properties.frames.maximum = 108000;
+  runtimeSnapshotArguments.properties.frames.maximum = 108000;
+  scenarioArguments.properties.input_timeline = timeline;
+  runtimeSnapshotArguments.properties.input_timeline = timeline;
+  scenarioArguments.properties.inputs = normalizedInputs;
+  runtimeSnapshotArguments.properties.inputs = normalizedInputs;
   const recording = {
     type: "object",
     properties: {
-      version: { type: "integer", minimum: 1, maximum: 32 },
-      recording_version: { type: "integer", minimum: 1, maximum: 32 },
-      contract_version: { type: "integer", minimum: 1, maximum: 32 },
+      version: { type: "integer", enum: [2] },
+      contract_version: { type: "integer", enum: [1] },
       id: { type: "string", maxLength: 128 },
-      recording_id: { type: "string", maxLength: 128 },
       format: { type: "string", maxLength: 128 },
-      prototype: {
-        type: "object",
-        properties: {
-          kind: { type: "string", enum: ["prototype"] },
-          name: { type: "string", maxLength: 128 },
-          path: { type: "string", maxLength: 512 },
-          bytes: { type: "integer", minimum: 0 },
-          hash: { type: "string", maxLength: 128 },
-        },
-        additionalProperties: false,
-      },
-      kind: { type: "string", enum: ["prototype"] },
-      name: { type: "string", maxLength: 128 },
+      kind: { type: "string", enum: ["prototype", "scene"] },
+      name: { type: "string", minLength: 1, maxLength: 128 },
       frames: { type: "integer", minimum: 0, maximum: 600 },
       fixed_dt: { type: "number", minimum: 0.000001, maximum: 0.25 },
-      content_hash: { type: "string", maxLength: 128 },
-      content_hashes: {
-        type: "array",
-        maxItems: 256,
-        items: { type: "string", maxLength: 128 },
-      },
-      inputs: normalizedInputs,
-      events: {
-        type: "array",
-        maxItems: 600,
-        items: {
-          type: "array",
-          maxItems: 32,
-          items: normalizedEvent,
-        },
-      },
-      observations: {
-        type: "array",
-        maxItems: 600,
+      content_hash: { type: "string", minLength: 16, maxLength: 16 },
+      runtime_content_hash: { type: "string", minLength: 16, maxLength: 16 },
+      assets: {
+        type: "array", maxItems: 4096,
         items: {
           type: "object",
           properties: {
-            frame: { type: "integer", minimum: 0, maximum: 600 },
-            world_hash: { type: "string", maxLength: 128 },
-            live_entities: { type: "integer", minimum: 0 },
+            kind: { type: "string" }, name: { type: "string" }, path: { type: "string" },
+            bytes: { type: "integer", minimum: 0 }, hash: { type: "string", minLength: 16, maxLength: 16 },
           },
-          additionalProperties: false,
+          required: ["kind", "name", "path", "bytes", "hash"], additionalProperties: false,
         },
       },
-      frame_hashes: {
-        type: "array",
-        maxItems: 600,
-        items: { type: "string", maxLength: 128 },
-      },
-      live_entities: {
-        type: "array",
-        maxItems: 600,
-        items: { type: "integer", minimum: 0 },
-      },
-      world_hash: { type: "string", maxLength: 128 },
+      inputs: normalizedInputs,
+      saved_state: savedState,
+      frame_hashes: { type: "array", maxItems: 600, items: { type: "string", minLength: 16, maxLength: 16 } },
+      live_entities: { type: "array", maxItems: 600, items: { type: "integer", minimum: 0 } },
+      world_hash: { type: "string", maxLength: 16 },
       artifact_path: { type: "string", maxLength: 1024 },
     },
+    required: ["version", "contract_version", "format", "kind", "name", "frames", "fixed_dt",
+               "content_hash", "runtime_content_hash", "inputs", "frame_hashes", "live_entities"],
     additionalProperties: false,
   };
   const recordArguments = {
@@ -556,8 +630,8 @@ function rawToolDefinitions() {
     properties: {
       kind: {
         type: "string",
-        enum: ["prototype"],
-        description: "Target asset family. Only prototype recordings are supported currently.",
+        enum: ["prototype", "scene"],
+        description: "Prototype or scene target family.",
       },
       name: {
         type: "string",
@@ -577,6 +651,7 @@ function rawToolDefinitions() {
         description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
       },
       inputs: normalizedInputs,
+      saved_state: savedState,
     },
     required: ["name"],
     additionalProperties: false,
@@ -599,110 +674,143 @@ function rawToolDefinitions() {
   };
   return [
     {
-      name: "project_status",
+      name: "getProjectStatus",
       operation: "status",
       description: "Return project paths, asset counts, and reflected registry counts.",
       inputSchema: noArguments,
       outputSchema,
     },
     {
-      name: "list_assets",
+      name: "listAssets",
       operation: "list_assets",
       description: "List authored JSON assets with stable paths, sizes, and content hashes.",
       inputSchema: pageArguments,
       outputSchema,
     },
     {
-      name: "catalog",
+      name: "getAssetCatalog",
       operation: "catalog",
       description: "Return the semantic asset catalog, dependency edges, diagnostics, and reflected registry metadata.",
       inputSchema: pageArguments,
       outputSchema,
     },
     {
-      name: "search_assets",
+      name: "searchAssets",
       operation: "search_assets",
       description: "Search the semantic asset catalog by kind, name, path, or description.",
       inputSchema: searchArguments,
       outputSchema,
     },
     {
-      name: "asset_dependencies",
+      name: "inspectAssetDependencies",
       operation: "asset_dependencies",
       description: "Inspect direct or transitive incoming and outgoing asset dependencies.",
       inputSchema: dependencyArguments,
       outputSchema,
     },
     {
-      name: "inspect_graph",
+      name: "inspectGraph",
       operation: "inspect_graph",
       description: "Return normalized graph nodes, pins, edges, calls, effects, and validation diagnostics.",
       inputSchema: graphArguments,
       outputSchema,
     },
     {
-      name: "inspect_system",
+      name: "inspectSystem",
       operation: "inspect_system",
       description: "Inspect a typed system query, compiled graph, inferred component effects, and diagnostics.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
-      name: "run_scenario",
+      name: "getExecutionStatus",
+      operation: "execution_status",
+      description: "Report the backend selected for a behavior or system and whether its Tick path is runnable.",
+      inputSchema: executionStatusArguments,
+      outputSchema,
+    },
+    {
+      name: "profileScenario",
+      operation: "profile_scenario",
+      description: "Run a bounded prototype or scene scenario with warmup and return engine timing, per-behavior inclusive/exclusive samples, and scoped xalloc allocation counters.",
+      inputSchema: profileScenarioArguments,
+      outputSchema,
+    },
+    {
+      name: "runScenario",
       operation: "run_scenario",
-      description: "Run a bounded deterministic prototype scenario and return structured runtime evidence.",
+      description: "Run a bounded deterministic prototype or scene scenario and return structured runtime evidence.",
       inputSchema: scenarioArguments,
       outputSchema,
     },
     {
-      name: "runtime_snapshot",
+      name: "captureRuntimeSnapshot",
       operation: "runtime_snapshot",
       description: "Capture bounded deterministic ECS entities, reflected fields, behaviors, and timing.",
       inputSchema: runtimeSnapshotArguments,
       outputSchema,
     },
     {
-      name: "record_scenario",
+      name: "recordScenario",
       operation: "record_scenario",
       description: "Record bounded normalized inputs and deterministic frame hashes for a prototype scenario.",
       inputSchema: recordArguments,
       outputSchema,
     },
     {
-      name: "replay_scenario",
+      name: "replayScenario",
       operation: "replay_scenario",
       description: "Replay a versioned deterministic scenario recording and report the first divergence.",
       inputSchema: replayArguments,
       outputSchema,
     },
     {
-      name: "read_asset",
+      name: "readAsset",
       operation: "read_asset",
       description: "Read one authored asset as parsed JSON.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
-      name: "validate_asset",
+      name: "validateAsset",
       operation: "validate_asset",
       description: "Load and validate one asset through the engine's native loader/compiler.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
-      name: "describe_registry",
+      name: "describeRegistry",
       operation: "describe_registry",
       description: "Describe reflected graph nodes, pins, types, services, operators, and components.",
       inputSchema: noArguments,
       outputSchema,
     },
     {
-      name: "describe_contract",
+      name: "describeComponents",
+      operation: "describe_components",
+      description: "Describe reflected prototype component fields, stable keys, and native defaults.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          names: {
+            type: "array",
+            maxItems: 64,
+            items: { type: "string", maxLength: 256 },
+            description: "Optional component names or stable keys; omit to describe every component.",
+          },
+        },
+        additionalProperties: false,
+      },
+      outputSchema,
+    },
+    {
+      name: "describeContract",
       operation: "describe_contract",
       description: "Describe native operations, response versions, errors, safety annotations, and reflection counts.",
       inputSchema: noArguments,
       outputSchema,
     },
+    ...authoringToolDefinitions(),
   ];
 }
 
@@ -713,7 +821,7 @@ async function nativeRequest(operation, args = {}) {
     controllerSession = new ControllerSession();
   }
   return controllerSession.request(
-    { contract: 1, operation, ...args },
+    { ...args, contract: 1, operation },
     timeout,
   );
 }
@@ -736,24 +844,44 @@ function toolDefinition(name) {
 
 async function toolDefinitions() {
   const contract = await contractMetadata();
-  return rawToolDefinitions().map(({ operation, ...definition }) => {
-    const metadata = contract?.operations?.find((candidate) => candidate.name === operation);
-    if (!metadata) {
-      return definition;
+  const definitions = new Map(rawToolDefinitions().map((definition) => [definition.name, definition]));
+  return toolCatalog.map((entry) => {
+    const definition = definitions.get(entry.name);
+    if (!definition) {
+      throw new Error(`MCP catalog is missing definition for ${entry.name}`);
     }
+    const nativeMetadata = contract?.operations?.find((candidate) => candidate.name === entry.operation);
+    const annotations = { ...entry.annotations };
+    if (nativeMetadata) {
+      annotations.readOnlyHint = nativeMetadata.read_only;
+      annotations.idempotentHint = nativeMetadata.idempotent;
+      annotations.destructiveHint = nativeMetadata.destructive;
+    }
+    const { operation, ...schema } = definition;
     return {
-      ...definition,
-      description: metadata.summary,
-      annotations: {
-        readOnlyHint: metadata.read_only,
-        idempotentHint: metadata.idempotent,
-        destructiveHint: metadata.destructive,
-      },
+      ...schema,
+      name: entry.name,
+      title: entry.title,
+      description: entry.description,
+      annotations,
     };
   });
 }
 
 function validateSchema(value, schema, path) {
+  if (schema.oneOf) {
+    const matches = schema.oneOf.filter((candidate) => {
+      try {
+        validateSchema(value, candidate, path);
+        return true;
+      } catch {
+        return false;
+      }
+    }).length;
+    if (matches !== 1) {
+      throw protocolError(-32602, `${path} must match exactly one supported form`);
+    }
+  }
   if (schema.type === "object") {
     if (!isObject(value)) {
       throw protocolError(-32602, `${path} must be an object`);
@@ -773,19 +901,6 @@ function validateSchema(value, schema, path) {
     for (const [name, child] of Object.entries(schema.properties || {})) {
       if (Object.hasOwn(value, name)) {
         validateSchema(value[name], child, `${path}.${name}`);
-      }
-    }
-    if (schema.oneOf) {
-      const matches = schema.oneOf.filter((candidate) => {
-        try {
-          validateSchema(value, candidate, path);
-          return true;
-        } catch {
-          return false;
-        }
-      }).length;
-      if (matches !== 1) {
-        throw protocolError(-32602, `${path} must match exactly one supported form`);
       }
     }
     return;
@@ -814,6 +929,9 @@ function validateSchema(value, schema, path) {
     if (!Array.isArray(value)) {
       throw protocolError(-32602, `${path} must be an array`);
     }
+    if (schema.minItems !== undefined && value.length < schema.minItems) {
+      throw protocolError(-32602, `${path} must contain at least ${schema.minItems} items`);
+    }
     if (schema.maxItems !== undefined && value.length > schema.maxItems) {
       throw protocolError(-32602, `${path} has too many items`);
     }
@@ -832,44 +950,166 @@ function validateToolArguments(name, args) {
     throw protocolError(-32602, "tools/call requires a known tool name");
   }
   validateSchema(args === undefined ? {} : args, tool.inputSchema, "arguments");
+  if (isAuthoringTool(name)) {
+    validateAuthoringArguments(name, args === undefined ? {} : args);
+  }
 }
 
-async function toolCall(name, args) {
+async function toolCall(name, args, requestId) {
   if (typeof name !== "string") {
     throw protocolError(-32602, "tools/call requires a tool name");
   }
   validateToolArguments(name, args);
-  switch (name) {
-    case "project_status": return nativeRequest("status");
-    case "list_assets": return nativeRequest("list_assets", args || {});
-    case "catalog": return nativeRequest("catalog", args || {});
-    case "search_assets": return nativeRequest("search_assets", args || {});
-    case "asset_dependencies": return nativeRequest("asset_dependencies", args || {});
-    case "inspect_graph": return nativeRequest("inspect_graph", args || {});
-    case "inspect_system": return nativeRequest("inspect_system", args || {});
-    case "run_scenario": return nativeRequest("run_scenario", args || {});
-    case "runtime_snapshot": return nativeRequest("runtime_snapshot", args || {});
-    case "record_scenario": return nativeRequest("record_scenario", args || {});
-    case "replay_scenario": return nativeRequest("replay_scenario", args || {});
-    case "read_asset": return nativeRequest("read_asset", args || {});
-    case "validate_asset": return nativeRequest("validate_asset", args || {});
-    case "describe_registry": return nativeRequest("describe_registry");
-    case "describe_contract": return nativeRequest("describe_contract");
-    default: {
-      const error = new Error(`unknown tool: ${name}`);
-      error.rpcCode = -32602;
-      throw error;
-    }
+  if (isAuthoringTool(name)) {
+    return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
   }
+  const entry = getToolCatalogEntry(name);
+  if (!entry || entry.adapter !== "native") {
+    throw protocolError(-32602, `unknown tool: ${name}`);
+  }
+  return nativeRequest(entry.operation, args || {});
 }
 
-function toolResult(response) {
-  const text = boundedJson(response, "tool result");
+function defaultNextSteps(name) {
+  return getToolCatalogEntry(name)?.nextSteps || [];
+}
+
+function responseNextSteps(name, response) {
+  const code = response?.error?.code;
+  if (code === "asset_not_found") {
+    return ["Call searchAssets with a broader query or the expected asset kind."];
+  }
+  if (code === "asset_conflict") {
+    return ["Call inspectGraph or readAsset for the current content hash, then retry the edit."];
+  }
+  if (code === "validation_failed") {
+    return ["Correct the reported diagnostics, then call validateAsset again."];
+  }
+  if (code === "recording_not_found") {
+    return ["Call recordScenario to create a recording for the current project state."];
+  }
+  if (code === "invalid_request" && /node|pin|reference/i.test(response?.error?.message || "")) {
+    return ["Call searchNodes for the node or pin signature, then retry the graph edit."];
+  }
+  const result = response?.result;
+  if (name === "searchAssets" && Array.isArray(result?.assets) && result.assets.length === 0) {
+    return ["Broaden the search query or call getAssetCatalog for project-wide context."];
+  }
+  if (name === "searchNodes" && Array.isArray(result?.nodes) && result.nodes.length === 0) {
+    return ["Broaden the node query or remove a restrictive pin filter."];
+  }
+  if ((name === "buildShader" || name === "buildBehavior" || name === "buildPrototype" || name === "buildScene") &&
+      result?.dry_run === true) {
+    return [
+      "Review the dry-run diagnostics and proposed changes.",
+      "Call the same build tool with dry_run false and the current expected_hash to publish.",
+    ];
+  }
+  return defaultNextSteps(name);
+}
+
+function addPublicContractNames(name, response) {
+  if (name !== "describeContract" || !isObject(response?.result) || !Array.isArray(response.result.operations)) {
+    return response;
+  }
+  const operations = response.result.operations.map((operation) => ({
+    ...operation,
+    public_tools: toolCatalog
+      .filter((entry) => entry.operation === operation.name)
+      .map((entry) => entry.name),
+  }));
+  return { ...response, result: { ...response.result, operations } };
+}
+
+function withToolGuidance(name, response) {
+  const publicResponse = addPublicContractNames(name, response);
+  const nextSteps = responseNextSteps(name, publicResponse);
+  return nextSteps.length ? { ...publicResponse, next_steps: nextSteps } : publicResponse;
+}
+
+function toolResult(name, response) {
+  const guidedResponse = withToolGuidance(name, response);
+  const authoringResult = authoringToolResult(guidedResponse, name);
+  if (authoringResult) {
+    return authoringResult;
+  }
+  const text = guidedResponse.ok === true
+    ? boundedJson(toolSummary(name, guidedResponse), "tool summary")
+    : boundedJson({
+      ok: false,
+      tool: name,
+      error: guidedResponse.error,
+      next_steps: guidedResponse.next_steps,
+    }, "tool error");
   return {
     content: [{ type: "text", text }],
-    structuredContent: response,
-    isError: response.ok !== true,
+    structuredContent: guidedResponse,
+    isError: guidedResponse.ok !== true,
   };
+}
+
+function toolSummary(name, response) {
+  const summary = { ok: true, tool: name };
+  const result = response.result;
+  if (!isObject(result)) {
+    return summary;
+  }
+  const scalarKeys = [
+    "kind",
+    "name",
+    "path",
+    "graph_id",
+    "layout_included",
+    "offset",
+    "total",
+    "count",
+    "has_more",
+    "next_cursor",
+    "operation_count",
+    "component_count",
+    "behavior_count",
+    "before_hash",
+    "after_hash",
+    "after_bytes",
+    "published",
+    "changed",
+    "dry_run",
+    "warmup_frames",
+    "frames",
+    "fixed_dt",
+    "backend",
+    "ready",
+    "jit",
+    "fully_jit",
+    "jit_available",
+    "folded_inputs",
+    "removed_nodes",
+    "created_aliases",
+    "changed_edges",
+    "world_hash",
+    "live_entities",
+    "valid",
+    "deterministic",
+    "recording_id",
+    "recording_path",
+    "first_divergence_frame",
+  ];
+  for (const key of scalarKeys) {
+    if (Object.hasOwn(result, key) &&
+        (typeof result[key] === "string" || typeof result[key] === "number" ||
+         typeof result[key] === "boolean")) {
+      summary[key] = result[key];
+    }
+  }
+  for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped"]) {
+    if (Array.isArray(result[key])) {
+      summary[`${key}_count`] = result[key].length;
+    }
+  }
+  if (Array.isArray(response.next_steps) && response.next_steps.length) {
+    summary.next_steps = response.next_steps;
+  }
+  return summary;
 }
 
 function boundedJson(value, label) {
@@ -954,6 +1194,12 @@ async function dispatch(message) {
   if (message.method === "notifications/initialized") {
     return null;
   }
+  if (message.method === "notifications/cancelled") {
+    if (isObject(message.params) && message.params.requestId !== undefined) {
+      cancelAuthoringRequest(message.params.requestId);
+    }
+    return null;
+  }
   if (message.method === "initialize") {
     const params = message.params;
     if (!params || typeof params.protocolVersion !== "string" ||
@@ -968,6 +1214,7 @@ async function dispatch(message) {
         protocolVersion: negotiateProtocolVersion(message.params?.protocolVersion),
         capabilities: { tools: {}, resources: {} },
         serverInfo: { name: "chibi", version: serverVersion },
+        instructions: serverInstructions,
       },
     });
   }
@@ -1022,8 +1269,12 @@ async function dispatch(message) {
       if (!isObject(message.params)) {
         throw protocolError(-32602, "tools/call params are required");
       }
-      const response = await toolCall(message.params?.name, message.params?.arguments);
-      return reply(message, { jsonrpc: "2.0", id: message.id, result: toolResult(response) });
+      const response = await toolCall(message.params?.name, message.params?.arguments, message.id);
+      return reply(message, {
+        jsonrpc: "2.0",
+        id: message.id,
+        result: toolResult(message.params.name, response),
+      });
     } catch (error) {
       return reply(message, errorResponse(message.id, error.rpcCode || -32603, error.message));
     }

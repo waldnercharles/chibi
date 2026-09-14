@@ -2,6 +2,7 @@
 #include "editor/panels/shader_inline.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/model/local.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -29,26 +30,58 @@ static int ed_node_on_top(const editor *e, const node *n)
     return ed_node_dragged(e, n) || ed_node_selected(e, n) || e->front_node == n;
 }
 
-static float ed_input_editor_column(const graph *g, const node *n)
+static void ed_draw_advanced_inputs(editor *e, ed_node_view *view)
 {
-    if (ed_node_appearance(n->desc).symbol) {
-        return ED_PIN_RADIUS + 9.0f;
+    node *n = view->n;
+    if (!ed_node_has_advanced_inputs(n)) {
+        return;
     }
-
-    float width = 0.0f;
-    for (int p = 0; p < n->input_count; p++) {
-        if (!ed_pin_visible(g, n, ED_PIN_INPUT, p)) {
-            continue;
-        }
-        if (!ed_pin_editable(g, n, ED_PIN_INPUT, p)) {
-            continue;
-        }
-        char label[256];
-        ed_pin_label(n, &n->input_pins[p], label, sizeof label);
-        width = ed_max(width, ImGui_CalcTextSize(label).x);
+    int first = 0;
+    while (first < n->input_count && n->input_pins[first].kind == PIN_EXEC) {
+        first++;
     }
-    /* ed_node_dimensions already reserves this widest label plus ED_VALUE_WIDTH. */
-    return ED_PIN_RADIUS + 9.0f + width;
+    assert(first < n->input_count);
+    float row = ed_row_height(n) * e->zoom;
+    ImVec2 pos = { view->min.x + ED_PAD * e->zoom,
+                   e->pins[view->input_first + first].pos.y - row * .5f -
+                       ed_node_options_height(n) * e->zoom };
+    ImGui_SetCursorScreenPos(pos);
+    ImGui_PushIDPtr(n);
+    ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
+    ImVec2 size = { view->max.x - view->min.x - 2 * ED_PAD * e->zoom, row };
+    if (ImGui_InvisibleButton("advanced.inputs", size, ImGuiButtonFlags_EnableNav)) {
+        ed_snapshot_before(e);
+        n->show_advanced = !n->show_advanced;
+    }
+    char id[96];
+    snprintf(id, sizeof id, "graph.advanced.%llu", (unsigned long long)n->id);
+    editor_ui_track_item(id);
+    bool hovered = ImGui_IsItemHovered(0);
+    e->controls_hovered |= hovered || ImGui_IsItemActive();
+    ImDrawList *draw = ImGui_GetWindowDrawList();
+    if (hovered) {
+        ImDrawList_AddRectFilledEx(
+            draw,
+            pos,
+            ed_add(pos, size),
+            ImGui_GetColorU32(ImGuiCol_FrameBgHovered),
+            4 * e->zoom,
+            0
+        );
+    }
+    ImVec2 text = { pos.x + 4 * e->zoom, pos.y + (row - ImGui_GetFontSize()) * .5f };
+    ImGui_RenderArrowEx(
+        draw,
+        text,
+        ImGui_GetColorU32(ImGuiCol_Text),
+        n->show_advanced ? ImGuiDir_Down : ImGuiDir_Right,
+        .8f
+    );
+    text.x += ImGui_GetFontSize() + 4 * e->zoom;
+    ImDrawList_AddText(draw, text, ImGui_GetColorU32(ImGuiCol_Text), "Advanced inputs");
+    ImGui_RenderNavCursor((ImRect){ pos, ed_add(pos, size) }, ImGui_GetItemID());
+    ImGui_PopFont();
+    ImGui_PopID();
 }
 
 static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
@@ -57,21 +90,26 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
     if (graph_node_is_inline(e->active_graph, n)) {
         return;
     }
-    float input_column = ed_input_editor_column(e->active_graph, n) * e->zoom;
     for (int p = 0; p < n->input_count; p++) {
         bool inline_source = ed_inline_source_for(e, n, p, NULL, NULL);
         if (!ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, p) && !inline_source) {
             continue;
         }
         ed_pin_view *pin = &e->pins[view->input_first + p];
-        ImVec2 pos = ed_add(
-            pin->pos,
-            (ImVec2){ input_column, -ImGui_GetFrameHeight() * e->zoom * 0.5f }
-        );
-        if (!inline_source) {
-            ed_begin_value_edit(e, n, ED_PIN_INPUT, p, pos);
+        int offset = ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, p) - 1;
+        const pin_spec *spec = &n->input_pins[p];
+        if (ed_vector_width(spec) && !(spec->flags & PIN_FLAG_COLOR) &&
+            (!inline_source || ed_vector_source(e, n, p))) {
+            offset = 1;
         }
-        ed_draw_value_editor(e, n, ED_PIN_INPUT, p, pos);
+        ImVec2 pos = { view->min.x + ED_PAD * e->zoom,
+                       pin->pos.y - ImGui_GetFrameHeight() * e->zoom * .5f +
+                           offset * ed_row_height(n) * e->zoom };
+        float width = view->max.x - view->min.x - 2 * ED_PAD * e->zoom;
+        ImGui_SetCursorScreenPos(pos);
+        ImGui_BeginGroup();
+        ed_draw_value_editor(e, n, ED_PIN_INPUT, p, (ed_value_layout){ pos, width });
+        ImGui_EndGroup();
         char id[96];
         snprintf(id, sizeof id, "graph.input.%llu.%d", (unsigned long long)n->id, p);
         editor_ui_track_item(id);
@@ -85,31 +123,24 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
             continue;
         }
         ed_pin_view *pin = &e->pins[view->output_first + p];
-        char pin_label[256];
-        ed_pin_label(n, &n->output_pins[p], pin_label, sizeof pin_label);
-        ImVec2 label = ed_text_size(e, pin_label);
-        ImVec2 pos = { pin->pos.x - (ED_PIN_RADIUS + 9.0f) * e->zoom - label.x -
-                           ed_pin_value_width(e->active_graph, n, ED_PIN_OUTPUT, p) *
-                               e->zoom,
-                       pin->pos.y - ImGui_GetFrameHeight() * e->zoom * 0.5f };
-        ed_begin_value_edit(e, n, ED_PIN_OUTPUT, p, pos);
-        ed_draw_value_editor(e, n, ED_PIN_OUTPUT, p, pos);
+        ImVec2 pos = { view->min.x + ED_PAD * e->zoom,
+                       pin->pos.y - ImGui_GetFrameHeight() * e->zoom * .5f +
+                           (ed_row_height(n) + ed_shader_inline_height(n)) * e->zoom };
+        float width = view->max.x - view->min.x - 2 * ED_PAD * e->zoom;
+        ed_draw_value_editor(e, n, ED_PIN_OUTPUT, p, (ed_value_layout){ pos, width });
         if (ImGui_IsItemClicked()) {
             ed_select_node(e, n, ed_selection_modifier(ImGui_GetIO()));
         }
         e->controls_hovered |= ImGui_IsItemHovered(0) || ImGui_IsItemActive();
     }
     ed_draw_shader_inline(e, n, view->min, view->max);
+    ed_draw_advanced_inputs(e, view);
 }
 
-void ed_draw_controls(editor *e, int on_top)
+static void ed_draw_controls_clipped(editor *e, ed_node_view *view)
 {
     ImGui_PushClipRect(e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
-    for (int i = 0; i < acount(e->views); i++) {
-        if (ed_node_on_top(e, e->views[i].n) == on_top) {
-            ed_draw_controls_for_node(e, &e->views[i]);
-        }
-    }
+    ed_draw_controls_for_node(e, view);
     ImGui_PopClipRect();
 }
 
@@ -327,7 +358,7 @@ static ed_symbol_bounds ed_math_symbol_bounds(ImFont *font, float size, const ch
     return bounds;
 }
 
-static void ed_draw_math_symbol(
+static ed_symbol_bounds ed_draw_math_symbol(
     const editor *e,
     ImFont *font,
     ImDrawList *dl,
@@ -337,25 +368,29 @@ static void ed_draw_math_symbol(
 )
 {
     assert(font);
-    float size = (max.y - min.y) * 1.15f;
-    float available_width = max.x - min.x - 16.0f * e->zoom;
+    float size = 32.0f * e->zoom;
     ed_symbol_bounds bounds = ed_math_symbol_bounds(font, size, symbol);
     float width = bounds.max_x - bounds.min_x;
-    if (width > available_width) {
-        size *= available_width / width;
-        bounds = ed_math_symbol_bounds(font, size, symbol);
-    }
+    float height = bounds.max_y - bounds.min_y;
+    float scale = 0.62f * ed_min((max.x - min.x) / width, (max.y - min.y) / height);
+    size *= scale;
+    bounds = ed_math_symbol_bounds(font, size, symbol);
     ImVec2 center = { (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f };
     ImVec2 pos = { center.x - (bounds.min_x + bounds.max_x) * 0.5f,
                    center.y - (bounds.min_y + bounds.max_y) * 0.5f };
-    ImU32 color = IM_COL32(210, 216, 228, 52);
+    ImU32 color = IM_COL32(210, 216, 228, 140);
     ImDrawList_AddTextImFontPtr(dl, font, size, pos, color, symbol);
+    return (ed_symbol_bounds){ pos.x + bounds.min_x,
+                               pos.y + bounds.min_y,
+                               pos.x + bounds.max_x,
+                               pos.y + bounds.max_y };
 }
 
 static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
 {
     v->draw_frame = ImGui_GetFrameCount();
     v->drawn = (editor_node_ui){ 0 };
+    v->symbol_min = v->symbol_max = (ImVec2){ 0 };
     node *n = v->n;
     if (graph_node_is_inline(e->active_graph, n)) {
         return;
@@ -367,7 +402,6 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
     v->drawn.left = v->min.x;
     v->drawn.right = v->max.x;
     v->drawn.title_bottom = v->min.y + v->title_height;
-    v->drawn.compact = appearance.compact;
     v->drawn.top = v->min.y;
     v->drawn.bottom = v->max.y;
     v->drawn.selected = selected;
@@ -388,38 +422,28 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         title = ed_dim_color(title, 0.60f);
     }
     ImDrawList_AddRectFilledEx(dl, v->min, v->max, bg, 5.0f * e->zoom, ImDrawFlags_RoundCornersAll);
-    if (appearance.symbol) {
-        ImDrawList_AddRectEx(
-            dl,
-            v->min,
-            v->max,
-            border,
-            5.0f * e->zoom,
-            ImDrawFlags_RoundCornersAll,
-            (selected ? 2.5f : 1.0f) * e->zoom
-        );
-        ImVec2 center = { (v->min.x + v->max.x) * 0.5f, (v->min.y + v->max.y) * 0.5f };
-        v->drawn.title_x = center.x;
-        v->drawn.title_y = center.y;
-        ed_draw_math_symbol(e, e->math_font, dl, v->min, v->max, appearance.symbol);
-        for (int i = 0; i < n->input_count; i++) {
-            ed_pin_view *pin = &e->pins[v->input_first + i];
-            ed_count_drawn_pin(v, pin, &n->input_pins[i], dl);
-            ed_draw_pin(e, dl, pin, &n->input_pins[i]);
+    float local_y = v->max.y;
+    for (int p = n->output_count - 1; p >= 0; p--) {
+        const graph_local *local = graph_output_local(e->active_graph, n, p);
+        if (local) {
+            local_y -= (ImGui_GetTextLineHeight() + 4.0f) * e->zoom;
+            char marker[192];
+            snprintf(marker, sizeof marker, "let %s", local->name);
+            ed_draw_text(
+                e,
+                dl,
+                (ImVec2){ v->min.x + ED_PAD * e->zoom, local_y },
+                IM_COL32(151, 193, 210, 255),
+                marker
+            );
         }
-        for (int i = 0; i < n->output_count; i++) {
-            ed_pin_view *pin = &e->pins[v->output_first + i];
-            ed_count_drawn_pin(v, pin, &n->output_pins[i], dl);
-            ed_draw_pin(e, dl, pin, &n->output_pins[i]);
-        }
-        return;
     }
 
     ImDrawList_AddRectFilledEx(
         dl,
         v->min,
         (ImVec2){ v->max.x, v->min.y + v->title_height },
-        appearance.compact ? bg : IM_COL32(48, 50, 55, 255),
+        IM_COL32(48, 50, 55, 255),
         5.0f * e->zoom,
         ImDrawFlags_RoundCornersTop
     );
@@ -444,13 +468,19 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
     ImVec2 icon_max = { title_min.x + inset - 6.0f * e->zoom,
                         title_min.y + v->title_height };
     if (appearance.symbol) {
-        ed_draw_text(
+        float padding = 4.0f * e->zoom;
+        ImVec2 symbol_min = { title_min.x, title_min.y + padding };
+        ImVec2 symbol_max = { icon_max.x, icon_max.y - padding };
+        ed_symbol_bounds symbol = ed_draw_math_symbol(
             e,
+            e->math_font,
             dl,
-            ed_add(title_min, (ImVec2){ 0.0f, ed_node_title_padding(n) * e->zoom }),
-            IM_COL32(235, 238, 245, 255),
+            symbol_min,
+            symbol_max,
             appearance.symbol
         );
+        v->symbol_min = (ImVec2){ symbol.min_x, symbol.min_y };
+        v->symbol_max = (ImVec2){ symbol.max_x, symbol.max_y };
     } else {
         ed_draw_centered_icon(
             dl,
@@ -484,14 +514,24 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
             ed_pin_view *pin = &e->pins[v->input_first + row];
             ed_count_drawn_pin(v, pin, spec, dl);
             ed_draw_pin(e, dl, pin, spec);
-            ed_draw_text(
-                e,
-                dl,
-                ed_add(pin->pos, (ImVec2){ (ED_PIN_RADIUS + 5.0f) * e->zoom, -ed_font_size(e) * 0.5f }),
-                IM_COL32(220, 224, 232, 255),
-                pin_label
-            );
+            bool label_in_control = ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, row) &&
+                                    ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, row) ==
+                                        1;
+            if (!label_in_control) {
+                ed_draw_text(
+                    e,
+                    dl,
+                    ed_add(pin->pos, (ImVec2){ (ED_PIN_RADIUS + 5.0f) * e->zoom, -ed_font_size(e) * 0.5f }),
+                    IM_COL32(220, 224, 232, 255),
+                    pin_label
+                );
+            }
             const char *value = eval_view_input(e->ev, e->active_graph, n, row);
+            if (label_in_control && value && !strcmp(value, "Self") &&
+                (spec->flags & PIN_FLAG_DEFAULT_SELF) &&
+                ed_point_in_rect(pin->pos, ImDrawList_GetClipRectMin(dl), ImDrawList_GetClipRectMax(dl))) {
+                v->drawn.self_labels++;
+            }
             if (value && !ed_pin_editable(e->active_graph, n, ED_PIN_INPUT, row)) {
                 ImVec2 label = ed_text_size(e, pin_label);
                 ImVec2 at = ed_add(
@@ -585,6 +625,7 @@ void ed_draw_canvas(editor *e)
     for (int i = 0; i < acount(e->views); i++) {
         if (!ed_node_on_top(e, e->views[i].n)) {
             ed_draw_node(e, dl, &e->views[i]);
+            ed_draw_controls_clipped(e, &e->views[i]);
         }
     }
 
@@ -610,6 +651,7 @@ void ed_draw_front_nodes(editor *e)
     for (int i = 0; i < acount(e->views); i++) {
         if (ed_node_on_top(e, e->views[i].n)) {
             ed_draw_node(e, dl, &e->views[i]);
+            ed_draw_controls_clipped(e, &e->views[i]);
         }
     }
     ImDrawList_PopClipRect(dl);

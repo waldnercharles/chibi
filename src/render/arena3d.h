@@ -61,6 +61,7 @@ bool render_arena_preview(
     render_arena *arena,
     const behavior_asset *asset,
     const render_arena_camera *camera,
+    const char *parameters_json,
     float time
 );
 

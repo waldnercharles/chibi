@@ -271,9 +271,6 @@ static void draw_event_overview(app_scene_authoring *scene, const behavior_asset
     int position = current_index_asset(scene, ASSET_INDEX_EVENT, asset->name);
     ImGui_TextUnformatted(asset->name);
     editor_ui_track_item("navigator.event.title");
-    if (asset->description && asset->description[0]) {
-        ImGui_TextWrapped("%s", asset->description);
-    }
     ImGui_SeparatorText("Signature");
     if (!acount(asset->variables)) {
         ImGui_TextDisabled("No payload fields");
@@ -330,9 +327,6 @@ static void draw_library_overview(app_scene_authoring *scene, const behavior_ass
     int position = current_index_asset(scene, ASSET_INDEX_LIBRARY, asset->name);
     ImGui_TextUnformatted(asset->name);
     editor_ui_track_item("navigator.library.title");
-    if (asset->description && asset->description[0]) {
-        ImGui_TextWrapped("%s", asset->description);
-    }
     ImGui_SeparatorText("Functions");
     int functions = 0;
     for (int i = 0; i < acount(asset->graphs); i++) {

@@ -1,0 +1,413 @@
+#include "automation/asset_write.h"
+#include "automation/controller.h"
+
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static void join_path(char *out, size_t size, const char *parent, const char *name)
+{
+    int written = snprintf(out, size, "%s/%s", parent, name);
+    assert(written >= 0 && (size_t)written < size);
+}
+
+static void make_root_and_content(char *root)
+{
+    strcpy(root, "/tmp/chibi-asset-write-XXXXXX");
+    assert(mkdtemp(root));
+
+    char content[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    assert(mkdir(content, 0755) == 0);
+}
+
+static void make_project(char *root)
+{
+    make_root_and_content(root);
+    char content[PATH_MAX], behaviors[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    join_path(behaviors, sizeof behaviors, content, "behaviors");
+    assert(mkdir(behaviors, 0755) == 0);
+}
+
+static void write_all(int fd, const char *text, size_t bytes)
+{
+    size_t written = 0;
+    while (written < bytes) {
+        ssize_t count = write(fd, text + written, bytes - written);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        assert(count > 0);
+        written += (size_t)count;
+    }
+}
+
+static void write_file(const char *path, const char *text, size_t bytes)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    assert(fd >= 0);
+    write_all(fd, text, bytes);
+    assert(close(fd) == 0);
+}
+
+static void assert_file_equals(const char *path, const char *expected, size_t bytes)
+{
+    int fd = open(path, O_RDONLY);
+    assert(fd >= 0);
+    struct stat info;
+    assert(fstat(fd, &info) == 0);
+    assert(info.st_size >= 0 && (uintmax_t)info.st_size == bytes);
+
+    char buffer[8192];
+    size_t offset = 0;
+    while (offset < bytes) {
+        size_t request = bytes - offset;
+        if (request > sizeof buffer) {
+            request = sizeof buffer;
+        }
+        ssize_t count = read(fd, buffer, request);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        assert(count > 0);
+        assert((size_t)count <= request);
+        assert(!memcmp(buffer, expected + offset, (size_t)count));
+        offset += (size_t)count;
+    }
+    char extra;
+    ssize_t count = read(fd, &extra, 1);
+    assert(count == 0);
+    assert(close(fd) == 0);
+}
+
+static void assert_path_missing(const char *path)
+{
+    struct stat info;
+    assert(lstat(path, &info) != 0);
+    assert(errno == ENOENT);
+}
+
+static void assert_symlink(const char *path)
+{
+    struct stat info;
+    assert(lstat(path, &info) == 0);
+    assert(S_ISLNK(info.st_mode));
+}
+
+static void hash_text(char *out, size_t size, const char *text)
+{
+    int written = snprintf(
+        out,
+        size,
+        "%016llx",
+        (unsigned long long)automation_content_hash(text, strlen(text))
+    );
+    assert(written == 16 && (size_t)written < size);
+}
+
+static char *make_payload(const char *label, size_t bytes)
+{
+    assert(bytes > strlen(label) + 2);
+    char *text = malloc(bytes + 1);
+    assert(text);
+    size_t label_bytes = strlen(label);
+    memcpy(text, label, label_bytes);
+    for (size_t i = label_bytes; i + 1 < bytes; i++) {
+        text[i] = (char)('A' + (i % 23));
+    }
+    text[bytes - 1] = '\n';
+    text[bytes] = '\0';
+    return text;
+}
+
+static int publish_child(const char *root, const char *text, const char *expected_hash, int gate)
+{
+    char release;
+    ssize_t count;
+    do {
+        count = read(gate, &release, 1);
+    } while (count < 0 && errno == EINTR);
+    if (count != 1) {
+        _exit(3);
+    }
+    close(gate);
+
+    char error[160] = { 0 };
+    int status = automation_asset_publish(
+        root,
+        "behaviors",
+        "Concurrent.json",
+        text,
+        expected_hash,
+        false,
+        error,
+        sizeof error
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        _exit(0);
+    }
+    if (status == CHIBI_AUTOMATION_CONFLICT) {
+        _exit(1);
+    }
+    _exit(2);
+}
+
+static void assert_child_result(pid_t child, int *successes, int *conflicts)
+{
+    int status = 0;
+    assert(waitpid(child, &status, 0) == child);
+    assert(WIFEXITED(status));
+    if (WEXITSTATUS(status) == 0) {
+        (*successes)++;
+    } else if (WEXITSTATUS(status) == 1) {
+        (*conflicts)++;
+    } else {
+        assert(false);
+    }
+}
+
+static void remove_project(const char *root)
+{
+    char content[PATH_MAX], behaviors[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    join_path(behaviors, sizeof behaviors, content, "behaviors");
+    assert(rmdir(behaviors) == 0);
+    assert(rmdir(content) == 0);
+    assert(rmdir(root) == 0);
+}
+
+static void test_concurrent_replacements(const char *root, const char *initial)
+{
+    char content[PATH_MAX], behaviors[PATH_MAX], asset[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    join_path(behaviors, sizeof behaviors, content, "behaviors");
+    join_path(asset, sizeof asset, behaviors, "Concurrent.json");
+    write_file(asset, initial, strlen(initial));
+
+    char expected_hash[32];
+    hash_text(expected_hash, sizeof expected_hash, initial);
+    char *first = make_payload("writer-a:", 65536);
+    char *second = make_payload("writer-b:", 65536);
+
+    int gate[2];
+    assert(pipe(gate) == 0);
+    pid_t first_child = fork();
+    assert(first_child >= 0);
+    if (first_child == 0) {
+        close(gate[1]);
+        publish_child(root, first, expected_hash, gate[0]);
+    }
+    pid_t second_child = fork();
+    assert(second_child >= 0);
+    if (second_child == 0) {
+        close(gate[1]);
+        publish_child(root, second, expected_hash, gate[0]);
+    }
+    close(gate[0]);
+    char release[2] = { 'a', 'b' };
+    write_all(gate[1], release, sizeof release);
+    assert(close(gate[1]) == 0);
+
+    int successes = 0, conflicts = 0;
+    assert_child_result(first_child, &successes, &conflicts);
+    assert_child_result(second_child, &successes, &conflicts);
+    assert(successes == 1 && conflicts == 1);
+
+    struct stat info;
+    assert(stat(asset, &info) == 0);
+    assert((size_t)info.st_size == strlen(first));
+    char *final = malloc((size_t)info.st_size + 1);
+    assert(final);
+    int fd = open(asset, O_RDONLY);
+    assert(fd >= 0);
+    size_t offset = 0;
+    while (offset < (size_t)info.st_size) {
+        ssize_t count = read(fd, final + offset, (size_t)info.st_size - offset);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        assert(count > 0);
+        offset += (size_t)count;
+    }
+    final[offset] = '\0';
+    assert(close(fd) == 0);
+    assert(!strcmp(final, first) || !strcmp(final, second));
+    free(final);
+    free(first);
+    free(second);
+    assert(unlink(asset) == 0);
+}
+
+static void test_replacement_and_create(const char *root, const char *initial)
+{
+    char content[PATH_MAX], behaviors[PATH_MAX], asset[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    join_path(behaviors, sizeof behaviors, content, "behaviors");
+
+    join_path(asset, sizeof asset, behaviors, "Replacement.json");
+    write_file(asset, initial, strlen(initial));
+    char stale_hash[32], valid_hash[32];
+    hash_text(stale_hash, sizeof stale_hash, "different content");
+    hash_text(valid_hash, sizeof valid_hash, initial);
+    char replacement[128];
+    snprintf(replacement, sizeof replacement, "replacement:%s\n", initial);
+    char error[160] = { 0 };
+    assert(
+        automation_asset_publish(root, "behaviors", "Replacement.json", replacement, stale_hash, false, error, sizeof error) ==
+        CHIBI_AUTOMATION_CONFLICT
+    );
+    assert_file_equals(asset, initial, strlen(initial));
+    assert(
+        automation_asset_publish(root, "behaviors", "Replacement.json", replacement, valid_hash, false, error, sizeof error) ==
+        CHIBI_AUTOMATION_OK
+    );
+    assert_file_equals(asset, replacement, strlen(replacement));
+    assert(unlink(asset) == 0);
+
+    join_path(asset, sizeof asset, behaviors, "CreateCollision.json");
+    const char *existing = "existing-create\n";
+    const char *attempt = "should-not-replace\n";
+    write_file(asset, existing, strlen(existing));
+    assert(
+        automation_asset_publish(root, "behaviors", "CreateCollision.json", attempt, NULL, true, error, sizeof error) ==
+        CHIBI_AUTOMATION_CONFLICT
+    );
+    assert_file_equals(asset, existing, strlen(existing));
+    assert(unlink(asset) == 0);
+
+    const char *created = "created-asset-complete\n";
+    assert(
+        automation_asset_publish(root, "behaviors", "Created.json", created, NULL, true, error, sizeof error) ==
+        CHIBI_AUTOMATION_OK
+    );
+    join_path(asset, sizeof asset, behaviors, "Created.json");
+    assert_file_equals(asset, created, strlen(created));
+    assert(unlink(asset) == 0);
+}
+
+static void test_invalid_names(const char *root)
+{
+    char error[160] = { 0 };
+    const char *names[] = { ".authoring.lock", ".authoring-123.tmp" };
+    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
+        assert(
+            automation_asset_publish(root, "behaviors", names[i], "hidden\n", NULL, true, error, sizeof error) ==
+            CHIBI_AUTOMATION_INVALID_REQUEST
+        );
+    }
+    assert(
+        automation_asset_publish(root, "bad\\folder", "Safe.json", "invalid-folder\n", NULL, true, error, sizeof error) ==
+        CHIBI_AUTOMATION_INVALID_REQUEST
+    );
+}
+
+static void test_content_symlink(void)
+{
+    char root[] = "/tmp/chibi-asset-write-content-link-XXXXXX";
+    make_root_and_content(root);
+    char content[PATH_MAX], real_content[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    assert(rmdir(content) == 0);
+    join_path(real_content, sizeof real_content, root, "real-content");
+    assert(mkdir(real_content, 0755) == 0);
+    assert(symlink("real-content", content) == 0);
+
+    char error[160] = { 0 };
+    assert(
+        automation_asset_publish(root, "behaviors", "Linked.json", "must-not-write\n", NULL, true, error, sizeof error) ==
+        CHIBI_AUTOMATION_IO_ERROR
+    );
+    assert_symlink(content);
+    char target[PATH_MAX];
+    join_path(target, sizeof target, real_content, "behaviors");
+    assert_path_missing(target);
+    assert(unlink(content) == 0);
+    assert(rmdir(real_content) == 0);
+    assert(rmdir(root) == 0);
+}
+
+static void test_folder_symlink(void)
+{
+    char root[] = "/tmp/chibi-asset-write-folder-link-XXXXXX";
+    make_root_and_content(root);
+    char content[PATH_MAX], folder[PATH_MAX], real_folder[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    join_path(real_folder, sizeof real_folder, root, "real-folder");
+    assert(mkdir(real_folder, 0755) == 0);
+    join_path(folder, sizeof folder, content, "behaviors");
+    assert(symlink("../real-folder", folder) == 0);
+
+    char error[160] = { 0 };
+    assert(
+        automation_asset_publish(root, "behaviors", "Linked.json", "must-not-write\n", NULL, true, error, sizeof error) ==
+        CHIBI_AUTOMATION_IO_ERROR
+    );
+    assert_symlink(folder);
+    char target[PATH_MAX];
+    join_path(target, sizeof target, real_folder, "Linked.json");
+    assert_path_missing(target);
+    assert(unlink(folder) == 0);
+    assert(rmdir(real_folder) == 0);
+    assert(rmdir(content) == 0);
+    assert(rmdir(root) == 0);
+}
+
+static void test_target_symlink(void)
+{
+    char root[] = "/tmp/chibi-asset-write-target-link-XXXXXX";
+    make_project(root);
+    char content[PATH_MAX], folder[PATH_MAX], target[PATH_MAX], other[PATH_MAX];
+    join_path(content, sizeof content, root, "content");
+    join_path(folder, sizeof folder, content, "behaviors");
+    join_path(target, sizeof target, folder, "Linked.json");
+    join_path(other, sizeof other, folder, "Other.json");
+    const char *original = "target-through-link\n";
+    write_file(other, original, strlen(original));
+    assert(symlink("Other.json", target) == 0);
+
+    char expected_hash[32], error[160] = { 0 };
+    hash_text(expected_hash, sizeof expected_hash, original);
+    assert(
+        automation_asset_publish(
+            root,
+            "behaviors",
+            "Linked.json",
+            "must-not-follow\n",
+            expected_hash,
+            false,
+            error,
+            sizeof error
+        ) == CHIBI_AUTOMATION_IO_ERROR
+    );
+    assert_symlink(target);
+    assert_file_equals(other, original, strlen(original));
+    assert(unlink(target) == 0);
+    assert(unlink(other) == 0);
+    remove_project(root);
+}
+
+void test_automation_asset_write(void)
+{
+    char root[] = "/tmp/chibi-asset-write-XXXXXX";
+    make_project(root);
+    const char *initial = "{\"value\":\"original\"}\n";
+    test_concurrent_replacements(root, initial);
+    test_replacement_and_create(root, initial);
+    test_invalid_names(root);
+    remove_project(root);
+
+    test_content_symlink();
+    test_folder_symlink();
+    test_target_symlink();
+    puts("automation asset publication: complete bytes, CAS, collisions, and symlink guards pass");
+}

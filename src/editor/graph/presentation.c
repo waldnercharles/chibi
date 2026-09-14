@@ -13,6 +13,7 @@
 #include <imgui/dcimgui_internal.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 const char ED_ICON_WARNING[] = "\xef\x81\xb1";
 const char ED_ICON_GRAPH[] = "\xef\x86\xb2";
@@ -76,12 +77,27 @@ bool ed_is_graph_call(const node *n)
 ed_node_presentation ed_node_appearance(const node_desc *desc)
 {
     if (desc == &NODE_CallMacro) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SEND, false };
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SEND };
     }
     if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SITEMAP, false };
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SITEMAP };
     }
     const char *symbol = NULL;
+    static const struct
+    {
+        const char *name;
+        const char *symbol;
+    } shader_symbols[] = {
+        { "Shader Add", "+" },
+        { "Shader Subtract", "−" },
+        { "Shader Multiply", "×" },
+        { "Shader Divide", "÷" },
+    };
+    for (int i = 0; i < (int)(sizeof shader_symbols / sizeof *shader_symbols); i++) {
+        if (!strcmp(desc->name, shader_symbols[i].name)) {
+            return (ed_node_presentation){ shader_symbols[i].symbol, 0 };
+        }
+    }
     switch (desc->jit_kind) {
         case NODE_JIT_ADD: symbol = "+"; break;
         case NODE_JIT_SUB: symbol = "−"; break;
@@ -117,29 +133,29 @@ ed_node_presentation ed_node_appearance(const node_desc *desc)
         symbol = "TAN";
     }
     if (symbol) {
-        return (ed_node_presentation){ symbol, 0, true };
+        return (ed_node_presentation){ symbol, 0 };
     }
     if (desc->flow_kind == NODE_FLOW_BRANCH) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK, true };
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK };
     }
     if (desc->pure_kind == NODE_PURE_READ) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_EYE, false };
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_EYE };
     }
     if (desc->access && desc->access->write_count) {
-        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_PENCIL, false };
+        return (ed_node_presentation){ NULL, EDITOR_ICON_FA_PENCIL };
     }
     switch (desc->display_class) {
         case NODE_DISPLAY_EVENT:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_BOLT, false };
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_BOLT };
         case NODE_DISPLAY_FLOW:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK, false };
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE_FORK };
         case NODE_DISPLAY_VARIABLE:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_DATABASE, false };
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_DATABASE };
         case NODE_DISPLAY_LITERAL:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE, false };
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_CODE };
         case NODE_DISPLAY_PURE:
         case NODE_DISPLAY_FUNCTION:
-            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_COG, false };
+            return (ed_node_presentation){ NULL, EDITOR_ICON_FA_COG };
     }
     assert(false);
     return (ed_node_presentation){ 0 };
@@ -162,17 +178,17 @@ const char *ed_node_prefix(const node_desc *desc, char icon[4])
 float ed_node_title_inset(const node *n)
 {
     const char *symbol = ed_node_appearance(n->desc).symbol;
-    return symbol ? ImGui_CalcTextSize(symbol).x + 8.0f : 20.0f;
+    return symbol ? ed_max(ImGui_CalcTextSize(symbol).x, 20.0f) + 8.0f : 20.0f;
 }
 
-float ed_node_title_padding(const node *n)
+float ed_node_title_padding(const node *)
 {
-    return ed_node_appearance(n->desc).compact ? 3.0f : ED_TITLE_PAD;
+    return ED_TITLE_PAD;
 }
 
-float ed_node_body_padding(const node *n)
+float ed_node_body_padding(const node *)
 {
-    return ed_node_appearance(n->desc).compact ? 4.0f : ED_PAD;
+    return ED_PAD;
 }
 
 const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)

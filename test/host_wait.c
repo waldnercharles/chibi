@@ -1,4 +1,6 @@
+#include "graph/model/registry.h"
 #include "graph/runtime/flow.h"
+#include "graph/runtime/instance.h"
 
 #include <assert.h>
 #if defined(__clang__)
@@ -83,8 +85,69 @@ static void test_host_wait_loop()
     graph_free(&g);
 }
 
+static int wake_older(node *, flow_context *)
+{
+    assert(received == 0);
+    assert(flow_host_complete(pending, 1, (pin_value){ .type = PIN_I32, .i = 42 }));
+    return FLOW_OK;
+}
+static int after_older(node *, flow_context *)
+{
+    assert(received == 42);
+    received = 99;
+    return FLOW_OK;
+}
+static void scheduler_host_fifo()
+{
+    pin_spec exec = { .name = "In", .kind = PIN_EXEC };
+    node_desc wait_desc = request_desc;
+    wait_desc.inputs = &exec;
+    wait_desc.input_count = 1;
+    node_desc wake_desc = { .name = "WakeOlder",
+                            .inputs = &exec,
+                            .input_count = 1,
+                            .flow_kind = NODE_FLOW_CUSTOM,
+                            .flow = wake_older };
+    node_desc late_desc = { .name = "AfterOlder",
+                            .inputs = &exec,
+                            .input_count = 1,
+                            .flow_kind = NODE_FLOW_CUSTOM,
+                            .flow = after_older };
+    behavior_asset *a = behavior_asset_new("SchedulerHostFIFO");
+    graph *g = a->graph;
+    node *entries[3];
+    const char *names[] = { "Wait", "Wake", "Late" };
+    const node_desc *descs[] = { &wait_desc, &wake_desc, &late_desc };
+    for (int i = 0; i < 3; i++) {
+        node *event = graph_add_node(g, registry_node_by_name("Event"));
+        entries[i] = event;
+        assert(graph_set_event_name(g, event, names[i]) == 0);
+        node *work = graph_add_node(g, descs[i]);
+        assert(graph_connect_exec(g, event, 0, work, 0, 0) == 0);
+        if (i == 0) {
+            node *sink = graph_add_node(g, &receive_desc);
+            assert(graph_connect_exec(g, work, 0, sink, 0, 0) == 0);
+            assert(graph_connect_data(g, work, 1, sink, 1) == 0);
+        }
+    }
+    behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(bi, 0);
+    received = 0;
+    flow_error error = { 0 };
+    flow_run *wait = behavior_instance_dispatch(bi, "Wait", (flow_inputs){ 0 }, &error);
+    assert(wait && flow_run_waiting_for_host(wait));
+    assert(behavior_instance_enqueue(bi, entries[1], (flow_inputs){ 0 }, &error));
+    assert(behavior_instance_enqueue(bi, entries[2], (flow_inputs){ 0 }, &error));
+    assert(behavior_instance_tick(bi, 0) == FLOW_OK);
+    assert(received == 99 && flow_run_status(wait) == FLOW_COMPLETED);
+    flow_host_release(pending);
+    behavior_instance_destroy(bi);
+    behavior_asset_free(a);
+}
+
 void test_host_wait()
 {
+    received = 0;
     graph g = { 0 };
     node *request = graph_add_node(&g, &request_desc);
     node *sink = graph_add_node(&g, &receive_desc);
@@ -151,4 +214,5 @@ void test_host_wait()
     flow_host_release(pending);
     graph_free(&g);
     test_host_wait_loop();
+    scheduler_host_fifo();
 }

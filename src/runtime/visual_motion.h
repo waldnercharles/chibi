@@ -12,5 +12,6 @@
 int game_visual_motion_tick(ecs_world *world, float delta);
 
 extern node_desc NODE_Set_Visual_Reaction;
+int game_visual_reaction_lower(struct behavior_lower_builder *builder, node *node, int pin);
 
 #endif

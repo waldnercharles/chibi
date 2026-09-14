@@ -1,9 +1,10 @@
 #include "graph/nodes/vector_nodes.h"
 
-#include "runtime/components.h"
 #include "support/arena.h"
 
 #include <assert.h>
+#include <cute_math.h>
+#include <cute_math3d.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -39,6 +40,7 @@ node_desc NODE_Normalize_Vector_2 = {
     .outputs = outputs,
     .pure_kind = NODE_PURE_CALL,
     .fn = normalize,
+    .jit_kind = NODE_JIT_V2_NORMALIZE,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "normalize direction unit length vector",
@@ -72,6 +74,7 @@ node_desc NODE_Direction_To = {
     .outputs = direction_outputs,
     .pure_kind = NODE_PURE_CALL,
     .fn = direction_to,
+    .jit_kind = NODE_JIT_V2_DIRECTION,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "direction target origin normalize unit vector",
@@ -98,6 +101,7 @@ node_desc NODE_Atan2 = {
     .outputs = angle_outputs,
     .pure_kind = NODE_PURE_CALL,
     .fn = atan2_value,
+    .jit_kind = NODE_JIT_ATAN2_F32,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Math/Vector",
     .keywords = "angle direction rotation radians",
@@ -153,15 +157,16 @@ static pin_value random_range_vector(const pin_value *inputs, int count, arena *
     double z = (double)rand() / ((double)RAND_MAX + 1);
     CF_V3 *result = arena_alloc(memory, sizeof *result);
     *result = (CF_V3){
-        (float)((double)min.x * (1 - x) + (double)max.x * x),
-        (float)((double)min.y * (1 - y) + (double)max.y * y),
-        (float)((double)min.z * (1 - z) + (double)max.z * z),
+        (float)fma((double)min.x, 1 - x, (double)max.x * x),
+        (float)fma((double)min.y, 1 - y, (double)max.y * y),
+        (float)fma((double)min.z, 1 - z, (double)max.z * z),
     };
     return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = result };
 }
 
 node_desc NODE_Random_Range_Vector = {
     .name = "Random Range Vector",
+    .jit_kind = NODE_JIT_RANDOM_VECTOR,
     .input_count = 2,
     .output_count = 1,
     .inputs = random_range_vector_inputs,

@@ -238,6 +238,14 @@ static bool material_parameter_writes(const behavior_asset *material, int id)
     render_shader_clear_world(world);
     render_shader_parameters(id, world, first, binding.parameters, a);
     ok &= a[0][1] == 1;
+    char edited[] = "{\"Tint\":[1,0,0]}";
+    render_shader_parameters(id, world, second, edited, b);
+    ok &= b[0][0] == 1 && b[0][1] == 0;
+    memcpy(edited, "{\"Tint\":[0,0,1]}", sizeof edited);
+    render_shader_parameters(id, world, second, edited, b);
+    ok &= b[0][0] == 0 && b[0][2] == 1;
+    render_shader_parameters(id, world, first, binding.parameters, a);
+    ok &= a[0][1] == 1 && a[0][2] == 0;
     behavior_instance_destroy(instance);
     behavior_asset_free(behavior);
     ecs_world_free(world);

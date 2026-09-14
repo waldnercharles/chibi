@@ -32,6 +32,7 @@ typedef enum
 
 typedef struct behavior_asset
 {
+    struct behavior_program *program; /* immutable compiled generation */
     uint64_t identity; /* Process-local ownership token for graph clipboard validation. */
     behavior_domain domain;
     float bounds[2];       /* Shape half extents in local units. */

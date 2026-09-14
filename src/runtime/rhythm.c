@@ -1,5 +1,6 @@
 #include "runtime/rhythm.h"
 
+#include "ecs/execution.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
 #include "runtime/generated.h"
@@ -10,21 +11,14 @@ bool game_rhythm_sample(ecs_world *world, double time, game_beat *beat)
 {
     GameRhythm settings = { 120, .18f };
     ecs_component_id component = GAME_COMPONENT_GameRhythm.id;
-    if (ecs_world_component(world, component)) {
-        ecs_query query;
-        if (ecs_query_begin(world, &query, &component, 1) != ECS_OK) {
-            return false;
-        }
-        ecs_entity entity;
-        int count = 0;
-        while (ecs_query_next(&query, &entity)) {
-            settings = *GAME_GameRhythm_get_const(world, entity);
-            count++;
-        }
-        ecs_query_end(&query);
-        if (count > 1) {
-            return false;
-        }
+    const ecs_execution_column
+        *column = ecs_execution_find_column((const ecs_execution_view *)world, component);
+    if (column && column->count > 1) {
+        return false;
+    }
+    if (column && column->count == 1) {
+        settings = *(const GameRhythm *)((const char *)column->data +
+                                         column->singleton * column->stride);
     }
     if (!isfinite(time) || !isfinite(settings.bpm) || settings.bpm <= 0 ||
         !isfinite(settings.pulse_width) || settings.pulse_width <= 0) {
@@ -43,12 +37,11 @@ static const char *read_rhythm(const eval_context *ctx, const pin_value *, arena
 {
     ecs_world *world = eval_context_service(ctx, "ecs.world");
     if (!world || !ctx->instance) {
-        return "Scene Rhythm requires a playing scene";
+        return GAME_RHYTHM_NO_SCENE;
     }
     game_beat beat;
     if (!game_rhythm_sample(world, ctx->instance->current_time, &beat)) {
-        return "Scene Rhythm needs one clock with positive finite BPM and "
-               "Pulse Width";
+        return GAME_RHYTHM_INVALID;
     }
     double values[] = { beat.phase, beat.pulse, beat.period, beat.duration };
     for (int i = 0; i < 4; i++) {
@@ -63,13 +56,15 @@ static pin_spec outputs[] = {
     { .name = "Period", .type = PIN_F64, .type_name = "double" },
     { .name = "Duration", .type = PIN_F64, .type_name = "double" },
 };
-static const node_access access = { .flags = NODE_EFFECT_WORLD_READ };
+static const node_access access = { .reads = &GAME_COMPONENT_GameRhythm.id,
+                                    .read_count = 1 };
 node_desc NODE_Scene_Rhythm = {
     .name = "Scene Rhythm",
     .output_count = 4,
     .outputs = outputs,
     .pure_kind = NODE_PURE_READ,
     .read_inputs = read_rhythm,
+    .lower = game_rhythm_lower,
     .category = "Time",
     .keywords = "beat tempo phase pulse rhythm music",
     .access = &access,

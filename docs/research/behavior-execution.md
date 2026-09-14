@@ -1,5 +1,9 @@
 # Behavior execution: current gap and implementation direction
 
+The implemented backend and validation commands are documented in
+[Compiled behavior execution](../compiled-behaviors.md). The audit below records
+the state before that migration.
+
 Source audit, September 9, 2026. This describes current behavior and proposed
 work; it does not claim that Arena behaviors have been compiled to native code.
 

@@ -844,8 +844,45 @@ static void asset_references_follow_authored_edits()
     puts("asset references PASS: typed relationships, pending edits, component changes and retained scene overrides");
 }
 
+static void physics_settings_checkpoint()
+{
+    checkpoint_fixture f = fixture_new();
+    game_physics_settings defaults = game_physics_configuration(f.live->physics);
+    game_physics_settings settings = defaults;
+    settings.workers = 8;
+    settings.substeps = 2;
+    settings.sleep = false;
+    settings.continuous = false;
+    settings.force_drive = true;
+    settings.contact_hertz = 15;
+    settings.contact_damping = 1;
+    assert(app_scene_authoring_set_physics(f.scene, settings) == 0);
+    assert(f.scene->scene_dirty);
+    f = roundtrip(&f);
+    assert(
+        game_physics_settings_equal(settings, game_physics_configuration(f.live->physics))
+    );
+    assert(replay_scene_edit(f.scene, false) == 0);
+    assert(
+        game_physics_settings_equal(defaults, game_physics_configuration(f.live->physics))
+    );
+    f = roundtrip(&f);
+    assert(replay_scene_edit(f.scene, true) == 0);
+    assert(
+        game_physics_settings_equal(settings, game_physics_configuration(f.live->physics))
+    );
+    game_physics_settings invalid = settings;
+    invalid.substeps = 0;
+    assert(app_scene_authoring_set_physics(f.scene, invalid) < 0);
+    assert(
+        game_physics_settings_equal(settings, game_physics_configuration(f.live->physics))
+    );
+    fixture_free(&f);
+}
+
 static int test_scene_checkpoint()
 {
+    physics_settings_checkpoint();
     asset_references_follow_authored_edits();
     shader_scene_load();
     scene_tabs_retain_authored_state();

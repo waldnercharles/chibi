@@ -3,6 +3,8 @@
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/nodes.h"
+#include "graph/runtime/behavior_data.h"
+#include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "graph/runtime/value_array.h"
@@ -259,7 +261,7 @@ static int fail(eval_context *ctx, node *n, int pin, int code, const char *messa
     return code;
 }
 
-static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
+static int eval_pure_function(const graph *g, node *n, arena *a, eval_context *ctx)
 {
     if (!ctx->instance) {
         return fail(ctx, n, 0, NODE_EVAL_INVALID, "pure function requires an instance");
@@ -287,6 +289,7 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
     nested.call_depth = ctx->call_depth + 1;
     nested.on_data_edge = ctx->on_data_edge;
     nested.on_data_edge_user = ctx->on_data_edge_user;
+    nested.observer = ctx->observer;
     eval_context_attach_runtime(&nested, target_runtime);
 
     runtime_node *caller_state = runtime_state(ctx, n);
@@ -327,6 +330,17 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
                 ctx->status = nested.status;
                 goto done;
             }
+            const node_desc *conversion = graph_input_conversion(target, ret, i);
+            if (conversion) {
+                value = conversion->fn(&value, 1, a);
+                pin_coerce(&value, &ret->input_pins[i]);
+                if (value.type != ret->input_pins[i].type ||
+                    (value.type == PIN_STRUCT && !value.ptr)) {
+                    result = fail(&nested, ret, i, NODE_EVAL_INVALID, "edge conversion failed");
+                    ctx->status = nested.status;
+                    goto done;
+                }
+            }
             pin_coerce(&value, &ret->input_pins[i]);
         } else {
             const char *error = eval_context_resolve_input(
@@ -354,13 +368,24 @@ static int eval_pure_function(graph *g, node *n, arena *a, eval_context *ctx)
     }
 
 done:
+    if (result && ctx->status.node != n) {
+        flow_run_data_call(ctx->observer, g, n, target, ctx->status.node);
+    }
     eval_context_free(&nested);
     runtime_store_free(target_runtime);
     return result;
 }
 
+static _Thread_local uint64_t oracle_calls;
+
+uint64_t eval_oracle_calls()
+{
+    return oracle_calls;
+}
+
 static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
 {
+    oracle_calls++;
     runtime_node *state = runtime_state(ctx, n);
     if (!state) {
         return fail(ctx, n, -1, NODE_EVAL_INVALID, "node runtime state is unavailable");
@@ -416,11 +441,19 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             }
         }
     }
+    return eval_prepared_node(n, a, ctx);
+}
+
+int eval_prepared_node(node *n, arena *a, eval_context *ctx)
+{
+    runtime_node *state = runtime_store_node(ctx->runtime, n);
+    pin_value *inputs = runtime_node_inputs(state);
+    pin_value *outputs = runtime_node_outputs(state);
     /* Reflected wrappers pass structs by value and dereference ptr. */
     if (n->desc->pure_kind == NODE_PURE_CALL) {
         for (int i = 0; i < n->input_count; i++) {
-            if (n->input_pins[i].kind == PIN_DATA &&
-                n->input_pins[i].type == PIN_STRUCT && !inputs[i].ptr) {
+            if (n->input_pins[i].kind == PIN_DATA && n->input_pins[i].type == PIN_STRUCT &&
+                n->input_pins[i].container == PIN_CONTAINER_SINGLE && !inputs[i].ptr) {
                 runtime_node_set_visiting(state, 0);
                 return fail(ctx, n, i, NODE_EVAL_INVALID, "data input has no struct value");
             }
@@ -479,7 +512,9 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
             outputs[0] = behavior_instance_owner(ctx->instance);
             break;
         case NODE_PURE_FUNCTION:
-            if (eval_pure_function(g, n, a, ctx)) {
+            if (ctx->program
+                    ? behavior_data_call(n, a, ctx)
+                    : eval_pure_function(runtime_store_graph(ctx->runtime), n, a, ctx)) {
                 runtime_node_set_visiting(state, 0);
                 return ctx->status.code;
             }

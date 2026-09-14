@@ -1,6 +1,7 @@
 #include "assets/scene_document.h"
 
 #include "../third_party/yyjson/yyjson.h"
+#include "assets/physics_settings.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -96,6 +97,7 @@ game_scene_document *game_scene_document_new(const char *name)
     }
     game_scene_document *document = (game_scene_document *)xcalloc(1, sizeof *document);
     document->name = xstrdup(name);
+    document->physics = game_physics_defaults();
     return document;
 }
 
@@ -183,6 +185,12 @@ char *game_scene_document_save(const game_scene_document *document)
     yyjson_mut_obj_add_uint(json, root, "version", 1);
     yyjson_mut_obj_add_strcpy(json, root, "name", document->name);
     yyjson_mut_obj_add_str(json, root, "presentation", document->perspective ? "3d" : "2d");
+    yyjson_mut_obj_add_val(
+        json,
+        root,
+        "physics",
+        game_physics_settings_write(json, document->physics)
+    );
     yyjson_mut_val *entities = yyjson_mut_arr(json);
     for (int i = 0; i < acount(document->entities); i++) {
         const game_scene_entity *entity = &document->entities[i];
@@ -258,6 +266,12 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
         return NULL;
     }
     game_scene_document *document = game_scene_document_new(yyjson_get_str(name));
+    if (!game_physics_settings_read(yyjson_obj_get(root, "physics"), &document->physics)) {
+        set_error(error, error_size, "invalid scene physics settings");
+        game_scene_document_free(document);
+        yyjson_doc_free(parsed);
+        return NULL;
+    }
     yyjson_val *presentation = yyjson_obj_get(root, "presentation");
     if (presentation && (!yyjson_is_str(presentation) ||
                          (strcmp(yyjson_get_str(presentation), "2d") &&

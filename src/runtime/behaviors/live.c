@@ -506,6 +506,16 @@ static int update_definition(
         set_message(message, message_size, "Updated %s.", definition->name);
         return 0;
     }
+    const compile_diagnostic *backend_error = behavior_program_diagnostic(
+        behavior_program_publish(snapshot)
+    );
+    if (backend_error) {
+        apush(definition->diagnostics.items, *backend_error);
+        definition->diagnostics.error_count++;
+        set_message(message, message_size, "apply blocked: %s", backend_error->message);
+        behavior_asset_free(snapshot);
+        return -1;
+    }
     behavior_asset *old = NULL;
     int result = restart
                    ? game_behavior_replace_asset(world->behaviors, definition->name, snapshot, &old)

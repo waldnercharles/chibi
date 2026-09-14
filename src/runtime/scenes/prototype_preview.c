@@ -214,6 +214,14 @@ engine *game_prototype_preview_runtime(game_prototype_preview *preview)
     return preview->runtime;
 }
 
+int game_prototype_preview_configure_physics(game_prototype_preview *preview, game_physics_settings settings)
+{
+    if (preview->entity.slot) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    return game_physics_configure(preview->live->physics, settings);
+}
+
 int game_prototype_preview_input(
     game_prototype_preview *preview,
     const char *action,

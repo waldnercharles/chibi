@@ -491,7 +491,8 @@ from remaining design intent when reporting progress.
 ## First slice delivered
 
 Integrated pane close/hide/reopen controls and a checked View menu. Diagnostics
-start hidden; graph compilation with warnings or errors reveals Compiler Results.
+start hidden; graph compilation with errors, warnings or optimization notes reveals
+Compiler Results. Diagnostic source rows navigate to the associated graph and node.
 New/reset layouts place Scene and Node Canvas side by side. The explicit
 `Reset Workspace: Graph + Scene Side by Side` preset rebuilds the entire dock
 layout while retaining pane visibility choices except for reopening both central

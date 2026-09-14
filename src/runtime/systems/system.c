@@ -151,6 +151,9 @@ static void add_access_components(game_system *system, const node_access *access
     for (int i = 0; i < access->read_count; i++) {
         add_query_component(system, access->reads[i]);
     }
+    for (int i = 0; access->read_refs && access->read_refs[i]; i++) {
+        add_query_component(system, *access->read_refs[i]);
+    }
     for (int i = 0; i < access->write_count; i++) {
         add_query_component(system, access->writes[i]);
     }
@@ -1955,7 +1958,7 @@ int game_system_tick_mode(
     game_system_exec_mode mode
 )
 {
-    assert(mode >= GAME_SYSTEM_EXEC_AUTO && mode <= GAME_SYSTEM_EXEC_SJLIT);
+    assert(mode >= GAME_SYSTEM_EXEC_AUTO && mode <= GAME_SYSTEM_EXEC_ORACLE);
     if (!system || (!system->program && (!system->instance || !system->tick))) {
         if (system && compile_report_blocked(&system->compile)) {
             const compile_diagnostic *diagnostic = compile_report_first_error(
@@ -1974,6 +1977,23 @@ int game_system_tick_mode(
         }
         set_error(error, FLOW_ERR_STATE, NULL, "System has no Tick event");
         return FLOW_ERR_STATE;
+    }
+    if (mode == GAME_SYSTEM_EXEC_AUTO) {
+#ifdef __EMSCRIPTEN__
+        mode = GAME_SYSTEM_EXEC_GENERIC_BYTECODE;
+#else
+        mode = GAME_SYSTEM_EXEC_SJLIT;
+#endif
+    }
+    if (mode == GAME_SYSTEM_EXEC_ORACLE && system->definition->graph->dataflow) {
+        set_error(error, FLOW_ERR_STATE, system->tick, "System dataflow has no interpreter oracle");
+        return FLOW_ERR_STATE;
+    }
+    if (mode == GAME_SYSTEM_EXEC_ORACLE && !system->instance) {
+        system->instance = make_instance(system);
+    }
+    if (mode == GAME_SYSTEM_EXEC_ORACLE) {
+        behavior_instance_set_backend(system->instance, BEHAVIOR_ORACLE);
     }
     if (mode == GAME_SYSTEM_EXEC_GENERIC_BYTECODE && !system->program) {
         set_error(error, FLOW_ERR_STATE, system->tick, "generic System bytecode is unavailable");
@@ -2007,9 +2027,8 @@ int game_system_tick_mode(
         return FLOW_ERR_STATE;
     }
     system->match_count = 0;
-    if (system->program) {
-        if (mode == GAME_SYSTEM_EXEC_SJLIT ||
-            (mode == GAME_SYSTEM_EXEC_AUTO && system->program->sljit)) {
+    if (system->program && mode != GAME_SYSTEM_EXEC_ORACLE) {
+        if (mode == GAME_SYSTEM_EXEC_SJLIT) {
             result = run_sljit_query(system, &query, monotonic_time, delta_seconds, error);
         } else if (
             mode == GAME_SYSTEM_EXEC_GENERIC_BYTECODE ||

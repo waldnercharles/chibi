@@ -2,7 +2,7 @@
   "version": 3,
   "name": "ArenaWaveBehavior",
   "domain": "behavior",
-  "id_counter": 3339,
+  "id_counter": 3399,
   "description": "Five telegraphed formations: edge rows, opposing pincers and an arc. Markers count as pending arrivals, hold for one second, and create enemies at their exact marked positions. Final pickups are collected before clearing.",
   "owner_type": "ecs.entity",
   "variables": [
@@ -2138,7 +2138,7 @@
           "id": 2011,
           "type": "Function Entry",
           "x": 0.0,
-          "y": 0.0,
+          "y": 15.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -2162,8 +2162,8 @@
         {
           "id": 2013,
           "type": "Return",
-          "x": 270.0,
-          "y": 0.0,
+          "x": 2250.0,
+          "y": 184.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -2185,18 +2185,96 @@
           "outputs": []
         },
         {
-          "id": 2055,
+          "id": 3378,
+          "type": "Call Function",
+          "x": 450.0,
+          "y": 15.0,
+          "reference_id": 3339,
+          "reference_name": "Count Members Snapshot",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3379,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3380,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 3381,
+              "declaration_id": 3344,
+              "name": "Enemy Count",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 3382,
+              "declaration_id": 3345,
+              "name": "Player Alive",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            },
+            {
+              "id": 3383,
+              "declaration_id": 3346,
+              "name": "Pending Deaths",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": 3384,
           "type": "Set Variable",
-          "x": 540.0,
+          "x": 900.0,
           "y": 0.0,
           "reference_id": 2003,
+          "reference_name": "Enemy Count",
           "disabled": false,
           "show_advanced": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
           "inputs": [
             {
-              "id": 2056,
+              "id": 3385,
               "name": "Exec",
               "type": 0,
               "kind": "exec",
@@ -2207,7 +2285,7 @@
               "default": null
             },
             {
-              "id": 2057,
+              "id": 3386,
               "name": "Value",
               "type": 6,
               "type_name": "int",
@@ -2221,7 +2299,7 @@
           ],
           "outputs": [
             {
-              "id": 2058,
+              "id": 3387,
               "name": "Then",
               "type": 0,
               "kind": "exec",
@@ -2232,7 +2310,7 @@
               "default": null
             },
             {
-              "id": 2059,
+              "id": 3388,
               "name": "Value",
               "type": 6,
               "type_name": "int",
@@ -2246,530 +2324,19 @@
           ]
         },
         {
-          "id": 2060,
+          "id": 3389,
           "type": "Set Variable",
-          "x": 810.0,
-          "y": 0.0,
-          "reference_id": 2004,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2061,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2062,
-              "name": "Value",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2063,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2064,
-              "name": "Value",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2065,
-          "type": "Find Entities With Component",
-          "x": 0.0,
-          "y": 260.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2066,
-              "name": "Component",
-              "type": 12,
-              "type_name": "name",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": "GAME.GameEncounterMember"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2067,
-              "name": "Entities",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 1,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": []
-            }
-          ]
-        },
-        {
-          "id": 2068,
-          "type": "ForEach",
-          "x": 1080.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2069,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2070,
-              "name": "Array",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 1,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": []
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2071,
-              "name": "Body",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2072,
-              "name": "Array Element",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": null
-            },
-            {
-              "id": 2073,
-              "name": "Index",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            },
-            {
-              "id": 2074,
-              "name": "Completed",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 2075,
-          "type": "GetEntity_GameHealth",
-          "x": 0.0,
-          "y": 450.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2076,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2077,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameHealth",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2078,
-              "name": "current",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "field_source": 2077,
-              "field_name": "current",
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ]
-        },
-        {
-          "id": 2079,
-          "type": "Integer Greater",
-          "x": 0.0,
-          "y": 640.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2080,
-              "name": "A",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            },
-            {
-              "id": 2081,
-              "name": "B",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2082,
-              "name": "Result",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2083,
-          "type": "Branch",
           "x": 1350.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2084,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2085,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2086,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2087,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 2088,
-          "type": "GetEntity_GameEncounterMember",
-          "x": 0.0,
-          "y": 830.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2089,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2090,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameEncounterMember",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2091,
-              "name": "role",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "field_source": 2090,
-              "field_name": "role",
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ]
-        },
-        {
-          "id": 2092,
-          "type": "Integer Equal",
-          "x": 270.0,
-          "y": 260.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2093,
-              "name": "A",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            },
-            {
-              "id": 2094,
-              "name": "B",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2095,
-              "name": "Result",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2096,
-          "type": "Branch",
-          "x": 1620.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2097,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2098,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2099,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2100,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 2101,
-          "type": "Set Variable",
-          "x": 1890.0,
-          "y": 0.0,
+          "y": 92.0,
           "reference_id": 2004,
+          "reference_name": "Player Alive",
           "disabled": false,
           "show_advanced": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
           "inputs": [
             {
-              "id": 2102,
+              "id": 3390,
               "name": "Exec",
               "type": 0,
               "kind": "exec",
@@ -2780,7 +2347,7 @@
               "default": null
             },
             {
-              "id": 2103,
+              "id": 3391,
               "name": "Value",
               "type": 1,
               "type_name": "bool",
@@ -2789,12 +2356,12 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": true
+              "default": false
             }
           ],
           "outputs": [
             {
-              "id": 2104,
+              "id": 3392,
               "name": "Then",
               "type": 0,
               "kind": "exec",
@@ -2805,7 +2372,7 @@
               "default": null
             },
             {
-              "id": 2105,
+              "id": 3393,
               "name": "Value",
               "type": 1,
               "type_name": "bool",
@@ -2819,366 +2386,19 @@
           ]
         },
         {
-          "id": 2106,
-          "type": "Integer Equal",
-          "x": 270.0,
-          "y": 450.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2107,
-              "name": "A",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            },
-            {
-              "id": 2108,
-              "name": "B",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 1
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2109,
-              "name": "Result",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2110,
-          "type": "Branch",
-          "x": 2160.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2111,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2112,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2113,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2114,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 2115,
-          "type": "Get Variable",
-          "x": 270.0,
-          "y": 640.0,
-          "reference_id": 2003,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [],
-          "outputs": [
-            {
-              "id": 2116,
-              "name": "Value",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ]
-        },
-        {
-          "id": 2117,
-          "type": "Add",
-          "x": 270.0,
-          "y": 830.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2118,
-              "name": "A",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0
-            },
-            {
-              "id": 2119,
-              "name": "B",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 1
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2120,
-              "name": "Result",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 2,
-              "group": 1,
-              "default": 0
-            }
-          ]
-        },
-        {
-          "id": 2121,
+          "id": 3394,
           "type": "Set Variable",
-          "x": 2430.0,
-          "y": 0.0,
-          "reference_id": 2003,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2122,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2123,
-              "name": "Value",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2124,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2125,
-              "name": "Value",
-              "type": 6,
-              "type_name": "int",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": 0
-            }
-          ]
-        },
-        {
-          "id": 2326,
-          "type": "HasEntity_GameHealth",
-          "x": 540.0,
-          "y": 260.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2327,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2328,
-              "name": "Has",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2329,
-          "type": "Branch",
-          "x": 2700.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2330,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2331,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2332,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2333,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 2392,
-          "type": "Set Variable",
-          "x": 2970.0,
-          "y": 0.0,
+          "x": 1800.0,
+          "y": 184.0,
           "reference_id": 2387,
+          "reference_name": "Pending Deaths",
           "disabled": false,
           "show_advanced": false,
           "breakpoint": false,
           "breakpoint_enabled": false,
           "inputs": [
             {
-              "id": 2388,
+              "id": 3395,
               "name": "Exec",
               "type": 0,
               "kind": "exec",
@@ -3189,7 +2409,7 @@
               "default": null
             },
             {
-              "id": 2389,
+              "id": 3396,
               "name": "Value",
               "type": 1,
               "type_name": "bool",
@@ -3203,7 +2423,7 @@
           ],
           "outputs": [
             {
-              "id": 2390,
+              "id": 3397,
               "name": "Then",
               "type": 0,
               "kind": "exec",
@@ -3214,7 +2434,7 @@
               "default": null
             },
             {
-              "id": 2391,
+              "id": 3398,
               "name": "Value",
               "type": 1,
               "type_name": "bool",
@@ -3224,166 +2444,6 @@
               "flags": 0,
               "group": 0,
               "default": false
-            }
-          ]
-        },
-        {
-          "id": 2397,
-          "type": "Set Variable",
-          "x": 3240.0,
-          "y": 0.0,
-          "reference_id": 2387,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2393,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2394,
-              "name": "Value",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": true
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2395,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2396,
-              "name": "Value",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2621,
-          "type": "HasEntity_GameSpawnRequest",
-          "x": 540.0,
-          "y": 450.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2619,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2620,
-              "name": "Has",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ]
-        },
-        {
-          "id": 2626,
-          "type": "Branch",
-          "x": 3510.0,
-          "y": 0.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 2622,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2623,
-              "name": "Condition",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            }
-          ],
-          "outputs": [
-            {
-              "id": 2624,
-              "name": "True",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 2625,
-              "name": "False",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
             }
           ]
         }
@@ -3392,217 +2452,61 @@
         {
           "from": 2011,
           "from_pin": 2012,
-          "to": 2392,
-          "to_pin": 2388,
+          "to": 3378,
+          "to_pin": 3379,
           "kind": "exec",
           "order": 0
         },
         {
-          "from": 2055,
-          "from_pin": 2058,
-          "to": 2060,
-          "to_pin": 2061,
+          "from": 3378,
+          "from_pin": 3380,
+          "to": 3384,
+          "to_pin": 3385,
           "kind": "exec",
           "order": 0
         },
         {
-          "from": 2060,
-          "from_pin": 2063,
-          "to": 2068,
-          "to_pin": 2069,
+          "from": 3378,
+          "from_pin": 3381,
+          "to": 3384,
+          "to_pin": 3386,
+          "kind": "data"
+        },
+        {
+          "from": 3378,
+          "from_pin": 3382,
+          "to": 3389,
+          "to_pin": 3391,
+          "kind": "data"
+        },
+        {
+          "from": 3378,
+          "from_pin": 3383,
+          "to": 3394,
+          "to_pin": 3396,
+          "kind": "data"
+        },
+        {
+          "from": 3384,
+          "from_pin": 3387,
+          "to": 3389,
+          "to_pin": 3390,
           "kind": "exec",
           "order": 0
         },
         {
-          "from": 2065,
-          "from_pin": 2067,
-          "to": 2068,
-          "to_pin": 2070,
-          "kind": "data"
-        },
-        {
-          "from": 2068,
-          "from_pin": 2071,
-          "to": 2329,
-          "to_pin": 2330,
+          "from": 3389,
+          "from_pin": 3392,
+          "to": 3394,
+          "to_pin": 3395,
           "kind": "exec",
           "order": 0
         },
         {
-          "from": 2068,
-          "from_pin": 2072,
-          "to": 2075,
-          "to_pin": 2076,
-          "kind": "data"
-        },
-        {
-          "from": 2068,
-          "from_pin": 2072,
-          "to": 2088,
-          "to_pin": 2089,
-          "kind": "data"
-        },
-        {
-          "from": 2068,
-          "from_pin": 2072,
-          "to": 2326,
-          "to_pin": 2327,
-          "kind": "data"
-        },
-        {
-          "from": 2068,
-          "from_pin": 2072,
-          "to": 2621,
-          "to_pin": 2619,
-          "kind": "data"
-        },
-        {
-          "from": 2068,
-          "from_pin": 2074,
+          "from": 3394,
+          "from_pin": 3397,
           "to": 2013,
           "to_pin": 2014,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2075,
-          "from_pin": 2078,
-          "to": 2079,
-          "to_pin": 2080,
-          "kind": "data"
-        },
-        {
-          "from": 2079,
-          "from_pin": 2082,
-          "to": 2083,
-          "to_pin": 2085,
-          "kind": "data"
-        },
-        {
-          "from": 2083,
-          "from_pin": 2086,
-          "to": 2096,
-          "to_pin": 2097,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2083,
-          "from_pin": 2087,
-          "to": 2397,
-          "to_pin": 2393,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2088,
-          "from_pin": 2091,
-          "to": 2092,
-          "to_pin": 2093,
-          "kind": "data"
-        },
-        {
-          "from": 2088,
-          "from_pin": 2091,
-          "to": 2106,
-          "to_pin": 2107,
-          "kind": "data"
-        },
-        {
-          "from": 2092,
-          "from_pin": 2095,
-          "to": 2096,
-          "to_pin": 2098,
-          "kind": "data"
-        },
-        {
-          "from": 2096,
-          "from_pin": 2099,
-          "to": 2101,
-          "to_pin": 2102,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2096,
-          "from_pin": 2100,
-          "to": 2110,
-          "to_pin": 2111,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2106,
-          "from_pin": 2109,
-          "to": 2110,
-          "to_pin": 2112,
-          "kind": "data"
-        },
-        {
-          "from": 2110,
-          "from_pin": 2113,
-          "to": 2121,
-          "to_pin": 2122,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2115,
-          "from_pin": 2116,
-          "to": 2117,
-          "to_pin": 2118,
-          "kind": "data"
-        },
-        {
-          "from": 2117,
-          "from_pin": 2120,
-          "to": 2121,
-          "to_pin": 2123,
-          "kind": "data"
-        },
-        {
-          "from": 2326,
-          "from_pin": 2328,
-          "to": 2329,
-          "to_pin": 2331,
-          "kind": "data"
-        },
-        {
-          "from": 2329,
-          "from_pin": 2332,
-          "to": 2083,
-          "to_pin": 2084,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2329,
-          "from_pin": 2333,
-          "to": 2626,
-          "to_pin": 2622,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2392,
-          "from_pin": 2390,
-          "to": 2055,
-          "to_pin": 2056,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 2621,
-          "from_pin": 2620,
-          "to": 2626,
-          "to_pin": 2623,
-          "kind": "data"
-        },
-        {
-          "from": 2626,
-          "from_pin": 2624,
-          "to": 2110,
-          "to_pin": 2111,
           "kind": "exec",
           "order": 0
         }
@@ -11993,6 +10897,638 @@
           "from_pin": 3325,
           "to": 3277,
           "to_pin": 3283,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": 3339,
+      "kind": "function",
+      "name": "Count Members Snapshot",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "entry_id": 3340,
+      "return_id": 3342,
+      "call_depth_limit": 64,
+      "nodes": [
+        {
+          "id": 3340,
+          "type": "Function Entry",
+          "x": 900.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 3341,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 3342,
+          "type": "Return",
+          "x": 1350.0,
+          "y": 170.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3343,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 3344,
+              "name": "Enemy Count",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 3345,
+              "name": "Player Alive",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            },
+            {
+              "id": 3346,
+              "name": "Pending Deaths",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 3347,
+          "type": "Find Entities With Component",
+          "x": 0.0,
+          "y": 385.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3348,
+              "name": "Component",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "GAME.GameEncounterMember"
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3349,
+              "name": "Entities",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": []
+            }
+          ]
+        },
+        {
+          "id": 3350,
+          "type": "Count Matching Entities",
+          "x": 450.0,
+          "y": 136.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3351,
+              "name": "Entities",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": []
+            },
+            {
+              "id": 3352,
+              "name": "Conditions",
+              "type": 15,
+              "type_name": "EntityCondition",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": [
+                {
+                  "component": "game.GameHealth",
+                  "field": "current",
+                  "test": ">",
+                  "value": 0.0
+                },
+                {
+                  "component": "GAME.GameEncounterMember",
+                  "field": "role",
+                  "test": "==",
+                  "value": 1.0
+                }
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3353,
+              "name": "Count",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
+        },
+        {
+          "id": 3354,
+          "type": "Count Matching Entities",
+          "x": 450.0,
+          "y": 302.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3355,
+              "name": "Entities",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": []
+            },
+            {
+              "id": 3356,
+              "name": "Conditions",
+              "type": 15,
+              "type_name": "EntityCondition",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": [
+                {
+                  "component": "game.GameHealth",
+                  "field": "",
+                  "test": "missing",
+                  "value": 0.0
+                },
+                {
+                  "component": "GAME.GameSpawnRequest",
+                  "field": "",
+                  "test": "has",
+                  "value": 0.0
+                },
+                {
+                  "component": "GAME.GameEncounterMember",
+                  "field": "role",
+                  "test": "==",
+                  "value": 1.0
+                }
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3357,
+              "name": "Count",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
+        },
+        {
+          "id": 3358,
+          "type": "Count Matching Entities",
+          "x": 450.0,
+          "y": 468.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3359,
+              "name": "Entities",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": []
+            },
+            {
+              "id": 3360,
+              "name": "Conditions",
+              "type": 15,
+              "type_name": "EntityCondition",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": [
+                {
+                  "component": "game.GameHealth",
+                  "field": "current",
+                  "test": ">",
+                  "value": 0.0
+                },
+                {
+                  "component": "GAME.GameEncounterMember",
+                  "field": "role",
+                  "test": "==",
+                  "value": 0.0
+                }
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3361,
+              "name": "Count",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
+        },
+        {
+          "id": 3362,
+          "type": "Count Matching Entities",
+          "x": 450.0,
+          "y": 634.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3363,
+              "name": "Entities",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": []
+            },
+            {
+              "id": 3364,
+              "name": "Conditions",
+              "type": 15,
+              "type_name": "EntityCondition",
+              "kind": "data",
+              "container": 1,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": [
+                {
+                  "component": "game.GameHealth",
+                  "field": "current",
+                  "test": "<=",
+                  "value": 0.0
+                }
+              ]
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3365,
+              "name": "Count",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ]
+        },
+        {
+          "id": 3366,
+          "type": "Add",
+          "x": 900.0,
+          "y": 136.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3367,
+              "name": "A",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0
+            },
+            {
+              "id": 3368,
+              "name": "B",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 2,
+              "default": 0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3369,
+              "name": "Result",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": 0
+            }
+          ]
+        },
+        {
+          "id": 3370,
+          "type": "Integer Greater",
+          "x": 900.0,
+          "y": 302.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3371,
+              "name": "A",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 3372,
+              "name": "B",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3373,
+              "name": "Result",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": 3374,
+          "type": "Integer Greater",
+          "x": 900.0,
+          "y": 468.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 3375,
+              "name": "A",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            },
+            {
+              "id": 3376,
+              "name": "B",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0
+            }
+          ],
+          "outputs": [
+            {
+              "id": 3377,
+              "name": "Result",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 3340,
+          "from_pin": 3341,
+          "to": 3342,
+          "to_pin": 3343,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 3347,
+          "from_pin": 3349,
+          "to": 3350,
+          "to_pin": 3351,
+          "kind": "data"
+        },
+        {
+          "from": 3347,
+          "from_pin": 3349,
+          "to": 3354,
+          "to_pin": 3355,
+          "kind": "data"
+        },
+        {
+          "from": 3347,
+          "from_pin": 3349,
+          "to": 3358,
+          "to_pin": 3359,
+          "kind": "data"
+        },
+        {
+          "from": 3347,
+          "from_pin": 3349,
+          "to": 3362,
+          "to_pin": 3363,
+          "kind": "data"
+        },
+        {
+          "from": 3350,
+          "from_pin": 3353,
+          "to": 3366,
+          "to_pin": 3367,
+          "kind": "data"
+        },
+        {
+          "from": 3354,
+          "from_pin": 3357,
+          "to": 3366,
+          "to_pin": 3368,
+          "kind": "data"
+        },
+        {
+          "from": 3358,
+          "from_pin": 3361,
+          "to": 3370,
+          "to_pin": 3371,
+          "kind": "data"
+        },
+        {
+          "from": 3362,
+          "from_pin": 3365,
+          "to": 3374,
+          "to_pin": 3375,
+          "kind": "data"
+        },
+        {
+          "from": 3366,
+          "from_pin": 3369,
+          "to": 3342,
+          "to_pin": 3344,
+          "kind": "data"
+        },
+        {
+          "from": 3370,
+          "from_pin": 3373,
+          "to": 3342,
+          "to_pin": 3345,
+          "kind": "data"
+        },
+        {
+          "from": 3374,
+          "from_pin": 3377,
+          "to": 3342,
+          "to_pin": 3346,
           "kind": "data"
         }
       ]

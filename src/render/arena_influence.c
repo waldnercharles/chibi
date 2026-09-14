@@ -32,6 +32,8 @@ struct render_influences
     CF_V4 positions[INFLUENCE_LIMIT], colors[INFLUENCE_LIMIT];
     int count;
     float time;
+    float scores[INFLUENCE_LIMIT];
+    int weakest;
     bool reported_capacity;
 };
 
@@ -72,6 +74,13 @@ static float score(const influence_sample *sample, float time)
     return remaining(sample, time) * (peak / 255);
 }
 
+static void store_sample(render_influences *influences, int slot, influence_sample sample)
+{
+    influences->samples[slot] = sample;
+    influences->scores[slot] = score(&sample, influences->time);
+    influences->weakest = -1;
+}
+
 static void retain(render_influences *influences, influence_sample sample)
 {
     int slot = -1;
@@ -90,28 +99,29 @@ static void retain(render_influences *influences, influence_sample sample)
         if (dx * dx + dz * dz <= 0.0625f) {
             /* Keep the stamp anchored; otherwise sub-frame movement never leaves a trail. */
             sample.anchor = previous->anchor;
-            *previous = sample;
+            store_sample(influences, slot, sample);
             return;
         }
     }
     if (influences->count < INFLUENCE_LIMIT) {
-        influences->samples[influences->count++] = sample;
+        store_sample(influences, influences->count++, sample);
         return;
     }
     if (!influences->reported_capacity) {
         fprintf(stderr, "Surface influences: %d-sample budget full; retaining strongest remaining colored strength.\n", INFLUENCE_LIMIT);
         influences->reported_capacity = true;
     }
-    slot = 0;
-    for (int i = 1; i < influences->count; i++) {
-        if (score(&influences->samples[i], influences->time) <
-            score(&influences->samples[slot], influences->time)) {
-            slot = i;
+    if (influences->weakest < 0) {
+        influences->weakest = 0;
+        for (int i = 1; i < influences->count; i++) {
+            if (influences->scores[i] < influences->scores[influences->weakest]) {
+                influences->weakest = i;
+            }
         }
     }
-    if (score(&sample, influences->time) >
-        score(&influences->samples[slot], influences->time)) {
-        influences->samples[slot] = sample;
+    slot = influences->weakest;
+    if (score(&sample, influences->time) > influences->scores[slot]) {
+        store_sample(influences, slot, sample);
     }
 }
 
@@ -128,8 +138,10 @@ void render_influences_collect(
     }
     influences->world = world;
     influences->time = time;
+    influences->weakest = -1;
     for (int i = 0; i < influences->count; i++) {
         influences->samples[i].active = false;
+        influences->scores[i] = score(&influences->samples[i], time);
     }
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameSurfaceInfluence.id };

@@ -89,6 +89,10 @@ static int app_frame(app_loop *loop)
         editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_DOCUMENTS);
+        app_scene_authoring_set_behavior_profiling(
+            loop->authoring,
+            editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE) && !loop->profile.frozen
+        );
         if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
             fprintf(stderr, "runtime frame failed\n");
         }

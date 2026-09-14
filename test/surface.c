@@ -10,6 +10,7 @@
 #include "render/arena_parts.h"
 #include "render/arena_post.h"
 #include "render/arena_trail.h"
+#include "render/arena_visual.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
 #include "runtime/engine.h"
@@ -471,6 +472,61 @@ static void visual_offset_node()
     behavior_asset_free(asset);
 }
 
+static void visual_culling()
+{
+    arena_visual visual = { .part = { .primitive = GAME_PRIMITIVE_BOX,
+                                      .dimensions = { 1, 1, 1 } },
+                            .frame = cf_m4_identity() };
+    CF_M4x4 clip = cf_m4_identity();
+    assert(render_arena_visual_visible(&visual, clip));
+    for (int axis = 0; axis < 3; axis++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            visual.frame = cf_m4_identity();
+            visual.frame.elements[12 + axis] = sign * 1.99f;
+            assert(render_arena_visual_visible(&visual, clip));
+            visual.frame.elements[12 + axis] = sign * 2.01f;
+            assert(!render_arena_visual_visible(&visual, clip));
+        }
+    }
+    visual.frame = cf_m4_identity();
+    visual.frame.elements[12] = 3;
+    visual.part.dimensions.x = 4;
+    assert(render_arena_visual_visible(&visual, clip));
+    visual.frame.elements[12] = 6;
+    assert(!render_arena_visual_visible(&visual, clip));
+    /* A bound crossing the eye plane cannot use divided center coordinates. */
+    visual.frame = cf_m4_identity();
+    clip.elements[11] = 1;
+    clip.elements[15] = 0;
+    assert(render_arena_visual_visible(&visual, clip));
+}
+
+static void influence_capacity()
+{
+    ecs_world *world = influence_world();
+    render_influences *influences = render_influences_new();
+    ecs_entity sources[66];
+    for (int i = 0; i < 66; i++) {
+        sources[i] = influence_source(world, i * 50, 0xff0000ffu, 1, .2f);
+    }
+    render_influences_collect(influences, world, NULL, 0);
+    for (int i = 0; i < 66; i++) {
+        assert(activity(influences, i * 50) == (i < 64 ? 1 : 0));
+    }
+    GAME_GameSurfaceInfluence_get(world, sources[0])->strength = .1f;
+    GAME_GameSurfaceInfluence_get(world, sources[64])->strength = 2;
+    render_influences_collect(influences, world, NULL, 0);
+    assert(activity(influences, 0) == 0);
+    assert(activity(influences, 64 * 50) == 2);
+    assert(activity(influences, 65 * 50) == 0);
+    assert(ecs_world_destroy_entity(world, sources[64]) == ECS_OK);
+    render_influences_collect(influences, world, NULL, .2f);
+    assert(activity(influences, 64 * 50) == 0);
+    assert(activity(influences, 65 * 50) == 1);
+    render_influences_free(influences);
+    ecs_world_free(world);
+}
+
 static void influence_history()
 {
     ecs_world *world = influence_world();
@@ -834,6 +890,8 @@ void test_surface_cpu()
     annular_influence();
     parts_and_trails();
     influence_history();
+    influence_capacity();
+    visual_culling();
     influence_graph();
     shader_graph ir;
     shader_graph_init(&ir);

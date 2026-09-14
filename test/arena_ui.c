@@ -1,3 +1,4 @@
+#include "assets/physics_settings.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/frame_profile.h"
@@ -5,6 +6,8 @@
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/compiler/behavior_program.h"
+#include "graph/model/registry.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
 #include "render/arena_geometry.h"
@@ -15,6 +18,7 @@
 #include "runtime/generated.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
+#include "test/physics_executor.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -39,6 +43,7 @@ typedef struct
     app_scene_authoring *scene;
     double time;
     bool sample_controls;
+    bool profile_behaviors;
     editor_frame_profile profile;
 } arena_fixture;
 
@@ -51,6 +56,11 @@ static void draw_frame(arena_fixture *f)
         app_gameplay_input(f->scene, f->runtime, f->viewport);
     }
     editor_frame_mark(&f->profile, EDITOR_FRAME_DOCUMENTS);
+    app_scene_authoring_set_behavior_profiling(
+        f->scene,
+        f->profile_behaviors ||
+            (editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE) && !f->profile.frozen)
+    );
     assert(app_scene_authoring_frame(f->scene, f->time) == FLOW_OK);
     editor_frame_mark(&f->profile, EDITOR_FRAME_SIMULATION);
     editor_prepare_docking();
@@ -2063,11 +2073,15 @@ static void review_behavior_totals(game_behavior_profile_frame *total, const gam
             total->count++;
         }
         total->rows[index].cpu_ms += source->cpu_ms;
+        total->rows[index].setup_ms += source->setup_ms;
+        total->rows[index].dispatches += source->dispatches;
         total->rows[index].starts += source->starts;
         total->rows[index].resumes += source->resumes;
     }
     total->cpu_ms += frame->cpu_ms;
+    total->setup_ms += frame->setup_ms;
     total->overflow.cpu_ms += frame->overflow.cpu_ms;
+    total->overflow.setup_ms += frame->overflow.setup_ms;
 }
 
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
@@ -2105,6 +2119,8 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
     arena_fixture f = fixture_new();
+    f.profile_behaviors = crowd;
+    game_behavior_set_profiling(f.live->behaviors, crowd);
     app_game_presentation *game = NULL;
     if (editor_mode) {
         for (int i = 0; i < 30; i++) {
@@ -2300,19 +2316,23 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
         for (int i = 0; i < behavior_totals.count; i++) {
             const game_behavior_profile_row *row = &behavior_totals.rows[i];
             printf(
-                "Crowd behavior %s / %s: %.3f ms per frame, %.1f starts, %.1f "
+                "Crowd behavior %s / %s: %.3f exec ms, %.3f setup ms per "
+                "frame, %.1f starts, %.1f "
                 "resumes\n",
                 row->behavior,
                 row->event,
                 row->cpu_ms / crowd_samples[5],
+                row->setup_ms / crowd_samples[5],
                 (double)row->starts / crowd_samples[5],
                 (double)row->resumes / crowd_samples[5]
             );
         }
         printf(
-            "Crowd behavior host overhead: %.3f ms per frame; overflow %.3f "
+            "Crowd behavior unassigned overhead: %.3f ms per frame; overflow "
+            "%.3f "
             "ms\n",
-            (crowd_behavior[5] - behavior_totals.cpu_ms) / crowd_samples[5],
+            (crowd_behavior[5] - behavior_totals.cpu_ms - behavior_totals.setup_ms) /
+                crowd_samples[5],
             behavior_totals.overflow.cpu_ms / crowd_samples[5]
         );
     }
@@ -2443,6 +2463,11 @@ static void ship_motion_review(arena_fixture *f, const char *directory)
 
 static void performance_panel(arena_fixture *f)
 {
+    assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
+    frame(f);
+    frame(f);
+    assert(!game_behavior_profile(f->live->behaviors)->count);
+    assert(game_behavior_last_update(f->live->behaviors).native_loop > 0);
     editor_frame_profile owned = { 0 };
     char *behavior = xstrdup("Captured behavior"), *event = xstrdup("Wait");
     game_behavior_profile_frame source = { .count = 1,
@@ -2451,7 +2476,8 @@ static void performance_panel(arena_fixture *f)
                                                  .event = event,
                                                  .starts = 2,
                                                  .resumes = 3,
-                                                 .cpu_ms = 4 },
+                                                 .cpu_ms = 4,
+                                                 .setup_ms = 2 },
                                            } };
     engine_frame_timing timing = { .frame = 7 };
     editor_frame_begin(&owned);
@@ -2472,12 +2498,16 @@ static void performance_panel(arena_fixture *f)
     assert(
         editor_frame_latest(&owned)->runtime.frame == 7 &&
         owned.behaviors[0].rows[0].starts == 2 &&
-        owned.behaviors[0].rows[0].resumes == 3 && owned.behaviors[0].rows[0].cpu_ms == 4
+        owned.behaviors[0].rows[0].resumes == 3 &&
+        owned.behaviors[0].rows[0].cpu_ms == 4 &&
+        owned.behaviors[0].rows[0].setup_ms == 2
     );
     editor_frame_profile_free(&owned);
     click_item(f, "view.menu");
     click_item(f, "view.performance");
     frame(f);
+    assert(game_behavior_profile(f->live->behaviors)->count > 0);
+    assert(!game_behavior_last_update(f->live->behaviors).native_loop);
     editor_ui_rect history;
     assert(editor_ui_item_rect("performance.history", &history));
     assert(history.width > 100 && history.height > 100);
@@ -2495,6 +2525,8 @@ static void performance_panel(arena_fixture *f)
     frame(f);
     frame(f);
     assert(editor_frame_latest(&f->profile)->runtime.frame == frozen);
+    assert(!game_behavior_profile(f->live->behaviors)->count);
+    assert(game_behavior_last_update(f->live->behaviors).native_loop > 0);
     click_item(f, "performance.freeze");
     frame(f);
     assert(!f->profile.frozen && editor_frame_latest(&f->profile)->runtime.frame > frozen);
@@ -2504,10 +2536,13 @@ static void performance_panel(arena_fixture *f)
     }
     editor_ui_set_pane_visible(EDITOR_UI_PANE_PERFORMANCE, false);
     frame(f);
+    assert(!game_behavior_profile(f->live->behaviors)->count);
+    assert(game_behavior_last_update(f->live->behaviors).native_loop > 0);
+    assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     puts("performance UI PASS: View menu, live history, behavior/event expansion, owned labels, freeze and resume");
 }
 
-int arena_ui_run(const char *program)
+int arena_ui_run(const char *program, bool profile_only)
 {
     CF_Result result = cf_make_app(
         "Arena 3D editor regression",
@@ -2531,13 +2566,17 @@ int arena_ui_run(const char *program)
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
     bool input_only = getenv("CHIBI_ARENA_INPUT_ONLY") != NULL;
-    if (!input_only) {
+    if (!input_only && !profile_only) {
         assert(test_arena_input() == 0);
     }
     fflush(stdout);
     arena_fixture f = fixture_new();
     for (int i = 0; i < 30; i++) {
         frame(&f);
+    }
+    if (profile_only) {
+        performance_panel(&f);
+        goto cleanup;
     }
     const char *motion_frames = getenv("CHIBI_ARENA_MOTION_FRAMES");
     if (motion_frames && *motion_frames) {
@@ -2606,13 +2645,743 @@ cleanup:
     game_live_world_free(f.live);
     editor_free(f.graph);
     ecs_world_free(f.world);
-    if (!input_only) {
+    if (!input_only && !profile_only) {
         test_navigation_runtime();
     }
     app_input_shutdown();
     cf_destroy_app();
-    if (!input_only) {
+    if (!input_only && !profile_only) {
         puts("arena UI PASS: scene save/reload, independent preview projection, actual pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, component dropdown/Undo/Redo/save/reload, spatial-only fit/marquee/preview/placement");
     }
+    return 0;
+}
+
+static int compare_milliseconds(const void *a, const void *b)
+{
+    double left = *(const double *)a, right = *(const double *)b;
+    return (left > right) - (left < right);
+}
+
+static ecs_entity scene_scale_spawner(arena_fixture *f)
+{
+    behavior_asset *asset = behavior_asset_new("Scene scale spawn");
+    assert(!behavior_asset_set_owner_type(asset, "ecs.entity"));
+    pin_value zero = { .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    behavior_variable *created = behavior_asset_add_variable(
+        asset,
+        "Created",
+        PIN_HANDLE,
+        "ecs.entity",
+        PIN_CONTAINER_SINGLE,
+        &zero,
+        "Test"
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, registry_node_by_name("Event"));
+    assert(!graph_set_event_name(g, event, "Fire"));
+    const char *names[] = { "X", "Y" };
+    for (int i = 0; i < 2; i++) {
+        pin_spec parameter = { .name = names[i],
+                               .type = PIN_F32,
+                               .type_name = "float",
+                               .kind = PIN_DATA };
+        assert(graph_add_pin(g, event, 1, &parameter) == i + 1);
+    }
+    node *spawn = graph_add_node(g, registry_node_by_name("Spawn Prototype"));
+    pin_value prototype = { .type = PIN_NAME, .str = "ArenaEnemy" };
+    assert(!graph_set_pin_default(g, spawn, 0, 1, &prototype));
+    node *make = graph_add_node(g, registry_node_by_name("Make_GameTransform"));
+    node *initialize = graph_add_node(g, registry_node_by_name("SetEntity_GameTransform"));
+    node *remember = behavior_asset_add_set_node(asset, created->id);
+    assert(!graph_connect_exec(g, event, 0, spawn, 0, 0));
+    assert(!graph_connect_exec(g, spawn, 0, initialize, 0, 0));
+    assert(!graph_connect_exec(g, initialize, 0, remember, 0, 0));
+    assert(!graph_connect_data(g, event, 1, make, 0));
+    assert(!graph_connect_data(g, event, 2, make, 1));
+    assert(!graph_connect_data(g, spawn, 1, initialize, 1));
+    assert(!graph_connect_data(g, make, 0, initialize, 2));
+    assert(!graph_connect_data(g, spawn, 1, remember, 1));
+    assert(!game_live_add_definition(f->live, game_live_definition_new("Scene scale spawn", asset)));
+    ecs_entity owner = ecs_world_create_entity(f->world);
+    assert(!game_behavior_attach(f->live->behaviors, owner, "Scene scale spawn"));
+    return owner;
+}
+
+static ecs_entity *scene_scale_enemies(arena_fixture *f, int count, bool combat)
+{
+    ecs_entity player = f->scene->actors[player_index(f)].entity;
+    GameTransform center = *GAME_GameTransform_get_const(f->world, player);
+    /* Keep the measurement window alive under real contact damage. The
+     * authored wave and every enemy attachment still execute normally. */
+    *GAME_GameHealth_get(f->world, player) = (GameHealth){ 1000000000, 1000000000 };
+    for (int i = 0; i < acount(f->scene->actors); i++) {
+        GameEncounter
+            *encounter = GAME_GameEncounter_get(f->world, f->scene->actors[i].entity);
+        if (encounter) {
+            encounter->total = count;
+            encounter->spawned = count;
+            encounter->alive = count;
+        }
+    }
+    char *json = text_file_read("content/prototypes/ArenaEnemy.json"), error[256];
+    assert(json);
+    game_prototype *prototype = game_prototype_load(json, &f->scene->registry, error, sizeof error);
+    free(json);
+    assert(prototype);
+    ecs_entity *enemies = NULL;
+    ecs_entity spawner = combat ? scene_scale_spawner(f) : (ecs_entity){ 0 };
+    int side = (int)ceil(sqrt(count));
+    for (int i = 0; i < count; i++) {
+        ecs_entity entity;
+        GameTransform position = {
+            center.x + (i % side - (side - 1) * .5f) * 22,
+            center.y + (i / side - (side - 1) * .5f) * 22,
+        };
+        if (combat) {
+            /* Use compiled host spawning so restart owns this population and
+             * initialization still precedes each enemy's Begin handlers. */
+            pin_value inputs[] = { { .type = PIN_F32, .f = position.x },
+                                   { .type = PIN_F32, .f = position.y } };
+            assert(
+                game_behavior_dispatch(f->live->behaviors, spawner, "Fire", (flow_inputs){ inputs, 2 }, NULL) ==
+                1
+            );
+            assert(!game_entities_flush_initializers(f->live->entities, f->time));
+            behavior_instance *instance = game_behavior_instance(f->live->behaviors, spawner, "Scene scale spawn");
+            pin_value value;
+            assert(!behavior_instance_get_variable(
+                instance,
+                instance->asset->variables[0].id,
+                &value
+            ));
+            entity = ecs_entity_from_u64(value.u64);
+            assert(ecs_entity_is_alive(f->world, entity));
+        } else {
+            assert(
+                !game_prototype_spawn_components(prototype, f->world, &entity, error, sizeof error)
+            );
+            *GAME_GameTransform_get(f->world, entity) = position;
+            assert(!game_behavior_set_attachments(
+                f->live->behaviors,
+                entity,
+                (const char *const *)prototype->graphs,
+                acount(prototype->graphs)
+            ));
+        }
+        apush(enemies, entity);
+    }
+    if (combat) {
+        assert(!game_behavior_destroy_entity(f->live->behaviors, spawner));
+        assert(!game_live_remove_definition(f->live, "Scene scale spawn"));
+    }
+    game_prototype_free(prototype);
+    return enemies;
+}
+
+static void scene_scale_aim(arena_fixture *f)
+{
+    GameTransform player, target;
+    assert(review_target(f, &player, &target));
+    render_arena_camera view = camera(f);
+    CF_V3 aim = render_arena_project(&view, (CF_V3){ target.x, 0, target.y });
+    ImVec2 size = ImGui_GetIO()->DisplaySize;
+    mouse_move_event((ImVec2){ (aim.x * .5f + .5f) * size.x,
+                               (.5f - aim.y * .5f) * size.y });
+}
+
+static void scene_scale_verify_encounter(arena_fixture *f)
+{
+    for (int i = 0; i < acount(f->scene->actors); i++) {
+        ecs_entity entity = f->scene->actors[i].entity;
+        if (!GAME_GameEncounter_has(f->world, entity)) {
+            continue;
+        }
+        behavior_instance *instance = game_behavior_instance(f->live->behaviors, entity, "ArenaWaveBehavior");
+        const behavior_instance_failure *failure = behavior_instance_last_failure(instance);
+        if (failure) {
+            fprintf(
+                stderr,
+                "Scene scale retained failure: %s node=%llu pin=%d\n",
+                failure->message,
+                (unsigned long long)failure->node_id,
+                failure->pin
+            );
+        }
+        assert(!failure);
+        flow_run *run = behavior_instance_dispatch(instance, "RefreshEncounter", (flow_inputs){ 0 }, NULL);
+        assert(run);
+        if (flow_run_status(run) == FLOW_FAILED) {
+            const flow_error *error = flow_run_error(run);
+            fprintf(
+                stderr,
+                "Scene scale encounter failed: %s, code=%d node=%llu pin=%d "
+                "steps=%lu\n",
+                error->message,
+                error->code,
+                (unsigned long long)error->node->id,
+                error->pin,
+                error->steps
+            );
+        }
+        assert(flow_run_status(run) == FLOW_COMPLETED);
+        assert(!behavior_instance_release_activation(instance, run));
+        return;
+    }
+    assert(!"Missing encounter behavior");
+}
+
+static void scene_scale_disable_sensor_sweeps(arena_fixture *f)
+{
+    int changed = 0;
+    for (int i = 0; i < acount(f->scene->prototypes); i++) {
+        game_prototype *prototype = f->scene->prototypes[i].prototype;
+        GameBody *body = NULL;
+        const GameCollider *collider = NULL;
+        for (int j = 0; j < acount(prototype->components); j++) {
+            game_prototype_component *component = &prototype->components[j];
+            if (component->desc->id == GAME_COMPONENT_GameBody.id) {
+                body = component->data;
+            }
+            if (component->desc->id == GAME_COMPONENT_GameCollider.id) {
+                collider = component->data;
+            }
+        }
+        if (body && collider && collider->sensor && body->continuous) {
+            body->continuous = false;
+            assert(game_entities_register(f->live->entities, prototype) == 0);
+            changed++;
+        }
+    }
+    assert(changed > 0);
+    printf("scene_scale_sensor_sweeps disabled_prototypes=%d\n", changed);
+}
+
+int arena_scene_scale_run(const char *program, int count, int frames, bool profile)
+{
+    assert(count > 0 && count <= 20000 && frames >= 30 && frames <= 1800);
+    CF_Result result = cf_make_app(
+        "Arena Scene scale",
+        0,
+        0,
+        0,
+        1280,
+        720,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        program
+    );
+    if (cf_is_error(result)) {
+        fprintf(stderr, "Arena scale app: %s\n", result.details);
+        return 1;
+    }
+    cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
+    app_scene_renderer_initialize();
+    cf_app_init_imgui();
+    app_input_initialize();
+    editor_ui_initialize(false);
+    ImGui_GetIO()->IniFilename = NULL;
+    cf_app_set_imgui_render_target(cf_app_get_canvas());
+    editor_ui_set_framebuffer_target(true);
+    behavior_backend previous = behavior_debug_backend(BEHAVIOR_SLJIT);
+    srand(12345);
+    arena_fixture f = fixture_new();
+    app_game_presentation *game = app_game_presentation_new(f.scene, f.viewport, false);
+    assert(game);
+    game_behavior_set_profiling(f.live->behaviors, profile);
+    game_behavior_set_parallel_updates(f.live->behaviors, !getenv("CBLUEPRINT_BENCH_SERIAL_BEHAVIORS"));
+    app_scene_renderer_set_parallel(f.scene->renderer, !getenv("CBLUEPRINT_BENCH_SERIAL_RENDER"));
+    const char *physics_json = getenv("CBLUEPRINT_BENCH_PHYSICS_SETTINGS");
+    if (physics_json) {
+        yyjson_doc *doc = yyjson_read(physics_json, strlen(physics_json), 0);
+        game_physics_settings settings;
+        assert(doc && game_physics_settings_read(yyjson_doc_get_root(doc), &settings));
+        assert(game_physics_configure(f.live->physics, settings) == 0);
+        yyjson_doc_free(doc);
+    }
+    if (getenv("CBLUEPRINT_BENCH_NO_SENSOR_SWEEPS")) {
+        scene_scale_disable_sensor_sweeps(&f);
+    }
+    game_physics_set_profiling(f.live->physics, profile || getenv("CBLUEPRINT_BENCH_PHYSICS_PROFILE"));
+    test_physics_executor executor = test_physics_executor_open();
+    if (executor.library) {
+        game_physics_set_tasks(f.live->physics, &executor.tasks);
+    } else if (getenv("CBLUEPRINT_BENCH_SERIAL_PHYSICS")) {
+        game_physics_set_tasks(f.live->physics, NULL);
+    }
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+    bool combat = getenv("CBLUEPRINT_BENCH_COMBAT") != NULL, cold = true;
+    ecs_entity *enemies = scene_scale_enemies(&f, count, combat);
+    ecs_entity player = f.scene->actors[player_index(&f)].entity;
+    uint64_t trace = UINT64_C(14695981039346656037);
+    int peak_backlog = 0, backlog_frames = 0, peak_shots = 0, firing_frames = 0;
+    double peak_physics = 0, peak_frame = 0;
+    enum
+    {
+        WALL,
+        BEHAVIOR,
+        PHYSICS,
+        SYSTEMS,
+        RENDER_HOST,
+        PRESENT,
+        METRICS
+    };
+    const char *names[] = { "wall",    "behavior",    "physics",
+                            "systems", "render_host", "present" };
+    double *samples[METRICS] = { 0 };
+    game_physics_profile phases = { 0 };
+    int peak_draws = 0;
+    CF_DrawStats3d draw_totals = { 0 };
+    uint64_t prepared_ticks = 0, system_ticks = 0, parallel_ticks = 0,
+             render_tasks = 0;
+    int behavior_workers = 0, render_workers = 0;
+    cf_draw3d_stats();
+    for (int i = -30; i < frames; i++) {
+        if (combat && i >= 0) {
+            /* Aim selection is fixture work, outside the frame timer. Held
+             * input still enters through the normal presentation controls. */
+            scene_scale_aim(&f);
+            if (!i) {
+                key_event(SDL_SCANCODE_SPACE, true);
+            }
+        }
+        double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
+        cf_app_update(NULL);
+        app_input_frame();
+        f.time += 1.0 / 60.0;
+        double begin = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
+        assert(!app_game_presentation_frame(game, f.time));
+        double drawn = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
+        cf_app_draw_onto_screen(true);
+        double end = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
+        CF_DrawStats3d draws = cf_draw3d_stats();
+        if (draws.instances > peak_draws) {
+            peak_draws = draws.instances;
+        }
+        const engine_frame_timing *timing = engine_last_timing(f.runtime);
+        if (cold && timing->steps) {
+            printf("scene_scale_cold physics_ms=%.6f frame_ms=%.6f\n", timing->physics_ms, end - start);
+            cold = false;
+        }
+        if (i < 0) {
+            continue;
+        }
+        draw_totals.instances += draws.instances;
+        draw_totals.commands += draws.commands;
+        for (int j = 0; j < CF_DRAW_SPLIT_3D_COUNT; j++) {
+            draw_totals.splits[j] += draws.splits[j];
+        }
+        game_behavior_update_stats ticks = game_behavior_last_update(f.live->behaviors);
+        prepared_ticks += ticks.prepared;
+        system_ticks += ticks.system_loop;
+        parallel_ticks += ticks.parallel;
+        if (ticks.workers > behavior_workers) {
+            behavior_workers = ticks.workers;
+        }
+        render_arena_work work = app_scene_renderer_last_work(f.scene->renderer);
+        render_tasks += work.tasks;
+        if (work.workers > render_workers) {
+            render_workers = work.workers;
+        }
+        GameEncounter encounter = review_encounter(f.world);
+        assert(timing->steps == 1 && encounter.alive <= count);
+        assert(combat || encounter.alive == count);
+        peak_physics = fmax(peak_physics, timing->physics_ms);
+        peak_frame = fmax(peak_frame, end - start);
+        if (timing->event_backlog > peak_backlog) {
+            peak_backlog = timing->event_backlog;
+        }
+        backlog_frames += timing->event_backlog > 0;
+        if (combat) {
+            bool firing = GAME_GameAim_get_const(f.world, player)->firing;
+            if (firing && !firing_frames) {
+                printf(
+                    "scene_scale_first_fire physics_ms=%.6f behavior_ms=%.6f "
+                    "frame_ms=%.6f\n",
+                    timing->physics_ms,
+                    timing->behavior_ms,
+                    end - start
+                );
+            }
+            firing_frames += firing;
+            int shots = projectiles(&f);
+            if (shots > peak_shots) {
+                peak_shots = shots;
+            }
+            int state[] = { encounter.alive,
+                            encounter.status,
+                            shots,
+                            GAME_GameHealth_get_const(f.world, player)->current,
+                            GAME_GameExperience_get_const(f.world, player)->current,
+                            timing->event_backlog };
+            for (int j = 0; j < (int)(sizeof state / sizeof *state); j++) {
+                trace = (trace ^ (uint64_t)state[j]) * UINT64_C(1099511628211);
+            }
+        }
+        double values[] = { end - start,
+                            timing->behavior_ms,
+                            timing->physics_ms,
+                            timing->systems_ms,
+                            fmax(
+                                0,
+                                drawn - begin - timing->behavior_ms -
+                                    timing->physics_ms - timing->systems_ms
+                            ),
+                            end - drawn };
+        for (int j = 0; j < METRICS; j++) {
+            apush(samples[j], values[j]);
+        }
+        const game_physics_profile *p = game_physics_last_profile(f.live->physics);
+        phases.synchronize_ms += p->synchronize_ms;
+        phases.solve_ms += p->solve_ms;
+        phases.sweeps_ms += p->sweeps_ms;
+        phases.pairs_ms += p->pairs_ms;
+        phases.writeback_ms += p->writeback_ms;
+        phases.dispatch_ms += p->dispatch_ms;
+        phases.bodies = p->bodies;
+        phases.pairs = p->pairs;
+    }
+    scene_scale_verify_encounter(&f);
+    double checksum = 0;
+    for (int i = 0; i < count; i++) {
+        if (combat && !ecs_entity_is_alive(f.world, enemies[i])) {
+            continue;
+        }
+        const GameTransform *position = GAME_GameTransform_get_const(f.world, enemies[i]);
+        assert(position && isfinite(position->x) && isfinite(position->y));
+        checksum += position->x + position->y;
+        int attached = game_behavior_attachment_count_for_entity(f.live->behaviors, enemies[i]);
+        assert(attached == 5);
+        for (int j = 0; j < attached; j++) {
+            game_behavior_attachment_info info;
+            assert(!game_behavior_attachment_info_at(f.live->behaviors, enemies[i], j, &info));
+            assert(behavior_instance_backend(info.instance) == BEHAVIOR_SLJIT);
+            assert(!behavior_instance_last_failure(info.instance));
+        }
+    }
+    assert(peak_draws > 0 && eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    printf(
+        "scene_scale_parallel ticks=%llu behavior_workers=%d render_tasks=%llu "
+        "render_workers=%d\n",
+        (unsigned long long)parallel_ticks,
+        behavior_workers,
+        (unsigned long long)render_tasks,
+        render_workers
+    );
+    if (getenv("CBLUEPRINT_BENCH_REQUIRE_PARALLEL")) {
+        assert(
+            parallel_ticks > 0 && behavior_workers > 1 && render_tasks > 0 &&
+            render_workers > 1
+        );
+    }
+    printf(
+        "scene_scale_executor workers=%d external=%d\n",
+        game_physics_workers(f.live->physics),
+        executor.library != NULL
+    );
+    printf(
+        "scene_scale_spikes physics_max_ms=%.6f frame_max_ms=%.6f "
+        "backlog_max=%d backlog_frames=%d backlog_final=%d\n",
+        peak_physics,
+        peak_frame,
+        peak_backlog,
+        backlog_frames,
+        engine_last_timing(f.runtime)->event_backlog
+    );
+    for (int j = 0; j < METRICS; j++) {
+        qsort(samples[j], (size_t)frames, sizeof(double), compare_milliseconds);
+        printf(
+            "scene_scale_phase name=%s p50_ms=%.6f p95_ms=%.6f\n",
+            names[j],
+            samples[j][(frames - 1) / 2],
+            samples[j][(frames - 1) * 95 / 100]
+        );
+        afree(samples[j]);
+    }
+    printf(
+        "scene_scale_physics sync_ms=%.6f solve_ms=%.6f sweeps_ms=%.6f "
+        "pairs_ms=%.6f "
+        "writeback_ms=%.6f dispatch_ms=%.6f bodies=%d pair_candidates=%d\n",
+        phases.synchronize_ms / frames,
+        phases.solve_ms / frames,
+        phases.sweeps_ms / frames,
+        phases.pairs_ms / frames,
+        phases.writeback_ms / frames,
+        phases.dispatch_ms / frames,
+        phases.bodies,
+        phases.pairs
+    );
+    printf(
+        "scene_scale_render instances=%.3f commands=%.3f\n",
+        (double)draw_totals.instances / frames,
+        (double)draw_totals.commands / frames
+    );
+    for (int i = 0; i < CF_DRAW_SPLIT_3D_COUNT; i++) {
+        if (draw_totals.splits[i]) {
+            printf(
+                "scene_scale_render_split reason=%s per_frame=%.3f\n",
+                cf_draw_split_3d_to_string(i),
+                (double)draw_totals.splits[i] / frames
+            );
+        }
+    }
+    printf(
+        "scene_scale_ticks prepared=%llu system=%llu\n",
+        (unsigned long long)prepared_ticks,
+        (unsigned long long)system_ticks
+    );
+    printf(
+        "scene_scale backend=SLJIT entities=%d frames=%d profile=%d draws=%d "
+        "checksum=%.9f oracle_calls=0\n",
+        count,
+        frames,
+        profile,
+        peak_draws,
+        checksum
+    );
+    if (combat) {
+        GameEncounter encounter = review_encounter(f.world);
+        int experience = GAME_GameExperience_get_const(f.world, player)->current;
+        int health = GAME_GameHealth_get_const(f.world, player)->current;
+        printf(
+            "scene_scale_combat alive=%d kills=%d experience=%d health=%d "
+            "peak_shots=%d firing_frames=%d trace=%llu\n",
+            encounter.alive,
+            count - encounter.alive,
+            experience,
+            health,
+            peak_shots,
+            firing_frames,
+            (unsigned long long)trace
+        );
+        fflush(stdout);
+        assert(encounter.alive < count && experience > 0 && firing_frames > 0);
+        key_event(SDL_SCANCODE_SPACE, false);
+        double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
+        assert(!app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART));
+        double restart_ms = cf_get_ticks() * 1000.0 / cf_get_tick_frequency() - start;
+        for (int i = 0; i < count; i++) {
+            assert(!ecs_entity_is_alive(f.world, enemies[i]));
+        }
+        player = f.scene->actors[player_index(&f)].entity;
+        assert(!GAME_GameExperience_get_const(f.world, player)->current);
+        assert(!projectiles(&f) && !game_entities_pending_events(f.live->entities));
+        for (int i = 0; i < 3; i++) {
+            assert(!standalone_frame(&f, game));
+        }
+        assert(engine_last_timing(f.runtime)->steps == 1);
+        assert(review_encounter(f.world).total == 40);
+        assert(
+            game_physics_workers(f.live->physics) ==
+            (executor.library ? executor.tasks.workers : 1)
+        );
+        assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+        printf(
+            "scene_scale_restart reset_ms=%.6f workers=%d oracle_calls=0\n",
+            restart_ms,
+            game_physics_workers(f.live->physics)
+        );
+    }
+    fflush(stdout);
+    afree(enemies);
+    app_game_presentation_free(game);
+    editor_frame_profile_free(&f.profile);
+    app_scene_authoring_free(f.scene);
+    engine_viewport_free(f.viewport);
+    engine_free(f.runtime);
+    game_live_world_free(f.live);
+    test_physics_executor_close(&executor);
+    editor_free(f.graph);
+    ecs_world_free(f.world);
+    behavior_debug_backend(previous);
+    app_input_shutdown();
+    cf_destroy_app();
+    return 0;
+}
+
+int compiled_arena_run(const char *program)
+{
+    CF_Result result = cf_make_app(
+        "Compiled Arena smoke",
+        0,
+        0,
+        0,
+        800,
+        600,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        program
+    );
+    if (cf_is_error(result)) {
+        return 1;
+    }
+    app_scene_renderer_initialize();
+    cf_app_init_imgui();
+    app_input_initialize();
+    editor_ui_initialize(false);
+    ImGui_GetIO()->IniFilename = NULL;
+    cf_app_set_imgui_render_target(cf_app_get_canvas());
+    editor_ui_set_framebuffer_target(true);
+    behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
+    for (int mode = 0; mode < 2; mode++) {
+        behavior_backend previous = behavior_debug_backend(modes[mode]);
+        srand(12345);
+        arena_fixture f = fixture_new();
+        assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
+        game_behavior_set_profiling(f.live->behaviors, !getenv("CBLUEPRINT_BENCH_NO_PROFILE"));
+        bool batch = !getenv("CBLUEPRINT_BENCH_NO_BATCH");
+        game_behavior_set_batch_enabled(f.live->behaviors, batch);
+        uint64_t batches = behavior_batch_dispatches(), prepared = 0, native = 0;
+        uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
+        double behavior_ms[150], simulation_ms[150];
+        game_behavior_profile_frame profile = { 0 };
+        for (int i = 0; i < 180; i++) {
+            assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == 0);
+            f.time += 1.0 / 60.0;
+            assert(app_scene_authoring_frame(f.scene, f.time) == FLOW_OK);
+            game_behavior_update_stats updates = game_behavior_last_update(
+                f.live->behaviors
+            );
+            prepared += updates.prepared;
+            native += updates.native_loop;
+            if (i >= 30) {
+                const engine_frame_timing *timing = app_scene_authoring_runtime_timing(
+                    f.scene
+                );
+                review_behavior_totals(&profile, game_behavior_profile(f.live->behaviors));
+                behavior_ms[i - 30] = timing->behavior_ms;
+                simulation_ms[i - 30] = timing->behavior_ms +
+                                        timing->physics_ms + timing->systems_ms;
+            }
+        }
+        qsort(behavior_ms, 150, sizeof(double), compare_milliseconds);
+        batches = behavior_batch_dispatches() - batches;
+        assert(batch ? prepared > 0 : !batches && !prepared);
+        assert(native == 0 || modes[mode] == BEHAVIOR_SLJIT);
+        if (batch && modes[mode] == BEHAVIOR_SLJIT &&
+            getenv("CBLUEPRINT_BENCH_NO_PROFILE")) {
+            assert(native > 0);
+        }
+        printf(
+            "%s Arena batch_dispatches=%llu prepared_updates=%llu "
+            "native_loop=%llu\n",
+            behavior_backend_name(modes[mode]),
+            (unsigned long long)batches,
+            (unsigned long long)prepared,
+            (unsigned long long)native
+        );
+        qsort(simulation_ms, 150, sizeof(double), compare_milliseconds);
+        printf(
+            "%s Arena behavior_p50_ms=%.6f behavior_p95_ms=%.6f "
+            "simulation_p50_ms=%.6f simulation_p95_ms=%.6f\n",
+            behavior_backend_name(modes[mode]),
+            behavior_ms[74],
+            behavior_ms[142],
+            simulation_ms[74],
+            simulation_ms[142]
+        );
+        qsort(profile.rows, (size_t)profile.count, sizeof *profile.rows, compare_behavior_time);
+        for (int j = 0; j < profile.count; j++) {
+            printf(
+                "profile backend=%s behavior=%s event=%s exec_ms=%.6f "
+                "setup_ms=%.6f dispatches=%llu starts=%llu resumes=%llu\n",
+                behavior_backend_name(modes[mode]),
+                profile.rows[j].behavior,
+                profile.rows[j].event,
+                profile.rows[j].cpu_ms / 150,
+                profile.rows[j].setup_ms / 150,
+                (unsigned long long)profile.rows[j].dispatches,
+                (unsigned long long)profile.rows[j].starts,
+                (unsigned long long)profile.rows[j].resumes
+            );
+        }
+        assert(projectiles(&f) > 0);
+        ecs_query query;
+        assert(ecs_query_begin(f.world, &query, NULL, 0) == ECS_OK);
+        ecs_entity entity;
+        int instances = 0, entries = 0, whole = 0;
+        const behavior_asset **seen = NULL;
+        while (ecs_query_next(&query, &entity) > 0) {
+            int count = game_behavior_attachment_count_for_entity(f.live->behaviors, entity);
+            for (int i = 0; i < count; i++) {
+                game_behavior_attachment_info info;
+                assert(
+                    game_behavior_attachment_info_at(f.live->behaviors, entity, i, &info) == 0
+                );
+                assert(behavior_instance_backend(info.instance) == modes[mode]);
+                instances++;
+                const behavior_asset *asset = info.instance->asset;
+                bool known = false;
+                for (int j = 0; j < acount(seen); j++) {
+                    known |= seen[j] == asset;
+                }
+                if (known) {
+                    continue;
+                }
+                apush(seen, asset);
+                for (int j = 0; j < acount(asset->graph->nodes); j++) {
+                    node *entry = asset->graph->nodes[j];
+                    if (entry->desc != &NODE_Event) {
+                        continue;
+                    }
+                    entries++;
+                    whole += behavior_program_function(
+                                 behavior_program_graph(asset->program, asset->graph),
+                                 entry
+                             ) != NULL;
+                    if (mode == 0) {
+                        const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
+                            behavior_program_graph(asset->program, asset->graph),
+                            entry
+                        );
+                        if (d) {
+                            printf(
+                                "whole_exclusion asset=%s event=%s graph=%llu "
+                                "node=%llu type=%s pin=%d output=%d "
+                                "reason=%s\n",
+                                asset->name,
+                                entry->reference_name,
+                                (unsigned long long)d->graph->graph_id,
+                                (unsigned long long)d->node->id,
+                                d->node->desc->name,
+                                d->pin,
+                                d->output,
+                                d->reason
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        ecs_query_end(&query);
+        printf(
+            "%s Arena whole_function_entries=%d/%d unique_assets=%d\n",
+            behavior_backend_name(modes[mode]),
+            whole,
+            entries,
+            acount(seen)
+        );
+        afree(seen);
+        assert(instances > 0);
+        assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
+        assert(
+            app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART) == 0
+        );
+        assert(app_scene_authoring_frame(f.scene, f.time + 1.0 / 60.0) == FLOW_OK);
+        assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
+        printf(
+            "%s: Arena3D firing, simulation and restart; %d instances; zero "
+            "oracle calls\n",
+            behavior_backend_name(modes[mode]),
+            instances
+        );
+        editor_frame_profile_free(&f.profile);
+        app_scene_authoring_free(f.scene);
+        engine_viewport_free(f.viewport);
+        engine_free(f.runtime);
+        game_live_world_free(f.live);
+        editor_free(f.graph);
+        ecs_world_free(f.world);
+        behavior_debug_backend(previous);
+    }
+    app_input_shutdown();
+    cf_destroy_app();
     return 0;
 }

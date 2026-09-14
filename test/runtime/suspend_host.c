@@ -57,6 +57,7 @@ void test_suspended_commands(void *library)
             arena values = { 0 };
             pin_value expected_result[5] = { 0 }, expected_variables[4] = { 0 };
             int expected_status = 0;
+            unsigned long expected_steps = 0;
             for (int mode = 0; mode < (generated ? 5 : 4); mode++) {
                 whole_command_capture capture = { .record = true,
                                                   .fail_at = 2,
@@ -73,6 +74,7 @@ void test_suspended_commands(void *library)
                     flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ args, 5 }, &options, NULL);
                     assert(run);
                     expected_status = flow_run_resume(run);
+                    expected_steps = flow_run_steps(run);
                     if (!expected_status) {
                         for (int j = 1; j < 5; j++) {
                             assert(!pin_value_snapshot_to_arena(
@@ -144,6 +146,7 @@ void test_suspended_commands(void *library)
                     );
                 }
                 assert(status == expected_status && capture.calls == expected.calls);
+                assert(ctx.steps == expected_steps);
                 assert(
                     capture.checksum == expected.checksum &&
                     acount(capture.values) == acount(expected.values)

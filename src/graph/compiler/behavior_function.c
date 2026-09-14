@@ -150,6 +150,8 @@ static int call(builder *b, node *n, int after)
     behavior_lower_capture(b, n, false);
     b->pending_watch_frame = 0;
     behavior_lower_emit(b, (behavior_function_instruction){ .op = BF_ENTER, .target = frame });
+    /* Parameter copies execute inside the callee, including their yields. */
+    b->frame = frame;
     for (int i = 0; i < acount(args); i++) {
         if (!behavior_lower_store(b, BF_SAVE, args[i], parameters[i])) {
             afree(args);
@@ -161,7 +163,6 @@ static int call(builder *b, node *n, int after)
     afree(parameters);
     int end = acount(b->tasks);
     apush(b->tasks, ((task){ .pc = -1, .after = -1, .frame = frame, .stack = stack }));
-    b->frame = frame;
     int next = behavior_lower_schedule(
         b,
         (task){ .node = entry, .after = end, .frame = frame, .loop = -1 }
@@ -201,11 +202,11 @@ static bool return_values(builder *b, node *n)
     behavior_lower_capture(b, n, false);
     if (call) {
         behavior_lower_emit(b, (behavior_function_instruction){ .op = BF_LEAVE, .target = b->frame });
-        behavior_lower_watch_commit(b, b->frame);
         int parent = b->frame;
         graph *previous = b->graph;
         int source = b->source;
         b->frame = frame.source.parent;
+        behavior_lower_watch_commit(b, parent);
         b->source = b->function->frames[b->frame].source_index;
         b->graph = b->function->frames[b->frame].source.graph;
         behavior_lower_capture(b, call, true);

@@ -150,10 +150,12 @@ static int play(node *, flow_context *ctx)
     }
     return flow_context_continue(ctx, 0);
 }
-#define FLOAT_PIN(label, value)                                                \
-    {                                                                          \
-        .name = label, .type = PIN_F32, .type_name = "float",                  \
-        .default_value = { .type = PIN_F32, .f = value }                       \
+#define FLOAT_PIN(label, value)                                                  \
+    {                                                                            \
+        .name = label, .type = PIN_F32, .type_name = "float", .default_value = { \
+            .type = PIN_F32,                                                     \
+            .f = value                                                           \
+        }                                                                        \
     }
 static pin_spec INPUTS[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
                              FLOAT_PIN("Frequency", 440),

@@ -401,6 +401,8 @@ static void set_semantics()
 }
 void whole_array_op_smoke()
 {
+    extern void test_value_index();
+    test_value_index();
     set_semantics();
     owned_tick();
     owned_tick_arrays();

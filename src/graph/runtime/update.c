@@ -46,10 +46,12 @@ behavior_update_binding *behavior_update_prepare(
         }
     }
     behavior_update_binding *binding = xcalloc(1, sizeof *binding);
+    binding->index = acount(*bindings);
     binding->function = function;
     binding->asset = instance->asset;
     binding->entry = entry;
     binding->code = behavior_function_entry(function);
+    binding->system_code = behavior_function_system_entry(function);
     for (int i = 0; i < acount(instance->services); i++) {
         service_binding service = instance->services[i];
         service.type_name = xstrdup(service.type_name);

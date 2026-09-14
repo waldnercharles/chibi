@@ -20,7 +20,7 @@ static inline bool behavior_jit_call(behavior_function_op op)
 static inline bool behavior_jit_integer_clobber(behavior_function_op op)
 {
     return behavior_jit_call(op) || op == BF_ENTITY || op == BF_COMPONENT ||
-           op == BF_COLUMN || op == BF_ROW;
+           op == BF_COLUMN || op == BF_COLUMN_TRY || op == BF_ROW;
 }
 
 typedef struct
@@ -30,8 +30,16 @@ typedef struct
     const int *registers, *local_registers;
     int context, steps, variables, arguments, argument_count;
     int locals, parents;
-    bool countdown, inspected;
+    int system_stack;
+    const behavior_function *system_root;
+    struct sljit_label *system_loop;
+    struct sljit_jump **system_exits;
+    bool countdown, inspected, system_registers;
 } behavior_machine;
+void behavior_jit_system_enter(behavior_machine *machine);
+void behavior_jit_system_begin(behavior_machine *machine);
+void behavior_jit_system_next(behavior_machine *machine);
+void behavior_jit_return(const behavior_machine *machine, int source, sljit_sw offset);
 bool behavior_jit_watch(const behavior_machine *machine, const behavior_function_instruction *instruction);
 bool behavior_jit_host_call(
     const behavior_machine *machine,

@@ -37,6 +37,8 @@ void emit_batch_c(const char *path)
         char name[64];
         snprintf(name, sizeof name, "generated_tick%d", workload);
         behavior_function_write_c(f, out, name);
+        snprintf(name, sizeof name, "generated_system%d", workload);
+        behavior_function_write_system_c(f, out, name);
         behavior_asset_free(asset);
     }
     assert(!fclose(out));
@@ -55,14 +57,21 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
     snprintf(symbol, sizeof symbol, "generated_tick%d", workload);
     behavior_function *f = tick(asset);
     assert(behavior_function_batchable(f));
-    void *code = f->code, *dispatch = f->dispatch;
+    void *code = f->code, *dispatch = f->dispatch, *system = f->system_code;
     /* Benchmark-only replacement on a fresh, quiescent program. This runs C
      * emitted from the same IR through the identical engine batch wrapper.
      * Restore owned JIT pointers before freeing the program. */
-    if (mode == 4 || mode == 8) {
+    if (mode == 4 || mode == 8 || mode == 10) {
         f->code = dlsym(library, symbol);
         assert(f->code);
         f->dispatch = NULL;
+        f->system_code = NULL;
+        if (mode == 10) {
+            char system_symbol[64];
+            snprintf(system_symbol, sizeof system_symbol, "generated_system%d", workload);
+            f->system_code = dlsym(library, system_symbol);
+            assert(f->system_code);
+        }
     }
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
@@ -114,7 +123,7 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
                  behavior_program_event(asset->program, "Tick", &duplicate)
              )
     );
-    if (mode == 4 || mode == 8) {
+    if (mode == 4 || mode == 8 || mode == 10) {
         assert(f->code == dlsym(library, symbol));
     }
     assert(!game_behavior_pump(world, 0.));
@@ -138,7 +147,8 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
         if (mode >= 6) {
             game_behavior_update_stats updates = game_behavior_last_update(world);
             assert(updates.prepared == count && !updates.scheduled);
-            assert(updates.native_loop == (mode == 6 ? count : 0));
+            assert(updates.native_loop == (mode == 6 || mode == 10 ? count : 0));
+            assert(updates.system_loop == (mode == 6 || mode == 10 ? count : 0));
             if (frame >= 0) {
                 prepared += updates.prepared;
             }
@@ -193,7 +203,8 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
                           "SLJIT_UPDATE",
                           "BYTECODE_UPDATE",
                           "GENERATED_C_UPDATE",
-                          "SLJIT_C_UPDATE" }[mode],
+                          "SLJIT_C_UPDATE",
+                          "GENERATED_C_SYSTEM_UPDATE" }[mode],
         workloads[workload],
         count,
         elapsed * 1e9 / (frames * (double)count),
@@ -207,6 +218,7 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
     ecs_world_free(ecs);
     f->code = code;
     f->dispatch = dispatch;
+    f->system_code = system;
     behavior_asset_free(asset);
     afree(instances);
     afree(entities);
@@ -219,8 +231,8 @@ int bench_batch(const char *path, int count, int frames, int rotation)
     assert(library);
     for (int workload = 0; workload < 6; workload++) {
         uint64_t expected = 0;
-        for (int i = 0; i < 10; i++) {
-            int mode = (i + rotation) % 10;
+        for (int i = 0; i < 11; i++) {
+            int mode = (i + rotation) % 11;
             uint64_t checksum = measure(mode, workload, count, frames, library);
             if (!i) {
                 expected = checksum;

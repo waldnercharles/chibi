@@ -57,6 +57,7 @@ struct behavior_program
     behavior_backend backend;
     unsigned long long revision;
     compile_diagnostic diagnostic;
+    compile_report report;
     behavior_graph_program *graphs;
     node **events; /* Named root entries, including duplicates on invalid assets. */
     batch_event *batches;
@@ -286,6 +287,7 @@ void behavior_program_free(behavior_program *program)
     if (!program) {
         return;
     }
+    compile_report_free(&program->report);
     for (int i = 0; i < acount(program->graphs); i++) {
         behavior_graph_program *p = &program->graphs[i];
         for (int j = 0; j < acount(p->nodes); j++) {
@@ -433,12 +435,11 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
     compile_report report;
     compile_report_init(&report);
     behavior_asset_compile(asset, &report);
+    program->report = report;
     if (compile_report_blocked(&report)) {
         program->diagnostic = *compile_report_first_error(&report);
-        compile_report_free(&report);
         return program;
     }
-    compile_report_free(&report);
 #ifdef __EMSCRIPTEN__
     program->backend = BEHAVIOR_BYTECODE;
 #else
@@ -472,6 +473,12 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
             if (f && program->backend == BEHAVIOR_SLJIT &&
                 !behavior_function_compile(f)) {
                 diagnostic(program, p->source, n, -1, "SLJIT whole-function emission failed");
+                return program;
+            }
+            if (f && program->backend == BEHAVIOR_SLJIT && n->reference_name &&
+                !strcmp(n->reference_name, "Tick") && behavior_function_batchable(f) &&
+                !behavior_function_compile_system(f)) {
+                diagnostic(program, p->source, n, -1, "SLJIT Tick system emission failed");
                 return program;
             }
         }
@@ -529,6 +536,10 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
 behavior_backend behavior_program_backend(const behavior_program *program)
 {
     return program ? program->backend : BEHAVIOR_UNAVAILABLE;
+}
+const compile_report *behavior_program_report(const behavior_program *program)
+{
+    return program ? &program->report : NULL;
 }
 
 const compile_diagnostic *behavior_program_diagnostic(const behavior_program *program)

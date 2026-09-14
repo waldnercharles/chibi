@@ -67,5 +67,16 @@ void test_task_pool()
     assert(!tasks.enqueue(fill_range, ITEMS, 64, &serial, tasks.user));
     game_task_pool_end(pool);
     free(values);
+    game_task_pool *serial_pool = game_task_pool_acquire_workers(1);
+    game_task_pool *wide = game_task_pool_acquire_workers(8);
+    game_task_pool *wide_shared = game_task_pool_acquire_workers(8);
+    assert(wide == wide_shared);
+    assert(game_task_pool_tasks(serial_pool)->workers == 1);
+    assert(
+        game_task_pool_tasks(wide)->workers >= 1 && game_task_pool_tasks(wide)->workers <= 8
+    );
+    game_task_pool_release(wide_shared);
+    game_task_pool_release(serial_pool);
+    game_task_pool_release(wide);
     game_task_pool_release(pool);
 }

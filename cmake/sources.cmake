@@ -23,6 +23,7 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function_names.c
     src/graph/compiler/behavior_function_command.c
     src/graph/compiler/behavior_function_query.c
+    src/graph/compiler/behavior_function_fusion.c
     src/graph/compiler/behavior_function_host_call.c
     src/graph/compiler/behavior_function_jit_host_call.c
     src/graph/compiler/behavior_function_array.c
@@ -31,9 +32,11 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function_jit_component.c
     src/graph/compiler/behavior_function_vm.c
     src/graph/compiler/behavior_function_opt.c
+    src/graph/compiler/behavior_function_parallel.c
     src/graph/compiler/behavior_function_jit_integer.c
     src/graph/compiler/behavior_function_jit_memory.c
     src/graph/compiler/behavior_function_jit_registers.c
+    src/graph/compiler/behavior_function_jit_system.c
     src/graph/compiler/behavior_function_jit.c
     src/graph/compiler/behavior_function_c.c
     src/graph/runtime/flow_compiled.c
@@ -41,6 +44,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/behavior_data.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow_visual.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/compile.c
+    src/graph/compiler/compile_queries.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/graph_ir.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/graph_jit_sljit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/program.c
@@ -87,10 +91,12 @@ set(CORE_SOURCES
     src/graph/runtime/instance_bank.c
     src/graph/runtime/instance_batch.c
     src/graph/runtime/instance_state.c
+    src/graph/runtime/update_system.c
     src/graph/runtime/update.c
     src/graph/runtime/update_jit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/value_array.c
+    src/graph/runtime/value_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
@@ -182,6 +188,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/system_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/particle_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/vector_nodes.c
@@ -199,6 +206,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_motion_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_parts.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/behavior.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/parallel.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/pending.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entities.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entity_query.c

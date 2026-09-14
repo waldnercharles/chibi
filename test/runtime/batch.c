@@ -1,5 +1,5 @@
 #include "graph/runtime/flow_internal.h"
-#include "graph/runtime/update.h"
+#include "graph/runtime/update_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_aggregate_fixture.h"
 #include "test/whole_batch_fixture.h"
@@ -79,6 +79,7 @@ static void world_parity(behavior_backend backend, bool batch, bool components, 
         assert(run_tick(world, update) == COUNT);
         if (update && batch && !profile && backend == BEHAVIOR_SLJIT) {
             assert(game_behavior_last_update(world).native_loop == eligible);
+            assert(game_behavior_last_update(world).system_loop == eligible);
         }
         assert(
             behavior_batch_dispatches() - dispatched +
@@ -216,23 +217,26 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
     behavior_instance_set_delta_seconds(prepared, .125);
     behavior_update_binding **bindings = NULL;
     const behavior_function *function = behavior_program_batch_event(asset->program, "Tick", &entry);
-    behavior_update_row row = {
-        .instance = prepared,
-        .binding = behavior_update_prepare(&bindings, prepared, function, entry),
-        .entity = ecs_entity_to_u64(entity)
+    behavior_update_row rows[2] = {
+        { .instance = prepared,
+          .binding = behavior_update_prepare(&bindings, prepared, function, entry),
+          .entity = ecs_entity_to_u64(entity) }
     };
-    assert(row.binding);
+    rows[1] = rows[0];
+    behavior_update_row *row = rows;
+    assert(row->binding);
     int result;
-    void *code = backend == BEHAVIOR_SLJIT ? behavior_update_compile() : NULL;
+    void *code = backend == BEHAVIOR_SLJIT ? behavior_function_system_entry(function)
+                                           : NULL;
     assert(backend != BEHAVIOR_SLJIT || code);
     behavior_update_row *
         stopped = code
                     ? ((
                           behavior_update_fn
-                      )code)(&row, &row + 1, (const ecs_execution_view *)ecs, &result)
-                    : behavior_update_run_c(&row, &row + 1, (const ecs_execution_view *)ecs, &result, NULL);
-    assert(stopped == &row && result < 0);
-    flow_run *prepared_failure = behavior_update_failure(&row, result);
+                      )code)(rows, rows + 2, (const ecs_execution_view *)ecs, &result)
+                    : behavior_update_run_c(rows, rows + 2, (const ecs_execution_view *)ecs, &result, NULL);
+    assert(stopped == row && result < 0);
+    flow_run *prepared_failure = behavior_update_failure(row, result);
     const flow_error *expected_error = flow_run_error(reference),
                      *prepared_error = flow_run_error(prepared_failure);
     assert(
@@ -251,7 +255,6 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
         saved->code == expected_error->code && saved->pin == expected_error->pin &&
         saved->steps == expected_error->steps && !strcmp(saved->event_name, "Tick")
     );
-    behavior_update_free_code(code);
     behavior_update_free_bindings(bindings);
     behavior_instance_destroy(prepared);
     ecs_world_free(ecs);
@@ -484,6 +487,108 @@ static void update_guards(behavior_backend backend)
     ecs_world_free(ecs);
 }
 
+/* A failed middle row must retain its one partial write, stop later rows,
+ * and preserve the same source error as an ordinary compiled activation. */
+static void system_failure(bool interleaved)
+{
+    behavior_asset *asset = whole_batch_fixture(true);
+    behavior_asset *other = interleaved ? whole_batch_fixture(true) : asset;
+    if (interleaved) {
+        assert(!behavior_asset_set_name(other, "Second Tick"));
+    }
+    ecs_world *ecs = ecs_world_new();
+    const ecs_component_desc *component = WHOLE_NODE_GetRecord.component;
+    assert(!ecs_world_register_component(ecs, component, NULL));
+    behavior_instance *instances[3];
+    behavior_update_row rows[3];
+    behavior_update_binding **bindings = NULL;
+    node *entry = tick_entry(asset);
+    const behavior_function *f = behavior_program_batch_event(asset->program, "Tick", &entry);
+    const behavior_function *functions[2] = { f, NULL };
+    node *other_entry = interleaved ? tick_entry(other) : entry;
+    functions[1] = behavior_program_batch_event(other->program, "Tick", &other_entry);
+    for (int i = 0; i < 3; i++) {
+        ecs_entity entity = ecs_world_create_entity(ecs);
+        whole_record record = { .weight = i };
+        assert(!ecs_world_record_add(ecs, entity, component->id, &record, sizeof record));
+        pin_value owner = { .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .u64 = ecs_entity_to_u64(entity) };
+        instances[i] = behavior_instance_create(i == 1 ? other : asset, &owner, NULL, NULL);
+        assert(!behavior_instance_bind_service(instances[i], "ecs.world", ecs));
+        behavior_instance_set_trace_enabled(instances[i], false);
+        behavior_instance_set_delta_seconds(instances[i], .125);
+        pin_value target = owner;
+        if (i == 1) {
+            target.u64 = 0;
+        }
+        assert(!behavior_instance_set_variable(instances[i], asset->variables[1].id, &target));
+        rows[i] = (behavior_update_row){ .instance = instances[i],
+                                         .binding = behavior_update_prepare(
+                                             &bindings,
+                                             instances[i],
+                                             functions[i % 2],
+                                             i == 1 ? other_entry : entry
+                                         ),
+                                         .services_revision = instances[i]->services_revision,
+                                         .entity = owner.u64 };
+        assert(rows[i].binding);
+    }
+    assert(!ecs_world_apply_commands(ecs));
+    behavior_update_refresh(bindings);
+    void *code = interleaved ? behavior_function_compile_sequence(functions, 2)
+                             : behavior_function_system_entry(f);
+    int result;
+    if (interleaved) {
+        behavior_update_row *wrong = ((
+            behavior_update_fn
+        )code)(rows + 1, rows + 3, (const ecs_execution_view *)ecs, &result);
+        assert(
+            wrong == rows + 1 && result == FLOW_OK && instances[1]->variables[0].d == 0.
+        );
+    }
+    behavior_update_row *stopped = ((
+        behavior_update_fn
+    )code)(rows, rows + 3, (const ecs_execution_view *)ecs, &result);
+    assert(stopped == rows + 1 && result < 0);
+    assert(
+        instances[0]->variables[0].d == .125 &&
+        instances[1]->variables[0].d == .125 && instances[2]->variables[0].d == 0
+    );
+    flow_run *failed = behavior_update_failure(stopped, result);
+    assert(flow_run_status(failed) == FLOW_FAILED && flow_run_error(failed)->node);
+    assert(!behavior_instance_release_activation(instances[1], failed));
+    if (interleaved) {
+        stopped = ((
+            behavior_update_fn
+        )code)(rows + 2, rows + 3, (const ecs_execution_view *)ecs, &result);
+        assert(
+            stopped == rows + 3 && result == FLOW_OK &&
+            instances[2]->variables[0].d == .125
+        );
+    }
+    /* Budget rejection, in either the kernel or its checked fallback, must
+     * stop before a variable write and retain the ordinary diagnostic. */
+    rows[0].binding->context.budget = 0;
+    stopped = ((
+        behavior_update_fn
+    )code)(rows, rows + 3, (const ecs_execution_view *)ecs, &result);
+    assert(stopped == rows && result == FLOW_ERR_STEP_BUDGET);
+    assert(instances[0]->variables[0].d == .125);
+    if (interleaved) {
+        behavior_update_free_code(code);
+    }
+    behavior_update_free_bindings(bindings);
+    for (int i = 0; i < 3; i++) {
+        behavior_instance_destroy(instances[i]);
+    }
+    ecs_world_free(ecs);
+    if (interleaved) {
+        behavior_asset_free(other);
+    }
+    behavior_asset_free(asset);
+}
+
 void test_behavior_batches()
 {
     for (int backend = 0; backend < 3; backend++) {
@@ -510,6 +615,10 @@ void test_behavior_batches()
         indexed_events(mode);
         update_guards(mode);
     }
+    test_tick_sequences();
+    test_parallel_ticks();
+    system_failure(false);
+    system_failure(true);
     observed_profile();
     whole_batch_smoke();
     puts("PASS: ordered Tick batches, instance state, component dependencies, inspection, profiling, waits and failure snapshots");

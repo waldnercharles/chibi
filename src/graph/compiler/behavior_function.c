@@ -474,6 +474,7 @@ static bool batch_operation(behavior_function_op op)
         case BF_ENTITY:
         case BF_COMPONENT:
         case BF_COLUMN:
+        case BF_COLUMN_TRY:
         case BF_ROW:
         case BF_INDEX:
         case BF_LOAD:
@@ -653,6 +654,7 @@ static bool lower_definition(
         }
     }
     if (valid) {
+        behavior_function_fuse_queries(b.function);
         if (!behavior_function_inspectable(b.function)) {
             behavior_function_remove_observers(b.function);
         }
@@ -665,6 +667,7 @@ static bool lower_definition(
         behavior_function_optimize(b.function);
         behavior_function_finalize(b.function);
         b.function->batchable = batch_event(b.function, g, entry);
+        behavior_function_parallel_proof(b.function);
         return true;
     }
     behavior_lower_unsupported(&b, entry, -1, false, "control shape, breakpoint or compilation limit");
@@ -744,7 +747,10 @@ void behavior_function_free(behavior_function *f)
         behavior_function_free(f->definitions[i]);
     }
     afree(f->definitions);
+    afree(f->reductions);
+    afree(f->query_diagnostics);
     behavior_jit_free(f->code);
+    behavior_jit_free(f->system_code);
     behavior_jit_free(f->dispatch);
     free(f->resume_addresses);
     behavior_jit_free(f->inspection_code);
@@ -771,12 +777,23 @@ void behavior_function_free(behavior_function *f)
     afree(f->state_selections);
     afree(f->calls);
     afree(f->component_writes);
+    afree(f->parallel_reads);
     afree(f->components);
     afree(f->data_values);
     afree(f->commands);
     afree(f->command_arguments);
     afree(f->command_results);
     free(f);
+}
+bool behavior_function_compile_system(behavior_function *f)
+{
+    assert(f && f->batchable && f->code && !f->system_code);
+    f->system_code = behavior_function_jit_system(f);
+    return f->system_code != NULL;
+}
+void *behavior_function_system_entry(const behavior_function *f)
+{
+    return f->system_code;
 }
 bool behavior_function_compile(behavior_function *f)
 {

@@ -48,15 +48,23 @@ typedef struct
     b2ContactData *contacts;
 } pair_buffer;
 
+typedef struct
+{
+    b2BodyId body;
+    b2Vec2 force;
+} drive_force;
+
 struct game_physics
 {
     ecs_world *world;
     game_entities *entities;
     b2WorldId simulation;
     b2DynamicTree sweeps;
+    game_physics_settings configuration;
     physics_body *bodies;
-    contact_pair *previous, *current;
+    contact_pair *previous, *current, *sort_scratch;
     b2ContactData *contacts;
+    drive_force *forces;
     bool profiling;
     game_physics_profile profile;
     game_task_system tasks;
@@ -124,6 +132,10 @@ static void create_world(game_physics *physics)
 {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = (b2Vec2){ 0 };
+    def.enableSleep = physics->configuration.sleep;
+    def.enableContinuous = physics->configuration.continuous;
+    def.contactHertz = physics->configuration.contact_hertz;
+    def.contactDampingRatio = physics->configuration.contact_damping;
     if (physics->tasks.workers) {
         def.workerCount = physics->tasks.workers;
         def.enqueueTask = physics->tasks.enqueue;
@@ -167,6 +179,7 @@ game_physics *game_physics_new(ecs_world *world, game_entities *entities)
     game_physics *physics = xcalloc(1, sizeof *physics);
     physics->world = world;
     physics->entities = entities;
+    physics->configuration = game_physics_defaults();
     physics->pool = game_task_pool_acquire();
     configure_tasks(physics, game_task_pool_tasks(physics->pool));
     create_world(physics);
@@ -183,7 +196,9 @@ void game_physics_free(game_physics *physics)
     afree(physics->bodies);
     afree(physics->previous);
     afree(physics->current);
+    afree(physics->sort_scratch);
     afree(physics->contacts);
+    afree(physics->forces);
     free_workers(physics);
     if (physics->pool) {
         game_task_pool_release(physics->pool);
@@ -208,6 +223,47 @@ void game_physics_reset(game_physics *physics)
 const char *game_physics_error(const game_physics *physics)
 {
     return physics->error;
+}
+
+int game_physics_configure(game_physics *physics, game_physics_settings settings)
+{
+    if (!game_physics_settings_valid(settings)) {
+        snprintf(physics->error, sizeof physics->error, "Invalid physics settings: workers 0..32, substeps 1..16, contact frequency 0..240 Hz, damping ratio 0..100.");
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (settings.workers != physics->configuration.workers) {
+        if (acount(physics->bodies) || !physics->pool) {
+            snprintf(physics->error, sizeof physics->error, "Physics worker changes require a reset world with the runtime executor.");
+            return FLOW_ERR_ARGUMENT;
+        }
+        game_task_pool *previous = physics->pool;
+        physics->pool = game_task_pool_acquire_workers(settings.workers);
+        configure_tasks(physics, game_task_pool_tasks(physics->pool));
+        physics->configuration = settings;
+        game_physics_reset(physics);
+        game_task_pool_release(previous);
+    }
+    physics->configuration = settings;
+    b2World_EnableSleeping(physics->simulation, settings.sleep);
+    b2World_EnableContinuous(physics->simulation, settings.continuous);
+    b2World_SetContactTuning(
+        physics->simulation,
+        settings.contact_hertz,
+        settings.contact_damping,
+        b2DefaultWorldDef().maxContactPushSpeed
+    );
+    physics->error[0] = 0;
+    return FLOW_OK;
+}
+
+game_physics_settings game_physics_configuration(const game_physics *physics)
+{
+    return physics->configuration;
+}
+
+int game_physics_worker_budget(const game_physics *physics)
+{
+    return physics->tasks.workers > 0 ? physics->tasks.workers : 1;
 }
 
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks)
@@ -343,8 +399,10 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     shape.filter.categoryBits = body->collider.category;
     shape.filter.maskBits = body->collider.mask;
     shape.isSensor = body->collider.sensor;
-    shape.enableSensorEvents = true;
-    shape.enableContactEvents = true;
+    /* Gameplay contacts are collected below with current-pose and swept-sensor
+     * semantics. No consumer reads Box2D's separate buffered event streams. */
+    shape.enableSensorEvents = false;
+    shape.enableContactEvents = false;
     if (body->collider.shape == GAME_COLLIDER_CIRCLE) {
         b2Circle circle = { .radius = body->collider.radius };
         body->shape = b2CreateCircleShape(body->body, &shape, &circle);
@@ -358,7 +416,7 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     body->proxy = -1;
 }
 
-static int sync_entity(game_physics *physics, ecs_entity entity)
+static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
 {
     ecs_world *world = physics->world;
     GameTransform position = *GAME_GameTransform_get_const(world, entity);
@@ -404,13 +462,34 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
     }
     body->angle = angle;
     body->stop_fraction = 1;
-    b2Body_SetLinearVelocity(body->body, (b2Vec2){ movement.x, movement.y });
+    if (physics->configuration.force_drive &&
+        settings.type == GAME_BODY_DYNAMIC && delta > 0) {
+        b2Vec2 current = b2Body_GetLinearVelocity(body->body);
+        double scale = (double)b2Body_GetMass(body->body) / delta;
+        b2Vec2 force = { (float)(scale * (movement.x - current.x)),
+                         (float)(scale * (movement.y - current.y)) };
+        if (!isfinite(force.x) || !isfinite(force.y)) {
+            snprintf(
+                physics->error,
+                sizeof physics->error,
+                "Non-finite velocity drive force on entity %u.",
+                entity.slot
+            );
+            return FLOW_ERR_ARGUMENT;
+        }
+        if (force.x != 0 || force.y != 0) {
+            apush(physics->forces, ((drive_force){ body->body, force }));
+        }
+    } else {
+        b2Body_SetLinearVelocity(body->body, (b2Vec2){ movement.x, movement.y });
+    }
     body->start = b2Body_GetTransform(body->body);
     return FLOW_OK;
 }
 
-static int synchronize(game_physics *physics)
+static int synchronize(game_physics *physics, float delta)
 {
+    aclear(physics->forces);
     physics->body_count = 0;
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics->bodies[i].seen = false;
@@ -430,7 +509,7 @@ static int synchronize(game_physics *physics)
             if (game_entities_is_retiring(physics->entities, entity)) {
                 continue;
             }
-            result = sync_entity(physics, entity);
+            result = sync_entity(physics, entity, delta);
             if (result < 0) {
                 break;
             }
@@ -444,6 +523,15 @@ static int synchronize(game_physics *physics)
             remove_body(physics, body);
         }
     }
+    /* Commit drive forces only after every body validates. A failed sync can
+     * be retried without accumulating force from the aborted tick. */
+    if (result == FLOW_OK) {
+        for (int i = 0; i < acount(physics->forces); i++) {
+            drive_force force = physics->forces[i];
+            b2Body_ApplyForceToCenter(force.body, force.force, true);
+        }
+    }
+    aclear(physics->forces);
     return result;
 }
 
@@ -793,15 +881,56 @@ static int queue_contact(game_physics *physics, uint64_t target, uint64_t other)
     );
 }
 
+static void sort_pairs(game_physics *physics)
+{
+    int count = acount(physics->current);
+    if (count < 64) {
+        qsort(physics->current, (size_t)count, sizeof *physics->current, compare_pairs);
+        return;
+    }
+    asetlen(physics->sort_scratch, count);
+    contact_pair *input = physics->current, *output = physics->sort_scratch;
+    uint64_t varying[2] = { 0 };
+    for (int i = 1; i < count; i++) {
+        varying[0] |= input[0].second ^ input[i].second;
+        varying[1] |= input[0].first ^ input[i].first;
+    }
+    /* Stable radix passes establish the same unsigned lexicographic order as
+     * compare_pairs. Generational handles often have only a few varying bytes. */
+    for (int key = 0; key < 2; key++) {
+        for (int shift = 0; shift < 64; shift += 8) {
+            if (!((varying[key] >> shift) & 255)) {
+                continue;
+            }
+            int offsets[256] = { 0 };
+            for (int i = 0; i < count; i++) {
+                uint64_t value = key ? input[i].first : input[i].second;
+                offsets[(value >> shift) & 255]++;
+            }
+            int start = 0;
+            for (int i = 0; i < 256; i++) {
+                int length = offsets[i];
+                offsets[i] = start;
+                start += length;
+            }
+            for (int i = 0; i < count; i++) {
+                uint64_t value = key ? input[i].first : input[i].second;
+                output[offsets[(value >> shift) & 255]++] = input[i];
+            }
+            contact_pair *swap = input;
+            input = output;
+            output = swap;
+        }
+    }
+    if (input != physics->current) {
+        memcpy(physics->current, input, (size_t)count * sizeof *input);
+    }
+}
+
 static int dispatch_pairs(game_physics *physics)
 {
     if (acount(physics->current) > 1) {
-        qsort(
-            physics->current,
-            (size_t)acount(physics->current),
-            sizeof *physics->current,
-            compare_pairs
-        );
+        sort_pairs(physics);
     }
     int count = 0, previous = 0, result = FLOW_OK;
     for (int i = 0; i < acount(physics->current); i++) {
@@ -859,6 +988,19 @@ static void update_poses(game_physics *physics)
             continue;
         }
         b2AABB next = swept_bounds(body);
+        if (body->proxy >= 0 &&
+            body->tree_bounds.lowerBound.x <= next.lowerBound.x &&
+            body->tree_bounds.lowerBound.y <= next.lowerBound.y &&
+            body->tree_bounds.upperBound.x >= next.upperBound.x &&
+            body->tree_bounds.upperBound.y >= next.upperBound.y) {
+            continue;
+        }
+        /* Keep conservative slack so steady motion does not remove/reinsert
+         * every target each step. Exact relative-motion casts still decide hits. */
+        b2Vec2 margin = { .5f + 4 * fabsf(body->end.p.x - body->start.p.x),
+                          .5f + 4 * fabsf(body->end.p.y - body->start.p.y) };
+        next.lowerBound = b2Sub(next.lowerBound, margin);
+        next.upperBound = b2Add(next.upperBound, margin);
         if (body->proxy < 0) {
             body->proxy = b2DynamicTree_CreateProxy(
                 &physics->sweeps,
@@ -866,7 +1008,7 @@ static void update_poses(game_physics *physics)
                 body->collider.category,
                 body->entity.slot
             );
-        } else if (memcmp(&next, &body->tree_bounds, sizeof next)) {
+        } else {
             b2DynamicTree_MoveProxy(&physics->sweeps, body->proxy, next);
         }
         body->tree_bounds = next;
@@ -885,7 +1027,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         snprintf(physics->error, sizeof physics->error, "Physics delta must be finite and nonnegative.");
         return FLOW_ERR_ARGUMENT;
     }
-    int result = synchronize(physics);
+    int result = synchronize(physics, delta_seconds);
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result < 0) {
         return result;
@@ -897,7 +1039,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     physics->active_workers = physics->tasks.workers > 1 && (!physics->pool || parallel)
                                 ? physics->tasks.workers
                                 : 1;
-    b2World_Step(physics->simulation, delta_seconds, 4);
+    b2World_Step(physics->simulation, delta_seconds, physics->configuration.substeps);
     profile_phase(physics, &start, &physics->profile.solve_ms);
     update_poses(physics);
     profile_phase(physics, &start, &physics->profile.sweeps_ms);

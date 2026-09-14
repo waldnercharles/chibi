@@ -24,6 +24,8 @@ def main():
     parser.add_argument('--counts', nargs='+', type=int, default=[1000, 5000, 20000])
     parser.add_argument('--trials', type=int, default=3)
     parser.add_argument('--repeats', type=int, default=1000)
+    parser.add_argument('--before-budget', type=int, default=1000000,
+                        help='reference step budget; 0 uses the production default')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.trials < 3 or args.repeats < 100 or any(not 0 <= n <= 20000 for n in args.counts):
@@ -55,7 +57,7 @@ def main():
                 for version in (('before', 'after') if trial % 2 == 0 else ('after', 'before')):
                     # The original graph exceeds production's 10,000-step budget.
                     # Raise it only in the reference measurement, never in runtime.
-                    budget = 1000000 if version == 'before' else 0
+                    budget = args.before_budget if version == 'before' else 0
                     log = subprocess.check_output([binaries[version], '--encounter-query', str(count),
                         str(budget), str(args.repeats)], cwd=roots[version], env=env, text=True)
                     match = re.search(r'ms=([0-9.]+) backend=SLJIT oracle_calls=0', log)
@@ -78,7 +80,8 @@ def main():
         if s['count'] == count and s['backend'] == label)
         for label in ('before', 'after', 'BYTECODE', 'SLJIT', 'C')} for count in args.counts}
     args.output.write_text(json.dumps(dict(summary_ms=summary, samples=samples, sha256=hashes,
-        trials=args.trials, activation_repeats=args.repeats, body_repeats=args.repeats // 10,
+        trials=args.trials, before_budget=args.before_budget,
+        activation_repeats=args.repeats, body_repeats=args.repeats // 10,
         compiler=subprocess.check_output([args.compiler, '--version'], text=True),
         workload='One player and N live enemies; same authored counter results. Activation includes setup/free. '
                  'Body reuses compiled context and buffers; includes snapshot production. Rendering excluded.',

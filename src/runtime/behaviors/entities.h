@@ -46,3 +46,8 @@ bool game_entities_initializing(const game_entities *entities);
 int game_entities_flush_initializers(game_entities *entities, double monotonic_time);
 
 #endif
+
+/* Snapshot category membership on the caller before concurrent nearest reads.
+ * No transform/collider or structural writes are allowed until end. */
+bool game_entities_parallel_begin(game_entities *entities);
+void game_entities_parallel_end(game_entities *entities);

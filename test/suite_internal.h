@@ -51,6 +51,9 @@
 void test_encounter_backend_parity();
 void test_compiled_behaviors();
 void test_behavior_batches();
+void test_tick_sequences();
+void emit_sequence_c(const char *path);
+int bench_sequences(const char *path, int count, int frames, int rotation);
 void emit_batch_c(const char *path);
 int bench_batch(const char *path, int count, int frames, int rotation);
 void test_compiled_components();
@@ -222,3 +225,5 @@ void run_support_format_checks();
 void run_content_catalog_checks();
 
 #endif
+
+void test_parallel_ticks();

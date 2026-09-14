@@ -62,8 +62,10 @@ static void emit(
     apush(out->items, d);
     if (severity == CMPL_ERROR) {
         out->error_count++;
-    } else {
+    } else if (severity == CMPL_WARNING) {
         out->warning_count++;
+    } else {
+        out->note_count++;
     }
 }
 
@@ -116,6 +118,9 @@ static void build_effects(compile_report *out, const behavior_asset *asset)
             for (int r = 0; r < access->read_count; r++) {
                 effect_add(&effects->reads, access->reads[r]);
             }
+            for (int r = 0; access->read_refs && access->read_refs[r]; r++) {
+                effect_add(&effects->reads, *access->read_refs[r]);
+            }
             for (int w = 0; w < access->write_count; w++) {
                 effect_add(&effects->writes, access->writes[w]);
             }
@@ -145,6 +150,7 @@ void compile_report_init(compile_report *out)
     out->items = NULL;
     out->error_count = 0;
     out->warning_count = 0;
+    out->note_count = 0;
     out->effects = (compile_effects){ 0 };
 }
 
@@ -158,6 +164,7 @@ void compile_report_free(compile_report *out)
     afree(out->effects.writes);
     out->error_count = 0;
     out->warning_count = 0;
+    out->note_count = 0;
     out->effects = (compile_effects){ 0 };
 }
 
@@ -236,8 +243,17 @@ const char *cmpl_rule_name(int rule)
         case CMPL_RULE_CALL_SIGNATURE: return "CMPL-23";
         case CMPL_RULE_INPUT_BINDING: return "CMPL-24";
         case CMPL_RULE_BACKEND: return "CMPL-25";
+        case CMPL_RULE_QUERY_FUSION: return "PERF-QUERY-FUSION";
+        case CMPL_RULE_QUERY_SCAN: return "PERF-QUERY-SCAN";
+        case CMPL_RULE_CONTAINER: return "PERF-CONTAINER";
         default: return "CMPL-?";
     }
+}
+const char *cmpl_severity_name(int severity)
+{
+    return severity == CMPL_ERROR   ? "error"
+         : severity == CMPL_WARNING ? "warning"
+                                    : "note";
 }
 
 /* CMPL-18: one warning per disabled node; the node is then excluded from
@@ -1100,6 +1116,9 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
     compile_graph_id = asset->graph->graph_id;
     pass_references(out, asset, system);
     pass_duplicates(out, asset);
+    if (!out->error_count && !system) {
+        behavior_asset_query_diagnostics(asset, out);
+    }
     sort_diagnostics(out, asset->graph);
     arena_free(&tmp);
     return out->error_count;

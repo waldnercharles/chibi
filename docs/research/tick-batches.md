@@ -1,5 +1,9 @@
 # Ordered synchronous Tick execution
 
+The subsequent [Tick system loop work](tick-system-loops.md) embeds eligible
+bodies in native loops and adds a direct-body generated-C comparison. The
+measurements below document the earlier batching stage.
+
 Eligible engine broadcasts now execute whole compiled bodies directly, in
 attachment order. Successful unobserved events do not allocate or schedule an
 activation. The portable backend shares reusable VM scratch across instances of

@@ -1,6 +1,10 @@
 #pragma once
 
 #include <stdint.h>
+enum
+{
+    GAME_TASK_WORKER_MAX = 32
+};
 
 typedef void game_task_range(int start, int end, uint32_t worker, void *user);
 

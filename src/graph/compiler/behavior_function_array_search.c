@@ -35,7 +35,9 @@ static int local(builder *b, int index)
 {
     return behavior_lower_value(
         b,
-        (behavior_function_instruction){ .op = BF_LOCAL, .type = PIN_I32, .left = index }
+        (
+            behavior_function_instruction
+        ){ .op = BF_LOCAL, .type = b->function->locals[index].initial.type, .left = index }
     );
 }
 static int text_differs(builder *b, int left, int right)
@@ -85,6 +87,28 @@ int behavior_lower_array_search(builder *b, node *n, int pin)
     }
     scalar_value *scalar = behavior_lower_scalar_value(b, needle);
     int name = scalar ? scalar->name : behavior_lower_static_name(b, NULL);
+    int indexed_result = -1, indexed_end = -1;
+    if (n->desc == &NODE_SetContains) {
+        indexed_result = temporary(b);
+        b->function->locals[indexed_result].initial.type = PIN_BOOL;
+        indexed_end = behavior_lower_label(b);
+        int flat = behavior_lower_label(b);
+        int table = behavior_lower_read(b, pointer, offsetof(pin_array, buckets), BF_POINTER_TYPE, true);
+        int zero = behavior_lower_value(
+            b,
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = BF_POINTER_TYPE,
+                                             .value = { .type = BF_POINTER_TYPE } }
+        );
+        branch(b, binary(b, BF_EQ, PIN_BOOL, table, zero), flat);
+        int found = behavior_lower_host_call(b, n, pin);
+        if (found < 0) {
+            return -1;
+        }
+        behavior_lower_store(b, BF_SAVE, found, indexed_result);
+        jump(b, indexed_end);
+        behavior_lower_bind_label(b, flat);
+    }
     int count = behavior_lower_read(b, pointer, offsetof(pin_array, count), PIN_I32, true);
     int items = behavior_lower_read(b, pointer, offsetof(pin_array, items), BF_POINTER_TYPE, true);
     int index_local = temporary(b), found_local = temporary(b);
@@ -119,6 +143,11 @@ int behavior_lower_array_search(builder *b, node *n, int pin)
     int result = local(b, found_local);
     if (n->desc == &NODE_ArrayContains || n->desc == &NODE_SetContains) {
         result = binary(b, BF_GE, PIN_BOOL, result, constant(b, 0));
+    }
+    if (indexed_result >= 0) {
+        behavior_lower_store(b, BF_SAVE, result, indexed_result);
+        behavior_lower_bind_label(b, indexed_end);
+        result = local(b, indexed_result);
     }
     return behavior_lower_named_constant(b, result, NULL);
 }

@@ -83,6 +83,8 @@ int pin_array_insert(pin_array *array, int index, const pin_value *value)
             return -1;
         }
     }
+    array->buckets = NULL;
+    array->bucket_mask = 0;
     pin_value copy = { 0 };
     if (pin_value_copy(&copy, value)) {
         return -1;
@@ -102,6 +104,8 @@ int pin_array_remove(pin_array *array, int index)
     if (!array || index < 0 || index >= array->count) {
         return -1;
     }
+    array->buckets = NULL;
+    array->bucket_mask = 0;
     pin_value_destroy(&array->items[index]);
     memmove(
         array->items + index,
@@ -140,6 +144,7 @@ static pin_array *array_clone_graph(graph *g, const pin_array *src)
     }
     size_t size = sizeof(pin_array) + (size_t)src->count * sizeof(pin_value);
     pin_array *dst = (pin_array *)graph_own_block(g, size);
+    *dst = (pin_array){ 0 };
     dst->element_type = src->element_type;
     dst->type_name = graph_string(g, src->type_name);
     dst->count = src->count;
@@ -169,6 +174,7 @@ static pin_array *array_clone_arena(arena *a, const pin_array *src)
     if (!dst) {
         return NULL;
     }
+    *dst = (pin_array){ 0 };
     dst->element_type = src->element_type;
     dst->type_name = arena_string(a, src->type_name);
     dst->count = src->count;
@@ -194,6 +200,9 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
     dst->type_name = arena_string(a, src->type_name);
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_snapshot_to_arena(a, src->ptr);
+        if (src->container == PIN_CONTAINER_SET) {
+            pin_array_index(a, dst->ptr);
+        }
         return src->ptr && !dst->ptr ? -1 : 0;
     }
     if (value_string(src->type)) {
@@ -334,6 +343,9 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
     *dst = *src;
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone_to_arena(a, (const pin_array *)src->ptr);
+        if (src->container == PIN_CONTAINER_SET) {
+            pin_array_index(a, dst->ptr);
+        }
         return !src->ptr || dst->ptr ? 0 : -1;
     }
     if (value_string(src->type) && src->str) {

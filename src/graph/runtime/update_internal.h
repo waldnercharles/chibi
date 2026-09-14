@@ -9,11 +9,12 @@ struct behavior_update_binding
     const behavior_function *function;
     behavior_asset *asset;
     node *entry;
-    void *code;
+    void *code, *system_code;
     service_binding *services;
     behavior_function_activation scratch;
     const ecs_execution_column **columns;
     arena storage;
+    int index;
 };
 
 #endif

@@ -112,7 +112,7 @@ void whole_batch_smoke()
         { .instance = instance, .entity = 0 }
     };
     rows[1].binding = rows[0].binding;
-    void *code = behavior_update_compile();
+    void *code = behavior_function_system_entry(function);
     bool native = behavior_default_backend() == BEHAVIOR_SLJIT;
     assert(native == (code != NULL));
     for (int i = 0; i < 32; i++) {
@@ -126,7 +126,6 @@ void whole_batch_smoke()
         assert(end == rows + 1 && result == FLOW_OK);
     }
     assert(instance->variables[0].d == 18. && !acount(instance->activations));
-    behavior_update_free_code(code);
     behavior_update_free_bindings(bindings);
     ecs_world_free(ecs);
     assert(stores == runtime_store_creations());

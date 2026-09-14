@@ -42,6 +42,7 @@ static const pin_array *set_value(const pin_value *v)
 static pin_value set_result(arena *a, const pin_array *source)
 {
     pin_array *copy = pin_array_snapshot_to_arena(a, source);
+    pin_array_index(a, copy);
     return (pin_value){ .type = source->element_type,
                         .type_name = copy ? copy->type_name : NULL,
                         .container = PIN_CONTAINER_SET,
@@ -50,19 +51,7 @@ static pin_value set_result(arena *a, const pin_array *source)
 static pin_value set_make(const pin_value *inputs, int count, arena *a)
 {
     pin_value *unique = arena_alloc(a, (size_t)count * sizeof *unique);
-    int length = 0;
-    for (int i = 0; i < count; i++) {
-        bool found = false;
-        for (int j = 0; j < length; j++) {
-            if (pin_value_equal(&unique[j], &inputs[i])) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            unique[length++] = inputs[i];
-        }
-    }
+    int length = pin_set_unique(a, unique, inputs, count);
     pin_array source = {
         .element_type = count ? inputs[0].type : PIN_FLOW,
         .type_name = count ? inputs[0].type_name : NULL,
@@ -78,15 +67,7 @@ static pin_value set_contains(const pin_value *inputs, int count, arena *a)
     (void)count;
     (void)a;
     const pin_array *set = set_value(&inputs[0]);
-    if (!set) {
-        return (pin_value){ .type = PIN_BOOL };
-    }
-    for (int i = 0; i < set->count; i++) {
-        if (pin_value_equal(&set->items[i], &inputs[1])) {
-            return (pin_value){ .type = PIN_BOOL, .b = true };
-        }
-    }
-    return (pin_value){ .type = PIN_BOOL, .b = false };
+    return (pin_value){ .type = PIN_BOOL, .b = pin_array_find(set, &inputs[1]) >= 0 };
 }
 
 static pin_value set_length(const pin_value *inputs, int count, arena *a)
@@ -132,7 +113,7 @@ VALUE_CALL(set_make)
 VALUE_CALL(set_add)
 VALUE_CALL(set_contains)
 #undef VALUE_CALL
-static const node_access set_value_access = { 0 };
+static const node_access set_value_access = { .flags = NODE_EFFECT_PURE };
 
 static pin_spec set_make_inputs[] = { SET_ITEM };
 static pin_spec set_make_outputs[] = { SET_OUTPUT };
@@ -140,6 +121,7 @@ static pin_spec set_only_inputs[] = { SET_INPUT };
 static pin_spec set_item_inputs[] = { SET_INPUT, SET_ITEM };
 
 node_desc NODE_MakeSet = {
+    .work = NODE_WORK_SET,
     .name = "Make Set",
     .input_count = 1,
     .output_count = 1,
@@ -154,6 +136,7 @@ node_desc NODE_MakeSet = {
     .keywords = "set make collection",
 };
 node_desc NODE_SetAdd = {
+    .work = NODE_WORK_SET_COPY,
     .name = "Set Add",
     .input_count = 2,
     .output_count = 1,
@@ -168,6 +151,7 @@ node_desc NODE_SetAdd = {
     .keywords = "set add unique",
 };
 node_desc NODE_SetContains = {
+    .work = NODE_WORK_SET,
     .name = "Set Contains",
     .input_count = 2,
     .output_count = 1,

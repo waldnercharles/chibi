@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,7 @@ typedef struct
 } shader_override;
 static shader_asset *assets;
 static shader_override *overrides;
+static atomic_flag override_lock = ATOMIC_FLAG_INIT;
 static unsigned revision = 1;
 static unsigned ramp_revision = 1;
 
@@ -517,19 +519,22 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
     );
     return text;
 }
-void render_shader_parameters(
-    int index,
-    ecs_world *world,
-    ecs_entity entity,
-    const char *json,
-    float values[32][4]
-)
+struct render_shader_parameter_cache
 {
-    memset(values, 0, 32 * 4 * sizeof(float));
-    if (index <= 0 || index > acount(assets)) {
-        return;
+    unsigned revision;
+    char *json;
+    float values[SHADER_PARAMETER_MAX][4];
+};
+static render_shader_parameter_cache *serial_parameters;
+void render_shader_parameter_cache_free(render_shader_parameter_cache *cache)
+{
+    for (int i = 0; i < acount(cache); i++) {
+        free(cache[i].json);
     }
-    shader_asset *asset = &assets[index - 1];
+    afree(cache);
+}
+static void parse_parameters(const shader_asset *asset, const char *json, float values[32][4])
+{
     memcpy(values, asset->defaults, sizeof asset->defaults);
     yyjson_doc *doc = json && *json ? yyjson_read(json, strlen(json), 0) : NULL;
     yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
@@ -559,15 +564,63 @@ void render_shader_parameters(
         if (valid) {
             memcpy(values[i], parsed, sizeof parsed);
         }
-        for (int j = 0; j < acount(overrides); j++) {
-            shader_override *v = &overrides[j];
-            if (v->world == world && v->entity == ecs_entity_to_u64(entity) &&
-                v->width == asset->widths[i] && !strcmp(v->name, asset->names[i])) {
+    }
+    yyjson_doc_free(doc);
+}
+
+void render_shader_parameters_cached(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *json,
+    float values[32][4],
+    render_shader_parameter_cache **cache
+)
+{
+    if (index <= 0 || index > acount(assets)) {
+        memset(values, 0, 32 * 4 * sizeof(float));
+        return;
+    }
+    shader_asset *asset = &assets[index - 1];
+    if (json && *json) {
+        int count = acount(*cache);
+        if (count < index) {
+            asetlen(*cache, index);
+            memset(*cache + count, 0, (size_t)(index - count) * sizeof **cache);
+        }
+        render_shader_parameter_cache *c = &(*cache)[index - 1];
+        if (c->revision != revision || !c->json || strcmp(c->json, json)) {
+            free(c->json);
+            c->json = xstrdup(json);
+            c->revision = revision;
+            parse_parameters(asset, json, c->values);
+        }
+        memcpy(values, c->values, sizeof c->values);
+    } else {
+        memcpy(values, asset->defaults, sizeof asset->defaults);
+    }
+    for (int j = 0; j < acount(overrides); j++) {
+        const shader_override *v = &overrides[j];
+        if (v->world != world || v->entity != ecs_entity_to_u64(entity)) {
+            continue;
+        }
+        for (int i = 0; i < 32; i++) {
+            if (asset->names[i] && v->width == asset->widths[i] &&
+                !strcmp(v->name, asset->names[i])) {
                 memcpy(values[i], v->value, sizeof v->value);
             }
         }
     }
-    yyjson_doc_free(doc);
+}
+void render_shader_parameters(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *json,
+    float values[32][4]
+)
+{
+    render_shader_parameters_cached(index, world, entity, json, values, &serial_parameters);
 }
 bool render_shader_bounds(int index, float bounds[2])
 {
@@ -618,6 +671,8 @@ void render_shader_clear_world(ecs_world *world)
 }
 void render_shader_catalog_clear()
 {
+    render_shader_parameter_cache_free(serial_parameters);
+    serial_parameters = NULL;
     for (int i = 0; i < acount(assets); i++) {
         free_asset(&assets[i]);
     }
@@ -675,16 +730,20 @@ static const char *write_parameter(void *service, const pin_value *inputs, pin_v
             return "Material parameters must be finite.";
         }
     }
+    while (atomic_flag_test_and_set_explicit(&override_lock, memory_order_acquire)) {
+    }
     for (int i = 0; i < acount(overrides); i++) {
         if (overrides[i].world == world && overrides[i].entity == target.u64 &&
             !strcmp(overrides[i].name, name.str)) {
             memcpy(overrides[i].value, fresh.value, sizeof fresh.value);
             overrides[i].width = fresh.width;
+            atomic_flag_clear_explicit(&override_lock, memory_order_release);
             return NULL;
         }
     }
     fresh.name = xstrdup(name.str);
     apush(overrides, fresh);
+    atomic_flag_clear_explicit(&override_lock, memory_order_release);
     return NULL;
 }
 static int set_parameter(node *, flow_context *ctx)
@@ -711,7 +770,12 @@ static pin_spec parameter_inputs[] = {
 static pin_spec parameter_outputs[] = {
     { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC }
 };
-static const node_access parameter_access = { .flags = NODE_EFFECT_HOST_SINK };
+static const node_access parameter_access = {
+    .reads = &GAME_COMPONENT_GameShader.id,
+    .read_count = 1,
+    .flags = NODE_EFFECT_PARALLEL | NODE_EFFECT_ENTITY_SCOPED | NODE_EFFECT_HOST_SINK,
+    .target_input = 1
+};
 static node_desc parameter_node = { .name = "Set Material Parameter",
                                     .category = "Rendering/Material",
                                     .inputs = parameter_inputs,

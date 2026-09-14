@@ -1,4 +1,4 @@
-#include "graph/runtime/update_internal.h"
+#include "graph/runtime/update_jit.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -14,16 +14,8 @@ static void copy_instance(struct sljit_compiler *c, int op, size_t source, size_
     sljit_emit_op1(c, op, SLJIT_MEM1(SLJIT_S5), (sljit_sw)destination, SLJIT_MEM1(SLJIT_S4), (sljit_sw)source);
 }
 
-void *behavior_update_compile()
+int behavior_update_emit_guard(struct sljit_compiler *c, struct sljit_jump **stop)
 {
-    struct sljit_compiler *c = sljit_create_compiler(NULL);
-    if (!c) {
-        return NULL;
-    }
-    sljit_emit_enter(c, 0, SLJIT_ARGS4(P, P, P, P, P), 4 | SLJIT_ENTER_FLOAT(1), 6, 0);
-    sljit_emit_op1(c, SLJIT_MOV32, SLJIT_MEM1(SLJIT_S3), 0, SLJIT_IMM, 0);
-    struct sljit_label *loop = sljit_emit_label(c);
-    struct sljit_jump *stop[16];
     int n = 0;
     stop[n++] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_S0, 0, SLJIT_S1, 0);
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_S5, 0, SLJIT_MEM1(SLJIT_S0), offsetof(behavior_update_row, binding));
@@ -87,7 +79,7 @@ void *behavior_update_compile()
         SLJIT_IMM,
         0
     );
-    struct sljit_label *ready = sljit_emit_label(c);
+    sljit_set_label(empty, sljit_emit_label(c));
 
     sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_S0), offsetof(behavior_update_row, entity));
     sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R1, 0, SLJIT_R0, 0, SLJIT_IMM, 32);
@@ -108,6 +100,11 @@ void *behavior_update_compile()
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_S2), offsetof(ecs_execution_view, generations));
     stop[n++] = sljit_emit_cmp(c, SLJIT_NOT_EQUAL | SLJIT_32, SLJIT_R1, 0, SLJIT_MEM2(SLJIT_R2, SLJIT_R0), 2);
 
+    return n;
+}
+
+void behavior_update_emit_bind(struct sljit_compiler *c)
+{
     static_assert(offsetof(behavior_update_binding, context) == 0);
     copy_instance(
         c,
@@ -171,6 +168,21 @@ void *behavior_update_compile()
     sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS1V(P), SLJIT_IMM, (sljit_sw)arena_reset);
     sljit_set_label(no_storage, sljit_emit_label(c));
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S5, 0);
+}
+
+void *behavior_update_compile()
+{
+    struct sljit_compiler *c = sljit_create_compiler(NULL);
+    if (!c) {
+        return NULL;
+    }
+    sljit_emit_enter(c, 0, SLJIT_ARGS4(P, P, P, P, P), 4 | SLJIT_ENTER_FLOAT(1), 6, 0);
+    sljit_emit_op1(c, SLJIT_MOV32, SLJIT_MEM1(SLJIT_S3), 0, SLJIT_IMM, 0);
+    struct sljit_label *loop = sljit_emit_label(c);
+    struct sljit_jump *stop[20];
+    int n = 0;
+    n += behavior_update_emit_guard(c, stop + n);
+    behavior_update_emit_bind(c);
     sljit_emit_icall(
         c,
         SLJIT_CALL,
@@ -188,7 +200,6 @@ void *behavior_update_compile()
     void *code = NULL;
     assert(n <= (int)(sizeof stop / sizeof *stop));
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
-        sljit_set_label(empty, ready);
         sljit_set_label(failed, failure);
         sljit_set_label(again, loop);
         for (int i = 0; i < n; i++) {

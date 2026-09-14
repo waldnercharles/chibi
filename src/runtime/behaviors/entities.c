@@ -67,6 +67,8 @@ struct game_entities
     event_request *events;
     nearest_candidates nearest[NEAREST_CACHE_MAX];
     int nearest_count;
+    ecs_entity *parallel_candidates[32];
+    bool parallel_queries;
     bool query_scope, profile_queries;
     game_entity_query_profile query_profile;
 };
@@ -96,6 +98,43 @@ void game_entities_query_scope(game_entities *entities, const behavior_function 
         entities->nearest_count = 0;
     }
     entities->query_scope = stable;
+}
+bool game_entities_parallel_begin(game_entities *entities)
+{
+    if (!entities) {
+        return true;
+    }
+    assert(!entities->parallel_queries);
+    if (entities->profile_queries) {
+        return false;
+    }
+    for (int i = 0; i < 32; i++) {
+        aclear(entities->parallel_candidates[i]);
+    }
+    ecs_component_id components[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameCollider.id };
+    ecs_query query;
+    if (ecs_query_begin(entities->world, &query, components, 2) == ECS_OK) {
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            unsigned categories = GAME_GameCollider_get_const(entities->world, entity)
+                                      ->category;
+            while (categories) {
+                int bit = __builtin_ctz(categories);
+                apush(entities->parallel_candidates[bit], entity);
+                categories &= categories - 1;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    entities->parallel_queries = true;
+    return true;
+}
+void game_entities_parallel_end(game_entities *entities)
+{
+    if (entities) {
+        entities->parallel_queries = false;
+    }
 }
 void game_entities_profile_queries(game_entities *entities, bool enabled)
 {
@@ -187,6 +226,9 @@ void game_entities_free(game_entities *entities)
     afree(entities->events);
     for (int i = 0; i < NEAREST_CACHE_MAX; i++) {
         afree(entities->nearest[i].entities);
+    }
+    for (int i = 0; i < 32; i++) {
+        afree(entities->parallel_candidates[i]);
     }
     free(entities);
 }
@@ -710,6 +752,18 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
         return NULL;
     }
     double best = radius * radius;
+    if (entities->parallel_queries) {
+        unsigned categories = inputs[2].u;
+        while (categories) {
+            int bit = __builtin_ctz(categories);
+            const ecs_entity *candidates = entities->parallel_candidates[bit];
+            for (int i = 0; i < acount(candidates); i++) {
+                nearest_candidate(entities, candidates[i], inputs, out, &best);
+            }
+            categories &= categories - 1;
+        }
+        return NULL;
+    }
     nearest_candidates *cached = NULL;
     if (entities->profile_queries) {
         entities->query_profile.searches++;
@@ -779,6 +833,12 @@ static const node_host_call NEAREST_CALL = { .service = "game.entities",
                                              .invoke = nearest_entity_data };
 
 static const node_access NEAREST_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,
+                                                 &GAME_COMPONENT_GameCollider.id,
+                                                 NULL };
+static const node_access NEAREST_PARALLEL_ACCESS = { .read_refs = nearest_reads,
+                                                     .flags = NODE_EFFECT_WORLD_READ |
+                                                              NODE_EFFECT_PARALLEL };
 
 static const ecs_component_desc *query_component(game_entities *entities, const char *key)
 {
@@ -909,6 +969,7 @@ static node_desc FIND_ENTITIES_NODE = {
     .read_inputs = find_entities_with_component,
     .query_service = "game.entities",
     .query = find_entity_snapshot,
+    .work = NODE_WORK_WORLD_QUERY,
     .category = "Entities",
     .keywords = "query find component entities array snapshot",
     .access = &NEAREST_ACCESS,
@@ -934,9 +995,10 @@ static node_desc NEAREST_NODE = {
     .pure_kind = NODE_PURE_READ,
     .read_inputs = nearest_entity,
     .host_call = &NEAREST_CALL,
+    .work = NODE_WORK_WORLD_QUERY,
     .category = "Entities",
     .keywords = "nearest find search entity position radius category target",
-    .access = &NEAREST_ACCESS,
+    .access = &NEAREST_PARALLEL_ACCESS,
 };
 
 static const node_access STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };

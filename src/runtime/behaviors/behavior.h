@@ -140,15 +140,18 @@ int game_behavior_dispatch_all(
     flow_error *error
 );
 /* Dedicated Tick schedule, rebuilt at attachment/publication changes. Eligible
- * synchronous entries execute in attachment order with shared prepared bindings.
+ * synchronous entries retain each entity's attachment order. Proven independent
+ * entity chunks execute in parallel, with ordered barriers around other entries.
  * Inspection, waits and unproven effects retain their compiled activations. */
 int game_behavior_update(game_behavior_world *world, flow_error *error);
 typedef struct
 {
-    int entries, prepared, native_loop, scheduled;
+    int entries, prepared, native_loop, system_loop, scheduled;
+    int parallel, parallel_tasks, workers;
 } game_behavior_update_stats;
 game_behavior_update_stats game_behavior_last_update(const game_behavior_world *world);
 /* Performance comparison: retain compiled bodies but use the C outer loop. */
+void game_behavior_set_parallel_updates(game_behavior_world *world, bool enabled);
 void game_behavior_set_native_update(game_behavior_world *world, bool enabled);
 /* Debug/performance comparison switch. Ordered synchronous batches are enabled
  * by default; inspected, queued and effectful host work keeps normal activations. */

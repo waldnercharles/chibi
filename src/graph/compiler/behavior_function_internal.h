@@ -80,6 +80,7 @@ typedef enum
     BF_ENTITY,
     BF_COMPONENT,
     BF_COLUMN,
+    BF_COLUMN_TRY, /* Non-trapping layout guard for speculative read-only work. */
     BF_ROW, /* checked column + live entity slot; no storage-changing effects */
     BF_INDEX,
     BF_LOAD,
@@ -232,8 +233,18 @@ typedef struct
     int pc;
     int *values; /* Slots followed by locals, in the activation's scalar storage. */
 } behavior_function_suspension;
+/* A read-only entity reduction has a checked prelude, one cursor loop and a
+ * private accumulator. Publication uses these regions to fuse compatible scans. */
+typedef struct
+{
+    int begin, loop, body, next, end;
+    int pointer, index, entity, index_local, count_local;
+    uint64_t graph_id, node_id, pin_id;
+} behavior_reduction;
 struct behavior_function
 {
+    behavior_reduction *reductions;
+    compile_diagnostic *query_diagnostics;
     behavior_function_suspension *suspensions;
     behavior_function_point *points;
     bool waits, breakpoints, batchable, managed, custom_lowering, uses_storage,
@@ -256,7 +267,7 @@ struct behavior_function
     behavior_function_frame *frames;
     behavior_function_source *sources, *stacks;
     behavior_function_result *results;
-    void *code;
+    void *code, *system_code;
     void *dispatch;
     uintptr_t *resume_addresses;
     void *inspection_code;
@@ -268,6 +279,8 @@ struct behavior_function
     unsigned pure_depth_limit;
     bool component_bindings, component_access;
     uint64_t *component_writes;
+    uint64_t *parallel_reads;
+    bool parallel;
     struct behavior_function_component *components;
     behavior_state_selection *state_selections;
 };
@@ -311,12 +324,14 @@ static inline bool behavior_function_left_slot(behavior_function_op op)
 static inline bool behavior_function_right_slot(behavior_function_op op)
 {
     return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD && op != BF_READ &&
-            op != BF_COLUMN && op != BF_RETRIGGER) ||
+            op != BF_COLUMN && op != BF_COLUMN_TRY && op != BF_RETRIGGER) ||
            op == BF_WRITE || op == BF_STORE_HEADER || op == BF_INTERN_STRING ||
            op == BF_STRING_EQUAL || op == BF_STATE_SELECT || op == BF_RESULT_ARRAY;
 }
 /* Finalize operand metadata, continuation maps and runtime code after lowering. */
 void behavior_function_finalize(behavior_function *function);
+void behavior_function_parallel_proof(behavior_function *function);
+void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
 void behavior_function_points(behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
@@ -327,6 +342,7 @@ void behavior_function_prune_values(behavior_function *function);
 void behavior_function_runtime_code(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_optimize(behavior_function *function);
+void behavior_function_fuse_queries(behavior_function *function);
 static inline bool behavior_function_fast_allowed(
     const behavior_function *f,
     const behavior_function_context *ctx

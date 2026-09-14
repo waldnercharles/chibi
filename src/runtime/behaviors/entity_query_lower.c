@@ -81,6 +81,13 @@ int entity_query_lower(builder *b, node *n, int pin)
     }
     const pin_value *criteria = constant_conditions(b, n);
     if (!criteria) {
+        compile_diagnostic d = { .severity = CMPL_WARNING,
+                                 .rule = CMPL_RULE_QUERY_SCAN,
+                                 .graph_id = b->graph->graph_id,
+                                 .node_id = n->id,
+                                 .pin_id = n->input_pins[1].id };
+        snprintf(d.message, sizeof d.message, "Dynamic conditions require a separate scan on every evaluation. Use constant conditions to allow query fusion.");
+        apush(b->function->query_diagnostics, d);
         return behavior_lower_host_call(b, n, pin);
     }
     const pin_array *conditions = criteria->ptr;
@@ -118,6 +125,11 @@ int entity_query_lower(builder *b, node *n, int pin)
         return -1;
     }
     int pointer = array->pointer;
+    behavior_reduction reduction = { .begin = acount(b->function->instructions),
+                                     .pointer = pointer,
+                                     .graph_id = b->graph->graph_id,
+                                     .node_id = n->id,
+                                     .pin_id = n->input_pins[0].id };
     b->function->component_access = true;
     int world = behavior_lower_value(
         b,
@@ -164,6 +176,7 @@ int entity_query_lower(builder *b, node *n, int pin)
     int loop = behavior_lower_label(b), next = behavior_lower_label(b),
         end = behavior_lower_label(b);
     behavior_lower_bind_label(b, loop);
+    reduction.loop = acount(b->function->instructions);
     int index = local(b, index_local);
     branch(b, binary(b, BF_GE, PIN_BOOL, index, length), end);
     int item = behavior_lower_array_item(b, items, index);
@@ -175,6 +188,11 @@ int entity_query_lower(builder *b, node *n, int pin)
         ){ .op = BF_ENTITY, .type = PIN_U32, .left = world, .right = handle }
     );
     branch(b, zero_test(b, entity, true), next);
+    reduction.body = acount(b->function->instructions);
+    reduction.index = index;
+    reduction.entity = entity;
+    reduction.index_local = index_local;
+    reduction.count_local = count_local;
     const behavior_function_op comparisons[] = { BF_EQ, BF_NE, BF_LT,
                                                  BF_LE, BF_GT, BF_GE };
     for (int i = 0; i < acount(plan); i++) {
@@ -223,9 +241,12 @@ int entity_query_lower(builder *b, node *n, int pin)
     int count = binary(b, BF_ADD, PIN_I32, local(b, count_local), one);
     behavior_lower_store(b, BF_SAVE, count, count_local);
     behavior_lower_bind_label(b, next);
+    reduction.next = acount(b->function->instructions);
     behavior_lower_store(b, BF_SAVE, binary(b, BF_ADD, PIN_I32, index, one), index_local);
     jump(b, loop);
     behavior_lower_bind_label(b, end);
+    reduction.end = acount(b->function->instructions);
+    apush(b->function->reductions, reduction);
     afree(plan);
     afree(columns);
     return behavior_lower_named_constant(b, local(b, count_local), "int");

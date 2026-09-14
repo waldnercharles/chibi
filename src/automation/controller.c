@@ -4,9 +4,11 @@
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "ecs/ecs.h"
+#include "graph/compiler/behavior_program.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/instance.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
@@ -1090,7 +1092,7 @@ static void catalog_validate_asset(catalog_asset *asset, const char *json)
                 const compile_diagnostic *diagnostic = &report.items[i];
                 catalog_add_diagnostic(
                     asset,
-                    diagnostic->severity == CMPL_ERROR ? "error" : "warning",
+                    cmpl_severity_name(diagnostic->severity),
                     diagnostic->rule,
                     cmpl_rule_name(diagnostic->rule),
                     diagnostic->message
@@ -1121,7 +1123,7 @@ static void catalog_validate_asset(catalog_asset *asset, const char *json)
                 const compile_diagnostic *diagnostic = &report.items[i];
                 catalog_add_diagnostic(
                     asset,
-                    diagnostic->severity == CMPL_ERROR ? "error" : "warning",
+                    cmpl_severity_name(diagnostic->severity),
                     diagnostic->rule,
                     cmpl_rule_name(diagnostic->rule),
                     diagnostic->message
@@ -1656,7 +1658,12 @@ static int handle_describe_contract(response *result)
 static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const compile_diagnostic *diagnostic)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    yyjson_mut_obj_add_strcpy(doc, object, "severity", diagnostic->severity == CMPL_ERROR ? "error" : "warning");
+    yyjson_mut_obj_add_strcpy(
+        doc,
+        object,
+        "severity",
+        cmpl_severity_name(diagnostic->severity)
+    );
     yyjson_mut_obj_add_uint(doc, object, "graph", diagnostic->graph_id);
     yyjson_mut_obj_add_uint(doc, object, "node", diagnostic->node_id);
     yyjson_mut_obj_add_uint(doc, object, "pin", diagnostic->pin_id);
@@ -2434,6 +2441,7 @@ static void inspect_add_validation(yyjson_mut_doc *doc, yyjson_mut_val *object, 
     yyjson_mut_obj_add_bool(doc, validation, "valid", report->error_count == 0);
     yyjson_mut_obj_add_int(doc, validation, "errors", report->error_count);
     yyjson_mut_obj_add_int(doc, validation, "warnings", report->warning_count);
+    yyjson_mut_obj_add_int(doc, validation, "notes", report->note_count);
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, validation, "diagnostics");
     for (int i = 0; i < acount(report->items); i++) {
         add_diagnostic(doc, diagnostics, &report->items[i]);
@@ -2863,6 +2871,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
     int errors = 0;
     int warnings = 0;
+    int notes = 0;
     if (ref.family->loader == ASSET_GRAPH) {
         behavior_asset *asset = behavior_asset_load_json(json);
         if (!asset) {
@@ -2873,6 +2882,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             compile_report_init(&report);
             errors = behavior_asset_compile(asset, &report);
             warnings = report.warning_count;
+            notes = report.note_count;
             for (int i = 0; i < acount(report.items); i++) {
                 add_diagnostic(result->doc, diagnostics, &report.items[i]);
             }
@@ -2957,6 +2967,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     yyjson_mut_obj_add_bool(result->doc, value, "valid", errors == 0);
     yyjson_mut_obj_add_int(result->doc, value, "errors", errors);
     yyjson_mut_obj_add_int(result->doc, value, "warnings", warnings);
+    yyjson_mut_obj_add_int(result->doc, value, "notes", notes);
     free(json);
     if (errors) {
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset validation failed");
@@ -4260,6 +4271,20 @@ static void add_snapshot_behavior(
         behavior_backend_name(behavior_instance_backend(info.instance))
     );
     yyjson_mut_obj_add_bool(doc, object, "debug_hold", info.debug_hold != 0);
+    node *tick_entry = NULL;
+    const behavior_function *
+        tick = behavior_program_batch_event(info.instance->asset->program, "Tick", &tick_entry);
+    yyjson_mut_obj_add_bool(doc, object, "tick_system_compiled", tick && behavior_function_system_entry(tick));
+    yyjson_mut_obj_add_bool(doc, object, "tick_parallel_safe", behavior_function_parallel(tick));
+    const compile_report *report = behavior_program_report(info.instance->asset->program);
+    yyjson_mut_val *performance = yyjson_mut_obj_add_arr(doc, object, "performance_diagnostics");
+    for (int i = 0; report && i < acount(report->items); i++) {
+        const compile_diagnostic *d = &report->items[i];
+        if (d->rule == CMPL_RULE_QUERY_FUSION ||
+            d->rule == CMPL_RULE_QUERY_SCAN || d->rule == CMPL_RULE_CONTAINER) {
+            add_diagnostic(doc, performance, d);
+        }
+    }
     const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
     if (failure) {
         yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "last_failure");

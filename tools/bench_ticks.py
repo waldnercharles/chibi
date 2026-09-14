@@ -7,13 +7,14 @@ import math
 from pathlib import Path
 import re
 import statistics
+import sys
 import subprocess
 import tempfile
 
 
 MODES = ("SLJIT_ACTIVATION", "BYTECODE_ACTIVATION", "SLJIT_BATCH",
          "BYTECODE_BATCH", "GENERATED_C_BATCH", "ORACLE",
-         "SLJIT_UPDATE", "BYTECODE_UPDATE", "GENERATED_C_UPDATE", "SLJIT_C_UPDATE")
+         "SLJIT_UPDATE", "BYTECODE_UPDATE", "GENERATED_C_UPDATE", "SLJIT_C_UPDATE", "GENERATED_C_SYSTEM_UPDATE")
 
 
 WORKLOADS = ("counter", "component", "int_array", "string_array", "name_array", "struct_array")
@@ -54,7 +55,7 @@ def main():
     hashes = {version: hashlib.sha256(path.read_bytes()).hexdigest() for version, path in binaries.items()}
     samples, logs, ratios, summaries = {}, [], {}, {}
     before_samples, before_summary, paired = {}, {}, {}
-    source_hashes, libraries, checksums = {}, {}, {}
+    source_hashes, libraries, checksums, modes = {}, {}, {}, {}
     pattern = re.compile(
         r"^(\w+) (counter|component|int_array|string_array|name_array|struct_array) entities=(\d+) ns=([0-9.]+) "
         r"checksum=(\d+) batches=(\d+) vm_allocations=(\d+) runtime_stores=(\d+)(?: arena_blocks=(\d+))?$", re.M)
@@ -63,8 +64,10 @@ def main():
             source, library = Path(temp) / f"{version}.c", Path(temp) / f"{version}.so"
             subprocess.run([executable, "--emit-batch-c", source], check=True, cwd=root)
             source_hashes[version] = hashlib.sha256(source.read_bytes()).hexdigest()
+            modes[version] = MODES if "generated_system0(" in source.read_text() else MODES[:-1]
             subprocess.run([
                 compiler, "-std=c23", "-O3", "-ffp-contract=off", "-shared", "-fPIC",
+                *(["-Wl,-undefined,dynamic_lookup"] if sys.platform == "darwin" else []),
                 "-I" + str(root / "src"), str(source), "-o", str(library)
             ], check=True, cwd=root)
             libraries[version] = library
@@ -78,7 +81,7 @@ def main():
                     ], cwd=root, text=True)
                     logs.append({"trial": trial, "version": version, "entities": count, "output": result})
                     print(f"trial={trial} version={version} entities={count}\n{result}", end="", flush=True)
-                    expected = {(mode, workload) for mode in MODES for workload in WORKLOADS}
+                    expected = {(mode, workload) for mode in modes[version] for workload in WORKLOADS}
                     for mode, workload, entities, ns, checksum, batches, vm, stores, blocks in pattern.findall(result):
                         pair = (mode, workload)
                         if pair not in expected or int(entities) != count:
@@ -114,7 +117,7 @@ def main():
         for count in args.entities:
             prefix = f"{workload}/{count}"
             times = {mode: summaries[f"{prefix}/{mode}"]["median_ns"] for mode in MODES}
-            ratios[prefix] = times["SLJIT_UPDATE"] / times["GENERATED_C_UPDATE"]
+            ratios[prefix] = times["SLJIT_UPDATE"] / times["GENERATED_C_SYSTEM_UPDATE"]
             print(f"{prefix}: SLJIT update={times['SLJIT_UPDATE']:.3f} ns/entity "
                   f"speedup={times['SLJIT_BATCH'] / times['SLJIT_UPDATE']:.3f}x "
                   f"bytecode speedup={times['BYTECODE_BATCH'] / times['BYTECODE_UPDATE']:.3f}x "
@@ -132,7 +135,7 @@ def main():
             "target_ratio": args.max_native_ratio, "target_met": met,
             "target_enforced": args.enforce_native_ratio,
             "allocation_metric": "VM scratch and arena backing-block allocations; does not count every allocation",
-            "comparison": "same lowered bodies and prepared rows; C bodies use a test-only quiescent entry replacement; generated C is compared through the reference C outer loop, SLJIT_UPDATE uses the native outer loop",
+            "comparison": "same lowered bodies and prepared rows; C bodies and system kernels use test-only quiescent entry replacement; native/C ratios compare SLJIT_UPDATE against GENERATED_C_SYSTEM_UPDATE with a direct body call in the same translation unit",
         }, indent=2) + "\n")
     if not met and args.enforce_native_ratio:
         raise SystemExit("FAIL: Tick batch performance target")

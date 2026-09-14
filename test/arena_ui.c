@@ -1,3 +1,4 @@
+#include "assets/physics_settings.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/frame_profile.h"
@@ -2829,6 +2830,32 @@ static void scene_scale_verify_encounter(arena_fixture *f)
     assert(!"Missing encounter behavior");
 }
 
+static void scene_scale_disable_sensor_sweeps(arena_fixture *f)
+{
+    int changed = 0;
+    for (int i = 0; i < acount(f->scene->prototypes); i++) {
+        game_prototype *prototype = f->scene->prototypes[i].prototype;
+        GameBody *body = NULL;
+        const GameCollider *collider = NULL;
+        for (int j = 0; j < acount(prototype->components); j++) {
+            game_prototype_component *component = &prototype->components[j];
+            if (component->desc->id == GAME_COMPONENT_GameBody.id) {
+                body = component->data;
+            }
+            if (component->desc->id == GAME_COMPONENT_GameCollider.id) {
+                collider = component->data;
+            }
+        }
+        if (body && collider && collider->sensor && body->continuous) {
+            body->continuous = false;
+            assert(game_entities_register(f->live->entities, prototype) == 0);
+            changed++;
+        }
+    }
+    assert(changed > 0);
+    printf("scene_scale_sensor_sweeps disabled_prototypes=%d\n", changed);
+}
+
 int arena_scene_scale_run(const char *program, int count, int frames, bool profile)
 {
     assert(count > 0 && count <= 20000 && frames >= 30 && frames <= 1800);
@@ -2860,7 +2887,20 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     app_game_presentation *game = app_game_presentation_new(f.scene, f.viewport, false);
     assert(game);
     game_behavior_set_profiling(f.live->behaviors, profile);
-    game_physics_set_profiling(f.live->physics, profile);
+    game_behavior_set_parallel_updates(f.live->behaviors, !getenv("CBLUEPRINT_BENCH_SERIAL_BEHAVIORS"));
+    app_scene_renderer_set_parallel(f.scene->renderer, !getenv("CBLUEPRINT_BENCH_SERIAL_RENDER"));
+    const char *physics_json = getenv("CBLUEPRINT_BENCH_PHYSICS_SETTINGS");
+    if (physics_json) {
+        yyjson_doc *doc = yyjson_read(physics_json, strlen(physics_json), 0);
+        game_physics_settings settings;
+        assert(doc && game_physics_settings_read(yyjson_doc_get_root(doc), &settings));
+        assert(game_physics_configure(f.live->physics, settings) == 0);
+        yyjson_doc_free(doc);
+    }
+    if (getenv("CBLUEPRINT_BENCH_NO_SENSOR_SWEEPS")) {
+        scene_scale_disable_sensor_sweeps(&f);
+    }
+    game_physics_set_profiling(f.live->physics, profile || getenv("CBLUEPRINT_BENCH_PHYSICS_PROFILE"));
     test_physics_executor executor = test_physics_executor_open();
     if (executor.library) {
         game_physics_set_tasks(f.live->physics, &executor.tasks);
@@ -2889,6 +2929,10 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     double *samples[METRICS] = { 0 };
     game_physics_profile phases = { 0 };
     int peak_draws = 0;
+    CF_DrawStats3d draw_totals = { 0 };
+    uint64_t prepared_ticks = 0, system_ticks = 0, parallel_ticks = 0,
+             render_tasks = 0;
+    int behavior_workers = 0, render_workers = 0;
     cf_draw3d_stats();
     for (int i = -30; i < frames; i++) {
         if (combat && i >= 0) {
@@ -2919,6 +2963,23 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         }
         if (i < 0) {
             continue;
+        }
+        draw_totals.instances += draws.instances;
+        draw_totals.commands += draws.commands;
+        for (int j = 0; j < CF_DRAW_SPLIT_3D_COUNT; j++) {
+            draw_totals.splits[j] += draws.splits[j];
+        }
+        game_behavior_update_stats ticks = game_behavior_last_update(f.live->behaviors);
+        prepared_ticks += ticks.prepared;
+        system_ticks += ticks.system_loop;
+        parallel_ticks += ticks.parallel;
+        if (ticks.workers > behavior_workers) {
+            behavior_workers = ticks.workers;
+        }
+        render_arena_work work = app_scene_renderer_last_work(f.scene->renderer);
+        render_tasks += work.tasks;
+        if (work.workers > render_workers) {
+            render_workers = work.workers;
         }
         GameEncounter encounter = review_encounter(f.world);
         assert(timing->steps == 1 && encounter.alive <= count);
@@ -2998,6 +3059,20 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     }
     assert(peak_draws > 0 && eval == eval_oracle_calls() && flow == flow_oracle_calls());
     printf(
+        "scene_scale_parallel ticks=%llu behavior_workers=%d render_tasks=%llu "
+        "render_workers=%d\n",
+        (unsigned long long)parallel_ticks,
+        behavior_workers,
+        (unsigned long long)render_tasks,
+        render_workers
+    );
+    if (getenv("CBLUEPRINT_BENCH_REQUIRE_PARALLEL")) {
+        assert(
+            parallel_ticks > 0 && behavior_workers > 1 && render_tasks > 0 &&
+            render_workers > 1
+        );
+    }
+    printf(
         "scene_scale_executor workers=%d external=%d\n",
         game_physics_workers(f.live->physics),
         executor.library != NULL
@@ -3033,6 +3108,25 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         phases.dispatch_ms / frames,
         phases.bodies,
         phases.pairs
+    );
+    printf(
+        "scene_scale_render instances=%.3f commands=%.3f\n",
+        (double)draw_totals.instances / frames,
+        (double)draw_totals.commands / frames
+    );
+    for (int i = 0; i < CF_DRAW_SPLIT_3D_COUNT; i++) {
+        if (draw_totals.splits[i]) {
+            printf(
+                "scene_scale_render_split reason=%s per_frame=%.3f\n",
+                cf_draw_split_3d_to_string(i),
+                (double)draw_totals.splits[i] / frames
+            );
+        }
+    }
+    printf(
+        "scene_scale_ticks prepared=%llu system=%llu\n",
+        (unsigned long long)prepared_ticks,
+        (unsigned long long)system_ticks
     );
     printf(
         "scene_scale backend=SLJIT entities=%d frames=%d profile=%d draws=%d "

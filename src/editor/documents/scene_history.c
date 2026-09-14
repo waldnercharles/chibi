@@ -1,5 +1,6 @@
 #include "editor/documents/scene_history.h"
 
+#include "assets/physics_settings.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 
@@ -17,6 +18,8 @@ typedef struct
     scene_actor_edit *actor;
     scene_behavior_edit *behaviors;
     scene_component_edit *component;
+    bool physics;
+    game_physics_settings physics_before, physics_after;
 } scene_edit;
 
 struct scene_history
@@ -474,6 +477,42 @@ bool scene_history_can_undo(const scene_history *history)
     return acount(history->undo) > 0;
 }
 
+bool scene_history_push_physics(scene_history *history, game_physics_settings before, game_physics_settings after)
+{
+    assert(game_physics_settings_valid(before) && game_physics_settings_valid(after));
+    if (game_physics_settings_equal(before, after)) {
+        return false;
+    }
+    apush(
+        history->undo,
+        ((scene_edit){ .physics = true,
+                       .group = history->group,
+                       .physics_before = before,
+                       .physics_after = after })
+    );
+    clear_edits(&history->redo);
+    return true;
+}
+
+const game_physics_settings *scene_history_peek_physics(const scene_history *history, bool redo)
+{
+    const scene_edit *edits = redo ? history->redo : history->undo;
+    if (!acount(edits) || !alast(edits).physics) {
+        return NULL;
+    }
+    return redo ? &alast(edits).physics_after : &alast(edits).physics_before;
+}
+
+void scene_history_complete_physics(scene_history *history, bool redo)
+{
+    scene_edit **source = redo ? &history->redo : &history->undo;
+    scene_edit **destination = redo ? &history->undo : &history->redo;
+    assert(acount(*source) && alast(*source).physics);
+    scene_edit edit = alast(*source);
+    asetlen(*source, acount(*source) - 1);
+    apush(*destination, edit);
+}
+
 bool scene_history_can_redo(const scene_history *history)
 {
     assert(history);
@@ -489,7 +528,7 @@ static int apply_edit(scene_history *history, ecs_world *world, ecs_entity *out_
         return 0;
     }
     scene_edit edit = alast(*source);
-    if (edit.actor || edit.behaviors || edit.component ||
+    if (edit.actor || edit.behaviors || edit.component || edit.physics ||
         !ecs_entity_is_alive(world, edit.entity)) {
         return -1;
     }
@@ -702,6 +741,20 @@ static yyjson_mut_val *history_edits(yyjson_mut_doc *doc, const scene_edit *edit
         yyjson_mut_arr_append(array, object);
         yyjson_mut_obj_add_uint(doc, object, "entity", ecs_entity_to_u64(edit->entity));
         yyjson_mut_obj_add_uint(doc, object, "group", edit->group);
+        if (edit->physics) {
+            yyjson_mut_obj_add_val(
+                doc,
+                object,
+                "physics_before",
+                game_physics_settings_write(doc, edit->physics_before)
+            );
+            yyjson_mut_obj_add_val(
+                doc,
+                object,
+                "physics_after",
+                game_physics_settings_write(doc, edit->physics_after)
+            );
+        }
         double positions[] = { edit->before.x,
                                edit->before.y,
                                edit->after.x,
@@ -814,6 +867,16 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
         }
         out->entity = ecs_entity_from_u64((*after)[mapping]);
         out->group = yyjson_get_uint(yyjson_obj_get(object, "group"));
+        yyjson_val *physics = yyjson_obj_get(object, "physics_before");
+        if (physics) {
+            yyjson_val *next = yyjson_obj_get(object, "physics_after");
+            if (!next || !game_physics_settings_read(physics, &out->physics_before) ||
+                !game_physics_settings_read(next, &out->physics_after)) {
+                return false;
+            }
+            out->entity = (ecs_entity){ 0 };
+            out->physics = true;
+        }
         engine_viewport_view position;
         if (!checkpoint_read_camera(yyjson_obj_get(object, "position"), &position)) {
             return false;

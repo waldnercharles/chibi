@@ -4,6 +4,10 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#endif
 #ifdef CHIBI_HAS_ENKITS
 #include <TaskScheduler_c.h>
 #endif
@@ -11,7 +15,7 @@
 enum
 {
     TASK_CAPACITY = 64,
-    WORKER_LIMIT = 4
+    DEFAULT_WORKERS = 8
 };
 
 #ifdef CHIBI_HAS_ENKITS
@@ -35,7 +39,27 @@ struct game_task_pool
 #endif
 };
 
-static game_task_pool *shared;
+static game_task_pool *shared[GAME_TASK_WORKER_MAX + 1];
+
+#ifdef CHIBI_HAS_ENKITS
+static int default_workers(int available)
+{
+    int preferred = available;
+#ifdef __APPLE__
+    int cores = 0;
+    size_t size = sizeof cores;
+    int result = sysctlbyname("hw.perflevel0.physicalcpu", &cores, &size, NULL, 0);
+    if (result != 0) {
+        size = sizeof cores;
+        result = sysctlbyname("hw.physicalcpu", &cores, &size, NULL, 0);
+    }
+    if (result == 0 && cores > 0) {
+        preferred = cores;
+    }
+#endif
+    return preferred < DEFAULT_WORKERS ? preferred : DEFAULT_WORKERS;
+}
+#endif
 
 #ifdef CHIBI_HAS_ENKITS
 static void run_range(uint32_t start, uint32_t end, uint32_t worker, void *user)
@@ -103,27 +127,43 @@ static void finish(void *handle, void *user)
 
 game_task_pool *game_task_pool_acquire()
 {
-    if (shared) {
-        shared->references++;
-        return shared;
-    }
-    shared = xcalloc(1, sizeof *shared);
-    shared->references = 1;
+    return game_task_pool_acquire_workers(0);
+}
+
+game_task_pool *game_task_pool_acquire_workers(int requested)
+{
+    assert(requested >= 0 && requested <= GAME_TASK_WORKER_MAX);
     int workers = 1;
 #ifdef CHIBI_HAS_ENKITS
-    shared->scheduler = enkiNewTaskScheduler();
-    struct enkiTaskSchedulerConfig config = enkiGetTaskSchedulerConfig(shared->scheduler);
-    workers = config.numTaskThreadsToCreate >= WORKER_LIMIT - 1
-                ? WORKER_LIMIT
-                : (int)config.numTaskThreadsToCreate + 1;
+    enkiTaskScheduler *scheduler = enkiNewTaskScheduler();
+    struct enkiTaskSchedulerConfig config = enkiGetTaskSchedulerConfig(scheduler);
+    int available = (int)config.numTaskThreadsToCreate + 1;
+    workers = requested ? requested : default_workers(available);
+    if (config.numTaskThreadsToCreate < (uint32_t)(workers - 1)) {
+        workers = (int)config.numTaskThreadsToCreate + 1;
+    }
 #endif
-    shared->tasks = (game_task_system){ workers, shared, enqueue, finish };
-    return shared;
+    if (shared[workers]) {
+#ifdef CHIBI_HAS_ENKITS
+        enkiDeleteTaskScheduler(scheduler);
+#endif
+        shared[workers]->references++;
+        return shared[workers];
+    }
+    game_task_pool *pool = xcalloc(1, sizeof *pool);
+    pool->references = 1;
+#ifdef CHIBI_HAS_ENKITS
+    pool->scheduler = scheduler;
+#endif
+    pool->tasks = (game_task_system){ workers, pool, enqueue, finish };
+    shared[workers] = pool;
+    return pool;
 }
 
 void game_task_pool_release(game_task_pool *pool)
 {
-    assert(pool == shared && pool->references > 0 && !pool->open && !pool->pending);
+    int workers = pool->tasks.workers;
+    assert(pool == shared[workers] && pool->references > 0 && !pool->open && !pool->pending);
     if (--pool->references) {
         return;
     }
@@ -136,7 +176,7 @@ void game_task_pool_release(game_task_pool *pool)
     enkiDeleteTaskScheduler(pool->scheduler);
 #endif
     free(pool);
-    shared = NULL;
+    shared[workers] = NULL;
 }
 
 const game_task_system *game_task_pool_tasks(const game_task_pool *pool)

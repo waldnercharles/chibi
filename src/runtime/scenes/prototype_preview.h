@@ -5,6 +5,7 @@
 #include "render/particles.h"
 #include "runtime/behaviors/behavior.h"
 #include "runtime/engine.h"
+#include "runtime/scenes/physics_settings.h"
 
 typedef struct game_prototype_preview game_prototype_preview;
 
@@ -44,6 +45,8 @@ int game_prototype_preview_register_prototype(
     const game_prototype *prototype
 );
 void game_prototype_preview_stop(game_prototype_preview *preview);
+/* Apply world settings while stopped; launch/reset retains them. */
+int game_prototype_preview_configure_physics(game_prototype_preview *preview, game_physics_settings settings);
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time);
 /* The preview owns a normal engine; transport, timing and input use its shared pipeline. */
 engine *game_prototype_preview_runtime(game_prototype_preview *preview);

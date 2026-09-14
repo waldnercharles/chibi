@@ -7,7 +7,8 @@
 /* Prepared synchronous entries. Bindings own shared host/VM scratch and a
  * reusable temporary-value arena. Failures transfer that arena to inspection.
  * Rows own
- * no instance state. Execute rows in order, never concurrently or reentrantly.
+ * no instance state. A binding must never execute concurrently or reentrantly.
+ * Proven parallel spans use private bindings and disjoint entity chunks.
  * The caller keeps instances and their immutable programs alive. */
 typedef struct behavior_update_binding behavior_update_binding;
 typedef struct
@@ -48,8 +49,23 @@ behavior_update_row *behavior_update_run_c(
 );
 flow_run *behavior_update_failure(behavior_update_row *row, int result);
 
-/* Native ABI: row *(row *, end *, world *, int *result). Generated code checks
- * liveness/observation/bindings and calls prepared whole-function entries. */
+/* Native ABI: row *(row *, end *, world *, int *result). Both system kernels
+ * and the prepared-body loop retain liveness/observation/binding guards. */
+typedef struct
+{
+    int begin, end, period;
+    void *code; /* Borrowed from a function or the sequence cache. */
+} behavior_update_span;
+typedef struct behavior_update_kernel behavior_update_kernel;
+/* Cache repeated ordered sequences; the prepared native loop covers gaps.
+ * Rebuilding reuses matching generations and frees unused sequence kernels. */
+void behavior_update_system_spans(
+    const behavior_update_row *rows,
+    int count,
+    behavior_update_span **spans,
+    behavior_update_kernel ***kernels
+);
+void behavior_update_free_kernels(behavior_update_kernel **kernels);
 void *behavior_update_compile();
 void behavior_update_free_code(void *code);
 

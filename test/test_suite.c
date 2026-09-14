@@ -169,9 +169,20 @@ int main(int argc, char **argv)
         test_pending_backend(BEHAVIOR_ORACLE);
         return 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--parallel-runtime")) {
+        test_parallel_ticks();
+        return 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--tick-batch")) {
         test_behavior_batches();
         return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-sequence-c")) {
+        emit_sequence_c(argv[2]);
+        return 0;
+    }
+    if (argc == 6 && !strcmp(argv[1], "--bench-sequences")) {
+        return bench_sequences(argv[2], atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
     }
     if (argc == 3 && !strcmp(argv[1], "--emit-batch-c")) {
         emit_batch_c(argv[2]);
@@ -261,6 +272,15 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--managed-reuse")) {
         test_managed_reuse();
         return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-container-c")) {
+        extern void emit_container_c(const char *path);
+        emit_container_c(argv[2]);
+        return 0;
+    }
+    if (argc == 5 && !strcmp(argv[1], "--bench-containers")) {
+        extern int bench_containers(const char *path, int repeats, int rotation);
+        return bench_containers(argv[2], atoi(argv[3]), atoi(argv[4]));
     }
     if (argc > 1 && !strcmp(argv[1], "--whole-array-ops")) {
         test_array_ops(argc == 3 ? argv[2] : NULL);
@@ -620,6 +640,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--ui-native") == 0) {
         registry_validate();
         return ui_native_run(program_name);
+    }
+    if (argc > 1 && strcmp(argv[1], "--query-diagnostics-ui") == 0) {
+        extern int query_diagnostics_ui_run(const char *program);
+        registry_validate();
+        return query_diagnostics_ui_run(program_name);
     }
     if (argc > 1 && strcmp(argv[1], "--render-checks") == 0) {
         registry_validate();

@@ -21,6 +21,7 @@ typedef struct
 static const game_task_system *test_tasks;
 static bool large_world;
 static int expected_workers;
+static int configured_substeps = 4;
 extern void test_task_pool();
 enum
 {
@@ -71,6 +72,9 @@ static fixture create()
         assert(ecs_world_register_component(f.world, components[i], NULL) == ECS_OK);
     }
     f.live = game_live_world_new(f.world);
+    game_physics_settings settings = game_physics_defaults();
+    settings.substeps = configured_substeps;
+    assert(game_physics_configure(f.live->physics, settings) == 0);
     if (test_tasks) {
         game_physics_set_tasks(f.live->physics, test_tasks);
     }
@@ -168,7 +172,17 @@ static void solid_walls()
         contacts += step(&f, 1.0f / 60);
     }
     GameTransform position = *GAME_GameTransform_get(f.world, actor);
-    assert(position.x > 40 && position.x < 41.5f && position.y > 12);
+    /* Lower substeps deliberately trade overlap recovery accuracy for cost.
+     * Retain the original four-step tolerance; all modes must slide, stay on
+     * this side of the wall and preserve one Contact Begin per receiver. */
+    float max_x = configured_substeps == 4 ? 41.5f : 49;
+    printf(
+        "physics_quality substeps=%d wall_penetration=%.6f contacts=%d\n",
+        configured_substeps,
+        position.x - 41,
+        contacts
+    );
+    assert(position.x > 40 && position.x < max_x && position.y > 12);
     assert(contacts == 2);
     assert(other(&f, actor) == ecs_entity_to_u64(wall));
     assert(GAME_GameVelocity_get(f.world, actor)->x < 1);
@@ -527,11 +541,89 @@ static void physics_cases()
     ordered_contacts();
 }
 
+static void configured_motion()
+{
+    for (int mode = 0; mode < 2; mode++) {
+        fixture f = create();
+        game_physics_settings settings = game_physics_defaults();
+        settings.force_drive = mode;
+        settings.sleep = false;
+        settings.workers = 1;
+        assert(game_physics_configure(f.live->physics, settings) == 0);
+        ecs_entity dynamic = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
+        ecs_entity kinematic = body(&f, 0, 20, GAME_BODY_KINEMATIC, 1, 0);
+        *GAME_GameVelocity_get(f.world, dynamic) = (GameVelocity){ 60, 0 };
+        *GAME_GameVelocity_get(f.world, kinematic) = (GameVelocity){ 60, 0 };
+        /* A later invalid body must not accumulate an earlier body's drive
+         * force when the author fixes the component and retries the tick. */
+        GAME_GameCollider_get(f.world, kinematic)->radius = -1;
+        assert(game_physics_tick(f.live->physics, 1.0f / 60) < 0);
+        GAME_GameCollider_get(f.world, kinematic)->radius = 4;
+        assert(step(&f, 1.0f / 60) == 0);
+        float distance = GAME_GameTransform_get(f.world, dynamic)->x;
+        assert(fabsf(distance - (mode ? .625f : 1)) < .001f);
+        assert(fabsf(GAME_GameVelocity_get(f.world, dynamic)->x - 60) < .001f);
+        assert(fabsf(GAME_GameTransform_get(f.world, kinematic)->x - 1) < .001f);
+        game_physics_settings invalid = settings;
+        invalid.substeps = 0;
+        assert(game_physics_configure(f.live->physics, invalid) < 0);
+        invalid = settings;
+        invalid.contact_damping = NAN;
+        assert(game_physics_configure(f.live->physics, invalid) < 0);
+        invalid = settings;
+        invalid.workers = 8;
+        assert(game_physics_configure(f.live->physics, invalid) < 0);
+        assert(game_physics_settings_equal(
+            settings,
+            game_physics_configuration(f.live->physics)
+        ));
+        game_physics_reset(f.live->physics);
+        assert(game_physics_settings_equal(
+            settings,
+            game_physics_configuration(f.live->physics)
+        ));
+        assert(game_physics_configure(f.live->physics, invalid) == 0);
+        assert(game_physics_worker_budget(f.live->physics) >= 1);
+        dispose(&f);
+    }
+    for (int continuous = 0; continuous < 2; continuous++) {
+        fixture f = create();
+        game_physics_settings settings = game_physics_defaults();
+        settings.substeps = 1;
+        settings.continuous = continuous;
+        assert(game_physics_configure(f.live->physics, settings) == 0);
+        ecs_entity wall = body(&f, 50, 0, GAME_BODY_STATIC, 8, 1);
+        *GAME_GameCollider_get(f.world, wall) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                                .width = 2,
+                                                                .height = 200,
+                                                                .category = 8,
+                                                                .mask = 1 };
+        ecs_entity actor = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 8);
+        GAME_GameBody_get(f.world, actor)->continuous = true;
+        *GAME_GameVelocity_get(f.world, actor) = (GameVelocity){ 6000, 0 };
+        step(&f, 1.0f / 60);
+        float x = GAME_GameTransform_get(f.world, actor)->x;
+        assert(continuous ? x < 46 : x > 90);
+        dispose(&f);
+    }
+    puts("physics settings PASS: force drive, kinematic velocity, CCD tradeoff, validation and retained reset configuration");
+}
+
 void test_physics()
 {
     test_task_pool();
+    configured_motion();
     game_task_pool *pool = game_task_pool_acquire();
     physics_cases();
+    configured_substeps = 2;
+    physics_cases();
+    configured_substeps = 1;
+    /* One substep fails the four-step crowd separation tolerance. It remains
+     * an explicit quality choice; verify wall blocking and swept hits here. */
+    solid_walls();
+    nearest_and_filters();
+    moving_target_and_box();
+    configured_substeps = 4;
     test_physics_executor executor = test_physics_executor_open();
     if (executor.library) {
         test_tasks = &executor.tasks;

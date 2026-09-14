@@ -604,6 +604,12 @@ void behavior_lower_finish_values(builder *b)
             i->target = map[i->target];
         }
     }
+    for (int j = 0; j < acount(f->reductions); j++) {
+        behavior_reduction *r = &f->reductions[j];
+        r->pointer = map[r->pointer];
+        r->index = map[r->index];
+        r->entity = map[r->entity];
+    }
     free(map);
     afree(b->scalars);
     for (int i = 0; i < acount(b->aggregates); i++) {

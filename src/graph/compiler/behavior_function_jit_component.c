@@ -59,8 +59,8 @@ static void component(const behavior_machine *m, const behavior_function_instruc
 {
     struct sljit_compiler *c = m->compiler;
     slot(m, i->left, SLJIT_R0);
-    bool metadata = i->op == BF_COLUMN;
-    struct sljit_jump *empty[5] = { 0 };
+    bool metadata = i->op != BF_COMPONENT;
+    struct sljit_jump *empty[6] = { 0 };
     if (!metadata) {
         slot(m, i->right, SLJIT_R1);
         empty[0] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
@@ -128,7 +128,11 @@ static void component(const behavior_machine *m, const behavior_function_instruc
             (sljit_sw)i->offset
         );
         bind(c, wrong);
-        behavior_jit_failure(m, i, i->target);
+        if (i->op == BF_COLUMN_TRY) {
+            empty[5] = sljit_emit_jump(c, SLJIT_JUMP);
+        } else {
+            behavior_jit_failure(m, i, i->target);
+        }
         bind(c, valid);
         if (metadata) {
             sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_R2, 0);
@@ -148,7 +152,7 @@ static void component(const behavior_machine *m, const behavior_function_instruc
         }
     }
     struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
-    for (int j = 0; j < 5; j++) {
+    for (int j = 0; j < 6; j++) {
         if (empty[j]) {
             bind(c, empty[j]);
         }
@@ -234,6 +238,7 @@ bool behavior_jit_component(
         case BF_ENTITY: entity(m, i, dest, offset); return true;
         case BF_ROW: row(m, i, dest, offset); return true;
         case BF_COLUMN:
+        case BF_COLUMN_TRY:
         case BF_COMPONENT: component(m, i, dest, offset); return true;
         case BF_ASSERT: {
             slot(m, i->left, SLJIT_R3);

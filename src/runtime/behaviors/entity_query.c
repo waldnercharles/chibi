@@ -175,6 +175,7 @@ node_desc NODE_Count_Matching_Entities = {
     .read_inputs = read_count,
     .host_call = &CALL,
     .lower = entity_query_lower,
+    .work = NODE_WORK_ENTITY_REDUCTION,
     .access = &ACCESS,
     .category = "Entities",
     .keywords = "query filter count reduce component conditions"

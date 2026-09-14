@@ -3,6 +3,7 @@
 #include "graph/runtime/eval.h"
 #include "graph/runtime/update.h"
 #include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/parallel.h"
 #include "runtime/behaviors/pending.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -67,7 +68,10 @@ struct game_behavior_world
     const behavior_function *update_query_scope;
     uint64_t attachment_revision, update_revision;
     void *update_code;
-    bool update_native_disabled;
+    behavior_update_span *update_spans;
+    behavior_update_kernel **update_kernels;
+    bool update_native_disabled, update_parallel_disabled;
+    game_behavior_parallel *update_parallel;
     game_behavior_update_stats update_stats;
     game_behavior_log_info *logs;
     flow_parallel_for_fn parallel_for;
@@ -432,6 +436,7 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     }
     game_behavior_world *result = (game_behavior_world *)xcalloc(1, sizeof *result);
     result->ecs = world;
+    result->update_parallel = game_behavior_parallel_new();
     result->profile_disabled = true;
     ecs_eval_component_reader_init(&result->component_reader, world);
     result->next_sequence = 1;
@@ -475,9 +480,12 @@ void game_behavior_world_free(game_behavior_world *world)
     if (!world) {
         return;
     }
+    game_behavior_parallel_free(world->update_parallel);
     behavior_update_free_code(world->update_code);
     behavior_update_free_bindings(world->update_bindings);
     afree(world->updates);
+    afree(world->update_spans);
+    behavior_update_free_kernels(world->update_kernels);
     while (acount(world->attachments)) {
         behavior_attachment *attachment = &alast(world->attachments);
         release_instance(attachment->asset, attachment->instance);
@@ -1255,6 +1263,18 @@ static void prepare_updates(game_behavior_world *world)
         }
         apush(world->updates, row);
     }
+    behavior_update_system_spans(
+        world->updates,
+        acount(world->updates),
+        &world->update_spans,
+        &world->update_kernels
+    );
+    game_behavior_parallel_prepare(
+        world->update_parallel,
+        world->updates,
+        world->update_spans,
+        ((const ecs_execution_view *)world->ecs)->slot_count
+    );
     world->update_revision = world->attachment_revision;
 }
 
@@ -1274,11 +1294,11 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
     if (error) {
         *error = (flow_error){ 0 };
     }
-    int at = 0, next_attachment = 0, dispatched = 0;
+    int at = 0, span = 0, next_attachment = 0, dispatched = 0;
     for (;;) {
         if (world->update_revision != world->attachment_revision) {
             prepare_updates(world);
-            at = 0;
+            at = span = 0;
             while (at < acount(world->updates) &&
                    world->updates[at].attachment < next_attachment) {
                 at++;
@@ -1287,8 +1307,45 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         if (at == acount(world->updates)) {
             break;
         }
+        while (span < acount(world->update_spans) &&
+               world->update_spans[span].end <= at) {
+            span++;
+        }
+        int end_index = acount(world->updates);
+        bool system = span < acount(world->update_spans) &&
+                      world->update_spans[span].begin <= at;
+        if (span < acount(world->update_spans)) {
+            const behavior_update_span *current = &world->update_spans[span];
+            end_index = system ? current->end : current->begin;
+            if (system) {
+                int phase = (at - current->begin) % current->period;
+                if (phase) {
+                    /* After a paused/failed row, finish this cycle with the
+                     * prepared loop before entering the next complete one. */
+                    system = false;
+                    int next = at + current->period - phase;
+                    if (next < end_index) {
+                        end_index = next;
+                    }
+                }
+            }
+        }
+        if (system && at == world->update_spans[span].begin &&
+            !world->update_parallel_disabled && !world->update_native_disabled &&
+            game_behavior_parallel_run(
+                world->update_parallel,
+                span,
+                (const ecs_execution_view *)world->ecs,
+                world->entities,
+                &world->update_stats
+            )) {
+            dispatched += end_index - at;
+            at = end_index;
+            next_attachment = world->updates[at - 1].attachment + 1;
+            continue;
+        }
         behavior_update_row *row = &world->updates[at],
-                            *end = world->updates + acount(world->updates);
+                            *end = world->updates + end_index;
         behavior_update_row *stopped;
         int result = FLOW_OK;
         behavior_update_refresh(world->update_bindings);
@@ -1300,9 +1357,21 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
             world->update_code = behavior_update_compile();
         }
         if (native && world->update_code) {
-            stopped = ((
-                           behavior_update_fn
-            )world->update_code)(row, end, (const ecs_execution_view *)world->ecs, &result);
+            stopped = row;
+            if (system) {
+                stopped = ((behavior_update_fn)world->update_spans[span].code)(
+                    row,
+                    end,
+                    (const ecs_execution_view *)world->ecs,
+                    &result
+                );
+                world->update_stats.system_loop += (int)(stopped - row) + (result < 0);
+            }
+            if (stopped == row && result == FLOW_OK) {
+                stopped = ((
+                               behavior_update_fn
+                )world->update_code)(row, end, (const ecs_execution_view *)world->ecs, &result);
+            }
             world->update_stats.native_loop += (int)(stopped - row) + (result < 0);
         } else {
             stopped = behavior_update_run_c(
@@ -1319,7 +1388,8 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         dispatched += ran;
         at = (int)(stopped - world->updates);
         if (stopped == end) {
-            break;
+            next_attachment = end[-1].attachment + 1;
+            continue;
         }
         next_attachment = stopped->attachment + 1;
         behavior_attachment *attachment = &world->attachments[stopped->attachment];
@@ -1354,6 +1424,10 @@ game_behavior_update_stats game_behavior_last_update(const game_behavior_world *
     return world->update_stats;
 }
 
+void game_behavior_set_parallel_updates(game_behavior_world *world, bool enabled)
+{
+    world->update_parallel_disabled = !enabled;
+}
 void game_behavior_set_native_update(game_behavior_world *world, bool enabled)
 {
     world->update_native_disabled = !enabled;

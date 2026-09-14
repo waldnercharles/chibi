@@ -256,6 +256,8 @@ static void escaping_snapshot()
 void test_compiled_queries()
 {
     extern void test_entity_query(behavior_backend backend);
+    extern void test_entity_query_diagnostics();
+    test_entity_query_diagnostics();
     test_entity_query(BEHAVIOR_ORACLE);
     test_entity_query(BEHAVIOR_BYTECODE);
     test_entity_query(BEHAVIOR_SLJIT);

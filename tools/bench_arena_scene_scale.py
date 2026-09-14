@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--serial-before", action="store_true", help="force serial physics in the before executable")
     parser.add_argument("--expect-after-workers", type=int, help="assert the after run's reported worker budget")
+    parser.add_argument("--expect-parallel", action="store_true", help="require behavior and render worker execution after the change")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.trials < 3 or not 30 <= args.frames <= 1800 or any(not 1 <= n <= 20000 for n in args.counts):
@@ -55,6 +56,9 @@ def main():
     for count in args.counts:
         for trial in range(args.trials):
             for version in (("before", "after") if trial % 2 == 0 else ("after", "before")):
+                env.pop("CBLUEPRINT_BENCH_REQUIRE_PARALLEL", None)
+                if args.expect_parallel and version == "after":
+                    env["CBLUEPRINT_BENCH_REQUIRE_PARALLEL"] = "1"
                 env.pop("CBLUEPRINT_BENCH_SERIAL_PHYSICS", None)
                 if args.serial_before and version == "before":
                     env["CBLUEPRINT_BENCH_SERIAL_PHYSICS"] = "1"
@@ -86,7 +90,7 @@ def main():
                 if len(states) != 1 or len(phases) != 6 or len(physics) != 1:
                     raise ValueError("missing or duplicate measurements")
                 state = states[0]
-                if tuple(map(int, state[:3])) != (count, args.frames, int(args.profile)) or int(state[3]) < count:
+                if tuple(map(int, state[:3])) != (count, args.frames, int(args.profile)) or int(state[3]) <= 0:
                     raise ValueError("wrong population, sampling window, profiling or rendered geometry count")
                 if state[4] != expected.setdefault(count, state[4]):
                     raise ValueError("simulation snapshot differs across executables/trials")
@@ -102,12 +106,13 @@ def main():
                            for p, value in (("p50_ms", median), ("p95_ms", tail))}
                 detail = {k: float(v) for k, v in re.findall(r"(\w+)=([0-9.]+)", physics[0])}
                 extra = {}
-                for name in ("cold", "first_fire", "spikes", "restart"):
+                for name in ("cold", "first_fire", "spikes", "restart", "parallel"):
                     match = re.findall(rf"^scene_scale_{name} (.+)$", log, re.M)
                     if match:
                         extra[name] = {k: float(v) for k, v in re.findall(r"(\w+)=([0-9.]+)", match[0])}
                 samples.append({"count": count, "trial": trial, "version": version,
                                 "metrics": metrics, "physics": detail, "workers": workers,
+                                "draws": int(state[3]),
                                 "combat": combat[0] if combat else None, **extra, "log": log})
                 print(f"count={count} trial={trial + 1} {version} "
                       f"physics={metrics['physics_p50_ms']:.3f} "

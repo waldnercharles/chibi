@@ -40,7 +40,13 @@ ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera
 
 struct engine;
 typedef struct render_arena render_arena;
+typedef struct
+{
+    int entities, tasks, workers;
+} render_arena_work;
 render_arena *render_arena_new();
+void render_arena_set_parallel(render_arena *arena, bool enabled);
+render_arena_work render_arena_last_work(const render_arena *arena);
 void render_arena_free(render_arena *arena);
 void render_arena_reset(render_arena *arena);
 const char *render_arena_error(const render_arena *arena);

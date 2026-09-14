@@ -416,7 +416,7 @@ VALUE_CALL(array_resize)
 VALUE_CALL(array_contains)
 VALUE_CALL(array_find)
 #undef VALUE_CALL
-static const node_access array_value_access = { 0 };
+static const node_access array_value_access = { .flags = NODE_EFFECT_PURE };
 
 static pin_spec make_inputs[] = { ELEMENT_INPUT };
 static pin_spec make_outputs[] = { ARRAY_OUTPUT };
@@ -509,6 +509,7 @@ node_desc NODE_ArrayIsValidIndex = { .name = "Is Valid Index",
                                      .keywords = "array index valid" };
 
 node_desc NODE_ArrayContains = {
+    .work = NODE_WORK_LINEAR_SEARCH,
     .name = "Contains",
     .input_count = 2,
     .output_count = 1,
@@ -524,6 +525,7 @@ node_desc NODE_ArrayContains = {
 };
 
 node_desc NODE_ArrayFind = { .name = "Find",
+                             .work = NODE_WORK_LINEAR_SEARCH,
                              .input_count = 2,
                              .output_count = 1,
                              .inputs = array_bool_inputs,

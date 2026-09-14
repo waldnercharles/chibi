@@ -1,5 +1,6 @@
 #ifndef CHIBI_BEHAVIOR_FUNCTION_H
 #define CHIBI_BEHAVIOR_FUNCTION_H
+#include "graph/compiler/compile.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/runtime/state.h"
 #include "graph/runtime/value_array.h"
@@ -7,6 +8,10 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+const compile_diagnostic *behavior_function_query_diagnostics(
+    const behavior_function *function,
+    int *count
+);
 typedef struct
 {
     void *data;            /* Stable even while the current value is null. */
@@ -239,6 +244,12 @@ bool behavior_function_has_invocations(const behavior_function *function);
 /* A parameterless event with synchronous, non-reentrant operations only.
  * Its component accesses may cross entities, so execution order still matters. */
 bool behavior_function_batchable(const behavior_function *function);
+/* Immutable lowering proof. Other-entity reads must not overlap any component
+ * written by another body in the same parallel span. */
+bool behavior_function_parallel(const behavior_function *function);
+/* Static work estimate used to keep cheap loops below scheduling overhead. */
+int behavior_function_parallel_work(const behavior_function *function);
+bool behavior_function_parallel_with(const behavior_function *a, const behavior_function *b);
 /* Conservative proof for synchronous broadcasts. Unknown host effects and
  * structural operations cannot preserve a component-dependent query index. */
 bool behavior_function_preserves_components(
@@ -284,6 +295,19 @@ int behavior_function_run(const behavior_function *function, behavior_function_c
 /* Thread-local count of VM scratch initializations, for allocation profiling. */
 uint64_t behavior_function_vm_allocations();
 /* The exported C function has the same ABI as the SLJIT entry. */
+/* Parameterless synchronous Tick body embedded in an ordered native row loop. */
+bool behavior_function_compile_system(behavior_function *function);
+void *behavior_function_system_entry(const behavior_function *function);
+/* Caller owns the sequence kernel; all immutable functions must outlive its
+ * invocation. Frees with behavior_jit_free. Executes exactly the given order. */
+void *behavior_function_compile_sequence(const behavior_function *const *functions, int count);
+void behavior_function_write_sequence_c(
+    const behavior_function *const *functions,
+    int count,
+    FILE *out,
+    const char *name
+);
+void behavior_function_write_system_c(const behavior_function *function, FILE *out, const char *name);
 void behavior_function_write_c(const behavior_function *function, FILE *out, const char *name);
 void *behavior_function_entry(const behavior_function *function);
 /* Caller-owned output storage outlives the invocation. Only aggregate results

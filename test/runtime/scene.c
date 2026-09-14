@@ -288,9 +288,42 @@ void run_scene_document_checks(void)
             strstr(document->entities[0].components_json, "GameHealth"),
         "a scene entity stores generic component overrides"
     );
+    document->physics = (game_physics_settings){ .workers = 8,
+                                                 .substeps = 2,
+                                                 .sleep = false,
+                                                 .continuous = true,
+                                                 .force_drive = true,
+                                                 .contact_hertz = 15,
+                                                 .contact_damping = 1 };
     char *saved = game_scene_document_save(document);
     char error[256];
     game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
+    test_check(
+        loaded && game_physics_settings_equal(document->physics, loaded->physics),
+        "scene physics settings round-trip"
+    );
+    game_scene_document *minimal = game_scene_document_load(
+        "{\"version\":1,\"name\":\"Minimal\",\"entities\":[]}",
+        error,
+        sizeof error
+    );
+    test_check(
+        minimal &&
+            game_physics_settings_equal(minimal->physics, game_physics_defaults()),
+        "an omitted physics object uses defaults"
+    );
+    game_scene_document_free(minimal);
+    const char *invalid_physics[] = {
+        "{\"substeps\":0}",         "{\"substeps\":1.5}", "{\"workers\":33}",
+        "{\"contact_damping\":-1}", "{\"sleep\":0}",      "{\"unknown\":true}"
+    };
+    for (int i = 0; i < 6; i++) {
+        char json[256];
+        snprintf(json, sizeof json, "{\"version\":1,\"name\":\"Invalid\",\"entities\":[],\"physics\":%s}", invalid_physics[i]);
+        game_scene_document *bad = game_scene_document_load(json, error, sizeof error);
+        test_check(!bad && strstr(error, "physics"), "malformed physics settings are rejected");
+        game_scene_document_free(bad);
+    }
     test_check(
         loaded && acount(loaded->entities) == 1 &&
             strcmp(loaded->entities[0].name, "Player") == 0 &&

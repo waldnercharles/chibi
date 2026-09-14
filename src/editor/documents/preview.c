@@ -130,7 +130,7 @@ void ed_compile(editor *e)
         e->compile.error_count++;
     }
     ed_rebuild_compile_text(e);
-    if (e->compile.error_count || e->compile.warning_count) {
+    if (acount(e->compile.items)) {
         editor_ui_set_pane_visible(EDITOR_UI_PANE_COMPILER_RESULTS, true);
     }
 }
@@ -562,7 +562,7 @@ void ed_rebuild_compile_text(editor *e)
     size_t needed = 1;
     for (int i = 0; i < count; i++) {
         const compile_diagnostic *item = &e->compile.items[i];
-        const char *severity = item->severity == CMPL_ERROR ? "Error:" : "Warning:";
+        const char *severity = cmpl_severity_name(item->severity);
         needed += strlen(severity) + 2 + strlen(item->message) + (i != 0);
     }
     if (e->compile_text_capacity < needed) {
@@ -572,7 +572,7 @@ void ed_rebuild_compile_text(editor *e)
     size_t used = 0;
     for (int i = 0; i < count; i++) {
         const compile_diagnostic *item = &e->compile.items[i];
-        const char *severity = item->severity == CMPL_ERROR ? "Error:" : "Warning:";
+        const char *severity = cmpl_severity_name(item->severity);
         if (i) {
             e->compile_text[used++] = '\n';
         }

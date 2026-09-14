@@ -564,6 +564,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             case BF_COLUMN:
+            case BF_COLUMN_TRY:
             case BF_COMPONENT:
                 fprintf(
                     out,
@@ -589,8 +590,12 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     (unsigned long long)i->layout,
                     i->offset
                 );
-                failure(out, i, i->target);
-                if (i->op == BF_COLUMN) {
+                if (i->op == BF_COLUMN_TRY) {
+                    fprintf(out, "column=NULL;");
+                } else {
+                    failure(out, i, i->target);
+                }
+                if (i->op != BF_COMPONENT) {
                     fprintf(out, "}v%d=(uintptr_t)column;}\n", i->output);
                 } else {
                     fprintf(out, "}v%d=column?(uintptr_t)column->data+v%d*column->stride:0;}\n", i->output, i->right);
@@ -952,9 +957,17 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
         }
     }
 }
-static void write_definition(const behavior_function *f, FILE *out, const char *name, int index)
+static void write_definition(const behavior_function *f, FILE *out, const char *name, int index, bool local)
 {
-    fprintf(out, "#include \"graph/compiler/behavior_scalar.h\"\n#include \"graph/compiler/behavior_function.h\"\n#include \"graph/runtime/random.h\"\n#include <math.h>\n#include <string.h>\n#include \"ecs/execution.h\"\nint %s", name);
+    fprintf(
+        out,
+        "#include \"graph/compiler/behavior_scalar.h\"\n#include "
+        "\"graph/compiler/behavior_function.h\"\n#include "
+        "\"graph/runtime/random.h\"\n#include <math.h>\n#include "
+        "<string.h>\n#include \"ecs/execution.h\"\n%sint %s",
+        local ? "static inline " : "",
+        name
+    );
     if (index) {
         fprintf(out, "_callee_%d", index);
     }
@@ -987,8 +1000,79 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
 
 void behavior_function_write_c(const behavior_function *f, FILE *out, const char *name)
 {
-    write_definition(f, out, name, 0);
+    write_definition(f, out, name, 0, false);
     for (int i = 0; i < acount(f->definitions); i++) {
-        write_definition(f->definitions[i], out, name, i + 1);
+        write_definition(f->definitions[i], out, name, i + 1, false);
     }
+}
+
+void behavior_function_write_sequence_c(
+    const behavior_function *const *functions,
+    int count,
+    FILE *out,
+    const char *name
+)
+{
+    assert(count > 0);
+    for (int part = 0; part < count; part++) {
+        const behavior_function *f = functions[part];
+        assert(f->batchable);
+        char body_name[256];
+        int length = snprintf(body_name, sizeof body_name, "%s_body%d", name, part);
+        assert(length > 0 && length < (int)sizeof body_name);
+        write_definition(f, out, body_name, 0, true);
+        for (int i = 0; i < acount(f->definitions); i++) {
+            write_definition(f->definitions[i], out, body_name, i + 1, true);
+        }
+    }
+    fprintf(
+        out,
+        "#include \"graph/runtime/update_internal.h\"\n"
+        "behavior_update_row *%s(behavior_update_row *row, behavior_update_row "
+        "*end, "
+        "const ecs_execution_view *world, int *result) {\n*result=0;\n",
+        name
+    );
+    for (int part = 0; part < count; part++) {
+        fprintf(
+            out,
+            "const behavior_function *function%d=(end-row>%d && "
+            "row[%d].binding)?row[%d].binding->function:NULL;\n",
+            part,
+            part,
+            part,
+            part
+        );
+    }
+    fputs("for(;;){\n", out);
+    for (int part = 0; part < count; part++) {
+        fprintf(
+            out,
+            "{if(row==end) return row;\n"
+            "behavior_instance *bi=row->instance; behavior_update_binding "
+            "*binding=row->binding;\n"
+            "if(!binding || binding->function!=function%d || !bi->alive || "
+            "bi->trace_enabled || acount(bi->activations) || "
+            "bi->backend!=BEHAVIOR_SLJIT || bi->profile || "
+            "bi->asset!=binding->asset || "
+            "bi->services_revision!=row->services_revision || "
+            "!ecs_execution_entity(world,row->entity)) return row;\n"
+            "behavior_function_context *c=&binding->context;\n"
+            "c->owner=bi->owner.u64; c->owner_type_name=bi->owner.type_name; "
+            "c->delta_seconds=bi->delta_seconds; c->steps=0;\n"
+            "c->variables=bi->variables; c->states=bi->node_states; "
+            "c->variable_storage=bi->variable_storage; c->value_owner=bi; "
+            "c->instance_time=&bi->current_time;\n"
+            "if(c->value_storage) arena_reset(c->value_storage);\n"
+            "*result=%s_body%d(c); if(*result) return row; row++;}\n",
+            part,
+            name,
+            part
+        );
+    }
+    fputs("}}\n", out);
+}
+void behavior_function_write_system_c(const behavior_function *f, FILE *out, const char *name)
+{
+    behavior_function_write_sequence_c(&f, 1, out, name);
 }

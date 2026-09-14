@@ -567,6 +567,8 @@ add_executable(test_suite
     test/fixtures/reflection/math.c
     ${TEST_REGISTRY}
 )
+# Generated-C system benchmarks call the same runtime helpers as SLJIT.
+set_target_properties(test_suite PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(test_suite PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(test_suite PRIVATE engine runtime_support ecs demo editor chibi_render)
@@ -706,7 +708,7 @@ foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner 
 endforeach()
 
 # Backend policy smoke target also runs under Node in the Emscripten build.
-add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/instance_bank.c test/support/whole_retrigger.c test/support/whole_multigate.c test/support/whole_state.c test/support/whole_switch.c test/support/whole_recursion.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c test/support/whole_delay.c test/support/whole_batch.c test/support/bound_components.c test/support/whole_async.c test/support/whole_motion.c test/support/whole_random.c test/support/whole_data.c test/support/whole_particles.c test/support/whole_managed.c test/support/whole_owned_arrays.c test/support/whole_array_ops.c test/support/whole_names.c test/support/whole_search.c src/graph/nodes/vector_nodes.c src/graph/nodes/particle_nodes.c src/render/particles.c)
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/instance_bank.c test/support/whole_retrigger.c test/support/whole_multigate.c test/support/whole_state.c test/support/whole_switch.c test/support/whole_recursion.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c test/support/whole_delay.c test/support/whole_batch.c test/support/bound_components.c test/support/whole_async.c test/support/whole_motion.c test/support/whole_random.c test/support/whole_data.c test/support/whole_particles.c test/support/whole_managed.c test/support/whole_owned_arrays.c test/support/whole_array_ops.c test/support/value_index.c test/support/whole_names.c test/support/whole_search.c src/graph/nodes/vector_nodes.c src/graph/nodes/particle_nodes.c src/render/particles.c)
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${cute_framework_SOURCE_DIR}/include)
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)

@@ -85,7 +85,9 @@ The final trials improve the isolated activation by about 8% at 5,000. At
 20,000 the final activation median is 3% slower, with overlapping trial ranges
 (old 293–316 µs, new 279–323 µs); the earlier run was faster. There is no reliable
 activation speedup claim at that population. A fused scan or maintained
-aggregate could still avoid repeated traversals; neither is implemented here.
+aggregate could still avoid repeated traversals; neither was implemented at this
+checkpoint. The subsequent [query fusion pass](query-fusion.md) combines these
+counts automatically and exposes source-linked performance diagnostics.
 
 Three paired 1,000-enemy combat runs have identical position checksums and exact
 per-frame combat traces. Median frame p50 is 8.363 ms before / 8.354 ms after;

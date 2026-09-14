@@ -168,6 +168,9 @@ static int instance_copy_value(arena *storage, pin_value *out, const pin_value *
                 return -1;
             }
         }
+        if (out->container == PIN_CONTAINER_SET) {
+            pin_array_index(storage, array);
+        }
         return 0;
     }
     if ((out->type == PIN_STR || out->type == PIN_NAME) && out->str) {

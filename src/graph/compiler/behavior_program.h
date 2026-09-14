@@ -38,6 +38,7 @@ int behavior_asset_state_index(const behavior_asset *asset, uint64_t node_id);
 const uint64_t *behavior_program_states(const behavior_program *program, int *count);
 const char *behavior_backend_name(behavior_backend backend);
 const compile_diagnostic *behavior_program_diagnostic(const behavior_program *program);
+const compile_report *behavior_program_report(const behavior_program *program);
 /* Named root event lookup. A duplicate returns the second entry for diagnostics. */
 node *behavior_program_event(const behavior_program *program, const char *name, bool *duplicate);
 /* Publication indexes only unique, eligible synchronous events. Sets entry on success. */

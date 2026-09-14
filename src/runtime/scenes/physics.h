@@ -4,6 +4,7 @@
 #include "ecs/ecs.h"
 #include "graph/model/node.h"
 #include "runtime/components.h"
+#include "runtime/scenes/physics_settings.h"
 #include "runtime/tasks.h"
 
 struct game_entities;
@@ -21,6 +22,11 @@ typedef struct
 game_physics *game_physics_new(ecs_world *world, struct game_entities *entities);
 void game_physics_free(game_physics *physics);
 void game_physics_reset(game_physics *physics);
+/* Worker changes require an empty/reset world using the owned runtime pool.
+ * Invalid changes fail without modifying settings. Resets retain settings. */
+int game_physics_configure(game_physics *physics, game_physics_settings settings);
+game_physics_settings game_physics_configuration(const game_physics *physics);
+int game_physics_worker_budget(const game_physics *physics);
 /* Configure before bodies are synchronized, or immediately after reset.
  * The borrowed executor must outlive this physics world. NULL selects serial. */
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks);

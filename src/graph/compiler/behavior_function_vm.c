@@ -460,6 +460,7 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 );
                 break;
             case BF_COLUMN:
+            case BF_COLUMN_TRY:
             case BF_COMPONENT: {
                 const ecs_execution_column
                     *column = ctx->columns
@@ -478,10 +479,14 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 }
                 if (column &&
                     (column->layout != i->layout || column->stride != i->offset)) {
+                    if (i->op == BF_COLUMN_TRY) {
+                        out->u64 = 0;
+                        break;
+                    }
                     result = fail(ctx, i, steps, parents, i->target);
                     goto done;
                 }
-                uintptr_t row = i->op == BF_COLUMN ? (uintptr_t)column
+                uintptr_t row = i->op != BF_COMPONENT ? (uintptr_t)column
                               : column ? (uintptr_t)column->data + b.u * column->stride
                                        : 0;
                 if (BF_POINTER_TYPE == PIN_U64) {

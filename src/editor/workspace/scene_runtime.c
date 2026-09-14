@@ -171,6 +171,11 @@ int app_scene_authoring_preview_prototype(app_scene_authoring *scene, const char
     char error[256];
     finish_transform_edit(scene, true);
     app_scene_authoring_stop_prototype_preview(scene);
+    int configured = game_prototype_preview_configure_physics(
+        scene->prototype_preview,
+        game_physics_configuration(scene->live->physics)
+    );
+    assert(configured == 0);
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         game_live_definition *definition = game_live_definition_at(scene->live, i);
         if (game_prototype_preview_update_behavior(

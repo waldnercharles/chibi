@@ -73,6 +73,7 @@ static void world_values(behavior_backend backend, int kind, bool update)
             );
             if (update && backend == BEHAVIOR_SLJIT) {
                 assert(stats.native_loop == eligible);
+                assert(stats.system_loop == eligible);
             }
         }
         for (int i = 0; i < COUNT; i++) {

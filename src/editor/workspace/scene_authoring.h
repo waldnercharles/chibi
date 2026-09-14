@@ -1,12 +1,15 @@
 #ifndef CHIBI_APP_SCENE_AUTHORING_H
 #define CHIBI_APP_SCENE_AUTHORING_H
-
 #include "assets/system_document.h"
 #include "render/sdf_shapes.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/engine.h"
+#include "runtime/scenes/physics_settings.h"
 
 typedef struct app_scene_authoring app_scene_authoring;
+/* Authored world settings; editable while Scene and prototype preview are stopped.
+ * Records one undo step. Invalid settings leave the world unchanged. */
+int app_scene_authoring_set_physics(app_scene_authoring *scene, game_physics_settings settings);
 typedef struct editor editor;
 typedef const char *(*app_scene_prototype_resolve_fn)(const char *name, void *user);
 

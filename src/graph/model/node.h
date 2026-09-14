@@ -106,6 +106,10 @@ typedef struct
     const uint64_t *writes;
     int write_count;
     unsigned flags;
+    /* One-based host argument proven to be Self for entity-scoped writes. */
+    int target_input;
+    /* Additional reads by reference to reflected IDs, NULL terminated. */
+    const uint64_t *const *read_refs;
 } node_access;
 
 enum
@@ -115,6 +119,9 @@ enum
     NODE_EFFECT_HOST_SINK = 1u << 2,
     NODE_EFFECT_PURE = 1u << 3,
     NODE_EFFECT_ENTITY_SCOPED = 1u << 4,
+    /* Host supports concurrent calls while declared read dependencies are
+     * stable. Writes require disjoint Self targets. No hidden world effects. */
+    NODE_EFFECT_PARALLEL = 1u << 5,
 };
 
 enum
@@ -212,6 +219,16 @@ typedef enum
     NODE_COMPONENT_SET_FIELD,
 } node_component_kind;
 
+typedef enum
+{
+    NODE_WORK_NONE,
+    NODE_WORK_WORLD_QUERY,
+    NODE_WORK_ENTITY_REDUCTION,
+    NODE_WORK_LINEAR_SEARCH,
+    NODE_WORK_SET,
+    NODE_WORK_SET_COPY,
+} node_work_kind;
+
 typedef struct
 {
     const char *name;
@@ -249,6 +266,8 @@ typedef struct
     const node_command *command;
     const node_host_call *host_call;
     node_lower_fn lower;
+    /* Cost semantics supplied by the capability, independent of its label. */
+    node_work_kind work;
 } node_desc;
 
 struct node

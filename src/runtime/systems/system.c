@@ -151,6 +151,9 @@ static void add_access_components(game_system *system, const node_access *access
     for (int i = 0; i < access->read_count; i++) {
         add_query_component(system, access->reads[i]);
     }
+    for (int i = 0; access->read_refs && access->read_refs[i]; i++) {
+        add_query_component(system, *access->read_refs[i]);
+    }
     for (int i = 0; i < access->write_count; i++) {
         add_query_component(system, access->writes[i]);
     }

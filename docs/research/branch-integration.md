@@ -10,7 +10,7 @@ different commit IDs.
 | Compiled behavior runtime, Tick scheduling, rendering and physics performance | PR #78, `cwaldner/compiled-behavior-paths` | Merged; combined main CI and Pages deployment passed. |
 | Latest scrollbar smoothing and wheel travel | PR #79, `cwaldner/fix-scrollbar-smoothing` | Merged; main CI and Pages deployment passed. Includes the later wheel-travel correction from the primary checkout. |
 | MCP graph authoring, registry discovery and GPU previews | PR #81, `cwaldner/mcp-authoring` | Merged; main CI and Pages deployment passed. |
-| Editor authoring and reusable gameplay changes from the primary checkout | Draft PR #80, `cwaldner/editor-authoring-integration` | Main is integrated. Native tests, activity-rail navigation and authored whole-function coverage pass; final Linux and browser verification are in progress. |
+| Editor authoring and reusable gameplay changes from the primary checkout | PR #80, `cwaldner/editor-authoring-integration` | Merged as `c271fed9`; main CI and Pages passed. Project, Scene Hierarchy and Document Outline navigation verified on the published editor. |
 | `cwaldner/editor-workspace-ux` | Preserved worktree | Most changes overlap the primary snapshot. The primary has later node-control ordering, graph-local and optimizer fixes; merging this older tree wholesale would lose those fixes. |
 | `cwaldner/issue-8-compiled-behaviors` | Superseded prototype | The complete runtime migration in #78 supersedes the earlier scalar compiler slice. |
 | MCP 50/63/64/65 and PR 74 review worktrees | Historical review work | Their feature work is represented in merged PR history; do not replay stale review branches wholesale. |
@@ -39,13 +39,20 @@ rail and query diagnostic navigation. The authored audit retains 34/34 events,
 32/32 effectful local functions, 39/39 pure local functions, and 4/4 linked library
 functions. Full native checks pass with leak detection. The web bytecode checks
 also pass. Browser interaction confirms Project, Scene Hierarchy and Document
-Outline navigation; final Linux validation and deployment remain pending.
+Outline navigation on the published site. Linux Debug and optimized tests,
+rendering, no-SLJIT rejection and development reload all pass.
 
 Rendered validation exposed a false missing-graph error in editor previews:
 the preview compiler received authored library references before linking. Each
 view now retains a linked snapshot, rebuilding it when the source or catalog
 generation changes. Preview values map back to authored node IDs. Focused checks
 cover edits, missing-library diagnostics and recovery when a library returns.
+
+A final scale check caught an outdated benchmark population assumption and
+exposed a full-population input-event lookup. The fixture now includes authored
+enemies in its requested count. Event availability uses active asset generations
+and compiled event tables; [paired measurements](input-action-lookup.md) record
+the resulting gain and the remaining frame-time limits.
 
 The older UI worktree still holds local edits. A content comparison found 177
 identical changed files against the primary snapshot. Differences in node draw

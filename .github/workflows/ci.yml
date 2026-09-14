@@ -59,6 +59,12 @@ jobs:
         run: xvfb-run -a make ui-native
       - name: Run focused render checks
         run: xvfb-run -a make render-checks
+      - name: Verify parallel Arena scaling
+        if: matrix.build_type == 'RelWithDebInfo'
+        run: >-
+          xvfb-run -a env CBLUEPRINT_BENCH_COMBAT=1
+          CBLUEPRINT_BENCH_REQUIRE_PARALLEL=1
+          build/test_suite --bench-arena-scene-scale 2048 240 0
       - name: Reject native execution without SLJIT
         if: matrix.build_type == 'Debug'
         run: |

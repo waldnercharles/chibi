@@ -33,6 +33,7 @@ typedef struct
     behavior_instance **pool;
     behavior_instance_bank *bank;
     behavior_batch *batch;
+    int attachment_count;
 } behavior_asset_record;
 
 typedef struct
@@ -278,6 +279,7 @@ static const int *entity_attachments(const game_behavior_world *world, ecs_entit
 
 static void index_attachment(game_behavior_world *world, int index)
 {
+    world->attachments[index].asset->attachment_count++;
     uint32_t slot = world->attachments[index].entity.slot;
     if (slot >= world->attachment_slot_count) {
         uint32_t old = world->attachment_slot_count;
@@ -308,6 +310,9 @@ static void rebuild_attachment_index(game_behavior_world *world)
 {
     world->attachment_revision++;
     behavior_pending_reset(&world->pending);
+    for (int i = 0; i < acount(world->assets); i++) {
+        world->assets[i].attachment_count = 0;
+    }
     for (uint32_t slot = 0; slot < world->attachment_slot_count; slot++) {
         aclear(world->attachments_by_slot[slot]);
     }
@@ -1485,15 +1490,12 @@ bool game_behavior_has_event(const game_behavior_world *world, const char *event
     if (!world || !event_name || !event_name[0]) {
         return false;
     }
-    for (int i = 0; i < acount(world->attachments); i++) {
-        const behavior_attachment *attachment = &world->attachments[i];
-        const graph *graph = attachment->instance->asset->graph;
-        for (int j = 0; j < acount(graph->nodes); j++) {
-            const node *event = graph->nodes[j];
-            if (event->desc->flow_kind == NODE_FLOW_EVENT && event->reference_name &&
-                !strcmp(event->reference_name, event_name)) {
-                return true;
-            }
+    for (int i = 0; i < acount(world->assets); i++) {
+        const behavior_asset_record *asset = &world->assets[i];
+        bool duplicate;
+        if (asset->attachment_count &&
+            behavior_program_event(asset->definition->program, event_name, &duplicate)) {
+            return true;
         }
     }
     return false;

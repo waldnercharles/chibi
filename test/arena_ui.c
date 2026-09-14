@@ -2714,6 +2714,18 @@ static ecs_entity *scene_scale_enemies(arena_fixture *f, int count, bool combat)
 {
     ecs_entity player = f->scene->actors[player_index(f)].entity;
     GameTransform center = *GAME_GameTransform_get_const(f->world, player);
+    int authored = 0;
+    ecs_query query;
+    ecs_component_id member = GAME_COMPONENT_GameEncounterMember.id;
+    assert(ecs_query_begin(f->world, &query, &member, 1) == ECS_OK);
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        authored += GAME_GameEncounterMember_get_const(f->world, entity)->role ==
+                    GAME_ENCOUNTER_ENEMY;
+    }
+    ecs_query_end(&query);
+    assert(authored <= count);
+    printf("scene_scale_population authored=%d spawned=%d total=%d\n", authored, count - authored, count);
     /* Keep the measurement window alive under real contact damage. The
      * authored wave and every enemy attachment still execute normally. */
     *GAME_GameHealth_get(f->world, player) = (GameHealth){ 1000000000, 1000000000 };
@@ -2734,7 +2746,7 @@ static ecs_entity *scene_scale_enemies(arena_fixture *f, int count, bool combat)
     ecs_entity *enemies = NULL;
     ecs_entity spawner = combat ? scene_scale_spawner(f) : (ecs_entity){ 0 };
     int side = (int)ceil(sqrt(count));
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count - authored; i++) {
         ecs_entity entity;
         GameTransform position = {
             center.x + (i % side - (side - 1) * .5f) * 22,
@@ -2943,7 +2955,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
              * input still enters through the normal presentation controls. */
             scene_scale_aim(&f);
             if (!i) {
-                key_event(SDL_SCANCODE_SPACE, true);
+                mouse_fire_event(true);
             }
         }
         double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
@@ -2985,6 +2997,16 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
             render_workers = work.workers;
         }
         GameEncounter encounter = review_encounter(f.world);
+        if (timing->steps != 1 || encounter.alive > count) {
+            fprintf(
+                stderr,
+                "scene_scale_invalid frame=%d steps=%d alive=%d requested=%d\n",
+                i,
+                timing->steps,
+                encounter.alive,
+                count
+            );
+        }
         assert(timing->steps == 1 && encounter.alive <= count);
         assert(combat || encounter.alive == count);
         peak_physics = fmax(peak_physics, timing->physics_ms);
@@ -3044,7 +3066,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     }
     scene_scale_verify_encounter(&f);
     double checksum = 0;
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < acount(enemies); i++) {
         if (combat && !ecs_entity_is_alive(f.world, enemies[i])) {
             continue;
         }
@@ -3157,11 +3179,11 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
         );
         fflush(stdout);
         assert(encounter.alive < count && experience > 0 && firing_frames > 0);
-        key_event(SDL_SCANCODE_SPACE, false);
+        mouse_fire_event(false);
         double start = cf_get_ticks() * 1000.0 / cf_get_tick_frequency();
         assert(!app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART));
         double restart_ms = cf_get_ticks() * 1000.0 / cf_get_tick_frequency() - start;
-        for (int i = 0; i < count; i++) {
+        for (int i = 0; i < acount(enemies); i++) {
             assert(!ecs_entity_is_alive(f.world, enemies[i]));
         }
         player = f.scene->actors[player_index(&f)].entity;

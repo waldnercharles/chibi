@@ -772,14 +772,18 @@ static void test_attachment_index()
             assert(!graph_set_event_name(g, event, "Log"));
             input(g, print, 1, (pin_value){ .type = PIN_STR, .str = assets[i]->name });
             next(g, event, print);
+            assert(!graph_set_event_name(g, add(g, "Event"), assets[i]->name));
             assert(!game_behavior_register_asset(world, assets[i]->name, assets[i]));
         }
+        assert(!game_behavior_has_event(world, "Log"));
         uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
         ecs_entity first = ecs_world_create_entity(ecs),
                    second = ecs_world_create_entity(ecs);
         assert(!game_behavior_attach(world, first, "A"));
+        assert(game_behavior_has_event(world, "A") && !game_behavior_has_event(world, "B"));
         assert(!game_behavior_attach(world, second, "A"));
         assert(!game_behavior_attach(world, first, "B"));
+        assert(game_behavior_has_event(world, "Log") && !game_behavior_has_event(world, "Missing"));
         behavior_instance *original = game_behavior_instance(world, first, "A");
         const char *ab[] = { "A", "B" };
         /* Same per-entity names in an interleaved world still need grouping. */
@@ -824,6 +828,13 @@ static void test_attachment_index()
         assert(!game_behavior_instance(world, second, "A"));
         behavior_asset *replacement = attachment_asset("A"), *old = NULL;
         assert(!game_behavior_replace_asset(world, "A", replacement, &old) && old == assets[0]);
+        assert(!game_behavior_has_event(world, "A") && game_behavior_has_event(world, "B"));
+        behavior_asset *updated = attachment_asset("B");
+        assert(!graph_set_event_name(updated->graph, add(updated->graph, "Event"), "Changed"));
+        assert(!game_behavior_pump(world, 0.1));
+        assert(game_behavior_preview_asset(world, "B", updated, &old) == INSTANCE_UPDATE_READY);
+        assert(old == assets[1] && !game_behavior_has_event(world, "B"));
+        assert(!game_behavior_has_event(world, "Log") && game_behavior_has_event(world, "Changed"));
         for (int i = 0; i < acount(crowd); i++) {
             behavior_instance *instance = game_behavior_instance(world, crowd[i], "A");
             assert(
@@ -837,6 +848,15 @@ static void test_attachment_index()
         assert(game_behavior_instance(world, first, "B"));
         assert(game_behavior_detach_entity(world, first) == 1);
         assert(!game_behavior_attachment_count_for_entity(world, first));
+        for (int i = 0; i < acount(crowd); i++) {
+            assert(game_behavior_detach_asset(world, crowd[i], "B") == 1);
+        }
+        assert(game_behavior_has_event(world, "Changed"));
+        assert(game_behavior_detach_asset(world, reused, "B") == 1);
+        assert(
+            !game_behavior_has_event(world, "Changed") &&
+            game_behavior_has_event(world, "Begin")
+        );
         if (mode < 2) {
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         }
@@ -846,6 +866,7 @@ static void test_attachment_index()
         behavior_asset_free(assets[0]);
         behavior_asset_free(assets[1]);
         behavior_asset_free(replacement);
+        behavior_asset_free(updated);
         behavior_debug_backend(previous);
     }
     puts("attachment index PASS: growth, grouping, Begin, replacement, deletion and stale handles across all backends");

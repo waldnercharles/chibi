@@ -446,6 +446,15 @@ void ed_update_drag(editor *e, ImVec2 mouse);
 void ed_update_handle_drag(editor *e, ImVec2 mouse);
 int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin_kind expected_kind);
 int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b);
+bool ed_simplify_component_getter(
+    editor *e,
+    node *source,
+    int source_pin,
+    node *target,
+    int target_pin,
+    const node_desc *conversion
+);
+int ed_optimize_graph(editor *e);
 void ed_refresh_stale_math_expressions(editor *e);
 void ed_open_context_menu(editor *e, ImVec2 mouse);
 void ed_request_extraction(editor *e);

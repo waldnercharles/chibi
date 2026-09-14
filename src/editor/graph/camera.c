@@ -1,6 +1,6 @@
-#include "editor/graph/arrange.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/authoring/arrange.h"
 #include "support/math.h"
 
 #include <assert.h>

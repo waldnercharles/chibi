@@ -1,6 +1,6 @@
 
 
-#include "editor/graph/arrange.h"
+#include "graph/authoring/arrange.h"
 
 #include "support/array.h"
 #include "support/math.h"

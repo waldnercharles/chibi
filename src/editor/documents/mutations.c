@@ -454,14 +454,25 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
         !pin_types_compatible(out_spec, in_spec)) {
         const node_desc *conv = conversion_for_pins(out_spec, in_spec);
         assert(conv);
-        return graph_connect_data_conversion(
-                   e->active_graph,
-                   output->n,
-                   output->index,
-                   input->n,
-                   input->index,
-                   conv
-               ) == 0;
+        int connected = graph_connect_data_conversion(
+                            e->active_graph,
+                            output->n,
+                            output->index,
+                            input->n,
+                            input->index,
+                            conv
+                        ) == 0;
+        if (connected) {
+            (void)ed_simplify_component_getter(
+                e,
+                output->n,
+                output->index,
+                input->n,
+                input->index,
+                conv
+            );
+        }
+        return connected;
     }
     if (out_spec->kind == PIN_EXEC) {
         int order = output->n->desc->flow_kind == NODE_FLOW_SEQUENCE ? output->index
@@ -499,6 +510,14 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                 e->math_error = error;
             }
         }
+        (void)ed_simplify_component_getter(
+            e,
+            output->n,
+            output->index,
+            input->n,
+            input->index,
+            NULL
+        );
     }
     return ok;
 }

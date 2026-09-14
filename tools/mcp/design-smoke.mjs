@@ -18,7 +18,11 @@ for (const family of ["behaviors", "events", "prototypes", "scenes"]) {
 function request(name, args, expectError = false) {
   const run = spawnSync(process.execPath, [join(root, "tools/mcp/server.mjs")], {
     cwd: root,
-    env: { ...process.env, CHIBI_ROOT: project, CHIBI_CTL: controller },
+    env: {
+      ...process.env, CHIBI_ROOT: project, CHIBI_CTL: controller,
+      // Scene previews use the same GPU sanitizer policy as native render checks.
+      ...(name === "previewScene" ? { ASAN_OPTIONS: `${process.env.ASAN_OPTIONS || ""}:detect_leaks=0` } : {}),
+    },
     input: `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } })}\n`,
     encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
   });

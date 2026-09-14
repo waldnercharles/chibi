@@ -79,6 +79,7 @@ function initialize() {
 }
 
 function runMcp(projectRoot, requests) {
+  const renders = requests.some(({ params }) => params?.name === "preview_shader");
   const run = spawnSync(process.execPath, [server], {
     cwd: root,
     env: {
@@ -86,6 +87,9 @@ function runMcp(projectRoot, requests) {
       CHIBI_ROOT: projectRoot,
       CHIBI_CTL: controller,
       CHIBI_RENDER_CTL: renderController,
+      // Match the native GPU checks: Cute's shader compiler retains allocations
+      // at shutdown. Keep leak checks enabled for the headless authoring runs.
+      ...(renders ? { ASAN_OPTIONS: `${process.env.ASAN_OPTIONS || ""}:detect_leaks=0` } : {}),
     },
     input: `${requests.map((item) => JSON.stringify(item)).join("\n")}\n`,
     encoding: "utf8",

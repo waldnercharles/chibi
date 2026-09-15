@@ -72,6 +72,7 @@ struct game_behavior_world
     behavior_update_binding **update_bindings;
     const behavior_function *update_query_scope;
     bool update_bindings_invalidated;
+    int update_dirty_begin;
     uint64_t attachment_revision, update_revision;
     void *update_code;
     behavior_update_span *update_spans;
@@ -114,6 +115,17 @@ static void clear_update_bindings(game_behavior_world *world)
     world->update_bindings = NULL;
     world->update_query_scope = NULL;
     world->update_bindings_invalidated = false;
+}
+
+static void mark_attachment_change(game_behavior_world *world, int dirty_begin)
+{
+    assert(dirty_begin >= 0);
+    if (world->attachment_revision == world->update_revision) {
+        world->update_dirty_begin = dirty_begin;
+    } else if (dirty_begin < world->update_dirty_begin) {
+        world->update_dirty_begin = dirty_begin;
+    }
+    world->attachment_revision++;
 }
 
 static behavior_profile_record *profile_record(
@@ -319,9 +331,9 @@ static void index_attachment(game_behavior_world *world, int index)
     }
 }
 
-static void rebuild_attachment_index(game_behavior_world *world)
+static void rebuild_attachment_index(game_behavior_world *world, int dirty_begin)
 {
-    world->attachment_revision++;
+    mark_attachment_change(world, dirty_begin);
     behavior_pending_reset(&world->pending);
     for (int i = 0; i < acount(world->assets); i++) {
         world->assets[i].attachment_count = 0;
@@ -336,9 +348,10 @@ static void rebuild_attachment_index(game_behavior_world *world)
 
 static void append_attachment(game_behavior_world *world, behavior_attachment attachment)
 {
-    world->attachment_revision++;
+    int index = acount(world->attachments);
     apush(world->attachments, attachment);
-    index_attachment(world, acount(world->attachments) - 1);
+    mark_attachment_change(world, index);
+    index_attachment(world, index);
 }
 
 static behavior_attachment *find_attachment(
@@ -375,7 +388,7 @@ static void activations_changed(behavior_instance *instance)
 static void services_changed(behavior_instance *instance)
 {
     behavior_sink_context *context = instance->sink_user;
-    context->world->attachment_revision++;
+    mark_attachment_change(context->world, 0);
     context->world->update_bindings_invalidated = true;
 }
 
@@ -613,7 +626,7 @@ int game_behavior_unregister_asset(
         }
         *definition = asset->definition;
         clear_update_bindings(world);
-        world->attachment_revision++;
+        mark_attachment_change(world, 0);
         free(asset->name);
         destroy_asset_pool(asset);
         behavior_instance_bank_free(asset->bank);
@@ -740,7 +753,7 @@ int game_behavior_replace_asset(
         release_instance(asset, world->attachments[i].instance);
         adel(world->attachments, i);
     }
-    rebuild_attachment_index(world);
+    rebuild_attachment_index(world, 0);
     destroy_asset_pool(asset);
     behavior_asset *old = asset->definition;
     asset->definition = definition;
@@ -810,7 +823,7 @@ int game_behavior_preview_asset(
     }
     *old_definition = asset->definition;
     asset->definition = definition;
-    world->attachment_revision++;
+    mark_attachment_change(world, 0);
     return INSTANCE_UPDATE_READY;
 }
 
@@ -851,7 +864,7 @@ int game_behavior_attach(game_behavior_world *world, ecs_entity entity, const ch
             if (world->attachments[i].instance == instance) {
                 release_instance(asset, instance);
                 adel(world->attachments, i);
-                rebuild_attachment_index(world);
+                rebuild_attachment_index(world, 0);
                 return -1;
             }
         }
@@ -911,6 +924,13 @@ int game_behavior_set_attachments(
             if (strcmp(names[i], names[j]) == 0) {
                 return -1;
             }
+        }
+    }
+    int dirty_begin = acount(world->attachments);
+    for (int i = 0; i < acount(world->attachments); i++) {
+        if (attachment_entity(&world->attachments[i], entity)) {
+            dirty_begin = i;
+            break;
         }
     }
     behavior_attachment *requested = NULL;
@@ -998,7 +1018,7 @@ int game_behavior_set_attachments(
     }
     afree(world->attachments);
     world->attachments = ordered;
-    rebuild_attachment_index(world);
+    rebuild_attachment_index(world, dirty_begin);
     afree(requested);
     afree(created);
     return 0;
@@ -1006,7 +1026,7 @@ fail:
     for (int i = 0; i < acount(created); i++) {
         release_instance(created[i].asset, created[i].instance);
     }
-    rebuild_attachment_index(world);
+    rebuild_attachment_index(world, 0);
     afree(created);
     afree(requested);
     return -1;
@@ -1024,7 +1044,7 @@ static int detach_entities(
         return 0;
     }
     uint64_t *selected = xcalloc((size_t)(total + 63) / 64, sizeof *selected);
-    int detached = 0;
+    int detached = 0, dirty_begin = total;
     for (int i = 0; i < count; i++) {
         const int *indices = entity_attachments(world, entities[i]);
         for (int j = 0; j < acount(indices); j++) {
@@ -1035,6 +1055,9 @@ static int detach_entities(
                 uint64_t bit = UINT64_C(1) << (index % 64);
                 detached += !(selected[index / 64] & bit);
                 selected[index / 64] |= bit;
+                if (index < dirty_begin) {
+                    dirty_begin = index;
+                }
             }
         }
     }
@@ -1053,7 +1076,7 @@ static int detach_entities(
     }
     free(selected);
     asetlen(world->attachments, retained);
-    rebuild_attachment_index(world);
+    rebuild_attachment_index(world, dirty_begin);
     return detached;
 }
 
@@ -1296,6 +1319,34 @@ int game_behavior_dispatch_all(
     return dispatched;
 }
 
+static void append_update_row(game_behavior_world *world, int attachment_index)
+{
+    behavior_attachment *attachment = &world->attachments[attachment_index];
+    behavior_instance *instance = attachment->instance;
+    const behavior_program *program = instance->asset->program;
+    bool duplicate = false;
+    if (program && !behavior_program_diagnostic(program) &&
+        !behavior_program_event(program, "Tick", &duplicate)) {
+        return;
+    }
+    behavior_update_row row = { .instance = instance,
+                                .entity = ecs_entity_to_u64(attachment->entity),
+                                .attachment = attachment_index,
+                                .services_revision = instance->services_revision };
+    node *entry;
+    const behavior_function *function = program && !duplicate &&
+                                                !behavior_program_diagnostic(program)
+                                          ? behavior_program_batch_event(program, "Tick", &entry)
+                                          : NULL;
+    /* A stretch may share query membership only if every body preserves its
+     * dependencies. Other bodies keep their existing effect barriers. */
+    if (function && game_entities_queries_preserved(function)) {
+        row.binding = behavior_update_prepare(&world->update_bindings, instance, function, entry);
+        world->update_query_scope = function;
+    }
+    apush(world->updates, row);
+}
+
 static void prepare_updates(game_behavior_world *world)
 {
     if (world->update_bindings_invalidated) {
@@ -1304,45 +1355,38 @@ static void prepare_updates(game_behavior_world *world)
          * be on the active call stack. */
         clear_update_bindings(world);
     }
-    world->update_query_scope = NULL;
-    aclear(world->updates);
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_attachment *attachment = &world->attachments[i];
-        behavior_instance *instance = attachment->instance;
-        const behavior_program *program = instance->asset->program;
-        bool duplicate = false;
-        if (program && !behavior_program_diagnostic(program) &&
-            !behavior_program_event(program, "Tick", &duplicate)) {
-            continue;
+    int dirty_begin = world->update_dirty_begin;
+    int row_start = 0;
+    if (dirty_begin) {
+        while (row_start < acount(world->updates) &&
+               world->updates[row_start].attachment < dirty_begin) {
+            row_start++;
         }
-        behavior_update_row row = { .instance = instance,
-                                    .entity = ecs_entity_to_u64(attachment->entity),
-                                    .attachment = i,
-                                    .services_revision = instance->services_revision };
-        node *entry;
-        const behavior_function
-            *function = program && !duplicate && !behavior_program_diagnostic(program)
-                          ? behavior_program_batch_event(program, "Tick", &entry)
-                          : NULL;
-        /* A stretch may share query membership only if every body preserves
-         * its dependencies. Other bodies keep their existing effect barriers. */
-        if (function && game_entities_queries_preserved(function)) {
-            row.binding = behavior_update_prepare(&world->update_bindings, instance, function, entry);
-            world->update_query_scope = function;
-        }
-        apush(world->updates, row);
+        asetlen(world->updates, row_start);
+    } else {
+        aclear(world->updates);
+        world->update_query_scope = NULL;
     }
-    behavior_update_system_spans(
+    int attachment_begin = dirty_begin;
+    if (attachment_begin > acount(world->attachments)) {
+        attachment_begin = acount(world->attachments);
+    }
+    for (int i = attachment_begin; i < acount(world->attachments); i++) {
+        append_update_row(world, i);
+    }
+    int retained_spans = behavior_update_system_spans_incremental(
         world->updates,
         acount(world->updates),
+        row_start,
         &world->update_spans,
         &world->update_kernels
     );
-    game_behavior_parallel_prepare(
+    game_behavior_parallel_prepare_incremental(
         world->update_parallel,
         world->updates,
         world->update_spans,
-        ((const ecs_execution_view *)world->ecs)->slot_count
+        ((const ecs_execution_view *)world->ecs)->slot_count,
+        retained_spans
     );
     world->update_revision = world->attachment_revision;
 }
@@ -1470,7 +1514,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
             /* A changed binding is repaired at the next schedule boundary. The
              * guarded row has not executed, so normal dispatch is safe here. */
             if (stopped->services_revision != stopped->instance->services_revision) {
-                world->attachment_revision++;
+                mark_attachment_change(world, 0);
             }
             game_entities_query_scope(world->entities, NULL);
             result = dispatch_attachment(world, attachment, "Tick", (flow_inputs){ 0 }, error, true);

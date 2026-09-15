@@ -13,6 +13,13 @@ void game_behavior_parallel_prepare(
     const behavior_update_span *spans,
     uint32_t slots
 );
+void game_behavior_parallel_prepare_incremental(
+    game_behavior_parallel *parallel,
+    const behavior_update_row *rows,
+    const behavior_update_span *spans,
+    uint32_t slots,
+    int retained_spans
+);
 bool game_behavior_parallel_run(
     game_behavior_parallel *parallel,
     int span,

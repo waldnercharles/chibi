@@ -54,6 +54,16 @@ static void parallel_fixture(behavior_backend backend, int kind, bool parallel)
     game_task_pool_release(pool);
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     for (int frame = 0; frame < 8; frame++) {
+        if (frame == 1 && kind == 2) {
+            assert(game_behavior_detach_entity(world, entities[COUNT - 1]) == 1);
+            assert(!game_behavior_attach(world, entities[COUNT - 1], asset->name));
+            instances[COUNT - 1] = game_behavior_instance(
+                world,
+                entities[COUNT - 1],
+                asset->name
+            );
+            assert(instances[COUNT - 1]);
+        }
         if (frame == 3 || frame == 5) {
             assert(
                 !game_behavior_set_debug_hold(world, entities[COUNT / 2], asset->name, frame == 3)
@@ -78,7 +88,8 @@ static void parallel_fixture(behavior_backend backend, int kind, bool parallel)
         }
         for (int i = 0; i < COUNT; i++) {
             if (kind == 2) {
-                assert(instances[i]->variables[3].i == frame + 1);
+                int expected = i == COUNT - 1 && frame > 0 ? frame : frame + 1;
+                assert(instances[i]->variables[3].i == expected);
                 assert(pin_array_equal(
                     instances[i]->variables[1].ptr,
                     instances[i]->variables[2].ptr
@@ -289,6 +300,91 @@ static void service_swap_during_tick(behavior_backend backend)
     behavior_debug_backend(previous);
 }
 
+static void incremental_attachment_lifecycle(behavior_backend backend)
+{
+    behavior_backend previous = behavior_debug_backend(backend);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    game_behavior_set_parallel_updates(world, false);
+    behavior_asset *counter = whole_batch_fixture(false);
+    behavior_asset *alternate = whole_batch_fixture(false);
+    assert(!behavior_asset_set_name(alternate, "Alternate Tick batch"));
+    assert(!game_behavior_register_asset(world, counter->name, counter));
+    assert(!game_behavior_register_asset(world, alternate->name, alternate));
+
+    ecs_entity entities[4];
+    behavior_instance *instances[4];
+    for (int i = 0; i < 4; i++) {
+        entities[i] = ecs_world_create_entity(ecs);
+        assert(!game_behavior_attach(world, entities[i], counter->name));
+        instances[i] = game_behavior_instance(world, entities[i], counter->name);
+        assert(instances[i]);
+    }
+    assert(!game_behavior_pump(world, 0.));
+    game_behavior_set_delta_seconds(world, .25);
+    assert(game_behavior_update(world, NULL) == 4);
+    for (int i = 0; i < 4; i++) {
+        assert(instances[i]->variables[0].d == 10.25);
+    }
+
+    const char *replacement[] = { alternate->name };
+    assert(!game_behavior_set_attachments(world, entities[1], replacement, 1));
+    assert(!game_behavior_pump(world, 1.));
+    assert(game_behavior_update(world, NULL) == 4);
+    assert(instances[0]->variables[0].d == 10.5);
+    assert(instances[2]->variables[0].d == 10.5);
+    assert(instances[3]->variables[0].d == 10.5);
+    behavior_instance *alternate_instance = game_behavior_instance(
+        world,
+        entities[1],
+        alternate->name
+    );
+    assert(alternate_instance && alternate_instance->variables[0].d == 10.25);
+
+    const char *reordered[] = { alternate->name, counter->name };
+    assert(!game_behavior_set_attachments(world, entities[0], reordered, 2));
+    game_behavior_attachment_info first, second;
+    assert(!game_behavior_attachment_info_at(world, entities[0], 0, &first));
+    assert(!game_behavior_attachment_info_at(world, entities[0], 1, &second));
+    assert(
+        !strcmp(first.asset_name, alternate->name) &&
+        !strcmp(second.asset_name, counter->name)
+    );
+    assert(!game_behavior_pump(world, 2.));
+    assert(game_behavior_update(world, NULL) == 5);
+    assert(instances[0]->variables[0].d == 10.75);
+    assert(
+        game_behavior_instance(world, entities[0], alternate->name)
+            ->variables[0]
+            .d == 10.25
+    );
+    assert(alternate_instance->variables[0].d == 10.5);
+    assert(instances[2]->variables[0].d == 10.75);
+    assert(instances[3]->variables[0].d == 10.75);
+
+    assert(game_behavior_detach_entity(world, entities[2]) == 1);
+    entities[2] = ecs_world_create_entity(ecs);
+    assert(!game_behavior_attach(world, entities[2], counter->name));
+    behavior_instance *replacement_instance = game_behavior_instance(
+        world,
+        entities[2],
+        counter->name
+    );
+    assert(replacement_instance);
+    assert(!game_behavior_pump(world, 3.));
+    assert(game_behavior_update(world, NULL) == 5);
+    assert(instances[0]->variables[0].d == 11.0);
+    assert(alternate_instance->variables[0].d == 10.75);
+    assert(instances[3]->variables[0].d == 11.0);
+    assert(replacement_instance->variables[0].d == 10.25);
+
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(counter);
+    behavior_asset_free(alternate);
+    behavior_debug_backend(previous);
+}
+
 static void preservation_proof_keys()
 {
     behavior_asset *asset = whole_batch_fixture(true);
@@ -317,6 +413,8 @@ void test_parallel_ticks()
     service_swap_during_tick(BEHAVIOR_BYTECODE);
     cached_binding_lifecycle(BEHAVIOR_SLJIT);
     cached_binding_lifecycle(BEHAVIOR_BYTECODE);
+    incremental_attachment_lifecycle(BEHAVIOR_SLJIT);
+    incremental_attachment_lifecycle(BEHAVIOR_BYTECODE);
     for (int kind = 0; kind < 3; kind++) {
         parallel_fixture(BEHAVIOR_SLJIT, kind, true);
         parallel_fixture(BEHAVIOR_SLJIT, kind, false);

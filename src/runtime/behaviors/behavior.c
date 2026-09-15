@@ -106,8 +106,10 @@ static void destroy_asset_pool(behavior_asset_record *asset);
 
 static void clear_update_bindings(game_behavior_world *world)
 {
-    /* Bindings borrow immutable programs and service values. Structural asset
-     * changes clear them before the borrowed generations can be released. */
+    /* Both the shared bindings and per-plan copies borrow immutable programs
+     * and service values. Invalidate plans before borrowed generations can be
+     * released; the next schedule boundary frees their copies safely. */
+    game_behavior_parallel_invalidate(world->update_parallel);
     behavior_update_free_bindings(world->update_bindings);
     world->update_bindings = NULL;
     world->update_query_scope = NULL;
@@ -537,9 +539,9 @@ void game_behavior_world_free(game_behavior_world *world)
     if (!world) {
         return;
     }
-    game_behavior_parallel_free(world->update_parallel);
     behavior_update_free_code(world->update_code);
     clear_update_bindings(world);
+    game_behavior_parallel_free(world->update_parallel);
     afree(world->updates);
     afree(world->update_spans);
     behavior_update_free_kernels(world->update_kernels);

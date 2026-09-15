@@ -1,3 +1,5 @@
+#include "graph/model/registry.h"
+#include "graph/runtime/instance.h"
 #include "graph/runtime/update_internal.h"
 #include "runtime/task_pool.h"
 #include "test/suite_internal.h"
@@ -201,6 +203,92 @@ static void cached_binding_lifecycle(behavior_backend backend)
     behavior_debug_backend(previous);
 }
 
+typedef struct service_swap service_swap;
+struct service_swap
+{
+    behavior_instance *instance;
+    service_swap *replacement;
+    int value;
+    bool replace;
+};
+static pin_spec service_swap_outputs[] = {
+    { .name = "Value", .type = PIN_I32, .type_name = "int" }
+};
+static const node_access service_swap_access = { .flags = NODE_EFFECT_HOST_SINK };
+static const char *service_swap_invoke(void *user, const pin_value *, pin_value *out)
+{
+    service_swap *service = user;
+    out[0] = (pin_value){ .type = PIN_I32, .type_name = "int", .i = service->value };
+    if (service->replace) {
+        service->replace = false;
+        assert(!behavior_instance_bind_service(
+            service->instance,
+            "test.service_swap",
+            service->replacement
+        ));
+    }
+    return NULL;
+}
+static const node_host_call service_swap_call = {
+    .service = "test.service_swap",
+    .invoke = service_swap_invoke
+};
+static node_desc service_swap_node = { .name = "Service Swap",
+                                       .output_count = 1,
+                                       .outputs = service_swap_outputs,
+                                       .pure_kind = NODE_PURE_CALL,
+                                       .access = &service_swap_access,
+                                       .host_call = &service_swap_call };
+static behavior_asset *service_swap_fixture()
+{
+    behavior_asset *asset = behavior_asset_new("Service Swap Tick");
+    behavior_variable *value = behavior_asset_add_variable(
+        asset,
+        "Value",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        NULL,
+        ""
+    );
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    node *swap = graph_add_node(asset->graph, &service_swap_node);
+    node *set = behavior_asset_add_set_node(asset, value->id);
+    assert(value && event && swap && set);
+    assert(!graph_set_event_name(asset->graph, event, "Tick"));
+    assert(!graph_connect_data(asset->graph, swap, 0, set, 1));
+    assert(!graph_connect_exec(asset->graph, event, 0, set, 0, 0));
+    return asset;
+}
+static void service_swap_during_tick(behavior_backend backend)
+{
+    behavior_backend previous = behavior_debug_backend(backend);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    behavior_asset *asset = service_swap_fixture();
+    assert(!game_behavior_register_asset(world, asset->name, asset));
+    ecs_entity entity = ecs_world_create_entity(ecs);
+    assert(!game_behavior_attach(world, entity, asset->name));
+    behavior_instance *instance = game_behavior_instance(world, entity, asset->name);
+    service_swap replacement = { .instance = instance, .value = 2 };
+    service_swap current = { .instance = instance,
+                             .replacement = &replacement,
+                             .value = 1,
+                             .replace = true };
+    assert(!behavior_instance_bind_service(instance, "test.service_swap", &current));
+    assert(!game_behavior_pump(world, 0.));
+    assert(game_behavior_update(world, NULL) == 1);
+    assert(instance->variables[0].i == 1);
+    assert(!current.replace);
+    assert(behavior_instance_service(instance, "test.service_swap") == &replacement);
+    assert(game_behavior_update(world, NULL) == 1);
+    assert(instance->variables[0].i == 2);
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+    behavior_debug_backend(previous);
+}
+
 static void preservation_proof_keys()
 {
     behavior_asset *asset = whole_batch_fixture(true);
@@ -225,6 +313,8 @@ static void preservation_proof_keys()
 void test_parallel_ticks()
 {
     preservation_proof_keys();
+    service_swap_during_tick(BEHAVIOR_SLJIT);
+    service_swap_during_tick(BEHAVIOR_BYTECODE);
     cached_binding_lifecycle(BEHAVIOR_SLJIT);
     cached_binding_lifecycle(BEHAVIOR_BYTECODE);
     for (int kind = 0; kind < 3; kind++) {

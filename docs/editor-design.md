@@ -1294,6 +1294,11 @@ and keywords. Node search retains compatible-pin filtering and authored aliases.
 Quick Open keeps keyboard navigation in the result list and selects the best
 result after query changes.
 
+View includes `Inline nodes on edge drop`. When enabled, compatible component
+getters selected from an edge are folded into the destination binding; when
+disabled, the getter remains an ordinary graph node. Dedicated inline source
+controls keep their existing inline behavior.
+
 Material, Shape, and Shader Library nodes stack outputs above options and inputs.
 Inputs use the node width for labeled numeric values, vector axes, range endpoints,
 colors, context defaults, and binding controls. Normalized shader properties use

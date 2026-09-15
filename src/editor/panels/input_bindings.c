@@ -235,42 +235,6 @@ static void ed_add_nested_component_field_choices(
     }
 }
 
-static const pin_spec *ed_source_match_output(
-    const editor *e,
-    const ed_search_match *match,
-    int index,
-    pin_spec *variable_pin
-)
-{
-    if (match->desc == &NODE_Self) {
-        if (index != 0 || !e->asset->owner_type_name) {
-            return NULL;
-        }
-        *variable_pin = match->desc->outputs[0];
-        variable_pin->type_name = e->asset->owner_type_name;
-        return variable_pin;
-    }
-    if (match->function) {
-        node *ret = graph_node_by_id(match->function, match->function->return_id);
-        return ret && index >= 0 && index < ret->input_count ? &ret->input_pins[index]
-                                                             : NULL;
-    }
-    if (match->variable) {
-        if (index != 0) {
-            return NULL;
-        }
-        *variable_pin = (pin_spec){ .name = match->variable->name,
-                                    .type = match->variable->type,
-                                    .type_name = match->variable->type_name,
-                                    .kind = PIN_DATA,
-                                    .container = match->variable->container };
-        return variable_pin;
-    }
-    return match->desc && index >= 0 && index < match->desc->output_count
-             ? &match->desc->outputs[index]
-             : NULL;
-}
-
 static bool ed_source_pin_defaults(const ed_search_match *match)
 {
     if (match->variable) {
@@ -336,23 +300,12 @@ static void ed_source_choices(
             !(target->flags & PIN_FLAG_WILDCARD)) {
             continue;
         }
-        int output_count = match->function ? (graph_node_by_id(
-                                                  match->function,
-                                                  match->function->return_id
-                                              )
-                                                  ? graph_node_by_id(
-                                                        match->function,
-                                                        match->function->return_id
-                                                    )
-                                                        ->input_count
-                                                  : 0)
-                         : match->variable ? 1
-                                           : match->desc->output_count;
+        int output_count = ed_search_match_output_count(e, match);
         for (int p = 0; p < output_count; p++) {
-            pin_spec variable_pin = { 0 };
-            const pin_spec *source = ed_source_match_output(e, match, p, &variable_pin);
-            if (!source || source->kind != PIN_DATA || source->type == PIN_FLOW ||
-                !ed_connection_specs_valid(source, target, PIN_DATA)) {
+            ed_search_output output;
+            if (!ed_search_match_output(e, match, p, &output) ||
+                output.pin.kind != PIN_DATA || output.pin.type == PIN_FLOW ||
+                !ed_connection_specs_valid(&output.pin, target, PIN_DATA)) {
                 continue;
             }
             if (match->variable && ed_binding_scope_available(e) &&
@@ -365,14 +318,14 @@ static void ed_source_choices(
                 continue;
             }
             ed_binding_choice choice = { .match = *match,
-                                         .source_pin = p,
+                                         .source_pin = output.node_pin,
                                          .generic_source = true,
                                          .group = "Graph Sources" };
             if (output_count == 1) {
                 snprintf(choice.label, sizeof choice.label, "%s", match->name);
             } else {
                 char pin_label[128];
-                editor_identifier_label(source->name ? source->name : "Value", pin_label, sizeof pin_label);
+                editor_identifier_label(output.pin.name ? output.pin.name : "Value", pin_label, sizeof pin_label);
                 snprintf(choice.label, sizeof choice.label, "%s / %s", match->name, pin_label);
             }
             snprintf(
@@ -380,8 +333,9 @@ static void ed_source_choices(
                 sizeof choice.search,
                 "%s %s %s",
                 match->name,
-                source->name ? source->name : "Value",
-                source->type_name ? source->type_name : pin_type_name(source->type)
+                output.pin.name ? output.pin.name : "Value",
+                output.pin.type_name ? output.pin.type_name
+                                     : pin_type_name(output.pin.type)
             );
             apush(*out, choice);
         }
@@ -896,6 +850,13 @@ static int ed_choose_source(editor *e, node *target, int target_pin, const ed_bi
     if (shader && !shader_graph_init_node(e->active_graph, source)) {
         graph_remove_node(e->active_graph, source);
         return -1;
+    }
+    if (choice->source_pin >= source->output_count) {
+        if (ed_expose_spawned_output_fields(e, source) != 0 ||
+            choice->source_pin >= source->output_count) {
+            graph_remove_node(e->active_graph, source);
+            return -1;
+        }
     }
     const pin_spec *output = &source->output_pins[choice->source_pin];
     const pin_spec *input = &target->input_pins[target_pin];

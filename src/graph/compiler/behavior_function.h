@@ -250,8 +250,8 @@ bool behavior_function_parallel(const behavior_function *function);
 /* Static work estimate used to keep cheap loops below scheduling overhead. */
 int behavior_function_parallel_work(const behavior_function *function);
 bool behavior_function_parallel_with(const behavior_function *a, const behavior_function *b);
-/* Conservative proof for synchronous broadcasts. Unknown host effects and
- * structural operations cannot preserve a component-dependent query index. */
+/* Cached conservative proof for synchronous broadcasts. Unknown host effects
+ * and structural operations cannot preserve a component-dependent query index. */
 bool behavior_function_preserves_components(
     const behavior_function *function,
     const uint64_t *components,

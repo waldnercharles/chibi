@@ -71,6 +71,7 @@ struct game_behavior_world
     behavior_update_row *updates;
     behavior_update_binding **update_bindings;
     const behavior_function *update_query_scope;
+    bool update_bindings_invalidated;
     uint64_t attachment_revision, update_revision;
     void *update_code;
     behavior_update_span *update_spans;
@@ -102,6 +103,16 @@ struct game_behavior_world
 };
 
 static void destroy_asset_pool(behavior_asset_record *asset);
+
+static void clear_update_bindings(game_behavior_world *world)
+{
+    /* Bindings borrow immutable programs and service values. Structural asset
+     * changes clear them before the borrowed generations can be released. */
+    behavior_update_free_bindings(world->update_bindings);
+    world->update_bindings = NULL;
+    world->update_query_scope = NULL;
+    world->update_bindings_invalidated = false;
+}
 
 static behavior_profile_record *profile_record(
     game_behavior_world *world,
@@ -363,6 +374,7 @@ static void services_changed(behavior_instance *instance)
 {
     behavior_sink_context *context = instance->sink_user;
     context->world->attachment_revision++;
+    context->world->update_bindings_invalidated = true;
 }
 
 static behavior_instance *acquire_instance(
@@ -527,7 +539,7 @@ void game_behavior_world_free(game_behavior_world *world)
     }
     game_behavior_parallel_free(world->update_parallel);
     behavior_update_free_code(world->update_code);
-    behavior_update_free_bindings(world->update_bindings);
+    clear_update_bindings(world);
     afree(world->updates);
     afree(world->update_spans);
     behavior_update_free_kernels(world->update_kernels);
@@ -598,6 +610,8 @@ int game_behavior_unregister_asset(
             }
         }
         *definition = asset->definition;
+        clear_update_bindings(world);
+        world->attachment_revision++;
         free(asset->name);
         destroy_asset_pool(asset);
         behavior_instance_bank_free(asset->bank);
@@ -710,6 +724,7 @@ int game_behavior_replace_asset(
     if (behavior_program_diagnostic(behavior_program_publish(definition))) {
         return -1;
     }
+    clear_update_bindings(world);
     ecs_entity *entities = NULL;
     for (int i = 0; i < acount(world->attachments); i++) {
         if (world->attachments[i].asset == asset) {
@@ -782,6 +797,7 @@ int game_behavior_preview_asset(
     if (behavior_program_diagnostic(behavior_program_publish(definition))) {
         return -1;
     }
+    clear_update_bindings(world);
     destroy_asset_pool(asset);
     for (int i = 0; i < acount(world->attachments); i++) {
         behavior_attachment *attachment = &world->attachments[i];
@@ -1280,8 +1296,12 @@ int game_behavior_dispatch_all(
 
 static void prepare_updates(game_behavior_world *world)
 {
-    behavior_update_free_bindings(world->update_bindings);
-    world->update_bindings = NULL;
+    if (world->update_bindings_invalidated) {
+        /* Defer freeing until the current update returns. A host may change a
+         * service while an activation is running, so its old binding can still
+         * be on the active call stack. */
+        clear_update_bindings(world);
+    }
     world->update_query_scope = NULL;
     aclear(world->updates);
     for (int i = 0; i < acount(world->attachments); i++) {

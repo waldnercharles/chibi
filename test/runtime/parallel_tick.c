@@ -148,8 +148,85 @@ static void parallel_failures(bool parallel)
     behavior_asset_free(asset);
     behavior_debug_backend(previous);
 }
+
+static void cached_binding_lifecycle(behavior_backend backend)
+{
+    behavior_backend previous = behavior_debug_backend(backend);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    game_behavior_set_parallel_updates(world, false);
+    behavior_asset *asset = whole_batch_fixture(false);
+    assert(!game_behavior_register_asset(world, asset->name, asset));
+    ecs_entity entities[3];
+    behavior_instance *instances[3];
+    for (int i = 0; i < 3; i++) {
+        entities[i] = ecs_world_create_entity(ecs);
+        assert(!game_behavior_attach(world, entities[i], asset->name));
+        instances[i] = game_behavior_instance(world, entities[i], asset->name);
+        assert(instances[i]);
+    }
+    assert(!game_behavior_pump(world, 0.));
+    game_behavior_set_delta_seconds(world, .25);
+    assert(game_behavior_update(world, NULL) == 3);
+    for (int i = 0; i < 3; i++) {
+        assert(instances[i]->variables[0].d == 10.25);
+    }
+
+    assert(game_behavior_detach_entity(world, entities[0]) == 1);
+    entities[0] = ecs_world_create_entity(ecs);
+    assert(!game_behavior_attach(world, entities[0], asset->name));
+    instances[0] = game_behavior_instance(world, entities[0], asset->name);
+    assert(instances[0]);
+    assert(!game_behavior_pump(world, 1.));
+    assert(game_behavior_update(world, NULL) == 3);
+    assert(instances[0]->variables[0].d == 10.25);
+    assert(instances[1]->variables[0].d == 10.5);
+    assert(instances[2]->variables[0].d == 10.5);
+
+    behavior_asset *next = whole_batch_fixture(false), *old;
+    assert(game_behavior_preview_asset(world, asset->name, next, &old) == INSTANCE_UPDATE_READY);
+    behavior_asset_free(old);
+    asset = next;
+    assert(!game_behavior_pump(world, 2.));
+    assert(game_behavior_update(world, NULL) == 3);
+    assert(instances[0]->variables[0].d == 10.5);
+    assert(instances[1]->variables[0].d == 10.75);
+    assert(instances[2]->variables[0].d == 10.75);
+    for (int i = 0; i < 3; i++) {
+        assert(!behavior_instance_last_failure(instances[i]));
+    }
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+    behavior_debug_backend(previous);
+}
+
+static void preservation_proof_keys()
+{
+    behavior_asset *asset = whole_batch_fixture(true);
+    node *entry;
+    const behavior_function *function = behavior_program_batch_event(
+        behavior_program_publish(asset),
+        "Tick",
+        &entry
+    );
+    assert(function && entry);
+    uint64_t preserved[] = { GAME_COMPONENT_GameTransform.id,
+                             GAME_COMPONENT_GameCollider.id };
+    uint64_t written[] = { WHOLE_NODE_GetRecord.component->id,
+                           GAME_COMPONENT_GameCollider.id };
+    assert(behavior_function_preserves_components(function, preserved, 2));
+    assert(!behavior_function_preserves_components(function, written, 2));
+    assert(behavior_function_preserves_components(function, preserved, 2));
+    behavior_asset_free(asset);
+    puts("preservation proof PASS: component sets remain independent across cached queries");
+}
+
 void test_parallel_ticks()
 {
+    preservation_proof_keys();
+    cached_binding_lifecycle(BEHAVIOR_SLJIT);
+    cached_binding_lifecycle(BEHAVIOR_BYTECODE);
     for (int kind = 0; kind < 3; kind++) {
         parallel_fixture(BEHAVIOR_SLJIT, kind, true);
         parallel_fixture(BEHAVIOR_SLJIT, kind, false);

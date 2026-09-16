@@ -1,5 +1,6 @@
 #include "runtime/behaviors/parallel.h"
 
+#include "diagnostics/tracy.h"
 #include "graph/runtime/update_internal.h"
 #include "runtime/task_pool.h"
 #include "support/xalloc.h"
@@ -174,7 +175,9 @@ typedef struct
 static void run_chunks(int start, int end, uint32_t worker, void *user)
 {
     update_context *ctx = user;
+    CHIBI_TRACE_ZONE_BEGIN(task_zone, "Behavior task");
     for (int i = start; i < end; i++) {
+        CHIBI_TRACE_ZONE_BEGIN(chunk_zone, "Behavior chunk");
         update_chunk *chunk = &ctx->plan->chunks[i];
         chunk->worker = worker;
         behavior_update_row *row = chunk->rows, *end = row + acount(chunk->rows);
@@ -200,7 +203,9 @@ static void run_chunks(int start, int end, uint32_t worker, void *user)
             }
         }
         chunk->stop = (int)(stop - chunk->rows);
+        CHIBI_TRACE_ZONE_END(chunk_zone);
     }
+    CHIBI_TRACE_ZONE_END(task_zone);
 }
 static bool ready(const behavior_update_row *row, const ecs_execution_view *world)
 {
@@ -240,10 +245,12 @@ bool game_behavior_parallel_run(
     }
     const game_task_system *tasks = game_task_pool_tasks(p->pool);
     update_context ctx = { plan, world };
+    CHIBI_TRACE_ZONE_BEGIN(parallel_zone, "Parallel behavior execution");
     game_task_pool_begin(p->pool, true);
     void *task = tasks->enqueue(run_chunks, acount(plan->chunks), 1, &ctx, tasks->user);
     tasks->finish(task, tasks->user);
     game_task_pool_end(p->pool);
+    CHIBI_TRACE_ZONE_END(parallel_zone);
     unsigned workers = 0;
     for (int c = 0; c < acount(plan->chunks); c++) {
         update_chunk *chunk = &plan->chunks[c];

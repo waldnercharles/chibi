@@ -539,13 +539,13 @@ int engine_viewport_image(engine_viewport *viewport, float width, float height)
         engine_viewport_commit_resize(viewport) != 0) {
         return -1;
     }
+    draw_viewport_canvas(viewport);
     CF_Texture target = cf_canvas_get_target(viewport->canvas);
     ImTextureRef texture = {
         ._TexData = NULL,
         ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(target),
     };
     ImGui_Image(texture, (ImVec2){ width, height });
-    draw_viewport_canvas(viewport);
     return 0;
 }
 
@@ -594,6 +594,7 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
         ImGui_End();
         return ENGINE_VIEWPORT_ERROR;
     }
+    draw_viewport_canvas(viewport);
     CF_Texture target = cf_canvas_get_target(viewport->canvas);
     ImTextureRef texture = {
         ._TexData = NULL,
@@ -653,10 +654,6 @@ engine_viewport_action engine_viewport_draw(engine_viewport *viewport, const eng
         viewport->focused = 0;
         editor_ui_cancel_document_interaction(EDITOR_UI_PANE_SCENE);
     }
-    /* Match projection to the displayed image immediately. Canvas allocation
-     * may settle over several frames, but its temporary scaling must not change
-     * object proportions or pointer coordinates. */
-    draw_viewport_canvas(viewport);
     if (viewport->widget_world && controls && controls->session) {
         render_audio_update(
             viewport->audio,

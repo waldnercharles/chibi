@@ -351,8 +351,9 @@ target_link_libraries(automation PUBLIC runtime_support core)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/radiance.c
+    src/render/geometry_2d.c src/render/light_field_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
-    src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c src/render/arena_emitters.c
+    src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
 target_compile_definitions(chibi_render PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -493,6 +494,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET app APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
@@ -501,7 +504,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_options(app PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
 endif()
@@ -548,6 +553,7 @@ add_executable(test_suite
     src/render/screenshot.c
     src/render/shader_fragment.c
     src/assets/behavior_loader.c
+    src/assets/project.c
     src/editor/workspace/scene_authoring.c
     src/editor/workspace/asset_index.c
     src/editor/panels/asset_browser.c

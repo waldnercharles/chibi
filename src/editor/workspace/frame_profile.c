@@ -1,6 +1,7 @@
 #include "editor/workspace/frame_profile.h"
 
 #include "editor/ui/ui_shell.h"
+#include "editor/workspace/scene_authoring.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -321,7 +322,7 @@ static void draw_history(const editor_frame_profile *p, double ceiling)
     ImGui_TextDisabled("240 frames · %.0f ms scale · white line: 16.67 ms", ceiling);
 }
 
-void editor_frame_profile_draw(editor_frame_profile *p)
+void editor_frame_profile_draw(editor_frame_profile *p, app_scene_authoring *scene)
 {
     if (!editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE)) {
         return;
@@ -335,6 +336,7 @@ void editor_frame_profile_draw(editor_frame_profile *p)
     }
     ImGui_Checkbox("Freeze capture", &p->frozen);
     editor_ui_track_item("performance.freeze");
+    app_scene_authoring_draw_render_settings(scene);
     if (p->count) {
         bool wide = ImGui_GetContentRegionAvail().x >= 900.0f;
         if (wide) {

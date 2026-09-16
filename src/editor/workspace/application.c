@@ -1,5 +1,6 @@
 #include "chibi/application.h"
 
+#include "assets/project.h"
 #include "assets/prototype.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
@@ -102,7 +103,7 @@ static int app_frame(app_loop *loop)
         editor_frame_mark(&loop->profile, EDITOR_FRAME_SCENE);
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
-        editor_frame_profile_draw(&loop->profile);
+        editor_frame_profile_draw(&loop->profile, loop->authoring);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
     }
     cf_app_draw_onto_screen(true);
@@ -136,6 +137,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     bool play = false;
     double fixed_dt = 0;
     const char *scene_path = NULL;
+    const char *project_path = NULL;
     const char *screenshot_path = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -157,6 +159,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
                 return NULL;
             }
             scene_path = argv[++i];
+        } else if ((strcmp(argv[i], "--project") == 0 || strcmp(argv[i], "--project-root") == 0)) {
+            if (i + 1 == argc || argv[i + 1][0] == '-') {
+                snprintf(error, error_size, "%s requires a project directory or project.json", argv[i]);
+                return NULL;
+            }
+            project_path = argv[++i];
         } else if (strcmp(argv[i], "--fixed-dt") == 0) {
             if (i + 1 == argc) {
                 snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
@@ -170,15 +178,30 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             }
         }
     }
-    if (play && !scene_path) {
-        scene_path = "content/scenes/Arena3D.json";
-    }
     if (screenshot_path && frames == 0) {
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
     }
 
+    chibi_project project = { 0 };
+    if (chibi_project_open(&project, project_path, error, error_size) != 0) {
+        return NULL;
+    }
+    char *resolved_scene = chibi_project_scene_path(&project, scene_path);
+    if (!resolved_scene) {
+        snprintf(
+            error,
+            error_size,
+            "Project does not define a start scene: %s",
+            project.root
+        );
+        chibi_project_free(&project);
+        return NULL;
+    }
+
     /* The host owns shader setup; image sources must precede graph registration. */
-    if (!render_image_mount_content("content", error, error_size)) {
+    if (!render_image_mount_content(project.content, error, error_size)) {
+        free(resolved_scene);
+        chibi_project_free(&project);
         return NULL;
     }
     registry_validate();
@@ -213,9 +236,11 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        free(resolved_scene);
+        chibi_project_free(&project);
         return NULL;
     }
-    authoring = app_scene_authoring_new(
+    authoring = app_scene_authoring_new_with_content_root(
         world,
         live,
         definition,
@@ -223,13 +248,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         graph_editor,
         NULL,
         NULL,
-        runtime
+        runtime,
+        project.content
     );
     bool scene_ready = authoring &&
                        app_scene_authoring_load_content(authoring) == 0 &&
-                       (scene_path
-                            ? app_scene_authoring_load(authoring, scene_path)
-                            : app_scene_authoring_seed_default(authoring)) == 0;
+                       app_scene_authoring_load(authoring, resolved_scene) == 0;
     if (!scene_ready || app_scene_authoring_apply_pending(authoring) != 0) {
         snprintf(
             error,
@@ -243,8 +267,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        free(resolved_scene);
+        chibi_project_free(&project);
         return NULL;
     }
+    free(resolved_scene);
+    chibi_project_free(&project);
     /* Put the shipped movement graph on screen on first launch. The graph is
      * still reachable through Files after switching documents. */
     if (!play && authoring &&

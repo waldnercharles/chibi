@@ -5,6 +5,7 @@
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
 #include "runtime/generated.h"
+#include "runtime/particle_emitters.h"
 #include "runtime/scenes/physics.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
@@ -32,6 +33,7 @@ struct engine
 {
     ecs_world *world;
     game_live_world *live;
+    game_particle_emitters *emitters;
     engine_system *systems;
     engine_render_fn render;
     void *render_user;
@@ -93,6 +95,9 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     engine *result = (engine *)xcalloc(1, sizeof *result);
     result->world = world;
     result->live = live;
+    if (live) {
+        result->emitters = game_particle_emitters_new(live->particles);
+    }
     result->playing = true;
     result->input = engine_input_new(world, live ? live->behaviors : NULL);
     if (live) {
@@ -105,6 +110,9 @@ void engine_free(engine *engine)
 {
     if (!engine) {
         return;
+    }
+    if (engine->emitters) {
+        game_particle_emitters_free(engine->emitters);
     }
     afree(engine->systems);
     engine_input_free(engine->input);
@@ -131,6 +139,9 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
 
 void engine_reset(engine *engine)
 {
+    if (engine->emitters) {
+        game_particle_emitters_reset(engine->emitters);
+    }
     engine->timing = (engine_frame_timing){ .alpha = 1 };
     engine->last_time = 0;
     engine->accumulator = 0;
@@ -354,6 +365,16 @@ static int finish_systems(engine *engine)
             .fn(engine->world,
                 engine->timing.simulation_time,
                 engine->systems[i].user);
+    }
+    if (engine->emitters && !game_particle_emitters_collect(
+                                engine->emitters,
+                                engine->world,
+                                NULL,
+                                engine->timing.simulation_time,
+                                engine->error,
+                                sizeof engine->error
+                            )) {
+        return FLOW_ERR_NODE;
     }
     /* Begin and reactions can change motion after integration. Resolve those
        authored values before presentation without advancing their clocks. */

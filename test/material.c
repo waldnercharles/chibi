@@ -35,18 +35,18 @@ void test_material()
     near(result.emission[0], 8);
     near(result.emission[1], 8 * 128 / 255.0f);
     near(result.emission[3], 64 / 255.0f);
-    near(result.transmittance[0], 0);
-    near(result.transmittance[1], 128 / 255.0f * 0.75f * (1 - 128 / 255.0f));
-    near(result.transmittance[2], 128 / 255.0f * 0.75f);
-    near(result.transmittance[3], 1);
+    near(result.absorption[0], 0);
+    near(result.absorption[1], 128 / 255.0f * 0.75f * (1 - 128 / 255.0f));
+    near(result.absorption[2], 128 / 255.0f * 0.75f);
+    near(result.absorption[3], 1);
     near(result.border_scene[3], 64 / 255.0f);
     near(result.border_emission[2], 8);
     near(result.border_emission[3], 128 / 255.0f);
     near(result.border_albedo[0], 16 / 255.0f);
-    near(result.border_transmittance[0], 64 / 255.0f * 0.75f);
-    near(result.border_transmittance[1], 0);
-    near(result.border_transmittance[2], 64 / 255.0f * 0.75f * (1 - 128 / 255.0f));
-    near(result.border_transmittance[3], 1);
+    near(result.border_absorption[0], 64 / 255.0f * 0.75f);
+    near(result.border_absorption[1], 0);
+    near(result.border_absorption[2], 64 / 255.0f * 0.75f * (1 - 128 / 255.0f));
+    near(result.border_absorption[3], 1);
 
     material.emission_multiplier = 0;
     material.scene &= 0xFFFFFF00u;
@@ -54,14 +54,14 @@ void test_material()
     for (int i = 0; i < 4; i++) {
         near(result.emission[i], 0);
         near(result.border_emission[i], 0);
-        near(result.transmittance[i], 0);
+        near(result.absorption[i], 0);
     }
-    near(result.border_transmittance[3], 1);
+    near(result.border_absorption[3], 1);
     material.emission_multiplier = -1;
     material.absorption = 0;
     assert(game_material_extract(&material, &result));
     near(result.emission[3], 0);
-    near(result.border_transmittance[3], 0);
+    near(result.border_absorption[3], 0);
 
     game_material_coefficients before = result;
     material.absorption = NAN;

@@ -59,11 +59,34 @@
         "y": 0.0,
         "z": 0.0
       },
-      "drag": 1.5,
-      "emission": 1.2999999523162842,
+      "drag": {
+        "start": {
+          "x": 1.5,
+          "y": 1.5
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0
+      },
+      "emission": {
+        "start": {
+          "x": 1.2999999523162842,
+          "y": 1.2999999523162842
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0
+      },
       "end_color": 394308096,
       "heading_only": false,
-      "lifetime": 0.23999999463558197,
+      "lifetime": {
+        "x": 0.23999999463558197,
+        "y": 0.23999999463558197
+      },
       "offset": {
         "x": -11.0,
         "y": 0.0,
@@ -71,11 +94,37 @@
       },
       "rate": 160.0,
       "shape": 0,
-      "size": 2.200000047683716,
-      "size_exponent": 0.8500000238418579,
-      "speed": 105.0,
+      "size": {
+        "start": {
+          "x": 2.200000047683716,
+          "y": 2.200000047683716
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0.8500000238418579
+      },
+      "speed": {
+        "x": 105.0,
+        "y": 105.0
+      },
       "spread": 0.20000000298023224,
-      "velocity_inherit": 1.0
+      "velocity_inherit": 1.0,
+      "active": true,
+      "planar": false,
+      "antialias": {
+        "start": {
+          "x": 1.5,
+          "y": 1.5
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0
+      },
+      "absorption": 0.01
     },
     "GAME.GamePointLight": {
       "color": 953090047,

@@ -68,7 +68,7 @@ static void draw_frame(arena_fixture *f)
     editor_frame_mark(&f->profile, EDITOR_FRAME_SCENE);
     app_scene_authoring_draw(f->scene);
     editor_draw(f->graph);
-    editor_frame_profile_draw(&f->profile);
+    editor_frame_profile_draw(&f->profile, NULL);
     editor_frame_mark(&f->profile, EDITOR_FRAME_UI);
     cf_app_draw_onto_screen(true);
     editor_frame_mark(&f->profile, EDITOR_FRAME_PRESENT);

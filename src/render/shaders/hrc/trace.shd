@@ -107,11 +107,11 @@ void main()
 
 	float eps = 1.0 / 512.0;
 	float dda_step = step_length * u_step_scale;
-	vec2 inv_work = vec2(1.0) / vec2(float(u_work_w), float(u_work_h));
+	vec2 inv_work = vec2(1.0) / vec2(textureSize(u_emission, 0));
 
 	for (float ii = ii_lo; ii < ii_hi; ii += 1.0) {
 		vec2 sample_pos = rot_start + rot_delta * ii;
-		vec2 uv = (sample_pos + vec2(0.5)) * inv_work;
+		vec2 uv = (clamp(sample_pos, vec2(0.0), vec2(u_work_w - 1, u_work_h - 1)) + vec2(0.5)) * inv_work;
 
 		vec3 emiss = texture(u_emission, uv).rgb
 		           + texture(u_bounce, uv).rgb * u_bounce_intensity;

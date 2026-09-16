@@ -13,6 +13,20 @@
 #include <stdio.h>
 #include <string.h>
 
+static bool property_lighting(const char *label, const type_field *field, float *value)
+{
+    float maximum = 1;
+    switch (field->offset) {
+        case offsetof(GameHRC2D, intensity): maximum = 10; break;
+        case offsetof(GameHRC2D, ambient):
+        case offsetof(GameHRC2D, fog):
+        case offsetof(GameHRC2D, shadow_floor): break;
+        default: return false;
+    }
+    editor_ui_property_label(label, 0);
+    return ImGui_SliderFloatEx("###field_value", value, 0, maximum, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+}
+
 static bool draw_prototype_field(
     app_scene_authoring *scene,
     scene_prototype_asset *asset,
@@ -90,6 +104,10 @@ static bool draw_prototype_field(
         case PIN_F32:
             if (component->desc->id == GAME_COMPONENT_GameEnvironment.id) {
                 changed = property_environment(label, field, &value.f, false);
+                break;
+            }
+            if (component->desc->id == GAME_COMPONENT_GameHRC2D.id) {
+                changed = property_lighting(label, field, &value.f);
                 break;
             }
             changed = component->desc->id == GAME_COMPONENT_GameTransform.id

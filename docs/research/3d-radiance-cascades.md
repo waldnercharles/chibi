@@ -497,7 +497,7 @@ RC often improves noisy Monte Carlo GI by replacing random paths with structured
 
 The repository already contains two separate rendering concerns:
 
-- The desktop 2D path builds scene, emission, transmittance, and albedo textures, then runs its RC passes and composite. See [src/render/material_raster.c](/Users/cwaldner/Personal/c-blueprints/src/render/material_raster.c) and [src/render/radiance.c](/Users/cwaldner/Personal/c-blueprints/src/render/radiance.c).
+- The desktop 2D path builds scene, emission, absorption, and albedo textures, then runs its RC passes and composite. See [src/render/material_raster.c](/Users/cwaldner/Personal/c-blueprints/src/render/material_raster.c) and [src/render/radiance.c](/Users/cwaldner/Personal/c-blueprints/src/render/radiance.c).
 - The 3D path collects ECS geometry, lights, particles, and trails and submits depth-tested meshes through [src/render/arena3d.c](/Users/cwaldner/Personal/c-blueprints/src/render/arena3d.c) and [src/render/shaders/arena3d.frag](/Users/cwaldner/Personal/c-blueprints/src/render/shaders/arena3d.frag). It does not yet expose a public 3D G-buffer or indirect-light target.
 
 The existing SDF code is primarily 2D coverage support, while 3D authored content is represented by analytic or canned meshes such as boxes, spheres, capsules, cones, and prisms. That makes a new 3D RC experiment a renderer subsystem, not a small extension of the current 2D radiance pass.

@@ -1,4 +1,4 @@
-#include "render/arena_emitters.h"
+#include "runtime/particle_emitters.h"
 
 #include "runtime/engine.h"
 #include "runtime/generated.h"
@@ -12,7 +12,7 @@
 
 enum
 {
-    EMITTER_LIMIT = 64
+    EMITTER_LIMIT = 512
 };
 typedef struct
 {
@@ -24,56 +24,81 @@ typedef struct
     bool seen;
 } emitter_source;
 
-struct arena_emitters
+struct game_particle_emitters
 {
     const ecs_world *world;
     double time, simulation_time;
     game_particles *particles;
+    bool borrowed;
     emitter_source sources[EMITTER_LIMIT];
     game_particle heads[EMITTER_LIMIT];
     int head_count;
     bool reported_capacity;
 };
 
-arena_emitters *render_arena_emitters_new()
+game_particle_emitters *game_particle_emitters_new(game_particles *destination)
 {
-    arena_emitters *emitters = xcalloc(1, sizeof *emitters);
-    emitters->particles = game_particles_new();
+    game_particle_emitters *emitters = xcalloc(1, sizeof *emitters);
+    emitters->borrowed = destination != NULL;
+    emitters->particles = destination ? destination : game_particles_new();
     return emitters;
 }
 
-void render_arena_emitters_reset(arena_emitters *emitters)
+void game_particle_emitters_reset(game_particle_emitters *emitters)
 {
     game_particles *particles = emitters->particles;
-    game_particles_clear(particles);
+    bool borrowed = emitters->borrowed;
+    if (!borrowed) {
+        game_particles_clear(particles);
+    }
     memset(emitters, 0, sizeof *emitters);
     emitters->particles = particles;
+    emitters->borrowed = borrowed;
 }
 
-void render_arena_emitters_free(arena_emitters *emitters)
+void game_particle_emitters_free(game_particle_emitters *emitters)
 {
-    game_particles_free(emitters->particles);
+    if (!emitters->borrowed) {
+        game_particles_free(emitters->particles);
+    }
     free(emitters);
+}
+
+static bool valid_range(CF_V2 range)
+{
+    return isfinite(range.x) && isfinite(range.y) && range.x >= 0 &&
+           range.y >= range.x;
+}
+
+static bool valid_curve(GameParticleCurve curve)
+{
+    return valid_range(curve.start) && valid_range(curve.end) &&
+           isfinite(curve.exponent) && curve.exponent >= 0;
 }
 
 static bool valid(const GameParticleEmitter *style)
 {
     return style->shape >= 0 && style->shape < GAME_PARTICLE_SHAPE_COUNT &&
+           valid_range(style->lifetime) && style->lifetime.x > 0 &&
+           valid_range(style->speed) && valid_curve(style->size) &&
+           style->size.start.x > 0 && valid_curve(style->drag) &&
+           valid_curve(style->emission) && valid_curve(style->antialias) &&
+           valid_range(style->stretch) &&
            isfinite(
-               style->rate + style->lifetime + style->speed + style->size +
-               style->spread + style->drag + style->emission +
-               style->size_exponent + style->velocity_inherit +
-               style->offset.x + style->offset.y + style->offset.z +
-               style->direction.x + style->direction.y + style->direction.z
+               style->rate + style->spread + style->velocity_inherit +
+               style->absorption + style->metaball_blend + style->offset.x +
+               style->offset.y + style->offset.z + style->direction.x +
+               style->direction.y + style->direction.z
            ) &&
-           style->rate >= 0 && style->lifetime > 0 && style->speed >= 0 &&
-           style->size > 0 && style->spread >= 0 && style->spread <= 6.2831853072f &&
-           style->drag >= 0 && style->emission >= 0 &&
-           style->size_exponent >= 0 && style->velocity_inherit >= 0 &&
+           style->burst_count >= 0 && style->burst_count <= GAME_PARTICLE_LIMIT &&
+           style->rate >= 0 && style->spread >= 0 &&
+           style->spread <= 6.2831853072f && style->velocity_inherit >= 0 &&
+           style->absorption >= 0 && style->metaball_blend >= 0 &&
+           style->metaball_group >= 0 && style->metaball_group <= 4 &&
            cf_dot_v3(style->direction, style->direction) > 0;
 }
 
-static emitter_source *source_for(arena_emitters *emitters, ecs_entity entity)
+static emitter_source *source_for(game_particle_emitters *emitters, ecs_entity entity)
 {
     emitter_source *empty = NULL;
     for (int i = 0; i < EMITTER_LIMIT; i++) {
@@ -120,25 +145,52 @@ static CF_V3 cone_direction(emitter_source *source, CF_V3 direction, float sprea
     );
 }
 
-static game_particle particle_at(const GameParticleEmitter *style, CF_V3 position, CF_V3 velocity, float angle)
+static float sample(emitter_source *source, CF_V2 range)
+{
+    return range.x == range.y ? range.x
+                              : range.x + (range.y - range.x) * random_unit(source);
+}
+
+static game_particle particle_at(
+    emitter_source *source,
+    const GameParticleEmitter *style,
+    CF_V3 position,
+    CF_V3 velocity,
+    float angle
+)
 {
     return (game_particle){ .position = { position.x, position.z },
                             .velocity = { velocity.x, velocity.z },
                             .elevation = position.y,
                             .elevation_velocity = velocity.y,
-                            .angle = angle,
+                            .angle = style->velocity_align
+                                       ? atan2f(velocity.z, velocity.x)
+                                       : angle,
                             .shape = style->shape,
                             .color = style->color,
                             .end_color = style->end_color,
-                            .lifetime = style->lifetime,
-                            .size = style->size,
-                            .size_exponent = style->size_exponent,
-                            .drag = style->drag,
-                            .emission = style->emission };
+                            .lifetime = sample(source, style->lifetime),
+                            .size = sample(source, style->size.start),
+                            .size_end = sample(source, style->size.end),
+                            .size_exponent = style->size.exponent,
+                            .drag = sample(source, style->drag.start),
+                            .drag_end = sample(source, style->drag.end),
+                            .drag_exponent = style->drag.exponent,
+                            .emission = sample(source, style->emission.start),
+                            .emission_end = sample(source, style->emission.end),
+                            .emission_exponent = style->emission.exponent,
+                            .antialias = sample(source, style->antialias.start),
+                            .antialias_end = sample(source, style->antialias.end),
+                            .antialias_exponent = style->antialias.exponent,
+                            .absorption = style->absorption,
+                            .metaball_group = style->metaball_group,
+                            .metaball_blend = style->metaball_blend,
+                            .velocity_align = style->velocity_align,
+                            .stretch = sample(source, style->stretch) };
 }
 
 static bool emit_source(
-    arena_emitters *emitters,
+    game_particle_emitters *emitters,
     emitter_source *source,
     const GameParticleEmitter *style,
     CF_V3 position,
@@ -148,20 +200,24 @@ static bool emit_source(
 )
 {
     source->seen = true;
-    if (source->time < 0) {
+    bool first = source->time < 0;
+    if (first) {
         source->position = position;
         source->direction = direction;
         source->time = time;
     }
     double delta = time - source->time;
     double births = delta * style->rate + source->phase;
-    int count = (int)fmin(floor(births), GAME_PARTICLE_LIMIT);
+    int burst = first ? style->burst_count : 0;
+    int count = (int)fmin(floor(births) + burst, GAME_PARTICLE_LIMIT);
     source->phase = births - floor(births);
     bool turned = cf_dot_v3(source->direction, direction) < .8660254f;
     /* Chronological births keep random samples identical across display rates. */
     for (int i = count - 1; i >= 0; i--) {
-        float age = (float)((source->phase + i) / style->rate);
-        if (age >= style->lifetime) {
+        float age = i < burst || style->rate == 0
+                      ? 0
+                      : (float)((source->phase + i - burst) / style->rate);
+        if (age >= style->lifetime.y) {
             continue;
         }
         /* A chord between sharply rotated nozzles can pass through the source hull. */
@@ -169,22 +225,26 @@ static bool emit_source(
         CF_V3 origin = cf_lerp_v3(source->position, position, fraction);
         CF_V3 forward = cf_lerp_v3(source->direction, direction, fraction);
         forward = cf_dot_v3(forward, forward) > .00001f ? cf_norm_v3(forward) : direction;
-        CF_V3 velocity = cf_add_v3(
-            cf_mul_v3_f(cone_direction(source, forward, style->spread), style->speed),
-            inherited_velocity
-        );
-        float decay = style->drag > 0 ? expf(-style->drag * age) : 1;
-        float travel = style->drag > 0 ? -expm1f(-style->drag * age) / style->drag
-                                       : age;
-        origin = cf_add_v3(origin, cf_mul_v3_f(velocity, travel));
-        velocity = cf_mul_v3_f(velocity, decay);
+        CF_V3 direction;
+        if (style->planar) {
+            float angle = atan2f(forward.z, forward.x) +
+                          (random_unit(source) - .5f) * style->spread;
+            direction = (CF_V3){ cosf(angle), 0, sinf(angle) };
+        } else {
+            direction = cone_direction(source, forward, style->spread);
+        }
+        CF_V3 velocity = cf_add_v3(cf_mul_v3_f(direction, sample(source, style->speed)), inherited_velocity);
         game_particle particle = particle_at(
+            source,
             style,
             origin,
             velocity,
             atan2f(forward.z, forward.x)
         );
-        particle.age = age;
+        if (age >= particle.lifetime) {
+            continue;
+        }
+        game_particle_advance(&particle, age);
         int emitted = game_particles_emit_particle(emitters->particles, &particle);
         if (emitted < 0) {
             return false;
@@ -193,7 +253,12 @@ static bool emit_source(
             break;
         }
     }
+    if (style->rate == 0) {
+        return true;
+    }
+    emitter_source head_source = *source;
     game_particle head = particle_at(
+        &head_source,
         style,
         position,
         (CF_V3){ 0 },
@@ -209,8 +274,8 @@ static bool emit_source(
     return true;
 }
 
-bool render_arena_emitters_collect(
-    arena_emitters *emitters,
+bool game_particle_emitters_collect(
+    game_particle_emitters *emitters,
     ecs_world *world,
     const engine *runtime,
     double time,
@@ -229,12 +294,14 @@ bool render_arena_emitters_collect(
         time = fmax(0, simulation_time - (1 - timing->alpha) * ENGINE_FIXED_SECONDS);
     }
     if (emitters->world != world || simulation_time < emitters->simulation_time) {
-        render_arena_emitters_reset(emitters);
+        game_particle_emitters_reset(emitters);
     }
     /* Pause presents the solved pose (alpha=1). Resuming interpolation can
      * briefly lag that pose; retain its tail until presentation catches up. */
     time = fmax(time, emitters->time);
-    game_particles_tick(emitters->particles, time - emitters->time);
+    if (!emitters->borrowed) {
+        game_particles_tick(emitters->particles, time - emitters->time);
+    }
     emitters->world = world;
     emitters->time = time;
     emitters->simulation_time = simulation_time;
@@ -258,16 +325,22 @@ bool render_arena_emitters_collect(
                 ok = false;
                 break;
             }
-            if (style->rate == 0) {
+            if (!style->active || (style->rate == 0 && style->burst_count == 0)) {
                 continue;
             }
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
+            ecs_entity owner = style->parent ? ecs_entity_from_u64(style->parent)
+                                             : entity;
+            if (!ecs_entity_is_alive(world, owner) ||
+                !GAME_GameTransform_has(world, owner)) {
+                continue;
             }
-            const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-            const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
-            const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+            GameTransform position = *GAME_GameTransform_get_const(world, owner);
+            if (runtime) {
+                engine_render_position(runtime, owner, &position);
+            }
+            const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, owner);
+            const GameOrientation *heading = GAME_GameOrientation_get_const(world, owner);
+            const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, owner);
             float scale = visual ? visual->scale : 1;
             if (scale == 0) {
                 continue;
@@ -300,7 +373,7 @@ bool render_arena_emitters_collect(
                 }
                 continue;
             }
-            const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
+            const GameVelocity *velocity = GAME_GameVelocity_get_const(world, owner);
             CF_V3 inherited = velocity ? (CF_V3){ velocity->x, 0, velocity->y }
                                        : (CF_V3){ 0 };
             if (!velocity && source->time >= 0 && time > source->time) {
@@ -337,12 +410,12 @@ bool render_arena_emitters_collect(
     return ok;
 }
 
-const game_particles *render_arena_emitters_particles(const arena_emitters *emitters)
+const game_particles *game_particle_emitters_particles(const game_particle_emitters *emitters)
 {
     return emitters->particles;
 }
 
-const game_particle *render_arena_emitters_heads(const arena_emitters *emitters, int *count)
+const game_particle *game_particle_emitters_heads(const game_particle_emitters *emitters, int *count)
 {
     *count = emitters->head_count;
     return emitters->heads;

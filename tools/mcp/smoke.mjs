@@ -113,6 +113,9 @@ const result = spawnSync(process.execPath, [server], {
 if (result.error || result.status !== 0) {
   throw result.error || new Error(result.stderr || `MCP server exited with ${result.status}`);
 }
+if (!result.stderr.includes(`chibi MCP verified project root: ${root}`)) {
+  throw new Error("MCP must verify and report its native project root before authoring");
+}
 const responses = result.stdout.trim().split("\n").filter(Boolean).map(JSON.parse);
 const expectedResponses = requests.filter((request) => Object.hasOwn(request, "id")).length;
 if (responses.length !== expectedResponses) {
@@ -186,7 +189,7 @@ if (!listedTools.some((tool) => tool.name === "validateAsset" &&
       tool.inputSchema?.properties?.field_limit?.maximum === 128) ||
     !listedTools.some((tool) => tool.name === "recordScenario" &&
       tool.inputSchema?.required?.includes("name") &&
-      tool.inputSchema?.properties?.inputs?.maxItems === 600) ||
+      tool.inputSchema?.properties?.inputs?.maxItems === 1800) ||
     !listedTools.some((tool) => tool.name === "replayScenario" &&
       tool.inputSchema?.oneOf?.length === 2 &&
       tool.inputSchema?.properties?.recording_path?.maxLength === 1024)) {
@@ -364,6 +367,11 @@ const nativeLibraryGraph = nativeRequest("inspect_graph", {
 });
 const nativeRead = nativeRequest("read_asset", { kind: "behavior", name: "HealthBehavior" });
 const nativeValidation = nativeRequest("validate_asset", { kind: "behavior", name: "HealthBehavior" });
+const linkedValidation = nativeRequest("validate_asset", { kind: "behavior", name: "TwinStickWeaponBehavior" });
+if (linkedValidation.response.ok !== true || !linkedValidation.response.result?.valid) {
+  throw new Error("validateAsset must link external library functions before compilation");
+}
+
 const nativeRegistry = nativeRequest("describe_registry");
 const nativeMissing = nativeRequest("read_asset", { path: "content/nope.json" });
 if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||

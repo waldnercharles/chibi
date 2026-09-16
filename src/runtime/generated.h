@@ -324,12 +324,14 @@ extern int GAME_GameRenderState_has(const ecs_world *, ecs_entity);
 extern int GAME_GameRenderState_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameRenderState_remove(ecs_world *, ecs_entity, uint64_t);
 
-extern const ecs_component_desc GAME_COMPONENT_GameLighting2D;
-extern GameLighting2D *GAME_GameLighting2D_get(ecs_world *, ecs_entity);
-extern const GameLighting2D *GAME_GameLighting2D_get_const(const ecs_world *, ecs_entity);
-extern int GAME_GameLighting2D_has(const ecs_world *, ecs_entity);
-extern int GAME_GameLighting2D_add(ecs_world *, ecs_entity, uint64_t);
-extern int GAME_GameLighting2D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameStarfield2D;
+extern const GameStarfield2D *GAME_GameStarfield2D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameHRC2D;
+extern GameHRC2D *GAME_GameHRC2D_get(ecs_world *, ecs_entity);
+extern const GameHRC2D *GAME_GameHRC2D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameHRC2D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameHRC2D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameHRC2D_remove(ecs_world *, ecs_entity, uint64_t);
 
 extern const ecs_component_desc GAME_COMPONENT_GameMapMarker;
 extern GameMapMarker *GAME_GameMapMarker_get(ecs_world *, ecs_entity);

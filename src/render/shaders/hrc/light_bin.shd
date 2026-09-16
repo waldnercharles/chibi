@@ -1,0 +1,56 @@
+struct Light
+{
+    vec2 position;
+    float intensity;
+    float radius;
+    vec4 color;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer SourceBuffer { Light sources[]; };
+layout(std430, set = 1, binding = 0) writeonly buffer TileCounts { uint tile_counts[]; };
+layout(std430, set = 1, binding = 1) writeonly buffer TileIndices { uint tile_indices[]; };
+
+layout(set = 2, binding = 0) uniform Params
+{
+    int u_source_count;
+    int u_tiles_x;
+    int u_tiles_y;
+    int u_max_per_tile;
+    int u_canvas_w;
+    int u_canvas_h;
+    float u_world_min_x;
+    float u_world_max_y;
+    vec2 u_unit_per_px;
+};
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+    uint tile = gl_GlobalInvocationID.x;
+    uint tile_count = uint(u_tiles_x * u_tiles_y);
+    if (tile >= tile_count) {
+        return;
+    }
+    uint tile_x = tile % uint(u_tiles_x);
+    uint tile_y = tile / uint(u_tiles_x);
+    float min_x = u_world_min_x + float(tile_x * 16u) * u_unit_per_px.x;
+    float max_x = min(u_world_min_x + float(u_canvas_w) * u_unit_per_px.x,
+                     min_x + 16.0 * u_unit_per_px.x);
+    float max_y = u_world_max_y - float(tile_y * 16u) * u_unit_per_px.y;
+    float min_y = max(u_world_max_y - float(u_canvas_h) * u_unit_per_px.y,
+                     max_y - 16.0 * u_unit_per_px.y);
+    uint occupancy = 0u;
+    for (int i = 0; i < u_source_count; i++) {
+        Light source = sources[i];
+        bool overlaps = source.position.x + source.radius >= min_x &&
+                        source.position.x - source.radius <= max_x &&
+                        source.position.y + source.radius >= min_y &&
+                        source.position.y - source.radius <= max_y;
+        if (overlaps && occupancy < uint(u_max_per_tile)) {
+            tile_indices[tile * uint(u_max_per_tile) + occupancy] = uint(i);
+            occupancy++;
+        }
+    }
+    tile_counts[tile] = occupancy;
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -432,13 +432,13 @@ function rawToolDefinitions() {
       frames: {
         type: "integer",
         minimum: 0,
-        maximum: 600,
+        maximum: 1800,
         description: "Number of fixed steps to sample after warmup.",
       },
       warmup_frames: {
         type: "integer",
         minimum: 0,
-        maximum: 600,
+        maximum: 1800,
         description: "Fixed steps to run before collecting timing and behavior samples.",
       },
       fixed_dt: {
@@ -571,7 +571,7 @@ function rawToolDefinitions() {
   };
   const normalizedInputs = {
     type: "array",
-    maxItems: 600,
+    maxItems: 1800,
     items: normalizedInput,
     description: "One normalized input sample per fixed frame.",
   };
@@ -582,10 +582,11 @@ function rawToolDefinitions() {
   scenePreview.inputSchema.properties.saved_state = savedState;
   scenarioArguments.properties.saved_state = savedState;
   runtimeSnapshotArguments.properties.saved_state = savedState;
-  const timeline = { type: "array", maxItems: 600, items: { type: "object", additionalProperties: false,
+  const timeline = { type: "array", maxItems: 1800, items: { type: "object", additionalProperties: false,
     required: ["frame", "input"], properties: { frame: { type: "integer", minimum: 0, maximum: 107999 }, input: normalizedInputs.items } } };
   scenarioArguments.properties.frames.maximum = 108000;
   runtimeSnapshotArguments.properties.frames.maximum = 108000;
+  scenePreview.inputSchema.properties.input_timeline = timeline;
   scenarioArguments.properties.input_timeline = timeline;
   runtimeSnapshotArguments.properties.input_timeline = timeline;
   scenarioArguments.properties.inputs = normalizedInputs;
@@ -599,7 +600,7 @@ function rawToolDefinitions() {
       format: { type: "string", maxLength: 128 },
       kind: { type: "string", enum: ["prototype", "scene"] },
       name: { type: "string", minLength: 1, maxLength: 128 },
-      frames: { type: "integer", minimum: 0, maximum: 600 },
+      frames: { type: "integer", minimum: 0, maximum: 1800 },
       fixed_dt: { type: "number", minimum: 0.000001, maximum: 0.25 },
       content_hash: { type: "string", minLength: 16, maxLength: 16 },
       runtime_content_hash: { type: "string", minLength: 16, maxLength: 16 },
@@ -616,8 +617,8 @@ function rawToolDefinitions() {
       },
       inputs: normalizedInputs,
       saved_state: savedState,
-      frame_hashes: { type: "array", maxItems: 600, items: { type: "string", minLength: 16, maxLength: 16 } },
-      live_entities: { type: "array", maxItems: 600, items: { type: "integer", minimum: 0 } },
+      frame_hashes: { type: "array", maxItems: 1800, items: { type: "string", minLength: 16, maxLength: 16 } },
+      live_entities: { type: "array", maxItems: 1800, items: { type: "integer", minimum: 0 } },
       world_hash: { type: "string", maxLength: 16 },
       artifact_path: { type: "string", maxLength: 1024 },
     },
@@ -641,7 +642,7 @@ function rawToolDefinitions() {
       frames: {
         type: "integer",
         minimum: 0,
-        maximum: 600,
+        maximum: 1800,
         description: "Number of deterministic fixed steps to record.",
       },
       fixed_dt: {
@@ -820,10 +821,20 @@ async function nativeRequest(operation, args = {}) {
   if (!controllerSession || controllerSession.closed) {
     controllerSession = new ControllerSession();
   }
-  return controllerSession.request(
-    { ...args, contract: 1, operation },
-    timeout,
-  );
+  const session = controllerSession;
+  if (!session.rootCheck) {
+    session.rootCheck = session.request({ contract: 1, operation: "status" }, timeout)
+      .then((status) => {
+        const resolvedRoot = status.result?.project_root;
+        if (!status.ok || !resolvedRoot || realpathSync(resolvedRoot) !== realpathSync(root)) {
+          session.close();
+          throw protocolError(-32603, `Chibi project root mismatch: expected ${root}, got ${resolvedRoot}`);
+        }
+        process.stderr.write(`chibi MCP verified project root: ${resolvedRoot}\n`);
+      });
+  }
+  await session.rootCheck;
+  return session.request({ ...args, contract: 1, operation }, timeout);
 }
 
 let contractMetadataCache;
@@ -1055,6 +1066,8 @@ function toolSummary(name, response) {
     return summary;
   }
   const scalarKeys = [
+    "project_root",
+    "content_root",
     "kind",
     "name",
     "path",

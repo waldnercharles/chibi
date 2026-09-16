@@ -1,0 +1,13 @@
+{
+  "name": "NeonSwarmDirector",
+  "identity": "prototype-059507fab9427225",
+  "components": {
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "behaviors": [
+    "NeonSwarmDirector"
+  ]
+}

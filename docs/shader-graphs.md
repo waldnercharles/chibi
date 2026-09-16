@@ -215,11 +215,11 @@ migrated directly to Surface Output; the old lighting-buffer output is removed.
 
 ## Arena development
 
-`Arena3D` uses authored Surface materials for its floor, rim, player, enemies
-and projectile.
-The same graph defaults, instance overrides and runtime parameter writes drive
-both scene rendering and material previews. Shared pulse/ring functions and the designer effect nodes keep
-the example roots focused on their visible effects.
+`Arena2D` and `Arena3D` are separate projects with separate authored Surface
+materials. Arena2D material graphs live under
+`projects/arena2d/content/materials`; Arena3D graphs remain under
+`content/materials`. Shared pulse/ring functions and the designer effect nodes
+keep each project's example roots focused on their visible effects.
 
 The shared graph vocabulary now includes Vector3, Normalize, Clamp, Saturate,
 Step, Smoothstep and Noise. Noise is smooth deterministic value noise with a
@@ -316,4 +316,4 @@ Speed drive Mapping; Image Texture feeds a charcoal/cyan Color Ramp; Intensity
 controls Emission. Tiling sets repetition. The 128-pixel grayscale source is
 `content/textures/EnergyCells.png`. Open `ShaderImageDemo` to see the material on a
 box, prism and sphere with independent instance parameters, or run
-`make play SCENE=content/scenes/ShaderImageDemo.json`.
+`make play PROJECT=. SCENE=scenes/ShaderImageDemo.json`.

@@ -1,0 +1,89 @@
+{
+  "name": "Arena2DPhaseWarden",
+  "identity": "prototype-0000000000000028",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 1.0,
+      "border_color": 4285238015,
+      "border_width": 1.5,
+      "color": 252641535,
+      "glow_color": 4285238015,
+      "glow_radius": 1.5,
+      "height": 22.0,
+      "shape": 2,
+      "stroke_width": 0.0,
+      "width": 22.0
+    },
+    "GAME.GameBody": {
+      "continuous": false,
+      "type": 1
+    },
+    "GAME.GameCollider": {
+      "category": 2,
+      "height": 0.0,
+      "ignore_entity": null,
+      "mask": 15,
+      "radius": 10.0,
+      "sensor": false,
+      "shape": 0,
+      "width": 0.0
+    },
+    "GAME.GameEncounterMember": {
+      "role": 1
+    },
+    "game.GameHealth": {
+      "current": 30,
+      "maximum": 30
+    },
+    "game.GameMovement": {
+      "speed": 55.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.3499999940395355
+    },
+    "GAME.GamePointLight": {
+      "color": 4282739711,
+      "elevation": 14.0,
+      "intensity": 0.07999999821186066,
+      "radius": 16.0
+    },
+    "GAME.GameSdfMotion": {
+      "amplitude": 0.2800000011920929,
+      "angular_frequency": 4.0,
+      "pluck_age": 0.0,
+      "pluck_amplitude": 0.0,
+      "pluck_origin": 0.0,
+      "pluck_speed": 0.0,
+      "temporal_frequency": 2.0,
+      "time": 0.0
+    },
+    "GAME.GameShader": {
+      "bounds_x": 20.0,
+      "bounds_y": 20.0,
+      "material": "Arena2DPhaseWarden",
+      "parameters": "{}",
+      "shape": "Arena2DPhaseWardenShape"
+    },
+    "GAME.GameSurfaceInfluence": {
+      "color": 4282739711,
+      "inner_radius": 0.0,
+      "linger": 0.2199999988079071,
+      "radius": 14.0,
+      "strength": 0.15000000596046448
+    },
+    "game.GameTransform": {
+      "x": 480.0,
+      "y": -180.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "behaviors": [
+    "Arena2DImpactFeedback",
+    "Arena2DPhaseWardenBehavior",
+    "CombatFeedback",
+    "HealthBehavior"
+  ]
+}

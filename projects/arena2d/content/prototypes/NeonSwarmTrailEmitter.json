@@ -1,0 +1,109 @@
+{
+  "name": "NeonSwarmTrailEmitter",
+  "identity": "prototype-207eb21e261eb89f",
+  "components": {
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "GAME.GameParticleEmitter": {
+      "absorption": 0.0,
+      "active": true,
+      "antialias": {
+        "end": {
+          "x": 1.0,
+          "y": 1.0
+        },
+        "exponent": 1.0,
+        "start": {
+          "x": 2.0,
+          "y": 3.0
+        }
+      },
+      "burst_count": 0,
+      "color": 16773375,
+      "direction": {
+        "x": -1.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "drag": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.0,
+        "start": {
+          "x": 2.0,
+          "y": 3.0
+        }
+      },
+      "emission": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.0,
+        "start": {
+          "x": 0.009999999776482582,
+          "y": 0.019999999552965164
+        }
+      },
+      "end_color": 5013504,
+      "heading_only": true,
+      "lifetime": {
+        "x": 0.15000000596046448,
+        "y": 0.30000001192092896
+      },
+      "metaball_blend": 0.0,
+      "metaball_group": 0,
+      "offset": {
+        "x": -6.0,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "parent": null,
+      "planar": true,
+      "rate": 60.0,
+      "shape": 0,
+      "size": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.0,
+        "start": {
+          "x": 0.25,
+          "y": 0.25
+        }
+      },
+      "speed": {
+        "x": 20.0,
+        "y": 40.0
+      },
+      "spread": 1.0471980571746826,
+      "stretch": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "velocity_align": false,
+      "velocity_inherit": 0.0
+    },
+    "GAME.GameProjectile": {
+      "age": 0.0,
+      "damage": 0,
+      "lifetime": 1.5,
+      "speed": 0.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "behaviors": [
+    "ProjectileBehavior"
+  ]
+}

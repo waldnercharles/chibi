@@ -54,8 +54,9 @@ layout(set = 0, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameter
 
 layout(set = 1, binding = 0, rgba16f) uniform image2D u_scene;
 layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
-layout(set = 1, binding = 2, rgba16f) uniform image2D u_transmittance;
+layout(set = 1, binding = 2, rgba16f) uniform image2D u_absorption;
 layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
+layout(set = 1, binding = 4, rgba16f) uniform image2D u_normal;
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -195,6 +196,17 @@ float evaluate_sdf(vec2 local_p, Entity e)
     return d;
 }
 
+vec2 sdf_normal(vec2 p, Entity e, float epsilon)
+{
+    float dx = evaluate_sdf(p + vec2(epsilon, 0.0), e) -
+               evaluate_sdf(p - vec2(epsilon, 0.0), e);
+    float dy = evaluate_sdf(p + vec2(0.0, epsilon), e) -
+               evaluate_sdf(p - vec2(0.0, epsilon), e);
+    vec2 gradient = vec2(dx, dy);
+    float length_gradient = length(gradient);
+    return length_gradient > 1e-5 ? gradient / length_gradient : vec2(0.0);
+}
+
 #include "color.shd"
 
 vec4 unpack_color(vec4 p) { return p; }
@@ -222,19 +234,20 @@ void main()
     // Accumulators (initialized to canvas clear colors).
     vec4 scene_acc = u_accumulate != 0 ? imageLoad(u_scene, pixel) : vec4(0, 0, 0, 0);
     vec4 emission_acc = u_accumulate != 0 ? imageLoad(u_emission, pixel) : vec4(0, 0, 0, 1);
-    vec4 trans_acc = u_accumulate != 0 ? imageLoad(u_transmittance, pixel) : vec4(0, 0, 0, 0);
+    vec4 absorption_acc = u_accumulate != 0 ? imageLoad(u_absorption, pixel) : vec4(0, 0, 0, 0);
     vec4 albedo_acc = u_accumulate != 0 ? imageLoad(u_albedo, pixel) : vec4(0, 0, 0, 1);
+    vec4 normal_acc = u_accumulate != 0 ? imageLoad(u_normal, pixel) : vec4(0, 0, 0, 0);
 
     // Metaball group accumulators.
-    #define MAX_METABALL_GROUPS 4
+    #define MAX_METABALL_GROUPS 1
     float mb_sdf[MAX_METABALL_GROUPS];
     vec4 mb_scene[MAX_METABALL_GROUPS];
     vec4 mb_emission[MAX_METABALL_GROUPS];
-    vec4 mb_trans[MAX_METABALL_GROUPS];
+    vec4 mb_absorption[MAX_METABALL_GROUPS];
     vec4 mb_albedo[MAX_METABALL_GROUPS];
     vec4 mb_border_scene[MAX_METABALL_GROUPS];
     vec4 mb_border_emission[MAX_METABALL_GROUPS];
-    vec4 mb_border_trans[MAX_METABALL_GROUPS];
+    vec4 mb_border_absorption[MAX_METABALL_GROUPS];
     vec4 mb_border_albedo[MAX_METABALL_GROUPS];
     float mb_aa[MAX_METABALL_GROUPS];
     float mb_border_thickness[MAX_METABALL_GROUPS];
@@ -243,11 +256,11 @@ void main()
         mb_sdf[g] = 1e30;
         mb_scene[g] = vec4(0);
         mb_emission[g] = vec4(0);
-        mb_trans[g] = vec4(0);
+        mb_absorption[g] = vec4(0);
         mb_albedo[g] = vec4(0);
         mb_border_scene[g] = vec4(0);
         mb_border_emission[g] = vec4(0);
-        mb_border_trans[g] = vec4(0);
+        mb_border_absorption[g] = vec4(0);
         mb_border_albedo[g] = vec4(0);
         mb_aa[g] = 0.0;
         mb_border_thickness[g] = 0.0;
@@ -324,23 +337,23 @@ void main()
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
             sg_dispatch_2d(int(e.reserved0), local_p, world_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
-            e.albedo=graph_output[2]; e.transmittance=graph_output[3];
+            e.albedo=graph_output[2]; e.absorption=graph_output[3];
             e.border_scene=graph_output[4]; e.border_emission=graph_output[5];
-            e.border_albedo=graph_output[6]; e.border_transmittance=graph_output[7];
+            e.border_albedo=graph_output[6]; e.border_absorption=graph_output[7];
         }
 
         if (e.metaball_group > 0u) {
             // Accumulate into metaball group.
-            uint g = e.metaball_group - 1u;
+            uint g = 0u; // Each dispatch processes one authored group.
             if (g < MAX_METABALL_GROUPS) {
                 float k = e.metaball_blend;
                 vec4 e_scene = unpack_color(e.scene);
                 vec4 e_emission = unpack_color(e.emission);
-                vec4 e_trans = unpack_color(e.transmittance);
+                vec4 e_absorption = unpack_color(e.absorption);
                 vec4 e_albedo = unpack_color(e.albedo);
                 vec4 e_bscene = unpack_color(e.border_scene);
                 vec4 e_bemission = unpack_color(e.border_emission);
-                vec4 e_btrans = unpack_color(e.border_transmittance);
+                vec4 e_babsorption = unpack_color(e.border_absorption);
                 vec4 e_balbedo = unpack_color(e.border_albedo);
                 if (!mb_active[g] || k <= 0.0) {
                     // First entity in group or no blending: just take the closer one.
@@ -348,11 +361,11 @@ void main()
                         mb_sdf[g] = sdf;
                         mb_scene[g] = e_scene;
                         mb_emission[g] = e_emission;
-                        mb_trans[g] = e_trans;
+                        mb_absorption[g] = e_absorption;
                         mb_albedo[g] = e_albedo;
                         mb_border_scene[g] = e_bscene;
                         mb_border_emission[g] = e_bemission;
-                        mb_border_trans[g] = e_btrans;
+                        mb_border_absorption[g] = e_babsorption;
                         mb_border_albedo[g] = e_balbedo;
                         mb_aa[g] = e.aa;
                         mb_border_thickness[g] = e.border_thickness;
@@ -362,11 +375,11 @@ void main()
                     mb_sdf[g] = mix(sdf, mb_sdf[g], h) - k * h * (1.0 - h);
                     mb_scene[g] = mix(e_scene, mb_scene[g], h);
                     mb_emission[g] = mix(e_emission, mb_emission[g], h);
-                    mb_trans[g] = mix(e_trans, mb_trans[g], h);
+                    mb_absorption[g] = mix(e_absorption, mb_absorption[g], h);
                     mb_albedo[g] = mix(e_albedo, mb_albedo[g], h);
                     mb_border_scene[g] = mix(e_bscene, mb_border_scene[g], h);
                     mb_border_emission[g] = mix(e_bemission, mb_border_emission[g], h);
-                    mb_border_trans[g] = mix(e_btrans, mb_border_trans[g], h);
+                    mb_border_absorption[g] = mix(e_babsorption, mb_border_absorption[g], h);
                     mb_border_albedo[g] = mix(e_balbedo, mb_border_albedo[g], h);
                     mb_aa[g] = mix(e.aa, mb_aa[g], h);
                     mb_border_thickness[g] = mix(e.border_thickness, mb_border_thickness[g], h);
@@ -379,6 +392,20 @@ void main()
         // Normal entity (metaball_group == 0).
         float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
         float bt = e.border_thickness;
+        float normal_epsilon = max(max(u_unit_per_px.x, u_unit_per_px.y) * 0.75, 0.25);
+        vec2 normal_local = sdf_normal(local_p, e, normal_epsilon);
+        vec2 normal_world = vec2(
+            e.inv_rot.x * normal_local.x + e.inv_rot.z * normal_local.y,
+            e.inv_rot.y * normal_local.x + e.inv_rot.w * normal_local.y
+        );
+        float normal_confidence = 1.0 - smoothstep(
+            normal_epsilon * 2.0,
+            normal_epsilon * 6.0,
+            abs(sdf)
+        );
+        normal_confidence *= dot(normal_world, normal_world) > 0.5 ? 1.0 : 0.0;
+        normal_acc.rgb += vec3(normal_world, 0.0) * normal_confidence * (1.0 - normal_acc.a);
+        normal_acc.a += normal_confidence * (1.0 - normal_acc.a);
 
         if (bt > 0.0) {
             // Border rendering: fill is interior, border is edge band.
@@ -397,12 +424,12 @@ void main()
             vec4 bem = unpack_color(e.border_emission); bem.rgb *= bem.a; bem *= border_coverage;
             emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
 
-            // Transmittance.
-            vec4 tr = unpack_color(e.transmittance); tr *= fill_coverage;
-            vec4 btr = unpack_color(e.border_transmittance); btr *= border_coverage;
+            // Absorption.
+            vec4 tr = unpack_color(e.absorption); tr *= fill_coverage;
+            vec4 btr = unpack_color(e.border_absorption); btr *= border_coverage;
             vec4 combined_tr = tr + btr;
-            trans_acc.rgb += combined_tr.rgb * (1.0 - trans_acc.a);
-            trans_acc.a += combined_tr.a * (1.0 - trans_acc.a);
+            absorption_acc.rgb += combined_tr.rgb * (1.0 - absorption_acc.a);
+            absorption_acc.a += combined_tr.a * (1.0 - absorption_acc.a);
 
             // Albedo.
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= fill_coverage;
@@ -419,9 +446,9 @@ void main()
             vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= coverage;
             emission_acc = alpha_over(em, emission_acc);
 
-            vec4 tr = unpack_color(e.transmittance); tr *= coverage;
-            trans_acc.rgb += tr.rgb * (1.0 - trans_acc.a);
-            trans_acc.a += tr.a * (1.0 - trans_acc.a);
+            vec4 tr = unpack_color(e.absorption); tr *= coverage;
+            absorption_acc.rgb += tr.rgb * (1.0 - absorption_acc.a);
+            absorption_acc.a += tr.a * (1.0 - absorption_acc.a);
 
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= coverage;
             albedo_acc = alpha_over(al, albedo_acc);
@@ -449,11 +476,11 @@ void main()
             vec4 bem = mb_border_emission[g]; bem.rgb *= bem.a; bem *= border_coverage;
             emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
 
-            vec4 tr = mb_trans[g]; tr *= fill_coverage;
-            vec4 btr = mb_border_trans[g]; btr *= border_coverage;
+            vec4 tr = mb_absorption[g]; tr *= fill_coverage;
+            vec4 btr = mb_border_absorption[g]; btr *= border_coverage;
             vec4 combined_tr = tr + btr;
-            trans_acc.rgb += combined_tr.rgb * (1.0 - trans_acc.a);
-            trans_acc.a += combined_tr.a * (1.0 - trans_acc.a);
+            absorption_acc.rgb += combined_tr.rgb * (1.0 - absorption_acc.a);
+            absorption_acc.a += combined_tr.a * (1.0 - absorption_acc.a);
 
             vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= fill_coverage;
             vec4 bal = mb_border_albedo[g]; bal.rgb *= bal.a; bal *= border_coverage;
@@ -468,9 +495,9 @@ void main()
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= coverage;
             emission_acc = alpha_over(em, emission_acc);
 
-            vec4 tr = mb_trans[g]; tr *= coverage;
-            trans_acc.rgb += tr.rgb * (1.0 - trans_acc.a);
-            trans_acc.a += tr.a * (1.0 - trans_acc.a);
+            vec4 tr = mb_absorption[g]; tr *= coverage;
+            absorption_acc.rgb += tr.rgb * (1.0 - absorption_acc.a);
+            absorption_acc.a += tr.a * (1.0 - absorption_acc.a);
 
             vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= coverage;
             albedo_acc = alpha_over(al, albedo_acc);
@@ -479,6 +506,7 @@ void main()
 
     imageStore(u_scene, pixel, scene_acc);
     imageStore(u_emission, pixel, emission_acc);
-    imageStore(u_transmittance, pixel, trans_acc);
+    imageStore(u_absorption, pixel, absorption_acc);
     imageStore(u_albedo, pixel, albedo_acc);
+    imageStore(u_normal, pixel, normal_acc);
 }

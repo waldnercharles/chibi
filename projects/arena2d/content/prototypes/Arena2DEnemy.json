@@ -1,0 +1,89 @@
+{
+  "name": "Arena2DEnemy",
+  "identity": "prototype-0000000000000013",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 1.0,
+      "border_color": 4281659391,
+      "border_width": 1.25,
+      "color": 403308799,
+      "glow_color": 4281659391,
+      "glow_radius": 1.25,
+      "height": 15.0,
+      "shape": 2,
+      "stroke_width": 0.0,
+      "width": 15.0
+    },
+    "GAME.GameBody": {
+      "continuous": false,
+      "type": 1
+    },
+    "GAME.GameCollider": {
+      "category": 2,
+      "height": 0.0,
+      "ignore_entity": null,
+      "mask": 15,
+      "radius": 10.0,
+      "sensor": false,
+      "shape": 0,
+      "width": 0.0
+    },
+    "GAME.GameEncounterMember": {
+      "role": 1
+    },
+    "game.GameHealth": {
+      "current": 30,
+      "maximum": 30
+    },
+    "game.GameMovement": {
+      "speed": 55.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.3499999940395355
+    },
+    "GAME.GamePointLight": {
+      "color": 4282739711,
+      "elevation": 14.0,
+      "intensity": 0.05000000074505806,
+      "radius": 12.0
+    },
+    "GAME.GameSdfMotion": {
+      "amplitude": 0.2199999988079071,
+      "angular_frequency": 4.0,
+      "pluck_age": 0.0,
+      "pluck_amplitude": 0.0,
+      "pluck_origin": 0.0,
+      "pluck_speed": 0.0,
+      "temporal_frequency": 3.0,
+      "time": 0.0
+    },
+    "GAME.GameShader": {
+      "bounds_x": 0.0,
+      "bounds_y": 0.0,
+      "material": "Arena2DEnemy",
+      "parameters": "{}",
+      "shape": ""
+    },
+    "GAME.GameSurfaceInfluence": {
+      "color": 4282739711,
+      "inner_radius": 0.0,
+      "linger": 0.2199999988079071,
+      "radius": 12.0,
+      "strength": 0.11999999731779099
+    },
+    "game.GameTransform": {
+      "x": 480.0,
+      "y": -180.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "behaviors": [
+    "Arena2DImpactFeedback",
+    "CombatFeedback",
+    "EnemyBehavior",
+    "HealthBehavior"
+  ]
+}

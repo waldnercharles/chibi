@@ -18,6 +18,12 @@ struct game_particles
     uint32_t random;
 };
 
+float game_particle_curve_value(float start, float end, float exponent, float age)
+{
+    float t = exponent > 0 ? powf(fminf(1, fmaxf(0, age)), exponent) : 0;
+    return start + (end - start) * t;
+}
+
 game_particles *game_particles_new()
 {
     game_particles *particles = xcalloc(1, sizeof *particles);
@@ -88,6 +94,8 @@ int game_particles_emit(game_particles *particles, const game_particle_burst *bu
             .size_exponent = .65f,
             .emission = 1.2f,
             .angle = angle,
+            .antialias = 1.5f,
+            .absorption = .01f,
             .shape = GAME_PARTICLE_STREAK,
         };
         apush(particles->items, particle);
@@ -148,6 +156,8 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
             .elevation = spray->elevation,
             .shape = spray->shape,
             .angle = angle,
+            .antialias = 1.5f,
+            .absorption = .01f,
         };
         apush(particles->items, particle);
     }
@@ -183,6 +193,60 @@ int game_particles_emit_particle(game_particles *particles, const game_particle 
     return 1;
 }
 
+static double drag_integral(const game_particle *p, double age, double delta)
+{
+    double power = p->drag_exponent + 1.0;
+    return p->drag * delta + (p->drag_end - p->drag) *
+                                 (pow(age + delta, power) - pow(age, power)) /
+                                 (power * pow(p->lifetime, p->drag_exponent));
+}
+
+/* Constant drag has a closed-form displacement. For age-varying drag, velocity
+ * uses the exact integral and eight-point Gaussian quadrature integrates travel. */
+static double curved_drag_travel(const game_particle *p, double delta)
+{
+    static const double nodes[] = { .1834346424956498,
+                                    .5255324099163290,
+                                    .7966664774136267,
+                                    .9602898564975363 };
+    static const double weights[] = { .3626837833783620,
+                                      .3137066458778873,
+                                      .2223810344533745,
+                                      .1012285362903763 };
+    double travel = 0;
+    for (int i = 0; i < 4; i++) {
+        double left = delta * .5 * (1 - nodes[i]);
+        double right = delta * .5 * (1 + nodes[i]);
+        travel += weights[i] * (exp(-drag_integral(p, p->age, left)) +
+                                exp(-drag_integral(p, p->age, right)));
+    }
+    return travel * delta * .5;
+}
+
+void game_particle_advance(game_particle *particle, double delta)
+{
+    double travel = delta;
+    float decay = 1;
+    if (particle->drag_exponent > 0 && particle->drag != particle->drag_end) {
+        decay = (float)exp(-drag_integral(particle, particle->age, delta));
+        travel = curved_drag_travel(particle, delta);
+    } else if (particle->drag > 0) {
+        double exponent = -(double)particle->drag * delta;
+        decay = (float)exp(exponent);
+        travel = -expm1(exponent) / particle->drag;
+    }
+    particle->position.x = (float)(particle->position.x +
+                                   (double)particle->velocity.x * travel);
+    particle->position.y = (float)(particle->position.y +
+                                   (double)particle->velocity.y * travel);
+    particle->elevation = (float)(particle->elevation +
+                                  (double)particle->elevation_velocity * travel);
+    particle->velocity.x *= decay;
+    particle->velocity.y *= decay;
+    particle->elevation_velocity *= decay;
+    particle->age += (float)delta;
+}
+
 int game_particles_tick(game_particles *particles, double delta)
 {
     assert(particles);
@@ -199,23 +263,7 @@ int game_particles_tick(game_particles *particles, double delta)
         if (age >= particle.lifetime) {
             continue;
         }
-        particle.age = (float)age;
-        double travel = delta;
-        float decay = 1;
-        if (particle.drag > 0) {
-            double exponent = -(double)particle.drag * delta;
-            decay = (float)exp(exponent);
-            travel = -expm1(exponent) / particle.drag;
-        }
-        particle.position.x = (float)(particle.position.x +
-                                      (double)particle.velocity.x * travel);
-        particle.position.y = (float)(particle.position.y +
-                                      (double)particle.velocity.y * travel);
-        particle.elevation = (float)(particle.elevation +
-                                     (double)particle.elevation_velocity * travel);
-        particle.velocity.x *= decay;
-        particle.velocity.y *= decay;
-        particle.elevation_velocity *= decay;
+        game_particle_advance(&particle, delta);
         particles->items[keep++] = particle;
     }
     asetlen(particles->items, keep);

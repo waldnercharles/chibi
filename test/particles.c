@@ -41,6 +41,21 @@ static void invalid_inputs(game_particles *particles, game_particle_burst burst)
 
 void test_particles()
 {
+    assert(fabsf(game_particle_curve_value(4, 0, 2, .5f) - 3) < .00001f);
+    assert(game_particle_curve_value(4, 0, 0, .8f) == 4);
+    assert(game_particle_curve_value(4, 2, 1, 1) == 2);
+    game_particle curved = { .lifetime = 2,
+                             .velocity = { 100, 0 },
+                             .drag = 2,
+                             .drag_end = 6,
+                             .drag_exponent = 1 };
+    game_particle split = curved;
+    game_particle_advance(&curved, 1);
+    for (int i = 0; i < 60; i++) {
+        game_particle_advance(&split, 1.0 / 60);
+    }
+    assert(fabsf(curved.velocity.x - 100 * expf(-3)) < .00001f);
+    assert(fabsf(curved.position.x - split.position.x) < .0001f);
     game_particles *one_step = game_particles_new(),
                    *many_steps = game_particles_new();
     game_particle spatial = { .position = { 3, 4 },

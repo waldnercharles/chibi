@@ -31,7 +31,7 @@ help:
 		'make run            Run the optimized editor' \
 		'make debug          Run the plain Debug editor' \
 		'make debug-san      Run Debug with ASan+UBSan; use SANITIZERS=thread for TSan' \
-		'make play           Run the optimized Arena3D game' \
+		'make play           Run the optimized Arena2D game' \
 		'make build-release  Build the fully optimized native profile' \
 		'make test           Run generation, MCP, runtime, UI, and headless checks' \
 		'make ui-native      Run native editor interaction checks' \
@@ -62,18 +62,20 @@ mcp:
 mcp-setup:
 	node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
+PROJECT ?= projects/arena2d
+SCENE ?= scenes/Arena2D.json
+
 run: build-release
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/app" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 debug: build-debug
-	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/app" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 debug-san: build
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/app" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
-SCENE ?= content/scenes/Arena3D.json
 play: build-release
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/app" --play --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/app" --play --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 # User-facing release builds use the compiler's full Release optimization.
 build-release:

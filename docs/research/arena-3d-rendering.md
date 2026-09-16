@@ -25,7 +25,7 @@ requires any one geometry representation or GI algorithm.
 ## Repository baseline before this slice
 
 The original renderer collects 2D entities and draws four RGBA16F material images. Its HRC
-passes operate on scene color, emission, transmittance and albedo, with a reduced
+passes operate on scene color, emission, absorption and albedo, with a reduced
 2D lighting grid. There is no 3D surface depth, normal or BRDF input in this
 contract. Preserve the useful shader compiler, parameter bindings and graph
 editor, while introducing an actual 3D material contract. See

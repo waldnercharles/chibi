@@ -1,0 +1,49 @@
+{
+  "name": "Arena2DEnemyShard",
+  "identity": "prototype-0000000000000025",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 1.0,
+      "border_color": 4281659391,
+      "border_width": 0.4000000059604645,
+      "color": 251724543,
+      "glow_color": 4281659391,
+      "glow_radius": 0.75,
+      "height": 1.7999999523162842,
+      "shape": 0,
+      "stroke_width": 0.0,
+      "width": 1.7999999523162842
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "GAME.GameSdfMotion": {
+      "amplitude": 0.07999999821186066,
+      "angular_frequency": 4.0,
+      "pluck_age": 0.0,
+      "pluck_amplitude": 0.0,
+      "pluck_origin": 0.0,
+      "pluck_speed": 0.0,
+      "temporal_frequency": 3.0,
+      "time": 0.0
+    },
+    "GAME.GameShader": {
+      "bounds_x": 0.0,
+      "bounds_y": 0.0,
+      "material": "Arena2DEnemy",
+      "parameters": "{}",
+      "shape": ""
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "behaviors": [
+    "Arena2DShardBehavior"
+  ]
+}

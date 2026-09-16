@@ -10,7 +10,8 @@ static bool valid(const GameAppearance *appearance)
         appearance->width <= 0 || appearance->height <= 0) {
         return false;
     }
-    return appearance->shape != GAME_SHAPE_STROKED_CHEVRON ||
+    return (appearance->shape != GAME_SHAPE_STROKED_CHEVRON &&
+            appearance->shape != GAME_SHAPE_STROKED_TRIANGLE) ||
            (isfinite(appearance->stroke_width) && appearance->stroke_width > 0);
 }
 
@@ -41,6 +42,12 @@ int game_appearance_points(const GameAppearance *appearance, CF_V2 points[4])
             points[2] = (CF_V2){ 0, 0 };
             points[3] = (CF_V2){ -appearance->width * 0.2f, y };
             return 4;
+        case GAME_SHAPE_TRIANGLE:
+        case GAME_SHAPE_STROKED_TRIANGLE:
+            points[0] = (CF_V2){ x, 0 };
+            points[1] = (CF_V2){ -x, y };
+            points[2] = (CF_V2){ -x, -y };
+            return 3;
         default: return 0;
     }
 }
@@ -62,6 +69,11 @@ bool game_appearance_bounds(const GameAppearance *appearance, CF_V2 *min, CF_V2 
         float radius = appearance->stroke_width * 0.5f;
         lower = (CF_V2){ -appearance->width * 0.2f - radius, -y - radius };
         upper = (CF_V2){ appearance->width * 0.8f + radius, y + radius };
+    }
+    if (appearance->shape == GAME_SHAPE_STROKED_TRIANGLE) {
+        float radius = appearance->stroke_width * 0.5f;
+        lower = (CF_V2){ -x - radius, -y - radius };
+        upper = (CF_V2){ x + radius, y + radius };
     }
     if (!isfinite(lower.x) || !isfinite(lower.y) || !isfinite(upper.x) ||
         !isfinite(upper.y)) {
@@ -118,6 +130,34 @@ bool game_appearance_contains(const GameAppearance *appearance, CF_V2 point)
             }
             return false;
         }
+        case GAME_SHAPE_TRIANGLE:
+        case GAME_SHAPE_STROKED_TRIANGLE: {
+            CF_V2 points[4];
+            int count = game_appearance_points(appearance, points);
+            bool inside = false;
+            for (int i = 0, j = count - 1; i < count; j = i++) {
+                bool crosses = (points[i].y > point.y) != (points[j].y > point.y);
+                if (crosses) {
+                    float x = (points[j].x - points[i].x) * (point.y - points[i].y) /
+                                  (points[j].y - points[i].y) +
+                              points[i].x;
+                    if (point.x < x) {
+                        inside = !inside;
+                    }
+                }
+            }
+            if (appearance->shape == GAME_SHAPE_TRIANGLE) {
+                return inside;
+            }
+            float radius = appearance->stroke_width * 0.5f;
+            for (int i = 0; i < count; i++) {
+                if (segment_distance_squared(point, points[i], points[(i + 1) % count]) <=
+                    radius * radius) {
+                    return true;
+                }
+            }
+            return false;
+        }
         case GAME_SHAPE_CAPSULE: {
             double radius = fmin(appearance->width, appearance->height) * 0.5;
             double dx = fabs(point.x);
@@ -162,7 +202,8 @@ bool game_appearance_rotated_bounds(const GameAppearance *appearance, float radi
     CF_V2 points[4];
     int count = game_appearance_points(appearance, points);
     float radius = 0;
-    if (appearance->shape == GAME_SHAPE_STROKED_CHEVRON) {
+    if (appearance->shape == GAME_SHAPE_STROKED_CHEVRON ||
+        appearance->shape == GAME_SHAPE_STROKED_TRIANGLE) {
         radius = appearance->stroke_width * 0.5f;
     }
     if (appearance->shape == GAME_SHAPE_CAPSULE) {

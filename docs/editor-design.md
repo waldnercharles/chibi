@@ -916,7 +916,7 @@ unfinished. Local glow is still an approximation of the source lighting.
 The next lighting slice should be a viewport-owned renderer with a narrow
 render-list interface. Keep gameplay and CPU particle simulation independent.
 Neon-Swarm's `src/render_systems.c` extracts scene color, HDR emission,
-transmittance from absorption/filter, albedo, and separate border materials.
+absorption from material/filter, albedo, and separate border materials.
 An optional material component should express these without expanding geometry
 or gameplay components with renderer resource handles.
 

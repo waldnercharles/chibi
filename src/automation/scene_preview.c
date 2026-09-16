@@ -10,9 +10,11 @@
 
 #include <imgui/dcimgui.h>
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef struct
@@ -51,11 +53,33 @@ static void draw_scene(void *user)
     );
 }
 
+typedef struct
+{
+    double median_ms, p95_ms, p99_ms;
+    int samples, particles, entities;
+    float scale;
+} render_measurement;
+
+static double seconds()
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return now.tv_sec + now.tv_nsec * 1e-9;
+}
+
+static int compare_time(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+
 static bool render_scene(
     const char *root,
     const char *request,
     int width,
     int height,
+    int render_frames,
+    render_measurement *measurement,
     char **png,
     char *error,
     size_t size
@@ -68,13 +92,14 @@ static bool render_scene(
         0,
         width,
         height,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | (render_frames > 2 ? 0 : CF_APP_OPTIONS_HIDDEN_BIT),
         NULL
     );
     if (cf_is_error(made)) {
         snprintf(error, size, "%s", made.details);
         return false;
     }
+    cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
     cf_app_init_imgui();
     ImGui_GetIO()->IniFilename = NULL;
     ImGuiIO_SetAppAcceptingEvents(ImGui_GetIO(), false);
@@ -109,10 +134,30 @@ static bool render_scene(
         }
         engine_viewport_set_render_callback(scene.viewport, draw_scene, &scene);
     }
-    /* Two presentation frames allow ImGui to settle a newly created window.
-     * Simulation is advanced only by the requested fixed steps. */
-    for (int i = 0; ok && i < 2; i++) {
+    /* Captures settle ImGui for two frames. Performance runs first warm the
+     * renderer with simulation frozen, then measure GPU-complete frame work.
+     * The 60 Hz pacing wait is outside the measured interval. */
+    double timings[3600];
+    int count = 0;
+    engine *runtime = ok ? game_prototype_preview_runtime(scene.preview) : NULL;
+    double start_time = runtime ? engine_last_timing(runtime)->simulation_time : 0;
+    int warmup = render_frames > 2 ? 240 : 0;
+    for (int i = 0; ok && i < render_frames + warmup; i++) {
+        double start = seconds();
         cf_app_update(NULL);
+        if (render_frames > 2 && i >= warmup) {
+            ok = game_prototype_preview_tick(scene.preview, start_time + (i - warmup + 1) / 60.0) ==
+                 FLOW_OK;
+        }
+        engine_viewport_view camera_view;
+        if (game_camera_view(game_prototype_preview_world(scene.preview), runtime, &camera_view) >
+            0) {
+            engine_viewport_set_view(scene.viewport, &camera_view);
+        }
+        app_scene_renderer_set_time(
+            scene.renderer,
+            (float)engine_last_timing(runtime)->simulation_time
+        );
         /* The requested image dimensions are pixels, independent of the host display DPI. */
         ImGui_GetIO()->DisplayFramebufferScale = (ImVec2){ 1, 1 };
         ImGui_SetNextWindowPos((ImVec2){ 0, 0 }, ImGuiCond_Always);
@@ -133,7 +178,21 @@ static bool render_scene(
         );
         ImGui_End();
         ImGui_PopStyleVarEx(2);
+        if (render_frames > 2) {
+            cf_gpu_sync();
+        }
         cf_app_draw_onto_screen(true);
+        if (i >= warmup + 16) {
+            timings[count++] = (seconds() - start) * 1000;
+        }
+
+        if (render_frames > 2) {
+            double spare_ms = (1.0 / 60 - (seconds() - start)) * 1000;
+            if (spare_ms >= 1) {
+                cf_sleep((int)spare_ms);
+            }
+        }
+
         if (scene.failed) {
             snprintf(error, size, "%s", app_scene_renderer_error(scene.renderer));
             if (!error[0]) {
@@ -142,7 +201,21 @@ static bool render_scene(
             ok = false;
         }
     }
+    if (count) {
+        qsort(timings, count, sizeof *timings, compare_time);
+        *measurement = (render_measurement){ timings[count / 2],
+                                             timings[(int)((count - 1) * .95)],
+                                             timings[(int)((count - 1) * .99)],
+                                             count };
+    }
     if (ok) {
+        measurement->particles = game_particles_count(
+            game_prototype_preview_particles(scene.preview)
+        );
+        measurement->entities = ecs_world_live_count(
+            game_prototype_preview_world(scene.preview)
+        );
+        measurement->scale = app_scene_renderer_hrc_scale(scene.renderer);
         ok = chibi_preview_readback(width, height, png, error, size);
     }
     if (scene.viewport) {
@@ -192,6 +265,17 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         }
         *sides[i] = (int)yyjson_get_sint(value);
     }
+    int render_frames = 2;
+    yyjson_val *render_count = yyjson_obj_get(root, "render_frames");
+    if (render_count) {
+        if (!yyjson_is_int(render_count) || yyjson_get_sint(render_count) < 2 ||
+            yyjson_get_sint(render_count) > 3600) {
+            snprintf(error, sizeof error, "render_frames must be between 2 and 3600");
+        } else {
+            render_frames = (int)yyjson_get_sint(render_count);
+        }
+    }
+    render_measurement measurement = { 0 };
     char *png = NULL;
     bool ok = false;
     int status = error[0] ? CHIBI_AUTOMATION_INVALID_REQUEST
@@ -201,7 +285,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             !getcwd(directory, sizeof directory) || chdir(canonical)) {
             snprintf(error, sizeof error, "Could not open project root");
         } else {
-            ok = render_scene(canonical, request, width, height, &png, error, sizeof error);
+            ok = render_scene(canonical, request, width, height, render_frames, &measurement, &png, error, sizeof error);
             if (chdir(directory)) {
                 abort();
             }
@@ -215,6 +299,15 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
     yyjson_mut_obj_add_str(response, object, "operation", "preview_scene");
     if (ok) {
         yyjson_mut_val *result = yyjson_mut_obj_add_obj(response, object, "result");
+        yyjson_mut_val *performance = yyjson_mut_obj_add_obj(response, result, "performance");
+        yyjson_mut_obj_add_int(response, performance, "samples", measurement.samples);
+        yyjson_mut_obj_add_int(response, performance, "warmup_frames", render_frames > 2 ? 240 : 0);
+        yyjson_mut_obj_add_real(response, performance, "median_ms", measurement.median_ms);
+        yyjson_mut_obj_add_real(response, performance, "p95_ms", measurement.p95_ms);
+        yyjson_mut_obj_add_real(response, performance, "p99_ms", measurement.p99_ms);
+        yyjson_mut_obj_add_int(response, performance, "particles", measurement.particles);
+        yyjson_mut_obj_add_int(response, performance, "entities", measurement.entities);
+        yyjson_mut_obj_add_real(response, performance, "hrc_scale", measurement.scale);
         yyjson_mut_val *preview = yyjson_mut_obj_add_obj(response, result, "preview");
         yyjson_mut_obj_add_str(response, preview, "mime_type", "image/png");
         yyjson_mut_obj_add_int(response, preview, "width", width);

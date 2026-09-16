@@ -91,13 +91,68 @@
       "color": 2162421452,
       "end_color": 595435520,
       "rate": 85,
-      "lifetime": 0.18,
-      "speed": 8,
-      "size": 1.8,
+      "burst_count": 0,
+      "lifetime": {
+        "x": 0.18,
+        "y": 0.18
+      },
+      "speed": {
+        "x": 8,
+        "y": 8
+      },
+      "size": {
+        "start": {
+          "x": 1.8,
+          "y": 1.8
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 1
+      },
       "spread": 0.5,
-      "drag": 2,
-      "emission": 0.45,
-      "size_exponent": 1,
+      "drag": {
+        "start": {
+          "x": 2,
+          "y": 2
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0
+      },
+      "emission": {
+        "start": {
+          "x": 0.45,
+          "y": 0.45
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0
+      },
+      "antialias": {
+        "start": {
+          "x": 1.5,
+          "y": 1.5
+        },
+        "end": {
+          "x": 0,
+          "y": 0
+        },
+        "exponent": 0
+      },
+      "absorption": 0.01,
+      "metaball_group": 0,
+      "metaball_blend": 0,
+      "velocity_align": false,
+      "stretch": {
+        "x": 0,
+        "y": 0
+      },
       "velocity_inherit": 0,
       "offset": {
         "x": -6.5,
@@ -109,7 +164,9 @@
         "y": 0,
         "z": 0
       },
-      "heading_only": true
+      "heading_only": true,
+      "active": true,
+      "planar": false
     }
   },
   "behaviors": [

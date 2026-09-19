@@ -2,6 +2,7 @@
 
 #include "assets/project.h"
 #include "assets/prototype.h"
+#include "diagnostics/tracy.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
@@ -71,11 +72,16 @@ static int app_frame(app_loop *loop)
     if (!cf_app_is_running()) {
         return 1;
     }
+    CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Application frame");
     if (!loop->game) {
         editor_frame_begin(&loop->profile);
     }
+    CHIBI_TRACE_ZONE_BEGIN(window_zone, "Window update");
     cf_app_update(NULL);
+    CHIBI_TRACE_ZONE_END(window_zone);
+    CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input");
     app_input_frame();
+    CHIBI_TRACE_ZONE_END(input_zone);
     if (loop->headless || loop->game) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
@@ -85,11 +91,16 @@ static int app_frame(app_loop *loop)
     }
     int status = 0;
     if (loop->game) {
+        CHIBI_TRACE_ZONE_BEGIN(game_zone, "Game presentation");
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
+        CHIBI_TRACE_ZONE_END(game_zone);
     } else {
+        CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor input and documents");
         editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_DOCUMENTS);
+        CHIBI_TRACE_ZONE_END(editor_zone);
+        CHIBI_TRACE_ZONE_BEGIN(simulation_zone, "Simulation");
         app_scene_authoring_set_behavior_profiling(
             loop->authoring,
             editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE) && !loop->profile.frozen
@@ -98,15 +109,23 @@ static int app_frame(app_loop *loop)
             fprintf(stderr, "runtime frame failed\n");
         }
         editor_frame_mark(&loop->profile, EDITOR_FRAME_SIMULATION);
+        CHIBI_TRACE_ZONE_END(simulation_zone);
+        CHIBI_TRACE_ZONE_BEGIN(scene_zone, "Scene submission");
         editor_prepare_docking();
         app_scene_authoring_draw_viewport(loop->authoring, loop->viewport);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_SCENE);
+        CHIBI_TRACE_ZONE_END(scene_zone);
+        CHIBI_TRACE_ZONE_BEGIN(ui_zone, "Editor UI");
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
         editor_frame_profile_draw(&loop->profile, loop->authoring);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
+        CHIBI_TRACE_ZONE_END(ui_zone);
     }
+    CHIBI_TRACE_ZONE_BEGIN(present_zone, "Present / GPU wait");
     cf_app_draw_onto_screen(true);
+    CHIBI_TRACE_ZONE_END(present_zone);
+    CHIBI_TRACE_FRAME_MARK("Application frame");
     if (!loop->game) {
         editor_frame_mark(&loop->profile, EDITOR_FRAME_PRESENT);
         editor_frame_end(
@@ -116,14 +135,19 @@ static int app_frame(app_loop *loop)
         );
     }
     if (status) {
+        CHIBI_TRACE_ZONE_END(frame_zone);
         return status;
     }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
     if (finished && loop->screenshot_path) {
+        CHIBI_TRACE_ZONE_BEGIN(screenshot_zone, "Screenshot");
         loop->capture_error = app_save_screenshot(loop->screenshot_path);
+        CHIBI_TRACE_ZONE_END(screenshot_zone);
+        CHIBI_TRACE_ZONE_END(frame_zone);
         return 1;
     }
+    CHIBI_TRACE_ZONE_END(frame_zone);
     return finished;
 }
 

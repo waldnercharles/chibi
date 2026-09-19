@@ -1,5 +1,6 @@
 #include "automation/controller.h"
 #include "automation/render_preview.h"
+#include "diagnostics/tracy.h"
 #include "platform/cute.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -143,11 +144,16 @@ static bool render_scene(
     double start_time = runtime ? engine_last_timing(runtime)->simulation_time : 0;
     int warmup = render_frames > 2 ? 240 : 0;
     for (int i = 0; ok && i < render_frames + warmup; i++) {
+        CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Scene preview frame");
         double start = seconds();
+        CHIBI_TRACE_ZONE_BEGIN(window_zone, "Preview window update");
         cf_app_update(NULL);
+        CHIBI_TRACE_ZONE_END(window_zone);
         if (render_frames > 2 && i >= warmup) {
+            CHIBI_TRACE_ZONE_BEGIN(simulation_zone, "Preview simulation");
             ok = game_prototype_preview_tick(scene.preview, start_time + (i - warmup + 1) / 60.0) ==
                  FLOW_OK;
+            CHIBI_TRACE_ZONE_END(simulation_zone);
         }
         engine_viewport_view camera_view;
         if (game_camera_view(game_prototype_preview_world(scene.preview), runtime, &camera_view) >
@@ -178,10 +184,13 @@ static bool render_scene(
         );
         ImGui_End();
         ImGui_PopStyleVarEx(2);
+        CHIBI_TRACE_ZONE_BEGIN(present_zone, "Preview present / GPU wait");
         if (render_frames > 2) {
             cf_gpu_sync();
         }
         cf_app_draw_onto_screen(true);
+        CHIBI_TRACE_ZONE_END(present_zone);
+        CHIBI_TRACE_FRAME_MARK("Scene preview frame");
         if (i >= warmup + 16) {
             timings[count++] = (seconds() - start) * 1000;
         }
@@ -200,6 +209,7 @@ static bool render_scene(
             }
             ok = false;
         }
+        CHIBI_TRACE_ZONE_END(frame_zone);
     }
     if (count) {
         qsort(timings, count, sizeof *timings, compare_time);

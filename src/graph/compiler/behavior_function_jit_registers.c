@@ -66,7 +66,8 @@ int *behavior_jit_registers(const behavior_function *f, bool inspected, int *sav
     int *registers = xcalloc((size_t)(acount(f->slots) + 1), sizeof *registers);
     int temporaries = 2;
     for (int pc = 0; pc < acount(f->instructions); pc++) {
-        if (f->instructions[pc].op == BF_FMA) {
+        if ((inspected || behavior_function_runtime_keeps(f, pc)) &&
+            f->instructions[pc].op == BF_FMA) {
             temporaries = 3;
             break;
         }
@@ -75,6 +76,10 @@ int *behavior_jit_registers(const behavior_function *f, bool inspected, int *sav
     int *next_call = xmalloc((size_t)(acount(f->instructions) + 1) * sizeof *next_call);
     next_call[acount(f->instructions)] = acount(f->instructions);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
+        if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+            next_call[pc] = next_call[pc + 1];
+            continue;
+        }
         next_call[pc] = behavior_jit_call(f->instructions[pc].op) ||
                                 (inspected && behavior_function_inspection_call(
                                                   f->instructions[pc].op
@@ -134,6 +139,10 @@ void behavior_jit_integer_registers(
     );
     next_integer_clobber[acount(f->instructions)] = acount(f->instructions);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
+        if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+            next_integer_clobber[pc] = next_integer_clobber[pc + 1];
+            continue;
+        }
         next_integer_clobber[pc] = behavior_jit_integer_clobber(
                                        f->instructions[pc].op
                                    ) || (inspected &&

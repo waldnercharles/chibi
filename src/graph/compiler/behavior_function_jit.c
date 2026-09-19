@@ -301,6 +301,9 @@ static behavior_layout layout(
     int *registers = behavior_jit_registers(f, inspected, &saved_float, invariants);
     bool arguments = false, calls = false, loop = false;
     for (int i = 0; i < acount(f->instructions); i++) {
+        if (!inspected && !behavior_function_runtime_keeps(f, i)) {
+            continue;
+        }
         arguments |= f->instructions[i].op == BF_ARGUMENT ||
                      ((f->instructions[i].op == BF_PRESENT ||
                        f->instructions[i].op == BF_TYPE_NAME ||

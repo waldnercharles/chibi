@@ -2,13 +2,15 @@
 #include "graph/runtime/update_internal.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdlib.h>
 
 /* Bound both schedule search work and code growth. Longer/nonrepeating
  * stretches still execute their prepared compiled bodies in order. */
 enum
 {
-    SYSTEM_MAX_PERIOD = 8
+    SYSTEM_MAX_PERIOD = 8,
+    SYSTEM_REBUILD_LOOKBACK = SYSTEM_MAX_PERIOD * 2
 };
 typedef struct
 {
@@ -78,31 +80,78 @@ void behavior_update_system_spans(
     behavior_update_kernel ***kernels
 )
 {
-    aclear(*spans);
+    behavior_update_system_spans_incremental(rows, count, 0, spans, kernels);
+}
+
+static int rebuild_begin(const behavior_update_span *spans, int span_count, int dirty_row)
+{
+    int begin = dirty_row - SYSTEM_REBUILD_LOOKBACK;
+    if (begin < 0) {
+        begin = 0;
+    }
+    for (int i = 0; i < span_count; i++) {
+        if (spans[i].end <= begin) {
+            continue;
+        }
+        begin = spans[i].begin;
+        break;
+    }
+    return begin;
+}
+
+static void mark_kernel_used(behavior_update_kernel **kernels, void *code)
+{
+    for (int i = 0; i < acount(kernels); i++) {
+        if (kernels[i]->code == code) {
+            kernels[i]->used = true;
+            return;
+        }
+    }
+}
+
+int behavior_update_system_spans_incremental(
+    const behavior_update_row *rows,
+    int count,
+    int dirty_row,
+    behavior_update_span **spans,
+    behavior_update_kernel ***kernels
+)
+{
+    assert(dirty_row >= 0 && dirty_row <= count);
+    int old_span_count = acount(*spans);
+    int begin = rebuild_begin(*spans, old_span_count, dirty_row);
+    int retained = 0;
+    while (retained < old_span_count && (*spans)[retained].end <= begin) {
+        retained++;
+    }
     for (int i = 0; i < acount(*kernels); i++) {
         (*kernels)[i]->used = false;
     }
-    for (int begin = 0; begin < count;) {
-        if (!eligible(&rows[begin])) {
-            begin++;
+    for (int i = 0; i < retained; i++) {
+        mark_kernel_used(*kernels, (*spans)[i].code);
+    }
+    asetlen(*spans, retained);
+    for (int at = begin; at < count;) {
+        if (!eligible(&rows[at])) {
+            at++;
             continue;
         }
-        int best = begin + 1, period = 0;
-        for (int p = 1; p <= SYSTEM_MAX_PERIOD && p <= (count - begin) / 2; p++) {
-            int end = begin + p;
-            if (!same(&rows[begin], &rows[end])) {
+        int best = at + 1, period = 0;
+        for (int p = 1; p <= SYSTEM_MAX_PERIOD && p <= (count - at) / 2; p++) {
+            int end = at + p;
+            if (!same(&rows[at], &rows[end])) {
                 continue;
             }
             int j = 0;
-            while (j < p && eligible(&rows[begin + j]) &&
-                   same(&rows[begin + j], &rows[end + j])) {
+            while (j < p && eligible(&rows[at + j]) &&
+                   same(&rows[at + j], &rows[end + j])) {
                 j++;
             }
             if (j != p) {
                 continue;
             }
             end += p;
-            while (end < count && same(&rows[begin + (end - begin) % p], &rows[end])) {
+            while (end < count && same(&rows[at + (end - at) % p], &rows[end])) {
                 end++;
             }
             best = end;
@@ -110,13 +159,13 @@ void behavior_update_system_spans(
             break;
         }
         if (period) {
-            void *code = period == 1 ? rows[begin].binding->system_code
-                                     : kernel(kernels, rows + begin, period);
+            void *code = period == 1 ? rows[at].binding->system_code
+                                     : kernel(kernels, rows + at, period);
             if (code) {
-                apush(*spans, ((behavior_update_span){ begin, best, period, code }));
+                apush(*spans, ((behavior_update_span){ at, best, period, code }));
             }
         }
-        begin = best;
+        at = best;
     }
     for (int i = acount(*kernels) - 1; i >= 0; i--) {
         behavior_update_kernel *k = (*kernels)[i];
@@ -127,6 +176,7 @@ void behavior_update_system_spans(
         free(k);
         adel(*kernels, i);
     }
+    return retained;
 }
 void behavior_update_free_kernels(behavior_update_kernel **kernels)
 {

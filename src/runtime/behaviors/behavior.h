@@ -147,10 +147,11 @@ int game_behavior_dispatch_all(
     flow_inputs inputs,
     flow_error *error
 );
-/* Dedicated Tick schedule, rebuilt at attachment/publication changes. Eligible
- * synchronous entries retain each entity's attachment order. Proven independent
- * entity chunks execute in parallel, with ordered barriers around other entries.
- * Inspection, waits and unproven effects retain their compiled activations. */
+/* Dedicated Tick schedule, repaired incrementally at attachment/publication
+ * changes. Eligible synchronous entries retain each entity's attachment order.
+ * Proven independent entity chunks execute in parallel, with ordered barriers
+ * around other entries. Inspection, waits and unproven effects retain their
+ * compiled activations. */
 int game_behavior_update(game_behavior_world *world, flow_error *error);
 typedef struct
 {

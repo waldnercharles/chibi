@@ -65,6 +65,14 @@ void behavior_update_system_spans(
     behavior_update_span **spans,
     behavior_update_kernel ***kernels
 );
+/* Retains spans before the affected row and repairs only nearby boundaries. */
+int behavior_update_system_spans_incremental(
+    const behavior_update_row *rows,
+    int count,
+    int dirty_row,
+    behavior_update_span **spans,
+    behavior_update_kernel ***kernels
+);
 void behavior_update_free_kernels(behavior_update_kernel **kernels);
 void *behavior_update_compile();
 void behavior_update_free_code(void *code);

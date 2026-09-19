@@ -33,9 +33,10 @@ struct game_behavior_parallel
     update_plan *plans;
     bool invalidated;
 };
-static void clear_plans(game_behavior_parallel *parallel)
+static void clear_plans_from(game_behavior_parallel *parallel, int first)
 {
-    for (int i = 0; i < acount(parallel->plans); i++) {
+    assert(first >= 0 && first <= acount(parallel->plans));
+    for (int i = first; i < acount(parallel->plans); i++) {
         update_plan *plan = &parallel->plans[i];
         for (int j = 0; j < acount(plan->chunks); j++) {
             behavior_update_free_bindings(plan->chunks[j].bindings);
@@ -43,7 +44,11 @@ static void clear_plans(game_behavior_parallel *parallel)
         }
         afree(plan->chunks);
     }
-    aclear(parallel->plans);
+    asetlen(parallel->plans, first);
+}
+static void clear_plans(game_behavior_parallel *parallel)
+{
+    clear_plans_from(parallel, 0);
 }
 game_behavior_parallel *game_behavior_parallel_new()
 {
@@ -89,30 +94,46 @@ void game_behavior_parallel_prepare(
     uint32_t slots
 )
 {
-    clear_plans(p);
+    game_behavior_parallel_prepare_incremental(p, rows, spans, slots, 0);
+}
+
+void game_behavior_parallel_prepare_incremental(
+    game_behavior_parallel *p,
+    const behavior_update_row *rows,
+    const behavior_update_span *spans,
+    uint32_t slots,
+    int retained_spans
+)
+{
+    assert(
+        retained_spans >= 0 && retained_spans <= acount(p->plans) &&
+        retained_spans <= acount(spans)
+    );
+    clear_plans_from(p, retained_spans);
     p->invalidated = false;
     const game_task_system *tasks = game_task_pool_tasks(p->pool);
-    if (tasks->workers == 1 || !acount(spans)) {
-        for (int i = 0; i < acount(spans); i++) {
-            apush(p->plans, ((update_plan){ 0 }));
-        }
+    for (int i = retained_spans; i < acount(spans); i++) {
+        apush(p->plans, ((update_plan){ .code = spans[i].code }));
+    }
+    if (tasks->workers == 1 || retained_spans == acount(spans)) {
         return;
     }
     int binding_count = 0;
-    for (int i = 0; i < acount(rows); i++) {
-        if (rows[i].binding && rows[i].binding->index >= binding_count) {
-            binding_count = rows[i].binding->index + 1;
+    for (int s = retained_spans; s < acount(spans); s++) {
+        behavior_update_span span = spans[s];
+        for (int i = span.begin; i < span.end; i++) {
+            if (rows[i].binding && rows[i].binding->index >= binding_count) {
+                binding_count = rows[i].binding->index + 1;
+            }
         }
     }
     behavior_update_binding **copies = xcalloc((size_t)binding_count, sizeof *copies);
     int *owners = xmalloc((size_t)slots * sizeof *owners);
-    for (int s = 0; s < acount(spans); s++) {
+    for (int s = retained_spans; s < acount(spans); s++) {
         behavior_update_span span = spans[s];
-        apush(p->plans, ((update_plan){ .code = span.code }));
-        update_plan *plan = &alast(p->plans);
+        update_plan *plan = &p->plans[s];
         int count = span.end - span.begin;
-        if (tasks->workers == 1 || count < PARALLEL_MIN_ROWS ||
-            !compatible(rows, span)) {
+        if (count < PARALLEL_MIN_ROWS || !compatible(rows, span)) {
             continue;
         }
         for (uint32_t i = 0; i < slots; i++) {
@@ -167,12 +188,13 @@ void game_behavior_parallel_prepare(
                 behavior_update_free_bindings(plan->chunks[i].bindings);
                 afree(plan->chunks[i].rows);
             }
-            afree(plan->chunks);
+            aclear(plan->chunks);
         }
     }
     free(copies);
     free(owners);
 }
+
 typedef struct
 {
     update_plan *plan;

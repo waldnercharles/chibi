@@ -11,18 +11,28 @@ static void usage(const char *program)
     fprintf(
         stderr,
         "Usage: %s [--project-root PATH] [--render]\n"
+        "       %s --project-root PATH --render-request FILE\n"
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
         "With --render, read one preview request and produce one response.\n",
+        program,
         program
     );
 }
 
-static int render_request(const char *project_root)
+static int render_request(const char *project_root, const char *path)
 {
     char *request = NULL;
     size_t capacity = 0;
-    ssize_t length = getdelim(&request, &capacity, '\0', stdin);
+    FILE *input = path ? fopen(path, "r") : stdin;
+    if (!input) {
+        perror("chibi_ctl --render-request");
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    ssize_t length = getdelim(&request, &capacity, '\0', input);
+    if (path) {
+        fclose(input);
+    }
     if (length <= 0) {
         free(request);
         fprintf(stderr, "chibi_ctl --render: expected one JSON request on stdin\n");
@@ -54,6 +64,7 @@ static int render_request(const char *project_root)
 int main(int argc, char **argv)
 {
     const char *project_root = ".";
+    const char *request_path = NULL;
     int render = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
@@ -62,6 +73,11 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--render")) {
             render = 1;
+            continue;
+        }
+        if (!strcmp(argv[i], "--render-request") && i + 1 < argc) {
+            render = 1;
+            request_path = argv[++i];
             continue;
         }
         if (!strcmp(argv[i], "--project-root") && i + 1 < argc) {
@@ -73,7 +89,7 @@ int main(int argc, char **argv)
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     if (render) {
-        return render_request(project_root);
+        return render_request(project_root, request_path);
     }
 
     char *line = NULL;

@@ -42,9 +42,142 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
     float width;
     float height;
     bool sensor;
+    bool pierce_fragments; /* Continuous sensors report debris hits without stopping. */
     uint64_t ignore_entity NODE_HANDLE(ecs.entity);
 }
 GameCollider;
+
+/* Target velocity with finite acceleration; physics owns actual velocity. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
+{
+    CF_V2 target;
+    float acceleration;
+}
+GameDrive;
+
+/* Optional material world. The camera activates nearby chunks; moving bodies
+ * wake additional local regions. Population limits bound retained resources. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialWorld)
+{
+    float chunk_size;
+    float buffer;
+    float kernel;
+    int particle_limit;
+    int fragment_limit;
+    /* Optional gas flow; a zero cell size leaves particles independent. */
+    float gas_cell_size;
+    float gas_vorticity;
+    float gas_drag;
+}
+GameMaterialWorld;
+
+/* Optional local combustion. Heat is a gameplay quantity, not kelvin. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
+{
+    float ignition;
+    float cooling;
+    float burn_rate;
+    float heat_release;
+    float smoke_lifetime;
+    unsigned smoke_color;
+    float smoke_absorption;
+    unsigned flame_color;
+    float flame_emission;
+    float blast_radius;
+    float blast_speed;
+    float blast_damage;
+}
+GameCombustion;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameFuel)
+{
+    float amount;
+}
+GameFuel;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameIgniter)
+{
+    float heat;
+}
+GameIgniter;
+
+/* Damage per surviving cell. Optical properties remain in GameMaterial. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSubstance)
+{
+    float hardness;
+    float blast_multiplier;
+    bool retain_chips;
+}
+GameSubstance;
+
+/* Optional circular void in a destructible mask, for finite sealed pockets. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialCavity)
+{
+    float radius;
+}
+GameMaterialCavity;
+
+/* Stylized planar reflection; angle is the local mirror tangent in radians. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameReflection)
+{
+    float strength;
+    float roughness;
+    float angle;
+    float offset;
+}
+GameReflection;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameDestructible)
+{
+    float cell_size;
+    int min_fragment_cells;
+    /* Release control below this fraction of the original hull; zero disables. */
+    float release_fraction;
+}
+GameDestructible;
+
+/* Detached material keeps its collision but gradually loses emitted light. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFragmentGlow)
+{
+    float duration;
+    float flicker;
+}
+GameFragmentGlow;
+
+/* One-time generated, axis-aligned terrain. Appearance and Material on the
+ * source style its chunks; collision and destruction use the generated cells. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCaveTerrain)
+{
+    unsigned seed;
+    float width;
+    float height;
+    float cell_size;
+    float tunnel_radius;
+    float roughness;
+    unsigned category;
+    unsigned mask;
+    int min_fragment_cells;
+}
+GameCaveTerrain;
+
+/* A one-time, elliptical fill in local space; its matter then lives freely. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
+{
+    int kind;
+    float width;
+    float height;
+    float spacing;
+    float mass;
+    unsigned color;
+    float absorption;
+    float emission;
+    /* Camera-only minimum visibility; contributes no radiance or bounce. */
+    float visibility;
+    /* Screen-space liquid distortion in pixels; zero disables refraction. */
+    float refraction;
+    CF_V2 velocity;
+}
+GameFluidVolume;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameHealth)
 {
@@ -142,6 +275,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
     unsigned border_emission_color;
     unsigned border_albedo;
     unsigned border_filter;
+    /* Received-light gain near silhouettes. Zero disables; no unlit outline. */
+    float edge_light;
 }
 GameMaterial;
 
@@ -345,6 +480,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     bool active;
     bool planar;
     bool heading_only;
+    bool fluid;
+    int fluid_kind;
+    float fluid_mass;
 }
 GameParticleEmitter;
 

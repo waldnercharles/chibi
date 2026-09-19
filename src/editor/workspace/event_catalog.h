@@ -8,6 +8,8 @@ static const editor_event_param APP_TICK_PARAMS[] = {
 };
 static const editor_event_param APP_CONTACT_PARAMS[] = {
     { "Other", PIN_HANDLE, "ecs.entity" },
+    { "Point X", PIN_F32, "float" },
+    { "Point Y", PIN_F32, "float" },
 };
 static const editor_event_param APP_DAMAGE_PARAMS[] = {
     { "Amount", PIN_I32, "int" },
@@ -17,7 +19,7 @@ static const editor_event_signature APP_EVENT_CATALOG[] = {
     { "Fire", NULL, 0 },
     { "Dash", NULL, 0 },
     { "Tick", APP_TICK_PARAMS, 1 },
-    { "Contact Begin", APP_CONTACT_PARAMS, 1 },
+    { "Contact Begin", APP_CONTACT_PARAMS, 3 },
     { "Damage", APP_DAMAGE_PARAMS, 2 },
 };
 

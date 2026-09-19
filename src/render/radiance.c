@@ -2,6 +2,7 @@
  * Original algorithm and shader comments retained. */
 #include "render/radiance.h"
 
+#include "diagnostics/tracy.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -15,6 +16,8 @@
 #define HRC_MIN_TRACE_LEVELS 1
 #define HRC_MAX_TRACE_LEVELS 5
 #define HRC_MAX_CASCADES 16
+#define HRC_INTERVAL_BYTES 8
+#define HRC_FLUENCE_BYTES 4
 struct render_radiance
 {
     int canvas_w, canvas_h, work_w, work_h, world_w, world_h, N, trace_cutoff;
@@ -35,7 +38,8 @@ struct render_radiance
     CF_Canvas bounce_canvas;
     CF_Texture radiance_tex[2], radiance_raw_tex, radiance_bounce_tex;
     CF_Texture emission_filtered, transmittance_filtered, bounce_filtered;
-    CF_StorageBuffer t_buf[4][HRC_MAX_CASCADES], r_ping[4][2], r_zero;
+    /* Quadrants run sequentially; only their final frusta survive for gather. */
+    CF_StorageBuffer t_buf[HRC_MAX_CASCADES], r_ping[2];
     CF_StorageBuffer frustum[4], merge_weights[HRC_MAX_CASCADES];
     CF_ComputeShader trace_shd, extend_shd, merge_shd, gather_shd, blur_shd,
         prefilter_shd;
@@ -142,24 +146,18 @@ static void s_destroy_work_resources(HRC *hrc)
     hrc->transmittance_filtered = (CF_Texture){ 0 };
     hrc->bounce_filtered = (CF_Texture){ 0 };
 
-    for (int q = 0; q < 4; ++q) {
-        for (int i = 0; i < HRC_MAX_CASCADES; ++i) {
-            if (hrc->t_buf[q][i].id) {
-                cf_destroy_storage_buffer(hrc->t_buf[q][i]);
-            }
-            hrc->t_buf[q][i] = (CF_StorageBuffer){ 0 };
+    for (int i = 0; i < HRC_MAX_CASCADES; ++i) {
+        if (hrc->t_buf[i].id) {
+            cf_destroy_storage_buffer(hrc->t_buf[i]);
         }
-        for (int i = 0; i < 2; ++i) {
-            if (hrc->r_ping[q][i].id) {
-                cf_destroy_storage_buffer(hrc->r_ping[q][i]);
-            }
-            hrc->r_ping[q][i] = (CF_StorageBuffer){ 0 };
+        hrc->t_buf[i] = (CF_StorageBuffer){ 0 };
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (hrc->r_ping[i].id) {
+            cf_destroy_storage_buffer(hrc->r_ping[i]);
         }
+        hrc->r_ping[i] = (CF_StorageBuffer){ 0 };
     }
-    if (hrc->r_zero.id) {
-        cf_destroy_storage_buffer(hrc->r_zero);
-    }
-    hrc->r_zero = (CF_StorageBuffer){ 0 };
     for (int i = 0; i < 4; ++i) {
         if (hrc->frustum[i].id) {
             cf_destroy_storage_buffer(hrc->frustum[i]);
@@ -205,7 +203,7 @@ static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
     int rot_w_options[2] = { hrc->world_w, hrc->world_h };
     int rot_h_options[2] = { hrc->world_h, hrc->world_w };
 
-    for (int i = 0; i <= hrc->N; ++i) {
+    for (int i = 0; i < hrc->N; ++i) {
         int max_t_count = 0;
         for (int o = 0; o < 2; ++o) {
             int rot_w = rot_w_options[o];
@@ -222,42 +220,25 @@ static bool s_create_work_resources(HRC *hrc, int work_w, int work_h)
             }
         }
 
-        for (int q = 0; q < 4; ++q) {
-            hrc->t_buf[q][i] = s_make_ssbo(max_t_count * 8);
-            if (hrc->t_buf[q][i].id == 0) {
-                goto fail;
-            }
-        }
-    }
-
-    hrc->r_zero = s_make_ssbo(max_r_count * 8);
-    if (!hrc->r_zero.id) {
-        goto fail;
-    }
-
-    int r_sz = max_r_count * 8;
-    void *zeros = cf_calloc(r_sz, 1);
-    cf_update_storage_buffer(hrc->r_zero, zeros, r_sz);
-
-    for (int q = 0; q < 4; ++q) {
-        for (int i = 0; i < 2; ++i) {
-            hrc->r_ping[q][i] = s_make_ssbo(max_r_count * 8);
-            if (!hrc->r_ping[q][i].id) {
-                cf_free(zeros);
-                goto fail;
-            }
-        }
-    }
-    int frustum_count = hrc->world_w * hrc->world_h;
-    for (int i = 0; i < 4; ++i) {
-        hrc->frustum[i] = s_make_ssbo(frustum_count * 8);
-        if (!hrc->frustum[i].id) {
-            cf_free(zeros);
+        hrc->t_buf[i] = s_make_ssbo(max_t_count * HRC_INTERVAL_BYTES);
+        if (hrc->t_buf[i].id == 0) {
             goto fail;
         }
     }
 
-    cf_free(zeros);
+    for (int i = 0; i < 2; ++i) {
+        hrc->r_ping[i] = s_make_ssbo(max_r_count * HRC_FLUENCE_BYTES);
+        if (!hrc->r_ping[i].id) {
+            goto fail;
+        }
+    }
+    int frustum_count = hrc->world_w * hrc->world_h;
+    for (int i = 0; i < 4; ++i) {
+        hrc->frustum[i] = s_make_ssbo(frustum_count * HRC_FLUENCE_BYTES);
+        if (!hrc->frustum[i].id) {
+            goto fail;
+        }
+    }
 
     for (int level = 0; level < hrc->N; ++level) {
         int directions = 1 << level;
@@ -320,13 +301,13 @@ static void s_dispatch_trace(HRC *hrc, int quadrant, int level)
         s_ceil_div(rot_h, HRC_WG),
         1
     );
-    CF_StorageBuffer rw[1] = { hrc->t_buf[quadrant][level] };
+    CF_StorageBuffer rw[1] = { hrc->t_buf[level] };
     d.rw_buffers = rw;
     d.rw_buffer_count = 1;
     cf_dispatch_compute(hrc->trace_shd, mat, d);
 }
 
-static void s_dispatch_extend(HRC *hrc, int quadrant, int rot_w, int rot_h, int level)
+static void s_dispatch_extend(HRC *hrc, int rot_w, int rot_h, int level)
 {
     CF_Material mat = hrc->compute_material;
     int prev_w = s_t_width(rot_w, level - 1);
@@ -344,10 +325,10 @@ static void s_dispatch_extend(HRC *hrc, int quadrant, int rot_w, int rot_h, int 
         s_ceil_div(rot_h, HRC_WG),
         1
     );
-    CF_StorageBuffer ro[1] = { hrc->t_buf[quadrant][level - 1] };
+    CF_StorageBuffer ro[1] = { hrc->t_buf[level - 1] };
     d.ro_buffers = ro;
     d.ro_buffer_count = 1;
-    CF_StorageBuffer rw[1] = { hrc->t_buf[quadrant][level] };
+    CF_StorageBuffer rw[1] = { hrc->t_buf[level] };
     d.rw_buffers = rw;
     d.rw_buffer_count = 1;
     cf_dispatch_compute(hrc->extend_shd, mat, d);
@@ -355,7 +336,6 @@ static void s_dispatch_extend(HRC *hrc, int quadrant, int rot_w, int rot_h, int 
 
 static void s_dispatch_merge(
     HRC *hrc,
-    int quadrant,
     int rot_w,
     int rot_h,
     int level,
@@ -386,8 +366,10 @@ static void s_dispatch_merge(
 
     int dispatch_h = s_ceil_div(rot_h, HRC_WG);
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(s_ceil_div(r_curr_w, HRC_WG), dispatch_h, 1);
-    CF_StorageBuffer ro[4] = { hrc->t_buf[quadrant][level],
-                               hrc->t_buf[quadrant][level + 1],
+    /* T_N and R_N are implicit zero boundaries. The shader skips those loads,
+     * so the terminal merge can bind existing buffers without allocating them. */
+    CF_StorageBuffer ro[4] = { hrc->t_buf[level],
+                               hrc->t_buf[level + 1 < hrc->N ? level + 1 : level],
                                r_prev,
                                hrc->merge_weights[level] };
     d.ro_buffers = ro;
@@ -511,7 +493,7 @@ static void s_solve_extend(HRC *hrc, int j, int N)
     int rot_h = s_rot_world_h(hrc, j);
     int cutoff = hrc->trace_cutoff < N ? hrc->trace_cutoff : N;
     for (int i = cutoff; i < N; ++i) {
-        s_dispatch_extend(hrc, j, rot_w, rot_h, i);
+        s_dispatch_extend(hrc, rot_w, rot_h, i);
     }
 }
 
@@ -521,10 +503,9 @@ static void s_solve_merge(HRC *hrc, int j, int N)
     int rot_h = s_rot_world_h(hrc, j);
     for (int i = N - 1; i >= 0; --i) {
         int ping = (N - 1 - i) & 1;
-        CF_StorageBuffer r_prev = (i == N - 1) ? hrc->r_zero
-                                               : hrc->r_ping[j][1 - ping];
-        CF_StorageBuffer r_out = (i == 0) ? hrc->frustum[j] : hrc->r_ping[j][ping];
-        s_dispatch_merge(hrc, j, rot_w, rot_h, i, r_prev, r_out);
+        CF_StorageBuffer r_prev = hrc->r_ping[1 - ping];
+        CF_StorageBuffer r_out = (i == 0) ? hrc->frustum[j] : hrc->r_ping[ping];
+        s_dispatch_merge(hrc, rot_w, rot_h, i, r_prev, r_out);
     }
 }
 
@@ -864,17 +845,35 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     hrc->emission = inputs.emission;
     hrc->transmittance = inputs.absorption;
     hrc->albedo = inputs.albedo;
+    CHIBI_TRACE_ZONE_BEGIN(zone, "HRC submission");
+    cf_push_gpu_label("HRC prefilter");
     cf_generate_mipmaps(inputs.emission);
     cf_generate_mipmaps(inputs.absorption);
     s_dispatch_prefilter(hrc);
+    cf_pop_gpu_label();
     for (int q = 0; q < 4; q++) {
+        const char *quadrants[] = { "HRC +X", "HRC +Y", "HRC -X", "HRC -Y" };
+        cf_push_gpu_label(quadrants[q]);
+        cf_push_gpu_label("Trace");
         s_solve_trace(hrc, q, hrc->N);
+        cf_pop_gpu_label();
+        cf_push_gpu_label("Extend");
         s_solve_extend(hrc, q, hrc->N);
+        cf_pop_gpu_label();
+        cf_push_gpu_label("Merge");
         s_solve_merge(hrc, q, hrc->N);
+        cf_pop_gpu_label();
+        cf_pop_gpu_label();
     }
+    cf_push_gpu_label("HRC gather");
     s_dispatch_gather(hrc);
+    cf_pop_gpu_label();
+    cf_push_gpu_label("HRC filter");
     s_dispatch_blur(hrc);
+    cf_pop_gpu_label();
+    cf_push_gpu_label("HRC bounce");
     s_render_bounce(hrc);
+    cf_pop_gpu_label();
     GameHRC2D lighting = hrc->authored_lighting ? hrc->lighting
                                                 : game_hrc2d_defaults();
     float ambient = lighting.ambient;
@@ -884,6 +883,7 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     float debug = (float)lighting.debug_view;
     float phase = (float)(hrc->frame_count & 63);
     float crop[] = { view.crop_min_u, view.crop_min_v, view.crop_max_u, view.crop_max_v };
+    cf_push_gpu_label("HRC composite");
     cf_draw_push_shader(hrc->composite_shd);
     cf_draw_set_texture("scene_tex", hrc->scene);
     cf_draw_set_texture("emission_tex", hrc->emission);
@@ -892,6 +892,7 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     cf_draw_set_texture("fluence_tex", hrc->radiance_tex[hrc->radiance_ping]);
     cf_draw_set_texture("normal_tex", inputs.normal);
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);
+    cf_draw_set_texture("visibility_tex", inputs.visibility.id ? inputs.visibility : hrc->black);
     cf_draw_set_uniform("ambient", &ambient, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("intensity", &intensity, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("shadow_floor", &shadow_floor, CF_UNIFORM_TYPE_FLOAT, 1);
@@ -905,6 +906,8 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     cf_draw_pop_shader();
     cf_canvas_set_clear_color(output, cf_make_color_rgba_f(0, 0, 0, 1));
     cf_render_to(output, true);
+    cf_pop_gpu_label();
     hrc->frame_count = (hrc->frame_count + 1) & 63;
+    CHIBI_TRACE_ZONE_END(zone);
     return true;
 }

@@ -383,6 +383,16 @@ static int refresh_event(edit_context *ctx, node *n)
             set_error(ctx, "could not apply host event payload");
             return -1;
         }
+        if (graph_host_event_is(n->reference_name, GRAPH_HOST_EVENT_CONTACT_BEGIN)) {
+            const char *names[] = { "Point X", "Point Y" };
+            for (int i = 0; i < 2; i++) {
+                pin_spec point = { .name = names[i], .type = PIN_F32, .type_name = "float" };
+                if (graph_add_pin(ctx->graph, n, true, &point) < 0) {
+                    set_error(ctx, "could not apply contact point payload");
+                    return -1;
+                }
+            }
+        }
     }
     for (int i = 0; i < ctx->library_count; i++) {
         const behavior_asset *event = ctx->libraries[i];

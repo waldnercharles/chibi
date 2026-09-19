@@ -29,6 +29,7 @@ struct game_particle_emitters
     const ecs_world *world;
     double time, simulation_time;
     game_particles *particles;
+    game_materials *materials;
     bool borrowed;
     emitter_source sources[EMITTER_LIMIT];
     game_particle heads[EMITTER_LIMIT];
@@ -44,16 +45,23 @@ game_particle_emitters *game_particle_emitters_new(game_particles *destination)
     return emitters;
 }
 
+void game_particle_emitters_bind_materials(game_particle_emitters *emitters, game_materials *materials)
+{
+    emitters->materials = materials;
+}
+
 void game_particle_emitters_reset(game_particle_emitters *emitters)
 {
     game_particles *particles = emitters->particles;
     bool borrowed = emitters->borrowed;
+    game_materials *materials = emitters->materials;
     if (!borrowed) {
         game_particles_clear(particles);
     }
     memset(emitters, 0, sizeof *emitters);
     emitters->particles = particles;
     emitters->borrowed = borrowed;
+    emitters->materials = materials;
 }
 
 void game_particle_emitters_free(game_particle_emitters *emitters)
@@ -78,7 +86,10 @@ static bool valid_curve(GameParticleCurve curve)
 
 static bool valid(const GameParticleEmitter *style)
 {
-    return style->shape >= 0 && style->shape < GAME_PARTICLE_SHAPE_COUNT &&
+    return (!style->fluid ||
+            ((style->fluid_kind == FLUID_GAS || style->fluid_kind == FLUID_LIQUID) &&
+             isfinite(style->fluid_mass) && style->fluid_mass > 0)) &&
+           style->shape >= 0 && style->shape < GAME_PARTICLE_SHAPE_COUNT &&
            valid_range(style->lifetime) && style->lifetime.x > 0 &&
            valid_range(style->speed) && valid_curve(style->size) &&
            style->size.start.x > 0 && valid_curve(style->drag) &&
@@ -245,7 +256,40 @@ static bool emit_source(
             continue;
         }
         game_particle_advance(&particle, age);
-        int emitted = game_particles_emit_particle(emitters->particles, &particle);
+        int emitted;
+        if (style->fluid && emitters->materials) {
+            const GameIgniter
+                *igniter = GAME_GameIgniter_get_const(emitters->world, source->entity);
+            const GameFuel
+                *fuel = GAME_GameFuel_get_const(emitters->world, source->entity);
+            emitted = game_materials_emit(
+                emitters->materials,
+                (fluid_particle){
+                    .position = { particle.position.x, particle.position.y },
+                    .velocity = { particle.velocity.x, particle.velocity.y },
+                    .mass = style->fluid_mass,
+                    .radius = fmaxf(.5f, particle.size),
+                    .color = particle.color,
+                    .kind = style->fluid_kind,
+                    .heat = igniter ? igniter->heat : 0,
+                    .fuel = fuel ? fuel->amount : 0,
+                    .absorption = particle.absorption,
+                    .emission = particle.emission,
+                    .lifetime = particle.lifetime - particle.age,
+                    .style = { .duration = particle.lifetime,
+                               .size_end = particle.size_end,
+                               .size_exponent = particle.size_exponent,
+                               .emission_end = particle.emission_end,
+                               .emission_exponent = particle.emission_exponent,
+                               .drag = particle.drag,
+                               .drag_end = particle.drag_end,
+                               .drag_exponent = particle.drag_exponent,
+                               .blend = particle.metaball_blend,
+                               .end_color = particle.end_color } }
+            );
+        } else {
+            emitted = game_particles_emit_particle(emitters->particles, &particle);
+        }
         if (emitted < 0) {
             return false;
         }
@@ -265,7 +309,9 @@ static bool emit_source(
         atan2f(direction.z, direction.x)
     );
     head.size *= .65f;
-    emitters->heads[emitters->head_count++] = head;
+    if (!style->fluid) {
+        emitters->heads[emitters->head_count++] = head;
+    }
     if (delta > 0) {
         source->position = position;
         source->direction = direction;
@@ -320,7 +366,12 @@ bool game_particle_emitters_collect(
                 continue;
             }
             const GameParticleEmitter *style = GAME_GameParticleEmitter_get_const(world, entity);
-            if (!valid(style)) {
+            const GameFuel *fuel = GAME_GameFuel_get_const(world, entity);
+            const GameIgniter *igniter = GAME_GameIgniter_get_const(world, entity);
+            if (!valid(style) ||
+                (style->fluid &&
+                 ((fuel && (!isfinite(fuel->amount) || fuel->amount < 0)) ||
+                  (igniter && (!isfinite(igniter->heat) || igniter->heat < 0))))) {
                 snprintf(error, error_size, "Particle Emitter needs finite ranges, a valid shape and a nonzero direction.");
                 ok = false;
                 break;

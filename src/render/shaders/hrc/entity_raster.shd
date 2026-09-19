@@ -251,6 +251,7 @@ void main()
     vec4 mb_border_albedo[MAX_METABALL_GROUPS];
     float mb_aa[MAX_METABALL_GROUPS];
     float mb_border_thickness[MAX_METABALL_GROUPS];
+    float mb_edge_light[MAX_METABALL_GROUPS];
     bool mb_active[MAX_METABALL_GROUPS];
     for (int g = 0; g < MAX_METABALL_GROUPS; g++) {
         mb_sdf[g] = 1e30;
@@ -264,6 +265,7 @@ void main()
         mb_border_albedo[g] = vec4(0);
         mb_aa[g] = 0.0;
         mb_border_thickness[g] = 0.0;
+        mb_edge_light[g] = 0.0;
         mb_active[g] = false;
     }
 
@@ -369,6 +371,7 @@ void main()
                         mb_border_albedo[g] = e_balbedo;
                         mb_aa[g] = e.aa;
                         mb_border_thickness[g] = e.border_thickness;
+                        mb_edge_light[g] = e.reserved2;
                     }
                 } else {
                     float h = clamp(0.5 + 0.5 * (sdf - mb_sdf[g]) / k, 0.0, 1.0);
@@ -383,6 +386,7 @@ void main()
                     mb_border_albedo[g] = mix(e_balbedo, mb_border_albedo[g], h);
                     mb_aa[g] = mix(e.aa, mb_aa[g], h);
                     mb_border_thickness[g] = mix(e.border_thickness, mb_border_thickness[g], h);
+                    mb_edge_light[g] = mix(e.reserved2, mb_edge_light[g], h);
                 }
                 mb_active[g] = true;
             }
@@ -418,6 +422,7 @@ void main()
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= fill_coverage;
             vec4 bsc = unpack_color(e.border_scene); bsc.rgb *= bsc.a; bsc *= border_coverage;
             scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
+            normal_acc.z = mix(normal_acc.z, e.reserved2, bsc.a + sc.a * (1.0 - bsc.a));
 
             // Emission.
             vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= fill_coverage;
@@ -442,6 +447,7 @@ void main()
 
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= coverage;
             scene_acc = alpha_over(sc, scene_acc);
+            normal_acc.z = mix(normal_acc.z, e.reserved2, sc.a);
 
             vec4 em = unpack_color(e.emission); em.rgb *= em.a; em *= coverage;
             emission_acc = alpha_over(em, emission_acc);
@@ -471,6 +477,7 @@ void main()
             vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= fill_coverage;
             vec4 bsc = mb_border_scene[g]; bsc.rgb *= bsc.a; bsc *= border_coverage;
             scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
+            normal_acc.z = mix(normal_acc.z, mb_edge_light[g], bsc.a + sc.a * (1.0 - bsc.a));
 
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= fill_coverage;
             vec4 bem = mb_border_emission[g]; bem.rgb *= bem.a; bem *= border_coverage;
@@ -491,6 +498,7 @@ void main()
 
             vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= coverage;
             scene_acc = alpha_over(sc, scene_acc);
+            normal_acc.z = mix(normal_acc.z, mb_edge_light[g], sc.a);
 
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= coverage;
             emission_acc = alpha_over(em, emission_acc);

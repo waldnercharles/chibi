@@ -170,9 +170,9 @@ static void choose_start_scene(chibi_project *project)
     if (project->start_scene) {
         return;
     }
-    char *arena_2d = join_path(project->content, "scenes/Arena2D.json");
+    char *arena_2d = join_path(project->content, "scenes/NeonSwarmSandbox.json");
     if (is_file(arena_2d)) {
-        project->start_scene = xstrdup("scenes/Arena2D.json");
+        project->start_scene = xstrdup("scenes/NeonSwarmSandbox.json");
         free(arena_2d);
         return;
     }

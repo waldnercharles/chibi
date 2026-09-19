@@ -276,7 +276,7 @@ static int apply_aim_sample(engine_input *input)
             direction.y -= position->y;
         }
         float length = hypotf(direction.x, direction.y);
-        aim->manual = length > .1f && (!input->aim_point || input->firing);
+        aim->manual = length > .1f;
         if (aim->manual) {
             aim->direction = (CF_V2){ direction.x / length, direction.y / length };
         }

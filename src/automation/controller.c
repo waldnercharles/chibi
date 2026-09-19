@@ -3820,6 +3820,10 @@ static uint64_t scenario_state_hash(scenario_context *context)
         );
     }
     uint64_t sounds = game_audio_hash(engine_audio(runtime));
+    if (game_materials_enabled(engine_materials(runtime))) {
+        game_material_state materials = game_materials_inspect(engine_materials(runtime));
+        hash = scenario_hash_bytes(hash, &materials.hash, sizeof materials.hash);
+    }
     return scenario_hash_bytes(hash, &sounds, sizeof sounds);
 }
 
@@ -3827,6 +3831,18 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
 {
     engine *runtime = game_prototype_preview_runtime(context->preview);
     yyjson_mut_obj_add_uint(doc, value, "sound_cues", game_audio_count(engine_audio(runtime)));
+    if (game_materials_enabled(engine_materials(runtime))) {
+        game_material_state state = game_materials_inspect(engine_materials(runtime));
+        yyjson_mut_val *material = yyjson_mut_obj_add_obj(doc, value, "materials");
+        yyjson_mut_obj_add_int(doc, material, "particles", state.particles);
+        yyjson_mut_obj_add_int(doc, material, "active_particles", state.active_particles);
+        yyjson_mut_obj_add_int(doc, material, "fuel_particles", state.fuel_particles);
+        yyjson_mut_obj_add_int(doc, material, "burning_particles", state.burning_particles);
+        yyjson_mut_obj_add_int(doc, material, "solids", state.solids);
+        yyjson_mut_obj_add_int(doc, material, "cells", state.cells);
+        yyjson_mut_obj_add_int(doc, material, "fragments", state.fragments);
+        add_hash_named(doc, material, "hash", state.hash);
+    }
     GameFog fog;
     const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
     yyjson_mut_val *sight = yyjson_mut_obj_add_obj(doc, value, "visibility");
@@ -5310,6 +5326,93 @@ static int run_scenario_inputs(
     return CHIBI_AUTOMATION_OK;
 }
 
+typedef struct
+{
+    scenario_input *inputs;
+    uint64_t *at;
+    size_t count, next;
+    uint64_t frame;
+    bool sampled;
+} scenario_sequence;
+
+static void free_sequence(scenario_sequence *sequence)
+{
+    free(sequence->inputs);
+    free(sequence->at);
+}
+
+static int prepare_sequence(
+    yyjson_val *request,
+    uint64_t frames,
+    scenario_sequence *sequence,
+    char *error,
+    size_t error_size
+)
+{
+    yyjson_val *values = yyjson_obj_get(request, "inputs");
+    yyjson_val *timeline = yyjson_obj_get(request, "input_timeline");
+    sequence->sampled = values || timeline;
+    if (!values && !timeline) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    yyjson_val *entries = timeline ? timeline : values;
+    size_t count = yyjson_arr_size(entries);
+    if ((values && timeline) || !yyjson_is_arr(entries) ||
+        count > SCENARIO_MAX_FRAMES || count > frames) {
+        set_error(error, error_size, "Use inputs or input_timeline with at most 1800 entries and no more entries than frames");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    sequence->count = count;
+    sequence->inputs = xcalloc(count + 1, sizeof *sequence->inputs);
+    sequence->at = xcalloc(count + 1, sizeof *sequence->at);
+    for (size_t i = 0; i < count; i++) {
+        yyjson_val *entry = yyjson_arr_get(entries, i);
+        sequence->at[i] = i;
+        bool valid = !timeline || (request_uint(entry, "frame", &sequence->at[i]) &&
+                                   sequence->at[i] < frames &&
+                                   (!i || sequence->at[i] > sequence->at[i - 1]));
+        if (!valid || !parse_scenario_input(
+                          timeline ? yyjson_obj_get(entry, "input") : entry,
+                          &sequence->inputs[i],
+                          error,
+                          error_size
+                      )) {
+            if (!valid) {
+                set_error(error, error_size, "Timeline frames must be unique, increasing and below frames");
+            }
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        }
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+static int step_sequence(
+    scenario_context *context,
+    scenario_sequence *sequence,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+)
+{
+    const scenario_input *sample = sequence->next < sequence->count &&
+                                           sequence->at[sequence->next] ==
+                                               sequence->frame
+                                     ? &sequence->inputs[sequence->next++]
+                                     : &(scenario_input){ 0 };
+    int status = sequence->sampled
+                   ? apply_scenario_input(context, sample, error, error_size)
+                   : CHIBI_AUTOMATION_OK;
+    if (status != CHIBI_AUTOMATION_OK) {
+        return status;
+    }
+    if (game_prototype_preview_tick(context->preview, (double)(++sequence->frame) * fixed_dt) !=
+        0) {
+        set_error(error, error_size, "Scenario input frame failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
 static int advance_request_scenario(
     scenario_context *context,
     yyjson_val *request,
@@ -5319,74 +5422,78 @@ static int advance_request_scenario(
     size_t error_size
 )
 {
-    int prepared = scenario_saved_state(context, request, error, error_size);
-    if (prepared != CHIBI_AUTOMATION_OK) {
-        return prepared;
+    int status = scenario_saved_state(context, request, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        return status;
     }
-    yyjson_val *values = yyjson_obj_get(request, "inputs");
-    yyjson_val *timeline = yyjson_obj_get(request, "input_timeline");
-    if (!values && !timeline) {
+    /* Preserve the ordinary scenario path when no input was requested. */
+    if (!yyjson_obj_get(request, "inputs") &&
+        !yyjson_obj_get(request, "input_timeline")) {
         return advance_scenario(context, frames, fixed_dt, error, error_size);
     }
-    yyjson_val *entries = timeline ? timeline : values;
-    size_t count = yyjson_arr_size(entries);
-    if ((values && timeline) || !yyjson_is_arr(entries) ||
-        count > SCENARIO_MAX_FRAMES || count > frames) {
-        set_error(error, error_size, "Use inputs or input_timeline with at most 1800 entries and no more entries than frames");
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    scenario_input *inputs = xcalloc(count + 1, sizeof *inputs);
-    uint64_t *at = xcalloc(count + 1, sizeof *at);
-    int status = CHIBI_AUTOMATION_OK;
-    for (size_t i = 0; i < count; i++) {
-        yyjson_val *entry = yyjson_arr_get(entries, i);
-        at[i] = i;
-        bool valid = !timeline || (request_uint(entry, "frame", &at[i]) &&
-                                   at[i] < frames && (!i || at[i] > at[i - 1]));
-        if (!valid || !parse_scenario_input(
-                          timeline ? yyjson_obj_get(entry, "input") : entry,
-                          &inputs[i],
-                          error,
-                          error_size
-                      )) {
-            if (!valid) {
-                set_error(error, error_size, "Timeline frames must be unique, increasing and below frames");
-            }
-            status = CHIBI_AUTOMATION_INVALID_REQUEST;
-            break;
-        }
-    }
+    scenario_sequence sequence = { 0 };
+    status = prepare_sequence(request, frames, &sequence, error, error_size);
     if (status == CHIBI_AUTOMATION_OK) {
         status = advance_scenario(context, 0, fixed_dt, error, error_size);
     }
-    size_t next = 0;
-    for (uint64_t frame = 0; frame < frames && status == CHIBI_AUTOMATION_OK; frame++) {
-        const scenario_input *sample = next < count && at[next] == frame
-                                         ? &inputs[next++]
-                                         : &(scenario_input){ 0 };
-        status = apply_scenario_input(context, sample, error, error_size);
-        if (status == CHIBI_AUTOMATION_OK &&
-            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
-                0) {
-            set_error(error, error_size, "Scenario input frame failed");
-            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
+    while (status == CHIBI_AUTOMATION_OK && sequence.frame < frames) {
+        status = step_sequence(context, &sequence, fixed_dt, error, error_size);
     }
-    free(inputs);
-    free(at);
+    free_sequence(&sequence);
     return status;
+}
+
+struct chibi_preview_run
+{
+    scenario_context context;
+    scenario_sequence sequence;
+    yyjson_doc *request;
+};
+
+game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
+{
+    return run->context.preview;
+}
+
+int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
+{
+    return step_sequence(&run->context, &run->sequence, 1.0 / 60, error, size);
+}
+
+char *chibi_preview_state(chibi_preview_run *run)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *state = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, state);
+    add_hash_named(doc, state, "world_hash", scenario_state_hash(&run->context));
+    yyjson_mut_obj_add_uint(doc, state, "frame", run->sequence.frame);
+    add_presentation_state(doc, state, &run->context);
+    char *json = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+void chibi_preview_free(chibi_preview_run *run)
+{
+    if (!run) {
+        return;
+    }
+    free_sequence(&run->sequence);
+    scenario_context_free(&run->context);
+    yyjson_doc_free(run->request);
+    free(run);
 }
 
 int chibi_automation_preview(
     const char *root,
     const char *request,
-    game_prototype_preview **preview,
+    chibi_preview_run **out,
     bool *perspective,
     char *error,
     size_t error_size
 )
 {
-    *preview = NULL;
+    *out = NULL;
     *perspective = false;
     yyjson_doc *doc = yyjson_read(request, strlen(request), 0);
     yyjson_val *value = doc ? yyjson_doc_get_root(doc) : NULL;
@@ -5402,35 +5509,50 @@ int chibi_automation_preview(
         yyjson_doc_free(doc);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    scenario_context context = { 0 };
+    chibi_preview_run *run = xcalloc(1, sizeof *run);
+    run->request = doc;
+    scenario_context *context = &run->context;
     int status = !strcmp(kind, "scene")
-                   ? prepare_scene_scenario(root, name, &context, error, error_size)
-                   : prepare_scenario(root, name, &context, error, error_size);
+                   ? prepare_scene_scenario(root, name, context, error, error_size)
+                   : prepare_scenario(root, name, context, error, error_size);
     const char *families[] = { "shader-library", "material", "shape" };
     for (int i = 0; status == CHIBI_AUTOMATION_OK && i < 3; i++) {
         behavior_asset **assets = NULL;
         status = load_behavior_family_assets(root, family_by_kind(families[i]), &assets, error, error_size);
         if (status == CHIBI_AUTOMATION_OK &&
-            register_preview_assets(context.preview, assets, error, error_size)) {
+            register_preview_assets(context->preview, assets, error, error_size)) {
             status = CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
         free_behavior_assets(assets);
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        status = advance_request_scenario(&context, value, frames, 1.0 / 60.0, error, error_size);
+        uint64_t rendered = yyjson_get_uint(yyjson_obj_get(value, "render_frames"));
+        uint64_t total = frames +
+                         (rendered > 2 && !yyjson_get_bool(yyjson_obj_get(value, "freeze_simulation"))
+                              ? rendered
+                              : 0);
+        status = prepare_sequence(value, total, &run->sequence, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = scenario_saved_state(context, value, error, error_size);
+        }
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = advance_scenario(context, 0, 1.0 / 60, error, error_size);
+        }
+        while (status == CHIBI_AUTOMATION_OK && run->sequence.frame < frames) {
+            status = chibi_preview_step(run, error, error_size);
+        }
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        *perspective = context.scene
-                         ? context.scene->perspective
+        *perspective = context->scene
+                         ? context->scene->perspective
                          : GAME_GameGeometry3D_has(
-                               game_prototype_preview_world(context.preview),
-                               game_prototype_preview_entity(context.preview)
+                               game_prototype_preview_world(context->preview),
+                               game_prototype_preview_entity(context->preview)
                            );
-        *preview = context.preview;
-        context.preview = NULL;
+        *out = run;
+        return status;
     }
-    scenario_context_free(&context);
-    yyjson_doc_free(doc);
+    chibi_preview_free(run);
     return status;
 }
 

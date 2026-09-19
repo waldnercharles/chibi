@@ -5,6 +5,41 @@ frame timing, worker overlap, and presentation waits. Normal, test, and web
 builds leave it disabled. The instrumentation is on demand, so a profiling
 binary does not collect trace data until a Tracy client connects.
 
+## GPU pass profiling
+
+The current Tracy integration measures CPU scopes and submission. It does not
+collect GPU timestamps for HRC. Preview render/present time includes GPU waiting
+and must not be reported as the duration of a particular shader.
+
+Use Xcode's Metal debugger and Instruments Metal System Trace on Apple GPUs.
+The former profiles passes, shaders and counters; the latter correlates CPU and
+GPU scheduling. See [Apple's profiling guide](https://developer.apple.com/documentation/xcode/optimizing-gpu-performance).
+Full Xcode is required for those tools. The September 19 local environment has
+Command Line Tools selected and no Xcode installation was found in the usual
+application directories.
+The Metal runtime can still write `.gputrace` files programmatically here. The
+[NeonSwarm capture workflow](neon-gpu-benchmarks.md) records one warmed frame,
+preserves its fixture and request, and checks deterministic replay.
+
+On Steam Deck, use Radeon GPU Profiler with RADV's capture mechanism, and
+RenderDoc for inspecting Vulkan resources and dispatches. RADV capture does not
+use the Radeon Developer Panel workflow. See [AMD's RADV notes](https://gpuopen.com/manuals/rdp_manual/)
+and [RenderDoc/RGP interoperability](https://gpuopen.com/manuals/rgp_manual/renderdoc_and_rgp_interop/).
+
+HRC now labels prefilter, each quadrant's trace/extend/merge, gather, filtering
+and bounce on the GPU command stream. Material tile binning/rasterization, fluid
+density, HRC composite and planar reflections also have labels.
+These labels identify work in captures; they do not themselves measure it.
+The CPU Tracy scope `Gas flow` includes sparse grid construction, velocity
+advection, collider boundaries, vorticity and pressure projection.
+
+For timing comparisons keep adaptation disabled, pin scale and trace levels,
+and benchmark outside the capture tool as well. The deterministic helper accepts
+`--scale .5 --trace-levels 1`; each report records both settings.
+Use `--mode live` to retain the original moving scenario, or `--mode frozen` for
+a stable endpoint. The default `both` mode compares both workloads. Capture only
+one case at a time and keep instrumented timings separate from benchmarks.
+
 ## Native profile
 
 Build the profiling targets with symbols and sanitizers disabled:
@@ -64,3 +99,10 @@ GPU pass timing depends on the renderer backend exposing GPU timestamps. The
 existing preview measurement records GPU complete host time and the Tracy
 CPU zones identify the submission and presentation boundaries; a capture
 without GPU zones remains a CPU and wait diagnosis.
+
+For fixed-quality NeonSwarm comparisons, use
+`tools/benchmark_neon_materials.py` as described in
+[the material performance report](neon-material-performance.md). Fluid reaction,
+density, relaxation, collision, raster preparation and HRC submission zones are
+available in profiling builds. These renderer zones measure CPU submission;
+they are not GPU pass timestamps.

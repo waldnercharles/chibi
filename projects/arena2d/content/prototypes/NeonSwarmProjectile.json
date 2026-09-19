@@ -22,11 +22,15 @@
       "category": 4,
       "height": 0.0,
       "ignore_entity": null,
-      "mask": 2,
+      "mask": 10,
+      "pierce_fragments": true,
       "radius": 2.0,
       "sensor": true,
       "shape": 0,
       "width": 0.0
+    },
+    "GAME.GameIgniter": {
+      "heat": 2.5
     },
     "GAME.GameMaterial": {
       "absorption": 0.10000000149011612,
@@ -35,6 +39,7 @@
       "border_emission_color": 0,
       "border_filter": 0,
       "border_scene": 0,
+      "edge_light": 0.0,
       "emission_color": 16777215,
       "emission_intensity": 0.10000000149011612,
       "emission_multiplier": 1.0,
@@ -47,7 +52,7 @@
     "GAME.GameProjectile": {
       "age": 0.0,
       "damage": 1,
-      "lifetime": 1.5,
+      "lifetime": 2.5,
       "speed": 400.0
     },
     "game.GameTransform": {

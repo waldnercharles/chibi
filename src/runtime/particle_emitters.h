@@ -6,8 +6,13 @@
 
 struct engine;
 typedef struct game_particle_emitters game_particle_emitters;
+struct game_materials;
 
 game_particle_emitters *game_particle_emitters_new(game_particles *destination);
+void game_particle_emitters_bind_materials(
+    game_particle_emitters *emitters,
+    struct game_materials *materials
+);
 void game_particle_emitters_free(game_particle_emitters *emitters);
 void game_particle_emitters_reset(game_particle_emitters *emitters);
 /* Emission and aging use interpolated simulation time alongside the rendered

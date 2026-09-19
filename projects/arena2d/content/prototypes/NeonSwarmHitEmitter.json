@@ -49,6 +49,9 @@
         }
       },
       "end_color": 2147492352,
+      "fluid": false,
+      "fluid_kind": 0,
+      "fluid_mass": 0.00019999999494757503,
       "heading_only": true,
       "lifetime": {
         "x": 0.20000000298023224,

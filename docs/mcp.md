@@ -57,6 +57,12 @@ or open a new task after adding or changing project MCP configuration.
 
 ## Default authoring workflow
 
+For reproducible rendering measurements, `previewScene` accepts
+`freeze_simulation` and an `input_timeline` spanning preparation and advancing
+render frames. Results include initial/final runtime state and the active GPU
+backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
+supported Macs. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+
 Use the MCP for authored content whenever it is available. Route requests by
 domain:
 

@@ -37,8 +37,9 @@ bool game_material_extract(const GameMaterial *material, game_material_coefficie
     assert(material && out);
     float intensity = material->emission_intensity * material->emission_multiplier;
     if (!isfinite(material->emission_intensity) ||
-        !isfinite(material->emission_multiplier) ||
-        !isfinite(material->absorption) || !isfinite(intensity)) {
+        !isfinite(material->emission_multiplier) || !isfinite(material->absorption) ||
+        !isfinite(intensity) || !isfinite(material->edge_light) ||
+        material->edge_light < 0 || material->edge_light > 8) {
         return false;
     }
     game_material_coefficients result = { 0 };

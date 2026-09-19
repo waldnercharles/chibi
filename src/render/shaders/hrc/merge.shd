@@ -4,7 +4,7 @@
 // Odd probe x (Eq 14): trace one T_n step outward to reach R_{n+1} probes.
 // Even probe x (Eq 15-17): average direct R_{n+1} lookup with traced T_{n+1} path.
 //
-// R_N is implicitly zero. Host must provide zeroed r_prev for first iteration.
+// R_N is implicitly zero; the top merge never reads a previous fluence buffer.
 //
 // Buffer layout:
 //   T: width = ceil(world_w / 2^n) * (2^n + 1), height = world_h
@@ -12,9 +12,9 @@
 
 layout(std430, set = 0, binding = 0) readonly  buffer TCurr { uvec2 data[]; } u_t_curr;
 layout(std430, set = 0, binding = 1) readonly  buffer TNext { uvec2 data[]; } u_t_next;
-layout(std430, set = 0, binding = 2) readonly  buffer RPrevRad { uvec2 data[]; } u_r_prev_rad;
+layout(std430, set = 0, binding = 2) readonly  buffer RPrevRad { uint data[]; } u_r_prev_rad;
 layout(std430, set = 0, binding = 3) readonly  buffer Weights { vec2 data[]; } u_weights;
-layout(std430, set = 1, binding = 0) writeonly buffer RCurrRad { uvec2 data[]; } u_r_curr_rad;
+layout(std430, set = 1, binding = 0) writeonly buffer RCurrRad { uint data[]; } u_r_curr_rad;
 
 layout(set = 2, binding = 0) uniform Params
 {
@@ -71,14 +71,14 @@ Interval T_load_next(int probe_x, int k, int y)
 vec3 R_load(int probe_x, int i, int y)
 {
 	int n = u_cascade + 1;
+	if (n >= u_cascade_count) return vec3(0.0);
 	int directions = 1 << n;
 	int num_probes = probe_count(u_world_w, n);
 	if (probe_x < 0 || probe_x >= num_probes || i < 0 || i >= directions || y < 0 || y >= u_world_h) {
 		return vec3(0.0);
 	}
 	int idx = y * u_r_prev_w + probe_x * directions + i;
-	vec4 rad = f16_load(u_r_prev_rad.data[idx]);
-	return rad.rgb;
+	return fluence_load(u_r_prev_rad.data[idx]);
 }
 
 struct SubCone
@@ -169,5 +169,5 @@ void main()
 	vec3 fluence = (probe_x % 2 == 0) ? merge_even(probe_x, i, y) : merge_odd(probe_x, i, y);
 
 	int out_idx = y * u_r_curr_w + gid.x;
-	u_r_curr_rad.data[out_idx] = f16_store(vec4(fluence, 1.0));
+	u_r_curr_rad.data[out_idx] = fluence_store(fluence);
 }

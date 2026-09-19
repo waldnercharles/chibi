@@ -404,6 +404,13 @@ int test_arena_input()
     assert(fabsf(aim->direction.x) < 0.001f && fabsf(aim->direction.y - 1) < 0.001f);
     aim = GAME_GameAim_get_const(f.world, ai);
     assert(aim->direction.x == 0 && aim->direction.y == -1 && aim->firing);
+    /* Cursor aiming stays active on mouse-up, independently of firing. */
+    assert(
+        app_scene_authoring_aim_at(f.scene, (CF_V2){ position.x, position.y + 100 }, false) == FLOW_OK
+    );
+    steps(&f, 1);
+    aim = GAME_GameAim_get_const(f.world, player);
+    assert(aim->manual && !aim->firing && fabsf(aim->direction.y - 1) < .001f);
     assert(app_scene_authoring_aim(f.scene, (CF_V2){ 0 }, false) == FLOW_OK);
     steps(&f, 5);
     assert(arena_shots(f.world, &shot) == 3);

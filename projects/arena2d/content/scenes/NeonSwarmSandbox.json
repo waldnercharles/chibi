@@ -15,7 +15,12 @@
     {
       "name": "Player",
       "prototype": "NeonSwarmPlayer",
-      "components": {},
+      "components": {
+        "GameTransform": {
+          "x": -320,
+          "y": 0
+        }
+      },
       "behaviors": [
         "NeonSwarmMovement",
         "NeonSwarmWeapon",
@@ -25,7 +30,12 @@
     {
       "name": "Camera",
       "prototype": "NeonSwarmCamera",
-      "components": {},
+      "components": {
+        "GameTransform": {
+          "x": -320,
+          "y": 0
+        }
+      },
       "behaviors": [
         "NeonSwarmCameraFollow"
       ]
@@ -37,90 +47,6 @@
       "behaviors": []
     },
     {
-      "name": "North",
-      "prototype": "NeonSwarmBoundary",
-      "components": {
-        "GameTransform": {
-          "x": 0,
-          "y": -362
-        },
-        "GameAppearance": {
-          "width": 1284,
-          "height": 4
-        },
-        "GameCollider": {
-          "width": 1284,
-          "height": 4
-        }
-      },
-      "behaviors": []
-    },
-    {
-      "name": "South",
-      "prototype": "NeonSwarmBoundary",
-      "components": {
-        "GameTransform": {
-          "x": 0,
-          "y": 362
-        },
-        "GameAppearance": {
-          "width": 1284,
-          "height": 4
-        },
-        "GameCollider": {
-          "width": 1284,
-          "height": 4
-        }
-      },
-      "behaviors": []
-    },
-    {
-      "name": "West",
-      "prototype": "NeonSwarmBoundary",
-      "components": {
-        "GameTransform": {
-          "x": -642,
-          "y": 0
-        },
-        "GameAppearance": {
-          "width": 4,
-          "height": 720
-        },
-        "GameCollider": {
-          "width": 4,
-          "height": 720
-        }
-      },
-      "behaviors": []
-    },
-    {
-      "name": "East",
-      "prototype": "NeonSwarmBoundary",
-      "components": {
-        "GameTransform": {
-          "x": 642,
-          "y": 0
-        },
-        "GameAppearance": {
-          "width": 4,
-          "height": 720
-        },
-        "GameCollider": {
-          "width": 4,
-          "height": 720
-        }
-      },
-      "behaviors": []
-    },
-    {
-      "name": "Director",
-      "prototype": "NeonSwarmDirector",
-      "components": {},
-      "behaviors": [
-        "NeonSwarmDirector"
-      ]
-    },
-    {
       "name": "FireMouse",
       "prototype": "NeonSwarmFireMouse",
       "components": {},
@@ -130,6 +56,170 @@
       "name": "FireStick",
       "prototype": "NeonSwarmFireStick",
       "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Entry cloud",
+      "prototype": "NeonSwarmCloud",
+      "components": {
+        "GameTransform": {
+          "x": 70,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Floating liquid",
+      "prototype": "NeonSwarmLiquid",
+      "components": {
+        "GameTransform": {
+          "x": 330,
+          "y": 100
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Distant cloud",
+      "prototype": "NeonSwarmCloud",
+      "components": {
+        "GameTransform": {
+          "x": 1480,
+          "y": 0
+        },
+        "GameFluidVolume": {
+          "width": 640,
+          "height": 360,
+          "color": 2288896187
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Distant liquid",
+      "prototype": "NeonSwarmLiquid",
+      "components": {
+        "GameTransform": {
+          "x": 1800,
+          "y": -60
+        },
+        "GameFluidVolume": {
+          "width": 160,
+          "height": 160
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Cave guardian 1",
+      "prototype": "NeonSwarmSwarmer",
+      "components": {
+        "GameTransform": {
+          "x": 580,
+          "y": 90
+        }
+      },
+      "behaviors": [
+        "NeonSwarmPursuit",
+        "NeonSwarmSwarmerEffects"
+      ]
+    },
+    {
+      "name": "Cave guardian 2",
+      "prototype": "NeonSwarmSwarmer",
+      "components": {
+        "GameTransform": {
+          "x": 1550,
+          "y": -100
+        }
+      },
+      "behaviors": [
+        "NeonSwarmPursuit",
+        "NeonSwarmSwarmerEffects"
+      ]
+    },
+    {
+      "name": "Cave guardian 3",
+      "prototype": "NeonSwarmSwarmer",
+      "components": {
+        "GameTransform": {
+          "x": 2150,
+          "y": 60
+        }
+      },
+      "behaviors": [
+        "NeonSwarmPursuit",
+        "NeonSwarmSwarmerEffects"
+      ]
+    },
+    {
+      "name": "Cave terrain",
+      "prototype": "NeonSwarmCave",
+      "components": {
+        "GameTransform": {
+          "x": 960,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Reflective crystal",
+      "prototype": "NeonSwarmCrystal",
+      "components": {
+        "GameTransform": {
+          "x": -245,
+          "y": -62
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Brittle crystal seam",
+      "prototype": "NeonSwarmCrystal",
+      "components": {
+        "GameTransform": {
+          "x": 180,
+          "y": -100
+        },
+        "GameOrientation": {
+          "radians": 0.24
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Hard rock shelf",
+      "prototype": "NeonSwarmHardRock",
+      "components": {
+        "GameTransform": {
+          "x": 420,
+          "y": 110
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Fuel cloud",
+      "prototype": "NeonSwarmFuelCloud",
+      "components": {
+        "GameTransform": {
+          "x": 50,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Distant fuel cloud",
+      "prototype": "NeonSwarmFuelCloud",
+      "components": {
+        "GameTransform": {
+          "x": 1230,
+          "y": 40
+        }
+      },
       "behaviors": []
     }
   ]

@@ -152,6 +152,8 @@ game_live_world *game_live_world_new(ecs_world *ecs)
     game_behavior_bind_entities(world->behaviors, world->entities);
     world->physics = game_physics_new(ecs, world->entities);
     world->particles = game_particles_new();
+    world->materials = game_materials_new(ecs, world->entities, world->particles);
+    game_entities_bind_materials(world->entities, world->materials);
     game_behavior_bind_particles(world->behaviors, world->particles);
     world->visibility = game_visibility_new(ecs, world->entities);
     game_behavior_bind_visibility(world->behaviors, world->visibility);
@@ -165,6 +167,7 @@ void game_live_world_free(game_live_world *world)
     }
     render_shader_clear_world(world->ecs);
     game_physics_free(world->physics);
+    game_materials_free(world->materials);
     game_visibility_free(world->visibility);
     game_entities_free(world->entities);
     game_behavior_world_free(world->behaviors);

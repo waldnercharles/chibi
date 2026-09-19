@@ -20,13 +20,22 @@
     },
     "GAME.GameCollider": {
       "category": 2,
-      "height": 0.0,
+      "height": 20.0,
       "ignore_entity": null,
-      "mask": 6,
+      "mask": 15,
       "radius": 10.0,
       "sensor": false,
-      "shape": 0,
-      "width": 0.0
+      "shape": 1,
+      "width": 20.0
+    },
+    "GAME.GameDestructible": {
+      "cell_size": 1.0,
+      "min_fragment_cells": 3,
+      "release_fraction": 0.6000000238418579
+    },
+    "GAME.GameFragmentGlow": {
+      "duration": 3.5,
+      "flicker": 0.3499999940395355
     },
     "game.GameHealth": {
       "current": 3,
@@ -39,6 +48,7 @@
       "border_emission_color": 4279900927,
       "border_filter": 0,
       "border_scene": 4279900927,
+      "edge_light": 0.0,
       "emission_color": 0,
       "emission_intensity": 0.6000000238418579,
       "emission_multiplier": 0.5,
@@ -50,6 +60,11 @@
     },
     "GAME.GameOrientation": {
       "radians": 0.0
+    },
+    "GAME.GameSubstance": {
+      "blast_multiplier": 1.0,
+      "hardness": 1.0,
+      "retain_chips": true
     },
     "game.GameTransform": {
       "x": 0.0,

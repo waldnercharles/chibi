@@ -120,12 +120,18 @@ static void health(ecs_world *world, ecs_entity owner, ecs_entity other)
 static void handle_field(ecs_world *world, ecs_entity owner, ecs_entity other)
 {
     const type_desc *type = GAME_COMPONENT_GameCollider.type;
-    const type_field *field = &type->fields[type->field_count - 1];
+    int index = 0;
+    while (index < type->field_count &&
+           strcmp(type->fields[index].name, "ignore_entity")) {
+        index++;
+    }
+    assert(index < type->field_count);
+    const type_field *field = &type->fields[index];
     assert(field->type == PIN_HANDLE && !strcmp(field->type_name, "ecs.entity"));
     const node_desc *make = registry_node_by_name("Make_GameCollider");
     const node_desc *split = registry_node_by_name("Break_GameCollider");
-    assert(!strcmp(make->inputs[7].type_name, "ecs.entity"));
-    assert(!strcmp(split->outputs[7].type_name, "ecs.entity"));
+    assert(!strcmp(make->inputs[index].type_name, "ecs.entity"));
+    assert(!strcmp(split->outputs[index].type_name, "ecs.entity"));
     pin_value handle = { .type = PIN_HANDLE, .type_name = "ecs.entity" };
     field_fixture f = fixture("Set_GameCollider_ignore_entity", handle, false);
     node *event = f.asset->graph->nodes[0];

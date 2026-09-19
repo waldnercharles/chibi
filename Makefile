@@ -68,7 +68,7 @@ mcp-setup:
 	node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
 PROJECT ?= projects/arena2d
-SCENE ?= scenes/Arena2D.json
+SCENE ?= scenes/NeonSwarmSandbox.json
 
 run: build-release
 	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)

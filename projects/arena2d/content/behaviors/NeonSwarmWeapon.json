@@ -2,7 +2,7 @@
   "version": 3,
   "name": "NeonSwarmWeapon",
   "domain": "behavior",
-  "id_counter": 104,
+  "id_counter": 124,
   "description": "",
   "owner_type": "ecs.entity",
   "variables": [
@@ -25,8 +25,8 @@
         {
           "id": 2,
           "type": "Get Variable",
-          "x": 930.0,
-          "y": 508.0,
+          "x": 620.0,
+          "y": 384.5,
           "reference_id": 1,
           "reference_name": "elapsed",
           "disabled": false,
@@ -52,7 +52,7 @@
           "id": 4,
           "type": "Event",
           "x": 0.0,
-          "y": 106.5,
+          "y": 87.0,
           "reference_id": 0,
           "reference_name": "Tick",
           "disabled": false,
@@ -90,7 +90,7 @@
           "id": 7,
           "type": "Branch",
           "x": 310.0,
-          "y": 114.5,
+          "y": 95.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -155,7 +155,7 @@
           "id": 12,
           "type": "Self",
           "x": 0.0,
-          "y": 389.5,
+          "y": 403.25,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -181,7 +181,7 @@
           "id": 14,
           "type": "Find Nearest Entity",
           "x": 310.0,
-          "y": 264.0,
+          "y": 239.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -296,7 +296,7 @@
           "id": 23,
           "type": "Branch",
           "x": 620.0,
-          "y": 172.0,
+          "y": 144.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -356,7 +356,7 @@
           "id": 28,
           "type": "Direction To",
           "x": 620.0,
-          "y": 292.0,
+          "y": 264.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -411,7 +411,7 @@
           "id": 32,
           "type": "Set_GameAim_direction",
           "x": 930.0,
-          "y": 236.0,
+          "y": 144.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -481,156 +481,10 @@
           ]
         },
         {
-          "id": 38,
-          "type": "Set_GameAim_firing",
-          "x": 1240.0,
-          "y": 332.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 39,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 40,
-              "name": "Value",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": true
-            },
-            {
-              "id": 41,
-              "name": "Target",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 32,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 42,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 43,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameAim",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 44,
-          "type": "Set_GameAim_firing",
-          "x": 1240.0,
-          "y": 92.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 45,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 46,
-              "name": "Value",
-              "type": 1,
-              "type_name": "bool",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": false
-            },
-            {
-              "id": 47,
-              "name": "Target",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 32,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 48,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 49,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameAim",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
           "id": 50,
           "type": "Delta Time",
-          "x": 930.0,
-          "y": 604.0,
+          "x": 620.0,
+          "y": 480.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -655,8 +509,8 @@
         {
           "id": 52,
           "type": "Add",
-          "x": 1240.0,
-          "y": 556.0,
+          "x": 930.0,
+          "y": 258.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -704,8 +558,8 @@
         {
           "id": 56,
           "type": "Set Variable",
-          "x": 1550.0,
-          "y": 33.0,
+          "x": 1289.5,
+          "y": 93.5,
           "reference_id": 1,
           "reference_name": "elapsed",
           "disabled": false,
@@ -764,8 +618,8 @@
         {
           "id": 61,
           "type": "Branch",
-          "x": 1860.0,
-          "y": 203.0,
+          "x": 1550.0,
+          "y": 85.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -829,8 +683,8 @@
         {
           "id": 66,
           "type": "Greater Or Equal",
-          "x": 1860.0,
-          "y": 451.0,
+          "x": 1550.0,
+          "y": 205.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -880,8 +734,8 @@
         {
           "id": 70,
           "type": "WhileLoop",
-          "x": 2170.0,
-          "y": 179.0,
+          "x": 1860.0,
+          "y": 173.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -940,8 +794,8 @@
         {
           "id": 75,
           "type": "Call Function",
-          "x": 2480.0,
-          "y": 0.0,
+          "x": 2170.0,
+          "y": 300.5,
           "reference_id": 173,
           "reference_name": "Fire Projectile",
           "reference_asset": "WeaponActions",
@@ -972,10 +826,6 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "binding": {
-                "kind": "component",
-                "component": "game.GameTransform"
-              },
               "default": null
             },
             {
@@ -1066,8 +916,8 @@
         {
           "id": 84,
           "type": "Subtract",
-          "x": 2480.0,
-          "y": 216.0,
+          "x": 2170.0,
+          "y": 516.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -1115,8 +965,8 @@
         {
           "id": 88,
           "type": "Set Variable",
-          "x": 2790.0,
-          "y": 80.0,
+          "x": 2480.0,
+          "y": 388.5,
           "reference_id": 1,
           "reference_name": "elapsed",
           "disabled": false,
@@ -1175,8 +1025,8 @@
         {
           "id": 93,
           "type": "Min",
-          "x": 1860.0,
-          "y": 331.0,
+          "x": 864.0,
+          "y": 29.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -1224,8 +1074,8 @@
         {
           "id": 97,
           "type": "Set Variable",
-          "x": 2170.0,
-          "y": 299.0,
+          "x": 1860.0,
+          "y": 0.0,
           "reference_id": 1,
           "reference_name": "elapsed",
           "disabled": false,
@@ -1285,7 +1135,7 @@
           "id": 102,
           "type": "Event",
           "x": 0.0,
-          "y": 784.0,
+          "y": 720.5,
           "reference_id": 0,
           "reference_name": "Fire",
           "disabled": false,
@@ -1304,6 +1154,161 @@
               "flags": 0,
               "group": 0,
               "default": null
+            }
+          ]
+        },
+        {
+          "id": 113,
+          "type": "Add",
+          "x": 1860.0,
+          "y": 309.5,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 114,
+              "name": "A",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "binding": {
+                "kind": "component",
+                "component": "game.GameTransform"
+              },
+              "default": null
+            },
+            {
+              "id": 115,
+              "name": "B",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 2,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 116,
+              "name": "Result",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 2,
+              "group": 1,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 117,
+          "type": "Transform Visual Offset",
+          "x": 1550.0,
+          "y": 325.5,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 118,
+              "name": "Offset",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 16.0,
+                "y": 0.0
+              }
+            },
+            {
+              "id": 119,
+              "name": "Elevation",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 120,
+              "name": "Heading",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "binding": {
+                "kind": "component_field",
+                "component": "GAME.GameOrientation",
+                "field": "radians"
+              },
+              "default": 0.0
+            },
+            {
+              "id": 121,
+              "name": "Visual",
+              "type": 15,
+              "type_name": "GameVisualTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "pitch": 0.0,
+                "yaw": 0.0,
+                "roll": 0.0,
+                "scale": 1.0
+              }
+            }
+          ],
+          "outputs": [
+            {
+              "id": 122,
+              "name": "Offset",
+              "type": 15,
+              "type_name": "CF_V2",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 123,
+              "name": "Elevation",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ]
         }
@@ -1401,8 +1406,8 @@
         {
           "from": 23,
           "from_pin": 27,
-          "to": 44,
-          "to_pin": 45,
+          "to": 56,
+          "to_pin": 57,
           "kind": "exec",
           "order": 0
         },
@@ -1417,22 +1422,6 @@
         {
           "from": 32,
           "from_pin": 36,
-          "to": 38,
-          "to_pin": 39,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 38,
-          "from_pin": 42,
-          "to": 56,
-          "to_pin": 57,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 44,
-          "from_pin": 48,
           "to": 56,
           "to_pin": 57,
           "kind": "exec",
@@ -1511,6 +1500,20 @@
           "from_pin": 96,
           "to": 97,
           "to_pin": 99,
+          "kind": "data"
+        },
+        {
+          "from": 113,
+          "from_pin": 116,
+          "to": 75,
+          "to_pin": 78,
+          "kind": "data"
+        },
+        {
+          "from": 117,
+          "from_pin": 122,
+          "to": 113,
+          "to_pin": 115,
           "kind": "data"
         }
       ]

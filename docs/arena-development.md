@@ -13,7 +13,7 @@ For an intentional game-only capture:
 
 ```sh
 env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/chibi --play \
-  --project-root projects/arena2d --scene scenes/Arena2D.json \
+  --project-root projects/arena2d --scene scenes/NeonSwarmSandbox.json \
   --frames 120 --fixed-dt 0.016666667 \
   --screenshot /tmp/arena-game.png
 ```
@@ -22,14 +22,14 @@ Normal play uses elapsed time. `--fixed-dt` supplies the given wall-clock
 increment per display frame for repeatable verification. The shared engine
 consumes it in 1/60-second simulation steps; `--frames` alone only limits
 the run. Screenshots are opt-in and native-only. A web build supports
-`chibi.html?play&project-root=projects/arena2d&scene=scenes/Arena2D.json` through
+`chibi.html?play&project-root=projects/arena2d&scene=scenes/NeonSwarmSandbox.json` through
 the same launch parser. Launching the editor with `--project-root PATH` opens
 that project's start scene; `--scene PATH` selects another scene inside it
 without starting Play. The Make targets expose the same selection: `make run
 PROJECT=. SCENE=scenes/Arena3D.json` opens the 3D reference, while the defaults
 open Arena2D.
 
-Open `projects/arena2d/content/scenes/Arena2D.json` from Files after starting
+Open `projects/arena2d/content/scenes/NeonSwarmSandbox.json` from Files after starting
 the editor with `--project-root projects/arena2d`. Arena3D remains in the root
 project at `content/scenes/Arena3D.json`. Play from the scene toolbar and focus
 the scene to control the player. Move with WASD or arrows, aim with the mouse,

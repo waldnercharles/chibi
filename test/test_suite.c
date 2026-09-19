@@ -37,6 +37,7 @@ void test_surface_cpu();
 void test_shader_effects_cpu();
 void test_shader_image_cpu();
 void test_physics();
+void test_materials();
 void test_game_capabilities();
 void test_player_widgets();
 void test_dash();
@@ -98,6 +99,7 @@ TEST_CASE(all_checks)
     test_projectile();
     test_combat();
     test_physics();
+    test_materials();
     test_game_capabilities();
     test_player_widgets();
     test_dash();
@@ -162,6 +164,10 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 2 && !strcmp(argv[1], "--radiance")) {
+        extern int radiance_run(const char *program);
+        return radiance_run(program_name);
+    }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();
         test_graph_optimizer();
@@ -721,6 +727,10 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--arena-encounter") == 0) {
         registry_validate();
         test_encounter();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--materials") == 0) {
+        test_materials();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--simulation") == 0) {

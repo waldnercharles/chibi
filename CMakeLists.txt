@@ -354,7 +354,7 @@ target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core)
 
 # --- material rasterization and radiance transport --------------------------
-add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/radiance.c
+add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c
     src/render/geometry_2d.c src/render/light_field_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
@@ -363,6 +363,7 @@ target_compile_definitions(chibi_render PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_render PUBLIC runtime_support core cute)
 target_compile_options(chibi_render PRIVATE -Wno-macro-redefined)
+chibi_enable_tracy(chibi_render)
 set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
 
 # --- host frame loop and optional viewport surface --------------------------
@@ -463,6 +464,14 @@ set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 target_sources(chibi_ctl PRIVATE src/automation/render_preview.c
     src/automation/scene_preview.c src/render/scene_renderer.c
     src/render/shader_preview.c src/render/shader_fragment.c)
+if(APPLE)
+    enable_language(OBJC)
+    target_sources(chibi_ctl PRIVATE src/automation/gpu_capture.m)
+    target_compile_options(chibi_ctl PRIVATE $<$<COMPILE_LANGUAGE:OBJC>:-Wno-elaborated-enum-base>)
+    target_link_libraries(chibi_ctl PRIVATE "-framework Metal" "-framework Foundation")
+else()
+    target_sources(chibi_ctl PRIVATE src/automation/gpu_capture.c)
+endif()
 chibi_enable_tracy(chibi_ctl)
 
 find_program(NODE_EXECUTABLE node)

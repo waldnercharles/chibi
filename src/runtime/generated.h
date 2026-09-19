@@ -8,6 +8,35 @@
 /* External reflected types are emitted alongside component descriptors. */
 extern const type_desc GAME_T_CF_V2;
 
+extern const ecs_component_desc GAME_COMPONENT_GameCombustion;
+extern const GameCombustion *GAME_GameCombustion_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameFuel;
+extern const GameFuel *GAME_GameFuel_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameIgniter;
+extern const GameIgniter *GAME_GameIgniter_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameSubstance;
+extern const GameSubstance *GAME_GameSubstance_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameMaterialCavity;
+extern const GameMaterialCavity *GAME_GameMaterialCavity_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameReflection;
+extern const GameReflection *GAME_GameReflection_get_const(const ecs_world *, ecs_entity);
+
+extern const ecs_component_desc GAME_COMPONENT_GameDrive;
+extern GameDrive *GAME_GameDrive_get(ecs_world *, ecs_entity);
+extern const GameDrive *GAME_GameDrive_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameDrive_add(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameMaterialWorld;
+extern const GameMaterialWorld *GAME_GameMaterialWorld_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameDestructible;
+extern const ecs_component_desc GAME_COMPONENT_GameCaveTerrain;
+extern const GameCaveTerrain *GAME_GameCaveTerrain_get_const(const ecs_world *, ecs_entity);
+extern const GameDestructible *GAME_GameDestructible_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameFragmentGlow;
+extern const GameFragmentGlow *GAME_GameFragmentGlow_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameDestructible_has(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameFluidVolume;
+extern const GameFluidVolume *GAME_GameFluidVolume_get_const(const ecs_world *, ecs_entity);
+
 extern const ecs_component_desc GAME_COMPONENT_GameBody;
 extern GameBody *GAME_GameBody_get(ecs_world *, ecs_entity);
 extern const GameBody *GAME_GameBody_get_const(const ecs_world *, ecs_entity);

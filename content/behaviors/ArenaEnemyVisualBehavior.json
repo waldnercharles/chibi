@@ -2,7 +2,7 @@
   "version": 3,
   "name": "ArenaEnemyVisualBehavior",
   "domain": "behavior",
-  "id_counter": 160,
+  "id_counter": 162,
   "description": "Begin chooses each enemy's initial rotation and drift from editable vector ranges. GameVisualMotion owns continuous rotation and the reaction pulse; Contact and Damaged call Bump to author the recoil strength.",
   "owner_type": "ecs.entity",
   "variables": [
@@ -20,6 +20,7 @@
     {
       "kind": "event",
       "name": "",
+      "description": "",
       "breakpoints_enabled": true,
       "comment_boxes": [],
       "nodes": [
@@ -53,7 +54,7 @@
           "id": 4,
           "type": "Random Range Vector",
           "x": 0.0,
-          "y": 114.0,
+          "y": 96.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -111,7 +112,7 @@
         {
           "id": 8,
           "type": "Set_GameVisualMotion_rotation",
-          "x": 436.0,
+          "x": 310.0,
           "y": 0.0,
           "reference_id": 0,
           "disabled": false,
@@ -184,8 +185,8 @@
         {
           "id": 14,
           "type": "Random Range Vector",
-          "x": 436.0,
-          "y": 182.0,
+          "x": 310.0,
+          "y": 144.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -243,7 +244,7 @@
         {
           "id": 18,
           "type": "Set_GameVisualMotion_angular_velocity",
-          "x": 900.0,
+          "x": 620.0,
           "y": 64.0,
           "reference_id": 0,
           "disabled": false,
@@ -317,7 +318,7 @@
           "id": 24,
           "type": "Event",
           "x": 0.0,
-          "y": 414.0,
+          "y": 348.0,
           "reference_id": 0,
           "reference_name": "Contact Begin",
           "disabled": false,
@@ -348,14 +349,36 @@
               "flags": 0,
               "group": 0,
               "default": null
+            },
+            {
+              "id": 160,
+              "name": "Point X",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 161,
+              "name": "Point Y",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ]
         },
         {
           "id": 27,
           "type": "Call Function",
-          "x": 271.0,
-          "y": 414.0,
+          "x": 310.0,
+          "y": 348.0,
           "reference_id": 96,
           "reference_name": "Bump",
           "disabled": false,
@@ -405,7 +428,7 @@
           "id": 31,
           "type": "Event",
           "x": 0.0,
-          "y": 646.0,
+          "y": 600.0,
           "reference_id": 0,
           "reference_name": "Damaged",
           "disabled": false,
@@ -456,8 +479,8 @@
         {
           "id": 35,
           "type": "Call Function",
-          "x": 285.0,
-          "y": 646.0,
+          "x": 310.0,
+          "y": 600.0,
           "reference_id": 96,
           "reference_name": "Bump",
           "disabled": false,
@@ -557,6 +580,7 @@
       "id": 96,
       "kind": "function",
       "name": "Bump",
+      "description": "",
       "breakpoints_enabled": true,
       "comment_boxes": [],
       "entry_id": 98,

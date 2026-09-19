@@ -264,6 +264,32 @@ try {
   assert.equal(snapshot.live_entities, 4, "a prototype absent from the scene must still spawn");
   assert.equal(field(snapshot, "ship", "GameHealth", "current"), 42);
   assert.deepEqual(field(snapshot, "ship", "GameInput", "move"), { x: 1, y: 0 });
+  if (process.env.CHIBI_MCP_GPU === "1") {
+    // An event after preparation must execute during rendered frames. Frozen
+    // rendering of that endpoint must leave the complete runtime state alone.
+    const timeline = [
+      { frame: 0, input: { events: [{ name: "Award", target: "ship", values: [{ type: "int", value: 11 }] }] } },
+      { frame: 3, input: { events: [{ name: "Award", target: "ship", values: [{ type: "int", value: 42 }] }] } },
+    ];
+    const expected = request("captureRuntimeSnapshot", { kind: "scene", name: "Route", frames: 20, input_timeline: timeline });
+    assert.equal(field(expected, "ship", "GameHealth", "current"), 42);
+    const live = request("previewScene", { kind: "scene", name: "Route", frames: 2, render_frames: 18,
+      width: 320, height: 180, input_timeline: timeline });
+    assert.equal(live.initial_state.frame, 2);
+    assert.equal(live.final_state.frame, 20);
+    assert.equal(live.final_state.world_hash, expected.world_hash);
+    assert.notEqual(live.initial_state.world_hash, live.final_state.world_hash);
+    const frozen = request("previewScene", { kind: "scene", name: "Route", frames: 20, render_frames: 18,
+      width: 320, height: 180, input_timeline: timeline, freeze_simulation: true });
+    assert.deepEqual(frozen.initial_state, frozen.final_state);
+    assert.equal(frozen.final_state.world_hash, expected.world_hash);
+    assert.equal(frozen.performance.simulation_average_ms, 0);
+    request("previewScene", { kind: "scene", name: "Route", frames: 2, render_frames: 18,
+      freeze_simulation: true, input_timeline: timeline }, true);
+    request("previewScene", { kind: "scene", name: "Route", metal_capture: "/tmp/invalid.txt" }, true);
+    request("previewScene", { kind: "scene", name: "Route", capture_frame: 0 }, true);
+    console.log("PASS: rendered input timeline matches headless replay; frozen state is unchanged; invalid capture requests fail");
+  }
   const probe = request("captureRuntimeSnapshot", { kind: "scene", name: "Route", frames: 1,
     inputs: [{ events: [{ name: "Probe", target: "ship" }] }] });
   assert.equal(field(probe, "ship", "GameHealth", "current"), 9, "raycast branch reads its bound reward variable");

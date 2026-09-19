@@ -2,6 +2,9 @@
   "name": "NeonSwarmBoostEmitter",
   "identity": "prototype-03d63f729e45d3fe",
   "components": {
+    "GAME.GameIgniter": {
+      "heat": 2.5
+    },
     "GAME.GameParticleEmitter": {
       "absorption": 0.009999999776482582,
       "active": true,
@@ -39,28 +42,31 @@
           "x": 0.0,
           "y": 0.0
         },
-        "exponent": 0.0,
+        "exponent": 0.800000011920929,
         "start": {
-          "x": 0.20000000298023224,
-          "y": 0.4000000059604645
+          "x": 0.18000000715255737,
+          "y": 0.30000001192092896
         }
       },
       "end_color": 3394636,
+      "fluid": true,
+      "fluid_kind": 0,
+      "fluid_mass": 0.00039999998989515007,
       "heading_only": true,
       "lifetime": {
-        "x": 0.20000000298023224,
-        "y": 0.4000000059604645
+        "x": 0.4000000059604645,
+        "y": 0.699999988079071
       },
-      "metaball_blend": 0.0,
-      "metaball_group": 0,
+      "metaball_blend": 2.0,
+      "metaball_group": 1,
       "offset": {
-        "x": -9.0,
+        "x": -10.0,
         "y": 0.0,
         "z": 0.0
       },
       "parent": null,
       "planar": true,
-      "rate": 256.0,
+      "rate": 210.0,
       "shape": 0,
       "size": {
         "end": {
@@ -74,16 +80,16 @@
         }
       },
       "speed": {
-        "x": 40.0,
-        "y": 80.0
+        "x": 90.0,
+        "y": 140.0
       },
-      "spread": 6.283180236816406,
+      "spread": 0.6499999761581421,
       "stretch": {
         "x": 0.0,
         "y": 0.0
       },
       "velocity_align": false,
-      "velocity_inherit": 0.0
+      "velocity_inherit": 1.0
     },
     "game.GameTransform": {
       "x": 0.0,

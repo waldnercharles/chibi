@@ -7,6 +7,7 @@
 #include "graph/runtime/value_array.h"
 #include "runtime/behaviors/entity_query.h"
 #include "runtime/generated.h"
+#include "runtime/materials.h"
 #include "runtime/rhythm.h"
 #include "runtime/scenes/physics.h"
 #include "runtime/visual_motion.h"
@@ -60,6 +61,7 @@ struct game_entities
 {
     ecs_world *world;
     game_behavior_world *behaviors;
+    game_materials *materials;
     prototype_record *prototypes;
     ecs_entity *owned;
     spawn_request *spawns;
@@ -79,6 +81,16 @@ game_entities *game_entities_new(ecs_world *world, game_behavior_world *behavior
     entities->world = world;
     entities->behaviors = behaviors;
     return entities;
+}
+
+void game_entities_bind_materials(game_entities *entities, game_materials *materials)
+{
+    entities->materials = materials;
+}
+
+game_materials *game_entities_materials(const game_entities *entities)
+{
+    return entities ? entities->materials : NULL;
 }
 
 bool game_entities_queries_preserved(const behavior_function *function)
@@ -1064,6 +1076,9 @@ static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &NODE_Count_Matching_Entities,
                                            &GAME_NODE_GetContactEntities,
                                            &GAME_NODE_Raycast,
+                                           &GAME_NODE_CarveMaterial,
+                                           &GAME_NODE_ReleaseMaterial,
+                                           &GAME_NODE_IsMaterialFragment,
                                            &NODE_Direction_To,
                                            &NODE_Atan2,
                                            &NODE_Random_Range_Vector,

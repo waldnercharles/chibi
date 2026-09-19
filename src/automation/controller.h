@@ -5,16 +5,22 @@
 #include <stddef.h>
 
 typedef struct game_prototype_preview game_prototype_preview;
+typedef struct chibi_preview_run chibi_preview_run;
 /* Tooling scene preparation shared by headless scenarios and GPU previews.
  * Returns an owned running preview; the caller must initialize rendering first. */
 int chibi_automation_preview(
     const char *root,
     const char *request,
-    game_prototype_preview **preview,
+    chibi_preview_run **run,
     bool *perspective,
     char *error,
     size_t error_size
 );
+game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run);
+int chibi_preview_step(chibi_preview_run *run, char *error, size_t size);
+/* Owned inspection JSON, taken outside the measured frame interval. */
+char *chibi_preview_state(chibi_preview_run *run);
+void chibi_preview_free(chibi_preview_run *run);
 
 enum
 {

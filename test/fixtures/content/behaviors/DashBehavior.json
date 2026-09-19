@@ -1,7 +1,7 @@
 {
   "version": 3,
   "name": "DashBehavior",
-  "id_counter": 411,
+  "id_counter": 413,
   "description": "Captures a dash direction, drives a solid body for a short burst, and damages each contacted enemy once per dash.",
   "owner_type": "ecs.entity",
   "variables": [
@@ -535,6 +535,30 @@
               "group": 0,
               "default": null,
               "type_name": "ecs.entity"
+            },
+            {
+              "id": 411,
+              "name": "Point X",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 412,
+              "name": "Point Y",
+              "type": 10,
+              "type_name": "float",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
             }
           ],
           "reference_name": "Contact Begin"

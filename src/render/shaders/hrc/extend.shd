@@ -66,6 +66,8 @@ Interval extend(int probe_x, int k, int y)
 	int far_y_a = y + far_y_offset(k_lo);
 	Interval far_a = T_load_prev(mid_probe_x, k_hi, far_y_a);
 	Interval A = merge(near_a, far_a);
+	// Even directions use the same two intervals for both candidates.
+	if (k_lo == k_hi) return A;
 
 	// Candidate B: go k_hi then k_lo
 	Interval near_b = T_load_prev(prev_probe_x, k_hi, y);

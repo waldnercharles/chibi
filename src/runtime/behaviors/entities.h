@@ -5,6 +5,9 @@
 #include "runtime/behaviors/behavior.h"
 
 typedef struct game_entities game_entities;
+struct game_materials;
+void game_entities_bind_materials(game_entities *entities, struct game_materials *materials);
+struct game_materials *game_entities_materials(const game_entities *entities);
 
 game_entities *game_entities_new(ecs_world *world, game_behavior_world *behaviors);
 void game_entities_free(game_entities *entities);

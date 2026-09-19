@@ -345,13 +345,16 @@ bool render_material_raster_draw(
     dispatch.ro_buffer_count = 1;
     dispatch.rw_buffers = bins;
     dispatch.rw_buffer_count = 2;
+    cf_push_gpu_label("Material tile binning");
     cf_dispatch_compute(r->bin, r->material, dispatch);
+    cf_pop_gpu_label();
     CF_StorageBuffer inputs[] = { r->entities, r->counts, r->indices, r->parameters };
     dispatch = cf_compute_dispatch_defaults(tx, ty, 1);
     dispatch.ro_buffers = inputs;
     dispatch.ro_buffer_count = 4;
     dispatch.rw_textures = r->textures;
     dispatch.rw_texture_count = 5;
+    cf_push_gpu_label("Material raster batches");
     for (int i = 0; i < acount(r->batches); i++) {
         const material_batch *batch = &r->batches[i];
         int accumulate = i != 0;
@@ -363,6 +366,7 @@ bool render_material_raster_draw(
             shader = render_programs_bind_compute(r->programs, batch->program, r->material);
         cf_dispatch_compute(shader, r->material, dispatch);
     }
+    cf_pop_gpu_label();
     return true;
 }
 

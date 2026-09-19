@@ -98,6 +98,7 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     result->live = live;
     if (live) {
         result->emitters = game_particle_emitters_new(live->particles);
+        game_particle_emitters_bind_materials(result->emitters, live->materials);
     }
     result->playing = true;
     result->input = engine_input_new(world, live ? live->behaviors : NULL);
@@ -157,9 +158,15 @@ void engine_reset(engine *engine)
         game_behavior_set_time(engine->live->behaviors, 0);
         game_behavior_set_delta_seconds(engine->live->behaviors, ENGINE_FIXED_SECONDS);
         game_physics_reset(engine->live->physics);
+        game_materials_reset(engine->live->materials);
         game_visibility_reset(engine->live->visibility);
         game_audio_reset(engine_audio(engine));
     }
+}
+
+const game_materials *engine_materials(const engine *engine)
+{
+    return engine && engine->live ? engine->live->materials : NULL;
 }
 
 int engine_set_focus(engine *engine, engine_focus focus)

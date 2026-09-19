@@ -7,7 +7,8 @@
         "x": 1.0,
         "y": 0.0
       },
-      "firing": false
+      "firing": false,
+      "manual": false
     },
     "GAME.GameBody": {
       "continuous": true,
@@ -53,6 +54,20 @@
       "radians": 0.0
     },
     "GAME.GameParticleEmitter": {
+      "absorption": 0.009999999776482582,
+      "active": true,
+      "antialias": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.0,
+        "start": {
+          "x": 1.5,
+          "y": 1.5
+        }
+      },
+      "burst_count": 0,
       "color": 3304783871,
       "direction": {
         "x": -1.0,
@@ -60,71 +75,69 @@
         "z": 0.0
       },
       "drag": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.0,
         "start": {
           "x": 1.5,
           "y": 1.5
-        },
-        "end": {
-          "x": 0,
-          "y": 0
-        },
-        "exponent": 0
+        }
       },
       "emission": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.0,
         "start": {
           "x": 1.2999999523162842,
           "y": 1.2999999523162842
-        },
-        "end": {
-          "x": 0,
-          "y": 0
-        },
-        "exponent": 0
+        }
       },
       "end_color": 394308096,
+      "fluid": false,
+      "fluid_kind": 0,
+      "fluid_mass": 0.00019999999494757503,
       "heading_only": false,
       "lifetime": {
         "x": 0.23999999463558197,
         "y": 0.23999999463558197
       },
+      "metaball_blend": 0.0,
+      "metaball_group": 0,
       "offset": {
         "x": -11.0,
         "y": 0.0,
         "z": 0.0
       },
+      "parent": null,
+      "planar": false,
       "rate": 160.0,
       "shape": 0,
       "size": {
+        "end": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "exponent": 0.8500000238418579,
         "start": {
           "x": 2.200000047683716,
           "y": 2.200000047683716
-        },
-        "end": {
-          "x": 0,
-          "y": 0
-        },
-        "exponent": 0.8500000238418579
+        }
       },
       "speed": {
         "x": 105.0,
         "y": 105.0
       },
       "spread": 0.20000000298023224,
-      "velocity_inherit": 1.0,
-      "active": true,
-      "planar": false,
-      "antialias": {
-        "start": {
-          "x": 1.5,
-          "y": 1.5
-        },
-        "end": {
-          "x": 0,
-          "y": 0
-        },
-        "exponent": 0
+      "stretch": {
+        "x": 0.0,
+        "y": 0.0
       },
-      "absorption": 0.01
+      "velocity_align": false,
+      "velocity_inherit": 1.0
     },
     "GAME.GamePointLight": {
       "color": 953090047,

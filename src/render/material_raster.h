@@ -34,7 +34,8 @@ typedef struct
     float aa;
     uint32_t point_count, metaball_group;
     float metaball_blend;
-    /* reserved[0/1] select catalog material/shape; zero uses the authored coefficients/SDF. */
+    /* reserved[0/1] select catalog material/shape; zero uses authored data.
+     * reserved[2] is received-light gain near the silhouette. */
     float border_thickness, reserved[3];
     float points[16];
     float scene[4], emission[4], absorption[4], albedo[4];
@@ -47,6 +48,8 @@ typedef struct
 
 typedef struct
 {
+    /* normal.xy = planar normal, w = confidence. Positive Z is solid edge-light
+     * gain; fluid drawing uses negative Z for liquid refraction strength. */
     CF_Texture scene, emission, absorption, albedo, normal;
 } render_material_textures;
 

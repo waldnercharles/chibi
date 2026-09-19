@@ -31,17 +31,28 @@
     },
     "GAME.GameBody": {
       "continuous": true,
-      "type": 2
+      "type": 1
     },
     "GAME.GameCollider": {
       "category": 1,
       "height": 0.0,
       "ignore_entity": null,
-      "mask": 8,
+      "mask": 10,
       "radius": 10.0,
       "sensor": false,
       "shape": 0,
       "width": 0.0
+    },
+    "GAME.GameDrive": {
+      "acceleration": 800.0,
+      "target": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    "game.GameHealth": {
+      "current": 20,
+      "maximum": 20
     },
     "game.GameInput": {
       "move": {

@@ -1,9 +1,11 @@
 #include "runtime/scenes/physics.h"
 
+#include "diagnostics/tracy.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/value_array.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/generated.h"
+#include "runtime/materials.h"
 #include "runtime/task_pool.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -28,24 +30,30 @@ typedef struct
     b2BodyId body;
     b2ShapeId shape;
     b2ShapeProxy geometry;
+    b2ShapeProxy *parts;
+    const material_mask *mask; /* Borrowed only by immediate authored queries. */
+    unsigned mask_revision;
     b2Transform start, end;
     b2AABB tree_bounds;
     GameCollider collider;
     GameBody settings;
     int proxy;
     float angle, stop_fraction;
-    bool seen;
+    bool seen, fragment;
 } physics_body;
 
 typedef struct
 {
     uint64_t first, second;
+    b2Vec2 point;
+    float fraction;
 } contact_pair;
 
 typedef struct
 {
     contact_pair *pairs;
     b2ContactData *contacts;
+    unsigned *visited;
 } pair_buffer;
 
 typedef struct
@@ -62,9 +70,13 @@ struct game_physics
     b2DynamicTree sweeps;
     game_physics_settings configuration;
     physics_body *bodies;
-    contact_pair *previous, *current, *sort_scratch;
+    contact_pair *previous, *current, *sort_scratch, *begun;
     b2ContactData *contacts;
+    unsigned *visited;
     drive_force *forces;
+    fluid_body *fluid_bodies;
+    fluid_obstacle *fluid_obstacles;
+    b2BodyId *fluid_ids;
     bool profiling;
     game_physics_profile profile;
     game_task_system tasks;
@@ -152,6 +164,7 @@ static void free_workers(game_physics *physics)
     for (int i = 0; i < acount(physics->workers); i++) {
         afree(physics->workers[i].pairs);
         afree(physics->workers[i].contacts);
+        afree(physics->workers[i].visited);
     }
     afree(physics->workers);
 }
@@ -193,12 +206,20 @@ void game_physics_free(game_physics *physics)
     }
     b2DestroyWorld(physics->simulation);
     b2DynamicTree_Destroy(&physics->sweeps);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        afree(physics->bodies[i].parts);
+    }
     afree(physics->bodies);
     afree(physics->previous);
     afree(physics->current);
     afree(physics->sort_scratch);
+    afree(physics->begun);
     afree(physics->contacts);
+    afree(physics->visited);
     afree(physics->forces);
+    afree(physics->fluid_bodies);
+    afree(physics->fluid_obstacles);
+    afree(physics->fluid_ids);
     free_workers(physics);
     if (physics->pool) {
         game_task_pool_release(physics->pool);
@@ -211,6 +232,9 @@ void game_physics_reset(game_physics *physics)
     physics->profile = (game_physics_profile){ 0 };
     b2DestroyWorld(physics->simulation);
     b2DynamicTree_Destroy(&physics->sweeps);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        afree(physics->bodies[i].parts);
+    }
     aclear(physics->bodies);
     physics->body_count = 0;
     physics->active_workers = 1;
@@ -341,7 +365,9 @@ static bool same_configuration(const physics_body *body, const GameCollider *sha
            old->shape == shape->shape && old->radius == shape->radius &&
            old->width == shape->width && old->height == shape->height &&
            old->category == shape->category && old->mask == shape->mask &&
-           old->sensor == shape->sensor && old->ignore_entity == shape->ignore_entity;
+           old->sensor == shape->sensor &&
+           old->pierce_fragments == shape->pierce_fragments &&
+           old->ignore_entity == shape->ignore_entity;
 }
 
 static void remove_body(game_physics *physics, physics_body *body)
@@ -350,21 +376,50 @@ static void remove_body(game_physics *physics, physics_body *body)
     if (body->proxy >= 0) {
         b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
     }
+    afree(body->parts);
     *body = (physics_body){ 0 };
+}
+
+static b2Polygon rect_polygon(material_rect r)
+{
+    return b2MakeOffsetBox(r.width * .5f, r.height * .5f, (b2Vec2){ r.x, r.y }, b2Rot_identity);
+}
+
+static int geometry_count(const physics_body *body)
+{
+    if (body->parts) {
+        return acount(body->parts);
+    }
+    return body->mask ? acount(body->mask->rects) : 1;
+}
+
+static b2ShapeProxy geometry_at(const physics_body *body, int index)
+{
+    if (body->parts) {
+        return body->parts[index];
+    }
+    if (body->mask) {
+        b2Polygon box = rect_polygon(body->mask->rects[index]);
+        return b2MakeProxy(box.vertices, box.count, box.radius);
+    }
+    return body->geometry;
 }
 
 static b2AABB bounds(const physics_body *body, b2Transform transform)
 {
-    b2Vec2 p = b2TransformPoint(transform, body->geometry.points[0]);
-    b2AABB result = { p, p };
-    for (int i = 1; i < body->geometry.count; i++) {
-        p = b2TransformPoint(transform, body->geometry.points[i]);
-        result.lowerBound = b2Min(result.lowerBound, p);
-        result.upperBound = b2Max(result.upperBound, p);
+    b2AABB result = { transform.p, transform.p };
+    for (int part = 0; part < geometry_count(body); part++) {
+        b2ShapeProxy geometry = geometry_at(body, part);
+        b2Vec2 radius = { geometry.radius, geometry.radius };
+        for (int i = 0; i < geometry.count; i++) {
+            b2Vec2 p = b2TransformPoint(transform, geometry.points[i]);
+            if (!part && !i) {
+                result = (b2AABB){ b2Sub(p, radius), b2Add(p, radius) };
+            }
+            result.lowerBound = b2Min(result.lowerBound, b2Sub(p, radius));
+            result.upperBound = b2Max(result.upperBound, b2Add(p, radius));
+        }
     }
-    b2Vec2 radius = { body->geometry.radius, body->geometry.radius };
-    result.lowerBound = b2Sub(result.lowerBound, radius);
-    result.upperBound = b2Add(result.upperBound, radius);
     return result;
 }
 
@@ -403,7 +458,18 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
      * semantics. No consumer reads Box2D's separate buffered event streams. */
     shape.enableSensorEvents = false;
     shape.enableContactEvents = false;
-    if (body->collider.shape == GAME_COLLIDER_CIRCLE) {
+    const material_mask *mask = game_materials_mask(
+        game_entities_materials(physics->entities),
+        body->entity
+    );
+    body->mask_revision = mask ? mask->revision : 0;
+    if (mask) {
+        for (int i = 0; i < acount(mask->rects); i++) {
+            b2Polygon box = rect_polygon(mask->rects[i]);
+            body->shape = b2CreatePolygonShape(body->body, &shape, &box);
+            apush(body->parts, b2MakeProxy(box.vertices, box.count, box.radius));
+        }
+    } else if (body->collider.shape == GAME_COLLIDER_CIRCLE) {
         b2Circle circle = { .radius = body->collider.radius };
         body->shape = b2CreateCircleShape(body->body, &shape, &circle);
         body->geometry = b2MakeProxy(&circle.center, 1, circle.radius);
@@ -426,6 +492,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
     float angle = orientation ? orientation->radians : 0;
     const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
+    const GameDrive *drive = GAME_GameDrive_get_const(world, entity);
     CF_V2 movement = velocity ? *velocity : (CF_V2){ 0 };
     if (!valid(&position, angle, &collider, &settings, movement)) {
         snprintf(
@@ -446,24 +513,51 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
         );
     }
     physics_body *body = &physics->bodies[entity.slot];
-    if (body->body.index1 && (!same_entity(body->entity, entity) ||
-                              !same_configuration(body, &collider, &settings))) {
+    const material_mask
+        *mask = game_materials_mask(game_entities_materials(physics->entities), entity);
+    unsigned revision = mask ? mask->revision : 0;
+    if (body->body.index1 &&
+        (!same_entity(body->entity, entity) || body->mask_revision != revision ||
+         !same_configuration(body, &collider, &settings))) {
         remove_body(physics, body);
     }
     body->entity = entity;
     body->collider = collider;
     body->settings = settings;
     body->seen = true;
+    body->fragment = game_materials_is_fragment(game_entities_materials(physics->entities), entity);
     b2Vec2 point = { position.x, position.y };
     if (!body->body.index1) {
         create_body(physics, body, point, angle);
+        if (drive) {
+            b2Body_SetLinearVelocity(body->body, (b2Vec2){ movement.x, movement.y });
+        }
     } else if (position.x != body->end.p.x || position.y != body->end.p.y || angle != body->angle) {
         b2Body_SetTransform(body->body, point, b2MakeRot(angle));
     }
     body->angle = angle;
     body->stop_fraction = 1;
-    if (physics->configuration.force_drive &&
-        settings.type == GAME_BODY_DYNAMIC && delta > 0) {
+    if (drive && settings.type == GAME_BODY_DYNAMIC && delta > 0) {
+        if (!isfinite(drive->target.x + drive->target.y + drive->acceleration) ||
+            drive->acceleration < 0) {
+            snprintf(
+                physics->error,
+                sizeof physics->error,
+                "Drive requires a finite target and nonnegative acceleration "
+                "on entity %u.",
+                entity.slot
+            );
+            return FLOW_ERR_ARGUMENT;
+        }
+        b2Vec2 current = b2Body_GetLinearVelocity(body->body);
+        b2Vec2 change = b2Sub((b2Vec2){ drive->target.x, drive->target.y }, current);
+        float length = b2Length(change), limit = drive->acceleration * delta;
+        if (length > limit) {
+            change = b2MulSV(limit / length, change);
+        }
+        b2Vec2 force = b2MulSV(b2Body_GetMass(body->body) / delta, change);
+        apush(physics->forces, ((drive_force){ body->body, force }));
+    } else if (physics->configuration.force_drive && settings.type == GAME_BODY_DYNAMIC && delta > 0) {
         b2Vec2 current = b2Body_GetLinearVelocity(body->body);
         double scale = (double)b2Body_GetMass(body->body) / delta;
         b2Vec2 force = { (float)(scale * (movement.x - current.x)),
@@ -535,11 +629,18 @@ static int synchronize(game_physics *physics, float delta)
     return result;
 }
 
-static void add_pair(contact_pair **pairs, const physics_body *a, const physics_body *b)
+static contact_pair *add_pair(contact_pair **pairs, const physics_body *a, const physics_body *b)
 {
     uint64_t first = ecs_entity_to_u64(a->entity),
              second = ecs_entity_to_u64(b->entity);
-    apush(*pairs, ((contact_pair){ first < second ? first : second, first < second ? second : first }));
+    apush(
+        *pairs,
+        ((contact_pair){ .first = first < second ? first : second,
+                         .second = first < second ? second : first,
+                         .point = b2Lerp(a->end.p, b->end.p, .5f),
+                         .fraction = 1 })
+    );
+    return &(*pairs)[acount(*pairs) - 1];
 }
 
 static bool continuous_sensor(const physics_body *body)
@@ -549,16 +650,25 @@ static bool continuous_sensor(const physics_body *body)
 
 static float distance(const physics_body *a, b2Transform first, const physics_body *b, b2Transform second)
 {
-    b2DistanceInput input = { .proxyA = a->geometry,
-                              .proxyB = b->geometry,
-                              .transformA = first,
-                              .transformB = second,
-                              .useRadii = true };
-    b2SimplexCache cache = { 0 };
-    return b2ShapeDistance(&input, &cache, NULL, 0).distance;
+    float nearest = INFINITY;
+    for (int i = 0; i < geometry_count(a); i++) {
+        for (int j = 0; j < geometry_count(b); j++) {
+            b2DistanceInput input = { .proxyA = geometry_at(a, i),
+                                      .proxyB = geometry_at(b, j),
+                                      .transformA = first,
+                                      .transformB = second,
+                                      .useRadii = true };
+            b2SimplexCache cache = { 0 };
+            nearest = fminf(nearest, b2ShapeDistance(&input, &cache, NULL, 0).distance);
+            if (nearest == 0) {
+                return 0;
+            }
+        }
+    }
+    return nearest;
 }
 
-static bool read_geometry(ecs_world *world, ecs_entity entity, physics_body *body)
+static bool read_geometry(ecs_world *world, game_entities *entities, ecs_entity entity, physics_body *body)
 {
     const GameTransform *position = GAME_GameTransform_get_const(world, entity);
     const GameCollider *collider = GAME_GameCollider_get_const(world, entity);
@@ -570,6 +680,7 @@ static bool read_geometry(ecs_world *world, ecs_entity entity, physics_body *bod
     }
     body->entity = entity;
     body->collider = *collider;
+    body->mask = game_materials_mask(game_entities_materials(entities), entity);
     body->end = (b2Transform){ { position->x, position->y }, b2MakeRot(angle) };
     if (collider->shape == GAME_COLLIDER_CIRCLE) {
         b2Vec2 center = { 0 };
@@ -630,26 +741,34 @@ int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entitie
             continue;
         }
         physics_body body = { 0 };
-        if (!read_geometry(world, entity, &body)) {
+        if (!read_geometry(world, entities, entity, &body)) {
             result = FLOW_ERR_ARGUMENT;
             break;
         }
-        ray_shape shape = { .entity = entity,
-                            .circle = body.collider.shape == GAME_COLLIDER_CIRCLE,
-                            .sensor = body.collider.sensor,
-                            .transform = body.end };
-        if (shape.circle) {
-            shape.disk.radius = body.collider.radius;
-        } else {
-            shape.box = b2MakeBox(body.collider.width * .5f, body.collider.height * .5f);
+        for (int i = 0; i < geometry_count(&body); i++) {
+            ray_shape shape = { .entity = entity,
+                                .circle = !body.mask && body.collider.shape ==
+                                                            GAME_COLLIDER_CIRCLE,
+                                .sensor = body.collider.sensor,
+                                .transform = body.end };
+            if (shape.circle) {
+                shape.disk.radius = body.collider.radius;
+            } else {
+                shape.box = body.mask ? rect_polygon(body.mask->rects[i])
+                                      : b2MakeBox(
+                                            body.collider.width * .5f,
+                                            body.collider.height * .5f
+                                        );
+            }
+            physics_body part = { .geometry = geometry_at(&body, i) };
+            b2DynamicTree_CreateProxy(
+                &scene->tree,
+                bounds(&part, body.end),
+                body.collider.category,
+                (uint64_t)acount(scene->shapes)
+            );
+            apush(scene->shapes, shape);
         }
-        b2DynamicTree_CreateProxy(
-            &scene->tree,
-            bounds(&body, body.end),
-            body.collider.category,
-            (uint64_t)acount(scene->shapes)
-        );
-        apush(scene->shapes, shape);
     }
     ecs_query_end(&query);
     return result;
@@ -834,7 +953,7 @@ int game_physics_contact_entities(
         return FLOW_OK;
     }
     physics_body source = { 0 };
-    if (!read_geometry(world, entity, &source)) {
+    if (!read_geometry(world, entities, entity, &source)) {
         return FLOW_ERR_ARGUMENT;
     }
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
@@ -855,7 +974,7 @@ int game_physics_contact_entities(
             continue;
         }
         physics_body target = { 0 };
-        if (!read_geometry(world, candidate, &target)) {
+        if (!read_geometry(world, entities, candidate, &target)) {
             result = FLOW_ERR_ARGUMENT;
             break;
         }
@@ -950,7 +1069,9 @@ typedef struct
     game_physics *physics;
     physics_body *body, *nearest;
     contact_pair **pairs;
+    unsigned **visited;
     float fraction;
+    b2Vec2 point;
 } pair_query;
 
 static bool overlap_candidate(b2ShapeId shape, void *user)
@@ -960,7 +1081,24 @@ static bool overlap_candidate(b2ShapeId shape, void *user)
     if (b->entity.slot <= a->entity.slot || continuous_sensor(b) || !eligible(a, b)) {
         return true;
     }
-    if (distance(a, a->end, b, b->end) == 0) {
+    /* A compound collider appears once per shape. Once any piece touches,
+     * skip its remaining callbacks; misses must still allow later pieces. */
+    for (int i = 0; i < acount(*query->visited); i++) {
+        if ((*query->visited)[i] == b->entity.slot) {
+            return true;
+        }
+    }
+    physics_body part = { 0 };
+    const physics_body *candidate = b;
+    if (b->parts) {
+        /* The tree already selected this polygon. Comparing against every
+         * polygon in its parent repeats distant terrain work for each hit. */
+        b2Polygon polygon = b2Shape_GetPolygon(shape);
+        part.geometry = b2MakeProxy(polygon.vertices, polygon.count, polygon.radius);
+        candidate = &part;
+    }
+    if (distance(a, a->end, candidate, b->end) == 0) {
+        apush(*query->visited, b->entity.slot);
         add_pair(query->pairs, a, b);
     }
     return true;
@@ -974,21 +1112,42 @@ static bool sweep_candidate(int, uint64_t slot, void *user)
         return true;
     }
     float fraction = 0;
+    b2Vec2 point = a->start.p;
     if (distance(a, a->start, b, b->start) > 0) {
-        b2ShapeCastPairInput input = { .proxyA = b->geometry,
-                                       .proxyB = a->geometry,
-                                       .transformA = b->start,
-                                       .transformB = a->start,
-                                       .translationB = b2Sub(
-                                           b2Sub(a->end.p, a->start.p),
-                                           b2Sub(b->end.p, b->start.p)
-                                       ),
-                                       .maxFraction = query->fraction };
-        b2CastOutput cast = b2ShapeCast(&input);
-        if (!cast.hit) {
+        fraction = INFINITY;
+        for (int i = 0; i < geometry_count(a); i++) {
+            for (int j = 0; j < geometry_count(b); j++) {
+                b2ShapeCastPairInput input = {
+                    .proxyA = geometry_at(b, j),
+                    .proxyB = geometry_at(a, i),
+                    .transformA = b->start,
+                    .transformB = a->start,
+                    .translationB = b2Sub(
+                        b2Sub(a->end.p, a->start.p),
+                        b2Sub(b->end.p, b->start.p)
+                    ),
+                    .maxFraction = fminf(query->fraction, fraction)
+                };
+                b2CastOutput cast = b2ShapeCast(&input);
+                if (cast.hit && cast.fraction < fraction) {
+                    fraction = cast.fraction;
+                    point = b2MulAdd(
+                        cast.point,
+                        fraction,
+                        b2Sub(b->end.p, b->start.p)
+                    );
+                }
+            }
+        }
+        if (!isfinite(fraction)) {
             return true;
         }
-        fraction = cast.fraction;
+    }
+    if (a->collider.pierce_fragments && b->fragment) {
+        contact_pair *pair = add_pair(query->pairs, a, b);
+        pair->fraction = fraction;
+        pair->point = point;
+        return true;
     }
     if (fraction < query->fraction ||
         (fraction == query->fraction &&
@@ -996,6 +1155,7 @@ static bool sweep_candidate(int, uint64_t slot, void *user)
                                  ecs_entity_to_u64(query->nearest->entity)))) {
         query->fraction = fraction;
         query->nearest = b;
+        query->point = point;
     }
     return true;
 }
@@ -1016,10 +1176,22 @@ static void collect_body(const collect_context *context, int index, pair_buffer 
     pair_query query = { .physics = physics,
                          .body = body,
                          .pairs = &buffer->pairs,
+                         .visited = &buffer->visited,
                          .fraction = 1 };
+    aclear(buffer->visited);
     bool swept = continuous_sensor(body);
     if (swept) {
+        int first = acount(buffer->pairs);
         b2DynamicTree_Query(&physics->sweeps, swept_bounds(body), body->collider.mask, sweep_candidate, &query);
+        /* Broad-phase order is arbitrary. Discard debris beyond the nearest
+         * blocking surface, even if it was visited before that surface. */
+        int count = first;
+        for (int i = first; i < acount(buffer->pairs); i++) {
+            if (buffer->pairs[i].fraction <= query.fraction) {
+                buffer->pairs[count++] = buffer->pairs[i];
+            }
+        }
+        asetlen(buffer->pairs, count);
     } else {
         /* Reuse the solver's spatial index. Keep the exact distance test and
          * current-pose semantics, including zero-delta synchronization. */
@@ -1028,7 +1200,9 @@ static void collect_body(const collect_context *context, int index, pair_buffer 
         b2World_OverlapAABB(physics->simulation, bounds(body, body->end), filter, overlap_candidate, &query);
     }
     if (query.nearest) {
-        add_pair(&buffer->pairs, body, query.nearest);
+        contact_pair *pair = add_pair(&buffer->pairs, body, query.nearest);
+        pair->point = query.point;
+        pair->fraction = query.fraction;
         body->stop_fraction = query.fraction;
     }
     if (!context->solved || swept || body->collider.sensor) {
@@ -1036,9 +1210,9 @@ static void collect_body(const collect_context *context, int index, pair_buffer 
     }
     /* Solved solid contacts can have a small separation within Box2D's
      * contact tolerance. Keep those pairs active instead of retriggering. */
-    int capacity = b2Shape_GetContactCapacity(body->shape);
+    int capacity = b2Body_GetContactCapacity(body->body);
     asetlen(buffer->contacts, capacity);
-    int count = b2Shape_GetContactData(body->shape, buffer->contacts, capacity);
+    int count = b2Body_GetContactData(body->body, buffer->contacts, capacity);
     for (int j = 0; j < count; j++) {
         b2ContactData contact = buffer->contacts[j];
         physics_body *a = shape_body(physics, contact.shapeIdA),
@@ -1070,12 +1244,13 @@ static void collect_pairs(game_physics *physics, bool solved)
     collect_context context = { physics, solved };
     int count = acount(physics->bodies);
     if (physics->active_workers < 2 || physics->body_count < PARALLEL_BODY_MINIMUM) {
-        pair_buffer buffer = { physics->current, physics->contacts };
+        pair_buffer buffer = { physics->current, physics->contacts, physics->visited };
         for (int i = 0; i < count; i++) {
             collect_body(&context, i, &buffer);
         }
         physics->current = buffer.pairs;
         physics->contacts = buffer.contacts;
+        physics->visited = buffer.visited;
         return;
     }
     /* The solver and swept-tree writes have finished. Queries read immutable
@@ -1109,14 +1284,18 @@ static int compare_pairs(const void *left, const void *right)
     return (a->second > b->second) - (a->second < b->second);
 }
 
-static int queue_contact(game_physics *physics, uint64_t target, uint64_t other)
+static int queue_contact(game_physics *physics, uint64_t target, uint64_t other, b2Vec2 point)
 {
-    pin_value value = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = other };
+    pin_value values[] = {
+        { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = other },
+        { .type = PIN_F32, .type_name = "float", .f = point.x },
+        { .type = PIN_F32, .type_name = "float", .f = point.y },
+    };
     return game_entities_request_event(
         physics->entities,
         ecs_entity_from_u64(target),
         "Contact Begin",
-        (flow_inputs){ .values = &value, .count = 1 }
+        (flow_inputs){ .values = values, .count = 3 }
     );
 }
 
@@ -1166,12 +1345,22 @@ static void sort_pairs(game_physics *physics)
     }
 }
 
+static int compare_hit_times(const void *left, const void *right)
+{
+    const contact_pair *a = left, *b = right;
+    if (a->fraction != b->fraction) {
+        return (a->fraction > b->fraction) - (a->fraction < b->fraction);
+    }
+    return compare_pairs(left, right);
+}
+
 static int dispatch_pairs(game_physics *physics)
 {
     if (acount(physics->current) > 1) {
         sort_pairs(physics);
     }
     int count = 0, previous = 0, result = FLOW_OK;
+    aclear(physics->begun);
     for (int i = 0; i < acount(physics->current); i++) {
         contact_pair pair = physics->current[i];
         if (count && !compare_pairs(&pair, &physics->current[count - 1])) {
@@ -1188,8 +1377,17 @@ static int dispatch_pairs(game_physics *physics)
             !compare_pairs(&physics->previous[previous], &pair)) {
             continue;
         }
-        int first = queue_contact(physics, pair.first, pair.second),
-            second = queue_contact(physics, pair.second, pair.first);
+        apush(physics->begun, pair);
+    }
+    /* Deliver swept impacts in travel order so a later blocking hit cannot
+     * retire the projectile before earlier debris contacts carve their hulls. */
+    if (acount(physics->begun) > 1) {
+        qsort(physics->begun, (size_t)acount(physics->begun), sizeof *physics->begun, compare_hit_times);
+    }
+    for (int i = 0; i < acount(physics->begun); i++) {
+        contact_pair pair = physics->begun[i];
+        int first = queue_contact(physics, pair.first, pair.second, pair.point),
+            second = queue_contact(physics, pair.second, pair.first, pair.point);
         if (first < 0 || second < 0) {
             result = first < 0 ? first : second;
         }
@@ -1254,6 +1452,82 @@ static void update_poses(game_physics *physics)
     }
 }
 
+static void solve_fluid(game_physics *physics, float delta)
+{
+    game_materials *materials = game_entities_materials(physics->entities);
+    if (!game_materials_enabled(materials) || delta <= 0) {
+        return;
+    }
+    aclear(physics->fluid_bodies);
+    aclear(physics->fluid_obstacles);
+    aclear(physics->fluid_ids);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1 ||
+            (body->collider.sensor &&
+             !GAME_GameProjectile_get_const(physics->world, body->entity))) {
+            continue;
+        }
+        b2Vec2 p = b2Body_GetPosition(body->body),
+               v = b2Body_GetLinearVelocity(body->body);
+        float mass = b2Body_GetMass(body->body);
+        const GameIgniter *igniter = GAME_GameIgniter_get_const(physics->world, body->entity);
+        int index = acount(physics->fluid_bodies);
+        apush(physics->fluid_ids, body->body);
+        apush(
+            physics->fluid_bodies,
+            ((fluid_body){ .position = { p.x, p.y },
+                           .velocity = { v.x, v.y },
+                           .angle = body->angle,
+                           .heat = igniter ? igniter->heat : 0,
+                           .owner = ecs_entity_to_u64(body->entity),
+                           .inverse_mass = body->settings.type == GAME_BODY_DYNAMIC && mass > 0
+                                             ? 1 / mass
+                                             : 0 })
+        );
+        for (int part = 0; part < geometry_count(body); part++) {
+            b2ShapeProxy geometry = geometry_at(body, part);
+            fluid_obstacle obstacle = { .body = index };
+            if (geometry.count == 1) {
+                obstacle.center = (fluid_vec){ geometry.points[0].x,
+                                               geometry.points[0].y };
+                obstacle.radius = geometry.radius;
+            } else {
+                b2Vec2 min = geometry.points[0], max = min;
+                for (int j = 1; j < geometry.count; j++) {
+                    min = b2Min(min, geometry.points[j]);
+                    max = b2Max(max, geometry.points[j]);
+                }
+                obstacle.center = (fluid_vec){ (min.x + max.x) * .5f,
+                                               (min.y + max.y) * .5f };
+                obstacle.half_size = (fluid_vec){ (max.x - min.x) * .5f,
+                                                  (max.y - min.y) * .5f };
+            }
+            apush(physics->fluid_obstacles, obstacle);
+        }
+    }
+    CHIBI_TRACE_ZONE_BEGIN(fluid_zone, "Fluid simulation");
+    game_materials_tick(
+        materials,
+        delta,
+        physics->fluid_bodies,
+        acount(physics->fluid_bodies),
+        physics->fluid_obstacles,
+        acount(physics->fluid_obstacles)
+    );
+    CHIBI_TRACE_ZONE_END(fluid_zone);
+    for (int i = 0; i < acount(physics->fluid_bodies); i++) {
+        fluid_body body = physics->fluid_bodies[i];
+        if (body.inverse_mass > 0 && (body.impulse.x || body.impulse.y)) {
+            b2Body_ApplyLinearImpulseToCenter(
+                physics->fluid_ids[i],
+                (b2Vec2){ body.impulse.x, body.impulse.y },
+                true
+            );
+        }
+    }
+}
+
 int game_physics_tick(game_physics *physics, float delta_seconds)
 {
     physics->error[0] = 0;
@@ -1264,6 +1538,14 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     }
     if (!isfinite(delta_seconds) || delta_seconds < 0) {
         snprintf(physics->error, sizeof physics->error, "Physics delta must be finite and nonnegative.");
+        return FLOW_ERR_ARGUMENT;
+    }
+    game_materials *materials = game_entities_materials(physics->entities);
+    CHIBI_TRACE_ZONE_BEGIN(material_zone, "Material edits");
+    const char *material_error = materials ? game_materials_prepare(materials) : NULL;
+    CHIBI_TRACE_ZONE_END(material_zone);
+    if (material_error) {
+        snprintf(physics->error, sizeof physics->error, "%s", material_error);
         return FLOW_ERR_ARGUMENT;
     }
     int result = synchronize(physics, delta_seconds);
@@ -1286,6 +1568,16 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     if (physics->pool) {
         game_task_pool_end(physics->pool);
     }
+    /* Fluid interaction must see the swept contact pose. Using the proposed
+     * end pose lets a fast igniter heat fuel on the far side of a solid wall. */
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (body->body.index1 && body->stop_fraction < 1) {
+            body->end.p = b2Lerp(body->start.p, body->end.p, body->stop_fraction);
+            b2Body_SetTransform(body->body, body->end.p, body->end.q);
+        }
+    }
+    solve_fluid(physics, delta_seconds);
     profile_phase(physics, &start, &physics->profile.pairs_ms);
     if (physics->profiling) {
         physics->profile.pairs = acount(physics->current);
@@ -1294,10 +1586,6 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         physics_body *body = &physics->bodies[i];
         if (!body->body.index1) {
             continue;
-        }
-        if (body->stop_fraction < 1) {
-            body->end.p = b2Lerp(body->start.p, body->end.p, body->stop_fraction);
-            b2Body_SetTransform(body->body, body->end.p, body->end.q);
         }
         *GAME_GameTransform_get(physics->world, body->entity) = (GameTransform){
             body->end.p.x,

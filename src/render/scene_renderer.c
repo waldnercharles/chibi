@@ -1,13 +1,16 @@
 #include "render/scene_renderer.h"
 
+#include "diagnostics/tracy.h"
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/fluid_raster.h"
 #include "render/fog.h"
 #include "render/geometry_2d.h"
 #include "render/material.h"
 #include "render/material_raster.h"
 #include "render/radiance.h"
+#include "render/reflections.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
@@ -30,7 +33,10 @@ struct app_scene_renderer
     render_fog *fog;
     bool arena_attempted, parallel_disabled;
     render_material_raster *raster;
+    render_fluid_raster *fluid;
     render_radiance *radiance;
+    render_reflections *reflections;
+    render_reflection *reflectors;
     CF_Canvas output, background;
     CF_Shader background_shader;
     GameStarfield2D background_style;
@@ -85,10 +91,13 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
         return;
     }
     render_material_raster_free(renderer->raster);
+    render_fluid_raster_free(renderer->fluid);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
     render_fog_free(renderer->fog);
     render_radiance_free(renderer->radiance);
+    render_reflections_free(renderer->reflections);
+    afree(renderer->reflectors);
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
     }
@@ -341,6 +350,7 @@ static bool append_entity(
                     fmaxf(fabsf(min.y), fabsf(max.y)) + padding },
         .inv_rot = { cosf(angle), sinf(angle), -sinf(angle), cosf(angle) },
         .aa = aa,
+        .reserved = { 0, 0, material ? material->edge_light : 0 },
         .border_thickness = fmaxf(0, appearance->border_width)
     };
     float half_x = appearance->width * 0.5f, half_y = appearance->height * 0.5f;
@@ -410,14 +420,125 @@ static unsigned particle_color(unsigned start, unsigned end, float age)
     return color;
 }
 
+static void reflect_rect(
+    app_scene_renderer *renderer,
+    material_rect rect,
+    GameTransform origin,
+    float heading,
+    GameReflection style,
+    const GameMaterial *material
+)
+{
+    if (!isfinite(style.strength + style.roughness + style.angle + style.offset) ||
+        style.strength <= 0) {
+        return;
+    }
+    float c = cosf(heading), s = sinf(heading);
+    float t = -heading - style.angle, tx = cosf(t), ty = sinf(t);
+    render_reflection r = {
+        .plane = { origin.x - ty * style.offset, -origin.y + tx * style.offset, tx, ty },
+        .strength = fminf(style.strength, 1),
+        .roughness = fmaxf(0, fminf(style.roughness, 1)),
+        .tint = { 1, 1, 1, 1 }
+    };
+    if (material) {
+        for (int k = 0; k < 3; k++) {
+            r.tint[k] = .5f + .5f * ((material->albedo >> (24 - 8 * k)) & 255) / 255.f;
+        }
+    }
+    float x[] = { rect.x - rect.width * .5f,
+                  rect.x + rect.width * .5f,
+                  rect.x + rect.width * .5f,
+                  rect.x - rect.width * .5f };
+    float y[] = { rect.y - rect.height * .5f,
+                  rect.y - rect.height * .5f,
+                  rect.y + rect.height * .5f,
+                  rect.y + rect.height * .5f };
+    for (int i = 0; i < 4; i++) {
+        r.corners[i] = (CF_V2){ origin.x + c * x[i] - s * y[i],
+                                -origin.y - s * x[i] - c * y[i] };
+    }
+    apush(renderer->reflectors, r);
+}
+
+static void mask_edges(
+    app_scene_renderer *renderer,
+    const material_mask *mask,
+    GameTransform position,
+    float heading,
+    const GameAppearance *look,
+    const GameMaterial *material
+)
+{
+    if (!material || look->border_width <= 0) {
+        return;
+    }
+    GameMaterial edge = *material;
+    edge.scene = material->border_scene;
+    edge.albedo = material->border_albedo;
+    edge.filter = material->border_filter;
+    edge.emission_color = material->border_emission_color;
+    int reach = (int)ceilf(look->border_width / mask->cell_size);
+    float c = cosf(heading), s = sinf(heading);
+    for (int y = 0; y < mask->height; y++) {
+        for (int x = 0; x < mask->width; x++) {
+            if (!mask->cells[y * mask->width + x]) {
+                continue;
+            }
+            bool border = false;
+            for (int d = 1; d <= reach && !border; d++) {
+                border = x < d || y < d || x + d >= mask->width || y + d >= mask->height;
+                if (!border) {
+                    border = !mask->cells[y * mask->width + x - d] ||
+                             !mask->cells[y * mask->width + x + d] ||
+                             !mask->cells[(y - d) * mask->width + x] ||
+                             !mask->cells[(y + d) * mask->width + x];
+                }
+            }
+            if (!border) {
+                continue;
+            }
+            float px = (x + .5f - mask->width * .5f) * mask->cell_size;
+            float py = (y + .5f - mask->height * .5f) * mask->cell_size;
+            GameTransform p = { position.x + c * px - s * py,
+                                position.y + s * px + c * py };
+            GameAppearance cell = { .shape = GAME_SHAPE_BOX,
+                                    .width = mask->cell_size,
+                                    .height = mask->cell_size,
+                                    .antialias = .1f,
+                                    .color = look->border_color };
+            append_entity(renderer, &p, &cell, -heading, NULL, &edge);
+        }
+    }
+}
+
+static bool mask_visible(
+    render_material_view view,
+    GameTransform origin,
+    material_rect rect,
+    float heading,
+    float padding
+)
+{
+    float c = cosf(heading), s = sinf(heading);
+    float x = origin.x + c * rect.x - s * rect.y;
+    float y = -origin.y - s * rect.x - c * rect.y;
+    float rx = (fabsf(c) * rect.width + fabsf(s) * rect.height) * .5f + padding;
+    float ry = (fabsf(s) * rect.width + fabsf(c) * rect.height) * .5f + padding;
+    return x + rx >= view.min_x && x - rx <= view.min_x + view.width &&
+           y + ry >= view.max_y - view.height && y - ry <= view.max_y;
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
-    const engine *runtime
+    const engine *runtime,
+    render_material_view view
 )
 {
     asetlen(renderer->entities, 0);
+    aclear(renderer->reflectors);
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 1) == ECS_OK) {
@@ -471,6 +592,91 @@ static void collect(
             GameTransform position = *GAME_GameTransform_get_const(world, entity);
             if (runtime) {
                 engine_render_position(runtime, entity, &position);
+            }
+            const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
+            if (mask) {
+                float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
+                material_rect bounds = { 0,
+                                         0,
+                                         mask->width * mask->cell_size,
+                                         mask->height * mask->cell_size };
+                if (!mask_visible(view, position, bounds, heading, padding)) {
+                    continue;
+                }
+                int shader = binding ? render_shader_find(binding->material) : 0;
+                float parameters[32][4] = { 0 };
+                if (shader && !render_shader_is_shape(shader)) {
+                    render_shader_parameters(shader, world, entity, binding->parameters, parameters);
+                }
+                const GameReflection *reflection = GAME_GameReflection_get_const(world, entity);
+                if (reflection) {
+                    for (int i = 0; i < acount(mask->rects); i++) {
+                        reflect_rect(
+                            renderer,
+                            mask->rects[i],
+                            position,
+                            heading,
+                            *reflection,
+                            GAME_GameMaterial_get_const(world, entity)
+                        );
+                    }
+                }
+                for (int i = 0; i < acount(mask->surface); i++) {
+                    const material_polygon *polygon = &mask->surface[i];
+                    float min_x = polygon->points[0], max_x = min_x;
+                    float min_y = polygon->points[1], max_y = min_y;
+                    for (int j = 1; j < polygon->count; j++) {
+                        min_x = fminf(min_x, polygon->points[2 * j]);
+                        max_x = fmaxf(max_x, polygon->points[2 * j]);
+                        min_y = fminf(min_y, polygon->points[2 * j + 1]);
+                        max_y = fmaxf(max_y, polygon->points[2 * j + 1]);
+                    }
+                    material_rect rect = { (min_x + max_x) * .5f,
+                                           (min_y + max_y) * .5f,
+                                           max_x - min_x,
+                                           max_y - min_y };
+                    if (!mask_visible(view, position, rect, heading, padding)) {
+                        continue;
+                    }
+                    GameTransform p = { position.x + cosf(heading) * rect.x -
+                                            sinf(heading) * rect.y,
+                                        position.y + sinf(heading) * rect.x +
+                                            cosf(heading) * rect.y };
+                    GameAppearance part = { .width = rect.width,
+                                            .height = rect.height,
+                                            .shape = GAME_SHAPE_BOX,
+                                            .color = appearance.color,
+                                            .antialias = appearance.antialias };
+                    if (!append_entity(renderer, &p, &part, -heading, NULL, GAME_GameMaterial_get_const(world, entity))) {
+                        continue;
+                    }
+                    render_material_entity *draw = &alast(renderer->entities);
+                    bool box = polygon->count == 4 &&
+                               polygon->points[0] == polygon->points[6] &&
+                               polygon->points[2] == polygon->points[4] &&
+                               polygon->points[1] == polygon->points[3] &&
+                               polygon->points[5] == polygon->points[7];
+                    if (!box) {
+                        draw->shape_type = RENDER_SHAPE_POLY_FILL;
+                        draw->point_count = polygon->count;
+                        for (int j = 0; j < polygon->count; j++) {
+                            draw->points[2 * j] = polygon->points[2 * j] - rect.x;
+                            draw->points[2 * j + 1] = rect.y -
+                                                      polygon->points[2 * j + 1];
+                        }
+                    }
+                    draw->reserved[0] = render_shader_is_shape(shader) ? 0 : (float)shader;
+                    memcpy(draw->material_parameters, parameters, sizeof parameters);
+                }
+                mask_edges(
+                    renderer,
+                    mask,
+                    position,
+                    heading,
+                    &appearance,
+                    GAME_GameMaterial_get_const(world, entity)
+                );
+                continue;
             }
             if (!append_entity(
                     renderer,
@@ -780,7 +986,7 @@ bool app_scene_renderer_draw(
         snprintf(renderer->error, sizeof renderer->error, "radiance cascades unavailable; using GLES3 fragment fallback");
         renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                              0.5f;
-        collect(renderer, world, particles, runtime);
+        collect(renderer, world, particles, runtime, padded_view(&camera, width, height, 0));
         if (!prepare_fragments(renderer)) {
             return false;
         }
@@ -828,14 +1034,18 @@ bool app_scene_renderer_draw(
     }
     renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                          0.5f;
-    collect(renderer, world, particles, runtime);
     render_material_view view = padded_view(&camera, width, height, pad_pixels);
+    CHIBI_TRACE_ZONE_BEGIN(collect_zone, "Material collect");
+    collect(renderer, world, particles, runtime, view);
+    CHIBI_TRACE_ZONE_END(collect_zone);
+    CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
     bool drawn = render_material_raster_draw(
         renderer->raster,
         renderer->entities,
         acount(renderer->entities),
         view
     );
+    CHIBI_TRACE_ZONE_END(raster_zone);
     snprintf(
         renderer->error,
         sizeof renderer->error,
@@ -846,17 +1056,59 @@ bool app_scene_renderer_draw(
         return false;
     }
     render_material_textures textures = render_material_raster_textures(renderer->raster);
+    const game_materials *materials = engine_materials(runtime);
+    if (game_materials_enabled(materials)) {
+        if (!renderer->fluid) {
+            renderer->fluid = render_fluid_raster_new();
+        }
+        if (!renderer->fluid || !render_fluid_raster_draw(
+                                    renderer->fluid,
+                                    game_materials_fluid(materials),
+                                    textures,
+                                    view,
+                                    raster_width,
+                                    raster_height
+                                )) {
+            snprintf(renderer->error, sizeof renderer->error, "Fluid raster could not allocate or draw its visible material field");
+            return false;
+        }
+    }
     render_radiance_inputs inputs = { textures.scene,
                                       textures.emission,
                                       textures.absorption,
                                       textures.albedo,
                                       textures.normal };
     inputs.background = scene_background(renderer, world, &camera);
+    if (game_materials_enabled(materials)) {
+        inputs.visibility = render_fluid_raster_visibility(renderer->fluid);
+    }
     if (!render_radiance_draw(renderer->radiance, inputs, view, renderer->output)) {
         return false;
     }
+    CF_Canvas output = renderer->output;
+    if (acount(renderer->reflectors)) {
+        if (!renderer->reflections) {
+            renderer->reflections = render_reflections_new();
+        }
+        render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
+                                  .max_y = camera.center_y + camera.span_height * .5f,
+                                  .width = camera.span_width,
+                                  .height = camera.span_height };
+        output = render_reflections_draw(
+            renderer->reflections,
+            output,
+            width,
+            height,
+            screen,
+            renderer->reflectors,
+            acount(renderer->reflectors)
+        );
+        if (!output.id) {
+            return false;
+        }
+    }
     cf_draw_canvas(
-        renderer->output,
+        output,
         (CF_V2){ camera.center_x, camera.center_y },
         (CF_V2){ camera.span_width, camera.span_height }
     );
@@ -924,6 +1176,7 @@ bool app_scene_renderer_preview(
     }
     GameTransform position = { 0 };
     asetlen(renderer->entities, 0);
+    aclear(renderer->reflectors);
     renderer->time = time;
     if (!append_entity(renderer, &position, &appearance, 0, NULL, NULL)) {
         return false;

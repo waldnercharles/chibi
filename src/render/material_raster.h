@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_MATERIAL_RASTER_H
 
 #include "platform/cute.h"
+#include "render/view_2d.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -36,8 +37,8 @@ typedef struct
     /* reserved[0/1] select catalog material/shape; zero uses the authored coefficients/SDF. */
     float border_thickness, reserved[3];
     float points[16];
-    float scene[4], emission[4], transmittance[4], albedo[4];
-    float border_scene[4], border_emission[4], border_transmittance[4],
+    float scene[4], emission[4], absorption[4], albedo[4];
+    float border_scene[4], border_emission[4], border_absorption[4],
         border_albedo[4];
     float wobble[4], pluck[4], time[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
@@ -46,13 +47,10 @@ typedef struct
 
 typedef struct
 {
-    CF_Texture scene, emission, transmittance, albedo;
+    CF_Texture scene, emission, absorption, albedo, normal;
 } render_material_textures;
 
-typedef struct
-{
-    float min_x, max_y, width, height;
-} render_material_view;
+typedef render_view_2d render_material_view;
 
 typedef struct render_material_raster render_material_raster;
 

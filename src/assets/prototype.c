@@ -3,6 +3,7 @@
 #include "../third_party/yyjson/yyjson.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
+#include "runtime/components.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -387,7 +388,8 @@ static game_prototype *load_document(
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
     prototype->identity = new_identity();
-    prototype->registry = registry;
+    prototype->registry_storage = *registry;
+    prototype->registry = &prototype->registry_storage;
     yyjson_val *identity = yyjson_obj_get(root, "identity");
     if (identity) {
         if (!yyjson_is_str(identity) || !yyjson_get_len(identity)) {
@@ -595,7 +597,8 @@ game_prototype *game_prototype_capture_entity(
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
     prototype->identity = new_identity();
-    prototype->registry = registry;
+    prototype->registry_storage = *registry;
+    prototype->registry = &prototype->registry_storage;
     setup_tag(prototype);
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
@@ -1512,47 +1515,31 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
             (pin_value){ .type = PIN_STR, .str = "[]" }
         );
     }
-    if (!strcmp(desc->name, "GameParticleEmitter")) {
-        const char *fields[] = { "rate",     "lifetime",      "speed",
-                                 "size",     "spread",        "drag",
-                                 "emission", "size_exponent", "velocity_inherit" };
-        const float values[] = { 90, .3f, 70, 2, .3f, 1, .7f, .8f, 1 };
-        for (int i = 0; i < 9; i++) {
-            int result = game_prototype_write_field(
-                prototype,
-                desc->name,
-                fields[i],
-                (pin_value){ .type = PIN_F32, .f = values[i] }
-            );
+    if (!strcmp(desc->name, "GameHRC2D")) {
+        GameHRC2D defaults = game_hrc2d_defaults();
+        for (int i = 0; i < desc->type->field_count; i++) {
+            const type_field *field = &desc->type->fields[i];
+            pin_value value = { 0 };
+            pin_read_field(&defaults, field, &value);
+            int result = game_prototype_write_field(prototype, desc->name, field->name, value);
             if (result) {
                 return result;
             }
         }
-        int result = game_prototype_write_field(
-            prototype,
-            desc->name,
-            "color",
-            (pin_value){ .type = PIN_U32, .u = 0xffffffffu }
-        );
-        if (result) {
-            return result;
+        return 0;
+    }
+    if (!strcmp(desc->name, "GameParticleEmitter")) {
+        GameParticleEmitter defaults = game_particle_emitter_defaults();
+        for (int i = 0; i < desc->type->field_count; i++) {
+            const type_field *field = &desc->type->fields[i];
+            pin_value value = { 0 };
+            pin_read_field(&defaults, field, &value);
+            int result = game_prototype_write_field(prototype, desc->name, field->name, value);
+            if (result) {
+                return result;
+            }
         }
-        result = game_prototype_write_field(
-            prototype,
-            desc->name,
-            "end_color",
-            (pin_value){ .type = PIN_U32, .u = 0xffffff00u }
-        );
-        if (result) {
-            return result;
-        }
-        float direction[] = { -1, 0, 0 };
-        return game_prototype_write_field(
-            prototype,
-            desc->name,
-            "direction",
-            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = direction }
-        );
+        return 0;
     }
     return 0;
 }

@@ -96,16 +96,21 @@ Interval trace_cminus1(ivec2 canvas_pos, int rot, vec3 init_rad, float init_tau,
 	float acc_trn = init_trn;
 	float acc_tau = init_tau;
 
-	for (int i = 1; i < num_steps; i++) {
-		ivec2 p = canvas_pos + dir * i;
+	// Bound full-resolution refinement work as adaptive resolution decreases.
+	int samples = min(num_steps - 1, 2);
+	float stride = float(num_steps - 1) / float(max(samples, 1));
+	for (int i = 0; i < samples; i++) {
+		int offset = int(ceil((float(i) + 0.5) * stride));
+		ivec2 p = clamp(canvas_pos + dir * offset, ivec2(0), ivec2(u_canvas_w - 1, u_canvas_h - 1));
 
 		vec3 e = texelFetch(u_emission, p, 0).rgb
 		       + texelFetch(u_bounce, p, 0).rgb * u_bounce_intensity;
 		float tau = max(dot(texelFetch(u_transmittance, p, 0).rgb, vec3(1.0/3.0)), 0.0);
+		tau *= stride;
 		float T = exp(-tau);
 		float opacity = 1.0 - T;
 
-		vec3 rad = opacity > 0.001 ? opacity * e : e;
+		vec3 rad = opacity > 0.001 ? opacity * e : e * stride;
 		acc_rad += acc_trn * rad;
 		acc_trn *= T;
 		acc_tau += tau;

@@ -28,6 +28,7 @@ int arena_ui_run(const char *program, bool profile_only);
 int compiled_arena_run(const char *program);
 int arena_scene_scale_run(const char *program, int count, int frames, bool profile);
 int bench_arena_scale(int count, int frames, bool portable, bool profile, int mode);
+int bench_neon_pursuit(int count, int frames, bool portable, bool profile);
 int whole_function_audit();
 int arena_play_review_run(const char *program, bool editor_mode, bool crowd);
 void run_behavior_loader_checks();
@@ -625,6 +626,10 @@ int main(int argc, char **argv)
     if (argc == 5 && !strcmp(argv[1], "--bench-arena-scene-scale")) {
         registry_validate();
         return arena_scene_scale_run(program_name, atoi(argv[2]), atoi(argv[3]), atoi(argv[4]));
+    }
+    if (argc == 6 && !strcmp(argv[1], "--bench-neon-pursuit")) {
+        registry_validate();
+        return bench_neon_pursuit(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
     }
     if (argc > 1 && strcmp(argv[1], "--compiled-arena") == 0) {
         registry_validate();

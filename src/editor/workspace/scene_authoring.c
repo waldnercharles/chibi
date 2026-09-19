@@ -985,7 +985,7 @@ static void draw_debug_header(void *user)
     }
 }
 
-app_scene_authoring *app_scene_authoring_new(
+app_scene_authoring *app_scene_authoring_new_with_content_root(
     ecs_world *world,
     game_live_world *live,
     game_live_definition *definition,
@@ -993,10 +993,12 @@ app_scene_authoring *app_scene_authoring_new(
     editor *graph_editor,
     app_scene_prototype_resolve_fn resolve_prototype,
     void *resolve_user,
-    engine *runtime
+    engine *runtime,
+    const char *content_root
 )
 {
-    if (!world || !live || !definition || !editor_working || !runtime) {
+    if (!world || !live || !definition || !editor_working || !runtime ||
+        !content_root || !content_root[0]) {
         return NULL;
     }
     app_scene_authoring *scene = (app_scene_authoring *)xcalloc(1, sizeof *scene);
@@ -1026,7 +1028,7 @@ app_scene_authoring *app_scene_authoring_new(
         free(scene);
         return NULL;
     }
-    scene->content_root = xstrdup("content");
+    scene->content_root = xstrdup(content_root);
     scene->asset_index = asset_index_new();
     scene->asset_index_generation = 1;
     scene->quick_open_kind = ASSET_INDEX_KIND_COUNT;
@@ -1078,6 +1080,30 @@ app_scene_authoring *app_scene_authoring_new(
         return NULL;
     }
     return scene;
+}
+
+app_scene_authoring *app_scene_authoring_new(
+    ecs_world *world,
+    game_live_world *live,
+    game_live_definition *definition,
+    const behavior_asset *editor_working,
+    editor *graph_editor,
+    app_scene_prototype_resolve_fn resolve_prototype,
+    void *resolve_user,
+    engine *runtime
+)
+{
+    return app_scene_authoring_new_with_content_root(
+        world,
+        live,
+        definition,
+        editor_working,
+        graph_editor,
+        resolve_prototype,
+        resolve_user,
+        runtime,
+        "content"
+    );
 }
 
 void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const behavior_asset *editor_working)

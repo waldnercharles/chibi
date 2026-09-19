@@ -1,10 +1,12 @@
 #include "runtime/engine.h"
 
+#include "diagnostics/tracy.h"
 #include "graph/document/events.h"
 #include "render/sdf_motion.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
 #include "runtime/generated.h"
+#include "runtime/particle_emitters.h"
 #include "runtime/scenes/physics.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
@@ -32,6 +34,7 @@ struct engine
 {
     ecs_world *world;
     game_live_world *live;
+    game_particle_emitters *emitters;
     engine_system *systems;
     engine_render_fn render;
     void *render_user;
@@ -93,6 +96,9 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     engine *result = (engine *)xcalloc(1, sizeof *result);
     result->world = world;
     result->live = live;
+    if (live) {
+        result->emitters = game_particle_emitters_new(live->particles);
+    }
     result->playing = true;
     result->input = engine_input_new(world, live ? live->behaviors : NULL);
     if (live) {
@@ -105,6 +111,9 @@ void engine_free(engine *engine)
 {
     if (!engine) {
         return;
+    }
+    if (engine->emitters) {
+        game_particle_emitters_free(engine->emitters);
     }
     afree(engine->systems);
     engine_input_free(engine->input);
@@ -131,6 +140,9 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
 
 void engine_reset(engine *engine)
 {
+    if (engine->emitters) {
+        game_particle_emitters_reset(engine->emitters);
+    }
     engine->timing = (engine_frame_timing){ .alpha = 1 };
     engine->last_time = 0;
     engine->accumulator = 0;
@@ -315,7 +327,9 @@ static int finish_systems(engine *engine)
             if (clock_now(&start) != 0) {
                 return FLOW_ERR_STATE;
             }
+            CHIBI_TRACE_ZONE_BEGIN(physics_zone, "Physics");
             result = game_physics_tick(engine->live->physics, (float)ENGINE_FIXED_SECONDS);
+            CHIBI_TRACE_ZONE_END(physics_zone);
             if (clock_now(&end) != 0) {
                 return FLOW_ERR_STATE;
             }
@@ -335,7 +349,9 @@ static int finish_systems(engine *engine)
         if (clock_now(&start) != 0) {
             return FLOW_ERR_STATE;
         }
+        CHIBI_TRACE_ZONE_BEGIN(events_zone, "Contact events");
         result = pump_events(engine);
+        CHIBI_TRACE_ZONE_END(events_zone);
         if (clock_now(&end) != 0) {
             return FLOW_ERR_STATE;
         }
@@ -344,16 +360,30 @@ static int finish_systems(engine *engine)
             return result < 0 ? result : FLOW_OK;
         }
     }
+    CHIBI_TRACE_ZONE_BEGIN(commands_zone, "ECS command apply");
     result = ecs_world_apply_commands(engine->world);
+    CHIBI_TRACE_ZONE_END(commands_zone);
     engine->timing.command_apply_count++;
     if (result != ECS_OK) {
         return result;
     }
+    CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
     for (int i = 0; i < acount(engine->systems); i++) {
         engine->systems[i]
             .fn(engine->world,
                 engine->timing.simulation_time,
                 engine->systems[i].user);
+    }
+    CHIBI_TRACE_ZONE_END(systems_zone);
+    if (engine->emitters && !game_particle_emitters_collect(
+                                engine->emitters,
+                                engine->world,
+                                NULL,
+                                engine->timing.simulation_time,
+                                engine->error,
+                                sizeof engine->error
+                            )) {
+        return FLOW_ERR_NODE;
     }
     /* Begin and reactions can change motion after integration. Resolve those
        authored values before presentation without advancing their clocks. */
@@ -402,6 +432,7 @@ static int continue_step(engine *engine)
         if (clock_now(&start) != 0) {
             return FLOW_ERR_STATE;
         }
+        CHIBI_TRACE_ZONE_BEGIN(visual_zone, "Visual systems");
         result = game_particles_tick(live->particles, ENGINE_FIXED_SECONDS);
         if (result >= 0) {
             result = game_sdf_motion_tick(engine->world, ENGINE_FIXED_SECONDS);
@@ -410,28 +441,42 @@ static int continue_step(engine *engine)
             result = update_visual_motion(engine, (float)ENGINE_FIXED_SECONDS);
         }
         if (clock_now(&end) != 0) {
+            CHIBI_TRACE_ZONE_END(visual_zone);
             return FLOW_ERR_STATE;
         }
+        CHIBI_TRACE_ZONE_END(visual_zone);
         engine->timing.systems_ms += elapsed_ms(start, end);
         if (result >= 0) {
+            CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input actions");
             result = engine_input_apply(engine->input);
+            CHIBI_TRACE_ZONE_END(input_zone);
         }
         if (result >= 0) {
+            CHIBI_TRACE_ZONE_BEGIN(events_zone, "Input events");
             result = game_entities_dispatch_events(live->entities);
+            CHIBI_TRACE_ZONE_END(events_zone);
         }
         if (result >= 0) {
+            CHIBI_TRACE_ZONE_BEGIN(behavior_zone, "Behavior update");
             result = game_behavior_update(live->behaviors, NULL);
+            CHIBI_TRACE_ZONE_END(behavior_zone);
         }
         if (result >= 0) {
+            CHIBI_TRACE_ZONE_BEGIN(behavior_pump_zone, "Behavior pump");
             result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
+            CHIBI_TRACE_ZONE_END(behavior_pump_zone);
         }
         if (result >= 0) {
+            CHIBI_TRACE_ZONE_BEGIN(events_zone, "Behavior events");
             result = game_entities_dispatch_events(live->entities);
+            CHIBI_TRACE_ZONE_END(events_zone);
         }
         engine->phase = STEP_BEHAVIORS;
     } else {
         /* Resume a held activation before completing its remaining step stages. */
+        CHIBI_TRACE_ZONE_BEGIN(behavior_pump_zone, "Behavior pump");
         result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
+        CHIBI_TRACE_ZONE_END(behavior_pump_zone);
     }
     if (result < 0) {
         return result;
@@ -445,10 +490,13 @@ static int continue_step(engine *engine)
 
 static int fixed_step(engine *engine)
 {
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Fixed step");
     engine->timing.simulation_steps++;
     engine->timing.simulation_time = engine->timing.simulation_steps * ENGINE_FIXED_SECONDS;
     engine->timing.steps++;
-    return continue_step(engine);
+    int result = continue_step(engine);
+    CHIBI_TRACE_ZONE_END(zone);
+    return result;
 }
 
 static void discard_backlog(engine *engine)
@@ -564,7 +612,9 @@ static int advance_frame(engine *engine, double monotonic_time)
     );
     start = end;
     if (engine->render) {
+        CHIBI_TRACE_ZONE_BEGIN(render_zone, "Render submission");
         engine->render(engine->render_user);
+        CHIBI_TRACE_ZONE_END(render_zone);
     }
     if (clock_now(&end) != 0) {
         return FLOW_ERR_STATE;
@@ -579,8 +629,13 @@ int engine_frame(engine *engine, double monotonic_time)
     if (!engine) {
         return FLOW_ERR_ARGUMENT;
     }
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Engine frame");
     engine->error[0] = 0;
     int result = advance_frame(engine, monotonic_time);
+    CHIBI_TRACE_FRAME_MARK("Engine frame");
+    CHIBI_TRACE_PLOT("Engine fixed steps", engine->timing.steps);
+    CHIBI_TRACE_PLOT("Engine event backlog", engine->timing.event_backlog);
+    CHIBI_TRACE_ZONE_END(zone);
     if (result < 0 && !engine->error[0]) {
         snprintf(engine->error, sizeof engine->error, "Simulation step failed (%d).", result);
     }

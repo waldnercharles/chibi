@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "Arena3D",
+  "content": "content",
+  "start_scene": "scenes/Arena3D.json"
+}

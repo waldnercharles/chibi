@@ -5,6 +5,8 @@
 
 #define EDITOR_FRAME_HISTORY 240
 
+typedef struct app_scene_authoring app_scene_authoring;
+
 typedef enum
 {
     EDITOR_FRAME_INPUT,
@@ -63,6 +65,6 @@ void editor_frame_end(
 );
 void editor_frame_profile_free(editor_frame_profile *profile);
 const editor_frame_sample *editor_frame_latest(const editor_frame_profile *profile);
-void editor_frame_profile_draw(editor_frame_profile *profile);
+void editor_frame_profile_draw(editor_frame_profile *profile, app_scene_authoring *scene);
 
 #endif

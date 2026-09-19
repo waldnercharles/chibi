@@ -583,7 +583,7 @@ const previewSceneDefinition = {
     kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string", minLength: 1, maxLength: 512 },
     width: { type: "integer", minimum: 64, maximum: 1024, default: 640 },
     height: { type: "integer", minimum: 64, maximum: 1024, default: 360 },
-    frames: { type: "integer", minimum: 0, maximum: 600, default: 1 },
+    frames: { type: "integer", minimum: 0, maximum: 1800, default: 1 },
   } },
   outputSchema: { type: "object", additionalProperties: true },
 };

@@ -1,0 +1,374 @@
+{
+  "version": 3,
+  "name": "NeonSwarmProjectileHit",
+  "domain": "behavior",
+  "id_counter": 24,
+  "description": "",
+  "owner_type": "ecs.entity",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Event",
+          "x": 0.0,
+          "y": 43.0,
+          "reference_id": 0,
+          "reference_name": "Contact Begin",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 3,
+              "name": "Other",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "HasEntity_GameHealth",
+          "x": 310.0,
+          "y": 115.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 5,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 6,
+              "name": "Value",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "Branch",
+          "x": 620.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 8,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 9,
+              "name": "Condition",
+              "type": 1,
+              "type_name": "bool",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ],
+          "outputs": [
+            {
+              "id": 10,
+              "name": "True",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 11,
+              "name": "False",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "Send Event",
+          "x": 930.0,
+          "y": 31.0,
+          "reference_id": 0,
+          "reference_name": "Damage",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 13,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 14,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 16,
+              "declaration_id": 2,
+              "name": "Amount",
+              "type": 6,
+              "type_name": "int",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "binding": {
+                "kind": "component_field",
+                "component": "GAME.GameProjectile",
+                "field": "damage"
+              },
+              "default": 0
+            },
+            {
+              "id": 17,
+              "declaration_id": 3,
+              "name": "Source",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 15,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "Self",
+          "x": 620.0,
+          "y": 122.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 19,
+              "name": "Self",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 20,
+          "type": "Destroy Entity",
+          "x": 1240.0,
+          "y": 102.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 21,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 22,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 23,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "from_pin": 2,
+          "to": 7,
+          "to_pin": 8,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 1,
+          "from_pin": 3,
+          "to": 4,
+          "to_pin": 5,
+          "kind": "data"
+        },
+        {
+          "from": 1,
+          "from_pin": 3,
+          "to": 12,
+          "to_pin": 14,
+          "kind": "data"
+        },
+        {
+          "from": 4,
+          "from_pin": 6,
+          "to": 7,
+          "to_pin": 9,
+          "kind": "data"
+        },
+        {
+          "from": 7,
+          "from_pin": 10,
+          "to": 12,
+          "to_pin": 13,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 12,
+          "from_pin": 15,
+          "to": 20,
+          "to_pin": 21,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 18,
+          "from_pin": 19,
+          "to": 12,
+          "to_pin": 17,
+          "kind": "data"
+        },
+        {
+          "from": 18,
+          "from_pin": 19,
+          "to": 20,
+          "to_pin": 22,
+          "kind": "data"
+        }
+      ]
+    }
+  ]
+}

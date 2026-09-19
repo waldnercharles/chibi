@@ -200,7 +200,7 @@ try {
   create("prototype", "FogSettings", [
     { op: "add_component", component: "GameTransform" },
     { op: "add_component", component: "GameCamera", fields: { width: 200, height: 120 } },
-    { op: "add_component", component: "GameLighting2D", fields: { ambient: 0.8, emission: 1, fog: 0.03 } },
+    { op: "add_component", component: "GameHRC2D", fields: { ambient: 0.8, intensity: 1, fog: 0.03 } },
     { op: "add_component", component: "GameFog", fields: { origin: { x: -100, y: -60 }, columns: 40, rows: 24, cell_size: 5 } },
   ]);
   create("prototype", "Observer", [

@@ -113,30 +113,60 @@ static int ed_data_connectable(const pin_spec *source, const pin_spec *candidate
            conversion_for_pins(source, candidate) != NULL;
 }
 
+static const type_desc *ed_struct_output_type(const pin_spec *pin)
+{
+    if (!pin || pin->kind != PIN_DATA || pin->type != PIN_STRUCT ||
+        pin->container != PIN_CONTAINER_SINGLE ||
+        (pin->flags & PIN_FLAG_SETTING) || !pin->type_name) {
+        return NULL;
+    }
+    return registry_type_by_name(pin->type_name);
+}
+
+static bool ed_struct_field_pin(const pin_spec *aggregate, int index, pin_spec *field_pin)
+{
+    const type_desc *type = ed_struct_output_type(aggregate);
+    if (!type || index < 0 || index >= type->field_count || !field_pin) {
+        return false;
+    }
+    const type_field *field = &type->fields[index];
+    *field_pin = (pin_spec){ .name = field->name,
+                             .type = field->type,
+                             .type_name = field->type_name,
+                             .kind = PIN_DATA,
+                             .container = PIN_CONTAINER_SINGLE };
+    return true;
+}
+
+static bool ed_struct_fields_connectable(const pin_spec *aggregate, const pin_spec *target)
+{
+    if (!target || target->kind != PIN_DATA) {
+        return false;
+    }
+    const type_desc *type = ed_struct_output_type(aggregate);
+    for (int i = 0; type && i < type->field_count; i++) {
+        pin_spec field;
+        if (ed_struct_field_pin(aggregate, i, &field) &&
+            ed_data_connectable(&field, target)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int ed_system_node_allowed(const node_desc *desc)
 {
     if (desc == &ed_math_desc) {
         return 1;
     }
+    if (desc && desc->type && type_is_plain(desc->type) &&
+        (desc->component_kind == NODE_COMPONENT_GET_SELF ||
+         desc->component_kind == NODE_COMPONENT_SET_SELF)) {
+        return 1;
+    }
     static const char *const names[] = {
-        "Event",
-        "Get_GameInput",
-        "Set_GameInput",
-        "Get_GameMovement",
-        "Set_GameMovement",
-        "Get_GameTransform",
-        "Set_GameTransform",
-        "Add",
-        "Multiply",
-        "Subtract",
-        "Divide",
-        "Min",
-        "Max",
-        "Clamp",
-        "Modulo",
-        "Negate",
-        "Abs",
-        "Delta Time",
+        "Event", "Add",   "Multiply", "Subtract", "Divide", "Min",
+        "Max",   "Clamp", "Modulo",   "Negate",   "Abs",    "Delta Time",
     };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         if (desc && desc->name && strcmp(desc->name, names[i]) == 0) {
@@ -246,7 +276,8 @@ static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
         if (source->kind == PIN_EXEC ||
             (e->spawn_link_pin.kind == ED_PIN_OUTPUT
                  ? ed_data_connectable(source, candidate)
-                 : ed_data_connectable(candidate, source))) {
+                 : ed_data_connectable(candidate, source) ||
+                       ed_struct_fields_connectable(candidate, source))) {
             return 1;
         }
     }
@@ -560,31 +591,166 @@ node *ed_spawn_match(editor *e, const ed_search_match *match)
     return n;
 }
 
-static int ed_autowire_spawn(editor *e, node *n)
+static int ed_search_match_base_output_count(const ed_search_match *match)
+{
+    if (!match) {
+        return 0;
+    }
+    if (match->function) {
+        node *ret = graph_node_by_id(match->function, match->function->return_id);
+        return ret ? ret->input_count : 0;
+    }
+    if (match->variable) {
+        return 1;
+    }
+    return match->desc ? match->desc->output_count : 0;
+}
+
+static bool ed_search_match_base_output(
+    const editor *e,
+    const ed_search_match *match,
+    int index,
+    pin_spec *output
+)
+{
+    if (!e || !match || !output || index < 0) {
+        return false;
+    }
+    if (match->function) {
+        node *ret = graph_node_by_id(match->function, match->function->return_id);
+        if (!ret || index >= ret->input_count) {
+            return false;
+        }
+        *output = ret->input_pins[index];
+        return true;
+    }
+    if (match->variable) {
+        if (index != 0) {
+            return false;
+        }
+        *output = (pin_spec){ .name = match->variable->name,
+                              .type = match->variable->type,
+                              .type_name = match->variable->type_name,
+                              .kind = PIN_DATA,
+                              .container = match->variable->container };
+        return true;
+    }
+    if (!match->desc || index >= match->desc->output_count || !match->desc->outputs) {
+        return false;
+    }
+    *output = match->desc->outputs[index];
+    if (match->desc == &NODE_Self && index == 0) {
+        if (!e->asset->owner_type_name) {
+            return false;
+        }
+        output->type_name = e->asset->owner_type_name;
+    }
+    return true;
+}
+
+int ed_search_match_output_count(const editor *e, const ed_search_match *match)
+{
+    int base_count = ed_search_match_base_output_count(match);
+    int count = base_count;
+    for (int i = 0; i < base_count; i++) {
+        pin_spec output;
+        if (!ed_search_match_base_output(e, match, i, &output)) {
+            return count;
+        }
+        const type_desc *type = ed_struct_output_type(&output);
+        count += type ? type->field_count : 0;
+    }
+    return count;
+}
+
+bool ed_search_match_output(const editor *e, const ed_search_match *match, int index, ed_search_output *output)
+{
+    if (!output || index < 0) {
+        return false;
+    }
+    int base_count = ed_search_match_base_output_count(match);
+    int remaining = index;
+    int projected = 0;
+    for (int i = 0; i < base_count; i++) {
+        pin_spec base;
+        if (!ed_search_match_base_output(e, match, i, &base)) {
+            return false;
+        }
+        if (remaining == 0) {
+            output->pin = base;
+            output->node_pin = i;
+            return true;
+        }
+        remaining--;
+        const type_desc *type = ed_struct_output_type(&base);
+        if (!type) {
+            continue;
+        }
+        if (remaining < type->field_count) {
+            if (!ed_struct_field_pin(&base, remaining, &output->pin)) {
+                return false;
+            }
+            output->node_pin = base_count + projected + remaining;
+            return true;
+        }
+        remaining -= type->field_count;
+        projected += type->field_count;
+    }
+    return false;
+}
+
+int ed_expose_spawned_output_fields(editor *e, node *n)
+{
+    if (!e || !e->active_graph || !n) {
+        return -1;
+    }
+    int output_count = n->output_count;
+    for (int i = 0; i < output_count; i++) {
+        if (!graph_output_struct(n, i)) {
+            continue;
+        }
+        if (graph_expose_output_fields(e->active_graph, n, i) != 0) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int ed_autowire_spawn_input(editor *e, node *n, bool inline_source)
 {
     int connected = 0;
+    const pin_spec *input = &e->spawn_link_pin.n->input_pins[e->spawn_link_pin.index];
+    for (int p = 0; !connected && p < n->output_count; p++) {
+        ed_pin_view target = { n, ED_PIN_OUTPUT, p, { 0.0f, 0.0f } };
+        const pin_spec *output = &n->output_pins[p];
+        if (output->kind == input->kind && ed_data_connectable(output, input)) {
+            connected = ed_connect_with_inline(e, &e->spawn_link_pin, &target, inline_source);
+        }
+    }
+    return connected;
+}
+
+static int ed_autowire_spawn(editor *e, node *n)
+{
+    bool inline_source = editor_ui_inline_edge_nodes();
     if (e->spawn_link_pin.kind == ED_PIN_OUTPUT) {
+        int connected = 0;
         for (int p = 0; p < n->input_count && !connected; p++) {
             ed_pin_view target = { n, ED_PIN_INPUT, p, { 0.0f, 0.0f } };
             const pin_spec *a = &e->spawn_link_pin.n
                                      ->output_pins[e->spawn_link_pin.index];
             const pin_spec *b = &n->input_pins[p];
             if (a->kind == b->kind && ed_data_connectable(a, b)) {
-                connected = ed_connect(e, &e->spawn_link_pin, &target);
+                connected = ed_connect_with_inline(e, &e->spawn_link_pin, &target, inline_source);
             }
         }
-    } else {
-        for (int p = 0; p < n->output_count && !connected; p++) {
-            ed_pin_view target = { n, ED_PIN_OUTPUT, p, { 0.0f, 0.0f } };
-            const pin_spec *a = &n->output_pins[p];
-            const pin_spec *b = &e->spawn_link_pin.n
-                                     ->input_pins[e->spawn_link_pin.index];
-            if (a->kind == b->kind && ed_data_connectable(a, b)) {
-                connected = ed_connect(e, &e->spawn_link_pin, &target);
-            }
-        }
+        return connected;
     }
-    return connected;
+    int connected = ed_autowire_spawn_input(e, n, inline_source);
+    if (connected || ed_expose_spawned_output_fields(e, n) != 0) {
+        return connected;
+    }
+    return ed_autowire_spawn_input(e, n, inline_source);
 }
 
 void ed_request_extraction(editor *e)

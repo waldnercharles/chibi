@@ -163,6 +163,7 @@ set(EDITOR_SOURCES
 
 set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/behavior_loader.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/project.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_documents.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_history.c
@@ -195,6 +196,7 @@ set(APP_SOURCES
 )
 
 set(RUNTIME_SUPPORT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/particle_emitters.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c

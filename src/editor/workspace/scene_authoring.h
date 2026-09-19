@@ -89,6 +89,17 @@ app_scene_authoring *app_scene_authoring_new(
     void *resolve_user,
     engine *runtime
 );
+app_scene_authoring *app_scene_authoring_new_with_content_root(
+    ecs_world *world,
+    game_live_world *live,
+    game_live_definition *definition,
+    const behavior_asset *editor_working,
+    editor *graph_editor,
+    app_scene_prototype_resolve_fn resolve_prototype,
+    void *resolve_user,
+    engine *runtime,
+    const char *content_root
+);
 void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const behavior_asset *editor_working);
 int app_scene_authoring_apply_pending(app_scene_authoring *scene);
 int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char *path);
@@ -159,6 +170,8 @@ int app_scene_authoring_runtime_command(
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
 void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool enabled);
+/* Draw live renderer controls inside the Performance pane. */
+void app_scene_authoring_draw_render_settings(app_scene_authoring *scene);
 const game_behavior_profile_frame *app_scene_authoring_behavior_profile(
     const app_scene_authoring *scene
 );

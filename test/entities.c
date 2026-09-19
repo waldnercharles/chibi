@@ -937,8 +937,32 @@ void test_compiled_spawns()
     puts("PASS: whole compiled Spawn, initialization before Begin, breakpoints, cancellation and deferred destruction on SLJIT/bytecode/oracle");
 }
 
+static void prototype_registry_lifetime()
+{
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char error[256];
+    game_prototype *source = game_prototype_load(
+        "{\"name\":\"Lifetime\",\"components\":{\"GameTransform\":{\"x\":12,"
+        "\"y\":34}}}",
+        &registry,
+        error,
+        sizeof error
+    );
+    assert(source);
+    registry = (game_prototype_registry){ 0 };
+    game_prototype *copy = game_prototype_clone(source, error, sizeof error);
+    assert(copy);
+    pin_value position;
+    assert(game_prototype_read_field(copy, "GameTransform", "x", &position) == 0);
+    assert(position.f == 12);
+    game_prototype_free(copy);
+    game_prototype_free(source);
+}
+
 void test_entities()
 {
+    prototype_registry_lifetime();
     test_attachment_lists();
     test_attachment_index();
     test_deferred_attachments();

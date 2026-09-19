@@ -46,6 +46,8 @@ typedef struct game_prototype
 {
     char *name;
     char *identity;
+    /* Registry value is owned; descriptors and include context remain borrowed. */
+    game_prototype_registry registry_storage;
     const game_prototype_registry *registry;
     game_prototype_tag tag;
     game_prototype_component *components;

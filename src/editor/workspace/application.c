@@ -1,6 +1,8 @@
 #include "chibi/application.h"
 
+#include "assets/project.h"
 #include "assets/prototype.h"
+#include "diagnostics/tracy.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
@@ -70,11 +72,16 @@ static int app_frame(app_loop *loop)
     if (!cf_app_is_running()) {
         return 1;
     }
+    CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Application frame");
     if (!loop->game) {
         editor_frame_begin(&loop->profile);
     }
+    CHIBI_TRACE_ZONE_BEGIN(window_zone, "Window update");
     cf_app_update(NULL);
+    CHIBI_TRACE_ZONE_END(window_zone);
+    CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input");
     app_input_frame();
+    CHIBI_TRACE_ZONE_END(input_zone);
     if (loop->headless || loop->game) {
         editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     }
@@ -84,11 +91,16 @@ static int app_frame(app_loop *loop)
     }
     int status = 0;
     if (loop->game) {
+        CHIBI_TRACE_ZONE_BEGIN(game_zone, "Game presentation");
         status = app_game_presentation_frame(loop->game, loop->monotonic_time);
+        CHIBI_TRACE_ZONE_END(game_zone);
     } else {
+        CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor input and documents");
         editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_DOCUMENTS);
+        CHIBI_TRACE_ZONE_END(editor_zone);
+        CHIBI_TRACE_ZONE_BEGIN(simulation_zone, "Simulation");
         app_scene_authoring_set_behavior_profiling(
             loop->authoring,
             editor_ui_pane_visible(EDITOR_UI_PANE_PERFORMANCE) && !loop->profile.frozen
@@ -97,15 +109,23 @@ static int app_frame(app_loop *loop)
             fprintf(stderr, "runtime frame failed\n");
         }
         editor_frame_mark(&loop->profile, EDITOR_FRAME_SIMULATION);
+        CHIBI_TRACE_ZONE_END(simulation_zone);
+        CHIBI_TRACE_ZONE_BEGIN(scene_zone, "Scene submission");
         editor_prepare_docking();
         app_scene_authoring_draw_viewport(loop->authoring, loop->viewport);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_SCENE);
+        CHIBI_TRACE_ZONE_END(scene_zone);
+        CHIBI_TRACE_ZONE_BEGIN(ui_zone, "Editor UI");
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
-        editor_frame_profile_draw(&loop->profile);
+        editor_frame_profile_draw(&loop->profile, loop->authoring);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
+        CHIBI_TRACE_ZONE_END(ui_zone);
     }
+    CHIBI_TRACE_ZONE_BEGIN(present_zone, "Present / GPU wait");
     cf_app_draw_onto_screen(true);
+    CHIBI_TRACE_ZONE_END(present_zone);
+    CHIBI_TRACE_FRAME_MARK("Application frame");
     if (!loop->game) {
         editor_frame_mark(&loop->profile, EDITOR_FRAME_PRESENT);
         editor_frame_end(
@@ -115,14 +135,19 @@ static int app_frame(app_loop *loop)
         );
     }
     if (status) {
+        CHIBI_TRACE_ZONE_END(frame_zone);
         return status;
     }
 
     int finished = loop->frames > 0 && ++loop->frame >= loop->frames;
     if (finished && loop->screenshot_path) {
+        CHIBI_TRACE_ZONE_BEGIN(screenshot_zone, "Screenshot");
         loop->capture_error = app_save_screenshot(loop->screenshot_path);
+        CHIBI_TRACE_ZONE_END(screenshot_zone);
+        CHIBI_TRACE_ZONE_END(frame_zone);
         return 1;
     }
+    CHIBI_TRACE_ZONE_END(frame_zone);
     return finished;
 }
 
@@ -136,6 +161,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     bool play = false;
     double fixed_dt = 0;
     const char *scene_path = NULL;
+    const char *project_path = NULL;
     const char *screenshot_path = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
@@ -157,6 +183,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
                 return NULL;
             }
             scene_path = argv[++i];
+        } else if ((strcmp(argv[i], "--project") == 0 || strcmp(argv[i], "--project-root") == 0)) {
+            if (i + 1 == argc || argv[i + 1][0] == '-') {
+                snprintf(error, error_size, "%s requires a project directory or project.json", argv[i]);
+                return NULL;
+            }
+            project_path = argv[++i];
         } else if (strcmp(argv[i], "--fixed-dt") == 0) {
             if (i + 1 == argc) {
                 snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
@@ -170,15 +202,30 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             }
         }
     }
-    if (play && !scene_path) {
-        scene_path = "content/scenes/Arena3D.json";
-    }
     if (screenshot_path && frames == 0) {
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
     }
 
+    chibi_project project = { 0 };
+    if (chibi_project_open(&project, project_path, error, error_size) != 0) {
+        return NULL;
+    }
+    char *resolved_scene = chibi_project_scene_path(&project, scene_path);
+    if (!resolved_scene) {
+        snprintf(
+            error,
+            error_size,
+            "Project does not define a start scene: %s",
+            project.root
+        );
+        chibi_project_free(&project);
+        return NULL;
+    }
+
     /* The host owns shader setup; image sources must precede graph registration. */
-    if (!render_image_mount_content("content", error, error_size)) {
+    if (!render_image_mount_content(project.content, error, error_size)) {
+        free(resolved_scene);
+        chibi_project_free(&project);
         return NULL;
     }
     registry_validate();
@@ -213,9 +260,11 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        free(resolved_scene);
+        chibi_project_free(&project);
         return NULL;
     }
-    authoring = app_scene_authoring_new(
+    authoring = app_scene_authoring_new_with_content_root(
         world,
         live,
         definition,
@@ -223,13 +272,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         graph_editor,
         NULL,
         NULL,
-        runtime
+        runtime,
+        project.content
     );
     bool scene_ready = authoring &&
                        app_scene_authoring_load_content(authoring) == 0 &&
-                       (scene_path
-                            ? app_scene_authoring_load(authoring, scene_path)
-                            : app_scene_authoring_seed_default(authoring)) == 0;
+                       app_scene_authoring_load(authoring, resolved_scene) == 0;
     if (!scene_ready || app_scene_authoring_apply_pending(authoring) != 0) {
         snprintf(
             error,
@@ -243,8 +291,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         editor_free(graph_editor);
         ecs_world_free(world);
         engine_viewport_free(viewport);
+        free(resolved_scene);
+        chibi_project_free(&project);
         return NULL;
     }
+    free(resolved_scene);
+    chibi_project_free(&project);
     /* Put the shipped movement graph on screen on first launch. The graph is
      * still reachable through Files after switching documents. */
     if (!play && authoring &&

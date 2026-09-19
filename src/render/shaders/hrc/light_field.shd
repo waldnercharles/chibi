@@ -1,0 +1,51 @@
+struct Light
+{
+    vec2 position;
+    float intensity;
+    float radius;
+    vec4 color;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer SourceBuffer { Light sources[]; };
+layout(std430, set = 0, binding = 1) readonly buffer TileCounts { uint tile_counts[]; };
+layout(std430, set = 0, binding = 2) readonly buffer TileIndices { uint tile_indices[]; };
+layout(set = 1, binding = 0, rgba16f) uniform image2D u_emission;
+
+layout(set = 2, binding = 0) uniform Params
+{
+    int u_source_count;
+    int u_tiles_x;
+    int u_tiles_y;
+    int u_max_per_tile;
+    int u_canvas_w;
+    int u_canvas_h;
+    float u_world_min_x;
+    float u_world_max_y;
+    vec2 u_unit_per_px;
+};
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= u_canvas_w || pixel.y >= u_canvas_h) {
+        return;
+    }
+    vec2 world = vec2(
+        u_world_min_x + (float(pixel.x) + 0.5) * u_unit_per_px.x,
+        u_world_max_y - (float(pixel.y) + 0.5) * u_unit_per_px.y
+    );
+    ivec2 tile = pixel / 16;
+    uint tile_index = uint(tile.y * u_tiles_x + tile.x);
+    uint count = min(tile_counts[tile_index], uint(u_max_per_tile));
+    uint base = tile_index * uint(u_max_per_tile);
+    vec3 result = vec3(0.0);
+    for (uint i = 0u; i < count; i++) {
+        Light source = sources[tile_indices[base + i]];
+        float distance_to_source = distance(world, source.position);
+        float normalized = clamp(1.0 - distance_to_source / source.radius, 0.0, 1.0);
+        result += source.color.rgb * source.intensity * normalized * normalized;
+    }
+    imageStore(u_emission, pixel, vec4(result, 1.0));
+}

@@ -1,7 +1,6 @@
 #include "render/arena3d.h"
 
 #include "platform/cute.h"
-#include "render/arena_emitters.h"
 #include "render/arena_geometry.h"
 #include "render/arena_influence.h"
 #include "render/arena_trail.h"
@@ -11,6 +10,7 @@
 #include "render/shader_program.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
+#include "runtime/particle_emitters.h"
 #include "runtime/rhythm.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
@@ -54,7 +54,7 @@ struct render_arena
     render_programs *programs;
     render_influences *influences;
     arena_trails *trails;
-    arena_emitters *emitters;
+    game_particle_emitters *emitters;
     CF_Mesh prism, octahedron, tetrahedron;
     CF_Mesh particle_quad;
     CF_Mesh polygons[4];
@@ -105,7 +105,7 @@ render_arena *render_arena_new()
     arena->programs = render_programs_new(RENDER_PROGRAM_ARENA);
     arena->influences = render_influences_new();
     arena->trails = render_arena_trails_new();
-    arena->emitters = render_arena_emitters_new();
+    arena->emitters = game_particle_emitters_new(NULL);
     arena->prism = render_arena_prism_mesh();
     arena->octahedron = render_arena_octahedron_mesh();
     arena->tetrahedron = render_arena_tetrahedron_mesh();
@@ -125,9 +125,9 @@ const char *render_arena_error(const render_arena *arena)
 int render_arena_particle_count(const render_arena *arena)
 {
     int heads;
-    render_arena_emitters_heads(arena->emitters, &heads);
+    game_particle_emitters_heads(arena->emitters, &heads);
     return arena->simulation_particles + heads +
-           game_particles_count(render_arena_emitters_particles(arena->emitters));
+           game_particles_count(game_particle_emitters_particles(arena->emitters));
 }
 
 void render_arena_reset(render_arena *arena)
@@ -135,7 +135,7 @@ void render_arena_reset(render_arena *arena)
     arena->simulation_particles = 0;
     render_influences_reset(arena->influences);
     render_arena_trails_reset(arena->trails);
-    render_arena_emitters_reset(arena->emitters);
+    game_particle_emitters_reset(arena->emitters);
 }
 
 void render_arena_free(render_arena *arena)
@@ -146,7 +146,7 @@ void render_arena_free(render_arena *arena)
     render_programs_free(arena->programs);
     render_influences_free(arena->influences);
     render_arena_trails_free(arena->trails);
-    render_arena_emitters_free(arena->emitters);
+    game_particle_emitters_free(arena->emitters);
     cf_destroy_mesh(arena->prism);
     cf_destroy_mesh(arena->octahedron);
     cf_destroy_mesh(arena->tetrahedron);
@@ -327,9 +327,13 @@ static void collect_particles(
         const game_particle *particle = &items[i];
         float life = fmaxf(0, 1 - particle->age / particle->lifetime);
         float age = 1 - life;
-        float phase = particle->size_exponent > 0 ? powf(age, particle->size_exponent)
-                                                  : 0;
-        float radius = particle->size > 0 ? particle->size * (1 - phase) : 1 + life;
+        float radius = particle->size > 0 ? game_particle_curve_value(
+                                                particle->size,
+                                                particle->size_end,
+                                                particle->size_exponent,
+                                                age
+                                            )
+                                          : 1 + life;
         if (particle->shape == GAME_PARTICLE_RING) {
             radius = particle->size * (.45f + .55f * age);
         }
@@ -346,7 +350,12 @@ static void collect_particles(
         if (particle->size <= 0) {
             tint[3] *= life;
         }
-        float intensity = fmaxf(0, particle->emission);
+        float intensity = game_particle_curve_value(
+            particle->emission,
+            particle->emission_end,
+            particle->emission_exponent,
+            age
+        );
         game_material_coefficients color = {
             .scene = { tint[0], tint[1], tint[2], tint[3] },
             .emission = { tint[0] * intensity, tint[1] * intensity, tint[2] * intensity, 1 },
@@ -753,23 +762,25 @@ bool render_arena_draw(
     collect_lights(arena, world, camera, runtime);
     render_influences_collect(arena->influences, world, runtime, time);
     render_arena_trails_collect(arena->trails, world, runtime, time);
-    if (!render_arena_emitters_collect(
-            arena->emitters,
-            world,
-            runtime,
-            time,
-            arena->binding_error,
-            sizeof arena->binding_error
-        )) {
+    if (!runtime && !game_particle_emitters_collect(
+                        arena->emitters,
+                        world,
+                        runtime,
+                        time,
+                        arena->binding_error,
+                        sizeof arena->binding_error
+                    )) {
         return false;
     }
     collect_geometry(arena, world, camera, runtime);
     collect_particles(arena, game_particles_data(particles), game_particles_count(particles), camera);
-    const game_particles *emitted = render_arena_emitters_particles(arena->emitters);
-    collect_particles(arena, game_particles_data(emitted), game_particles_count(emitted), camera);
-    int head_count;
-    const game_particle *heads = render_arena_emitters_heads(arena->emitters, &head_count);
-    collect_particles(arena, heads, head_count, camera);
+    if (!runtime) {
+        const game_particles *emitted = game_particle_emitters_particles(arena->emitters);
+        collect_particles(arena, game_particles_data(emitted), game_particles_count(emitted), camera);
+        int head_count;
+        const game_particle *heads = game_particle_emitters_heads(arena->emitters, &head_count);
+        collect_particles(arena, heads, head_count, camera);
+    }
     if (arena->binding_error[0]) {
         return false;
     }
@@ -793,7 +804,7 @@ bool render_arena_preview(
 )
 {
     arena->simulation_particles = 0;
-    render_arena_emitters_reset(arena->emitters);
+    game_particle_emitters_reset(arena->emitters);
     arena->binding_error[0] = 0;
     aclear(arena->buffer.pixels);
     aclear(arena->buffer.draws);

@@ -6,6 +6,8 @@ build-release/
 build-performance/
 build-web/
 build-reflect/
+build-tracy/
+build-tracy-mcp/
 generated/
 .pi-lens/
 .cache/

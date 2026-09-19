@@ -262,16 +262,22 @@ bool game_behavior_parallel_run(
     if (acount(plan->chunks) < 2) {
         return false;
     }
+    CHIBI_TRACE_ZONE_BEGIN(validation_zone, "Validate parallel Tick rows");
     for (int c = 0; c < acount(plan->chunks); c++) {
         update_chunk *chunk = &plan->chunks[c];
         for (int i = 0; i < acount(chunk->rows); i++) {
             if (!ready(&chunk->rows[i], world)) {
+                CHIBI_TRACE_ZONE_END(validation_zone);
                 return false;
             }
         }
         behavior_update_refresh(chunk->bindings);
     }
-    if (!game_entities_parallel_begin(entities)) {
+    CHIBI_TRACE_ZONE_END(validation_zone);
+    CHIBI_TRACE_ZONE_BEGIN(query_zone, "Prepare parallel behavior queries");
+    bool queries_ready = game_entities_parallel_begin(entities);
+    CHIBI_TRACE_ZONE_END(query_zone);
+    if (!queries_ready) {
         return false;
     }
     const game_task_system *tasks = game_task_pool_tasks(p->pool);

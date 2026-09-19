@@ -40,7 +40,7 @@ static const char *read_rhythm(const eval_context *ctx, const pin_value *, arena
         return GAME_RHYTHM_NO_SCENE;
     }
     game_beat beat;
-    if (!game_rhythm_sample(world, ctx->instance->current_time, &beat)) {
+    if (!game_rhythm_sample(world, ctx->instance->clock->current_time, &beat)) {
         return GAME_RHYTHM_INVALID;
     }
     double values[] = { beat.phase, beat.pulse, beat.period, beat.duration };

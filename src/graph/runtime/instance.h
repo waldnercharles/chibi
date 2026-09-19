@@ -15,6 +15,11 @@
  * the ready/suspended event activations that currently belong to it. */
 typedef struct behavior_instance behavior_instance;
 typedef struct behavior_instance_bank behavior_instance_bank;
+typedef struct
+{
+    double current_time;
+    double delta_seconds;
+} behavior_clock;
 /* Owned snapshot; remains valid after activation release and hot apply. */
 typedef struct
 {
@@ -91,8 +96,7 @@ struct behavior_instance
     behavior_profile_fn profile;
     uint64_t services_revision; /* Invalidates prepared update bindings. */
     pin_value owner; /* PIN_HANDLE value; type PIN_FLOW when no owner */
-    double current_time;
-    double delta_seconds;
+    const behavior_clock *clock; /* Borrowed, or points to local_clock. */
     behavior_backend backend;
     int alive;
     int trace_enabled;
@@ -105,6 +109,7 @@ struct behavior_instance
     instance_scratch_slot *scratch;
     const uint64_t *state_ids; /* Borrowed from the guarded program generation. */
     char **strings;            /* instance-owned string variable values */
+    behavior_clock local_clock;
     flow_clock_fn now;
     void *now_user;
     flow_parallel_for_fn parallel_for;
@@ -246,9 +251,15 @@ bool behavior_instance_dispatch_batch(
 void behavior_batch_free(behavior_batch *batch);
 uint64_t behavior_batch_dispatches();
 
-/* Advance the scheduler to `now` (host monotonic time). Runs the oldest ready
- * activation to completion or to its next suspension (EXEC-17). */
+/* Advance an independently clocked instance to `now` (host monotonic time).
+ * Runs the oldest ready activation to its next suspension (EXEC-17). */
 int behavior_instance_tick(behavior_instance *bi, double now);
+
+/* Borrow a clock while quiescent. It must outlive the active instance; update
+ * it only between executions, after all workers have joined. */
+void behavior_instance_bind_clock(behavior_instance *bi, const behavior_clock *clock);
+/* Pump ready activations at the bound clock without modifying shared time. */
+int behavior_instance_pump(behavior_instance *bi);
 
 /* Stop one activation, preserving instance variables and scratch (RUN-17).
  * The instance and its guard are untouched. */

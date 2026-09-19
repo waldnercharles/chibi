@@ -136,13 +136,14 @@ void behavior_update_emit_bind(struct sljit_compiler *c)
         offsetof(behavior_instance, owner) + offsetof(pin_value, type_name),
         offsetof(behavior_function_context, owner_type_name)
     );
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_S4), offsetof(behavior_instance, clock));
     sljit_emit_fop1(
         c,
         SLJIT_MOV_F64,
         SLJIT_MEM1(SLJIT_S5),
         offsetof(behavior_function_context, delta_seconds),
-        SLJIT_MEM1(SLJIT_S4),
-        offsetof(behavior_instance, delta_seconds)
+        SLJIT_MEM1(SLJIT_R0),
+        offsetof(behavior_clock, delta_seconds)
     );
     sljit_emit_op1(
         c,
@@ -158,10 +159,10 @@ void behavior_update_emit_bind(struct sljit_compiler *c)
         SLJIT_ADD,
         SLJIT_MEM1(SLJIT_S5),
         offsetof(behavior_function_context, instance_time),
-        SLJIT_S4,
+        SLJIT_R0,
         0,
         SLJIT_IMM,
-        offsetof(behavior_instance, current_time)
+        offsetof(behavior_clock, current_time)
     );
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_S5), offsetof(behavior_function_context, value_storage));
     struct sljit_jump *no_storage = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);

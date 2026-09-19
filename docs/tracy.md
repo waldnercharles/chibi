@@ -27,8 +27,10 @@ scenario so before and after traces remain comparable.
 
 The first instrumentation slice covers application and scene preview frames,
 engine frames and fixed steps, behavior execution, physics, ECS systems,
-render submission, presentation, and native task pool workers. These zones
-describe timing and overlap; they do not replace deterministic scenario
+render submission, presentation, and native task pool workers. Behavior scopes
+also separate schedule repair, serial validation of parallel rows, query
+preparation and worker execution. These zones describe timing and overlap;
+they do not replace deterministic scenario
 results or benchmark thresholds.
 
 ## Tracy MCP

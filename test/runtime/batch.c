@@ -589,12 +589,70 @@ static void system_failure(bool interleaved)
     behavior_asset_free(asset);
 }
 
+static void shared_clock_dispatch(behavior_backend backend)
+{
+    behavior_asset *asset = whole_batch_fixture(false);
+    behavior_clock clock = { .current_time = 7, .delta_seconds = .25 };
+    behavior_instance *instances[2];
+    for (int i = 0; i < 2; i++) {
+        instances[i] = behavior_instance_create(asset, NULL, NULL, NULL);
+        assert(!behavior_instance_set_backend(instances[i], backend));
+        behavior_instance_bind_clock(instances[i], &clock);
+        behavior_instance_set_trace_enabled(instances[i], false);
+        flow_run *run = behavior_instance_dispatch(instances[i], "Begin", (flow_inputs){ 0 }, NULL);
+        assert(run && flow_run_status(run) == FLOW_COMPLETED);
+        assert(!behavior_instance_release_activation(instances[i], run));
+    }
+    behavior_instance *independent = behavior_instance_create(asset, NULL, NULL, NULL);
+    assert(!behavior_instance_set_backend(independent, backend));
+    behavior_instance_set_delta_seconds(independent, .125);
+    flow_run *begin = behavior_instance_dispatch(independent, "Begin", (flow_inputs){ 0 }, NULL);
+    assert(begin && flow_run_status(begin) == FLOW_COMPLETED);
+    assert(!behavior_instance_release_activation(independent, begin));
+    double expected[] = { 10.25, 10.75 };
+    behavior_batch *batch = NULL;
+    for (int frame = 0; frame < 2; frame++) {
+        clock.delta_seconds = frame ? .5 : .25;
+        for (int i = 0; i < 2; i++) {
+            flow_run *run = NULL;
+            if (i && backend != BEHAVIOR_ORACLE) {
+                assert(behavior_instance_dispatch_batch(instances[i], "Tick", &batch, &run));
+                assert(!run);
+            } else {
+                run = behavior_instance_dispatch(instances[i], "Tick", (flow_inputs){ 0 }, NULL);
+                assert(run && flow_run_status(run) == FLOW_COMPLETED);
+                assert(!behavior_instance_release_activation(instances[i], run));
+            }
+            pin_value value;
+            assert(!behavior_instance_get_variable(
+                instances[i],
+                asset->variables[0].id,
+                &value
+            ));
+            assert(value.d == expected[frame]);
+        }
+        flow_run *run = behavior_instance_dispatch(independent, "Tick", (flow_inputs){ 0 }, NULL);
+        assert(run && flow_run_status(run) == FLOW_COMPLETED);
+        pin_value value;
+        assert(!behavior_instance_get_variable(independent, asset->variables[0].id, &value));
+        assert(value.d == (frame ? 10.25 : 10.125));
+        assert(!behavior_instance_release_activation(independent, run));
+    }
+    behavior_batch_free(batch);
+    behavior_instance_destroy(independent);
+    for (int i = 0; i < 2; i++) {
+        behavior_instance_destroy(instances[i]);
+    }
+    behavior_asset_free(asset);
+}
+
 void test_behavior_batches()
 {
     for (int backend = 0; backend < 3; backend++) {
         behavior_backend mode = (behavior_backend[]){ BEHAVIOR_SLJIT,
                                                       BEHAVIOR_BYTECODE,
                                                       BEHAVIOR_ORACLE }[backend];
+        shared_clock_dispatch(mode);
         for (int batch = 0; batch < 2; batch++) {
             for (int component = 0; component < 2; component++) {
                 for (int profile = 0; profile < 2; profile++) {

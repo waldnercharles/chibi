@@ -1,5 +1,6 @@
 #include "runtime/behaviors/behavior.h"
 
+#include "diagnostics/tracy.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/update.h"
 #include "runtime/behaviors/entities.h"
@@ -94,8 +95,7 @@ struct game_behavior_world
     int *pumped;
     int last_pump_count;
     uint64_t next_sequence;
-    double current_time;
-    double delta_seconds;
+    behavior_clock clock;
     behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
     int profile_count;
     bool profile_disabled;
@@ -413,8 +413,7 @@ static behavior_instance *acquire_instance(
         return NULL;
     }
     behavior_instance_set_trace_enabled(instance, 0);
-    instance->current_time = world->current_time;
-    behavior_instance_set_delta_seconds(instance, world->delta_seconds);
+    behavior_instance_bind_clock(instance, &world->clock);
     if (behavior_instance_set_activation_pool(instance, 1) != 0 ||
         behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0 ||
         behavior_instance_bind_service(
@@ -1349,6 +1348,7 @@ static void append_update_row(game_behavior_world *world, int attachment_index)
 
 static void prepare_updates(game_behavior_world *world)
 {
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Prepare Tick schedule");
     if (world->update_bindings_invalidated) {
         /* Defer freeing until the current update returns. A host may change a
          * service while an activation is running, so its old binding can still
@@ -1389,6 +1389,7 @@ static void prepare_updates(game_behavior_world *world)
         retained_spans
     );
     world->update_revision = world->attachment_revision;
+    CHIBI_TRACE_ZONE_END(zone);
 }
 
 int game_behavior_update(game_behavior_world *world, flow_error *error)
@@ -1567,12 +1568,6 @@ bool game_behavior_has_event(const game_behavior_world *world, const char *event
     return false;
 }
 
-typedef struct
-{
-    game_behavior_world *world;
-    double monotonic_time;
-} behavior_pump_context;
-
 static int instance_breakpoints_active(const behavior_instance *instance)
 {
     if (!instance || !acount(instance->activations)) {
@@ -1595,19 +1590,18 @@ static int instance_breakpoints_active(const behavior_instance *instance)
 
 static void pump_attachment(int index, void *user)
 {
-    behavior_pump_context *context = (behavior_pump_context *)user;
-    behavior_attachment
-        *attachment = &context->world->attachments[context->world->pumped[index]];
-    context->world->pump_results[index] = FLOW_OK;
+    game_behavior_world *world = user;
+    behavior_attachment *attachment = &world->attachments[world->pumped[index]];
+    world->pump_results[index] = FLOW_OK;
     if (!acount(attachment->instance->activations)) {
         return;
     }
-    if (!ecs_entity_is_alive(context->world->ecs, attachment->entity)) {
+    if (!ecs_entity_is_alive(world->ecs, attachment->entity)) {
         return;
     }
-    int result = behavior_instance_tick(attachment->instance, context->monotonic_time);
+    int result = behavior_instance_pump(attachment->instance);
     if (result < 0) {
-        context->world->pump_results[index] = result;
+        world->pump_results[index] = result;
     }
 }
 
@@ -1643,15 +1637,14 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         );
         world->pump_result_capacity = capacity;
     }
-    behavior_pump_context context = { world, monotonic_time };
     if (world->parallel_for && !serial) {
-        world->parallel_for(count, pump_attachment, &context);
+        world->parallel_for(count, pump_attachment, world);
     } else {
         aclear(world->pumped);
         for (int i = behavior_pending_next(&world->pending, 0); i >= 0 && i < limit;
              i = behavior_pending_next(&world->pending, i + 1)) {
             apush(world->pumped, i);
-            pump_attachment(acount(world->pumped) - 1, &context);
+            pump_attachment(acount(world->pumped) - 1, world);
         }
     }
     world->last_pump_count = acount(world->pumped);
@@ -1675,16 +1668,7 @@ int game_behavior_last_pump_count(const game_behavior_world *world)
 
 void game_behavior_set_time(game_behavior_world *world, double simulation_time)
 {
-    /* Acquired instances inherit both world clock values. Pumping again at the
-     * same time therefore needs no full-population write. Compare bits to
-     * preserve signed zero and NaN payloads in authored clock reads. */
-    if (!memcmp(&world->current_time, &simulation_time, sizeof simulation_time)) {
-        return;
-    }
-    world->current_time = simulation_time;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        world->attachments[i].instance->current_time = simulation_time;
-    }
+    world->clock.current_time = simulation_time;
 }
 
 bool game_behavior_paused(const game_behavior_world *world)
@@ -1706,13 +1690,7 @@ void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_se
     if (!world) {
         return;
     }
-    if (!memcmp(&world->delta_seconds, &delta_seconds, sizeof delta_seconds)) {
-        return;
-    }
-    world->delta_seconds = delta_seconds;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_instance_set_delta_seconds(world->attachments[i].instance, delta_seconds);
-    }
+    world->clock.delta_seconds = delta_seconds;
 }
 
 void game_behavior_set_parallel_for(

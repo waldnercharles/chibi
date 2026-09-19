@@ -205,7 +205,7 @@ static void lifecycle(behavior_backend backend)
     behavior_asset_free(a);
     flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_SUSPENDED);
-    assert(flow_run_wake_time(run) == bi->current_time + 1.);
+    assert(flow_run_wake_time(run) == bi->local_clock.current_time + 1.);
     behavior_instance_destroy(bi);
     behavior_asset_free(next);
     if (backend != BEHAVIOR_ORACLE) {

@@ -776,7 +776,8 @@ static void rhythm_and_defaults()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     behavior_asset *asset = behavior_asset_new("Rhythm reader");
     node *read = add(asset->graph, "Scene Rhythm");
-    behavior_instance instance = { .asset = asset, .current_time = .05 };
+    behavior_clock time = { .current_time = .05 };
+    behavior_instance instance = { .asset = asset, .clock = &time };
     service_binding *services = NULL;
     apush(services, ((service_binding){ "ecs.world", world }));
     eval_context eval;
@@ -788,7 +789,7 @@ static void rhythm_and_defaults()
     pin_value value;
     assert(graph_eval_output(asset->graph, read, 1, &storage, &value, &eval) == 0);
     assert(value.type == PIN_F64 && fabs(value.d - .25) < .000001);
-    instance.current_time = .5;
+    time.current_time = .5;
     eval_context_reset_runtime(&eval);
     assert(graph_eval_output(asset->graph, read, 0, &storage, &value, &eval) == 0);
     assert(fabs(value.d - .5) < .000001);

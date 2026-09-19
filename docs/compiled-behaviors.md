@@ -363,8 +363,13 @@ Pumping and paused-state inspection skip idle attachments. Empty/nonempty queue
 notifications maintain membership, including waits, debug holds, cancellation
 and pooled reuse. Serial callbacks preserve the existing attachment delivery
 order. `game_behavior_last_pump_count` exposes visited queues for inspection and
-performance assertions. Clock propagation still visits all instances. See
-[pending-queue measurements and lifecycle checks](research/pending-queues.md).
+performance assertions. Attached instances borrow their world's simulation clock,
+so advancing time and delta time performs constant work regardless of attachment
+count. Standalone instances retain independent clocks. Activations snapshot their
+start time and delta time; waits and Scene Rhythm still read the current clock
+where their contracts require it. Pool release detaches the borrowed clock. See
+[pending-queue measurements and lifecycle checks](research/pending-queues.md) and
+[shared-clock measurements](research/shared-clock.md).
 
 ## Prepared Tick updates
 

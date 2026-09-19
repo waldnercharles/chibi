@@ -1059,10 +1059,10 @@ void behavior_function_write_sequence_c(
             "!ecs_execution_entity(world,row->entity)) return row;\n"
             "behavior_function_context *c=&binding->context;\n"
             "c->owner=bi->owner.u64; c->owner_type_name=bi->owner.type_name; "
-            "c->delta_seconds=bi->delta_seconds; c->steps=0;\n"
+            "c->delta_seconds=bi->clock->delta_seconds; c->steps=0;\n"
             "c->variables=bi->variables; c->states=bi->node_states; "
             "c->variable_storage=bi->variable_storage; c->value_owner=bi; "
-            "c->instance_time=&bi->current_time;\n"
+            "c->instance_time=&bi->clock->current_time;\n"
             "if(c->value_storage) arena_reset(c->value_storage);\n"
             "*result=%s_body%d(c); if(*result) return row; row++;}\n",
             part,

@@ -141,6 +141,11 @@ states; their old capacity limits and threading descriptions are not current.
 
 ## Recommended order
 
+Implementation status: cached dependency/binding preparation and incremental
+Tick schedule repair from S1/S2 are present. S3 now uses a shared world clock;
+see [the shared-clock measurements and next behavior work](shared-clock.md).
+The original measurements above predate these changes.
+
 Impact below is a priority judgment based on current cost and scaling behavior.
 It is not a predicted speedup. Medium effort means work within an existing
 module; large means a new execution/storage contract or several modules.

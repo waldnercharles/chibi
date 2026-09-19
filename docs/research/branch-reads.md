@@ -113,6 +113,9 @@ code; bytecode and generated-C parity provide separate coverage.
 
 ## Remaining opportunities
 
+Follow-up: [demanded target snapshots and allocator analysis](query-snapshots.md)
+implement the snapshot and register-clobber opportunities described below.
+
 The query still packs generic host arguments and resolves candidate components
 inside its helper. Typed query lowering and a dependency-checked target snapshot
 could reduce that work. The independent C reference also prebinds owner component

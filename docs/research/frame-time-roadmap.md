@@ -146,6 +146,8 @@ Tick schedule repair from S1/S2 are present. S3 now uses a shared world clock;
 see [the shared-clock measurements and next behavior work](shared-clock.md).
 Large spans now also [validate rows in parallel](parallel-validation.md), with
 a join before behavior effects and serial validation for small spans.
+The compiler now reuses [stable reads across branches](branch-reads.md), and
+parallel plans [prepare only demanded target snapshots](query-snapshots.md).
 The original measurements above predate these changes.
 
 Impact below is a priority judgment based on current cost and scaling behavior.

@@ -323,3 +323,110 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     behavior_debug_backend(previous);
     return 0;
 }
+
+int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
+{
+    assert(count > 0 && count <= 20000 && frames >= 8 && frames <= 10000);
+    behavior_backend backend = portable ? BEHAVIOR_BYTECODE : BEHAVIOR_SLJIT;
+    behavior_backend previous = behavior_debug_backend(backend);
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
+    }
+    game_live_world *live = game_live_world_new(world);
+    load_definition(live, "projects/arena2d/content/behaviors/NeonSwarmPursuit.json");
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char *json = text_file_read("projects/arena2d/content/prototypes/NeonSwarmSwarmer.json"),
+         error[256];
+    assert(json);
+    game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+    free(json);
+    assert(prototype);
+    game_behavior_set_profiling(live->behaviors, profile);
+    game_entities_profile_queries(live->entities, profile);
+    game_behavior_set_delta_seconds(live->behaviors, 1.0 / 60.0);
+
+    ecs_entity target = ecs_world_create_entity(world);
+    assert(!GAME_GameTransform_add(world, target, 0));
+    assert(!GAME_GameCollider_add(world, target, 0));
+    assert(!ecs_world_apply_commands(world));
+    *GAME_GameTransform_get(world, target) = (GameTransform){ 0 };
+    *GAME_GameCollider_get(world, target) = (GameCollider){ .category = 1 };
+
+    ecs_entity *enemies = NULL;
+    double setup = seconds();
+    for (int i = 0; i < count; i++) {
+        ecs_entity enemy;
+        assert(!game_prototype_spawn_components(prototype, world, &enemy, error, sizeof error));
+        *GAME_GameTransform_get(world, enemy) = (GameTransform){
+            100 + (i % 100) * 8,
+            100 + (i / 100) * 8,
+        };
+        const char *behavior = "NeonSwarmPursuit";
+        assert(!game_behavior_set_attachments(live->behaviors, enemy, &behavior, 1));
+        apush(enemies, enemy);
+    }
+    printf(
+        "neon_pursuit_setup backend=%s entities=%d setup_ms=%.3f\n",
+        behavior_backend_name(backend),
+        count,
+        (seconds() - setup) * 1000
+    );
+    fflush(stdout);
+
+    double *samples = NULL;
+    uint64_t prepared = 0, native = 0;
+    for (int frame = -8; frame < frames; frame++) {
+        if (!frame) {
+            game_entities_profile_queries(live->entities, profile);
+        }
+        game_behavior_profile_begin(live->behaviors);
+        double start = seconds();
+        game_behavior_set_time(live->behaviors, (frame + 8) / 60.0);
+        assert(game_behavior_update(live->behaviors, NULL) == count);
+        assert(!game_behavior_pump(live->behaviors, (frame + 8) / 60.0));
+        game_behavior_update_stats updates = game_behavior_last_update(live->behaviors);
+        assert(updates.entries == count && updates.prepared == count && !updates.scheduled);
+        assert(updates.native_loop == (!portable && !profile ? count : 0));
+        prepared += updates.prepared;
+        native += updates.native_loop;
+        if (frame >= 0) {
+            apush(samples, (seconds() - start) * 1000);
+        }
+    }
+    if (profile) {
+        game_entity_query_profile q = game_entities_query_profile(live->entities);
+        printf(
+            "neon_pursuit_queries searches=%llu world_candidates=%llu "
+            "matching_candidates=%llu cache_builds=%llu\n",
+            (unsigned long long)q.searches,
+            (unsigned long long)q.world_candidates,
+            (unsigned long long)q.matching_candidates,
+            (unsigned long long)q.cache_builds
+        );
+        assert(q.cache_builds == (uint64_t)frames);
+        assert(q.world_candidates == (uint64_t)(count + 1) * frames);
+    }
+    qsort(samples, (size_t)acount(samples), sizeof *samples, compare);
+    printf(
+        "neon_pursuit backend=%s entities=%d frames=%d profile=%d "
+        "tick_p50_ms=%.6f tick_p95_ms=%.6f prepared=%llu native_loop=%llu\n",
+        behavior_backend_name(backend),
+        count,
+        frames,
+        profile,
+        samples[(frames - 1) / 2],
+        samples[(frames - 1) * 95 / 100],
+        (unsigned long long)prepared,
+        (unsigned long long)native
+    );
+    fflush(stdout);
+    afree(samples);
+    afree(enemies);
+    game_prototype_free(prototype);
+    game_live_world_free(live);
+    ecs_world_free(world);
+    behavior_debug_backend(previous);
+    return 0;
+}

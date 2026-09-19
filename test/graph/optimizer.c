@@ -620,7 +620,7 @@ static void nested_projection_cleanup()
     assert(graph_optimize(g, NULL, &report) == 1);
     node *source = NULL;
     int source_pin = -1;
-    bool rewired = graph_node_by_id(g, split_id) == NULL && make->output_count == 5 &&
+    bool rewired = graph_node_by_id(g, split_id) == NULL && make->output_count == 6 &&
                    graph_input_source(g, store_x, 1, &source, &source_pin) &&
                    source == make &&
                    !strcmp(make->output_pins[source_pin].field_name, "x") &&

@@ -89,6 +89,8 @@ enum
     GAME_SHAPE_CHEVRON,
     GAME_SHAPE_STROKED_CHEVRON,
     GAME_SHAPE_CAPSULE,
+    GAME_SHAPE_TRIANGLE,
+    GAME_SHAPE_STROKED_TRIANGLE,
 };
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
@@ -184,6 +186,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAim)
 {
     CF_V2 direction;
     bool firing;
+    bool manual;
 }
 GameAim;
 
@@ -306,26 +309,62 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMeshParts)
 }
 GameMeshParts;
 
-/* Local emitter pose follows the rendered source; emitted particles retain a world-space tail. */
+/* Independent random endpoints; exponent zero holds the sampled start value. */
+typedef NODE_TYPE(GameParticleCurve)
+{
+    CF_V2 start;
+    CF_V2 end;
+    float exponent;
+}
+GameParticleCurve;
+
+/* A parent is optional. Each child emitter owns an independent seed and rate. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
 {
     int shape;
     unsigned color;
     unsigned end_color;
     float rate;
-    float lifetime;
-    float speed;
-    float size;
+    int burst_count;
+    CF_V2 lifetime;
+    CF_V2 speed;
+    GameParticleCurve size;
     float spread;
-    float drag;
-    float emission;
-    float size_exponent;
+    GameParticleCurve drag;
+    GameParticleCurve emission;
+    GameParticleCurve antialias;
+    float absorption;
+    int metaball_group;
+    float metaball_blend;
+    bool velocity_align;
+    CF_V2 stretch;
     float velocity_inherit;
     CF_V3 offset;
     CF_V3 direction;
-    bool heading_only; /* Ignore visual pitch/yaw/roll for the emitter's local pose. */
+    uint64_t parent NODE_HANDLE(ecs.entity);
+    bool active;
+    bool planar;
+    bool heading_only;
 }
 GameParticleEmitter;
+
+static inline GameParticleEmitter game_particle_emitter_defaults()
+{
+    return (GameParticleEmitter){ .color = 0xffffffffu,
+                                  .end_color = 0xffffff00u,
+                                  .rate = 90,
+                                  .lifetime = { .3f, .3f },
+                                  .speed = { 70, 70 },
+                                  .size = { { 2, 2 }, { 0, 0 }, .8f },
+                                  .spread = .3f,
+                                  .drag = { { 1, 1 }, { 0, 0 }, 0 },
+                                  .emission = { { .7f, .7f }, { 0, 0 }, 0 },
+                                  .antialias = { { 1.5f, 1.5f }, { 0, 0 }, 0 },
+                                  .absorption = .01f,
+                                  .velocity_inherit = 1,
+                                  .direction = { -1, 0, 0 },
+                                  .active = true };
+}
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameTrail)
 {
@@ -416,10 +455,11 @@ typedef enum
  * target GameInput owners; firing also controls the continuous Aim state. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 {
-    GameControl source;
+    int source;
     const char *action;
     bool firing;
     bool disabled;
+    bool pressed;
 }
 GameActionBinding;
 
@@ -511,14 +551,60 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameRenderState)
 GameRenderState;
 
 /* Optional 2D radiance composition; values are nonnegative scene-linear gains. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameLighting2D)
+/* Cell size, radius, density and brightness for each procedural star layer. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
 {
+    CF_V4 far_layer, middle_layer, near_layer;
+    CF_V3 parallax;
+    unsigned color_a, color_b, color_c, color_d;
+}
+GameStarfield2D;
+
+typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
+{
+    float scale;
+    float min_scale;
+    float max_scale;
+    bool adaptive;
+    float target_fps;
+    float fps_tolerance;
     float ambient;
-    float emission;
+    float intensity;
     float fog;
     float shadow_floor;
+    float falloff;
+    float bounce_intensity;
+    float bounce_hysteresis;
+    float radiance_hysteresis;
+    int upscale_mode;
+    float upscale_threshold;
+    int debug_view;
+    float particle_focal_length;
+    int trace_levels;
+    bool feedback;
 }
-GameLighting2D;
+GameHRC2D;
+
+static inline GameHRC2D game_hrc2d_defaults()
+{
+    return (GameHRC2D){ .scale = .976883f,
+                        .min_scale = .1f,
+                        .max_scale = 1,
+                        .adaptive = true,
+                        .target_fps = 60,
+                        .fps_tolerance = .1f,
+                        .intensity = 7.5f,
+                        .fog = 1,
+                        .falloff = 1,
+                        .bounce_intensity = 1,
+                        .bounce_hysteresis = .8f,
+                        .radiance_hysteresis = .8f,
+                        .upscale_mode = 1,
+                        .upscale_threshold = .1f,
+                        .particle_focal_length = 300,
+                        .trace_levels = 3,
+                        .feedback = true };
+}
 
 /* Stored map positions for landmarks and objectives. Hidden until explored,
  * unless always_visible; movement and discovery rules belong to behaviors. */

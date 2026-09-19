@@ -52,7 +52,11 @@ bool render_image_mount_content(const char *root, char *message, size_t size)
             return true;
         }
     }
-    CF_Result result = cf_fs_mount(root, root, true);
+    /* Shader graphs use the stable content/... key space. A project selects a
+     * physical content directory and mounts it into that space. Appending the
+     * mount lets the selected project override an older mount without making
+     * shader graphs know where the project lives. */
+    CF_Result result = cf_fs_mount(root, "/content", true);
     if (cf_is_error(result)) {
         if (size) {
             snprintf(

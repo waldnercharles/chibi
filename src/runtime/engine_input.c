@@ -83,6 +83,8 @@ static void free_transitions(engine_input *input)
     aclear(input->transitions);
 }
 
+static void apply_action_state(engine_input *input);
+
 static void clear_actions(engine_input *input)
 {
     free_transitions(input);
@@ -90,6 +92,7 @@ static void clear_actions(engine_input *input)
         free(input->buttons[i].action);
     }
     aclear(input->buttons);
+    apply_action_state(input);
 }
 
 static void clear_owner(engine_input *input, ecs_entity entity)
@@ -108,6 +111,7 @@ static void clear_owner(engine_input *input, ecs_entity entity)
     GameAim *aim = GAME_GameAim_get(input->world, entity);
     if (aim) {
         aim->firing = false;
+        aim->manual = false;
     }
 }
 
@@ -272,7 +276,8 @@ static int apply_aim_sample(engine_input *input)
             direction.y -= position->y;
         }
         float length = hypotf(direction.x, direction.y);
-        if (length > 0.0001f) {
+        aim->manual = length > .1f && (!input->aim_point || input->firing);
+        if (aim->manual) {
             aim->direction = (CF_V2){ direction.x / length, direction.y / length };
         }
     }
@@ -334,6 +339,7 @@ static int apply_movement_sample(engine_input *input)
         GameAim *aim = GAME_GameAim_get(input->world, entity);
         if (aim) {
             aim->firing = false;
+            aim->manual = false;
         }
         result = game_behavior_dispatch(
             input->behaviors,
@@ -407,8 +413,28 @@ static int dispatch_actions(engine_input *input)
     return result < 0 ? result : FLOW_OK;
 }
 
+static void apply_action_state(engine_input *input)
+{
+    ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
+    if (!ecs_world_component(input->world, component)) {
+        return;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(input->world, &query, &component, 1);
+    assert(result == ECS_OK);
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        GameActionBinding *binding = GAME_GameActionBinding_get(input->world, entity);
+        int index = binding->action ? button_index(input, binding->action) : -1;
+        binding->pressed = !binding->disabled && index >= 0 &&
+                           input->buttons[index].pressed;
+    }
+    ecs_query_end(&query);
+}
+
 int engine_input_apply(engine_input *input)
 {
+    apply_action_state(input);
     int result = apply_aim_sample(input);
     if (result >= 0) {
         result = apply_movement_sample(input);

@@ -10,6 +10,8 @@ make play         # optimized standalone game
 make debug        # plain Debug editor
 make debug-san    # Debug editor with ASan and UBSan
 make build        # build the sanitizer-enabled Debug profile
+make build-tracy  # build native RelWithDebInfo with Tracy enabled
+make run-tracy    # run the native Tracy profile
 make test         # model, runtime, native UI, generation, and loader checks
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
@@ -25,15 +27,18 @@ ASan and UBSan by default. Use `make debug-san SANITIZERS=thread` when a TSan
 run is useful; TSan cannot be linked into the same binary as ASan, so the one
 target switches the sanitizer mode in the shared Debug build directory.
 
-To run the game with a debug profile, pass its normal application arguments:
-`make debug ARGS='--play --scene content/scenes/Arena3D.json'` or
-`make debug-san ARGS='--play --scene content/scenes/Arena3D.json'`.
+To open a project with an editor profile, pass its project root and scene:
+`make debug PROJECT=projects/arena2d SCENE=scenes/Arena2D.json`
+or use `PROJECT=.` and `SCENE=scenes/Arena3D.json` for the 3D reference. Add
+`ARGS=--play` to launch directly into Play.
 
 Run `make help` for the complete target list and the purpose of each target.
 
 The [frame-time optimization roadmap](docs/research/frame-time-roadmap.md)
 records current Arena measurements, remaining performance options and the
 acceptance criteria for consistent 60 FPS and higher refresh rates.
+The [Tracy workflow](docs/tracy.md) explains the optional native timeline
+profile and its MCP analysis server.
 
 When available, Chibi MCP is the default interface for authoring shaders,
 behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for

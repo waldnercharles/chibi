@@ -13,6 +13,7 @@
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/events.h"
+#include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
@@ -169,7 +170,7 @@ typedef struct
 } page_options;
 
 #define SCENARIO_DEFAULT_FRAMES 1
-#define SCENARIO_MAX_FRAMES 600
+#define SCENARIO_MAX_FRAMES 1800
 #define SCENARIO_RUN_MAX_FRAMES 108000
 #define SCENARIO_MAX_ACTIONS 32
 #define SCENARIO_DEFAULT_FIXED_DT (1.0 / 60.0)
@@ -259,7 +260,7 @@ static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "kind", "string", false, "Target family; defaults to prototype." },
     { "name", "string", true, "Prototype asset name." },
-    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 1800." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "object[]", false, "Per-frame movement, aim, action, and event input records." },
     { "saved_state", "object", false, "Isolated initial committed text values." },
@@ -326,9 +327,9 @@ static const contract_field CONTRACT_PROFILE_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "kind", "string", false, "Target family; defaults to prototype." },
     { "name", "string", true, "Prototype or scene asset name." },
-    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 600." },
+    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 1800." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
-    { "warmup_frames", "uint64", false, "Frames to run before collecting samples; maximum 600." },
+    { "warmup_frames", "uint64", false, "Frames to run before collecting samples; maximum 1800." },
 };
 static const contract_field CONTRACT_EXECUTION_STATUS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -3392,6 +3393,15 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     return 0;
 }
 
+static void free_behavior_assets(behavior_asset **assets);
+static int load_behavior_family_assets(
+    const char *root,
+    const asset_family *family,
+    behavior_asset ***out,
+    char *error,
+    size_t error_size
+);
+
 static int handle_validate_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -3418,7 +3428,38 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         } else {
             compile_report report;
             compile_report_init(&report);
-            errors = behavior_asset_compile(asset, &report);
+            behavior_asset **libraries = NULL;
+            const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                                         asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                                         asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
+                                   ? "shader-library"
+                                   : "library";
+            int loaded = load_behavior_family_assets(root, family_by_kind(family), &libraries, error, sizeof error);
+            behavior_asset **events = NULL;
+            if (loaded == CHIBI_AUTOMATION_OK && !strcmp(family, "library")) {
+                loaded = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
+                for (int i = 0; i < acount(events); i++) {
+                    apush(libraries, events[i]);
+                }
+                afree(events);
+            }
+            behavior_asset *linked = loaded == CHIBI_AUTOMATION_OK
+                                       ? behavior_asset_link_libraries(
+                                             asset,
+                                             (const behavior_asset *const *)libraries,
+                                             acount(libraries),
+                                             error,
+                                             sizeof error
+                                         )
+                                       : NULL;
+            if (linked) {
+                errors = behavior_asset_compile(linked, &report);
+            } else {
+                errors = 1;
+                add_load_diagnostic(result->doc, diagnostics, error);
+            }
+            behavior_asset_free(linked);
+            free_behavior_assets(libraries);
             warnings = report.warning_count;
             notes = report.note_count;
             for (int i = 0; i < acount(report.items); i++) {
@@ -4599,13 +4640,13 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
     uint64_t warmup = 0;
     if (yyjson_obj_get(request, "frames") &&
         (!request_uint(request, "frames", &frames) || frames > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 600");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 1800");
         return -1;
     }
     if (yyjson_obj_get(request, "warmup_frames") &&
         (!request_uint(request, "warmup_frames", &warmup) ||
          warmup > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "warmup_frames must be a non-negative integer no greater than 600");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "warmup_frames must be a non-negative integer no greater than 1800");
         return -1;
     }
     if (warmup + frames > SCENARIO_PROFILE_MAX_TOTAL) {
@@ -5291,7 +5332,7 @@ static int advance_request_scenario(
     size_t count = yyjson_arr_size(entries);
     if ((values && timeline) || !yyjson_is_arr(entries) ||
         count > SCENARIO_MAX_FRAMES || count > frames) {
-        set_error(error, error_size, "Use inputs or input_timeline with at most 600 entries and no more entries than frames");
+        set_error(error, error_size, "Use inputs or input_timeline with at most 1800 entries and no more entries than frames");
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     scenario_input *inputs = xcalloc(count + 1, sizeof *inputs);
@@ -5357,7 +5398,7 @@ int chibi_automation_preview(
         !name || !name[0] ||
         (frame_value && (!yyjson_is_int(frame_value) || yyjson_get_sint(frame_value) < 0 ||
                          frames > SCENARIO_MAX_FRAMES))) {
-        set_error(error, error_size, "preview_scene requires scene/prototype kind, name and 0-600 frames");
+        set_error(error, error_size, "preview_scene requires scene/prototype kind, name and 0-1800 frames");
         yyjson_doc_free(doc);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
@@ -5697,7 +5738,11 @@ static void add_snapshot_component(
         yyjson_val *field_value = field_values && yyjson_is_obj(field_values)
                                     ? yyjson_obj_get(field_values, field->name)
                                     : NULL;
-        if (field_value) {
+        if (field->type == PIN_HANDLE) {
+            pin_value handle;
+            pin_read_field(ecs_component_data_const(world, entity, component->id), field, &handle);
+            yyjson_mut_obj_add_uint(doc, entry, "value", handle.u64);
+        } else if (field_value) {
             yyjson_mut_obj_add_val(doc, entry, "value", yyjson_val_mut_copy(doc, field_value));
         } else {
             yyjson_mut_obj_add_null(doc, entry, "value");
@@ -5937,6 +5982,12 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
     add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
     add_saved_state(result->doc, value, &context);
     add_presentation_state(result->doc, value, &context);
+    yyjson_mut_obj_add_int(
+        result->doc,
+        value,
+        "particle_count",
+        game_particles_count(game_prototype_preview_particles(context.preview))
+    );
     uint32_t live_entities = ecs_world_live_count(world);
     yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
     yyjson_mut_obj_add_uint(result->doc, value, "entity_count", live_entities);
@@ -6114,6 +6165,12 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
     add_saved_state(result->doc, value, &context);
     add_presentation_state(result->doc, value, &context);
+    yyjson_mut_obj_add_int(
+        result->doc,
+        value,
+        "particle_count",
+        game_particles_count(game_prototype_preview_particles(context.preview))
+    );
     uint32_t live_entities = ecs_world_live_count(world);
     yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
     yyjson_mut_obj_add_uint(result->doc, value, "entity_count", live_entities);
@@ -6186,7 +6243,7 @@ static bool parse_scenario_timing(
     yyjson_val *frames_value = yyjson_obj_get(request, "frames");
     if (frames_value && (!request_uint(request, "frames", frames) ||
                          *frames > SCENARIO_MAX_FRAMES)) {
-        snprintf(error, error_size, "frames must be a non-negative integer no greater than 600");
+        snprintf(error, error_size, "frames must be a non-negative integer no greater than 1800");
         return false;
     }
     *fixed_dt = SCENARIO_DEFAULT_FIXED_DT;
@@ -6225,11 +6282,12 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
         return -1;
     }
-    scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
+    scenario_input *inputs = xcalloc(SCENARIO_MAX_FRAMES, sizeof *inputs);
     yyjson_val *input_values = yyjson_obj_get(request, "inputs");
     if (input_values &&
         (!yyjson_is_arr(input_values) || yyjson_arr_size(input_values) > frames)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "inputs must be an array with no more entries than frames");
+        free(inputs);
         return -1;
     }
     if (input_values) {
@@ -6237,6 +6295,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
         for (size_t i = 0; i < count; i++) {
             if (!parse_scenario_input(yyjson_arr_get(input_values, i), &inputs[i], error, sizeof error)) {
                 response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
+                free(inputs);
                 return -1;
             }
         }
@@ -6248,6 +6307,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
                    : prepare_scenario(root, name, &context, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
+        free(inputs);
         return -1;
     }
     scenario_observations observations = { 0 };
@@ -6258,6 +6318,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
+        free(inputs);
         return -1;
     }
 
@@ -6266,6 +6327,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
+        free(inputs);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -6287,8 +6349,10 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
     scenario_context_free(&context);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
+        free(inputs);
         return -1;
     }
+    free(inputs);
     return 0;
 }
 
@@ -6365,7 +6429,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording inputs, frame_hashes and live_entities must contain exactly frames entries");
         return -1;
     }
-    scenario_input inputs[SCENARIO_MAX_FRAMES] = { 0 };
+    scenario_input *inputs = xcalloc(SCENARIO_MAX_FRAMES, sizeof *inputs);
     scenario_observations expected = { .has_live_entities = true };
     for (uint64_t frame = 0; frame < frames; frame++) {
         yyjson_val *live = yyjson_arr_get(live_entities_values, frame);
@@ -6379,6 +6443,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
                 CHIBI_AUTOMATION_VALIDATION_ERROR,
                 error[0] ? error : "recording observations are invalid"
             );
+            free(inputs);
             return -1;
         }
         expected.live_entities[frame] = (uint32_t)yyjson_get_uint(live);
@@ -6389,6 +6454,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     if (!kind || (strcmp(kind, "scene") && strcmp(kind, "prototype"))) {
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording kind must be scene or prototype");
+        free(inputs);
         return -1;
     }
     int status = !strcmp(kind, "scene")
@@ -6397,6 +6463,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     if (status != CHIBI_AUTOMATION_OK) {
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, status, error);
+        free(inputs);
         return -1;
     }
     if (context.prototype_hash != expected_prototype_hash ||
@@ -6404,6 +6471,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
         scenario_context_free(&context);
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "recording runtime content changed; create a new recording for the current assets");
+        free(inputs);
         return -1;
     }
     scenario_observations actual = { 0 };
@@ -6415,6 +6483,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
         scenario_context_free(&context);
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, status, error);
+        free(inputs);
         return -1;
     }
     int divergence = -1;
@@ -6469,6 +6538,7 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     }
     scenario_context_free(&context);
     yyjson_doc_free(recording_doc);
+    free(inputs);
     return 0;
 }
 

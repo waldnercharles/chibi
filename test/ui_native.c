@@ -307,6 +307,12 @@ static bool workspace_scenario()
         return false;
     }
     bool ok = ui_frame(&fixture) && ui_frame(&fixture);
+    bool inline_edge_nodes = editor_ui_inline_edge_nodes();
+    ok &= click_item(&fixture, "view.menu") && ui_frame(&fixture);
+    ok &= click_item(&fixture, "view.inline_edge_nodes") && ui_frame(&fixture);
+    bool inline_setting_toggled = editor_ui_inline_edge_nodes() != inline_edge_nodes;
+    editor_ui_set_inline_edge_nodes(inline_edge_nodes);
+    ok &= inline_setting_toggled;
     editor_ui_rect content, inspector, graph, scene;
     bool content_pane = editor_ui_pane_rect(EDITOR_UI_PANE_CONTENT, &content);
     bool inspector_pane = editor_ui_pane_rect(EDITOR_UI_PANE_INSPECTOR, &inspector);

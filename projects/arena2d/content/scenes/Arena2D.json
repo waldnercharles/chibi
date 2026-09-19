@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "name": "Arena2D",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Encounter",
+      "prototype": "Arena2DEncounter",
+      "components": {},
+      "behaviors": [
+        "Arena2DWaveBehavior"
+      ]
+    },
+    {
+      "name": "Player",
+      "prototype": "Arena2DPlayer",
+      "components": {},
+      "behaviors": [
+        "TwinStickInputBehavior",
+        "Arena2DWeaponBehavior",
+        "HealthBehavior",
+        "PlayerContactBehavior",
+        "CombatFeedback",
+        "Arena2DImpactFeedback"
+      ]
+    },
+    {
+      "name": "Phase Warden",
+      "prototype": "Arena2DPhaseWarden",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Environment",
+      "prototype": "Arena2DEnvironment",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Lighting",
+      "prototype": "Arena2DLighting",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Space Dash",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 3,
+          "action": "Dash",
+          "firing": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Shift Dash",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 4,
+          "action": "Dash",
+          "firing": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Pad Dash",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 33,
+          "action": "Dash",
+          "firing": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Stick Fire",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 41,
+          "action": "Fire",
+          "firing": true
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Trigger Fire",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 40,
+          "action": "Fire",
+          "firing": true
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Mouse Fire",
+      "prototype": "ActionBinding",
+      "components": {
+        "GameActionBinding": {
+          "source": 1,
+          "action": "Fire",
+          "firing": true,
+          "disabled": false
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Camera2D",
+      "prototype": "Arena2DCamera",
+      "components": {},
+      "behaviors": []
+    }
+  ]
+}

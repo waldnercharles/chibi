@@ -26,6 +26,7 @@ layout(set = 2, binding = 0) uniform Params
 	int u_r_prev_w;
 	int u_r_curr_w;
 	float u_falloff;
+	int u_cascade_count;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -56,6 +57,7 @@ Interval T_load(int probe_x, int k, int y)
 Interval T_load_next(int probe_x, int k, int y)
 {
 	int n = u_cascade + 1;
+	if (n >= u_cascade_count) return Interval(vec3(0.0), 0.0);
 	int directions = (1 << n) + 1;
 	int num_probes = probe_count(u_world_w, n);
 	if (probe_x < 0 || probe_x >= num_probes || k < 0 || k >= directions || y < 0 || y >= u_world_h) {

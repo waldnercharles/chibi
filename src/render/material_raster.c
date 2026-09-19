@@ -34,14 +34,14 @@ struct render_material_raster
     CF_StorageBuffer entities, counts, indices, parameters;
     unsigned char *entity_data;
     float *parameter_data;
-    CF_Texture textures[4];
+    CF_Texture textures[5];
     render_material_entity *sorted;
     int width, height, tiles, capacity;
 };
 
 static void free_targets(render_material_raster *r)
 {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         if (r->textures[i].id) {
             cf_destroy_texture(r->textures[i]);
         }
@@ -113,7 +113,7 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
         return true;
     }
     free_targets(r);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         CF_TextureParams params = cf_texture_defaults(width, height);
         params.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT |
@@ -145,6 +145,14 @@ static bool reserve(render_material_raster *r, int count)
     if (count <= r->capacity) {
         return true;
     }
+    int capacity = r->capacity ? r->capacity : 256;
+    while (capacity < count) {
+        if (capacity > INT_MAX / 2) {
+            return false;
+        }
+        capacity *= 2;
+    }
+    count = capacity;
     size_t index_bytes = (size_t)r->tiles * count * sizeof(uint32_t);
     if (index_bytes > INT_MAX || count > INT_MAX / (int)sizeof(render_material_entity)) {
         return false;
@@ -343,7 +351,7 @@ bool render_material_raster_draw(
     dispatch.ro_buffers = inputs;
     dispatch.ro_buffer_count = 4;
     dispatch.rw_textures = r->textures;
-    dispatch.rw_texture_count = 4;
+    dispatch.rw_texture_count = 5;
     for (int i = 0; i < acount(r->batches); i++) {
         const material_batch *batch = &r->batches[i];
         int accumulate = i != 0;
@@ -363,5 +371,5 @@ render_material_textures render_material_raster_textures(const render_material_r
     assert(r);
     return (
         render_material_textures
-    ){ r->textures[0], r->textures[1], r->textures[2], r->textures[3] };
+    ){ r->textures[0], r->textures[1], r->textures[2], r->textures[3], r->textures[4] };
 }

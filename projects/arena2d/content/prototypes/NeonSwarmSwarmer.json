@@ -1,0 +1,68 @@
+{
+  "name": "NeonSwarmSwarmer",
+  "identity": "prototype-1906d2fce9c20228",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 0.5,
+      "border_color": 4279900927,
+      "border_width": 2.0,
+      "color": 335741951,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 20.0,
+      "shape": 1,
+      "stroke_width": 0.0,
+      "width": 20.0
+    },
+    "GAME.GameBody": {
+      "continuous": false,
+      "type": 1
+    },
+    "GAME.GameCollider": {
+      "category": 2,
+      "height": 0.0,
+      "ignore_entity": null,
+      "mask": 6,
+      "radius": 10.0,
+      "sensor": false,
+      "shape": 0,
+      "width": 0.0
+    },
+    "game.GameHealth": {
+      "current": 3,
+      "maximum": 3
+    },
+    "GAME.GameMaterial": {
+      "absorption": 1.0,
+      "albedo": 0,
+      "border_albedo": 0,
+      "border_emission_color": 4279900927,
+      "border_filter": 0,
+      "border_scene": 4279900927,
+      "emission_color": 0,
+      "emission_intensity": 0.6000000238418579,
+      "emission_multiplier": 0.5,
+      "filter": 0,
+      "scene": 335741951
+    },
+    "game.GameMovement": {
+      "speed": 75.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameVelocity": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  },
+  "behaviors": [
+    "NeonSwarmDamage",
+    "NeonSwarmPursuit",
+    "NeonSwarmSwarmerEffects"
+  ]
+}

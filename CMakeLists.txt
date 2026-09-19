@@ -112,6 +112,32 @@ set_property(CACHE CHIBI_SANITIZERS PROPERTY STRINGS
     address undefined "address,undefined" thread)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 
+# --- optional Tracy instrumentation ----------------------------------------
+option(CHIBI_ENABLE_TRACY
+       "Enable native Tracy profiling instrumentation" OFF)
+if(CHIBI_ENABLE_TRACY)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        message(FATAL_ERROR "CHIBI_ENABLE_TRACY is only supported by native builds")
+    endif()
+    set(TRACY_ENABLE ON CACHE BOOL "Enable Tracy profiling" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "Only collect Tracy data after connection" FORCE)
+    set(TRACY_ONLY_LOCALHOST ON CACHE BOOL "Restrict Tracy connections to localhost" FORCE)
+    FetchContent_Declare(
+        tracy
+        GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+        GIT_TAG        30997d5ca6bb632cc10807a1da8a6d3de0aeeb3c # v0.14.1
+        UPDATE_DISCONNECTED TRUE
+    )
+    FetchContent_MakeAvailable(tracy)
+endif()
+
+function(chibi_enable_tracy target)
+    if(CHIBI_ENABLE_TRACY)
+        target_compile_definitions(${target} PRIVATE CHIBI_ENABLE_TRACY=1)
+        target_link_libraries(${target} PRIVATE Tracy::TracyClient)
+    endif()
+endfunction()
+
 # Native worlds share a lazy task pool. The portable runtime stays serial and
 # does not fetch or link EnkiTS or require browser pthread support.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -336,6 +362,7 @@ target_include_directories(runtime_support PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime
 )
 target_link_libraries(runtime_support PUBLIC ecs core cute)
+chibi_enable_tracy(runtime_support)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_libraries(runtime_support PRIVATE enkiTS)
     target_compile_definitions(runtime_support PRIVATE CHIBI_HAS_ENKITS=1)
@@ -351,8 +378,9 @@ target_link_libraries(automation PUBLIC runtime_support core)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/radiance.c
+    src/render/geometry_2d.c src/render/light_field_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
-    src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c src/render/arena_emitters.c
+    src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c)
 target_compile_definitions(chibi_render PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -366,6 +394,7 @@ add_library(engine STATIC ${ENGINE_SOURCES})
 target_include_directories(engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
+chibi_enable_tracy(engine)
 
 # --- demo nodes (real TUs; interface.h declares what Behavior Assets sees) ---
 # The reflection fixture input is parsed, not compiled as a translation unit.
@@ -440,6 +469,7 @@ if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_include_directories(chibi_application PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_compile_definitions(chibi_application PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
     target_link_libraries(chibi_application PRIVATE chibi_render editor engine runtime_support cute)
+    chibi_enable_tracy(chibi_application)
     set_target_properties(chibi_application PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
     add_executable(chibi_host ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
     chibi_watch_platform(chibi_host)
@@ -452,6 +482,7 @@ if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 target_compile_definitions(app PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(app PRIVATE chibi_render editor engine runtime_support cute)
+chibi_enable_tracy(app)
 set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(chibi_ctl tools/chibi_ctl/main.c ${APP_REGISTRY})
@@ -468,6 +499,7 @@ add_dependencies(chibi_render_ctl generate_runtime_registry)
 target_include_directories(chibi_render_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(chibi_render_ctl PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
 target_link_libraries(chibi_render_ctl PRIVATE automation chibi_render editor engine runtime_support core cute)
+chibi_enable_tracy(chibi_render_ctl)
 set_target_properties(chibi_render_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
 find_program(NODE_EXECUTABLE node)
@@ -493,6 +525,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(app PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET app APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
@@ -501,7 +535,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_options(app PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
 endif()
@@ -548,6 +584,7 @@ add_executable(test_suite
     src/render/screenshot.c
     src/render/shader_fragment.c
     src/assets/behavior_loader.c
+    src/assets/project.c
     src/editor/workspace/scene_authoring.c
     src/editor/workspace/asset_index.c
     src/editor/panels/asset_browser.c

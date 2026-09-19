@@ -1,8 +1,10 @@
 #include "runtime/task_pool.h"
 
+#include "diagnostics/tracy.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -65,7 +67,19 @@ static int default_workers(int available)
 static void run_range(uint32_t start, uint32_t end, uint32_t worker, void *user)
 {
     pool_task *task = user;
+
+#ifdef CHIBI_ENABLE_TRACY
+    static _Thread_local bool named;
+    if (!named) {
+        char name[32];
+        snprintf(name, sizeof name, "Chibi worker %u", worker);
+        CHIBI_TRACE_SET_THREAD_NAME(name);
+        named = true;
+    }
+#endif
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Task range");
     task->run((int)start, (int)end, worker, task->user);
+    CHIBI_TRACE_ZONE_END(zone);
 }
 
 static void start_workers(game_task_pool *pool)
@@ -96,7 +110,9 @@ static void *enqueue(game_task_range *run, int count, int minimum, void *context
             }
             *task = (pool_task){ .set = task->set, .run = run, .user = context, .active = true };
             pool->pending++;
+            CHIBI_TRACE_ZONE_BEGIN(zone, "Task submit");
             enkiAddTaskSetMinRange(pool->scheduler, task->set, task, (uint32_t)count, (uint32_t)minimum);
+            CHIBI_TRACE_ZONE_END(zone);
             return task;
         }
     }
@@ -117,7 +133,9 @@ static void finish(void *handle, void *user)
 #ifdef CHIBI_HAS_ENKITS
     pool_task *task = handle;
     assert(task->active && pool->pending > 0);
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Task wait");
     enkiWaitForTaskSet(pool->scheduler, task->set);
+    CHIBI_TRACE_ZONE_END(zone);
     task->active = false;
     pool->pending--;
 #else

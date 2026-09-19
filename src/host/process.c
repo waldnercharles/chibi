@@ -45,7 +45,12 @@ bool chibi_process_start(chibi_process *process, const char *const *argv, const 
         error = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     }
     if (!error) {
+#if defined(__APPLE__) && defined(__MAC_OS_X_VERSION_MAX_ALLOWED) &&           \
+    __MAC_OS_X_VERSION_MAX_ALLOWED >= 260000
+        error = posix_spawn_file_actions_addchdir(&actions, cwd);
+#else
         error = posix_spawn_file_actions_addchdir_np(&actions, cwd);
+#endif
     }
     if (!error) {
         error = posix_spawnattr_setpgroup(&attributes, 0);

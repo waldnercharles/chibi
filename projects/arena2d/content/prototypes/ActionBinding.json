@@ -1,0 +1,12 @@
+{
+  "name": "ActionBinding",
+  "identity": "prototype-2c5a299f8cbbf356",
+  "components": {
+    "GAME.GameActionBinding": {
+      "action": "Dash",
+      "disabled": false,
+      "firing": false,
+      "source": 3
+    }
+  }
+}

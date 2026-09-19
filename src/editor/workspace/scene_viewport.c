@@ -127,6 +127,10 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
             (entity.slot != only.slot || entity.generation != only.generation)) {
             continue;
         }
+        const GameRenderState *render_state = GAME_GameRenderState_get_const(world, entity);
+        if (render_state && render_state->hidden) {
+            continue;
+        }
         CF_Aabb bounds;
         if (!appearance_bounds(
                 GAME_GameTransform_get_const(world, entity),

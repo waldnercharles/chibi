@@ -296,6 +296,16 @@ printf '%s\n' '{"contract":1,"operation":"status"}' |
   build/chibi_ctl --project-root .
 ```
 
+The repository root is the Arena3D project. Arena2D is an independent project
+at `projects/arena2d`, with its own manifest and `content` tree. Point the
+controller or renderer at the project root when searching, authoring, running,
+or previewing assets; names are resolved only within that project.
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"status"}' |
+  build/chibi_ctl --project-root projects/arena2d
+```
+
 For example, search the catalog and inspect a graph's asset dependencies:
 
 ```sh
@@ -412,7 +422,7 @@ extraction policy.
 | Player UI | `GameWidget` supplies label, panel, button, progress, slider, fitting slot, or map. Text, colors, geometry and values are reflected and writable from behaviors. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
-| Lighting | `GameLighting2D` authors 2D ambient, emission, radiance fog and shadow-floor gains (0–100). `GameEnvironment` authors 3D exposure and bloom. |
+| Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
 | Line of sight | `Raycast` returns Found, Entity, Point, Normal and Distance against circles and rotated boxes. Category filtering is independent of collision masks. New colliders and teleports are visible to the query. |
 | Fog | One enabled `GameFog` defines origin, 1–256 rows/columns, cell size, color and ambient drift. `drift: 0` removes fog animation. `GameVision` sources reveal nearby cells, blocked by `occluders`. |
 | Terrain memory | `GameVision.remember` adds explored terrain. Positive duration creates a shrinking temporary clearing; age starts at zero. `Visibility At` reads Visible/Explored/Obstacle. `GameRenderState.visibility_culled` opts an actor into current-sight culling; `hidden` always hides it. |

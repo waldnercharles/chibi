@@ -5,7 +5,6 @@
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
-#include "render/arena_emitters.h"
 #include "render/arena_influence.h"
 #include "render/arena_parts.h"
 #include "render/arena_post.h"
@@ -15,6 +14,7 @@
 #include "render/shader_images.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
+#include "runtime/particle_emitters.h"
 #include "runtime/rhythm.h"
 #include "runtime/visual_motion.h"
 #include "support/arena.h"
@@ -229,14 +229,14 @@ static void emitter_motion()
     GameVisualTransform visual = { .roll = 1.5707963268f, .scale = 2 };
     GameOrientation heading = { 1.5707963268f };
     GameVelocity velocity = { 0, -40 };
-    GameParticleEmitter emitter = { .shape = GAME_PARTICLE_TRIANGLE,
+    GameParticleEmitter emitter = { .active = true,
+                                    .shape = GAME_PARTICLE_TRIANGLE,
                                     .color = 0xffffffffu,
                                     .end_color = 0xffffff00u,
                                     .rate = 20,
-                                    .lifetime = .5f,
-                                    .speed = 30,
-                                    .size = 2,
-                                    .size_exponent = 1,
+                                    .lifetime = { .5f, .5f },
+                                    .speed = { 30, 30 },
+                                    .size = { { 2, 2 }, { 0, 0 }, 1 },
                                     .velocity_inherit = 1,
                                     .offset = { -4, 1, 0 },
                                     .direction = { -1, 0, 0 } };
@@ -255,32 +255,32 @@ static void emitter_motion()
         ecs_world_record_add(world, e, GAME_COMPONENT_GameParticleEmitter.id, &emitter, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    arena_emitters *emitters = render_arena_emitters_new();
+    game_particle_emitters *emitters = game_particle_emitters_new(NULL);
     char error[128];
-    assert(render_arena_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
     int count;
-    const game_particle *head = render_arena_emitters_heads(emitters, &count);
+    const game_particle *head = game_particle_emitters_heads(emitters, &count);
     assert(
         count == 1 && fabsf(head->position.x - 8) < .0001f &&
         fabsf(head->position.y - 12) < .0001f
     );
     assert(fabsf(head->elevation - 7) < .0001f && head->shape == GAME_PARTICLE_TRIANGLE);
     GAME_GameTransform_get(world, e)->y = 16;
-    assert(render_arena_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
-    const game_particles *tail = render_arena_emitters_particles(emitters);
+    assert(game_particle_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
+    const game_particles *tail = game_particle_emitters_particles(emitters);
     assert(game_particles_count(tail) == 2);
     const game_particle *particles = game_particles_data(tail);
     assert(fabsf(particles[0].velocity.y + 70) < .0001f);
     assert(particles[0].position.y < 8); // Backward travel still leaves exhaust behind the current nozzle.
     game_particle paused[2];
     memcpy(paused, particles, sizeof paused);
-    game_particle paused_head = *render_arena_emitters_heads(emitters, &count);
-    assert(render_arena_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
+    game_particle paused_head = *game_particle_emitters_heads(emitters, &count);
+    assert(game_particle_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
     assert(
         game_particles_count(tail) == 2 &&
         !memcmp(paused, game_particles_data(tail), sizeof paused)
     );
-    assert(!memcmp(&paused_head, render_arena_emitters_heads(emitters, &count), sizeof paused_head));
+    assert(!memcmp(&paused_head, game_particle_emitters_heads(emitters, &count), sizeof paused_head));
     // Flight-heading attachment stays behind a tumbling source at its elevation.
     GameParticleEmitter *style = GAME_GameParticleEmitter_get(world, e);
     style->heading_only = true;
@@ -289,8 +289,8 @@ static void emitter_motion()
                                                                      .yaw = .8f,
                                                                      .roll = .9f,
                                                                      .scale = 1 };
-    assert(render_arena_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
-    head = render_arena_emitters_heads(emitters, &count);
+    assert(game_particle_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
+    head = game_particle_emitters_heads(emitters, &count);
     assert(
         count == 1 && fabsf(head->position.x - 10) < .0001f &&
         fabsf(head->position.y - 9.5f) < .0001f
@@ -304,24 +304,24 @@ static void emitter_motion()
     style->heading_only = false;
     style->offset = (CF_V3){ -4, 0, 0 };
     style->velocity_inherit = 0;
-    render_arena_emitters_reset(emitters);
-    assert(render_arena_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
+    game_particle_emitters_reset(emitters);
+    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
     GAME_GameOrientation_get(world, e)->radians = 1.5707963268f;
-    assert(render_arena_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, NULL, .1f, error, sizeof error));
     particles = game_particles_data(tail);
     assert(game_particles_count(tail) == 2);
     for (int i = 0; i < 2; i++) {
         assert(fabsf(particles[i].position.x) < .0001f && particles[i].position.y <= -3.9999f);
     }
     assert(ecs_world_destroy_entity(world, e) == ECS_OK);
-    assert(render_arena_emitters_collect(emitters, world, NULL, .2f, error, sizeof error));
-    render_arena_emitters_heads(emitters, &count);
+    assert(game_particle_emitters_collect(emitters, world, NULL, .2f, error, sizeof error));
+    game_particle_emitters_heads(emitters, &count);
     assert(count == 0 && game_particles_count(tail) == 2);
-    assert(render_arena_emitters_collect(emitters, world, NULL, .7f, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, NULL, .7f, error, sizeof error));
     assert(game_particles_count(tail) == 0);
-    assert(render_arena_emitters_collect(emitters, world, NULL, .05f, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, NULL, .05f, error, sizeof error));
     assert(game_particles_count(tail) == 0);
-    render_arena_emitters_free(emitters);
+    game_particle_emitters_free(emitters);
     ecs_world_free(world);
 }
 
@@ -338,15 +338,15 @@ static int emitter_trajectory(int hz, game_particle out[128])
     GameVelocity velocity = { 480, 0 };
     GameBody body = { .type = GAME_BODY_KINEMATIC };
     GameCollider collider = { .radius = 1, .category = 1, .sensor = true };
-    GameParticleEmitter style = { .shape = GAME_PARTICLE_TRIANGLE,
+    GameParticleEmitter style = { .active = true,
+                                  .shape = GAME_PARTICLE_TRIANGLE,
                                   .color = 0xffffffffu,
                                   .rate = 85,
-                                  .lifetime = 2,
-                                  .speed = 8,
-                                  .size = 1.8f,
+                                  .lifetime = { 2, 2 },
+                                  .speed = { 8, 8 },
+                                  .size = { { 1.8f, 1.8f }, { 0, 0 }, 1 },
                                   .spread = .5f,
-                                  .drag = 2,
-                                  .size_exponent = 1,
+                                  .drag = { { 2, 2 }, { 0, 0 }, 0 },
                                   .offset = { -6.5f, 0, 0 },
                                   .direction = { -1, 0, 0 },
                                   .heading_only = true };
@@ -364,8 +364,8 @@ static int emitter_trajectory(int hz, game_particle out[128])
         ecs_world_record_add(world, entity, GAME_COMPONENT_GameParticleEmitter.id, &style, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    arena_emitters *emitters = render_arena_emitters_new();
-    const game_particles *tail = render_arena_emitters_particles(emitters);
+    game_particle_emitters *emitters = game_particle_emitters_new(NULL);
+    const game_particles *tail = game_particle_emitters_particles(emitters);
     char error[128];
     uint64_t previous_step = 0;
     game_particle previous = { 0 };
@@ -374,7 +374,7 @@ static int emitter_trajectory(int hz, game_particle out[128])
         assert(engine_frame(runtime, (double)frame / hz) == FLOW_OK);
         const engine_frame_timing *timing = engine_last_timing(runtime);
         assert(
-            render_arena_emitters_collect(emitters, world, runtime, timing->simulation_time, error, sizeof error)
+            game_particle_emitters_collect(emitters, world, runtime, timing->simulation_time, error, sizeof error)
         );
         int count = game_particles_count(tail);
         if (count && previous.age > 0 && timing->simulation_steps == previous_step) {
@@ -390,41 +390,107 @@ static int emitter_trajectory(int hz, game_particle out[128])
         }
         previous_step = timing->simulation_steps;
     }
+    /* Continuous emission is observable without any renderer collecting it. */
+    assert(game_particles_count(live->particles) == 41);
     assert(hz == 60 || interpolated);
     int count = game_particles_count(tail);
     assert(count == 41);
     memcpy(out, game_particles_data(tail), (size_t)count * sizeof *out);
     int heads;
-    const game_particle *head = render_arena_emitters_heads(emitters, &heads);
+    const game_particle *head = game_particle_emitters_heads(emitters, &heads);
     assert(engine_render_position(runtime, entity, &position));
     assert(heads == 1 && fabsf(head->position.x - position.x + 6.5f) < .0001f);
 
     assert(engine_set_playing(runtime, false) == FLOW_OK && engine_frame(runtime, 1) == FLOW_OK);
-    assert(render_arena_emitters_collect(emitters, world, runtime, .5, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, runtime, .5, error, sizeof error));
     game_particle frozen[128];
     int frozen_count = game_particles_count(tail);
     memcpy(frozen, game_particles_data(tail), (size_t)frozen_count * sizeof *frozen);
     assert(engine_frame(runtime, 2) == FLOW_OK);
-    assert(render_arena_emitters_collect(emitters, world, runtime, .5, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, runtime, .5, error, sizeof error));
     assert(
         game_particles_count(tail) == frozen_count &&
         !memcmp(frozen, game_particles_data(tail), (size_t)frozen_count * sizeof *frozen)
     );
     assert(engine_set_playing(runtime, true) == FLOW_OK && engine_frame(runtime, 2) == FLOW_OK);
-    assert(render_arena_emitters_collect(emitters, world, runtime, .5, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, runtime, .5, error, sizeof error));
     assert(
         game_particles_count(tail) == frozen_count &&
         !memcmp(frozen, game_particles_data(tail), (size_t)frozen_count * sizeof *frozen)
     );
     engine_reset(runtime);
     assert(engine_frame(runtime, 3) == FLOW_OK);
-    assert(render_arena_emitters_collect(emitters, world, runtime, 0, error, sizeof error));
+    assert(game_particle_emitters_collect(emitters, world, runtime, 0, error, sizeof error));
     assert(game_particles_count(tail) == 0);
-    render_arena_emitters_free(emitters);
+    game_particle_emitters_free(emitters);
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(world);
     return count;
+}
+
+static void emitter_contract()
+{
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    ecs_entity parent = ecs_world_create_entity(world),
+               child = ecs_world_create_entity(world);
+    GameTransform position = { 100, 20 }, local = { 0 };
+    GameVelocity velocity = { 40, 0 };
+    GameParticleEmitter style = game_particle_emitter_defaults();
+    style.parent = ecs_entity_to_u64(parent);
+    style.rate = 0;
+    style.burst_count = 8;
+    style.planar = true;
+    style.offset = (CF_V3){ -9, 0, 0 };
+    style.speed = (CF_V2){ 0 };
+    style.lifetime = (CF_V2){ .5f, .7f };
+    style.drag.start = (CF_V2){ 2, 4 };
+    style.size.start = (CF_V2){ 2, 3 };
+    style.metaball_group = 2;
+    style.metaball_blend = 1.5f;
+    style.velocity_align = true;
+    style.stretch = (CF_V2){ .01f, .02f };
+    assert(
+        ecs_world_record_add(world, parent, GAME_COMPONENT_GameTransform.id, &position, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(world, parent, GAME_COMPONENT_GameVelocity.id, &velocity, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(world, child, GAME_COMPONENT_GameTransform.id, &local, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(world, child, GAME_COMPONENT_GameParticleEmitter.id, &style, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    game_particle_emitters *emitters = game_particle_emitters_new(NULL);
+    char error[128];
+    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
+    const game_particles *particles = game_particle_emitters_particles(emitters);
+    assert(game_particles_count(particles) == 8);
+    game_particle reference[8];
+    memcpy(reference, game_particles_data(particles), sizeof reference);
+    for (int i = 0; i < 8; i++) {
+        const game_particle *p = &reference[i];
+        assert(p->position.x == 91 && p->position.y == 20 && p->velocity.x == 40);
+        assert(p->lifetime >= .5f && p->lifetime <= .7f && p->size >= 2 && p->size <= 3);
+        assert(p->drag >= 2 && p->drag <= 4 && p->metaball_group == 2 && p->metaball_blend == 1.5f);
+        assert(p->stretch >= .01f && p->stretch <= .02f && p->velocity_align && p->angle == 0);
+    }
+    assert(game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof error));
+    assert(game_particles_count(particles) == 8);
+    assert(game_particles_data(particles)[0].position.x > 91);
+    game_particle_emitters_reset(emitters);
+    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
+    assert(!memcmp(reference, game_particles_data(particles), sizeof reference));
+    GAME_GameParticleEmitter_get(world, child)->active = false;
+    assert(game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof error));
+    assert(game_particles_count(particles) == 8);
+    game_particle_emitters_free(emitters);
+    ecs_world_free(world);
 }
 
 static void emitter_cadence()
@@ -883,6 +949,7 @@ void test_surface_cpu()
 {
     emitter_motion();
     emitter_cadence();
+    emitter_contract();
     visual_offset_node();
     authored_floor();
     visual_motion_defaults();

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "name": "NeonSwarmSandbox",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Player",
+      "prototype": "NeonSwarmPlayer",
+      "components": {},
+      "behaviors": [
+        "NeonSwarmMovement",
+        "NeonSwarmWeapon",
+        "NeonSwarmPlayerEffects"
+      ]
+    },
+    {
+      "name": "Camera",
+      "prototype": "NeonSwarmCamera",
+      "components": {},
+      "behaviors": [
+        "NeonSwarmCameraFollow"
+      ]
+    },
+    {
+      "name": "HRC",
+      "prototype": "NeonSwarmHRC",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "North",
+      "prototype": "NeonSwarmBoundary",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -362
+        },
+        "GameAppearance": {
+          "width": 1284,
+          "height": 4
+        },
+        "GameCollider": {
+          "width": 1284,
+          "height": 4
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "South",
+      "prototype": "NeonSwarmBoundary",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 362
+        },
+        "GameAppearance": {
+          "width": 1284,
+          "height": 4
+        },
+        "GameCollider": {
+          "width": 1284,
+          "height": 4
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "West",
+      "prototype": "NeonSwarmBoundary",
+      "components": {
+        "GameTransform": {
+          "x": -642,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 720
+        },
+        "GameCollider": {
+          "width": 4,
+          "height": 720
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "East",
+      "prototype": "NeonSwarmBoundary",
+      "components": {
+        "GameTransform": {
+          "x": 642,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 720
+        },
+        "GameCollider": {
+          "width": 4,
+          "height": 720
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Director",
+      "prototype": "NeonSwarmDirector",
+      "components": {},
+      "behaviors": [
+        "NeonSwarmDirector"
+      ]
+    },
+    {
+      "name": "FireMouse",
+      "prototype": "NeonSwarmFireMouse",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "FireStick",
+      "prototype": "NeonSwarmFireStick",
+      "components": {},
+      "behaviors": []
+    }
+  ]
+}

@@ -2,12 +2,14 @@
 
 #include "graph/runtime/instance.h"
 #include "platform/cute.h"
+#include "render/light_field_2d.h"
 #include "render/material_raster.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "runtime/generated.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -43,9 +45,9 @@ static float half_value(uint16_t value)
 
 static bool material_pixels(render_material_textures textures)
 {
-    CF_Texture inputs[] = { textures.emission, textures.transmittance };
+    CF_Texture inputs[] = { textures.emission, textures.absorption, textures.normal };
     uint16_t pixels[PIXELS * 4];
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         CF_CanvasParams params = cf_canvas_defaults(0, 0);
         params.attach_target = inputs[i];
         CF_Canvas canvas = cf_make_canvas(params);
@@ -67,18 +69,25 @@ static bool material_pixels(render_material_textures textures)
             return false;
         }
         int sample = 4 * (64 * SIDE + (i ? 64 : 36));
-        if (i) {
+        if (i == 0) {
+            if (fabsf(half_value(pixels[sample + 1]) - 0.08f) > 0.002f) {
+                return false;
+            }
+            sample = 4 * (64 * SIDE + 43);
+            if (fabsf(half_value(pixels[sample]) - 0.2f) > 0.002f) {
+                return false;
+            }
+        } else if (i == 1) {
             for (int channel = 0; channel < 4; channel++) {
                 if (fabsf(half_value(pixels[sample + channel]) - 1) > 0.002f) {
                     return false;
                 }
             }
         } else {
-            if (fabsf(half_value(pixels[sample + 1]) - 0.08f) > 0.002f) {
-                return false;
-            }
             sample = 4 * (64 * SIDE + 43);
-            if (fabsf(half_value(pixels[sample]) - 0.2f) > 0.002f) {
+            if (half_value(pixels[sample]) < 0.4f ||
+                fabsf(half_value(pixels[sample + 1])) > 0.2f ||
+                half_value(pixels[sample + 3]) < 0.5f) {
                 return false;
             }
         }
@@ -113,8 +122,20 @@ static render_material_entity wall()
         .aa = 1,
         .points = { 4, 64 },
         .scene = { 0, 0, 0, 1 },
-        .transmittance = { 1, 1, 1, 1 },
+        .absorption = { 1, 1, 1, 1 },
     };
+    return entity;
+}
+
+static render_material_entity wall_with(float absorption, float albedo)
+{
+    render_material_entity entity = wall();
+    for (int i = 0; i < 3; i++) {
+        entity.absorption[i] = absorption;
+        entity.albedo[i] = albedo;
+    }
+    entity.absorption[3] = absorption > 0 ? 1 : 0;
+    entity.albedo[3] = 1;
     return entity;
 }
 
@@ -125,17 +146,26 @@ static bool solve(
     const render_material_entity *entities,
     int count,
     int size,
+    int frames,
     CF_Pixel *pixels
 )
 {
+    assert(frames > 0);
     render_radiance_reset(radiance);
-    for (int frame = 0; frame < 4; frame++) {
+    for (int frame = 0; frame < frames; frame++) {
         cf_app_update(NULL);
         if (!render_material_raster_draw(
                 raster,
                 entities,
                 count,
-                (render_material_view){ -size * 0.5f, size * 0.5f, size, size }
+                (render_material_view){ .min_x = -size * 0.5f,
+                                        .max_y = size * 0.5f,
+                                        .width = size,
+                                        .height = size,
+                                        .crop_min_u = 0,
+                                        .crop_min_v = 0,
+                                        .crop_max_u = 1,
+                                        .crop_max_v = 1 }
             )) {
             fprintf(stderr, "radiance material raster frame %d: %s\n", frame, render_material_raster_error(raster));
             cf_app_draw_onto_screen(false);
@@ -144,11 +174,24 @@ static bool solve(
         render_material_textures textures = render_material_raster_textures(raster);
         render_radiance_inputs inputs = { textures.scene,
                                           textures.emission,
-                                          textures.transmittance,
-                                          textures.albedo };
+                                          textures.absorption,
+                                          textures.albedo,
+                                          textures.normal };
         cf_draw_push();
         cf_draw_projection(cf_ortho_2d(0, 0, size, size));
-        bool ok = render_radiance_draw(radiance, inputs, canvas);
+        bool ok = render_radiance_draw(
+            radiance,
+            inputs,
+            (render_view_2d){ .min_x = -size * 0.5f,
+                              .max_y = size * 0.5f,
+                              .width = size,
+                              .height = size,
+                              .crop_min_u = 0,
+                              .crop_min_v = 0,
+                              .crop_max_u = 1,
+                              .crop_max_v = 1 },
+            canvas
+        );
         cf_draw_pop();
         cf_app_draw_onto_screen(false);
         if (!ok) {
@@ -190,6 +233,226 @@ static bool save_capture(const CF_Pixel *pixels)
         fclose(file);
     }
     cf_free(data);
+    return ok;
+}
+
+static CF_Texture blank_hdr_texture(int width, int height)
+{
+    CF_TextureParams params = cf_texture_defaults(width, height);
+    params.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT;
+    params.filter = CF_FILTER_LINEAR;
+    params.wrap_u = params.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
+    CF_Texture texture = cf_make_texture(params);
+    if (!texture.id) {
+        return texture;
+    }
+    size_t bytes = (size_t)width * (size_t)height * 8;
+    void *zeros = calloc(1, bytes);
+    if (!zeros) {
+        cf_destroy_texture(texture);
+        return (CF_Texture){ 0 };
+    }
+    cf_texture_update(texture, zeros, (int)bytes);
+    free(zeros);
+    return texture;
+}
+
+static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
+{
+    CF_CanvasParams params = cf_canvas_defaults(0, 0);
+    params.attach_target = texture;
+    CF_Canvas canvas = cf_make_canvas(params);
+    if (!canvas.id) {
+        return false;
+    }
+    CF_Readback readback = cf_canvas_readback(canvas);
+    bool ok = readback.id != 0;
+    if (ok) {
+        while (!cf_readback_ready(readback)) {
+        }
+        int bytes = count * 4 * (int)sizeof *pixels;
+        ok = cf_readback_size(readback) == bytes &&
+             cf_readback_data(readback, pixels, bytes) == bytes;
+        cf_destroy_readback(readback);
+    }
+    cf_destroy_canvas(canvas);
+    return ok;
+}
+
+static render_view_2d light_view(int width, int height)
+{
+    return (render_view_2d){ .min_x = -width * 0.5f,
+                             .max_y = height * 0.5f,
+                             .width = width,
+                             .height = height,
+                             .crop_min_u = 0,
+                             .crop_min_v = 0,
+                             .crop_max_u = 1,
+                             .crop_max_v = 1 };
+}
+
+static bool light_field_checks()
+{
+    enum
+    {
+        width = 64,
+        height = 64,
+        pixel_count = width * height
+    };
+    render_light_field_2d *field = render_light_field_2d_new();
+    CF_Texture base = blank_hdr_texture(width, height);
+    uint16_t *pixels = calloc((size_t)pixel_count * 4, sizeof *pixels);
+    render_point_light_2d sources[128];
+    bool ok = field && base.id && pixels;
+    if (ok) {
+        ok = render_light_field_2d_resize(field, width, height);
+    }
+    for (int i = 0; i < 128; i++) {
+        sources[i] = (render_point_light_2d){ .position = { 0, 0 },
+                                              .intensity = 2,
+                                              .radius = 20,
+                                              .color = { 0.25f, 0.5f, 1, 1 } };
+    }
+    float one = 0;
+    float two = 0;
+    render_light_field_stats stats = { 0 };
+    bool additive_ok = false;
+    bool counts_ok = false;
+    bool clipping_ok = false;
+    bool padded_ok = false;
+    bool reset_ok = false;
+    if (ok) {
+        for (int count = 1; count <= 2; count++) {
+            render_light_field_2d_reset(field);
+            cf_app_update(NULL);
+            ok &= render_light_field_2d_draw(field, sources, count, light_view(width, height));
+            ok &= render_light_field_2d_composite(field, base);
+            cf_app_draw_onto_screen(false);
+            ok &= read_hdr_texture(render_light_field_2d_texture(field), pixels, pixel_count);
+            float value = half_value(pixels[4 * (32 * width + 32) + 2]);
+            if (count == 1) {
+                one = value;
+            } else {
+                two = value;
+            }
+        }
+        additive_ok = one > 0.5f && fabsf(two - one * 2) < 0.03f;
+        ok &= additive_ok;
+    }
+    if (ok) {
+        const int counts[] = { 64, 96, 128 };
+        counts_ok = true;
+        for (int i = 0; i < 3; i++) {
+            int count = counts[i];
+            render_light_field_2d_reset(field);
+            cf_app_update(NULL);
+            ok &= render_light_field_2d_draw(field, sources, count, light_view(width, height));
+            stats = render_light_field_2d_stats(field);
+            bool count_ok = stats.source_count == count &&
+                            stats.accepted_source_count == count &&
+                            stats.clipped_source_count == 0 &&
+                            stats.capacity >= count &&
+                            stats.max_tile_occupancy == count;
+            counts_ok &= count_ok;
+            ok &= count_ok;
+        }
+    }
+    if (ok) {
+        sources[0].position = (CF_V2){ 48, 0 };
+        render_light_field_2d_reset(field);
+        cf_app_update(NULL);
+        ok &= render_light_field_2d_draw(field, sources, 1, light_view(width, height));
+        stats = render_light_field_2d_stats(field);
+        clipping_ok = stats.source_count == 1 && stats.accepted_source_count == 1 &&
+                      stats.clipped_source_count == 1 &&
+                      render_light_field_2d_error(field)[0];
+        ok &= clipping_ok;
+    }
+    if (ok) {
+        enum
+        {
+            padded_width = 96,
+            padded_height = 96,
+            padded_pixels_count = 96 * 96
+        };
+        CF_Texture padded_base = blank_hdr_texture(padded_width, padded_height);
+        uint16_t *padded_pixels = calloc((size_t)padded_pixels_count * 4, sizeof *padded_pixels);
+        render_view_2d padded = { .min_x = -48,
+                                  .max_y = 48,
+                                  .width = 96,
+                                  .height = 96,
+                                  .crop_min_u = 1.0f / 6,
+                                  .crop_min_v = 1.0f / 6,
+                                  .crop_max_u = 5.0f / 6,
+                                  .crop_max_v = 5.0f / 6 };
+        sources[0] = (render_point_light_2d){ .position = { -40, 0 },
+                                              .intensity = 2,
+                                              .radius = 8,
+                                              .color = { 0.25f, 0.5f, 1, 1 } };
+        bool ready = padded_base.id && padded_pixels &&
+                     render_light_field_2d_resize(field, padded_width, padded_height);
+        if (ready) {
+            render_light_field_2d_reset(field);
+            cf_app_update(NULL);
+            ready = render_light_field_2d_draw(field, sources, 1, padded) &&
+                    render_light_field_2d_composite(field, padded_base);
+            cf_app_draw_onto_screen(false);
+        }
+        if (ready) {
+            stats = render_light_field_2d_stats(field);
+            ready = read_hdr_texture(render_light_field_2d_texture(field), padded_pixels, padded_pixels_count) &&
+                    half_value(padded_pixels[4 * (48 * padded_width + 8) + 2]) > 1.0f;
+            padded_ok = stats.source_count == 1 && stats.accepted_source_count == 1 &&
+                        stats.clipped_source_count == 0 && ready;
+        }
+        ok &= padded_ok;
+        if (padded_base.id) {
+            cf_destroy_texture(padded_base);
+        }
+        free(padded_pixels);
+    }
+    if (field) {
+        render_light_field_2d_reset(field);
+        stats = render_light_field_2d_stats(field);
+        reset_ok = stats.source_count == 0 && stats.accepted_source_count == 0 &&
+                   stats.clipped_source_count == 0 &&
+                   !render_light_field_2d_error(field)[0];
+        ok &= reset_ok;
+        ok &= render_light_field_2d_resize(field, 80, 64);
+        stats = render_light_field_2d_stats(field);
+        ok &= stats.tile_count == 5 * 4 && stats.capacity == 0;
+    }
+    if (!ok) {
+        fprintf(
+            stderr,
+            "light field details: field=%p base=%llu one=%g two=%g additive=%d "
+            "counts=%d clipping=%d reset=%d source=%d accepted=%d clipped=%d "
+            "occupancy=%d capacity=%d error=%s\n",
+            (void *)field,
+            (unsigned long long)base.id,
+            one,
+            two,
+            additive_ok,
+            counts_ok,
+            clipping_ok,
+            reset_ok,
+            stats.source_count,
+            stats.accepted_source_count,
+            stats.clipped_source_count,
+            stats.max_tile_occupancy,
+            stats.capacity,
+            render_light_field_2d_error(field)
+        );
+    }
+    if (field) {
+        render_light_field_2d_free(field);
+    }
+    if (base.id) {
+        cf_destroy_texture(base);
+    }
+    free(pixels);
+    printf("light field %s: additive emission, 64/96/128 sources, padded sources, diagnostics and resize\n", ok ? "PASS" : "FAIL");
     return ok;
 }
 
@@ -391,7 +654,7 @@ int test_radiance()
         }
     }
     if (ok) {
-        ok = solve(raster, radiance, canvas, entities, 1, SIDE, open);
+        ok = solve(raster, radiance, canvas, entities, 1, SIDE, 4, open);
     }
     if (ok) {
         CF_Pixel center = open[64 * SIDE + 36];
@@ -410,7 +673,7 @@ int test_radiance()
         }
     }
     if (ok) {
-        ok = solve(raster, radiance, canvas, entities, 2, SIDE, blocked);
+        ok = solve(raster, radiance, canvas, entities, 2, SIDE, 4, blocked);
     }
     if (ok) {
         ok = material_pixels(render_material_raster_textures(raster));
@@ -423,8 +686,32 @@ int test_radiance()
         printf("radiance receiver: open %.3f, occluded %.3f\n", before, after);
         ok = before > 3 && after < before * 0.8;
     }
+    CF_Pixel semi[PIXELS];
     if (ok) {
-        ok = solve(raster, radiance, canvas, entities, 1, SIDE, reset);
+        render_material_entity finite_entities[] = { emitter(), wall_with(.2f, 0) };
+        ok = solve(raster, radiance, canvas, finite_entities, 2, SIDE, 4, semi);
+    }
+    if (ok) {
+        double before = receiver_light(open);
+        double semi_light = receiver_light(semi);
+        double after = receiver_light(blocked);
+        printf("radiance absorption: open %.3f, finite %.3f, opaque %.3f\n", before, semi_light, after);
+        ok = semi_light > after + 0.1 && semi_light < before;
+    }
+    CF_Pixel bounce_one[PIXELS], bounce_settled[PIXELS];
+    if (ok) {
+        render_material_entity bounce_entities[] = { emitter(), wall_with(.2f, .8f) };
+        ok = solve(raster, radiance, canvas, bounce_entities, 2, SIDE, 1, bounce_one) &&
+             solve(raster, radiance, canvas, bounce_entities, 2, SIDE, 8, bounce_settled);
+    }
+    if (ok) {
+        double first = receiver_light(bounce_one);
+        double settled = receiver_light(bounce_settled);
+        printf("radiance bounce: first %.3f, settled %.3f\n", first, settled);
+        ok = settled > first + 0.1;
+    }
+    if (ok) {
+        ok = solve(raster, radiance, canvas, entities, 1, SIDE, 4, reset);
     }
     if (ok) {
         for (int i = 0; i < PIXELS; i++) {
@@ -448,19 +735,79 @@ int test_radiance()
         canvas = cf_make_canvas(cf_canvas_defaults(64, 64));
         ok = canvas.id && render_material_raster_resize(raster, 64, 64) &&
              render_radiance_resize(radiance, 64, 64) &&
-             solve(raster, radiance, canvas, NULL, 0, 64, reset);
+             solve(raster, radiance, canvas, NULL, 0, 64, 4, reset);
         if (ok) {
             for (int i = 0; i < 64 * 64; i++) {
                 if (reset[i].colors.r > 2 || reset[i].colors.g > 2 ||
                     reset[i].colors.b > 2) {
+                    fprintf(
+                        stderr,
+                        "HRC empty resized pixel %d: %d %d %d\n",
+                        i,
+                        reset[i].colors.r,
+                        reset[i].colors.g,
+                        reset[i].colors.b
+                    );
                     ok = false;
+                    break;
                 }
             }
         }
     }
     if (ok) {
+        render_radiance_settings settings = render_radiance_get_settings(radiance);
+        settings.scale = .976883f;
+        ok = render_radiance_set_settings(radiance, settings) &&
+             fabsf(render_radiance_get_settings(radiance).scale - .976883f) < .000001f &&
+             solve(raster, radiance, canvas, NULL, 0, 64, 4, reset);
+        if (!ok) {
+            fprintf(stderr, "HRC must preserve fractional authored resolution\n");
+        }
+    }
+    if (ok) {
+        render_material_entity light = emitter();
+        light.pos[0] = 0;
+        const float scales[] = { .5f, .25f, .5f, .976883f };
+        for (int scale = 0; scale < 4 && ok; scale++) {
+            render_radiance_settings settings = render_radiance_get_settings(radiance);
+            settings.scale = scales[scale];
+            render_radiance *fresh = render_radiance_new();
+            ok = fresh && render_radiance_set_settings(fresh, settings) &&
+                 render_radiance_resize(fresh, 64, 64) &&
+                 render_radiance_set_settings(radiance, settings) &&
+                 solve(raster, radiance, canvas, &light, 1, 64, 4, reset) &&
+                 solve(raster, fresh, canvas, &light, 1, 64, 4, open);
+            for (int i = 0; i < 64 * 64 && ok; i++) {
+                ok = abs((int)reset[i].colors.r - open[i].colors.r) <= 2 &&
+                     abs((int)reset[i].colors.g - open[i].colors.g) <= 2 &&
+                     abs((int)reset[i].colors.b - open[i].colors.b) <= 2;
+            }
+            render_radiance_free(fresh);
+        }
+        if (!ok) {
+            fprintf(stderr, "HRC reused capacity must match a fresh work grid\n");
+        }
+    }
+    if (ok) {
         ok = graph_material_pixels(raster);
     }
+    if (ok) {
+        GameHRC2D lighting = game_hrc2d_defaults();
+        lighting.scale = .5f;
+        ok = render_radiance_set_lighting(radiance, lighting);
+        for (int i = 0; i < 30; i++) {
+            render_radiance_frame_time(radiance, .05);
+        }
+        float reduced = render_radiance_get_settings(radiance).scale;
+        ok &= reduced < .5f && reduced >= lighting.min_scale;
+        ok &= render_radiance_set_lighting(radiance, lighting) &&
+              render_radiance_get_settings(radiance).scale == reduced;
+        lighting.adaptive = false;
+        ok &= render_radiance_set_lighting(radiance, lighting) &&
+              render_radiance_get_settings(radiance).scale == .5f;
+    }
+    bool light_ok = light_field_checks();
+    ok &= light_ok;
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }
@@ -470,6 +817,6 @@ int test_radiance()
     if (raster) {
         render_material_raster_free(raster);
     }
-    printf("radiance %s: emissive fill/border, light transport, occlusion, reset and resize\n", ok ? "PASS" : "FAIL");
+    printf("radiance %s: HRC transport, SDF normals, absorption, reset and resize\n", ok ? "PASS" : "FAIL");
     return !ok;
 }

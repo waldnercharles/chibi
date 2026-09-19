@@ -916,7 +916,7 @@ unfinished. Local glow is still an approximation of the source lighting.
 The next lighting slice should be a viewport-owned renderer with a narrow
 render-list interface. Keep gameplay and CPU particle simulation independent.
 Neon-Swarm's `src/render_systems.c` extracts scene color, HDR emission,
-transmittance from absorption/filter, albedo, and separate border materials.
+absorption from material/filter, albedo, and separate border materials.
 An optional material component should express these without expanding geometry
 or gameplay components with renderer resource handles.
 
@@ -1293,6 +1293,11 @@ initials, reordered terms, and small spelling errors. Names rank ahead of paths
 and keywords. Node search retains compatible-pin filtering and authored aliases.
 Quick Open keeps keyboard navigation in the result list and selects the best
 result after query changes.
+
+View includes `Inline nodes on edge drop`. When enabled, compatible component
+getters selected from an edge are folded into the destination binding; when
+disabled, the getter remains an ordinary graph node. Dedicated inline source
+controls keep their existing inline behavior.
 
 Material, Shape, and Shader Library nodes stack outputs above options and inputs.
 Inputs use the node width for labeled numeric values, vector axes, range endpoints,

@@ -21,11 +21,11 @@ static void emission(unsigned color, float intensity, float out[4])
     }
 }
 
-static void transmittance(unsigned filter, float alpha, float absorption, float out[4])
+static void absorption(unsigned filter, float alpha, float coefficient, float out[4])
 {
     float channels[4];
     unpack(filter, channels);
-    float amount = alpha * absorption;
+    float amount = alpha * coefficient;
     for (int i = 0; i < 3; i++) {
         out[i] = amount * (1 - channels[i]);
     }
@@ -48,17 +48,12 @@ bool game_material_extract(const GameMaterial *material, game_material_coefficie
     unpack(material->border_albedo, result.border_albedo);
     emission(material->emission_color, intensity, result.emission);
     emission(material->border_emission_color, intensity, result.border_emission);
-    transmittance(
-        material->filter,
-        result.scene[3],
-        material->absorption,
-        result.transmittance
-    );
-    transmittance(
+    absorption(material->filter, result.scene[3], material->absorption, result.absorption);
+    absorption(
         material->border_filter,
         result.border_scene[3],
         material->absorption,
-        result.border_transmittance
+        result.border_absorption
     );
     *out = result;
     return true;

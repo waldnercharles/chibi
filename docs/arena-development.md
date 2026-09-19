@@ -1,17 +1,20 @@
 # Working on the arena game
 
-Run `make play` to launch the authored arena in a standalone game window. Use
-`make play SCENE=content/scenes/OtherScene.json` to select another scene, or
-`build/app --play --scene content/scenes/Arena3D.json` after building. This route
-uses the same scene runtime, input and Surface renderer as editor Play. Escape
-pauses and releases input; Enter resumes, R restarts from authored state, and Q
-quits while paused. Losing window focus also pauses. No editor panes are drawn.
+Run `make play` to launch the Arena2D project in a standalone game window. A
+project is a directory containing `project.json` and its own `content` tree.
+Use `make play PROJECT=. SCENE=scenes/Arena3D.json` to launch the Arena3D
+reference project, or pass `--project-root PATH` to `build/app` directly. Both
+routes use the same scene runtime, input and Surface renderer as editor Play.
+Escape pauses and releases input; Enter resumes, R restarts from authored state,
+and Q quits while paused. Losing window focus also pauses. No editor panes are
+drawn.
 
 For an intentional game-only capture:
 
 ```sh
 env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/app --play \
-  --scene content/scenes/Arena3D.json --frames 120 --fixed-dt 0.016666667 \
+  --project-root projects/arena2d --scene scenes/Arena2D.json \
+  --frames 120 --fixed-dt 0.016666667 \
   --screenshot /tmp/arena-game.png
 ```
 
@@ -19,15 +22,20 @@ Normal play uses elapsed time. `--fixed-dt` supplies the given wall-clock
 increment per display frame for repeatable verification. The shared engine
 consumes it in 1/60-second simulation steps; `--frames` alone only limits
 the run. Screenshots are opt-in and native-only. A web build supports
-`app.html?play&scene=content/scenes/Arena3D.json` through the same launch parser.
-Launching the editor with `--scene PATH` opens that authored scene without
-starting Play.
+`app.html?play&project-root=projects/arena2d&scene=scenes/Arena2D.json` through
+the same launch parser. Launching the editor with `--project-root PATH` opens
+that project's start scene; `--scene PATH` selects another scene inside it
+without starting Play. The Make targets expose the same selection: `make run
+PROJECT=. SCENE=scenes/Arena3D.json` opens the 3D reference, while the defaults
+open Arena2D.
 
-Open `content/scenes/Arena3D.json` from Files. Play from the scene toolbar and
-focus the scene to control the player. Move with WASD or arrows, aim with the
-mouse, and hold the primary mouse button or Space to fire. Controller bindings
-use the left stick for movement and right stick for aiming/firing. Escape releases
-scene focus. Stop restores the authored scene; Restart starts a fresh encounter.
+Open `projects/arena2d/content/scenes/Arena2D.json` from Files after starting
+the editor with `--project-root projects/arena2d`. Arena3D remains in the root
+project at `content/scenes/Arena3D.json`. Play from the scene toolbar and focus
+the scene to control the player. Move with WASD or arrows, aim with the mouse,
+and hold the primary mouse button or Space to fire. Controller bindings use the
+left stick for movement and right stick for aiming/firing. Escape releases scene
+focus. Stop restores the authored scene; Restart starts a fresh encounter.
 
 3D Geometry selects a box, sphere, capsule, cone, triangle prism, octahedron
 tetrahedron, Chevron Pyramid, Box Frame, Triangle Outline or flat Triangle and its
@@ -39,11 +47,25 @@ player nose, projectile flight and picking aligned in both views. Gameplay
 position `(x,y)` maps to 3D `(x,elevation,y)`;
 the ground plane is at elevation zero. Appearance still provides the 2D
 representation; Shader selects the Surface material and instance parameters. Physics
-colliders are authored separately. The scene saves its `presentation` as `3d`.
+colliders are authored separately. Arena2D saves its `presentation` as `2d`;
+Arena3D remains available as a visual and gameplay reference scene.
+
+Arena2D's desktop renderer uses the physical HRC channels `scene`, `emission`,
+`absorption` and `albedo`, plus SDF-derived planar normals. Open View →
+Performance to tune the live transport: Work scale ranges from 0.1 to 1.0 of viewport resolution, Trace levels range from 1 to 5, and One bounce feedback
+controls the temporal indirect color bleed. Lower work scale and fewer trace
+levels reduce GPU time; feedback is the quality switch for multibounce history.
+The panel also reports the frame history and p95 timing. The prototype Inspector's
+`GameHRC2D` fields tune transport and composition. HRC transport
+uses a fixed work grid, so its dispatch cost does not grow with the number of
+entities. The 2D path feeds material emission directly into HRC and does not allocate or run a point-light field.
+The GLES3 path shows an explicit unavailable diagnostic when desktop compute is
+not available.
 
 The current increment includes geometric authoring, controls, Surface graph
-binding and shared fixed-step Box2D simulation. Shadows, SDF solids, 3D indirect
-lighting, the complete upgrade/run structure and final art quality remain open.
+binding, shared fixed-step Box2D simulation, 2D SDF solids and desktop radiance
+cascades. Three-dimensional indirect lighting and the complete upgrade/run
+structure remain open; Arena3D continues to provide the comparison path.
 The [roadmap](arena-roadmap.md) tracks those requirements without treating the
 first playable slice as the completed game.
 
@@ -213,7 +235,7 @@ already-visible input changes between automatic, constant and connected values.
 EnergyCells is an eleven-node material with a small tiling line image, Mapping,
 Time, Color Ramp and emission. Intensity, Scroll Speed and Tiling are named
 instance controls. ShaderImageDemo shows it on a box, prism and sphere using the
-shared overhead camera. Run `make play SCENE=content/scenes/ShaderImageDemo.json`.
+shared overhead camera. Run `make play PROJECT=. SCENE=scenes/ShaderImageDemo.json`.
 This is a material-authoring example; the arena's lighting and combat-effect
 acceptance remains open.
 

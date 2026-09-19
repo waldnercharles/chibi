@@ -430,6 +430,11 @@ int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin
 
 int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
 {
+    return ed_connect_with_inline(e, a, b, true);
+}
+
+int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b, bool inline_source)
+{
     ed_clear_connect_error(e);
     const ed_pin_view *output = a->kind == ED_PIN_OUTPUT ? a : b;
     const ed_pin_view *input = a->kind == ED_PIN_INPUT ? a : b;
@@ -462,7 +467,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                             input->index,
                             conv
                         ) == 0;
-        if (connected) {
+        if (connected && inline_source) {
             (void)ed_simplify_component_getter(
                 e,
                 output->n,
@@ -510,14 +515,16 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                 e->math_error = error;
             }
         }
-        (void)ed_simplify_component_getter(
-            e,
-            output->n,
-            output->index,
-            input->n,
-            input->index,
-            NULL
-        );
+        if (inline_source) {
+            (void)ed_simplify_component_getter(
+                e,
+                output->n,
+                output->index,
+                input->n,
+                input->index,
+                NULL
+            );
+        }
     }
     return ok;
 }

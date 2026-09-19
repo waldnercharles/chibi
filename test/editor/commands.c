@@ -81,6 +81,28 @@ static void search_popup_insert(editor *e, const char *query)
     search_popup_frame(e, false);
 }
 
+static bool direct_pin_drag(editor *e, ed_pin_view source, ed_pin_view target)
+{
+    ImGuiIO *io = ImGui_GetIO();
+    aclear(e->pins);
+    apush(e->pins, target);
+    e->linking = true;
+    e->link_pin = source;
+    e->pending_snapshot = ed_snapshot(e);
+    io->DisplaySize = (ImVec2){ 800, 600 };
+    io->DeltaTime = 1.0f / 60.0f;
+    ImGuiIO_AddMousePosEvent(io, target.pos.x, target.pos.y);
+    ImGuiIO_AddMouseButtonEvent(io, 0, true);
+    ImGui_NewFrame();
+    ed_handle_input(e);
+    ImGui_EndFrame();
+    ImGuiIO_AddMouseButtonEvent(io, 0, false);
+    ImGui_NewFrame();
+    ed_handle_input(e);
+    ImGui_EndFrame();
+    return !e->linking;
+}
+
 static void check_linked_preview()
 {
     behavior_asset *library = behavior_asset_new("PreviewMath");
@@ -340,6 +362,165 @@ static void check_library_search_snapshot()
     behavior_asset_free(catalog);
 }
 
+static void check_typed_wire_search()
+{
+    behavior_asset *asset = behavior_asset_new("Typed wire search");
+    editor *e = editor_new(asset);
+    node *target = asset ? graph_add_node(asset->graph, &g_editor_float_sink_desc)
+                         : NULL;
+    const node_desc *dash = registry_node_by_name("Get_GameDash");
+    bool behavior_match = false;
+    bool system_match = false;
+    if (e && target && dash) {
+        e->spawn_link_pending = true;
+        e->spawn_link_pin = (ed_pin_view){ target, ED_PIN_INPUT, 0, { 0, 0 } };
+        ed_search_match *matches = ed_search_matches(e, "Get Dash");
+        for (int i = 0; i < acount(matches); i++) {
+            behavior_match |= matches[i].desc == dash;
+        }
+        afree(matches);
+        editor_set_ui_context(e, EDITOR_UI_CONTEXT_SYSTEM);
+        matches = ed_search_matches(e, "Get Dash");
+        for (int i = 0; i < acount(matches); i++) {
+            system_match |= matches[i].desc == dash;
+        }
+        afree(matches);
+    }
+    test_check(behavior_match, "a numeric input suggests Get Dash in the behavior graph");
+    test_check(system_match, "a numeric input suggests Get Dash in the system graph");
+
+    bool inline_field = false;
+    if (e && target && dash) {
+        e->spawn_link_pending = false;
+        editor_set_ui_context(e, EDITOR_UI_CONTEXT_BEHAVIOR);
+        ed_search_match *matches = ed_search_matches(e, "Get Dash");
+        for (int i = 0; i < acount(matches); i++) {
+            if (matches[i].desc != dash) {
+                continue;
+            }
+            for (int p = 0; p < ed_search_match_output_count(e, &matches[i]); p++) {
+                ed_search_output output;
+                if (ed_search_match_output(e, &matches[i], p, &output) &&
+                    output.node_pin == 1 && output.pin.type == PIN_F32 &&
+                    output.pin.name && !strcmp(output.pin.name, "speed")) {
+                    inline_field = true;
+                }
+            }
+        }
+        afree(matches);
+    }
+    test_check(inline_field, "inline source search exposes Get Dash numeric fields");
+
+    bool connected = false;
+    if (e && target && dash) {
+        asset->graph->dataflow = false;
+        e->spawn_link_pending = true;
+        e->spawn_link_pin = (ed_pin_view){ target, ED_PIN_INPUT, 0, { 0, 0 } };
+        search_popup_insert(e, "Get Dash");
+        const pin_binding *binding = graph_pin_binding(asset->graph, target, 0, 0);
+        connected = binding && binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+                    binding->component_key &&
+                    !strcmp(binding->component_key, "GAME.GameDash") &&
+                    binding->field_name && !strcmp(binding->field_name, "speed");
+    }
+    test_check(connected, "selecting Get Dash from a numeric input binds a compatible field output");
+
+    bool retained = false;
+    bool inline_edge_nodes = editor_ui_inline_edge_nodes();
+    editor_ui_set_inline_edge_nodes(false);
+    bool direct_retained = false;
+    behavior_asset *direct_asset = behavior_asset_new("Direct typed wire drag");
+    editor *direct_editor = editor_new(direct_asset);
+    node *direct_source = direct_asset ? graph_add_node(direct_asset->graph, dash)
+                                       : NULL;
+    node *direct_target = direct_asset
+                            ? graph_add_node(direct_asset->graph, &g_editor_float_sink_desc)
+                            : NULL;
+    uint64_t direct_source_id = direct_source ? direct_source->id : 0;
+    if (direct_editor && direct_source && direct_target &&
+        ed_expose_spawned_output_fields(direct_editor, direct_source) == 0) {
+        int speed_pin = -1;
+        for (int p = 0; p < direct_source->output_count; p++) {
+            if (direct_source->output_pins[p].name &&
+                !strcmp(direct_source->output_pins[p].name, "speed")) {
+                speed_pin = p;
+                break;
+            }
+        }
+        direct_retained = speed_pin >= 0 && direct_asset->graph->dataflow == false &&
+                          direct_pin_drag(
+                              direct_editor,
+                              (ed_pin_view){ direct_source,
+                                             ED_PIN_OUTPUT,
+                                             speed_pin,
+                                             { 80, 100 } },
+                              (ed_pin_view){ direct_target, ED_PIN_INPUT, 0, { 180, 100 } }
+                          );
+        node *linked_source = NULL;
+        int linked_pin = -1;
+        direct_retained = direct_retained &&
+                          graph_input_source(direct_asset->graph, direct_target, 0, &linked_source, &linked_pin) &&
+                          linked_source && linked_source->id == direct_source_id &&
+                          !graph_node_is_inline(direct_asset->graph, linked_source) &&
+                          linked_pin == speed_pin;
+    }
+    test_check(direct_retained, "direct pin drag keeps the selected source node");
+    editor_free(direct_editor);
+    behavior_asset *retained_asset = behavior_asset_new("Retained typed wire search");
+    editor *retained_editor = editor_new(retained_asset);
+    node *retained_target = retained_asset
+                              ? graph_add_node(retained_asset->graph, &g_editor_float_sink_desc)
+                              : NULL;
+    if (retained_editor && retained_target && dash) {
+        retained_asset->graph->dataflow = false;
+        retained_editor->spawn_link_pending = true;
+        retained_editor->spawn_link_pin = (ed_pin_view){ retained_target,
+                                                         ED_PIN_INPUT,
+                                                         0,
+                                                         { 0, 0 } };
+        search_popup_insert(retained_editor, "Get Dash");
+        node *source = NULL;
+        int source_pin = -1;
+        retained = graph_input_source(retained_asset->graph, retained_target, 0, &source, &source_pin) &&
+                   source && source->desc == dash &&
+                   !graph_node_is_inline(retained_asset->graph, source) &&
+                   source_pin >= 0 && source_pin < source->output_count &&
+                   source->output_pins[source_pin].type == PIN_F32 &&
+                   source->output_pins[source_pin].name &&
+                   !strcmp(source->output_pins[source_pin].name, "speed");
+    }
+    test_check(retained, "edge-drop setting keeps the selected source node");
+    editor_free(retained_editor);
+    editor_ui_set_inline_edge_nodes(inline_edge_nodes);
+
+    behavior_asset *system_asset = behavior_asset_new("System typed wire search");
+    editor *system_editor = editor_new(system_asset);
+    node *system_target = system_asset
+                            ? graph_add_node(system_asset->graph, &g_editor_float_sink_desc)
+                            : NULL;
+    bool system_connected = false;
+    if (system_editor && system_target && dash) {
+        editor_set_ui_context(system_editor, EDITOR_UI_CONTEXT_SYSTEM);
+        system_editor->spawn_link_pending = true;
+        system_editor->spawn_link_pin = (ed_pin_view){ system_target,
+                                                       ED_PIN_INPUT,
+                                                       0,
+                                                       { 0, 0 } };
+        search_popup_insert(system_editor, "Get Dash");
+        node *source = NULL;
+        int source_pin = -1;
+        system_connected = graph_input_source(system_asset->graph, system_target, 0, &source, &source_pin) &&
+                           source && source->desc == dash && source_pin >= 0 &&
+                           source_pin < source->output_count &&
+                           source->output_pins[source_pin].type == PIN_F32 &&
+                           source->output_pins[source_pin].name &&
+                           !strcmp(source->output_pins[source_pin].name, "speed");
+    }
+    test_check(system_connected, "system popup autowires a compatible Get Dash field output");
+    editor_free(system_editor);
+    editor_free(e);
+}
+
 void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
@@ -347,6 +528,7 @@ void run_editor_command_checks(void)
     check_linked_preview();
     check_search_catalog();
     check_library_search_snapshot();
+    check_typed_wire_search();
     char save_path[512];
     if (make_editor_save_path(save_path, sizeof save_path) != 0) {
         test_check(0, "a temporary path can be generated for editor persistence");

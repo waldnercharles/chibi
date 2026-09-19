@@ -1,5 +1,6 @@
 #include "runtime/scenes/physics.h"
 
+#include "diagnostics/tracy.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/value_array.h"
 #include "runtime/behaviors/entities.h"
@@ -1248,10 +1249,13 @@ static void update_poses(game_physics *physics)
                 body->entity.slot
             );
         } else {
-            b2DynamicTree_MoveProxy(&physics->sweeps, body->proxy, next);
+            b2DynamicTree_EnlargeProxy(&physics->sweeps, body->proxy, next);
         }
         body->tree_bounds = next;
     }
+    /* Repair moved branches together before any worker queries the tree.
+     * Dense moving populations otherwise remove/reinsert each target. */
+    b2DynamicTree_Rebuild(&physics->sweeps, false);
 }
 
 int game_physics_tick(game_physics *physics, float delta_seconds)
@@ -1266,7 +1270,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         snprintf(physics->error, sizeof physics->error, "Physics delta must be finite and nonnegative.");
         return FLOW_ERR_ARGUMENT;
     }
+    CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Physics synchronize");
     int result = synchronize(physics, delta_seconds);
+    CHIBI_TRACE_ZONE_END(sync_zone);
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result < 0) {
         return result;
@@ -1278,18 +1284,25 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     physics->active_workers = physics->tasks.workers > 1 && (!physics->pool || parallel)
                                 ? physics->tasks.workers
                                 : 1;
+    CHIBI_TRACE_ZONE_BEGIN(solve_zone, "Physics solve");
     b2World_Step(physics->simulation, delta_seconds, physics->configuration.substeps);
+    CHIBI_TRACE_ZONE_END(solve_zone);
     profile_phase(physics, &start, &physics->profile.solve_ms);
+    CHIBI_TRACE_ZONE_BEGIN(sweeps_zone, "Physics swept targets");
     update_poses(physics);
+    CHIBI_TRACE_ZONE_END(sweeps_zone);
     profile_phase(physics, &start, &physics->profile.sweeps_ms);
+    CHIBI_TRACE_ZONE_BEGIN(pairs_zone, "Physics collect pairs");
     collect_pairs(physics, delta_seconds > 0);
     if (physics->pool) {
         game_task_pool_end(physics->pool);
     }
+    CHIBI_TRACE_ZONE_END(pairs_zone);
     profile_phase(physics, &start, &physics->profile.pairs_ms);
     if (physics->profiling) {
         physics->profile.pairs = acount(physics->current);
     }
+    CHIBI_TRACE_ZONE_BEGIN(writeback_zone, "Physics writeback");
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics_body *body = &physics->bodies[i];
         if (!body->body.index1) {
@@ -1309,8 +1322,11 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
             *velocity = (GameVelocity){ solved.x, solved.y };
         }
     }
+    CHIBI_TRACE_ZONE_END(writeback_zone);
     profile_phase(physics, &start, &physics->profile.writeback_ms);
+    CHIBI_TRACE_ZONE_BEGIN(dispatch_zone, "Physics queue contacts");
     result = dispatch_pairs(physics);
+    CHIBI_TRACE_ZONE_END(dispatch_zone);
     profile_phase(physics, &start, &physics->profile.dispatch_ms);
     return result;
 }

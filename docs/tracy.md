@@ -33,6 +33,12 @@ chunks, query preparation and worker execution. These zones describe timing
 and overlap; they do not replace deterministic scenario results or benchmark
 thresholds.
 
+Physics scopes separate ECS synchronization, the Box2D solve, swept-target
+maintenance, pair collection, transform writeback, and pair sorting/event
+queueing. `Contact events` measures the later event pump, including lifecycle
+flushes between batches. Correlate these scopes with their containing engine
+frame to distinguish steady costs from work concentrated in slow frames.
+
 ## Tracy MCP
 
 Tracy's upstream source includes an optional MCP server. It loads `.tracy`

@@ -141,6 +141,14 @@ states; their old capacity limits and threading descriptions are not current.
 
 ## Recommended order
 
+The September 19 [slow-frame attribution and swept-target experiment](swept-targets.md)
+now guide the order below. In the baseline's slowest engine frames, swept-target
+maintenance averaged 7.964 ms and the contact/lifecycle pump 6.671 ms, compared
+with 0.252 ms for parallel Tick execution. Batched tree repair reduces the
+swept-target phase P95, but repeated full-scene acceptance remains unresolved.
+Prioritize contacts/lifecycle and physics costs before further isolated kernel
+polish. The historical baseline and option catalog remain useful context.
+
 Implementation status: cached dependency/binding preparation and incremental
 Tick schedule repair from S1/S2 are present. S3 now uses a shared world clock;
 see [the shared-clock measurements and next behavior work](shared-clock.md).

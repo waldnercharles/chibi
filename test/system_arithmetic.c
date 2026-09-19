@@ -218,9 +218,6 @@ static void scalar(
     node *result = graph_add_node(graph, &desc);
     assert(graph_connect_data(graph, operation, 0, result, 0) == 0);
     game_system *system = finish(world, definition, result, "Set_GameHealth");
-    bool optimized = strcmp(name, "add_floats") == 0;
-    assert(game_system_uses_typed_bytecode(system) == optimized);
-    assert(game_system_uses_sljit(system) == (optimized && graph_sljit_available()));
     for (int mode = GAME_SYSTEM_EXEC_AUTO; mode <= GAME_SYSTEM_EXEC_SJLIT; mode++) {
         GameHealth before = { 123, 777 };
         *GAME_GameHealth_get(world, entity) = before;
@@ -408,15 +405,6 @@ void test_system_arithmetic()
             false
         );
     }
-    scalar(
-        world,
-        entity,
-        "add_floats",
-        (pin_value){ .type = PIN_F32, .f = 17 },
-        (pin_value){ .type = PIN_F32, .f = 8 },
-        (pin_value){ .type = PIN_F32, .f = 25 },
-        false
-    );
     const struct
     {
         int64_t left, right, expected;

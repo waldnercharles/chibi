@@ -1384,6 +1384,11 @@ Assigning a scalar to a whole vector evaluates that scalar once and broadcasts i
 to every component. Shader lowering uses the same broadcast behavior. Inline
 scalar constants remain editable on the node.
 
+An eligible pure source with one data consumer can also be marked inline from its
+node context menu. The action uses the same presentation flag as inline source
+selection and remains unavailable for shared sources, sources with input
+connections, executable nodes, or otherwise invalid source nodes.
+
 Node rows use four pixels of extra spacing. Only literal outputs are editable;
 runtime-written outputs do not reserve empty control rows. Entity, aggregate,
 and unresolved inputs show their value or default in the pin row, with the

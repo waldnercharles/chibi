@@ -75,7 +75,7 @@ static void activation_differential()
     assert(graph_connect_data_conversion(g, loop, 1, set_x, 1, &NODE_To_Real) == 0);
     node *get = behavior_asset_add_get_node(asset, x);
     node *delta = graph_add_node(g, &NODE_DeltaTime);
-    node *sum = add(g, "add_floats");
+    node *sum = add(g, "Add");
     data_edge(g, get, 0, sum, 0);
     data_edge(g, delta, 0, sum, 1);
     data_edge(g, sum, 0, first_set, 1);
@@ -159,14 +159,14 @@ static void extraction()
 {
     behavior_asset *asset = behavior_asset_new("Local extraction");
     graph *g = asset->graph;
-    node *sum = add(g, "add_floats"), *a = add(g, "add_floats"),
-         *b = add(g, "add_floats"), *c = add(g, "add_floats");
+    node *sum = add(g, "Add"), *a = add(g, "Add"), *b = add(g, "Add"),
+         *c = add(g, "Add");
     default_value(g, sum, 0, (pin_value){ .type = PIN_F32, .f = 11 });
     data_edge(g, sum, 0, a, 0);
     data_edge(g, sum, 0, b, 0);
     data_edge(g, sum, 0, c, 0);
     assert(graph_create_local(g, sum, 0, "Sum"));
-    node *end = add(g, "add_floats");
+    node *end = add(g, "Add");
     data_edge(g, a, 0, end, 0);
     node *selection[] = { a };
     uint64_t call = 0;
@@ -239,14 +239,14 @@ static void system_locals()
     behavior_asset *asset = behavior_asset_new("Optimizer system");
     behavior_asset_set_owner_type(asset, "ecs.entity");
     graph *g = asset->graph;
-    node *source = add(g, "add_floats");
+    node *source = add(g, "Add");
     default_value(g, source, 0, (pin_value){ .type = PIN_F32, .f = 3 });
     node *uses[3];
     for (int i = 0; i < 3; i++) {
-        uses[i] = add(g, "add_floats");
+        uses[i] = add(g, "Add");
         data_edge(g, source, 0, uses[i], 0);
     }
-    node *sum = add(g, "add_floats"), *total = add(g, "add_floats");
+    node *sum = add(g, "Add"), *total = add(g, "Add");
     data_edge(g, uses[0], 0, sum, 0);
     data_edge(g, uses[1], 0, sum, 1);
     data_edge(g, sum, 0, total, 0);
@@ -298,7 +298,7 @@ static void system_locals()
 static void output_promotion()
 {
     behavior_asset *asset = behavior_asset_new("Output promotion");
-    node *source = add(asset->graph, "add_floats");
+    node *source = add(asset->graph, "Add");
     behavior_variable *value = behavior_asset_promote_pin_to_variable(asset, source, 1, 0, "Result");
     assert(value);
     node *set = asset->graph->nodes[1];

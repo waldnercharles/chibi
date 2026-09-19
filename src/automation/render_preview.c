@@ -1123,7 +1123,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         &png,
         render_error,
         sizeof render_error,
-        "chibi_render_ctl"
+        "chibi_ctl --render"
     );
     free(parameters_json);
     chdir(original_directory);

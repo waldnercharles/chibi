@@ -809,16 +809,16 @@ void run_runtime_instance_checks()
         test_check(behavior_asset_add_self_node(asset) == NULL, "Self is rejected when the definition declares no owner type");
         /* The owner handle type must resolve in the active registry (CMPL-20),
          * so the test uses a reflected type name. */
-        behavior_asset_set_owner_type(asset, "Vec3");
+        behavior_asset_set_owner_type(asset, "CF_V3");
         test_check(
-            asset->owner_type_name && strcmp(asset->owner_type_name, "Vec3") == 0,
+            asset->owner_type_name && strcmp(asset->owner_type_name, "CF_V3") == 0,
             "a Behavior Asset definition carries one nominal owner type"
         );
         node *self = behavior_asset_add_self_node(asset);
         test_check(
             self && self->output_pins[0].type == PIN_HANDLE &&
                 self->output_pins[0].type_name &&
-                strcmp(self->output_pins[0].type_name, "Vec3") == 0,
+                strcmp(self->output_pins[0].type_name, "CF_V3") == 0,
             "Self carries the declared nominal owner handle type"
         );
         pin_spec ha = { "a", PIN_HANDLE, "Entity", PIN_DATA };
@@ -833,7 +833,7 @@ void run_runtime_instance_checks()
         node *cap = graph_add_node(asset->graph, &g_handle_capture_desc);
         graph_connect_exec(asset->graph, ev, 0, cap, 0, 0);
         graph_connect_data(asset->graph, self, 0, cap, 1);
-        pin_value owner = { .type = PIN_HANDLE, .u64 = 777, .type_name = "Vec3" };
+        pin_value owner = { .type = PIN_HANDLE, .u64 = 777, .type_name = "CF_V3" };
         behavior_instance *bi = behavior_instance_create(asset, &owner, NULL, NULL);
         g_captured_handle = 0;
         flow_error perr = { 0 };

@@ -7685,7 +7685,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else if (!strcmp(operation, "describe_components")) {
         handle_describe_components(root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_shader")) {
-        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires the separate chibi_render_ctl executable");
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires chibi_ctl --render");
     } else if (!strcmp(operation, "describe_contract")) {
         handle_describe_contract(&result);
     } else if (!strcmp(operation, "status")) {

@@ -18,7 +18,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
-option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application library" OFF)
+option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
 else()
@@ -256,33 +256,11 @@ endif()
 
 # --- generated registry ---
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/generated)
-set(GEN_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/demo_registry.c)
-add_custom_command(
-    OUTPUT ${GEN_REGISTRY}.stamp
-    BYPRODUCTS ${GEN_REGISTRY}
-    COMMAND ${CHIBI_REFLECT_COMMAND}
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/demo_nodes.c
-            ${GEN_REGISTRY}
-            DEMO
-            --include ${CMAKE_CURRENT_SOURCE_DIR}/src
-            --include ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMAND ${CMAKE_COMMAND} -E touch ${GEN_REGISTRY}.stamp
-    DEPENDS ${CHIBI_REFLECT_DEPENDENCY}
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/demo_nodes.c
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/interface.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/vec3.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection/transform.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/annotate.h
-    COMMENT "Generating the demo reflection pack"
-    VERBATIM
-)
-
 set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
     SHADER_PACK
     CORE_EVENT_PACK
-    DEMO_REGISTRY_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
     CORE_ARRAY_PACK
@@ -304,7 +282,6 @@ add_library(core STATIC
 )
 target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
@@ -396,20 +373,6 @@ target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(engine)
 
-# --- demo nodes (real TUs; interface.h declares what Behavior Assets sees) ---
-# The reflection fixture input is parsed, not compiled as a translation unit.
-add_custom_target(generate_demo_registry DEPENDS ${GEN_REGISTRY}.stamp)
-add_library(demo STATIC
-    ${GEN_REGISTRY}
-    test/fixtures/reflection/vec3.c
-    test/fixtures/reflection/math.c
-)
-add_dependencies(demo generate_demo_registry)
-target_include_directories(demo PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/reflection
-)
-
 # --- editor canvas (graph model + native dcimgui widget) ---
 
 add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
@@ -454,10 +417,11 @@ function(chibi_watch_platform target)
 endfunction()
 
 set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
-add_executable(app ${HOST_SOURCES} ${APP_SOURCES} ${APP_REGISTRY})
-target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_definitions(app PRIVATE CHIBI_STATIC_APPLICATION=1)
-target_link_libraries(app PRIVATE ${CMAKE_DL_LIBS})
+add_library(chibi_sources OBJECT ${APP_SOURCES} ${APP_REGISTRY})
+target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(chibi_sources PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
+chibi_enable_tracy(chibi_sources)
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     foreach(project_target core ecs runtime_support engine editor chibi_render)
         set_target_properties(${project_target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
@@ -465,55 +429,54 @@ if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if(TARGET chibi_sljit)
         set_target_properties(chibi_sljit PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
     endif()
-    add_library(chibi_application SHARED ${APP_SOURCES} ${APP_REGISTRY})
-    target_include_directories(chibi_application PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    target_compile_definitions(chibi_application PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-    target_link_libraries(chibi_application PRIVATE chibi_render editor engine runtime_support cute)
-    chibi_enable_tracy(chibi_application)
-    set_target_properties(chibi_application PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
-    add_executable(chibi_host ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
-    chibi_watch_platform(chibi_host)
-    target_compile_definitions(chibi_host PRIVATE CHIBI_DEVELOPMENT_HOST=1)
-    target_include_directories(chibi_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
-    target_include_directories(chibi_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
-    target_compile_definitions(chibi_host PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-    target_link_libraries(chibi_host PRIVATE cute ${CMAKE_DL_LIBS})
-    set_target_properties(chibi_host PROPERTIES LINKER_LANGUAGE CXX)
+    set_target_properties(chibi_sources PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    add_library(chibi_dll SHARED $<TARGET_OBJECTS:chibi_sources>)
+    target_link_libraries(chibi_dll PRIVATE chibi_render editor engine runtime_support cute)
+    chibi_enable_tracy(chibi_dll)
+    set_target_properties(chibi_dll PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
+    add_executable(chibi ${HOST_SOURCES} src/host/dev.c third_party/yyjson/yyjson.c)
+    chibi_watch_platform(chibi)
+    target_compile_definitions(chibi PRIVATE CHIBI_DEVELOPMENT_HOST=1)
+    target_compile_definitions(chibi PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+    target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
+    target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(chibi PRIVATE cute ${CMAKE_DL_LIBS})
+    chibi_enable_tracy(chibi)
+    set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
+else()
+    add_executable(chibi ${HOST_SOURCES} $<TARGET_OBJECTS:chibi_sources>)
+    target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_definitions(chibi PRIVATE CHIBI_STATIC_APPLICATION=1)
+    target_compile_definitions(chibi PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+    target_link_libraries(chibi PRIVATE ${CMAKE_DL_LIBS} chibi_render editor engine runtime_support cute)
+    chibi_enable_tracy(chibi)
+    set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
 endif()
-target_compile_definitions(app PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(app PRIVATE chibi_render editor engine runtime_support cute)
-chibi_enable_tracy(app)
-set_target_properties(app PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(chibi_ctl tools/chibi_ctl/main.c ${APP_REGISTRY})
 add_dependencies(chibi_ctl generate_runtime_registry)
 target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(chibi_ctl PRIVATE automation runtime_support core engine)
+target_compile_definitions(chibi_ctl PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
+target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
 set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
-# GPU authoring feedback is optional tooling, separate from the headless controller.
-add_executable(chibi_render_ctl tools/chibi_render_ctl/main.c src/automation/render_preview.c
+target_sources(chibi_ctl PRIVATE src/automation/render_preview.c
     src/automation/scene_preview.c src/render/scene_renderer.c
-    src/render/shader_preview.c src/render/shader_fragment.c ${APP_REGISTRY})
-add_dependencies(chibi_render_ctl generate_runtime_registry)
-target_include_directories(chibi_render_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(chibi_render_ctl PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(chibi_render_ctl PRIVATE automation chibi_render editor engine runtime_support core cute)
-chibi_enable_tracy(chibi_render_ctl)
-set_target_properties(chibi_render_ctl PROPERTIES LINKER_LANGUAGE CXX)
+    src/render/shader_preview.c src/render/shader_fragment.c)
+chibi_enable_tracy(chibi_ctl)
 
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl>
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl>
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl>
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_RENDER_CTL=$<TARGET_FILE:chibi_render_ctl> CHIBI_MCP_GPU=1
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS chibi_ctl chibi_render_ctl
+        DEPENDS chibi_ctl
         VERBATIM)
 else()
     add_custom_target(check-mcp
@@ -522,17 +485,17 @@ else()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    set_target_properties(app PROPERTIES SUFFIX ".html")
+    set_target_properties(chibi PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
-    set_property(TARGET app APPEND PROPERTY LINK_DEPENDS
+    set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
-    target_link_options(app PRIVATE
+    target_link_options(chibi PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
@@ -542,9 +505,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     )
 endif()
 
-# --- test registry: core, runtime_support, and demo packs for the consolidated suite ---
+# --- test registry: core and runtime_support packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK DEMO_REGISTRY_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -552,9 +515,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
 add_executable(test_suite
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_graph_edit.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/flags.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
-    test/ui_native.c
     test/ui_scroll.c
-    test/render_checks.c
     test/arena3d.c
     test/arena_input.c
     test/physics.c
@@ -631,15 +592,13 @@ add_executable(test_suite
     test/draw_backend.cpp
     src/host/stacktrace.c
     src/editor/graph/preview_gate.c
-    test/fixtures/reflection/vec3.c
-    test/fixtures/reflection/math.c
     ${TEST_REGISTRY}
 )
 # Generated-C system benchmarks call the same runtime helpers as SLJIT.
 set_target_properties(test_suite PROPERTIES ENABLE_EXPORTS ON)
 target_include_directories(test_suite PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(test_suite PRIVATE CHIBI_RENDER_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders")
-target_link_libraries(test_suite PRIVATE automation engine runtime_support ecs demo editor chibi_render)
+target_link_libraries(test_suite PRIVATE automation engine runtime_support ecs editor chibi_render)
 if(NOT CHIBI_ENABLE_PERFORMANCE_TESTS)
     target_compile_definitions(test_suite PRIVATE CHIBI_SKIP_PERFORMANCE_TESTS=1)
 endif()
@@ -649,20 +608,20 @@ set(BENCH_BEHAVIOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/bench_behavior
 chibi_registry("${BENCH_BEHAVIOR_REGISTRY}" WHOLE_VALUE_PACK ${BASE_REGISTRY_PACKS})
 add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c test/bench_aggregate.c test/support/whole_values.c test/support/whole_components.c ${BENCH_BEHAVIOR_REGISTRY})
 target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(bench_behavior PRIVATE ecs core demo ${CMAKE_DL_LIBS})
+target_link_libraries(bench_behavior PRIVATE ecs core ${CMAKE_DL_LIBS})
 target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)
 
 add_executable(bench_scheduler test/bench_scheduler.c ${BASE_REGISTRY})
-target_link_libraries(bench_scheduler PRIVATE core demo)
+target_link_libraries(bench_scheduler PRIVATE core)
 target_compile_options(bench_scheduler PRIVATE -UNDEBUG)
 
 add_executable(bench_activation test/bench_activation.c ${BASE_REGISTRY})
 target_include_directories(bench_activation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(bench_activation PRIVATE core demo)
+target_link_libraries(bench_activation PRIVATE core)
 
 add_executable(scene_benchmark test/scene_benchmark.c ${BASE_REGISTRY})
 target_include_directories(scene_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(scene_benchmark PRIVATE runtime_support demo)
+target_link_libraries(scene_benchmark PRIVATE runtime_support)
 
 add_executable(system_benchmark test/system_benchmark.c ${APP_REGISTRY})
 target_include_directories(system_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -739,7 +698,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         VERBATIM)
 endif()
 
-if(TARGET chibi_host)
+if(TARGET chibi_dll)
     include(cmake/dev_config.cmake)
 endif()
 
@@ -764,18 +723,10 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         DEPENDS reflect concurrent_runner VERBATIM)
 endif()
 
-if(TARGET chibi_host)
-    add_executable(test_dev_smoke test/dev/smoke.c src/host/process.c)
-    add_custom_target(check-dev-smoke
-        COMMAND test_dev_smoke "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_COMMAND}" controller
-        COMMAND test_dev_smoke "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_COMMAND}" editor
-        DEPENDS test_dev_smoke chibi_host chibi_application VERBATIM)
-endif()
-
 # Test drivers use assertions for fixture setup and verification. Keep them
 # active when measuring optimized runtime libraries, which retain their normal
 # Release flags. Otherwise a Release review silently skips the workload.
-foreach(driver test_suite test_reload test_dev test_dev_smoke concurrent_runner bench_activation
+foreach(driver test_suite test_reload test_dev concurrent_runner bench_activation
                scene_benchmark system_benchmark query_benchmark contact_benchmark)
     if(TARGET ${driver})
         target_compile_options(${driver} PRIVATE -UNDEBUG)

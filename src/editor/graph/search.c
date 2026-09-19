@@ -8,6 +8,7 @@
 #include "graph/document/extract.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
@@ -69,6 +70,77 @@ static int ed_search_match_cmp(const void *a, const void *b)
     }
     c = strcmp(ca, cb);
     return c ? c : strcmp(ma->name, mb->name);
+}
+
+static bool ed_inline_inputs_default(const node *n)
+{
+    for (int i = 0; i < n->input_count; i++) {
+        const pin_spec *pin = &n->input_pins[i];
+        unsigned implicit_flags = PIN_FLAG_SETTING | PIN_FLAG_DEFAULT_SELF |
+                                  PIN_FLAG_SERVICE;
+        if (pin->kind != PIN_DATA || pin->type == PIN_FLOW ||
+            (!(pin->flags & implicit_flags) && pin->type == PIN_STRUCT &&
+             !pin->default_value.ptr) ||
+            (!(pin->flags & implicit_flags) && pin->type == PIN_HANDLE &&
+             !pin->default_value.u64)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool ed_node_can_inline(const editor *e, const node *n)
+{
+    graph *g = e ? e->active_graph : NULL;
+    if (!ed_source_scope_available(e) || !g || !n || !n->desc || n->inline_source ||
+        n->disabled || node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
+        n->desc->flow_kind != NODE_FLOW_NONE || n->desc == &NODE_CallFunction ||
+        n->desc == &NODE_CallMacro || !ed_inline_inputs_default(n)) {
+        return false;
+    }
+    for (int p = 0; p < n->output_count; p++) {
+        if (graph_output_local(g, n, p)) {
+            return false;
+        }
+    }
+    const edge *outgoing = NULL;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *edge = &g->edges[i];
+        if (edge->from_id != n->id) {
+            continue;
+        }
+        if (edge->kind != GRAPH_EDGE_DATA || outgoing || edge->to_id == n->id) {
+            return false;
+        }
+        outgoing = edge;
+    }
+    if (!outgoing) {
+        return false;
+    }
+    node *target = graph_node_by_id(g, outgoing->to_id);
+    int source_is_output = 0;
+    int target_is_output = 0;
+    const pin_spec *source_pin = graph_pin_by_id(n, outgoing->from_pin_id, &source_is_output, NULL);
+    const pin_spec *target_pin = target
+                                   ? graph_pin_by_id(target, outgoing->to_pin_id, &target_is_output, NULL)
+                                   : NULL;
+    if (!source_pin || !target_pin || !source_is_output || target_is_output ||
+        source_pin->kind != PIN_DATA || target_pin->kind != PIN_DATA ||
+        ((source_pin->flags | target_pin->flags) & PIN_FLAG_SETTING)) {
+        return false;
+    }
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *edge = &g->edges[i];
+        if (edge->to_id != n->id) {
+            continue;
+        }
+        node *source = graph_node_by_id(g, edge->from_id);
+        if (edge->kind != GRAPH_EDGE_DATA || !graph_node_is_vector_constructor(n) ||
+            !source || !graph_node_is_inline(g, source)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void ed_open_context_menu(editor *e, ImVec2 mouse)
@@ -970,6 +1042,15 @@ void ed_handle_popups(editor *e)
                 }
             }
         }
+        bool can_inline = ed_node_can_inline(e, n);
+        if (ImGui_MenuItemEx("Inline", NULL, false, can_inline)) {
+            ed_snapshot_before(e);
+            int result = graph_set_node_inline(e->active_graph, n, true);
+            assert(result == 0);
+            (void)result;
+            ImGui_CloseCurrentPopup();
+        }
+        editor_ui_track_item("graph.node.inline");
         if (n && ed_field_output(n) >= 0 && ImGui_BeginMenu("Fields")) {
             ed_draw_fields_menu(e, n);
             ImGui_EndMenu();

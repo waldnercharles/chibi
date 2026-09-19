@@ -49,6 +49,33 @@ node_desc g_counter_desc = {
     .fn = eval_counter,
 };
 
+static pin_spec g_test_add_inputs[] = {
+    { "a", PIN_F32, "float" },
+    { "b", PIN_F32, "float" },
+};
+static pin_spec g_test_add_outputs[] = {
+    { "result", PIN_F32, "float" },
+};
+static pin_value eval_test_add(const pin_value *inputs, int input_count, arena *a)
+{
+    (void)a;
+    assert(input_count == 2);
+    return (pin_value){
+        .type = PIN_F32,
+        .type_name = "float",
+        .f = inputs[0].f + inputs[1].f,
+    };
+}
+node_desc g_test_add_desc = {
+    .name = "test_add_f32",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_test_add_inputs,
+    .outputs = g_test_add_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = eval_test_add,
+};
+
 static pin_spec g_const_bool_out[] = {
     { "value", PIN_BOOL, "bool" },
 };
@@ -69,7 +96,7 @@ static pin_spec g_all_types_outputs[] = {
     { "u32", PIN_U32, "unsigned" },       { "i64", PIN_I64, "int64_t" },
     { "u64", PIN_U64, "uint64_t" },       { "f32", PIN_F32, "float" },
     { "f64", PIN_F64, "double" },         { "str", PIN_STR, "const char *" },
-    { "struct", PIN_STRUCT, "Vec3" },     { "enum", PIN_ENUM, "TestEnum" },
+    { "struct", PIN_STRUCT, "CF_V3" },    { "enum", PIN_ENUM, "TestEnum" },
     { "flow", PIN_FLOW, NULL, PIN_EXEC },
 };
 node_desc g_all_types_desc = {
@@ -245,17 +272,17 @@ static pin_spec g_watch_inputs[] = {
 };
 static pin_spec g_watch_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },
-    { "Value", PIN_STRUCT, "Vec3", PIN_DATA },
+    { "Value", PIN_STRUCT, "CF_V3", PIN_DATA },
 };
-Vec3 g_watch_struct;
+CF_V3 g_watch_struct;
 
 static int flow_watch_struct(node *n, flow_context *ctx)
 {
-    g_watch_struct = (Vec3){ 4.0f, 5.0f, 6.0f };
+    g_watch_struct = (CF_V3){ 4.0f, 5.0f, 6.0f };
     *flow_context_output_value(ctx, 1) = (pin_value){
         .type = PIN_STRUCT,
         .ptr = &g_watch_struct,
-        .type_name = "Vec3",
+        .type_name = "CF_V3",
     };
     return flow_context_continue(ctx, 0);
 }
@@ -381,7 +408,7 @@ node_desc g_str_capture_desc = {
 };
 static pin_spec g_handle_capture_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Value", PIN_HANDLE, "Vec3", PIN_DATA },
+    { "Value", PIN_HANDLE, "CF_V3", PIN_DATA },
 };
 static int flow_capture_handle(node *n, flow_context *ctx)
 {

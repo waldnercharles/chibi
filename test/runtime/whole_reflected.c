@@ -32,7 +32,7 @@ void emit_reflected_c(const char *path)
 {
     FILE *out = fopen(path, "w");
     assert(out);
-    for (int kind = 0; kind < 3; kind++) {
+    for (int kind = 0; kind < 2; kind++) {
         for (int waits = 0; waits < 2; waits++) {
             behavior_asset *a = whole_reflected_fixture(kind, waits);
             char name[64];
@@ -101,9 +101,8 @@ static int arguments(
         }
         return 4;
     }
-    args[0] = (pin_value){ .type = PIN_F32, .f = 5 };
-    args[1] = (pin_value){ .type = PIN_F32, .f = scenario ? 0 : 2 };
-    return 2;
+    assert(false);
+    return 0;
 }
 static void parity(int kind, bool waits, int scenario, int control, int budget, void *library)
 {
@@ -166,9 +165,6 @@ static void parity(int kind, bool waits, int scenario, int control, int budget, 
             if (status == FLOW_COMPLETED || status == FLOW_FAILED) {
                 if (!scenario && budget == 100) {
                     assert(status == FLOW_COMPLETED);
-                    if (kind == 2) {
-                        assert(bi->variables[0].d == 7 && bi->variables[1].d == 3);
-                    }
                 }
                 break;
             }
@@ -202,9 +198,9 @@ void test_compiled_reflected(const char *path)
 {
     void *library = path ? dlopen(path, RTLD_NOW | RTLD_LOCAL) : NULL;
     assert(!path || library);
-    for (int kind = 0; kind < 3; kind++) {
+    for (int kind = 0; kind < 2; kind++) {
         for (int waits = 0; waits < 2; waits++) {
-            for (int scenario = 0; scenario < (kind == 2 ? 2 : 7); scenario++) {
+            for (int scenario = 0; scenario < 7; scenario++) {
                 parity(kind, waits, scenario, 0, 100, library);
                 parity(kind, waits, scenario, 1, 100, library);
             }
@@ -231,7 +227,7 @@ int bench_reflected(const char *path, int count, int rotation)
 {
     void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     assert(library && count > 0 && rotation >= 0);
-    for (int kind = 0; kind < 3; kind++) {
+    for (int kind = 0; kind < 2; kind++) {
         behavior_asset *a = whole_reflected_fixture(kind, false);
         behavior_function *f = entry(a);
         char name[64];
@@ -280,9 +276,7 @@ int bench_reflected(const char *path, int count, int rotation)
                 vm == behavior_function_vm_allocations() &&
                 data == behavior_function_data_allocations()
             );
-            double checksum = kind == 0 ? bi->variables[0].i
-                            : kind == 1 ? bi->variables[1].f
-                                        : bi->variables[0].d;
+            double checksum = kind == 0 ? bi->variables[0].i : bi->variables[1].f;
             assert(isfinite(checksum));
             printf(
                 "%s reflected_%d ns=%.3f checksum=%.6f\n",

@@ -221,10 +221,10 @@ void run_graph_conversion_checks()
             "To Real converts Integer 42 to Real 42.0"
         );
 
-        /* The reported case: an Integer onto a float input (add_floats). To
+        /* The reported case: an Integer onto a float input. To
          * Real offers, and its F64 output coerces to float at the boundary
          * (TYPE-10). */
-        node *addf = graph_add_node(&gc, registry_node_by_name("add_floats"));
+        node *addf = graph_add_node(&gc, &g_test_add_desc);
         graph_connect(&gc, to_real, 0, addf, 0);
         test_check(
             graph_eval_output(&gc, addf, 0, &ac, &out, &eval_ctx) == 0 &&

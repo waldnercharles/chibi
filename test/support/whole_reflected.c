@@ -9,8 +9,8 @@
 
 behavior_asset *whole_reflected_fixture(int kind, bool waits)
 {
-    const char *names[] = { "Primitive Part", "Transform Visual Offset", "split_values" };
-    assert(kind >= 0 && kind < 3);
+    const char *names[] = { "Primitive Part", "Transform Visual Offset" };
+    assert(kind >= 0 && kind < 2);
     const node_desc *desc = registry_node_by_name(names[kind]);
     assert(desc && desc->host_call && !desc->host_call->service);
     behavior_asset *a = behavior_asset_new(names[kind]);

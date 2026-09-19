@@ -25,7 +25,7 @@ static void input_index_edits()
     node *first = graph_add_node(&g, registry_node_by_name("Real"));
     node *second = graph_add_node(&g, registry_node_by_name("Real"));
     node *integer = graph_add_node(&g, registry_node_by_name("Integer"));
-    node *target = graph_add_node(&g, registry_node_by_name("add_floats"));
+    node *target = graph_add_node(&g, registry_node_by_name("Add"));
     test_check(input_matches(&g, target, 0, NULL, 0, NULL), "empty input lookup has no driver");
     test_check(
         graph_connect(&g, first, 0, target, 0) == 0 &&
@@ -363,7 +363,7 @@ static void invalid_exec_index()
 
 void run_graph_model_checks()
 {
-    g_watch_desc.type = registry_type_by_name("Vec3");
+    g_watch_desc.type = registry_type_by_name("CF_V3");
     input_index_edits();
     concurrent_input_readers();
     pasted_edge_indexes();
@@ -388,10 +388,10 @@ void run_graph_model_checks()
     eval_context eval_ctx;
     eval_context_init(&eval_ctx);
 
-    const node_desc *make = registry_node_by_name("Make_Vec3");
-    const node_desc *brk = registry_node_by_name("Break_Vec3");
-    const node_desc *add = registry_node_by_name("add_floats");
-    test_check(make && brk && add, "registry exposes Make_Vec3, Break_Vec3, add_floats");
+    const node_desc *make = registry_node_by_name("Make_CF_V3");
+    const node_desc *brk = registry_node_by_name("Break_CF_V3");
+    const node_desc *add = registry_node_by_name("Add");
+    test_check(make && brk && add, "registry exposes Make_CF_V3, Break_CF_V3, Add");
     test_check(make && make->type && make->type->field_count == 3, "reflected struct has a type descriptor");
     test_check(
         make && make->type && make->type->fields &&
@@ -411,7 +411,7 @@ void run_graph_model_checks()
     test_check(!pin_types_compatible(&i32_pin, &i64_pin), "integer widths stay distinct");
     test_check(g_const_desc.pure_kind == NODE_PURE_CONST, "hand-authored node descriptor is usable");
     test_check(
-        make && make->type && make->type->name && strcmp(make->type->name, "Vec3") == 0,
+        make && make->type && make->type->name && strcmp(make->type->name, "CF_V3") == 0,
         "build-time registry exposes reflected types"
     );
     test_check(make && make->inputs && make->outputs, "annotations emit descriptor pin metadata");
@@ -433,7 +433,7 @@ void run_graph_model_checks()
         graph_init(&defaults);
         node *reader = graph_add_node(&defaults, brk);
         float source[] = { 2, 3, 5 };
-        pin_value value = { .type = PIN_STRUCT, .type_name = "Vec3", .ptr = source };
+        pin_value value = { .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = source };
         test_check(graph_set_pin_default(&defaults, reader, 0, 0, &value) == 0, "struct defaults accept temporary source values");
         source[0] = source[1] = source[2] = -100;
         const float *stored = reader->input_pins[0].default_value.ptr;
@@ -455,7 +455,7 @@ void run_graph_model_checks()
     test_check(graph_eval_output(&g, a1, 0, &a, &sum, &eval_ctx) == 0, "eval reflected call node");
     test_check(sum.type == PIN_F32 && sum.f == 5.0f, "2.0 + 3.0 == 5.0");
 
-    /* 2. Make(Vec3) -> Break(Vec3) round trip */
+    /* 2. Make(CF_V3) -> Break(CF_V3) round trip */
     eval_context_reset_runtime(&eval_ctx);
     arena_reset(&a);
 
@@ -470,14 +470,14 @@ void run_graph_model_checks()
     graph_connect(&g, mk, 0, br, 0);
 
     pin_value oy;
-    test_check(graph_eval_output(&g, br, 1, &a, &oy, &eval_ctx) == 0, "eval Break(Vec3).y");
+    test_check(graph_eval_output(&g, br, 1, &a, &oy, &eval_ctx) == 0, "eval Break(CF_V3).y");
     pin_value make_output;
     test_check(
         eval_context_output(&eval_ctx, mk, 0, &make_output) == 0 &&
             make_output.ptr != NULL,
-        "Make(Vec3) value is arena-owned"
+        "Make(CF_V3) value is arena-owned"
     );
-    test_check(oy.type == PIN_F32 && oy.f == 2.0f, "Make(Vec3) -> Break(Vec3): y == 2.0");
+    test_check(oy.type == PIN_F32 && oy.f == 2.0f, "Make(CF_V3) -> Break(CF_V3): y == 2.0");
 
     /* 3. memo: one eval across two reads */
     eval_context_reset_runtime(&eval_ctx);
@@ -545,12 +545,12 @@ void run_graph_model_checks()
         test_check(
             graph_set_pin_name(&ids, p1, 0, 0, "left") == 0 &&
                 strcmp(p1->input_pins[0].name, "left") == 0 &&
-                strcmp(p2->input_pins[0].name, "a") == 0,
+                strcmp(p2->input_pins[0].name, "A") == 0,
             "instance pin edits do not mutate sibling instances"
         );
         test_check(
-            strcmp(add->inputs[0].name, "a") == 0 &&
-                strcmp(p2->input_pins[0].name, "a") == 0,
+            strcmp(add->inputs[0].name, "A") == 0 &&
+                strcmp(p2->input_pins[0].name, "A") == 0,
             "instance pin storage is copied from an untouched descriptor "
             "template"
         );
@@ -816,7 +816,7 @@ void run_graph_model_checks()
         graph_init(&g6);
         node *rc1 = make_const(&g6, 4.0f);
         node *rc2 = make_const(&g6, 5.0f);
-        node *radd = graph_add_node(&g6, add);
+        node *radd = graph_add_node(&g6, &g_test_add_desc);
         test_check(graph_connect(&g6, rc1, 0, radd, 0) == 0, "remove_edge: c1 -> add.a");
         test_check(graph_connect(&g6, rc2, 0, radd, 0) == 0, "remove_edge: c2 -> add.a replaces c1");
         test_check(graph_connect(&g6, rc2, 0, radd, 1) == 0, "remove_edge: c2 -> add.b");

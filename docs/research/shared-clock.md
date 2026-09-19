@@ -107,6 +107,11 @@ durations would overstate time available to recover from a frame.
 
 ## Next implementation work
 
+The [parallel-validation follow-up](parallel-validation.md) moves checks for
+large spans onto workers, preserving the barrier before behavior execution.
+The original attribution below predates that follow-up; removing checks through
+proofs remains open.
+
 1. **Remove repeated serial validation where revisions prove it safe.**
    `game_behavior_parallel_run` validates every row and refreshes bindings before
    workers run kernels with their own row guards. This is the largest measured

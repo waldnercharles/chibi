@@ -329,6 +329,20 @@ results or permit changes to observable event order. Query counters are opt-in
 through the runtime inspection API. Scaling and remaining capacity/memory limits
 are tracked in [the completion criteria](research/behavior-completion.md).
 
+Within one unobserved whole-function execution, the shared compiler also reuses
+the result of a contextual data node declared `node_host_call.reusable` when a
+single forward predecessor proves the earlier call runs first. `Find Nearest
+Entity` opts into this contract: reading `Found` before a Branch and reading its
+position/distance afterward performs one search. Authors need no cache nodes.
+The same optimization feeds SLJIT, generated C and portable bytecode.
+
+Variable/component writes, random inputs, undeclared host effects, joins, loop
+back edges and waits stop result reuse. Checked world/entity/component addresses
+can survive field writes along a proven path; field values are still loaded
+again. Nothing moves ahead of its first checked access. Inspection retains the
+original program so stepping can observe changes made while paused, and actual
+continuations retain their saved slots. See [branch-read results](research/branch-reads.md).
+
 
 ## ECS growth and activation storage
 

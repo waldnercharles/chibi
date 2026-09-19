@@ -110,6 +110,10 @@ body. [Capture statistics and hashes](parallel-validation-tracy-results.json).
 
 ## What the independent C loop does differently
 
+This comparison describes the `2ba99cf9` baseline. The subsequent
+[branch-read optimization](branch-reads.md) removes the repeated nearest search
+and shares checked component addresses across eligible branches.
+
 The [reference implementation](../../test/runtime/arena_reference.h) is a
 specialized update for the fixed-position, inactive-feedback benchmark. It is
 single-threaded. The authored runtime already distributes eligible behavior

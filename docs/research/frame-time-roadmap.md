@@ -141,6 +141,28 @@ states; their old capacity limits and threading descriptions are not current.
 
 ## Recommended order
 
+The September 19 [slow-frame attribution and swept-target experiment](swept-targets.md)
+now guide the order below. In the baseline's slowest engine frames, swept-target
+maintenance averaged 7.964 ms and the contact/lifecycle pump 6.671 ms, compared
+with 0.252 ms for parallel Tick execution. Batched tree repair reduces the
+swept-target phase P95, but repeated full-scene acceptance remains unresolved.
+Prioritize contacts/lifecycle and physics costs before further isolated kernel
+polish. The historical baseline and option catalog remain useful context.
+
+The [contact lifecycle follow-up](contact-lifecycle.md) separates event dispatch
+from lifecycle maintenance. Incremental attachment removal now preserves the
+unchanged prefix and reduces behavior/runtime P95 in every measured scene pair.
+Contact collection/sorting and the physics solve remain the larger next targets.
+
+Implementation status: cached dependency/binding preparation and incremental
+Tick schedule repair from S1/S2 are present. S3 now uses a shared world clock;
+see [the shared-clock measurements and next behavior work](shared-clock.md).
+Large spans now also [validate rows in parallel](parallel-validation.md), with
+a join before behavior effects and serial validation for small spans.
+The compiler now reuses [stable reads across branches](branch-reads.md), and
+parallel plans [prepare only demanded target snapshots](query-snapshots.md).
+The original measurements above predate these changes.
+
 Impact below is a priority judgment based on current cost and scaling behavior.
 It is not a predicted speedup. Medium effort means work within an existing
 module; large means a new execution/storage contract or several modules.

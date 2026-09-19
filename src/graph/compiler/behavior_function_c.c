@@ -188,6 +188,12 @@ static void activation_values(
 }
 static void body(const behavior_function *f, FILE *out, char prefix, bool inspected)
 {
+    behavior_function runtime;
+    if (!inspected && f->runtime_body) {
+        runtime = *f;
+        runtime.instructions = f->runtime_body;
+        f = &runtime;
+    }
     for (int j = 0; j < acount(f->slots); j++) {
         fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);
     }
@@ -1059,10 +1065,10 @@ void behavior_function_write_sequence_c(
             "!ecs_execution_entity(world,row->entity)) return row;\n"
             "behavior_function_context *c=&binding->context;\n"
             "c->owner=bi->owner.u64; c->owner_type_name=bi->owner.type_name; "
-            "c->delta_seconds=bi->delta_seconds; c->steps=0;\n"
+            "c->delta_seconds=bi->clock->delta_seconds; c->steps=0;\n"
             "c->variables=bi->variables; c->states=bi->node_states; "
             "c->variable_storage=bi->variable_storage; c->value_owner=bi; "
-            "c->instance_time=&bi->current_time;\n"
+            "c->instance_time=&bi->clock->current_time;\n"
             "if(c->value_storage) arena_reset(c->value_storage);\n"
             "*result=%s_body%d(c); if(*result) return row; row++;}\n",
             part,

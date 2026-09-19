@@ -351,6 +351,41 @@ static void sweep_tree_lifetime()
     dispose(&f);
 }
 
+static void repeated_moving_sweeps()
+{
+    fixture f = create();
+    ecs_entity targets[16];
+    for (int i = 0; i < 16; i++) {
+        targets[i] = body(&f, 200 + i * 20, 200, GAME_BODY_KINEMATIC, 2, 4);
+    }
+    ecs_entity shot = sensor(&f, 0, 0);
+    for (int round = 0; round < 16; round++) {
+        /* Clear contact history and move the whole target population outside
+         * its previous bounds, then cross two targets through the shot. */
+        *GAME_GameTransform_get(f.world, shot) = (GameTransform){ 0 };
+        *GAME_GameVelocity_get(f.world, shot) = (GameVelocity){ 0 };
+        for (int i = 0; i < 16; i++) {
+            *GAME_GameTransform_get(f.world, targets[i]) = (GameTransform){
+                200 + i * 20,
+                200 + round * 100
+            };
+            *GAME_GameVelocity_get(f.world, targets[i]) = (GameVelocity){ 0 };
+        }
+        assert(step(&f, 0) == 0);
+        int a = round, b = (round + 7) % 16;
+        *GAME_GameTransform_get(f.world, targets[a]) = (GameTransform){ 50, -50 };
+        *GAME_GameTransform_get(f.world, targets[b]) = (GameTransform){ 80, -80 };
+        GAME_GameVelocity_get(f.world, targets[a])->y = 6000;
+        GAME_GameVelocity_get(f.world, targets[b])->y = 6000;
+        GAME_GameVelocity_get(f.world, shot)->x = 6000;
+        assert(step(&f, 1.0f / 60) == 2);
+        assert(other(&f, shot) == ecs_entity_to_u64(targets[a]));
+        float impact = GAME_GameTransform_get(f.world, shot)->x;
+        assert(impact > 44 && impact < 48);
+    }
+    dispose(&f);
+}
+
 static void lifecycle_and_validation()
 {
     fixture f = create();
@@ -642,6 +677,7 @@ static void physics_cases()
     nearest_and_filters();
     moving_target_and_box();
     sweep_tree_lifetime();
+    repeated_moving_sweeps();
     lifecycle_and_validation();
     interpolation();
     current_contact_query();

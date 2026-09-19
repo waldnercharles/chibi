@@ -34,6 +34,7 @@ set(CORE_SOURCES
     src/graph/compiler/behavior_function_jit_component.c
     src/graph/compiler/behavior_function_vm.c
     src/graph/compiler/behavior_function_opt.c
+    src/graph/compiler/behavior_function_reads.c
     src/graph/compiler/behavior_function_parallel.c
     src/graph/compiler/behavior_function_jit_integer.c
     src/graph/compiler/behavior_function_jit_memory.c

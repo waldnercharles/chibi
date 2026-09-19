@@ -249,6 +249,14 @@ bool behavior_function_batchable(const behavior_function *function);
 bool behavior_function_parallel(const behavior_function *function);
 /* Static work estimate used to keep cheap loops below scheduling overhead. */
 int behavior_function_parallel_work(const behavior_function *function);
+/* Union of a host call's zero-based U32 input across the unobserved body.
+ * No matching calls returns zero; an unproven value/invocation returns UINT_MAX.
+ * Used once when preparing a synchronous execution plan, not per entity. */
+unsigned behavior_function_host_mask(
+    const behavior_function *function,
+    const node_host_call *call,
+    int input
+);
 bool behavior_function_parallel_with(const behavior_function *a, const behavior_function *b);
 /* Cached conservative proof for synchronous broadcasts. Unknown host effects
  * and structural operations cannot preserve a component-dependent query index. */

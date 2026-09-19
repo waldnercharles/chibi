@@ -295,11 +295,15 @@ static int pump_events(engine *engine)
         if (!game_entities_pending_events(entities)) {
             break;
         }
+        CHIBI_TRACE_ZONE_BEGIN(dispatch_zone, "Contact batch dispatch");
         result = game_entities_dispatch_events(entities);
+        CHIBI_TRACE_ZONE_END(dispatch_zone);
         if (result < 0) {
             return result;
         }
+        CHIBI_TRACE_ZONE_BEGIN(lifecycle_zone, "Contact batch lifecycle");
         result = flush_initializers(engine);
+        CHIBI_TRACE_ZONE_END(lifecycle_zone);
         if (result != 0 || game_behavior_paused(engine->live->behaviors)) {
             return result < 0 ? result : FLOW_PAUSED_RESULT;
         }

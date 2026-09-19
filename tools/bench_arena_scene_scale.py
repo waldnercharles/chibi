@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--frames", type=int, default=120)
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--profile", action="store_true")
+    parser.add_argument("--physics-profile", action="store_true", help="time physics phases without enabling behavior inspection")
     parser.add_argument("--combat", action="store_true", help="fire at nearby enemies, collect XP and restart")
     parser.add_argument("--executor", type=Path, help="load an executor only for the after runs")
     parser.add_argument("--workers", type=int, default=4)
@@ -52,6 +53,8 @@ def main():
     env["MallocNanoZone"] = "0"
     if args.combat:
         env["CBLUEPRINT_BENCH_COMBAT"] = "1"
+    if args.physics_profile:
+        env["CBLUEPRINT_BENCH_PHYSICS_PROFILE"] = "1"
     samples, expected, expected_combat = [], {}, {}
     for count in args.counts:
         for trial in range(args.trials):
@@ -127,6 +130,7 @@ def main():
     args.output.write_text(json.dumps({"binary_sha256": hashes, "frames": args.frames,
         "before_root": str(args.before_root.resolve()) if args.before_root else None,
         "warmup_frames": 30, "trials": args.trials, "profile": args.profile,
+        "physics_profile": args.physics_profile,
         "executor": str(args.executor) if args.executor else None,
         "external_workers": args.workers if args.executor else None,
         "serial_before": args.serial_before,

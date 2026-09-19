@@ -3,6 +3,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update.h"
 #include "runtime/rhythm.h"
+#include "runtime/task_pool.h"
 #include "test/flow_snapshot.h"
 #include "test/suite_internal.h"
 #include "test/whole_rhythm_fixture.h"
@@ -134,10 +135,10 @@ static void parity(bool waits, int scenario, int control, int budget, void *libr
         if (scenario != MISSING_WORLD) {
             assert(!behavior_instance_bind_service(bi, "ecs.world", world));
         }
-        bi->current_time = scenario == NAN_TIME      ? NAN
-                         : scenario == INF_TIME      ? INFINITY
-                         : scenario == NEGATIVE_TIME ? -.125
-                                                     : .125;
+        bi->local_clock.current_time = scenario == NAN_TIME      ? NAN
+                                     : scenario == INF_TIME      ? INFINITY
+                                     : scenario == NEGATIVE_TIME ? -.125
+                                                                 : .125;
         /* Deliberately different from the instance clock, including after resume. */
         flow_options options = { .instance = bi, .step_budget = budget, .initial_time = 10 };
         flow_run *run = flow_run_start(a->graph, a->graph->nodes[0], (flow_inputs){ 0 }, &options, NULL);
@@ -171,7 +172,7 @@ static void parity(bool waits, int scenario, int control, int budget, void *libr
                 }
                 if (scenario == CHANGED_AT_WAIT) {
                     *GAME_GameRhythm_get(world, clock) = (GameRhythm){ 120, .5f };
-                    bi->current_time = .375;
+                    bi->local_clock.current_time = .375;
                 }
                 if (scenario == REMOVED_AT_WAIT) {
                     assert(!ecs_world_destroy_entity(world, clock));
@@ -214,7 +215,7 @@ static void prepared_clocks()
         behavior_instance *bi = behavior_instance_create(a, &self, NULL, NULL);
         behavior_instance_set_trace_enabled(bi, false);
         assert(!behavior_instance_bind_service(bi, "ecs.world", world));
-        bi->current_time = .125 + .5 * i;
+        bi->local_clock.current_time = .125 + .5 * i;
         behavior_update_binding
             *binding = behavior_update_prepare(&bindings, bi, f, a->graph->nodes[0]);
         assert(binding);
@@ -245,6 +246,65 @@ static void prepared_clocks()
     behavior_asset_free(a);
     ecs_world_free(world);
 }
+
+static void shared_world_clocks(behavior_backend backend)
+{
+    int count = backend == BEHAVIOR_SLJIT ? 4097 : 2;
+    behavior_backend previous = behavior_debug_backend(backend);
+    behavior_asset *asset = whole_rhythm_fixture(false);
+    ecs_entity rhythm;
+    ecs_world *ecs = new_world(VALID, &rhythm);
+    game_behavior_world *worlds[2];
+    ecs_entity *entities = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(entities, ecs_world_create_entity(ecs));
+    }
+    for (int w = 0; w < 2; w++) {
+        worlds[w] = game_behavior_world_new(ecs);
+        assert(!game_behavior_register_asset(worlds[w], asset->name, asset));
+        for (int i = 0; i < (w ? 1 : count); i++) {
+            assert(!game_behavior_attach(worlds[w], entities[i], asset->name));
+        }
+        assert(!game_behavior_pump(worlds[w], 0));
+    }
+    game_behavior_set_time(worlds[1], .625);
+    game_task_pool *pool = game_task_pool_acquire();
+    bool parallel = backend == BEHAVIOR_SLJIT &&
+                    game_task_pool_tasks(pool)->workers > 1;
+    game_task_pool_release(pool);
+    for (int frame = 0; frame < 2; frame++) {
+        game_behavior_set_time(worlds[0], frame ? .375 : .125);
+        for (int w = 0; w < 2; w++) {
+            assert(game_behavior_update(worlds[w], NULL) == (w ? 1 : count));
+            for (int i = 0; i < (w ? 1 : count); i++) {
+                behavior_instance *instance = game_behavior_instance(
+                    worlds[w],
+                    entities[i],
+                    asset->name
+                );
+                pin_value phase;
+                assert(!behavior_instance_get_variable(
+                    instance,
+                    asset->variables[0].id,
+                    &phase
+                ));
+                assert(phase.d == (w ? .625 : frame ? .375 : .125));
+            }
+        }
+        if (backend != BEHAVIOR_ORACLE) {
+            assert(game_behavior_last_update(worlds[0]).prepared == count);
+        }
+        assert((game_behavior_last_update(worlds[0]).parallel == count) == parallel);
+    }
+    for (int w = 0; w < 2; w++) {
+        game_behavior_world_free(worlds[w]);
+    }
+    afree(entities);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+    behavior_debug_backend(previous);
+}
+
 void test_compiled_rhythm(const char *path)
 {
     void *library = path ? dlopen(path, RTLD_NOW | RTLD_LOCAL) : NULL;
@@ -261,6 +321,9 @@ void test_compiled_rhythm(const char *path)
         parity(waits, VALID, 3, 100, library);
     }
     prepared_clocks();
+    shared_world_clocks(BEHAVIOR_SLJIT);
+    shared_world_clocks(BEHAVIOR_BYTECODE);
+    shared_world_clocks(BEHAVIOR_ORACLE);
     whole_rhythm_smoke();
     if (library) {
         assert(!dlclose(library));
@@ -293,7 +356,7 @@ int bench_rhythm(const char *path, int count, int rotation)
             ecs_entity clock = { 0 };
             ecs_world *world = new_world(VALID, &clock);
             behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
-            bi->current_time = .125;
+            bi->local_clock.current_time = .125;
             const ecs_execution_view *view = (const ecs_execution_view *)world;
             const ecs_execution_column *column = ecs_execution_find_column(
                 view,

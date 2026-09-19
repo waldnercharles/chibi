@@ -410,7 +410,7 @@ static void instance_trace_run(behavior_instance *bi, const flow_run *run)
         .error_code = error ? error->code : FLOW_OK,
     };
     if (!count) {
-        entry.traversal.timestamp = bi->current_time;
+        entry.traversal.timestamp = bi->clock->current_time;
         instance_trace_push(bi, entry);
         return;
     }
@@ -423,26 +423,26 @@ static void instance_trace_run(behavior_instance *bi, const flow_run *run)
 /* Run the scheduler until no activation can make progress: at most one
  * activation runs at a time, and the next ready activation is the oldest
  * non-terminal one (FIFO by dispatch sequence, EXEC-17). */
-static int scheduler_pump(behavior_instance *bi)
+int behavior_instance_pump(behavior_instance *bi)
 {
     int result = FLOW_OK;
     int cursor = 0;
     while (cursor < acount(bi->activations)) {
         flow_run *act = bi->activations[cursor++];
-        if (!flow_run_ready(act, bi->current_time)) {
+        if (!flow_run_ready(act, bi->clock->current_time)) {
             continue;
         }
         uint64_t revision = bi->schedule_revision;
-        double time = bi->current_time;
+        double time = bi->clock->current_time;
         result = flow_run_tick_at(act, time);
         /* A callback can edit this queue or wake an older host wait. Restart
          * only then, preserving oldest-ready delivery without quadratic scans
          * over retained completed activations. Never inspect a removed act. */
-        if (revision != bi->schedule_revision || time != bi->current_time) {
+        if (revision != bi->schedule_revision || time != bi->clock->current_time) {
             cursor = 0;
             continue;
         }
-        if (flow_run_ready(act, bi->current_time)) {
+        if (flow_run_ready(act, bi->clock->current_time)) {
             cursor--;
         }
     }
@@ -452,6 +452,7 @@ static int scheduler_pump(behavior_instance *bi)
 static behavior_instance *instance_create(behavior_instance *bi, behavior_asset *asset, const pin_value *owner)
 {
     bi->asset = asset;
+    bi->clock = &bi->local_clock;
     bi->backend = behavior_default_backend();
     behavior_program_publish(asset);
     bi->next_delegate_id = 1;
@@ -775,6 +776,8 @@ int behavior_instance_pool_release(behavior_instance *bi)
         return 0;
     }
     bi->alive = 0;
+    bi->local_clock = *bi->clock;
+    bi->clock = &bi->local_clock;
     instance_detach_bindings(bi);
     while (acount(bi->activations)) {
         flow_run_free(bi->activations[0]);
@@ -1198,8 +1201,8 @@ flow_run *behavior_instance_enqueue(behavior_instance *bi, node *entry, flow_inp
     flow_options opts = {
         .now = bi->now,
         .now_user = bi->now_user,
-        .initial_time = bi->current_time,
-        .delta_seconds = bi->delta_seconds,
+        .initial_time = bi->clock->current_time,
+        .delta_seconds = bi->clock->delta_seconds,
         .sink = bi->sink,
         .sink_user = bi->sink_user,
         .event_name = entry->reference_name,
@@ -1291,7 +1294,7 @@ flow_run *behavior_instance_dispatch(
         }
     }
     if (act) {
-        scheduler_pump(bi);
+        behavior_instance_pump(bi);
     }
     return act;
 }
@@ -1301,8 +1304,15 @@ int behavior_instance_tick(behavior_instance *bi, double now)
     if (!bi) {
         return FLOW_ERR_ARGUMENT;
     }
-    bi->current_time = now;
-    return scheduler_pump(bi);
+    assert(bi->clock == &bi->local_clock);
+    bi->local_clock.current_time = now;
+    return behavior_instance_pump(bi);
+}
+
+void behavior_instance_bind_clock(behavior_instance *bi, const behavior_clock *clock)
+{
+    assert(clock && !acount(bi->activations));
+    bi->clock = clock;
 }
 
 int behavior_instance_stop_activation(behavior_instance *bi, flow_run *act)
@@ -1361,7 +1371,7 @@ void behavior_instance_bind_values(behavior_instance *bi, behavior_function_cont
     ctx->variables = bi->variables;
     ctx->states = bi->node_states;
     ctx->select_state = behavior_instance_select_state;
-    ctx->instance_time = &bi->current_time;
+    ctx->instance_time = &bi->clock->current_time;
     ctx->variable_storage = bi->variable_storage;
     ctx->owner_type_name = bi->owner.type_name;
     ctx->value_owner = bi;
@@ -1390,7 +1400,8 @@ void behavior_instance_set_parallel_for(
 void behavior_instance_set_delta_seconds(behavior_instance *bi, double delta_seconds)
 {
     if (bi) {
-        bi->delta_seconds = delta_seconds;
+        assert(bi->clock == &bi->local_clock);
+        bi->local_clock.delta_seconds = delta_seconds;
     }
 }
 

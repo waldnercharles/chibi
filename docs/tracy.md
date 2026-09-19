@@ -62,9 +62,20 @@ scenario so before and after traces remain comparable.
 
 The first instrumentation slice covers application and scene preview frames,
 engine frames and fixed steps, behavior execution, physics, ECS systems,
-render submission, presentation, and native task pool workers. These zones
-describe timing and overlap; they do not replace deterministic scenario
-results or benchmark thresholds.
+render submission, presentation, and native task pool workers. Behavior scopes
+also separate schedule repair, validation of parallel rows and its worker
+chunks, query preparation and worker execution. These zones describe timing
+and overlap; they do not replace deterministic scenario results or benchmark
+thresholds.
+
+Physics scopes separate ECS synchronization, the Box2D solve, swept-target
+maintenance, pair collection, transform writeback, and pair sorting/event
+queueing. `Contact events` measures the later event pump, including lifecycle
+flushes between batches. Correlate these scopes with their containing engine
+frame to distinguish steady costs from work concentrated in slow frames.
+Nested zones split pair sorting from contact comparison, and contact-batch
+dispatch from lifecycle processing. `Detach behavior attachments` isolates
+behavior removal within bulk entity destruction.
 
 ## Tracy MCP
 

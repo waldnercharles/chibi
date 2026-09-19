@@ -48,9 +48,10 @@ bool game_entities_initializing(const game_entities *entities);
  * error. Does not dispatch ordinary events. */
 int game_entities_flush_initializers(game_entities *entities, double monotonic_time);
 
-#endif
-
-/* Snapshot category membership on the caller before concurrent nearest reads.
+/* Snapshot category membership and positions before concurrent nearest reads.
  * No transform/collider or structural writes are allowed until end. */
-bool game_entities_parallel_begin(game_entities *entities);
+unsigned game_entities_query_categories(const behavior_function *function);
+bool game_entities_parallel_begin(game_entities *entities, unsigned categories);
 void game_entities_parallel_end(game_entities *entities);
+
+#endif

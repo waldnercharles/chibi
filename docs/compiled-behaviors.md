@@ -329,6 +329,20 @@ results or permit changes to observable event order. Query counters are opt-in
 through the runtime inspection API. Scaling and remaining capacity/memory limits
 are tracked in [the completion criteria](research/behavior-completion.md).
 
+Within one unobserved whole-function execution, the shared compiler also reuses
+the result of a contextual data node declared `node_host_call.reusable` when a
+single forward predecessor proves the earlier call runs first. `Find Nearest
+Entity` opts into this contract: reading `Found` before a Branch and reading its
+position/distance afterward performs one search. Authors need no cache nodes.
+The same optimization feeds SLJIT, generated C and portable bytecode.
+
+Variable/component writes, random inputs, undeclared host effects, joins, loop
+back edges and waits stop result reuse. Checked world/entity/component addresses
+can survive field writes along a proven path; field values are still loaded
+again. Nothing moves ahead of its first checked access. Inspection retains the
+original program so stepping can observe changes made while paused, and actual
+continuations retain their saved slots. See [branch-read results](research/branch-reads.md).
+
 
 ## ECS growth and activation storage
 
@@ -363,8 +377,13 @@ Pumping and paused-state inspection skip idle attachments. Empty/nonempty queue
 notifications maintain membership, including waits, debug holds, cancellation
 and pooled reuse. Serial callbacks preserve the existing attachment delivery
 order. `game_behavior_last_pump_count` exposes visited queues for inspection and
-performance assertions. Clock propagation still visits all instances. See
-[pending-queue measurements and lifecycle checks](research/pending-queues.md).
+performance assertions. Attached instances borrow their world's simulation clock,
+so advancing time and delta time performs constant work regardless of attachment
+count. Standalone instances retain independent clocks. Activations snapshot their
+start time and delta time; waits and Scene Rhythm still read the current clock
+where their contracts require it. Pool release detaches the borrowed clock. See
+[pending-queue measurements and lifecycle checks](research/pending-queues.md) and
+[shared-clock measurements](research/shared-clock.md).
 
 ## Prepared Tick updates
 
@@ -387,12 +406,19 @@ Bindings own copied service-name tables and reusable host/VM scratch. Instances
 and immutable program generations belong to the world and outlive synchronous
 execution. Host calls may not execute graphs, invalidate storage or retain
 borrowed values. Before each prepared span, bindings resolve component IDs into
-columns once per function and service view. SLJIT, bytecode and generated C use
-those columns while retaining entity, presence and layout checks at the original
-operation. An untaken branch therefore cannot introduce a missing-component or
-layout diagnostic. Columns are refreshed after possible structural mutations;
-captured failures never retain them. Update scheduling does not reorder or
-parallelize bodies.
+columns once per function and service view in each execution chunk. SLJIT,
+bytecode and generated C use those columns while retaining entity, presence
+and layout checks at the original operation. An untaken branch therefore
+cannot introduce a missing-component or layout diagnostic. Columns are
+refreshed after possible structural mutations;
+captured failures never retain them.
+
+Proven-independent entity chunks execute on the shared native task pool while
+preserving attachment order within an entity. Large spans also validate rows
+and refresh their private bindings on workers. Every validation task joins
+before any behavior effects; a blocked row returns the whole span to the normal
+scheduler. Small spans validate on the calling thread to avoid extra task
+overhead. See [parallel validation and the independent-C comparison](research/parallel-validation.md).
 
 `game_behavior_last_update` distinguishes prepared executions, native outer-loop
 executions and rows handled by normal dispatch. Profiling deliberately uses the

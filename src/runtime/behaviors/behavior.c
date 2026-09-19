@@ -1,5 +1,6 @@
 #include "runtime/behaviors/behavior.h"
 
+#include "diagnostics/tracy.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/update.h"
 #include "runtime/behaviors/entities.h"
@@ -94,8 +95,7 @@ struct game_behavior_world
     int *pumped;
     int last_pump_count;
     uint64_t next_sequence;
-    double current_time;
-    double delta_seconds;
+    behavior_clock clock;
     behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
     int profile_count;
     bool profile_disabled;
@@ -413,8 +413,7 @@ static behavior_instance *acquire_instance(
         return NULL;
     }
     behavior_instance_set_trace_enabled(instance, 0);
-    instance->current_time = world->current_time;
-    behavior_instance_set_delta_seconds(instance, world->delta_seconds);
+    behavior_instance_bind_clock(instance, &world->clock);
     if (behavior_instance_set_activation_pool(instance, 1) != 0 ||
         behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0 ||
         behavior_instance_bind_service(
@@ -1065,8 +1064,18 @@ static int detach_entities(
         free(selected);
         return 0;
     }
-    int retained = 0;
-    for (int i = 0; i < total; i++) {
+    /* Indices and counts before the first removed attachment remain valid.
+     * Remove only the old suffix from the indexes before compacting it. */
+    for (int i = dirty_begin; i < total; i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        attachment->asset->attachment_count--;
+        int *indices = world->attachments_by_slot[attachment->entity.slot];
+        while (acount(indices) && indices[acount(indices) - 1] >= dirty_begin) {
+            asetlen(indices, acount(indices) - 1);
+        }
+    }
+    int retained = dirty_begin;
+    for (int i = dirty_begin; i < total; i++) {
         behavior_attachment attachment = world->attachments[i];
         if (!(selected[i / 64] & (UINT64_C(1) << (i % 64)))) {
             world->attachments[retained++] = attachment;
@@ -1076,7 +1085,11 @@ static int detach_entities(
     }
     free(selected);
     asetlen(world->attachments, retained);
-    rebuild_attachment_index(world, dirty_begin);
+    mark_attachment_change(world, dirty_begin);
+    behavior_pending_truncate(&world->pending, dirty_begin);
+    for (int i = dirty_begin; i < retained; i++) {
+        index_attachment(world, i);
+    }
     return detached;
 }
 
@@ -1159,7 +1172,9 @@ int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity)
 int game_behavior_destroy_entities(game_behavior_world *world, const ecs_entity *entities, int count)
 {
     assert(world && count >= 0 && (!count || entities));
+    CHIBI_TRACE_ZONE_BEGIN(detach_zone, "Detach behavior attachments");
     detach_entities(world, entities, count, NULL);
+    CHIBI_TRACE_ZONE_END(detach_zone);
     for (int i = 0; i < count; i++) {
         ecs_entity entity = entities[i];
         if (!ecs_entity_is_alive(world->ecs, entity)) {
@@ -1349,6 +1364,7 @@ static void append_update_row(game_behavior_world *world, int attachment_index)
 
 static void prepare_updates(game_behavior_world *world)
 {
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Prepare Tick schedule");
     if (world->update_bindings_invalidated) {
         /* Defer freeing until the current update returns. A host may change a
          * service while an activation is running, so its old binding can still
@@ -1389,6 +1405,7 @@ static void prepare_updates(game_behavior_world *world)
         retained_spans
     );
     world->update_revision = world->attachment_revision;
+    CHIBI_TRACE_ZONE_END(zone);
 }
 
 int game_behavior_update(game_behavior_world *world, flow_error *error)
@@ -1397,7 +1414,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         return FLOW_ERR_ARGUMENT;
     }
     world->update_stats = (game_behavior_update_stats){ 0 };
-    pin_value delta = { .type = PIN_F32, .f = (float)world->delta_seconds };
+    pin_value delta = { .type = PIN_F32, .f = (float)world->clock.delta_seconds };
     flow_inputs tick_inputs = { .values = &delta, .count = 1 };
     if (world->batch_disabled) {
         int result = game_behavior_dispatch_all(world, "Tick", tick_inputs, error);
@@ -1569,12 +1586,6 @@ bool game_behavior_has_event(const game_behavior_world *world, const char *event
     return false;
 }
 
-typedef struct
-{
-    game_behavior_world *world;
-    double monotonic_time;
-} behavior_pump_context;
-
 static int instance_breakpoints_active(const behavior_instance *instance)
 {
     if (!instance || !acount(instance->activations)) {
@@ -1597,19 +1608,18 @@ static int instance_breakpoints_active(const behavior_instance *instance)
 
 static void pump_attachment(int index, void *user)
 {
-    behavior_pump_context *context = (behavior_pump_context *)user;
-    behavior_attachment
-        *attachment = &context->world->attachments[context->world->pumped[index]];
-    context->world->pump_results[index] = FLOW_OK;
+    game_behavior_world *world = user;
+    behavior_attachment *attachment = &world->attachments[world->pumped[index]];
+    world->pump_results[index] = FLOW_OK;
     if (!acount(attachment->instance->activations)) {
         return;
     }
-    if (!ecs_entity_is_alive(context->world->ecs, attachment->entity)) {
+    if (!ecs_entity_is_alive(world->ecs, attachment->entity)) {
         return;
     }
-    int result = behavior_instance_tick(attachment->instance, context->monotonic_time);
+    int result = behavior_instance_pump(attachment->instance);
     if (result < 0) {
-        context->world->pump_results[index] = result;
+        world->pump_results[index] = result;
     }
 }
 
@@ -1645,15 +1655,14 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
         );
         world->pump_result_capacity = capacity;
     }
-    behavior_pump_context context = { world, monotonic_time };
     if (world->parallel_for && !serial) {
-        world->parallel_for(count, pump_attachment, &context);
+        world->parallel_for(count, pump_attachment, world);
     } else {
         aclear(world->pumped);
         for (int i = behavior_pending_next(&world->pending, 0); i >= 0 && i < limit;
              i = behavior_pending_next(&world->pending, i + 1)) {
             apush(world->pumped, i);
-            pump_attachment(acount(world->pumped) - 1, &context);
+            pump_attachment(acount(world->pumped) - 1, world);
         }
     }
     world->last_pump_count = acount(world->pumped);
@@ -1677,16 +1686,7 @@ int game_behavior_last_pump_count(const game_behavior_world *world)
 
 void game_behavior_set_time(game_behavior_world *world, double simulation_time)
 {
-    /* Acquired instances inherit both world clock values. Pumping again at the
-     * same time therefore needs no full-population write. Compare bits to
-     * preserve signed zero and NaN payloads in authored clock reads. */
-    if (!memcmp(&world->current_time, &simulation_time, sizeof simulation_time)) {
-        return;
-    }
-    world->current_time = simulation_time;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        world->attachments[i].instance->current_time = simulation_time;
-    }
+    world->clock.current_time = simulation_time;
 }
 
 bool game_behavior_paused(const game_behavior_world *world)
@@ -1708,13 +1708,7 @@ void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_se
     if (!world) {
         return;
     }
-    if (!memcmp(&world->delta_seconds, &delta_seconds, sizeof delta_seconds)) {
-        return;
-    }
-    world->delta_seconds = delta_seconds;
-    for (int i = 0; i < acount(world->attachments); i++) {
-        behavior_instance_set_delta_seconds(world->attachments[i].instance, delta_seconds);
-    }
+    world->clock.delta_seconds = delta_seconds;
 }
 
 void game_behavior_set_parallel_for(

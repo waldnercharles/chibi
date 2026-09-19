@@ -797,6 +797,7 @@ void behavior_function_free(behavior_function *f)
     afree(f->suspensions);
     afree(f->instructions);
     afree(f->runtime_instructions);
+    afree(f->runtime_body);
     free(f->runtime_map);
     afree(f->slots);
     afree(f->locals);

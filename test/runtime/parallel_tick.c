@@ -1,6 +1,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update_internal.h"
+#include "runtime/behaviors/entities.h"
 #include "runtime/task_pool.h"
 #include "test/suite_internal.h"
 #include "test/whole_aggregate_fixture.h"
@@ -18,6 +19,10 @@ static void parallel_fixture(behavior_backend backend, int kind, bool parallel)
     behavior_backend previous = behavior_debug_backend(backend);
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
+    game_entities *queries = game_entities_new(ecs, world);
+    game_behavior_bind_entities(world, queries);
+    /* Query diagnostics must not serialize a batch that has no queries. */
+    game_entities_profile_queries(queries, true);
     game_behavior_set_parallel_updates(world, parallel);
     behavior_asset *asset = kind == 2
                               ? whole_owned_tick_fixture(ARRAY_OP_STRINGS, false)
@@ -110,6 +115,8 @@ static void parallel_fixture(behavior_backend backend, int kind, bool parallel)
         assert(!game_behavior_pump(world, frame + 1));
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    assert(!game_entities_query_profile(queries).searches);
+    game_entities_free(queries);
     game_behavior_world_free(world);
     ecs_world_free(ecs);
     behavior_asset_free(asset);
@@ -154,6 +161,64 @@ static void parallel_failures(bool parallel)
             );
             assert(instances[i]->variables[3].i == frame + 1);
             assert(!acount(instances[i]->activations));
+        }
+    }
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+    behavior_debug_backend(previous);
+}
+
+/* A blocked row in any chunk must reject the whole parallel attempt before
+ * effects. The serial retry must execute every row exactly once. */
+static void parallel_backend_barrier()
+{
+    enum
+    {
+        COUNT = 8193
+    };
+    behavior_backend previous = behavior_debug_backend(BEHAVIOR_SLJIT);
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    behavior_asset *asset = whole_owned_tick_fixture(ARRAY_OP_STRINGS, false);
+    assert(!game_behavior_register_asset(world, asset->name, asset));
+    behavior_instance *instances[COUNT];
+    for (int i = 0; i < COUNT; i++) {
+        ecs_entity entity = ecs_world_create_entity(ecs);
+        assert(!game_behavior_attach(world, entity, asset->name));
+        instances[i] = game_behavior_instance(world, entity, asset->name);
+    }
+    assert(!game_behavior_pump(world, 0));
+    assert(game_behavior_update(world, NULL) == COUNT);
+    game_task_pool *pool = game_task_pool_acquire();
+    bool parallel = game_task_pool_tasks(pool)->workers > 1;
+    game_task_pool_release(pool);
+    int blocked[] = { 0, COUNT / 2, COUNT - 1 };
+    for (int test = 0; test < 3; test++) {
+        behavior_instance *instance = instances[blocked[test]];
+        assert(!behavior_instance_set_backend(instance, BEHAVIOR_BYTECODE));
+        assert(game_behavior_update(world, NULL) == COUNT);
+        assert(!game_behavior_last_update(world).parallel);
+        for (int i = 0; i < COUNT; i++) {
+            pin_value runs;
+            assert(!behavior_instance_get_variable(
+                instances[i],
+                asset->variables[3].id,
+                &runs
+            ));
+            assert(runs.i == 2 + test * 2);
+        }
+        assert(!behavior_instance_set_backend(instance, BEHAVIOR_SLJIT));
+        assert(game_behavior_update(world, NULL) == COUNT);
+        assert((game_behavior_last_update(world).parallel == COUNT) == parallel);
+        for (int i = 0; i < COUNT; i++) {
+            pin_value runs;
+            assert(!behavior_instance_get_variable(
+                instances[i],
+                asset->variables[3].id,
+                &runs
+            ));
+            assert(runs.i == 3 + test * 2);
         }
     }
     game_behavior_world_free(world);
@@ -408,6 +473,7 @@ static void preservation_proof_keys()
 
 void test_parallel_ticks()
 {
+    parallel_backend_barrier();
     preservation_proof_keys();
     service_swap_during_tick(BEHAVIOR_SLJIT);
     service_swap_during_tick(BEHAVIOR_BYTECODE);

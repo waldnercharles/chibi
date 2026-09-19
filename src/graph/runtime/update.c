@@ -129,7 +129,7 @@ behavior_update_row *behavior_update_run_c(
         }
         behavior_function_context *ctx = &binding->context;
         ctx->owner = bi->owner.u64;
-        ctx->delta_seconds = bi->delta_seconds;
+        ctx->delta_seconds = bi->clock->delta_seconds;
         ctx->steps = 0;
         behavior_instance_bind_values(bi, ctx);
         if (ctx->value_storage) {

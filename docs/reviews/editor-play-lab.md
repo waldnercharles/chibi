@@ -71,3 +71,12 @@ current Count Members Snapshot graph, an explicit keyboard Fire binding and a
 clear firing lane. The performance-panel fixture restores its wide window after
 standalone play. These corrections remove assumptions about scene controls,
 nearby targets and previous test layout.
+
+The combined material/editor/behavior branch passes `make build`,
+`make build-release`, `make test`, the complete native `--arena-ui` and
+`--radiance` suites, three browser workspace-save tests, and NeonSwarm gameplay
+acceptance. The final whole-function audit reports 40/40 authored event entries.
+Native Debug validation uses ASan/UBSan; GPU/UI runs disable leak reporting for
+the platform renderer. Logs are under `/tmp/neon-integration`.
+The final 1920×1080 flight at full HRC scale reproduces the pre-merge material
+state and rendered image exactly.

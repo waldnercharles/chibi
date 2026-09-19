@@ -62,7 +62,7 @@ bool behavior_instance_dispatch_batch(
         behavior_profile_enter(&scope);
     }
     behavior_function_context ctx = { .budget = FLOW_DEFAULT_STEP_BUDGET,
-                                      .delta_seconds = bi->delta_seconds };
+                                      .delta_seconds = bi->clock->delta_seconds };
     bool bound = behavior_function_bind(function, &ctx, bi->services, bi->owner.u64);
     if (bound) {
         behavior_instance_bind_values(bi, &ctx);

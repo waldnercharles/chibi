@@ -197,7 +197,7 @@ typedef struct
 {
     const node_host_call *call;
     const node_access *access;
-    int first, result_first;
+    int first, result_first, result_count;
 } behavior_function_host_call;
 typedef struct
 {
@@ -279,6 +279,7 @@ struct behavior_function
     uintptr_t *inspection_addresses;
     struct behavior_function *fast;
     behavior_function_instruction *runtime_instructions;
+    behavior_function_instruction *runtime_body; /* Optimized values at canonical PCs. */
     int *runtime_map; /* Canonical PC to compact, uninspected instruction index. */
     unsigned root_steps, child_budget, depth_limit;
     unsigned pure_depth_limit;
@@ -347,6 +348,7 @@ void behavior_function_constant_locals(behavior_function *function);
 void behavior_function_prune_values(behavior_function *function);
 void behavior_function_runtime_code(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
+void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize(behavior_function *function);
 void behavior_function_fuse_queries(behavior_function *function);
 static inline bool behavior_function_fast_allowed(

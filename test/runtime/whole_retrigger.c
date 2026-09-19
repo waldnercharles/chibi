@@ -157,7 +157,7 @@ static void parity(int kind, int control, double duration, unsigned budget, void
         if (control == 3 && flow_run_status(first) == FLOW_SUSPENDED) {
             assert(!flow_run_pause(first));
         }
-        bi->current_time = .5;
+        bi->local_clock.current_time = .5;
         flow_run *second = start(&c, duration, 42, budget);
         if (budget == 1000) {
             assert(flow_run_status(first) == FLOW_SUSPENDED);
@@ -173,7 +173,7 @@ static void parity(int kind, int control, double duration, unsigned budget, void
             assert(!flow_run_stop(first));
             observe(&c, first, FLOW_OK);
         }
-        bi->current_time = .75;
+        bi->local_clock.current_time = .75;
         flow_run *third = start(&c, .25, 99, budget);
         flow_run *runs[] = { first, second, third };
         for (int i = 0; i < 3; i++) {
@@ -272,7 +272,7 @@ static void lifecycle(int kind, behavior_backend backend)
     flow_run *first = dispatch(bi, 1, 7), *independent = dispatch(other, 2, 99);
     assert(flow_run_status(first) == FLOW_SUSPENDED);
     assert(behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_BUSY);
-    bi->current_time = .25;
+    bi->local_clock.current_time = .25;
     flow_run *second = dispatch(bi, .5, 42);
     assert(flow_run_status(second) == FLOW_COMPLETED);
     assert(flow_run_wake_time(first) == .75 && flow_run_wake_time(independent) == 2.);
@@ -285,7 +285,7 @@ static void lifecycle(int kind, behavior_backend backend)
     first = dispatch(bi, 1, 7);
     second = dispatch(bi, .5, 42);
     assert(flow_run_status(first) == FLOW_SUSPENDED && flow_run_status(second) == FLOW_COMPLETED);
-    assert(flow_run_wake_time(first) == bi->current_time + .5);
+    assert(flow_run_wake_time(first) == bi->local_clock.current_time + .5);
     assert(backend == BEHAVIOR_ORACLE || first->whole_function_executed);
     clear(bi);
     assert(!behavior_instance_pool_release(bi));
@@ -294,7 +294,7 @@ static void lifecycle(int kind, behavior_backend backend)
     first = dispatch(bi, 1, 7);
     assert(flow_run_status(first) == FLOW_SUSPENDED);
     assert(bi->variables[0].i == 0 && bi->variables[1].i == 0);
-    assert(flow_run_wake_time(first) == bi->current_time + 1.);
+    assert(flow_run_wake_time(first) == bi->local_clock.current_time + 1.);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
     if (backend != BEHAVIOR_ORACLE) {

@@ -1,3 +1,4 @@
+#include "ecs/ecs.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow_internal.h"
@@ -306,6 +307,202 @@ static void whole_format_smoke()
     puts("whole Format Text PASS: fixed format, mixed variadic values, unused spare and retained output; zero oracle calls");
 }
 
+static pin_spec read_inputs[] = { { .name = "Input", .type = PIN_F64 } };
+static pin_spec read_outputs[] = { { .name = "Found", .type = PIN_BOOL },
+                                   { .name = "Value", .type = PIN_F64 } };
+static const char *read_branch(void *user, const pin_value *args, pin_value *out)
+{
+    whole_data_service *service = user;
+    service->calls++;
+    out[0].b = args[0].d > 0;
+    out[1].d = args[0].d + service->bias;
+    return NULL;
+}
+static const node_host_call branch_call = { .service = "test.data",
+                                            .invoke = read_branch,
+                                            .reusable = true };
+static const node_desc branch_read = { .name = "Stable contextual read",
+                                       .inputs = read_inputs,
+                                       .input_count = 1,
+                                       .outputs = read_outputs,
+                                       .output_count = 2,
+                                       .pure_kind = NODE_PURE_READ,
+                                       .host_call = &branch_call };
+static const char *changing_input(void *user, const pin_value *args, pin_value *out)
+{
+    whole_data_service *service = user;
+    out[0].d = args[0].d + ++service->fail_at;
+    return NULL;
+}
+static const node_host_call input_call = { .service = "test.data",
+                                           .invoke = changing_input };
+static const node_desc input_effect = { .name = "Changing contextual input",
+                                        .inputs = read_inputs,
+                                        .input_count = 1,
+                                        .outputs = read_outputs + 1,
+                                        .output_count = 1,
+                                        .pure_kind = NODE_PURE_READ,
+                                        .host_call = &input_call };
+behavior_asset *whole_read_branch_fixture(int kind)
+{
+    behavior_asset *a = behavior_asset_new("Read across branch");
+    uint64_t input = behavior_asset_add_variable(a, "Input", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
+                         ->id;
+    uint64_t result = behavior_asset_add_variable(a, "Result", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
+                          ->id;
+    graph *g = a->graph;
+    node *event = graph_add_node(g, &NODE_Event),
+         *branch = graph_add_node(g, &NODE_Branch),
+         *read = graph_add_node(g, &branch_read),
+         *get = behavior_asset_add_get_node(a, input);
+    assert(!graph_set_event_name(g, event, "Run"));
+    assert(!graph_connect_exec(g, event, 0, branch, 0, 0));
+    if (kind == WHOLE_READ_INPUT_EFFECT) {
+        node *changing = graph_add_node(g, &input_effect);
+        assert(!graph_connect_data(g, get, 0, changing, 0));
+        get = changing;
+    }
+    int input_pin = 0;
+    if (kind == WHOLE_READ_COMPONENT) {
+        assert(!behavior_asset_set_owner_type(a, "ecs.entity"));
+        get = graph_add_node(g, &WHOLE_NODE_GetRecord);
+        assert(!graph_expose_output_fields(g, get, 0));
+        for (int i = 1; i < get->output_count; i++) {
+            if (!strcmp(get->output_pins[i].field_name, "weight")) {
+                input_pin = i;
+            }
+        }
+        assert(input_pin);
+    }
+    assert(!graph_connect_data(g, get, input_pin, read, 0));
+    assert(!graph_connect_data(g, read, 0, branch, 1));
+    node *shared = NULL;
+    node *loop = NULL;
+    if (kind == WHOLE_READ_LOOP) {
+        loop = graph_add_node(g, &NODE_ForLoop);
+        assert(!graph_set_pin_default(g, loop, 0, 2, &(pin_value){ .type = PIN_I32, .i = 2 }));
+        assert(!graph_remove_edge(g, event, 0, branch, 0));
+        assert(!graph_connect_exec(g, event, 0, loop, 0, 0));
+        assert(!graph_connect_exec(g, loop, 0, branch, 0, 0));
+    }
+    for (int i = 0; i < 2; i++) {
+        node *set = shared ? shared : behavior_asset_add_set_node(a, result);
+        if (!shared) {
+            assert(!graph_connect_data(g, read, 1, set, 1));
+        }
+        if (kind == WHOLE_READ_JOIN) {
+            shared = set;
+        }
+        node *next = set;
+        if (kind == WHOLE_READ_JOIN) {
+            next = graph_add_node(g, &NODE_Sequence);
+            assert(!graph_connect_exec(g, next, 0, set, 0, 0));
+        }
+        if (kind == WHOLE_READ_WRITE || kind == WHOLE_READ_COMPONENT) {
+            next = kind == WHOLE_READ_WRITE
+                     ? behavior_asset_add_set_node(a, input)
+                     : graph_add_node(g, &WHOLE_NODE_SetWeight);
+            assert(
+                !graph_set_pin_default(g, next, 0, 1, &(pin_value){ .type = PIN_F64, .d = 11 })
+            );
+            assert(!graph_connect_exec(g, next, 0, set, 0, 0));
+        }
+        if (kind == WHOLE_READ_WAIT) {
+            next = graph_add_node(g, &NODE_Delay);
+            assert(
+                !graph_set_pin_default(g, next, 0, 1, &(pin_value){ .type = PIN_F64, .d = .125 })
+            );
+            assert(!graph_connect_exec(g, next, 0, set, 0, 0));
+        }
+        assert(!graph_connect_exec(g, branch, i, next, 0, 0));
+    }
+    return a;
+}
+void whole_read_branch_check(behavior_asset *a, int kind, bool observed)
+{
+    ecs_world *world = ecs_world_new();
+    const ecs_component_desc *component = WHOLE_NODE_GetRecord.component;
+    assert(!ecs_world_register_component(world, component, NULL));
+    ecs_entity owner = ecs_world_create_entity(world);
+    assert(!ecs_world_record_add(world, owner, component->id, NULL, 0));
+    assert(!ecs_world_apply_commands(world));
+    pin_value handle = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(owner) };
+    behavior_instance *bi = behavior_instance_create(a, &handle, NULL, NULL);
+    assert(!behavior_instance_bind_service(bi, "ecs.world", world));
+    behavior_instance_set_trace_enabled(bi, observed);
+    whole_data_service service = { .bias = 3 };
+    assert(!behavior_instance_bind_service(bi, "test.data", &service));
+    behavior_batch *batch = NULL;
+    for (int i = 0; i < 4; i++) {
+        service = (whole_data_service){ .bias = 3 };
+        pin_value input = { .type = PIN_F64, .d = i % 2 ? -7 : 5 };
+        ((whole_record *)ecs_component_data(world, owner, component->id))
+            ->weight = input.d;
+        assert(!behavior_instance_set_variable(bi, a->variables[0].id, &input));
+        flow_run *failed = NULL;
+        if (observed || kind == WHOLE_READ_WAIT) {
+            flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, NULL);
+            assert(run);
+            if (kind == WHOLE_READ_WAIT) {
+                assert(flow_run_status(run) == FLOW_SUSPENDED);
+                service.bias = 13;
+                assert(!flow_run_tick_at(run, flow_run_wake_time(run)));
+            }
+            assert(flow_run_status(run) == FLOW_COMPLETED && run->whole_function_executed);
+        } else {
+            assert(behavior_instance_dispatch_batch(bi, "Run", &batch, &failed) && !failed);
+        }
+        pin_value result;
+        assert(!behavior_instance_get_variable(bi, a->variables[1].id, &result));
+        assert(
+            result.d == (kind == WHOLE_READ_WRITE || kind == WHOLE_READ_COMPONENT ? 14
+                         : kind == WHOLE_READ_INPUT_EFFECT ? (i % 2 ? -2 : 10)
+                         : kind == WHOLE_READ_WAIT         ? (i % 2 ? 6 : 18)
+                                                           : (i % 2 ? -4 : 8))
+        );
+        int calls = observed ? 2 : 1;
+        if (kind == WHOLE_READ_JOIN || kind == WHOLE_READ_WRITE ||
+            kind == WHOLE_READ_WAIT || kind == WHOLE_READ_COMPONENT ||
+            kind == WHOLE_READ_INPUT_EFFECT) {
+            calls = 2;
+        }
+        assert(service.calls == calls * (kind == WHOLE_READ_LOOP ? 3 : 1));
+    }
+    if (kind == WHOLE_READ_BRANCH && observed) {
+        service = (whole_data_service){ .bias = 3 };
+        assert(!behavior_instance_set_variable(
+            bi,
+            a->variables[0].id,
+            &(pin_value){ .type = PIN_F64, .d = 5 }
+        ));
+        flow_options options = { .instance = bi };
+        flow_run *run = flow_run_start(a->graph, a->graph->nodes[0], (flow_inputs){ 0 }, &options, NULL);
+        assert(run);
+        for (int steps = 0; !service.calls; steps++) {
+            assert(steps < 5 && flow_run_step(run) == FLOW_PAUSED_RESULT);
+        }
+        service.bias = 13;
+        assert(!flow_run_resume(run) && flow_run_status(run) == FLOW_COMPLETED);
+        assert(service.calls == 2 && bi->variables[1].d == 18);
+        flow_run_free(run);
+    }
+    behavior_batch_free(batch);
+    behavior_instance_destroy(bi);
+    ecs_world_free(world);
+}
+void whole_read_branch_smoke()
+{
+    for (int kind = 0; kind < WHOLE_READ_KINDS; kind++) {
+        for (int observed = 0; observed < 2; observed++) {
+            behavior_asset *a = whole_read_branch_fixture(kind);
+            whole_read_branch_check(a, kind, observed);
+            behavior_asset_free(a);
+        }
+    }
+    puts("PASS: contextual reads across branches, joins, writes, waits, loops and inspection");
+}
 void whole_data_smoke()
 {
     whole_format_smoke();
@@ -353,4 +550,5 @@ void whole_data_smoke()
         behavior_backend_name(behavior_default_backend())
     );
     action_smoke();
+    whole_read_branch_smoke();
 }

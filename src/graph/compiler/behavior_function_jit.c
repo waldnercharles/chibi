@@ -301,6 +301,9 @@ static behavior_layout layout(
     int *registers = behavior_jit_registers(f, inspected, &saved_float, invariants);
     bool arguments = false, calls = false, loop = false;
     for (int i = 0; i < acount(f->instructions); i++) {
+        if (!inspected && !behavior_function_runtime_keeps(f, i)) {
+            continue;
+        }
         arguments |= f->instructions[i].op == BF_ARGUMENT ||
                      ((f->instructions[i].op == BF_PRESENT ||
                        f->instructions[i].op == BF_TYPE_NAME ||
@@ -960,11 +963,17 @@ static void *emit(
     int bodies = count ? count : 1;
     behavior_layout *layouts = xcalloc((size_t)bodies, sizeof *layouts);
     behavior_emission *emissions = xcalloc((size_t)bodies, sizeof *emissions);
+    behavior_function *runtime = xcalloc((size_t)bodies, sizeof *runtime);
     bool shared = false;
     int scratch = 0;
     for (int i = 0; i < bodies; i++) {
         const behavior_function *root = count ? systems[i] : NULL;
         const behavior_function *body = root ? (root->fast ? root->fast : root) : f;
+        if (!inspected && body->runtime_body) {
+            runtime[i] = *body;
+            runtime[i].instructions = body->runtime_body;
+            body = &runtime[i];
+        }
         layouts[i] = layout(body, inspected, root, false, 0);
         if (layouts[i].scratch > scratch) {
             scratch = layouts[i].scratch;
@@ -1037,6 +1046,7 @@ static void *emit(
     }
     free(layouts);
     free(emissions);
+    free(runtime);
     sljit_free_compiler(c);
     return code;
 }

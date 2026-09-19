@@ -13,7 +13,8 @@ enum
 {
     PARALLEL_MIN_ROWS = 1024,
     PARALLEL_MIN_CHUNK = 256,
-    PARALLEL_MIN_WORK = 131072
+    PARALLEL_MIN_WORK = 131072,
+    PARALLEL_MIN_VALIDATE_ROWS = 8192
 };
 typedef struct
 {
@@ -21,11 +22,13 @@ typedef struct
     behavior_update_binding **bindings;
     int stop, result, system, prefix;
     unsigned worker;
+    bool ready;
 } update_chunk;
 typedef struct
 {
     update_chunk *chunks;
     void *code;
+    int rows;
 } update_plan;
 struct game_behavior_parallel
 {
@@ -113,7 +116,11 @@ void game_behavior_parallel_prepare_incremental(
     p->invalidated = false;
     const game_task_system *tasks = game_task_pool_tasks(p->pool);
     for (int i = retained_spans; i < acount(spans); i++) {
-        apush(p->plans, ((update_plan){ .code = spans[i].code }));
+        apush(
+            p->plans,
+            ((update_plan){ .code = spans[i].code,
+                            .rows = spans[i].end - spans[i].begin })
+        );
     }
     if (tasks->workers == 1 || retained_spans == acount(spans)) {
         return;
@@ -247,6 +254,27 @@ static bool ready(const behavior_update_row *row, const ecs_execution_view *worl
            (!binding->context.binding_world || binding->context.binding_world == world) &&
            ecs_execution_entity(world, row->entity);
 }
+
+static void validate_chunks(int start, int end, uint32_t, void *user)
+{
+    update_context *ctx = user;
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Validate behavior chunk");
+    for (int c = start; c < end; c++) {
+        update_chunk *chunk = &ctx->plan->chunks[c];
+        chunk->ready = true;
+        for (int i = 0; i < acount(chunk->rows); i++) {
+            if (!ready(&chunk->rows[i], ctx->world)) {
+                chunk->ready = false;
+                break;
+            }
+        }
+        if (chunk->ready) {
+            behavior_update_refresh(chunk->bindings);
+        }
+    }
+    CHIBI_TRACE_ZONE_END(zone);
+}
+
 bool game_behavior_parallel_run(
     game_behavior_parallel *p,
     int span,
@@ -262,28 +290,40 @@ bool game_behavior_parallel_run(
     if (acount(plan->chunks) < 2) {
         return false;
     }
+    const game_task_system *tasks = game_task_pool_tasks(p->pool);
+    update_context ctx = { plan, world };
+    game_task_pool_begin(p->pool, true);
     CHIBI_TRACE_ZONE_BEGIN(validation_zone, "Validate parallel Tick rows");
-    for (int c = 0; c < acount(plan->chunks); c++) {
-        update_chunk *chunk = &plan->chunks[c];
-        for (int i = 0; i < acount(chunk->rows); i++) {
-            if (!ready(&chunk->rows[i], world)) {
-                CHIBI_TRACE_ZONE_END(validation_zone);
-                return false;
-            }
-        }
-        behavior_update_refresh(chunk->bindings);
+    if (plan->rows < PARALLEL_MIN_VALIDATE_ROWS) {
+        validate_chunks(0, acount(plan->chunks), 0, &ctx);
+    } else {
+        void *task = tasks->enqueue(
+            validate_chunks,
+            acount(plan->chunks),
+            1,
+            &ctx,
+            tasks->user
+        );
+        tasks->finish(task, tasks->user);
     }
     CHIBI_TRACE_ZONE_END(validation_zone);
+    /* Join every read-only check before any effects. A blocked row rejects
+     * the whole span, so the serial retry cannot repeat another chunk's work.
+     * Each chunk owns its refreshed bindings; the world is stable throughout. */
+    for (int c = 0; c < acount(plan->chunks); c++) {
+        if (!plan->chunks[c].ready) {
+            game_task_pool_end(p->pool);
+            return false;
+        }
+    }
     CHIBI_TRACE_ZONE_BEGIN(query_zone, "Prepare parallel behavior queries");
     bool queries_ready = game_entities_parallel_begin(entities);
     CHIBI_TRACE_ZONE_END(query_zone);
     if (!queries_ready) {
+        game_task_pool_end(p->pool);
         return false;
     }
-    const game_task_system *tasks = game_task_pool_tasks(p->pool);
-    update_context ctx = { plan, world };
     CHIBI_TRACE_ZONE_BEGIN(parallel_zone, "Parallel behavior execution");
-    game_task_pool_begin(p->pool, true);
     void *task = tasks->enqueue(run_chunks, acount(plan->chunks), 1, &ctx, tasks->user);
     tasks->finish(task, tasks->user);
     game_task_pool_end(p->pool);

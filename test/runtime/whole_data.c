@@ -227,6 +227,13 @@ void emit_data_c(const char *path)
         behavior_function_write_c(entry(a), out, waits ? "generated_data_wait" : "generated_data");
         behavior_asset_free(a);
     }
+    for (int kind = 0; kind < WHOLE_READ_KINDS; kind++) {
+        behavior_asset *a = whole_read_branch_fixture(kind);
+        char name[64];
+        snprintf(name, sizeof name, "generated_read_branch%d", kind);
+        behavior_function_write_c(entry(a), out, name);
+        behavior_asset_free(a);
+    }
     assert(!fclose(out));
 }
 static void parity(bool waits, int fail_at, unsigned budget, bool step, bool absent, void *library)
@@ -334,6 +341,32 @@ void test_compiled_data(const char *path)
         }
     }
     whole_data_smoke();
+    for (int kind = 0; kind < WHOLE_READ_KINDS; kind++) {
+        for (int mode = 0; mode < (library ? 2 : 1); mode++) {
+            behavior_asset *a = whole_read_branch_fixture(kind);
+            behavior_function *f = entry(a);
+            void *code = f->code, *inspection = f->inspection_code,
+                 *dispatch = f->dispatch;
+            behavior_backend before = behavior_debug_backend(
+                mode ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE
+            );
+            if (mode) {
+                char name[64];
+                snprintf(name, sizeof name, "generated_read_branch%d", kind);
+                f->code = dlsym(library, name);
+                assert(f->code);
+                f->inspection_code = f->code;
+                f->dispatch = NULL;
+            }
+            whole_read_branch_check(a, kind, false);
+            whole_read_branch_check(a, kind, true);
+            behavior_debug_backend(before);
+            f->code = code;
+            f->inspection_code = inspection;
+            f->dispatch = dispatch;
+            behavior_asset_free(a);
+        }
+    }
     if (library) {
         assert(!dlclose(library));
     }

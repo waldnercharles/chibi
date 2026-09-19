@@ -226,7 +226,8 @@ int behavior_lower_host_call(builder *b, node *n, int pin)
         ((behavior_function_host_call){ .call = desc->host_call,
                                         .access = desc->access,
                                         .first = first,
-                                        .result_first = result_first })
+                                        .result_first = result_first,
+                                        .result_count = desc->output_count - begin })
     );
     if (desc->host_call->missing_service) {
         int service = behavior_lower_value(

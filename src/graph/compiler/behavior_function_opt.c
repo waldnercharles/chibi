@@ -265,7 +265,8 @@ static bool discardable(behavior_function_op op)
 }
 void behavior_function_runtime_code(behavior_function *f)
 {
-    if (!acount(f->watches) && !acount(f->edges)) {
+    if (!acount(f->watches) && !acount(f->edges) && !f->component_access &&
+        !f->component_bindings) {
         return;
     }
     int count = acount(f->instructions), slots = acount(f->slots);
@@ -284,28 +285,40 @@ void behavior_function_runtime_code(behavior_function *f)
             }
         }
     }
-    for (int pc = count - 1; pc >= 0; pc--) {
-        const behavior_function_instruction *i = &f->instructions[pc];
-        if (behavior_function_observer(i->op) || i->op == BF_POINT ||
-            (discardable(i->op) && !live[i->output])) {
-            continue;
+    bool *saved = xmalloc((size_t)(slots + 1) * sizeof *saved);
+    memcpy(saved, live, (size_t)(slots + 1) * sizeof *saved);
+    for (int pass = 0; pass < 2; pass++) {
+        if (pass) {
+            behavior_function_reuse_reads(f, keep);
+            memcpy(live, saved, (size_t)(slots + 1) * sizeof *live);
         }
-        keep[pc] = true;
-        if (behavior_function_left_slot(i->op)) {
-            live[i->left] = true;
-        }
-        if (behavior_function_right_slot(i->op)) {
-            live[i->right] = true;
-        }
-        if (behavior_function_third_slot(i->op)) {
-            live[i->target] = true;
+        const behavior_function_instruction *code = pass ? f->runtime_body
+                                                         : f->instructions;
+        for (int pc = count - 1; pc >= 0; pc--) {
+            const behavior_function_instruction *i = &code[pc];
+            if ((pass && !keep[pc]) || behavior_function_observer(i->op) ||
+                i->op == BF_POINT || (discardable(i->op) && !live[i->output])) {
+                keep[pc] = false;
+                continue;
+            }
+            keep[pc] = true;
+            if (behavior_function_left_slot(i->op)) {
+                live[i->left] = true;
+            }
+            if (behavior_function_right_slot(i->op)) {
+                live[i->right] = true;
+            }
+            if (behavior_function_third_slot(i->op)) {
+                live[i->target] = true;
+            }
         }
     }
+    free(saved);
     f->runtime_map = xcalloc((size_t)(count + 1), sizeof *f->runtime_map);
     for (int pc = 0; pc < count; pc++) {
         f->runtime_map[pc] = acount(f->runtime_instructions);
         if (keep[pc]) {
-            apush(f->runtime_instructions, f->instructions[pc]);
+            apush(f->runtime_instructions, f->runtime_body[pc]);
         }
     }
     f->runtime_map[count] = acount(f->runtime_instructions);

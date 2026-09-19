@@ -53,6 +53,10 @@ typedef struct
     /* Exactly one of invoke/value is set. Value calls have no host service. */
     node_value_call_fn value;
     bool variadic;
+    /* Contextual data read with no observable effects. The same node and inputs
+     * produce the same outputs until behavior state or host state changes.
+     * Allows reuse during uninterrupted, unobserved execution. */
+    bool reusable;
 } node_host_call;
 /* Synchronous commands may append deferred host effects, but cannot dispatch
  * graphs, flush structural effects or invalidate behavior/column storage. The

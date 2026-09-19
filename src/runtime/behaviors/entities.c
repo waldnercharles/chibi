@@ -830,7 +830,8 @@ static const char *nearest_entity(const eval_context *ctx, const pin_value *inpu
     return nearest_entity_data(entities, inputs, out);
 }
 static const node_host_call NEAREST_CALL = { .service = "game.entities",
-                                             .invoke = nearest_entity_data };
+                                             .invoke = nearest_entity_data,
+                                             .reusable = true };
 
 static const node_access NEAREST_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,

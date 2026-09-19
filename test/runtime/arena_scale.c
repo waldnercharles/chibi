@@ -220,7 +220,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
             (unsigned long long)q.matching_candidates,
             (unsigned long long)q.cache_builds
         );
-        assert(q.searches == UINT64_C(2) * count * frames);
+        assert(q.searches == (uint64_t)count * frames);
         assert(q.cache_builds == (uint64_t)frames);
         assert(q.world_candidates == (uint64_t)(count + 1) * frames);
     }

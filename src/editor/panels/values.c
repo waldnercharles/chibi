@@ -952,24 +952,25 @@ void ed_draw_details_pin(editor *e, node *n, int output, int index)
         char source_label[256];
         ImGui_TextWrapped("Source: %s", ed_binding_label(e, spec->binding, source_label, sizeof source_label));
         editor_ui_track_item("inspector.input.binding.source");
-        e->binding_node = n;
-        e->binding_node_id = n->id;
-        e->binding_pin = index;
         ImVec2 action_size = { ImGui_GetContentRegionAvail().x, 0 };
         if (ImGui_ButtonEx("Change", action_size)) {
             ed_open_binding_popup(e, n, index);
         }
         editor_ui_track_item("inspector.input.binding.change");
-        bool can_jump = ed_binding_can_jump(e);
+        bool can_jump = ed_binding_can_jump(e, spec->binding);
         ImGui_BeginDisabled(!can_jump);
         if (ImGui_ButtonEx("Jump", action_size)) {
+            e->binding_node_id = n->id;
+            e->binding_pin = index;
             ed_jump_binding_source(e);
         }
         ImGui_EndDisabled();
         editor_ui_track_item("inspector.input.binding.jump");
-        bool can_convert = ed_binding_can_convert(e);
+        bool can_convert = ed_binding_can_convert(e, spec->binding);
         ImGui_BeginDisabled(!can_convert);
         if (ImGui_ButtonEx("Convert to getter", action_size)) {
+            e->binding_node_id = n->id;
+            e->binding_pin = index;
             if (ed_convert_binding(e) == 0) {
                 e->binding_node = NULL;
                 e->binding_node_id = 0;

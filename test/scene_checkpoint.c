@@ -972,6 +972,8 @@ static int test_scene_checkpoint()
     return 0;
 }
 
+void test_navigation_runtime();
+
 int scene_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -996,6 +998,7 @@ int scene_documents_run(const char *program)
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
     int failed = test_scene_checkpoint();
+    test_navigation_runtime();
     app_input_shutdown();
     cf_destroy_app();
     return failed;

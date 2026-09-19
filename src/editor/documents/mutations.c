@@ -455,7 +455,8 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
     int generic_target = out_spec->kind == PIN_DATA &&
                          (in_spec->flags & PIN_FLAG_WILDCARD);
     if (out_spec->kind == PIN_DATA && !generic_target &&
-        !(out_spec->flags & PIN_FLAG_WILDCARD) &&
+        (!(out_spec->flags & PIN_FLAG_WILDCARD) ||
+         (in_spec->type == PIN_STR && conversion_for_pins(out_spec, in_spec))) &&
         !pin_types_compatible(out_spec, in_spec)) {
         const node_desc *conv = conversion_for_pins(out_spec, in_spec);
         assert(conv);

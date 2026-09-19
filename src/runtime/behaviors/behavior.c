@@ -1397,8 +1397,10 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         return FLOW_ERR_ARGUMENT;
     }
     world->update_stats = (game_behavior_update_stats){ 0 };
+    pin_value delta = { .type = PIN_F32, .f = (float)world->delta_seconds };
+    flow_inputs tick_inputs = { .values = &delta, .count = 1 };
     if (world->batch_disabled) {
-        int result = game_behavior_dispatch_all(world, "Tick", (flow_inputs){ 0 }, error);
+        int result = game_behavior_dispatch_all(world, "Tick", tick_inputs, error);
         if (result >= 0) {
             world->update_stats.entries = world->update_stats.scheduled = result;
         }
@@ -1517,7 +1519,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
                 mark_attachment_change(world, 0);
             }
             game_entities_query_scope(world->entities, NULL);
-            result = dispatch_attachment(world, attachment, "Tick", (flow_inputs){ 0 }, error, true);
+            result = dispatch_attachment(world, attachment, "Tick", tick_inputs, error, true);
             if (result < 0) {
                 game_entities_query_scope(world->entities, NULL);
                 return result;

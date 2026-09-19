@@ -40,8 +40,11 @@ keeps dependency configuration from retriggering itself when it adjusts generate
 source permissions without changing their contents.
 
 Source fingerprints before and after each build reject results made stale by
-newer edits. A stale build forces recompilation on retry so coarse filesystem
-timestamps cannot reuse an outdated object. Each accepted generation contains an immutable application, host and
+newer edits. Ninja retries incrementally, preserving unchanged resident binaries.
+Other generators force recompilation on retry so coarse filesystem timestamps
+cannot reuse an outdated object. New `make dev` directories prefer Ninja when
+available; existing directories keep their configured generator. Each accepted
+generation contains an immutable application, host and
 resident dependency snapshot. Compile, staging and checkpoint-import failures
 leave the current editor running. Application changes replace code in the same
 process. Host, framework, resident font and shader changes report that a restart

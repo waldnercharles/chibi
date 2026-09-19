@@ -42,6 +42,7 @@ static bool draw_prototype_field(
     bool color = appearance_color_field(component->desc->type, field);
     bool first_color_change = false;
     char shader_text[8192];
+    float vector[4];
     switch (value.type) {
         case PIN_BOOL:
             changed = property_checkbox(label, &value.b, false);
@@ -147,7 +148,10 @@ static bool draw_prototype_field(
                 value.str = shader_text;
                 break;
             }
-            property_text(label, pin_value_to_string(&value));
+            snprintf(shader_text, sizeof shader_text, "%s", value.str ? value.str : "");
+            editor_ui_property_label(label, 0);
+            changed = ImGui_InputText("##text_value", shader_text, sizeof shader_text, 0);
+            value.str = shader_text;
             break;
         case PIN_HANDLE:
             if (value.type_name && !strcmp(value.type_name, "ecs.entity")) {
@@ -156,7 +160,18 @@ static bool draw_prototype_field(
             }
             property_text(label, pin_value_to_string(&value));
             break;
-        case PIN_STRUCT:
+        case PIN_STRUCT: {
+            int width = property_vector_width(value.type_name);
+            if (!width) {
+                property_text(label, pin_value_to_string(&value));
+                break;
+            }
+            memcpy(vector, value.ptr, (size_t)width * sizeof(float));
+            editor_ui_property_label(label, 0);
+            changed = editor_ui_vector_float("vector", vector, width, 0, 0);
+            value.ptr = vector;
+            break;
+        }
         case PIN_FLOW: property_text(label, pin_value_to_string(&value)); break;
     }
     if (component->desc->id == GAME_COMPONENT_GameShader.id &&

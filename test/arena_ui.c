@@ -536,6 +536,18 @@ static void expect_parts(arena_fixture *f, arena_parts expected)
     for (int i = 0; i < actual.count; i++) {
         arena_part a = actual.parts[i], b = expected.parts[i];
         assert(a.primitive == b.primitive && !strcmp(a.material, b.material));
+        if (cf_len_v3(cf_sub_v3(a.dimensions, b.dimensions)) >= .0001f) {
+            fprintf(
+                stderr,
+                "parts dimensions actual=(%g,%g,%g) expected=(%g,%g,%g)\n",
+                a.dimensions.x,
+                a.dimensions.y,
+                a.dimensions.z,
+                b.dimensions.x,
+                b.dimensions.y,
+                b.dimensions.z
+            );
+        }
         assert(cf_len_v3(cf_sub_v3(a.dimensions, b.dimensions)) < .0001f);
         assert(cf_len_v3(cf_sub_v3(a.position, b.position)) < .0001f);
         assert(cf_len_v3(cf_sub_v3(a.rotation, b.rotation)) < .0001f);
@@ -587,13 +599,15 @@ static void enter_vector_item(arena_fixture *f, const char *id, int axis, const 
     assert(editor_ui_item_rect(id, &item));
     ImGuiIO_AddMousePosEvent(
         ImGui_GetIO(),
-        item.x + item.width * (axis + .5f) / 3,
-        item.y + item.height / 2
+        item.x + item.width / 2,
+        item.y + item.height * (axis + .5f) / 3
     );
     frame(f);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Ctrl, true);
     ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
     frame(f);
     ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Ctrl, false);
     frame(f);
     replace_focused_text(f, text);
 }
@@ -2577,6 +2591,17 @@ int arena_ui_run(const char *program, bool profile_only)
     for (int i = 0; i < 30; i++) {
         frame(&f);
     }
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    key_event(SDL_SCANCODE_DELETE, true);
+    key_event(SDL_SCANCODE_DELETE, false);
+    frame(&f);
+    assert(app_input_controls() & (UINT64_C(1) << GAME_CONTROL_SPACE));
+    assert(app_input_pressed(APP_INPUT_DELETE));
+    frame(&f);
+    assert(!(app_input_controls() & (UINT64_C(1) << GAME_CONTROL_SPACE)));
+    assert(!app_input_pressed(APP_INPUT_DELETE));
+    puts("gameplay quick tap PASS: press and release in one frame survives for exactly one sample");
     if (profile_only) {
         performance_panel(&f);
         goto cleanup;

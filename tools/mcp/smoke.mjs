@@ -8,7 +8,7 @@ import { toolCatalog } from "./tool-catalog.mjs";
 
 const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
-const controller = resolve(root, "build/chibi_ctl");
+const controller = process.env.CHIBI_CTL || resolve(root, "build/chibi_ctl");
 const expectedPublicNames = [
   "buildShader",
   "buildBehavior",

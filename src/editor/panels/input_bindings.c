@@ -564,7 +564,7 @@ void ed_open_binding_popup(editor *e, node *n, int index)
     e->binding_search[0] = '\0';
     e->binding_selected = 0;
     e->binding_focus_search = true;
-    ImGui_OpenPopup("pin_binding_popup", 0);
+    e->binding_open_requested = true;
 }
 
 void ed_open_vector_binding_popup(editor *e, node *n, int index, int axis)
@@ -1115,9 +1115,8 @@ void ed_jump_binding_source(editor *e)
     }
 }
 
-bool ed_binding_can_convert(const editor *e)
+bool ed_binding_can_convert(const editor *e, const pin_binding *binding)
 {
-    const pin_binding *binding = ed_current_binding(e);
     if (!binding) {
         return false;
     }
@@ -1151,11 +1150,10 @@ bool ed_binding_can_convert(const editor *e)
     return binding->kind == PIN_BINDING_DELTA_TIME;
 }
 
-bool ed_binding_can_jump(const editor *e)
+bool ed_binding_can_jump(const editor *e, const pin_binding *binding)
 {
-    const pin_binding *binding = ed_current_binding(e);
     return binding && binding->kind == PIN_BINDING_VARIABLE &&
-           ed_binding_can_convert(e);
+           ed_binding_can_convert(e, binding);
 }
 
 void ed_draw_binding_popup(editor *e)
@@ -1169,6 +1167,13 @@ void ed_draw_binding_popup(editor *e)
     if (!n || e->binding_pin >= n->input_count) {
         ed_close_binding_popup(e);
         return;
+    }
+    /* Inspector and canvas buttons have different ImGui ID stacks. Open the
+     * popup in the same canvas scope that draws it, including next-frame
+     * requests made by the inspector. */
+    if (e->binding_open_requested) {
+        ImGui_OpenPopup("pin_binding_popup", 0);
+        e->binding_open_requested = false;
     }
     if (!ImGui_BeginPopup("pin_binding_popup", 0)) {
         return;
@@ -1297,7 +1302,7 @@ void ed_draw_binding_popup(editor *e)
     node *inline_source = NULL;
     int inline_pin = -1;
     bool has_inline_source = ed_inline_source_for(e, n, e->binding_pin, &inline_source, &inline_pin);
-    bool can_jump = ed_binding_can_jump(e);
+    bool can_jump = ed_binding_can_jump(e, ed_current_binding(e));
     ImGui_BeginDisabled(!can_jump);
     if (ImGui_ButtonEx("Jump to source", (ImVec2){ 0, 0 })) {
         ed_jump_binding_source(e);
@@ -1306,7 +1311,7 @@ void ed_draw_binding_popup(editor *e)
     ImGui_EndDisabled();
     editor_ui_track_item("graph.binding.jump");
     ImGui_SameLine();
-    bool can_convert = ed_binding_can_convert(e);
+    bool can_convert = ed_binding_can_convert(e, ed_current_binding(e));
     ImGui_BeginDisabled(!can_convert && !has_inline_source);
     if (ImGui_ButtonEx(has_inline_source ? "Expand source" : "Convert to getter", (ImVec2){ 0, 0 })) {
         int result = has_inline_source ? ed_expand_inline_source(e, n, e->binding_pin)

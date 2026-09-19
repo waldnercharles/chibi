@@ -115,7 +115,7 @@ web:
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend
 
 web-serve: web
-	emrun --no_browser --port 8099 "$(WEB_BUILD_DIR)/chibi.html"
+	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project . --port 8099
 
 format:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target format
@@ -124,6 +124,7 @@ check-format:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target check-format
 
 test:
+	python3 test/web_serve_test.py
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
@@ -147,9 +148,11 @@ clean:
 DEV_BUILD_DIR ?= build-dev
 JOBS ?= 4
 DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
+# Ninja keeps unchanged resident binaries intact during application reloads.
+DEV_GENERATOR_FLAGS ?= $(if $(wildcard $(DEV_BUILD_DIR)/CMakeCache.txt),,$(if $(shell command -v ninja 2>/dev/null),-G Ninja,))
 
 dev:
-	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
+	cmake -S . -B "$(DEV_BUILD_DIR)" $(DEV_GENERATOR_FLAGS) $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)

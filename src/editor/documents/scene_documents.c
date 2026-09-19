@@ -35,20 +35,37 @@ static void duplicate_current_behavior(app_scene_authoring *scene)
 
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
 
-int create_new_prototype(app_scene_authoring *scene)
+static bool valid_asset_name(const char *name)
 {
+    return name[0] && strspn(name, " ") != strlen(name) && strlen(name) <= 127 &&
+           strspn(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _-") ==
+               strlen(name);
+}
+
+int create_new_prototype(app_scene_authoring *scene, const char *requested_name)
+{
+    if (requested_name && !valid_asset_name(requested_name)) {
+        snprintf(scene->message, sizeof scene->message, "Use letters, numbers, spaces, hyphens or underscores.");
+        return -1;
+    }
     for (int i = 1; i < 1000; i++) {
-        char name[64];
+        char name[128];
         char json[512];
         snprintf(name, sizeof name, "NewPrototype%d", i);
+        if (requested_name) {
+            snprintf(name, sizeof name, "%s", requested_name);
+        }
         if (find_prototype(scene, name)) {
+            if (requested_name) {
+                snprintf(scene->message, sizeof scene->message, "A prototype named %s already exists.", name);
+                return -1;
+            }
             continue;
         }
         snprintf(
             json,
             sizeof json,
             "{\"name\":\"%s\",\"components\":{"
-            "\"GameHealth\":{\"current\":100,\"maximum\":100},"
             "\"GameTransform\":{\"x\":0,\"y\":0}}}",
             name
         );
@@ -99,14 +116,25 @@ static int duplicate_selected_prototype(app_scene_authoring *scene)
     return -1;
 }
 
-int create_graph_asset(app_scene_authoring *scene, behavior_domain domain)
+int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const char *requested_name)
 {
+    if (requested_name && !valid_asset_name(requested_name)) {
+        snprintf(scene->message, sizeof scene->message, "Use letters, numbers, spaces, hyphens or underscores.");
+        return -1;
+    }
     for (int i = 1; i < 1000; i++) {
-        char name[64];
+        char name[128];
         const char *labels[] = { "Behavior", "Library", "Material",
                                  "Shape",    "Event",   "ShaderLibrary" };
         snprintf(name, sizeof name, "New%s%d", labels[domain], i);
+        if (requested_name) {
+            snprintf(name, sizeof name, "%s", requested_name);
+        }
         if (game_live_find_definition(scene->live, name)) {
+            if (requested_name) {
+                snprintf(scene->message, sizeof scene->message, "An asset named %s already exists.", name);
+                return -1;
+            }
             continue;
         }
         behavior_asset *working = behavior_asset_new(name);
@@ -145,7 +173,7 @@ int create_graph_asset(app_scene_authoring *scene, behavior_domain domain)
 
 int create_behavior_asset(app_scene_authoring *scene)
 {
-    return create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT);
+    return create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT, NULL);
 }
 
 static int sync_open_behavior(app_scene_authoring *scene)
@@ -305,6 +333,44 @@ static int ensure_directory(const char *path)
         return 0;
     }
     return -1;
+}
+
+int create_scene_asset(app_scene_authoring *scene, const char *name)
+{
+    if (!valid_asset_name(name)) {
+        snprintf(scene->message, sizeof scene->message, "Use letters, numbers, spaces, hyphens or underscores.");
+        return -1;
+    }
+    char *directory = content_path_join(scene->content_root, "scenes");
+    int result = ensure_directory(directory);
+    char filename[160];
+    snprintf(filename, sizeof filename, "%s.json", name);
+    char *path = content_path_join(directory, filename);
+    free(directory);
+    FILE *existing = fopen(path, "rb");
+    if (existing) {
+        fclose(existing);
+        snprintf(scene->message, sizeof scene->message, "A scene named %s already exists.", name);
+        free(path);
+        return -1;
+    }
+    char json[256];
+    snprintf(json, sizeof json, "{\"version\":1,\"name\":\"%s\",\"presentation\":\"2d\",\"entities\":[]}", name);
+    if (!result) {
+        result = write_text_file_atomic(path, json);
+    }
+    if (!result) {
+        result = scene_tabs_open_scene(scene, path);
+    }
+    if (!result) {
+        editor_ui_set_pane_visible(EDITOR_UI_PANE_SCENE, true);
+        editor_ui_request_focus(EDITOR_UI_FOCUS_SCENE);
+        snprintf(scene->message, sizeof scene->message, "Created %s.", name);
+    } else {
+        snprintf(scene->message, sizeof scene->message, "Could not create %s.", name);
+    }
+    free(path);
+    return result;
 }
 
 static char *document_default_path(app_scene_authoring *scene)
@@ -720,8 +786,7 @@ int save_active_document(app_scene_authoring *scene)
     if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         if (!asset || !asset->path) {
-            snprintf(scene->message, sizeof scene->message, "Prototype requires Save As.");
-            return -1;
+            return asset ? save_as_active_document(scene) : -1;
         }
         return app_scene_authoring_save_prototype(
             scene,
@@ -732,6 +797,10 @@ int save_active_document(app_scene_authoring *scene)
     if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         if (!scene->definition) {
             return -1;
+        }
+        if (!game_live_definition_path(scene->definition) &&
+            !behavior_path(scene, scene->definition->name)) {
+            return save_as_active_document(scene);
         }
         int synced = sync_behavior_working(scene);
         int saved = synced == 0

@@ -950,11 +950,16 @@ static int input_value(builder *b, node *n, int pin)
     }
     if (binding->kind == PIN_BINDING_VARIABLE &&
         (!binding->source_asset || !strcmp(binding->source_asset, b->asset->name))) {
-        int index = behavior_lower_variable(b, binding->variable_id, s->type, s->container);
-        if (index >= 0) {
+        const behavior_variable
+            *variable = behavior_asset_find_variable_by_id(b->asset, binding->variable_id);
+        if (variable && variable->container == s->container) {
+            int index = (int)(variable - b->asset->variables);
+            pin_spec source = *s;
+            source.type = variable->type;
+            source.type_name = variable->type_name;
             return behavior_lower_coerce(
                 b,
-                behavior_lower_source(b, BF_VARIABLE, index, s, n, pin),
+                behavior_lower_source(b, BF_VARIABLE, index, &source, n, pin),
                 s,
                 true
             );

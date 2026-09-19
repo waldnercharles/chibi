@@ -1,0 +1,34 @@
+{
+  "name": "OrbitBumper",
+  "identity": "prototype-00000000000001aa",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 1.0,
+      "border_color": 4293970943,
+      "border_width": 3.0,
+      "color": 4004798463,
+      "glow_color": 3650368170,
+      "glow_radius": 14.0,
+      "height": 60.0,
+      "shape": 1,
+      "stroke_width": 0.0,
+      "width": 60.0
+    },
+    "GAME.GameCollider": {
+      "category": 8,
+      "friction": 0.0,
+      "height": 0.0,
+      "ignore_entity": null,
+      "mask": 1,
+      "radius": 29.0,
+      "restitution": 1.0,
+      "sensor": false,
+      "shape": 0,
+      "width": 0.0
+    },
+    "game.GameTransform": {
+      "x": -85.0,
+      "y": -430.0
+    }
+  }
+}

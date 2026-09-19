@@ -150,6 +150,20 @@ void engine_input_reset(engine_input *input)
     aclear(input->released);
 }
 
+static bool update_button(engine_input *input, const char *action, bool down)
+{
+    int index = button_index(input, action);
+    if (index < 0) {
+        apush(input->buttons, ((input_button){ xstrdup(action), down }));
+        return down;
+    }
+    if (input->buttons[index].pressed == down) {
+        return false;
+    }
+    input->buttons[index].pressed = down;
+    return true;
+}
+
 int engine_input_action(engine_input *input, const char *action, bool pressed)
 {
     if (!input || !action || !action[0]) {
@@ -158,16 +172,10 @@ int engine_input_action(engine_input *input, const char *action, bool pressed)
     if (!game_behavior_has_event(input->behaviors, action)) {
         return FLOW_ERR_UNKNOWN_EVENT;
     }
-    bool down = pressed != 0;
-    int index = button_index(input, action);
-    if (index < 0) {
-        apush(input->buttons, ((input_button){ xstrdup(action), down }));
-    } else if (input->buttons[index].pressed == down) {
+    if (!update_button(input, action, pressed)) {
         return 0;
-    } else {
-        input->buttons[index].pressed = down;
     }
-    apush(input->transitions, ((input_transition){ xstrdup(action), down }));
+    apush(input->transitions, ((input_transition){ xstrdup(action), pressed }));
     return 1;
 }
 
@@ -231,7 +239,10 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
                 index++;
             }
             if (index == acount(sample)) {
-                engine_input_action(input, input->buttons[i].action, false);
+                if (engine_input_action(input, input->buttons[i].action, false) ==
+                    FLOW_ERR_UNKNOWN_EVENT) {
+                    input->buttons[i].pressed = false;
+                }
             }
         }
         for (int i = 0; i < acount(sample); i++) {
@@ -240,8 +251,10 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
                 sample[i].action,
                 sample[i].pressed
             );
-            /* Bindings may target an action whose owner is not spawned yet. */
-            if (dispatched < 0 && dispatched != FLOW_ERR_UNKNOWN_EVENT) {
+            /* Held state is useful to Tick graphs without an event receiver. */
+            if (dispatched == FLOW_ERR_UNKNOWN_EVENT) {
+                update_button(input, sample[i].action, sample[i].pressed);
+            } else if (dispatched < 0) {
                 result = dispatched;
                 break;
             }

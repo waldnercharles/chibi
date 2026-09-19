@@ -716,8 +716,72 @@ static void configured_motion()
     puts("physics settings PASS: force drive, kinematic velocity, CCD tradeoff, validation and retained reset configuration");
 }
 
+static void authored_bounce_and_drive()
+{
+    fixture f = create();
+    ecs_entity wall = body(&f, 50, 0, GAME_BODY_STATIC, 2, 1);
+    *GAME_GameCollider_get(f.world, wall) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                            .width = 2,
+                                                            .height = 100,
+                                                            .category = 2,
+                                                            .mask = 1,
+                                                            .restitution = 1 };
+    ecs_entity ball = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 2);
+    *GAME_GameVelocity_get(f.world, ball) = (GameVelocity){ 240, 0 };
+    for (int i = 0; i < 20; i++) {
+        assert(step(&f, 1.0f / 60) >= 0);
+    }
+    assert(GAME_GameVelocity_get(f.world, ball)->x < -200);
+    dispose(&f);
+
+    f = create();
+    ecs_entity arm = body(&f, 20, 0, GAME_BODY_KINEMATIC, 2, 1);
+    *GAME_GameCollider_get(f.world, arm) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                           .width = 48,
+                                                           .height = 8,
+                                                           .category = 2,
+                                                           .mask = 1 };
+    GameBody *rotating = GAME_GameBody_get(f.world, arm);
+    rotating->angular_velocity = 6;
+    ball = body(&f, 34, 10, GAME_BODY_DYNAMIC, 1, 2);
+    for (int i = 0; i < 10; i++) {
+        assert(step(&f, 1.0f / 60) >= 0);
+    }
+    assert(fabsf(GAME_GameOrientation_get(f.world, arm)->radians - 1) < .02f);
+    assert(GAME_GameVelocity_get(f.world, ball)->y > 30);
+    assert(fabsf(GAME_GameTransform_get(f.world, arm)->x - 20) < .01f);
+    rotating = GAME_GameBody_get(f.world, arm);
+    rotating->angular_velocity = 0;
+    float stopped = GAME_GameOrientation_get(f.world, arm)->radians;
+    for (int i = 0; i < 10; i++) {
+        assert(step(&f, 1.0f / 60) >= 0);
+    }
+    assert(GAME_GameOrientation_get(f.world, arm)->radians == stopped);
+    /* Continuous angles survive either direction through the pi boundary. */
+    for (int direction = -1; direction <= 1; direction += 2) {
+        GAME_GameOrientation_get(f.world, arm)->radians = direction * 3;
+        rotating->angular_velocity = direction * 3.6f;
+        for (int i = 0; i < 10; i++) {
+            assert(step(&f, 1.0f / 60) >= 0);
+        }
+        assert(fabsf(GAME_GameOrientation_get(f.world, arm)->radians - direction * 3.6f) < .02f);
+    }
+    rotating->angular_velocity = NAN;
+    assert(game_physics_tick(f.live->physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    rotating->angular_velocity = 1;
+    rotating->type = GAME_BODY_DYNAMIC;
+    assert(game_physics_tick(f.live->physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    rotating->type = GAME_BODY_KINEMATIC;
+    assert(GAME_GameOrientation_remove(f.world, arm, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(game_physics_tick(f.live->physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    dispose(&f);
+    puts("physics authored motion PASS: restitution, angular strike, stop, unwrapped angles and invalid configuration");
+}
+
 void test_physics()
 {
+    authored_bounce_and_drive();
     test_task_pool();
     configured_motion();
     game_task_pool *pool = game_task_pool_acquire();

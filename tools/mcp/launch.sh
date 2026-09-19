@@ -3,7 +3,17 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd -P)
-controller="$repo_root/build/chibi_ctl"
+build_dir=${BUILD_DIR:-build}
+case "$build_dir" in
+    /*) ;;
+    *) build_dir="$repo_root/$build_dir" ;;
+esac
+controller=${CHIBI_CTL:-"$build_dir/chibi_ctl"}
+
+if [ -n "${CHIBI_CTL:-}" ] && [ ! -x "$controller" ]; then
+    printf '%s\n' "chibi MCP controller is not executable: $controller" >&2
+    exit 1
+fi
 
 if [ ! -x "$controller" ]; then
     if ! command -v make >/dev/null 2>&1; then
@@ -11,7 +21,7 @@ if [ ! -x "$controller" ]; then
         exit 1
     fi
     printf '%s\n' 'chibi MCP building native controllers' >&2
-    make -C "$repo_root" build >&2
+    make -C "$repo_root" build BUILD_DIR="$build_dir" >&2
 fi
 
 if [ ! -x "$controller" ]; then

@@ -424,6 +424,53 @@ static int restore_actor(app_scene_authoring *scene, const scene_actor_edit *edi
     return 0;
 }
 
+int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
+{
+    if (!selected_actor(scene)) {
+        return -1;
+    }
+    finish_transform_edit(scene, false);
+    if (scene->runtime_snapshot_valid &&
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
+            0) {
+        return -1;
+    }
+    scene_actor *actor = selected_actor(scene);
+    char name[256];
+    int suffix = 1;
+    do {
+        if (snprintf(name, sizeof name, "%s_%d", actor->prototype_name, suffix++) >=
+            (int)sizeof name) {
+            return -1;
+        }
+    } while (actor_name_used(scene, name));
+    char *prototype = xstrdup(actor->prototype_name);
+    char *state = capture_actor_state(scene, actor);
+    char *base = game_prototype_save(actor->base);
+    char *retained = scene_retention_save(actor->retained);
+    scene_actor_edit edit = { .index = acount(scene->actors),
+                              .name = name,
+                              .prototype_name = prototype,
+                              .base_json = base,
+                              .state_json = state,
+                              .retained_json = retained,
+                              .created = true };
+    ecs_entity entity;
+    int result = state && base ? restore_actor(scene, &edit, &entity) : -1;
+    if (!result) {
+        bool recorded = scene_history_push_actor(scene->history, entity, &edit);
+        assert(recorded);
+        scene->scene_dirty = true;
+        asset_index_invalidate(scene);
+        scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    }
+    free(prototype);
+    free(state);
+    free(base);
+    free(retained);
+    return result;
+}
+
 static char *inherited_component_before_add(
     const scene_actor *actor,
     const scene_component_edit *edit,

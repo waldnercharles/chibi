@@ -30,6 +30,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
 {
     int type;
     bool continuous;
+    float angular_velocity; /* Kinematic radians/second; requires Orientation. */
 }
 GameBody;
 
@@ -43,6 +44,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
     float height;
     bool sensor;
     uint64_t ignore_entity NODE_HANDLE(ecs.entity);
+    float restitution;
+    float friction;
 }
 GameCollider;
 
@@ -105,6 +108,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
     unsigned glow_color;
     float stroke_width;
     float antialias;
+    int layer;
 }
 GameAppearance;
 
@@ -463,7 +467,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 }
 GameActionBinding;
 
-typedef enum
+enum
 {
     GAME_WIDGET_LABEL,
     GAME_WIDGET_PANEL,
@@ -472,7 +476,7 @@ typedef enum
     GAME_WIDGET_SLIDER,
     GAME_WIDGET_SLOT,
     GAME_WIDGET_MAP,
-} GameWidgetKind;
+};
 
 /* UI offsets and sizes are logical pixels at a 720-pixel viewport height.
  * Anchors and pivots are fractions. Behavior owns contents, layout and rules.
@@ -480,7 +484,7 @@ typedef enum
  * Matching nonempty drop groups permit transfers; behaviors decide validity. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameWidget)
 {
-    GameWidgetKind kind;
+    int kind;
     const char *text;
     const char *tooltip;
     const char *event;
@@ -498,6 +502,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameWidget)
     float value;
     float minimum;
     float maximum;
+    bool center_text;
     bool hidden;
     bool disabled;
     bool draggable;

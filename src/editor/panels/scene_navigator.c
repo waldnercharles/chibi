@@ -110,6 +110,7 @@ static void draw_scene_outline(app_scene_authoring *scene)
     editor_ui_search_field("scene.search", scene->scene_search, sizeof scene->scene_search, "Search scene");
     int visible = 0;
     int delete_index = -1;
+    int duplicate_index = -1;
     for (int i = 0; i < acount(scene->actors); i++) {
         if (!scene_search_matches(scene->scene_search, scene->actors[i].name) &&
             !scene_search_matches(scene->scene_search, scene->actors[i].prototype_name)) {
@@ -131,6 +132,13 @@ static void draw_scene_outline(app_scene_authoring *scene)
             scene->reveal_actor = scene->actors[i].entity;
         }
         if (ImGui_BeginPopupContextItemEx("actor_actions", 0)) {
+            if (ImGui_IsWindowAppearing()) {
+                select_instance(scene, i);
+            }
+            if (ImGui_MenuItem("Duplicate")) {
+                duplicate_index = i;
+            }
+            editor_ui_track_item("scene.duplicate");
             if (ImGui_MenuItem("Delete")) {
                 delete_index = i;
             }
@@ -142,6 +150,10 @@ static void draw_scene_outline(app_scene_authoring *scene)
     if (delete_index >= 0) {
         select_instance(scene, delete_index);
         app_scene_authoring_delete_instance(scene);
+    }
+    if (duplicate_index >= 0) {
+        select_instance(scene, duplicate_index);
+        app_scene_authoring_duplicate_instance(scene);
     }
     game_entities_copy_live(scene->live->entities, &scene->runtime_entities);
     bool spawned_section = false;
@@ -300,8 +312,89 @@ static bool draw_content_tree(app_scene_authoring *scene, const char *parent)
     return any;
 }
 
+typedef enum
+{
+    NEW_SCENE,
+    NEW_PROTOTYPE,
+    NEW_BEHAVIOR
+} new_asset_kind;
+
+static void draw_create_asset(app_scene_authoring *scene, new_asset_kind kind, char *name)
+{
+    static const char *descriptions[] = {
+        "Start with an empty 2D scene.",
+        "Create a reusable object. Add components to give it form and "
+        "behavior.",
+        "Build logic with events, values and connections.",
+    };
+    static const char *buttons[] = { "Create Scene", "Create Prototype", "Create Behavior" };
+    ImVec2 viewport = ImGui_GetMainViewport()->Size;
+    float dialog_width = fminf(400.0f, viewport.x - 32.0f);
+    ImGui_SetNextWindowPosEx(
+        (ImVec2){ viewport.x * 0.5f, viewport.y * 0.5f },
+        ImGuiCond_Always,
+        (ImVec2){ 0.5f, 0.5f }
+    );
+    ImGui_SetNextWindowSize((ImVec2){ dialog_width, 0 }, ImGuiCond_Always);
+    if (ImGui_BeginPopupModal("Create Asset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui_TextWrapped("%s", descriptions[kind]);
+        ImGui_Spacing();
+        ImGui_TextUnformatted("Name");
+        if (ImGui_IsWindowAppearing()) {
+            ImGui_SetKeyboardFocusHere();
+        }
+        ImGui_SetNextItemWidth(-1);
+        bool submit = ImGui_InputText("##name", name, 128, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+        editor_ui_track_item("scene.new.name");
+        if (scene->message[0]) {
+            ImGui_PushStyleColorImVec4(ImGuiCol_Text, (ImVec4){ 1.0f, 0.55f, 0.55f, 1.0f });
+            ImGui_TextWrapped("%s", scene->message);
+            ImGui_PopStyleColor();
+        } else {
+            ImGui_TextDisabled(
+                "%s",
+                kind != NEW_SCENE ? "Save to keep this asset in your project."
+                                  : "Saved in the scenes folder."
+            );
+        }
+        ImGui_Spacing();
+        bool cancel = ImGui_ButtonEx("Cancel", (ImVec2){ 90, 32 });
+        editor_ui_track_item("scene.new.cancel");
+        ImGui_SameLine();
+        ImGui_BeginDisabled(!name[0]);
+        bool create = ImGui_ButtonEx(
+            buttons[kind],
+            (ImVec2){ ImGui_GetContentRegionAvail().x, 32 }
+        );
+        editor_ui_track_item("scene.new.create");
+        ImGui_EndDisabled();
+        if (name[0] && (create || submit)) {
+            int result = -1;
+            switch (kind) {
+                case NEW_SCENE: result = create_scene_asset(scene, name); break;
+                case NEW_PROTOTYPE:
+                    result = create_new_prototype(scene, name);
+                    break;
+                case NEW_BEHAVIOR:
+                    result = create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT, name);
+                    break;
+            }
+            if (!result) {
+                ImGui_CloseCurrentPopup();
+            }
+        }
+        if (cancel || ImGui_IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui_CloseCurrentPopup();
+        }
+        ImGui_EndPopup();
+    }
+}
+
 static void draw_files(app_scene_authoring *scene)
 {
+    static char name[128];
+    static new_asset_kind kind;
+    bool create = false;
     double now = ImGui_GetTime();
     if (now - scene->content_scan_time > 1.0) {
         content_refresh(scene);
@@ -312,31 +405,45 @@ static void draw_files(app_scene_authoring *scene)
     }
     editor_ui_track_item("content.create");
     if (ImGui_BeginPopup("create_asset", 0)) {
+        if (ImGui_MenuItem("Scene")) {
+            create = true;
+            kind = NEW_SCENE;
+        }
+        editor_ui_track_item("content.new_scene");
         if (ImGui_MenuItem("Behavior")) {
-            create_behavior_asset(scene);
+            create = true;
+            kind = NEW_BEHAVIOR;
         }
         editor_ui_track_item("content.new_behavior");
         if (ImGui_MenuItem("Function Library")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_LIBRARY);
+            create_graph_asset(scene, BEHAVIOR_DOMAIN_LIBRARY, NULL);
         }
         if (ImGui_MenuItem("Shader Function Library")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_SHADER_LIBRARY);
+            create_graph_asset(scene, BEHAVIOR_DOMAIN_SHADER_LIBRARY, NULL);
         }
         if (ImGui_MenuItem("Event Definition")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT_DEFINITION);
+            create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT_DEFINITION, NULL);
         }
         if (ImGui_MenuItem("Material")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_MATERIAL);
+            create_graph_asset(scene, BEHAVIOR_DOMAIN_MATERIAL, NULL);
         }
         if (ImGui_MenuItem("Shape")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_SHAPE);
+            create_graph_asset(scene, BEHAVIOR_DOMAIN_SHAPE, NULL);
         }
         if (ImGui_MenuItem("Prototype")) {
-            create_new_prototype(scene);
+            create = true;
+            kind = NEW_PROTOTYPE;
         }
         editor_ui_track_item("content.new_prototype");
         ImGui_EndPopup();
     }
+    if (create) {
+        static const char *names[] = { "NewScene", "NewPrototype", "NewBehavior" };
+        snprintf(name, sizeof name, "%s", names[kind]);
+        scene->message[0] = 0;
+        ImGui_OpenPopup("Create Asset", 0);
+    }
+    draw_create_asset(scene, kind, name);
     ImGui_SameLine();
     ImGui_SetNextItemWidth(fmaxf(1.0f, ImGui_GetContentRegionAvail().x));
     if (ImGui_BeginCombo("##project_view", scene->content_catalog ? "Asset catalog" : "Files", 0)) {

@@ -481,6 +481,20 @@ bool property_number(const char *label, ImGuiDataType type, void *value, bool ov
     return ImGui_InputScalar("###field_value", type, value);
 }
 
+int property_vector_width(const char *type_name)
+{
+    if (!type_name) {
+        return 0;
+    }
+    const char *names[] = { "CF_V2", "CF_V3", "CF_V4" };
+    for (int i = 0; i < 3; i++) {
+        if (!strcmp(type_name, names[i])) {
+            return i + 2;
+        }
+    }
+    return 0;
+}
+
 bool property_environment(const char *label, const type_field *field, float *value, bool)
 {
     float minimum = 0, maximum = 0, scale = 1;

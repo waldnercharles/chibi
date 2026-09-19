@@ -301,7 +301,7 @@ static bool draw_widget(
         ImGui_IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui_SetTooltip("%s", widget->tooltip);
     }
-    label(widget, rect, scale, center);
+    label(widget, rect, scale, center || widget->center_text);
     ImGui_PopStyleColorEx(5);
     ImGui_PopStyleVar();
     ImGui_EndDisabled();

@@ -23,6 +23,12 @@
 #include <string.h>
 #include <time.h>
 
+typedef struct
+{
+    ecs_entity entity;
+    int layer;
+} draw_actor;
+
 struct app_scene_renderer
 {
     render_arena *arena;
@@ -38,6 +44,7 @@ struct app_scene_renderer
     bool background_valid;
     double previous_frame;
     render_material_entity *entities;
+    draw_actor *actors;
     ecs_world *world;
     engine_viewport_camera camera;
     int width, height;
@@ -101,6 +108,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_programs_free(renderer->fragment);
     afree(renderer->fragment_programs);
     afree(renderer->entities);
+    afree(renderer->actors);
     free(renderer);
 }
 
@@ -410,6 +418,39 @@ static unsigned particle_color(unsigned start, unsigned end, float age)
     return color;
 }
 
+static int compare_actors(const void *left, const void *right)
+{
+    const draw_actor *a = left, *b = right;
+    if (a->layer != b->layer) {
+        return (a->layer > b->layer) - (a->layer < b->layer);
+    }
+    return (a->entity.slot > b->entity.slot) - (a->entity.slot < b->entity.slot);
+}
+
+static void collect_order(app_scene_renderer *renderer, ecs_world *world)
+{
+    aclear(renderer->actors);
+    ecs_component_id component = GAME_COMPONENT_GameTransform.id;
+    ecs_query query;
+    if (ecs_query_begin(world, &query, &component, 1) != ECS_OK) {
+        return;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
+        apush(renderer->actors, ((draw_actor){ entity, appearance ? appearance->layer : 0 }));
+    }
+    ecs_query_end(&query);
+    if (acount(renderer->actors) > 1) {
+        qsort(
+            renderer->actors,
+            (size_t)acount(renderer->actors),
+            sizeof *renderer->actors,
+            compare_actors
+        );
+    }
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -418,87 +459,74 @@ static void collect(
 )
 {
     asetlen(renderer->entities, 0);
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
-    ecs_query query;
-    if (ecs_query_begin(world, &query, required, 1) == ECS_OK) {
-        ecs_entity entity;
-        while (ecs_query_next(&query, &entity)) {
-            if (!engine_entity_visible(runtime, world, entity)) {
-                continue;
-            }
-            const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-            const GameShader *binding = GAME_GameShader_get_const(world, entity);
-            const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);
-            const GameGeometry3D *geometry = GAME_GameGeometry3D_get_const(world, entity);
-            if (!authored && !geometry) {
-                continue;
-            }
-            GameAppearance fallback = authored
-                                        ? *authored
-                                        : (GameAppearance){ .width = geometry->width,
-                                                            .height = geometry->depth,
-                                                            .color = 0xffffffffu,
-                                                            .shape = GAME_SHAPE_BOX,
-                                                            .antialias = 1 };
-            const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
-            float heading = orientation ? orientation->radians : 0;
-            GameAppearance appearance;
-            float angle;
-            if (!render_geometry_2d_project(
-                    authored ? NULL : geometry,
-                    &fallback,
-                    visual,
-                    heading,
-                    &appearance,
-                    &angle
-                )) {
-                continue;
-            }
-            int shape = !authored && binding ? render_shader_find(binding->shape) : 0;
-            float bounds[2];
-            if (!authored && render_shader_bounds(shape, bounds)) {
-                float scale = visual ? visual->scale : 1;
-                appearance.shape = GAME_SHAPE_BOX;
-                appearance.width = 2 *
-                                   (binding->bounds_x > 0 ? binding->bounds_x
-                                                          : bounds[0]) *
-                                   scale;
-                appearance.height = 2 *
-                                    (binding->bounds_y > 0 ? binding->bounds_y
-                                                           : bounds[1]) *
-                                    scale;
-            }
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
-            }
-            if (!append_entity(
-                    renderer,
-                    &position,
-                    &appearance,
-                    angle,
-                    GAME_GameSdfMotion_get_const(world, entity),
-                    GAME_GameMaterial_get_const(world, entity)
-                )) {
-                continue;
-            }
-            /* Appearance owns the 2D footprint; its shader still owns the
-             * material channels used by the SDF raster and HRC inputs. */
-            if (binding) {
-                render_material_entity
-                    *draw = &renderer->entities[acount(renderer->entities) - 1];
-                int material = render_shader_find(binding->material);
-                draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
-                draw->reserved[1] = !authored && render_shader_is_shape(shape)
-                                      ? (float)shape
-                                      : 0;
-                render_shader_parameters(material, world, entity, binding->parameters, draw->material_parameters);
-                if (!authored) {
-                    render_shader_parameters(shape, world, entity, binding->parameters, draw->shape_parameters);
-                }
+    collect_order(renderer, world);
+    for (int i = 0; i < acount(renderer->actors); i++) {
+        ecs_entity entity = renderer->actors[i].entity;
+        if (!engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
+        const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
+        const GameShader *binding = GAME_GameShader_get_const(world, entity);
+        const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);
+        const GameGeometry3D *geometry = GAME_GameGeometry3D_get_const(world, entity);
+        if (!authored && !geometry) {
+            continue;
+        }
+        GameAppearance fallback = authored
+                                    ? *authored
+                                    : (GameAppearance){ .width = geometry->width,
+                                                        .height = geometry->depth,
+                                                        .color = 0xffffffffu,
+                                                        .shape = GAME_SHAPE_BOX,
+                                                        .antialias = 1 };
+        const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+        float heading = orientation ? orientation->radians : 0;
+        GameAppearance appearance;
+        float angle;
+        if (!render_geometry_2d_project(authored ? NULL : geometry, &fallback, visual, heading, &appearance, &angle)) {
+            continue;
+        }
+        int shape = !authored && binding ? render_shader_find(binding->shape) : 0;
+        float bounds[2];
+        if (!authored && render_shader_bounds(shape, bounds)) {
+            float scale = visual ? visual->scale : 1;
+            appearance.shape = GAME_SHAPE_BOX;
+            appearance.width = 2 *
+                               (binding->bounds_x > 0 ? binding->bounds_x : bounds[0]) *
+                               scale;
+            appearance.height = 2 *
+                                (binding->bounds_y > 0 ? binding->bounds_y
+                                                       : bounds[1]) *
+                                scale;
+        }
+        GameTransform position = *GAME_GameTransform_get_const(world, entity);
+        if (runtime) {
+            engine_render_position(runtime, entity, &position);
+        }
+        if (!append_entity(
+                renderer,
+                &position,
+                &appearance,
+                angle,
+                GAME_GameSdfMotion_get_const(world, entity),
+                GAME_GameMaterial_get_const(world, entity)
+            )) {
+            continue;
+        }
+        /* Appearance owns the 2D footprint; its shader still owns the
+         * material channels used by the SDF raster and HRC inputs. */
+        if (binding) {
+            render_material_entity *draw = &renderer->entities[acount(renderer->entities) - 1];
+            int material = render_shader_find(binding->material);
+            draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
+            draw->reserved[1] = !authored && render_shader_is_shape(shape)
+                                  ? (float)shape
+                                  : 0;
+            render_shader_parameters(material, world, entity, binding->parameters, draw->material_parameters);
+            if (!authored) {
+                render_shader_parameters(shape, world, entity, binding->parameters, draw->shape_parameters);
             }
         }
-        ecs_query_end(&query);
     }
     const game_particle *items = game_particles_data(particles);
     for (int i = 0; i < game_particles_count(particles); i++) {
@@ -777,7 +805,9 @@ bool app_scene_renderer_draw(
     }
     const int pad_pixels = 16;
     if (!renderer->raster) {
-        snprintf(renderer->error, sizeof renderer->error, "radiance cascades unavailable; using GLES3 fragment fallback");
+        /* This is a supported rendering path, not a scene error. Its status is
+         * available in the renderer diagnostics without covering the game. */
+        renderer->error[0] = '\0';
         renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                              0.5f;
         collect(renderer, world, particles, runtime);

@@ -10,7 +10,10 @@ static bool signature(builder *b, node *n, const pin_spec *pins, int count, bool
     int first = n->desc->flow ? 1 : 0;
     bool owned = n->desc->host_call->value != NULL;
     for (int i = first; i < count; i++) {
-        int declared_index = !output && n->desc->host_call->variadic ? 0 : i;
+        int declared_index = !output && n->desc->host_call->variadic &&
+                                     i >= n->desc->input_count
+                               ? n->desc->input_count - 1
+                               : i;
         const pin_spec *p = &pins[i], *d = &declared[declared_index];
         bool nominal = p->type == PIN_STRUCT || p->type == PIN_ENUM ||
                        p->type == PIN_HANDLE;
@@ -198,7 +201,8 @@ int behavior_lower_host_call(builder *b, node *n, int pin)
     bool flow = desc->flow != NULL;
     int begin = flow ? 1 : 0;
     if ((!desc->host_call->variadic && n->input_count != desc->input_count) ||
-        (desc->host_call->variadic && (!owned || desc->input_count != 1)) ||
+        (desc->host_call->variadic && (!owned || desc->input_count < 1 ||
+                                       n->input_count < desc->input_count - 1)) ||
         (owned && (flow || desc->pure_kind != NODE_PURE_CALL ||
                    desc->output_count != 1 || desc->host_call->service)) ||
         n->output_count < desc->output_count || !desc->output_count ||
@@ -211,15 +215,23 @@ int behavior_lower_host_call(builder *b, node *n, int pin)
             return behavior_lower_unsupported(b, n, i, true, "host data output projection");
         }
     }
+    int input_count = n->input_count;
+    /* Variadic nodes retain an unused Generic pin for the next argument. It
+     * is an authoring affordance, not a value passed to the native call. */
+    while (desc->host_call->variadic && input_count >= desc->input_count &&
+           n->input_pins[input_count - 1].type == PIN_FLOW &&
+           (n->input_pins[input_count - 1].flags & PIN_FLAG_WILDCARD)) {
+        input_count--;
+    }
     int index = acount(b->function->host_calls),
         first = acount(b->function->data_values);
     /* Reserve the complete bank before lowering inputs, which may make their
      * own host calls. Every producer has distinct storage and scalar snapshots. */
-    if (!signature(b, n, n->input_pins, n->input_count, false) ||
+    if (!signature(b, n, n->input_pins, input_count, false) ||
         !signature(b, n, n->output_pins, desc->output_count, true)) {
         return -1;
     }
-    int result_first = first + n->input_count - begin;
+    int result_first = first + input_count - begin;
     b->function->managed |= owned;
     apush(
         b->function->host_calls,
@@ -247,7 +259,7 @@ int behavior_lower_host_call(builder *b, node *n, int pin)
         );
     }
     int *arguments = NULL;
-    for (int i = begin; i < n->input_count; i++) {
+    for (int i = begin; i < input_count; i++) {
         int value = behavior_lower_input(b, n, i);
         if (value < 0 || !behavior_lower_pack_value(b, value, first + i - begin)) {
             afree(arguments);
@@ -255,7 +267,7 @@ int behavior_lower_host_call(builder *b, node *n, int pin)
         }
         apush(arguments, value);
     }
-    for (int i = begin; owned && i < n->input_count; i++) {
+    for (int i = begin; owned && i < input_count; i++) {
         if (n->input_pins[i].container == PIN_CONTAINER_SINGLE &&
             n->input_pins[i].type == PIN_STRUCT) {
             aggregate *a = behavior_lower_aggregate(b, arguments[i - begin]);

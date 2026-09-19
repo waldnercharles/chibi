@@ -1021,7 +1021,11 @@ bool editor_ui_vector_float(const char *id, float *value, int count, float min, 
     for (int axis = 0; axis < count; axis++) {
         ImGui_PushIDInt(axis);
         ImGui_SetNextItemWidth(width);
-        changed |= ImGui_DragFloatEx("##axis", &value[axis], .01f, min, max, "", ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoRoundToFormat);
+        ImGuiSliderFlags flags = ImGuiSliderFlags_NoRoundToFormat;
+        if (min < max) {
+            flags |= ImGuiSliderFlags_AlwaysClamp;
+        }
+        changed |= ImGui_DragFloatEx("##axis", &value[axis], .01f, min, max, "", flags);
         char number[64];
         snprintf(number, sizeof number, "%.4g", value[axis]);
         editor_ui_value_label(count > 1 ? axes[axis] : "", number);
@@ -1524,6 +1528,7 @@ static void ui_apply_theme(void)
     style->Colors[ImGuiCol_WindowBg] = UI_WINDOW;
     style->Colors[ImGuiCol_ChildBg] = UI_CHILD;
     style->Colors[ImGuiCol_PopupBg] = UI_POPUP;
+    style->Colors[ImGuiCol_ModalWindowDimBg] = (ImVec4){ 0, 0, 0, .6f };
     style->Colors[ImGuiCol_Border] = UI_BORDER;
     style->Colors[ImGuiCol_BorderShadow] = (ImVec4){ 0, 0, 0, 0 };
     style->Colors[ImGuiCol_FrameBg] = UI_FRAME;
@@ -1610,7 +1615,9 @@ static void ui_build_default_layout(void)
     float navigator_ratio = fminf(0.3f, ui_sidebar_width[0] / layout.WorkSize.x);
     ImGui_DockBuilderSplitNode(UI_DOCKSPACE_ID, ImGuiDir_Left, navigator_ratio, &navigator, &center);
     ImGui_DockBuilderDockWindow("Navigator", navigator);
-    ImGui_DockBuilderSplitNode(center, ImGuiDir_Right, 0.23f, &inspector, &center);
+    float center_width = ImGui_DockBuilderGetNode(center)->Size.x;
+    float inspector_ratio = fminf(0.5f, 320.0f / center_width);
+    ImGui_DockBuilderSplitNode(center, ImGuiDir_Right, inspector_ratio, &inspector, &center);
     ImGui_DockBuilderDockWindow("Inspector", inspector);
     ImGui_DockBuilderSplitNode(center, ImGuiDir_Down, UI_BOTTOM_RATIO, &bottom, &document);
     /* The central remainder receives space released by hidden diagnostics.

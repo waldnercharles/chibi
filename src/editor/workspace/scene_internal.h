@@ -237,8 +237,8 @@ void draw_asset_references(app_scene_authoring *scene, int asset_position);
 void draw_asset_binding_usages(app_scene_authoring *scene, int asset_position);
 void draw_component_asset_links(app_scene_authoring *scene, const char *json, const char *id);
 int create_behavior_asset(app_scene_authoring *scene);
-int create_graph_asset(app_scene_authoring *scene, behavior_domain domain);
-int create_new_prototype(app_scene_authoring *scene);
+int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const char *name);
+int create_new_prototype(app_scene_authoring *scene, const char *name);
 void draw_navigator(app_scene_authoring *scene);
 void draw_prototype_inspector(app_scene_authoring *scene);
 void draw_scene_inspector(app_scene_authoring *scene);
@@ -311,6 +311,7 @@ int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, 
 int save_active_document(app_scene_authoring *scene);
 int save_all_documents(app_scene_authoring *scene);
 int save_as_active_document(app_scene_authoring *scene);
+int create_scene_asset(app_scene_authoring *scene, const char *name);
 void select_prototype(app_scene_authoring *scene, int index);
 void set_behavior_component_context(app_scene_authoring *scene, const char *asset_name);
 int sync_behavior_working(app_scene_authoring *scene);

@@ -231,6 +231,51 @@ static bool test_sidebar_glyphs()
     return ok;
 }
 
+static ImVec2 vector_frame(float *value, float maximum)
+{
+    ImGui_NewFrame();
+    ImGui_SetNextWindowPos((ImVec2){ 20, 20 }, ImGuiCond_Always);
+    ImGui_SetNextWindowSize((ImVec2){ 300, 120 }, ImGuiCond_Always);
+    ImGui_Begin("Vector entry", NULL, ImGuiWindowFlags_NoSavedSettings);
+    editor_ui_vector_float("value", value, 1, 0, maximum);
+    ImVec2 min = ImGui_GetItemRectMin(), max = ImGui_GetItemRectMax();
+    ImVec2 center = { (min.x + max.x) * .5f, (min.y + max.y) * .5f };
+    ImGui_End();
+    ImGui_Render();
+    return center;
+}
+
+static bool test_vector_text_entry(float maximum, float expected)
+{
+    float value = .5f;
+    ImGuiIO *io = ImGui_GetIO();
+    ImGuiKey modifier = io->ConfigMacOSXBehaviors ? ImGuiMod_Super : ImGuiMod_Ctrl;
+    vector_frame(&value, maximum);
+    ImVec2 center = vector_frame(&value, maximum);
+    ImGuiIO_AddMousePosEvent(io, center.x, center.y);
+    ImGuiIO_AddKeyEvent(io, modifier, true);
+    vector_frame(&value, maximum);
+    ImGuiIO_AddMouseButtonEvent(io, 0, true);
+    vector_frame(&value, maximum);
+    ImGuiIO_AddMouseButtonEvent(io, 0, false);
+    vector_frame(&value, maximum);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_A, true);
+    vector_frame(&value, maximum);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_A, false);
+    ImGuiIO_AddKeyEvent(io, modifier, false);
+    vector_frame(&value, maximum);
+    bool active = io->WantTextInput;
+    ImGuiIO_AddInputCharactersUTF8(io, "2.5");
+    vector_frame(&value, maximum);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_Enter, true);
+    vector_frame(&value, maximum);
+    ImGuiIO_AddKeyEvent(io, ImGuiKey_Enter, false);
+    vector_frame(&value, maximum);
+    bool ok = active && value == expected;
+    printf("ui-vector-entry %s: maximum=%g value=%g expected=%g\n", ok ? "PASS" : "FAIL", maximum, value, expected);
+    return ok;
+}
+
 bool test_ui_keyboard()
 {
     ImGuiContext *previous = ImGui_GetCurrentContext();
@@ -296,7 +341,9 @@ bool test_ui_keyboard()
         bool motion = test_controls_opacity();
         bool popup = test_popup_entry();
         bool glyphs = test_sidebar_glyphs();
-        ok = motion && popup && glyphs;
+        bool unbounded = test_vector_text_entry(0, 2.5f);
+        bool bounded = test_vector_text_entry(1, 1);
+        ok = motion && popup && glyphs && unbounded && bounded;
     }
     editor_free(editor);
     ImGui_DestroyContext(context);

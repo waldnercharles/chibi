@@ -73,6 +73,14 @@ static arena_fixture arena_new()
         fprintf(stderr, "Arena load: %s\n", app_scene_authoring_message(f.scene));
     }
     assert(loaded == 0);
+    /* Keep the cadence fixture free of targets that consume live projectiles. */
+    for (int i = 0; i < acount(f.scene->actors); i++) {
+        if (!strcmp(f.scene->actors[i].prototype_name, "PhaseWarden")) {
+            f.scene->selected = i;
+            assert(app_scene_authoring_delete_instance(f.scene) == 0);
+            break;
+        }
+    }
     assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
     engine_set_focus(f.runtime, ENGINE_FOCUS_VIEWPORT);
     f.simulation = simulation_fixture_new(f.runtime, NULL);

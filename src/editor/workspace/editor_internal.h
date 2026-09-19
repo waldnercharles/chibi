@@ -214,6 +214,7 @@ struct editor
     char binding_search[128];
     int binding_selected;
     bool binding_focus_search;
+    bool binding_open_requested;
     float popup_x;
     float popup_y;
     node *context_node;
@@ -413,8 +414,8 @@ int ed_clear_input_source(editor *e, node *target, int index);
 node *ed_vector_source(const editor *e, const node *n, int index);
 void ed_open_vector_binding_popup(editor *e, node *n, int index, int axis);
 void ed_open_binding_popup(editor *e, node *n, int index);
-bool ed_binding_can_convert(const editor *e);
-bool ed_binding_can_jump(const editor *e);
+bool ed_binding_can_convert(const editor *e, const pin_binding *binding);
+bool ed_binding_can_jump(const editor *e, const pin_binding *binding);
 int ed_convert_binding(editor *e);
 void ed_jump_binding_source(editor *e);
 int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout);

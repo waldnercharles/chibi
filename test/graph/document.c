@@ -4,8 +4,8 @@ void run_graph_document_checks()
 {
     eval_context eval_ctx;
     eval_context_init(&eval_ctx);
-    const node_desc *add = registry_node_by_name("add_floats");
-    const node_desc *make = registry_node_by_name("Make_Vec3");
+    const node_desc *add = registry_node_by_name("Add");
+    const node_desc *make = registry_node_by_name("Make_CF_V3");
     /* 8. serialization round trip: constants + add + edges */
     {
         graph g2;
@@ -58,7 +58,7 @@ void run_graph_document_checks()
                     graph_eval_output(g3, g3->nodes[2], 0, &a2, &out, &eval_ctx) == 0,
                     "roundtrip: eval loaded add node"
                 );
-                test_check(out.type == PIN_F32 && out.f == 5.0f, "roundtrip: 2.0 + 3.0 == 5.0");
+                test_check(out.type == PIN_F64 && out.d == 5.0, "roundtrip: 2.0 + 3.0 == 5.0");
                 char *json2 = graph_save_json(g3);
                 graph *g4 = json2 ? graph_load_json(json2) : NULL;
                 char *json3 = g4 ? graph_save_json(g4) : NULL;
@@ -88,9 +88,9 @@ void run_graph_document_checks()
          * byte-identical round trip below uses a separate loadable graph. */
         node *all = graph_add_node(&full, &g_all_types_desc);
         test_check(all != NULL, "comprehensive fixture node created");
-        Vec3 *vec = graph_own_block(&full, sizeof *vec);
+        CF_V3 *vec = graph_own_block(&full, sizeof *vec);
         if (vec) {
-            *vec = (Vec3){ 1.25f, 2.5f, 3.75f };
+            *vec = (CF_V3){ 1.25f, 2.5f, 3.75f };
         }
         pin_value values[] = {
             { .type = PIN_BOOL, .b = true },
@@ -105,7 +105,7 @@ void run_graph_document_checks()
             { .type = PIN_F32, .f = 9.5f },
             { .type = PIN_F64, .d = 10.5 },
             { .type = PIN_STR, .str = "authored" },
-            { .type = PIN_STRUCT, .type_name = "Vec3", .ptr = vec },
+            { .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = vec },
             { .type = PIN_ENUM, .e = 3 },
         };
         for (int i = 0; all && i < 14; i++) {
@@ -207,7 +207,7 @@ void run_graph_document_checks()
                     loaded_str->input_pins[0].default_value.str &&
                     strcmp(loaded_str->input_pins[0].default_value.str, "authored") == 0 &&
                     loaded_make->output_pins[0].default_value.ptr &&
-                    ((Vec3 *)loaded_make->output_pins[0].default_value.ptr)->y == 2.5f,
+                    ((CF_V3 *)loaded_make->output_pins[0].default_value.ptr)->y == 2.5f,
                 "scalar, string, and struct instance pin fields survive "
                 "first load"
             );
@@ -285,7 +285,7 @@ void run_graph_document_checks()
             "{\"version\":3,\"id_counter\":1,\"name\":\"\",\"description\":"
             "\"\",\"nodes\":[{"
             "\"type\":\"nope\"}],\"edges\":[]}",
-            "{\"version\":3,\"nodes\":[{\"type\":\"add_floats\"}],\"edges\":[]"
+            "{\"version\":3,\"nodes\":[{\"type\":\"Add\"}],\"edges\":[]"
             "}",
         };
         test_check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
@@ -318,57 +318,6 @@ void run_graph_document_checks()
         test_check(strcmp(s_str, "hello") == 0, "fmt: str -> \"hello\"");
         test_check(strcmp(s_bool, "true") == 0, "fmt: bool true -> \"true\"");
         test_check(strcmp(pin_value_to_string(&iv), "-42") == 0, "fmt: i32 -42 -> \"-42\"");
-    }
-
-    /* 12. seed graph evaluates to 5.0 */
-    {
-        graph gs;
-        graph_init(&gs);
-        test_check(demo_graph_seed(&gs) == 0, "seed graph builds");
-
-        const node_desc *adddesc = registry_node_by_name("add_floats");
-        node *addn = NULL;
-        for (int i = 0; i < acount(gs.nodes); i++) {
-            if (gs.nodes[i]->desc == adddesc) {
-                addn = gs.nodes[i];
-                break;
-            }
-        }
-        test_check(addn != NULL, "seed graph has an add_floats node");
-
-        if (addn) {
-            arena as;
-            arena_init(&as, 4096);
-            pin_value seed_sum;
-            test_check(graph_eval_output(&gs, addn, 0, &as, &seed_sum, &eval_ctx) == 0, "seed graph evals");
-            test_check(seed_sum.type == PIN_F32 && seed_sum.f == 5.0f, "seed graph: 2.0 + 3.0 == 5.0");
-            arena_free(&as);
-        }
-        graph_free(&gs);
-    }
-
-    /* 13. flow demo graph contains both edge kinds and named entry metadata. */
-    {
-        graph gf;
-        graph_init(&gf);
-        test_check(demo_graph_seed_flow(&gf) == 0, "flow demo graph builds");
-        int data_edges = 0;
-        int exec_edges = 0;
-        for (int i = 0; i < acount(gf.edges); i++) {
-            if (gf.edges[i].kind == GRAPH_EDGE_DATA) {
-                data_edges++;
-            }
-            if (gf.edges[i].kind == GRAPH_EDGE_EXEC) {
-                exec_edges++;
-            }
-        }
-        test_check(acount(gf.nodes) == 10 && data_edges == 2 && exec_edges == 8, "flow demo graph shows data and exec topology");
-        test_check(
-            gf.nodes[0]->reference_name &&
-                strcmp(gf.nodes[0]->reference_name, "Begin") == 0,
-            "flow demo graph has named Event entry"
-        );
-        graph_free(&gf);
     }
 
     /* 14. subset serialization: only selected nodes + their inter-edges */

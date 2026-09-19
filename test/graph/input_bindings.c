@@ -834,7 +834,7 @@ static void inline_source_graphs()
 {
     graph g = { 0 };
     graph_init(&g);
-    node *target = graph_add_node(&g, registry_node_by_name("add_floats"));
+    node *target = graph_add_node(&g, registry_node_by_name("Add"));
     node *source = graph_add_node(&g, registry_node_by_name("Integer"));
     assert(source && target);
     assert(graph_connect_data_conversion(&g, source, 0, target, 0, &NODE_To_Real) == 0);
@@ -907,7 +907,7 @@ static void inline_source_graphs()
     graph direct = { 0 };
     graph_init(&direct);
     source = graph_add_node(&direct, registry_node_by_name("Integer"));
-    target = graph_add_node(&direct, registry_node_by_name("add_floats"));
+    target = graph_add_node(&direct, registry_node_by_name("Add"));
     assert(source && target);
     assert(graph_connect_data_conversion(&direct, source, 0, target, 0, &NODE_To_Real) == 0);
     assert(graph_set_node_inline(&direct, source, 1) == 0);
@@ -921,8 +921,8 @@ static void inline_source_graphs()
     graph shared = { 0 };
     graph_init(&shared);
     source = graph_add_node(&shared, registry_node_by_name("Integer"));
-    target = graph_add_node(&shared, registry_node_by_name("add_floats"));
-    node *other = graph_add_node(&shared, registry_node_by_name("add_floats"));
+    target = graph_add_node(&shared, registry_node_by_name("Add"));
+    node *other = graph_add_node(&shared, registry_node_by_name("Add"));
     assert(source && target && other);
     assert(graph_connect_data_conversion(&shared, source, 0, target, 0, &NODE_To_Real) == 0);
     assert(graph_connect_data_conversion(&shared, source, 0, other, 0, &NODE_To_Real) == 0);
@@ -1007,7 +1007,7 @@ static void component_getter_auto_simplification()
 static void inline_source_extraction()
 {
     behavior_asset *asset = behavior_asset_new("InlineExtraction");
-    node *target = graph_add_node(asset->graph, registry_node_by_name("add_floats"));
+    node *target = graph_add_node(asset->graph, registry_node_by_name("Add"));
     node *source = graph_add_node(asset->graph, registry_node_by_name("Integer"));
     node *sink = typed_reroute(asset->graph, PIN_F32, "float");
     assert(source && target && sink);

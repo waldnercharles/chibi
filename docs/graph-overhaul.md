@@ -84,15 +84,9 @@ Box2D and Erin Catto's [Box3D](https://github.com/erincatto/box3d) remain future
 ## Verification
 
 `make test` passes with ASan/UBSan, including runtime, authoring, reload, and
-headless application checks. `make ui-native` exercises focused native workspace,
-graph, and Scene interactions. `make render-checks` exercises GPU rendering,
-including material replacement, SDF coverage, and radiance transport. The
-headless application, UI, GPU, and reload smoke commands disable LeakSanitizer
-only for Cute's known third-party compiler allocations. `build/test_suite --shader-ui` exercises native
+headless application checks. `build/test_suite --shader-ui` exercises native
 material/shape replacement, serialization every frame, and GPU previews at
-2056 x 1286. `make dev-smoke` runs the same reload build and two smoke scenarios
-locally; set `DEV_DISPLAY_RUNNER='xvfb-run -a'` on Linux when no display is
-available.
+2056 x 1286. `make dev` runs the RelWithDebInfo reload host locally.
 
 Browser verification opened ShaderDemo, framed its two materials and custom SDF,
 edited Radius from 24 to 16, and restored 24 with one Undo. PulseRing opens and

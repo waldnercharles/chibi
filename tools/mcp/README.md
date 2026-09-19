@@ -1,8 +1,8 @@
 # Chibi MCP adapter
 
 This package contains the model-facing stdio adapter and its shared public
-tool catalog. The native `chibi_ctl` and `chibi_render_ctl` controllers remain
-project build artifacts.
+tool catalog. The native `chibi_ctl` controller provides headless automation
+and an explicit `--render` mode for GPU previews.
 
 From a checked-out repository, run:
 

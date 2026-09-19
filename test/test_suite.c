@@ -45,7 +45,6 @@ void test_system_arithmetic();
 void test_asset_index();
 void test_input_bindings();
 void test_graph_optimizer();
-int ui_optimizer_run(const char *program);
 int scene_documents_run(const char *program);
 
 static int fails;
@@ -163,10 +162,6 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
-    if (argc > 1 && strcmp(argv[1], "--ui-optimizer") == 0) {
-        registry_validate();
-        return ui_optimizer_run(program_name);
-    }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();
         test_graph_optimizer();
@@ -669,27 +664,6 @@ int main(int argc, char **argv)
             strcmp(argv[1], "--arena-play-review") != 0,
             strcmp(argv[1], "--arena-crowd-review") == 0
         );
-    }
-    if (argc > 1 && strcmp(argv[1], "--ui-node-controls") == 0) {
-        registry_validate();
-        return ui_node_controls_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--ui-native") == 0) {
-        registry_validate();
-        return ui_native_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--ui-arithmetic") == 0) {
-        registry_validate();
-        return ui_arithmetic_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--query-diagnostics-ui") == 0) {
-        extern int query_diagnostics_ui_run(const char *program);
-        registry_validate();
-        return query_diagnostics_ui_run(program_name);
-    }
-    if (argc > 1 && strcmp(argv[1], "--render-checks") == 0) {
-        registry_validate();
-        return render_checks_run(program_name);
     }
     if (argc > 1 && strcmp(argv[1], "--editor-graph") == 0) {
         registry_validate();

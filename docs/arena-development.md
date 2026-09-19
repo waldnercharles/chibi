@@ -3,7 +3,7 @@
 Run `make play` to launch the Arena2D project in a standalone game window. A
 project is a directory containing `project.json` and its own `content` tree.
 Use `make play PROJECT=. SCENE=scenes/Arena3D.json` to launch the Arena3D
-reference project, or pass `--project-root PATH` to `build/app` directly. Both
+reference project, or pass `--project-root PATH` to `build/chibi` directly. Both
 routes use the same scene runtime, input and Surface renderer as editor Play.
 Escape pauses and releases input; Enter resumes, R restarts from authored state,
 and Q quits while paused. Losing window focus also pauses. No editor panes are
@@ -12,7 +12,7 @@ drawn.
 For an intentional game-only capture:
 
 ```sh
-env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/app --play \
+env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/chibi --play \
   --project-root projects/arena2d --scene scenes/Arena2D.json \
   --frames 120 --fixed-dt 0.016666667 \
   --screenshot /tmp/arena-game.png
@@ -22,7 +22,7 @@ Normal play uses elapsed time. `--fixed-dt` supplies the given wall-clock
 increment per display frame for repeatable verification. The shared engine
 consumes it in 1/60-second simulation steps; `--frames` alone only limits
 the run. Screenshots are opt-in and native-only. A web build supports
-`app.html?play&project-root=projects/arena2d&scene=scenes/Arena2D.json` through
+`chibi.html?play&project-root=projects/arena2d&scene=scenes/Arena2D.json` through
 the same launch parser. Launching the editor with `--project-root PATH` opens
 that project's start scene; `--scene PATH` selects another scene inside it
 without starting Play. The Make targets expose the same selection: `make run
@@ -90,7 +90,6 @@ destruction; it requires no position, collider or arbitrary search radius.
 Validation entry points after `make build`:
 
 ```sh
-env MallocNanoZone=0 build/test_suite --render-checks
 env MallocNanoZone=0 build/test_suite --arena-ui
 ```
 
@@ -190,7 +189,7 @@ and mode choices are authored settings without sockets. Nested reflected values
 save and reload through the ordinary graph format, including clipboard copies.
 The supplied arena materials use these nodes. Image Texture is covered below.
 
-Native validation passes `make build`, `make test`, `--render-checks`,
+Native validation passes `make build`, `make test`,
 `--arena-ui` and `--shader-ui`. Checks include camera proportions at three aspect
 ratios, prism silhouette/picking and 512 boxes/prisms in two draws; CPU/GPU effect
 parity; actual ramp editing, rendered changes, Undo/Redo and persistence; and
@@ -239,7 +238,7 @@ shared overhead camera. Run `make play PROJECT=. SCENE=scenes/ShaderImageDemo.js
 This is a material-authoring example; the arena's lighting and combat-effect
 acceptance remains open.
 
-Verification passes `make build`, `make test`, native `--render-checks` and
+Verification passes `make build`, `make test` and
 `--shader-ui`. The native image tests compare CPU/GPU sampling, nine image
 materials on 54 box/prism actors in 18 draws, independent instance overrides,
 upright faces, alpha ordering, corrupt-image recovery, 2D compute/fragment
@@ -412,7 +411,7 @@ migrated, and distinct parameters sharing a slot now produce a compiler diagnost
 Web packaging tracks content and shader file changes, so asset-only edits trigger
 a fresh preload bundle when running `make web`.
 
-Validation: `make build`, `make test`, `make web`, native `--render-checks`,
+Validation: `make build`, `make test`, `make web`,
 `--arena-combat`, `--arena-encounter` and the complete `--arena-ui` route pass. The actual Surface Influence
 Inspector check edits Color, Radius, Strength and Linger, exercises Undo/Redo,
 and saves/reopens the scene. Existing health-driven fixtures were migrated to the
@@ -501,7 +500,7 @@ mesh-part editing and persistence, actual SDL mouse-button hold/release, pause
 and focus transitions, source-string ownership after enemy destruction, and
 last-valid render retention after malformed mesh input.
 
-Final checks passed: `make build`, `make test`, `make web`, `--render-checks`,
+Final checks passed: `make build`, `make test`, `make web`,
 `--arena-ui`, `--arena-encounter` and `--arena-play-review`. The final browser
 build was reloaded, restarted through its menu and paused at full health with
 clean diagnostics. A quiet bloom-disabled capture confirms that the ship and
@@ -693,8 +692,8 @@ retained 1,195 active samples: p50 10.508 ms, p95 14.505 ms, p99 20.168 ms,
 peak 30 draws. It uses different viewport/input geometry from the editor review,
 so the two routes are reported independently.
 
-Verification passed: `make build`, `make test`, `make web`, native
-`--render-checks`, the full `--arena-ui` route, and both editor/standalone played
+Verification passed: `make build`, `make test`, `make web`, the full
+`--arena-ui` route, and both editor/standalone played
 encounter reviews. The final ribbon checks include pause/reset, source colors,
 opaque occlusion and a real transparent particle crossing. The rebuilt browser
 renders, restarts and pauses without shader, WebGL or runtime failures. Crowded

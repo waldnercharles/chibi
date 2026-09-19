@@ -2,7 +2,6 @@
 
 void run_runtime_arrays_checks()
 {
-    const node_desc *make = registry_node_by_name("Make_Vec3");
     {
         graph g;
         graph_init(&g);
@@ -108,19 +107,19 @@ void run_runtime_arrays_checks()
 
         /* DBG-5: struct array copies borrow their elements consistently. The
          * clone and its destruction must not free host or arena storage. */
-        Vec3 borrowed_values[] = { { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } };
-        pin_array *borrowed_array = pin_array_new(PIN_STRUCT, "Vec3", 2);
+        CF_V3 borrowed_values[] = { { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f, 6.0f } };
+        pin_array *borrowed_array = pin_array_new(PIN_STRUCT, "CF_V3", 2);
         pin_array_push(
             borrowed_array,
-            &(pin_value){ .type = PIN_STRUCT, .type_name = "Vec3", .ptr = &borrowed_values[0] }
+            &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &borrowed_values[0] }
         );
         pin_array_push(
             borrowed_array,
-            &(pin_value){ .type = PIN_STRUCT, .type_name = "Vec3", .ptr = &borrowed_values[1] }
+            &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &borrowed_values[1] }
         );
         pin_value borrowed_value = {
             .type = PIN_STRUCT,
-            .type_name = "Vec3",
+            .type_name = "CF_V3",
             .container = PIN_CONTAINER_ARRAY,
             .ptr = borrowed_array,
         };

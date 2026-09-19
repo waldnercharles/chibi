@@ -145,9 +145,9 @@ int ed_pin_rows(const editor *e, const graph *g, const node *n, int kind, int pi
     const char *context = NULL;
     node *source = NULL;
     int source_pin = -1;
-    bool bound = kind == ED_PIN_INPUT &&
-                 (spec->binding ||
-                  graph_inline_source(g, n, pin, &source, &source_pin));
+    bool inline_source = kind == ED_PIN_INPUT &&
+                         graph_inline_source(g, n, pin, &source, &source_pin);
+    bool bound = kind == ED_PIN_INPUT && (spec->binding || inline_source);
     int vector = ed_vector_width(spec);
     if (vector && !(spec->flags & PIN_FLAG_COLOR) &&
         (!bound || graph_node_is_vector_constructor(source))) {
@@ -160,8 +160,7 @@ int ed_pin_rows(const editor *e, const graph *g, const node *n, int kind, int pi
                    e->choices_resolver(n, false, pin, e->choices_user);
     return choices || kind == ED_PIN_OUTPUT || ed_vector_width(spec) ||
                    spec->type == PIN_U32 || spec->type == PIN_ENUM ||
-                   spec->type == PIN_STR || spec->type == PIN_NAME || spec->binding ||
-                   graph_inline_source(g, n, pin, &source, &source_pin)
+                   spec->type == PIN_STR || spec->type == PIN_NAME || spec->binding
              ? 2
              : 1;
 }

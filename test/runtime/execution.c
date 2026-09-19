@@ -1341,7 +1341,7 @@ void run_runtime_execution_checks()
         flow_run *run = flow_run_start(&gw, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(run);
         pin_value recorded;
-        Vec3 copied = { 0 };
+        CF_V3 copied = { 0 };
         int watch_result = flow_run_watch_output(run, watch_node, 1, &recorded);
         int copy_result = flow_run_watch_copy_output(run, watch_node, 1, &recorded, &copied, sizeof copied);
         test_check(
@@ -1352,7 +1352,7 @@ void run_runtime_execution_checks()
         );
         test_check(
             flow_run_watch_output(run, watch_node, 1, &recorded) == 0 &&
-                recorded.ptr != &g_watch_struct && ((Vec3 *)recorded.ptr)->x == 4.0f,
+                recorded.ptr != &g_watch_struct && ((CF_V3 *)recorded.ptr)->x == 4.0f,
             "live run watch reads the recorded execution value"
         );
         flow_run_free(run);

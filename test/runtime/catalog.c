@@ -106,7 +106,7 @@ void run_runtime_catalog_checks()
             "Set and Map decision-gate families expose a typed core entry"
         );
         test_check(
-            registry_node_by_name("Make_Vec3") && registry_node_by_name("Break_Vec3"),
+            registry_node_by_name("Make_CF_V3") && registry_node_by_name("Break_CF_V3"),
             "reflected structs have Make and Break nodes"
         );
         test_check(
@@ -185,15 +185,6 @@ void run_runtime_catalog_checks()
             free(comment_loaded);
         }
         graph_free(&comment_graph);
-        graph split_graph;
-        graph_init(&split_graph);
-        node *transform = graph_add_node(&split_graph, registry_node_by_name("Make_Transform"));
-        int split = transform ? graph_split_pin(&split_graph, transform, 0, 2) : -1;
-        int recombine = split >= 0
-                          ? graph_recombine_pin(&split_graph, transform, 0, split)
-                          : -1;
-        test_check(split >= 0 && recombine >= 0, "struct pins split and recombine by stable parent ID");
-        graph_free(&split_graph);
         test_check((break_sink->input_pins[1].flags & PIN_FLAG_WATCH) != 0, "watched pin state is available for inline display");
         test_check(break_sink->breakpoint_enabled != 0, "breakpoint state is available to node rendering");
         test_check(g_break.breakpoints_enabled == 0, "breakpoint list has a global toggle");

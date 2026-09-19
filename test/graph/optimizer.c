@@ -165,7 +165,7 @@ static void locals_and_documents()
     graph_set_pin_default(g, source, 0, 0, &(pin_value){ .type = PIN_I32, .i = 17 });
     node *uses[3];
     for (int i = 0; i < 3; i++) {
-        uses[i] = add(g, "add_floats");
+        uses[i] = add(g, "Add");
         assert(graph_connect_data_conversion(g, source, 0, uses[i], 0, &NODE_To_Real) == 0);
     }
     char *before = behavior_asset_save_json(asset);
@@ -310,7 +310,7 @@ static void local_validation()
 {
     behavior_asset *asset = behavior_asset_new("Invalid locals");
     graph *g = asset->graph;
-    node *a = add(g, "add_floats"), *b = add(g, "add_floats");
+    node *a = add(g, "Add"), *b = add(g, "Add");
     assert(graph_connect_data(g, a, 0, b, 0) == 0);
     assert(graph_create_local(g, a, 0, "Sum"));
     char *valid = behavior_asset_save_json(asset);
@@ -343,7 +343,7 @@ static void history_and_cleanup()
                  .ui_context = EDITOR_UI_CONTEXT_BEHAVIOR };
     node *delta = add(asset->graph, "Delta Time");
     for (int i = 0; i < 3; i++) {
-        node *consumer = add(asset->graph, "add_floats");
+        node *consumer = add(asset->graph, "Add");
         assert(graph_connect_data(asset->graph, delta, 0, consumer, 0) == 0);
         consumer->x = (float)(3000 + i * 1000);
     }
@@ -419,7 +419,7 @@ static void exact_sources()
         node *targets[3];
         for (int i = 0; i < 3; i++) {
             node *target = kind == 1 ? sink(g, PIN_HANDLE, "ecs.entity")
-                                     : add(g, "add_floats");
+                                     : add(g, "Add");
             targets[i] = target;
             if (kind == 1) {
                 target->input_pins[0].flags |= PIN_FLAG_DEFAULT_SELF;

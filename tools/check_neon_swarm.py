@@ -32,8 +32,11 @@ class Runner:
         self.output = output
         output.mkdir(parents=True, exist_ok=True)
     def call(self, operation, render=False, **args):
-        command = self.build / ('chibi_render_ctl' if render else 'chibi_ctl')
-        process = subprocess.run([str(command),'--project-root',str(PROJECT)],
+        command = self.build / 'chibi_ctl'
+        arguments = ['--project-root', str(PROJECT)]
+        if render:
+            arguments.insert(0, '--render')
+        process = subprocess.run([str(command), *arguments],
             input=json.dumps(dict(contract=1,operation=operation,**args)),text=True,capture_output=True)
         assert process.returncode == 0, process.stderr
         result = json.loads(process.stdout)

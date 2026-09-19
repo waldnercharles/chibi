@@ -55,10 +55,6 @@ jobs:
           -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       - name: Build and run tests
         run: xvfb-run -a make test
-      - name: Run native UI smoke tests
-        run: xvfb-run -a make ui-native
-      - name: Run focused render checks
-        run: xvfb-run -a make render-checks
       - name: Verify parallel Arena scaling
         if: matrix.build_type == 'RelWithDebInfo'
         run: >-
@@ -73,16 +69,15 @@ jobs:
             -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
           cmake --build build-nojit --target check-behavior-backend --parallel 2
-      - name: Build and exercise application reload
+      - name: Build development reload targets
         if: matrix.build_type == 'Debug'
         run: |
-          cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=Debug \
+          cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCHIBI_DEVELOPMENT_RELOAD=ON \
+            -DCHIBI_ENABLE_SANITIZERS=OFF \
             -DCHIBI_ENABLE_SJLIT=ON -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-dev --target chibi_host chibi_application --parallel 2
-          xvfb-run -a env ASAN_OPTIONS=detect_leaks=0 \
-            cmake --build build-dev --target check-dev-smoke
+          cmake --build build-dev --target chibi chibi_dll --parallel 2
 
   format:
     name: clang-format

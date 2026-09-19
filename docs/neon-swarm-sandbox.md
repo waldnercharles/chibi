@@ -5,7 +5,7 @@ Run it from this worktree:
 
 ```sh
 make build-release
-./build-release/app --project-root projects/arena2d \
+./build-release/chibi --project-root projects/arena2d \
   --scene content/scenes/NeonSwarmSandbox.json --play
 ```
 
@@ -93,7 +93,7 @@ adapting the existing HRC code rather than adding another renderer dependency.
 ```sh
 make build
 make test
-build/test_suite --render-checks
+build/test_suite --shader-ui
 make build-release
 python3 tools/check_neon_swarm.py --captures --performance
 git diff --check

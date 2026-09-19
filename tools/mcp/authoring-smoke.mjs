@@ -9,24 +9,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = process.env.CHIBI_CTL || resolve(root, "build", "chibi_ctl");
-const configuredRenderController = process.env.CHIBI_RENDER_CTL;
-const renderController = configuredRenderController
-  ? (isAbsolute(configuredRenderController)
-    ? configuredRenderController
-    : resolve(root, configuredRenderController))
-  : resolve(root, "build", "chibi_render_ctl");
 const skipGpu = process.env.CHIBI_MCP_SKIP_GPU === "1";
 
 if (!existsSync(controller)) {
   throw new Error(`missing controller: ${controller}`);
-}
-if (!skipGpu && !existsSync(renderController)) {
-  throw new Error(`missing render controller: ${renderController}; set CHIBI_MCP_SKIP_GPU=1 only for an explicit headless smoke`);
 }
 
 function assert(condition, message) {
@@ -86,7 +77,6 @@ function runMcp(projectRoot, requests) {
       ...process.env,
       CHIBI_ROOT: projectRoot,
       CHIBI_CTL: controller,
-      CHIBI_RENDER_CTL: renderController,
       // Match the native GPU checks: Cute's shader compiler retains allocations
       // at shutdown. Keep leak checks enabled for the headless authoring runs.
       ...(renders ? { ASAN_OPTIONS: `${process.env.ASAN_OPTIONS || ""}:detect_leaks=0` } : {}),
@@ -547,7 +537,7 @@ try {
     kind: "material",
     name: "MissingPreview",
   });
-  assert(headless.ok === false && headless.error?.message?.includes("separate chibi_render_ctl"), `headless preview boundary changed: ${JSON.stringify(headless)}`);
+  assert(headless.ok === false && headless.error?.message?.includes("chibi_ctl --render"), `headless preview boundary changed: ${JSON.stringify(headless)}`);
 
   const searchBytes = bytes(search.result);
   const registryBytes = bytes(registry.result);

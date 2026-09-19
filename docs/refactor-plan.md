@@ -58,11 +58,9 @@ reload under Linux/Xvfb.
 
 - `make test` passes with ASan/UBSan: graph/runtime/ECS, generation,
   checkpoint/input restoration, real loader rejection and replacement, native
-  watcher/process tests, and static application startup. `make ui-native` runs
-  focused native workspace interactions, while `make render-checks` runs the
-  GPU readback checks separately.
+  watcher/process tests, and static application startup.
 - make build, make check-format and git diff --check pass.
-- Static Emscripten app.html, JavaScript, WASM and packaged content build. Browser
+- Static Emscripten chibi.html, JavaScript, WASM and packaged content build. Browser
   rendering has not been tested in this refactor.
 - Actual application smoke passes three in-process replacements, checkpointed
   restart. Window geometry is also retained.

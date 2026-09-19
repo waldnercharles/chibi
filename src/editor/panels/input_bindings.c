@@ -1341,21 +1341,25 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
     const char *axis = layout.label                        ? layout.label
                      : graph_node_is_vector_constructor(n) ? axes[index]
                                                            : NULL;
-    node *literal = NULL;
-    int literal_pin = -1;
-    if (ed_inline_source_for(e, n, index, &literal, &literal_pin) &&
-        (literal->desc->display_class == NODE_DISPLAY_LITERAL ||
-         ed_pin_editable(e->active_graph, literal, ED_PIN_OUTPUT, literal_pin)) &&
-        !ed_vector_width(&literal->output_pins[literal_pin])) {
-        int kind = literal->input_count == 1 ? ED_PIN_INPUT : ED_PIN_OUTPUT;
-        int pin = kind == ED_PIN_INPUT ? 0 : literal_pin;
+    char input_label[256];
+    ed_pin_label(n, &n->input_pins[index], input_label, sizeof input_label);
+    const char *value_label = axis ? axis : input_label;
+    node *inline_source = NULL;
+    int inline_pin = -1;
+    bool has_inline_source = ed_inline_source_for(e, n, index, &inline_source, &inline_pin);
+    if (has_inline_source &&
+        (inline_source->desc->display_class == NODE_DISPLAY_LITERAL ||
+         ed_pin_editable(e->active_graph, inline_source, ED_PIN_OUTPUT, inline_pin)) &&
+        !ed_vector_width(&inline_source->output_pins[inline_pin])) {
+        int kind = inline_source->input_count == 1 ? ED_PIN_INPUT : ED_PIN_OUTPUT;
+        int pin = kind == ED_PIN_INPUT ? 0 : inline_pin;
         float button = ImGui_GetFrameHeight() * e->zoom;
         int changed = ed_draw_value_editor(
             e,
-            literal,
+            inline_source,
             kind,
             pin,
-            (ed_value_layout){ pos, width - button - 4 * e->zoom, axis }
+            (ed_value_layout){ pos, width - button - 4 * e->zoom, value_label }
         );
         ed_draw_binding_trigger(e, n, index, (ImVec2){ pos.x + width - button, pos.y }, button);
         return changed;
@@ -1373,24 +1377,33 @@ int ed_draw_bound_input(editor *e, node *n, int index, ed_value_layout layout)
         snprintf(component_label, sizeof component_label, "%s: %s", axis, short_label);
         short_label = component_label;
     }
+    bool compact_inline = has_inline_source && !binding && !axis &&
+                          ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, index) == 1;
     ImGui_SetCursorScreenPos(pos);
     ImGui_PushFontFloat(NULL, ImGui_GetFontSize() * e->zoom);
     ImGui_PushStyleVarImVec2(
         ImGuiStyleVar_FramePadding,
         ed_scale(ImGui_GetStyle()->FramePadding, e->zoom)
     );
-    const char *label = ed_binding_fit_chip_label(short_label, width, fitted, sizeof fitted);
+    float fit_width = compact_inline
+                        ? width - 2.0f * ImGui_GetStyle()->FramePadding.x -
+                              ImGui_CalcTextSize(input_label).x
+                        : width;
+    const char *label = ed_binding_fit_chip_label(short_label, fit_width, fitted, sizeof fitted);
     ImGui_SetNextItemWidth(width);
     char button[320];
     snprintf(
         button,
         sizeof button,
         "%s###graph.input.binding.%llu.%d",
-        label,
+        compact_inline ? "" : label,
         (unsigned long long)n->id,
         index
     );
     bool clicked = ImGui_ButtonEx(button, (ImVec2){ width, ImGui_GetFrameHeight() });
+    if (compact_inline) {
+        editor_ui_value_label(input_label, label);
+    }
     char id[96];
     snprintf(id, sizeof id, "graph.input.binding.%llu.%d", (unsigned long long)n->id, index);
     editor_ui_track_item(id);

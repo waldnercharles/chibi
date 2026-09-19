@@ -30,10 +30,6 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "runtime/scenes/scene.h"
 #include "support/arena.h"
-#include "test/fixtures/reflection/vec3.h"
-#include "test/render_checks.h"
-#include "test/support/demo_graph.h"
-#include "test/ui_native.h"
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -49,6 +45,7 @@
 #endif
 
 void test_encounter_backend_parity();
+extern node_desc g_test_add_desc;
 void test_compiled_behaviors();
 void test_behavior_batches();
 void test_tick_sequences();
@@ -185,7 +182,7 @@ extern char g_print_messages[8][64];
 extern const node *g_print_origins[8];
 extern int g_print_count;
 extern flow_run *g_pause_target;
-extern Vec3 g_watch_struct;
+extern CF_V3 g_watch_struct;
 extern node_desc g_watch_desc;
 extern int g_captured_int;
 extern char g_captured_str[64];

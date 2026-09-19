@@ -64,7 +64,7 @@ if(NOT SKIP_BUILD)
     if(NOT config_error AND build_config)
         list(APPEND config_args --config "${build_config}")
     endif()
-    execute_process(COMMAND "${cmake}" --build "${build_dir}" --target chibi_host chibi_application
+    execute_process(COMMAND "${cmake}" --build "${build_dir}" --target chibi chibi_dll
         ${config_args} ${rebuild_args} --parallel "${JOBS}" RESULT_VARIABLE result)
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "Development build failed")

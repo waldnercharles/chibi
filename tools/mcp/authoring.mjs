@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
@@ -761,18 +761,14 @@ export function validateAuthoringArguments(name, args = {}) {
   }
 }
 
-function renderControllerPath(root) {
-  const configured = process.env.CHIBI_RENDER_CTL;
-  const controller = process.env.CHIBI_CTL;
+function controllerPath(root) {
+  const configured = process.env.CHIBI_CTL;
   const candidates = [
     configured,
-    controller && (isAbsolute(controller) || controller.includes("/")
-      ? resolve(dirname(controller), "chibi_render_ctl")
-      : undefined),
-    resolve(root, "build", "chibi_render_ctl"),
-    resolve(root, "build-release", "chibi_render_ctl"),
+    resolve(root, "build", "chibi_ctl"),
+    resolve(root, "build-release", "chibi_ctl"),
   ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "chibi_render_ctl";
+  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
 }
 
 function renderTimeout() {
@@ -795,7 +791,7 @@ function failedRender(operation, code, message) {
 }
 
 export function renderRequest(root, request, requestId) {
-  const executable = renderControllerPath(root);
+  const executable = controllerPath(root);
   const timeout = renderTimeout();
   const maxBytes = renderResponseLimit();
   return new Promise((resolveRequest) => {
@@ -803,7 +799,7 @@ export function renderRequest(root, request, requestId) {
     let buffer = "";
     let stderr = "";
     let timer = null;
-    const child = spawn(executable, ["--project-root", root], {
+    const child = spawn(executable, ["--render", "--project-root", root], {
       cwd: root,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -843,7 +839,7 @@ export function renderRequest(root, request, requestId) {
       stderr = `${stderr}${chunk}`.slice(-4096);
     });
     child.on("error", (error) => {
-      finish(failedRender(request.operation || "preview_shader", "process_error", `chibi_render_ctl failed: ${error.message}`));
+      finish(failedRender(request.operation || "preview_shader", "process_error", `chibi_ctl --render failed: ${error.message}`));
     });
     child.on("close", (code, signal) => {
       if (settled) {
@@ -855,7 +851,7 @@ export function renderRequest(root, request, requestId) {
           finish(JSON.parse(line));
           return;
         } catch (error) {
-          finish(failedRender(request.operation || "preview_shader", "invalid_response", `chibi_render_ctl returned invalid JSON: ${error.message}`));
+          finish(failedRender(request.operation || "preview_shader", "invalid_response", `chibi_ctl --render returned invalid JSON: ${error.message}`));
           return;
         }
       }
@@ -863,7 +859,7 @@ export function renderRequest(root, request, requestId) {
       finish(failedRender(
         request.operation || "preview_shader",
         "process_error",
-        `chibi_render_ctl ${detail}${stderr ? `: ${stderr.trim()}` : ""}`,
+        `chibi_ctl --render ${detail}${stderr ? `: ${stderr.trim()}` : ""}`,
       ));
     });
     child.stdin.end(`${JSON.stringify(request)}\n`);

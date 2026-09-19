@@ -437,7 +437,7 @@ void run_graph_compile_checks()
     {
         behavior_asset *asset = behavior_asset_new("CMPL20");
         static pin_spec nominal_in[] = {
-            { "Vec3In", PIN_STRUCT, "Vec3", PIN_DATA },
+            { "CF_V3In", PIN_STRUCT, "CF_V3", PIN_DATA },
         };
         static pin_spec nominal_out[] = {
             { "Handle", PIN_HANDLE, "MissingType", PIN_DATA },

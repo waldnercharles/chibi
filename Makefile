@@ -23,7 +23,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-setup tracy-mcp run debug debug-san play build-release run-release play-release run-tracy benchmark web web-serve format check-format test ui-native render-checks dev-smoke clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test clean
 
 all: build
 
@@ -41,12 +41,9 @@ help:
 		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
 		'make run-tracy      Run the native Tracy profile' \
 		'make tracy-mcp      Build and run the official Tracy MCP server' \
-		'make test           Run generation, MCP, runtime, UI, and headless checks' \
-		'make ui-native      Run native editor interaction checks' \
-		'make render-checks  Run GPU and shader checks' \
+		'make test           Run generation, MCP, runtime, and headless checks' \
 		'make benchmark      Run optimized benchmarks with symbols' \
-		'make dev            Run the source reload host' \
-		'make dev-smoke      Test controller and editor reloads' \
+		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build the browser application' \
@@ -63,7 +60,7 @@ build-debug:
 
 mcp:
 	@cmake -S . -B "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
-	@cmake --build "$(BUILD_DIR)" --target chibi_ctl chibi_render_ctl >&2
+	@cmake --build "$(BUILD_DIR)" --target chibi_ctl >&2
 	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
 	@sh tools/mcp/launch.sh
 
@@ -74,16 +71,16 @@ PROJECT ?= projects/arena2d
 SCENE ?= scenes/Arena2D.json
 
 run: build-release
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 debug: build-debug
-	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 debug-san: build
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 play: build-release
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/app" --play --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 # User-facing release builds use the compiler's full Release optimization.
 build-release:
@@ -91,10 +88,10 @@ build-release:
 
 build-tracy:
 	cmake -S . -B "$(TRACY_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	cmake --build "$(TRACY_BUILD_DIR)" --target app chibi_ctl chibi_render_ctl
+	cmake --build "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl
 
 run-tracy: build-tracy
-	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/app" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 build-tracy-mcp:
 	cmake -S . -B "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
@@ -115,10 +112,10 @@ benchmark:
 web:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target reflect
 	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
-	cmake --build "$(WEB_BUILD_DIR)" --target app check-behavior-backend
+	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend
 
 web-serve: web
-	emrun --no_browser --port 8099 "$(WEB_BUILD_DIR)/app.html"
+	emrun --no_browser --port 8099 "$(WEB_BUILD_DIR)/chibi.html"
 
 format:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target format
@@ -133,31 +130,26 @@ test:
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
-	cmake --build $(BUILD_DIR) --target app
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/app --headless --frames 3
-
-ui-native: build
-	$(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --ui-native
-
-render-checks: build
-	$(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --render-checks
+	cmake --build $(BUILD_DIR) --target chibi
+	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
 
 clean:
-	rm -rf "$(BUILD_DIR)" "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(DEV_BUILD_DIR)"
+	@if git worktree list --porcelain | awk -v root="$(abspath $(BUILD_DIR))" \
+		'$$1 == "worktree" && ($$2 == root || index($$2, root "/") == 1) { found = 1 } END { exit !found }'; then \
+		printf '%s\n' "Skipping $(BUILD_DIR): it contains a registered worktree"; \
+	else \
+		rm -rf "$(BUILD_DIR)"; \
+	fi
+	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(DEV_BUILD_DIR)"
 
 # Watch sources and preserve the workspace across native application changes.
 .PHONY: dev
 DEV_BUILD_DIR ?= build-dev
 JOBS ?= 4
-DEV_DISPLAY_RUNNER ?=
+DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 
 dev:
-	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
-	cmake --build "$(DEV_BUILD_DIR)" --target chibi_host chibi_application --parallel $(JOBS)
+	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
+	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi_host" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" $(ARGS)
-
-dev-smoke:
-	cmake -S . -B "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON -DCHIBI_ENABLE_SJLIT=ON
-	cmake --build "$(DEV_BUILD_DIR)" --target chibi_host chibi_application --parallel $(JOBS)
-	$(DEV_DISPLAY_RUNNER) env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 cmake --build "$(DEV_BUILD_DIR)" --target check-dev-smoke
+	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" $(ARGS)

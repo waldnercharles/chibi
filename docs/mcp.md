@@ -12,8 +12,9 @@ Run this from the project root:
 make mcp
 ```
 
-The target builds `chibi_ctl` and the separate GPU tool `chibi_render_ctl`, then starts the
-Node.js adapter in the foreground. The adapter uses stdin and stdout for
+The target builds `chibi_ctl`, which handles headless automation and GPU previews
+through its `--render` mode, then starts the Node.js adapter in the foreground.
+The adapter uses stdin and stdout for
 newline-delimited JSON-RPC. It does not open a port. The readiness message is
 written to stderr so it does not corrupt the protocol stream.
 
@@ -50,7 +51,7 @@ Codex can start the adapter automatically for this repository. Its project
 scoped registration lives in `.codex/config.toml`; it is loaded when Codex is
 started in this repository or one of its subdirectories. The launcher keeps
 build output on stderr, starts the stdio adapter on stdout, and builds
-`build/chibi_ctl` and `build/chibi_render_ctl` on first use if needed. Run
+`build/chibi_ctl` on first use if needed. Run
 `make mcp-setup` to generate that machine-local registration. Restart Codex
 or open a new task after adding or changing project MCP configuration.
 

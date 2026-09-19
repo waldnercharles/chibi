@@ -149,6 +149,11 @@ swept-target phase P95, but repeated full-scene acceptance remains unresolved.
 Prioritize contacts/lifecycle and physics costs before further isolated kernel
 polish. The historical baseline and option catalog remain useful context.
 
+The [contact lifecycle follow-up](contact-lifecycle.md) separates event dispatch
+from lifecycle maintenance. Incremental attachment removal now preserves the
+unchanged prefix and reduces behavior/runtime P95 in every measured scene pair.
+Contact collection/sorting and the physics solve remain the larger next targets.
+
 Implementation status: cached dependency/binding preparation and incremental
 Tick schedule repair from S1/S2 are present. S3 now uses a shared world clock;
 see [the shared-clock measurements and next behavior work](shared-clock.md).

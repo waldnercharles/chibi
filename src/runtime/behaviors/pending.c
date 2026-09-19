@@ -28,6 +28,22 @@ void behavior_pending_reset(behavior_pending *pending)
     }
     atomic_store_explicit(&pending->count, 0, memory_order_relaxed);
 }
+void behavior_pending_truncate(behavior_pending *pending, int attachments)
+{
+    assert(attachments >= 0);
+    int word = attachments / 64;
+    if (word >= pending->word_count) {
+        return;
+    }
+    uint64_t keep = (UINT64_C(1) << (attachments % 64)) - 1;
+    uint64_t old = atomic_fetch_and_explicit(&pending->words[word], keep, memory_order_relaxed);
+    int removed = __builtin_popcountll(old & ~keep);
+    for (word++; word < pending->word_count; word++) {
+        old = atomic_exchange_explicit(&pending->words[word], 0, memory_order_relaxed);
+        removed += __builtin_popcountll(old);
+    }
+    atomic_fetch_sub_explicit(&pending->count, removed, memory_order_relaxed);
+}
 void behavior_pending_set(behavior_pending *pending, int index, bool present)
 {
     assert(index >= 0 && index / 64 < pending->word_count);

@@ -1064,8 +1064,18 @@ static int detach_entities(
         free(selected);
         return 0;
     }
-    int retained = 0;
-    for (int i = 0; i < total; i++) {
+    /* Indices and counts before the first removed attachment remain valid.
+     * Remove only the old suffix from the indexes before compacting it. */
+    for (int i = dirty_begin; i < total; i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        attachment->asset->attachment_count--;
+        int *indices = world->attachments_by_slot[attachment->entity.slot];
+        while (acount(indices) && indices[acount(indices) - 1] >= dirty_begin) {
+            asetlen(indices, acount(indices) - 1);
+        }
+    }
+    int retained = dirty_begin;
+    for (int i = dirty_begin; i < total; i++) {
         behavior_attachment attachment = world->attachments[i];
         if (!(selected[i / 64] & (UINT64_C(1) << (i % 64)))) {
             world->attachments[retained++] = attachment;
@@ -1075,7 +1085,11 @@ static int detach_entities(
     }
     free(selected);
     asetlen(world->attachments, retained);
-    rebuild_attachment_index(world, dirty_begin);
+    mark_attachment_change(world, dirty_begin);
+    behavior_pending_truncate(&world->pending, dirty_begin);
+    for (int i = dirty_begin; i < retained; i++) {
+        index_attachment(world, i);
+    }
     return detached;
 }
 
@@ -1158,7 +1172,9 @@ int game_behavior_destroy_entity(game_behavior_world *world, ecs_entity entity)
 int game_behavior_destroy_entities(game_behavior_world *world, const ecs_entity *entities, int count)
 {
     assert(world && count >= 0 && (!count || entities));
+    CHIBI_TRACE_ZONE_BEGIN(detach_zone, "Detach behavior attachments");
     detach_entities(world, entities, count, NULL);
+    CHIBI_TRACE_ZONE_END(detach_zone);
     for (int i = 0; i < count; i++) {
         ecs_entity entity = entities[i];
         if (!ecs_entity_is_alive(world->ecs, entity)) {

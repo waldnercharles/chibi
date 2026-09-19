@@ -38,6 +38,9 @@ maintenance, pair collection, transform writeback, and pair sorting/event
 queueing. `Contact events` measures the later event pump, including lifecycle
 flushes between batches. Correlate these scopes with their containing engine
 frame to distinguish steady costs from work concentrated in slow frames.
+Nested zones split pair sorting from contact comparison, and contact-batch
+dispatch from lifecycle processing. `Detach behavior attachments` isolates
+behavior removal within bulk entity destruction.
 
 ## Tracy MCP
 

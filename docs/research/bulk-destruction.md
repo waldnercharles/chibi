@@ -1,5 +1,9 @@
 # Bulk entity destruction
 
+The later [incremental removal work](contact-lifecycle.md) preserves attachment
+indexes and pending work before the first removed attachment. The measurements
+below describe the earlier transition from repeated removal to one bulk pass.
+
 Deferred host destruction and scene reset now remove behavior attachments in one
 pass. The change is shared runtime infrastructure; it contains no Arena-specific
 rules and changes no graph lowering or backend selection.

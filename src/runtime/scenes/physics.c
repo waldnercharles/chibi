@@ -1169,9 +1169,12 @@ static void sort_pairs(game_physics *physics)
 
 static int dispatch_pairs(game_physics *physics)
 {
+    CHIBI_TRACE_ZONE_BEGIN(sort_zone, "Physics sort pairs");
     if (acount(physics->current) > 1) {
         sort_pairs(physics);
     }
+    CHIBI_TRACE_ZONE_END(sort_zone);
+    CHIBI_TRACE_ZONE_BEGIN(diff_zone, "Physics diff contacts");
     int count = 0, previous = 0, result = FLOW_OK;
     for (int i = 0; i < acount(physics->current); i++) {
         contact_pair pair = physics->current[i];
@@ -1200,6 +1203,7 @@ static int dispatch_pairs(game_physics *physics)
     physics->previous = physics->current;
     physics->current = old;
     aclear(physics->current);
+    CHIBI_TRACE_ZONE_END(diff_zone);
     return result;
 }
 

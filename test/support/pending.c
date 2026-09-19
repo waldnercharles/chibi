@@ -392,8 +392,55 @@ static void test_borrowed_clock_wait(behavior_backend backend)
     behavior_asset_free(asset);
 }
 
+static void test_detach_suffix(behavior_backend backend)
+{
+    enum
+    {
+        COUNT = 130
+    };
+    ecs_world *ecs = ecs_world_new();
+    game_behavior_world *world = game_behavior_world_new(ecs);
+    behavior_asset *asset = counter();
+    assert(!game_behavior_register_asset(world, asset->name, asset));
+    ecs_entity entities[COUNT];
+    behavior_instance *instances[COUNT];
+    behavior_backend previous = behavior_debug_backend(backend);
+    for (int i = 0; i < COUNT; i++) {
+        entities[i] = ecs_world_create_entity(ecs);
+        assert(!game_behavior_attach(world, entities[i], asset->name));
+        instances[i] = game_behavior_instance(world, entities[i], asset->name);
+    }
+    behavior_debug_backend(previous);
+    int waiting[] = { 0, 63, 64, 127, 129 };
+    for (int i = 0; i < 5; i++) {
+        enqueue(instances[waiting[i]], true);
+    }
+    assert(!game_behavior_pump(world, 0) && game_behavior_last_pump_count(world) == 5);
+    /* Moving the last attachment must move its pending membership as well,
+     * while retaining the pending prefix across word boundaries. */
+    assert(game_behavior_detach_entity(world, entities[127]) == 1);
+    assert(!game_behavior_pump(world, .25) && game_behavior_last_pump_count(world) == 4);
+    assert(instances[0]->variables[0].i == 1 && instances[63]->variables[0].i == 1);
+    assert(instances[64]->variables[0].i == 1 && instances[129]->variables[0].i == 1);
+    assert(game_behavior_instance(world, entities[129], asset->name) == instances[129]);
+    enqueue(instances[0], true);
+    enqueue(instances[63], true);
+    enqueue(instances[129], true);
+    assert(!game_behavior_pump(world, .25) && game_behavior_last_pump_count(world) == 3);
+    assert(game_behavior_detach_entity(world, entities[129]) == 1);
+    assert(!game_behavior_pump(world, .5) && game_behavior_last_pump_count(world) == 2);
+    assert(instances[0]->variables[0].i == 2 && instances[63]->variables[0].i == 2);
+    assert(!game_behavior_pump(world, .5) && !game_behavior_last_pump_count(world));
+    assert(game_behavior_has_event(world, "Wait"));
+    assert(game_behavior_attachment_count(world) == COUNT - 2);
+    game_behavior_world_free(world);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+}
+
 void test_pending_backend(behavior_backend backend)
 {
+    test_detach_suffix(backend);
     test_borrowed_clock_wait(backend);
     test_bulk_destroy(backend);
     enum

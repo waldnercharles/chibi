@@ -250,8 +250,65 @@ static void action_smoke()
         behavior_backend_name(behavior_default_backend())
     );
 }
+static void whole_format_smoke()
+{
+    behavior_asset *asset = behavior_asset_new("WholeFormatText");
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Score"));
+    pin_spec points = { "Points", PIN_F64, "double", PIN_DATA };
+    pin_spec player = { "Player", PIN_STR, "const char *", PIN_DATA };
+    assert(graph_add_pin(g, event, 1, &points) == 1);
+    assert(graph_add_pin(g, event, 1, &player) == 2);
+    node *format = graph_add_node(g, registry_node_by_name("Format Text"));
+    pin_spec argument = { .name = "Arg1",
+                          .type = PIN_FLOW,
+                          .kind = PIN_DATA,
+                          .flags = PIN_FLAG_WILDCARD };
+    assert(graph_add_pin(g, format, 0, &argument) == 2);
+    argument.name = "Arg2";
+    assert(graph_add_pin(g, format, 0, &argument) == 3);
+    assert(
+        !graph_set_pin_default(g, format, 0, 0, &(pin_value){ .type = PIN_STR, .str = "RALLY {:.0f} / {}" })
+    );
+    assert(!graph_connect_data(g, event, 1, format, 1));
+    assert(!graph_connect_data(g, event, 2, format, 2));
+    behavior_variable *text = behavior_asset_add_variable(
+        asset,
+        "Text",
+        PIN_STR,
+        "const char *",
+        PIN_CONTAINER_SINGLE,
+        NULL,
+        ""
+    );
+    uint64_t id = text->id;
+    node *set = behavior_asset_add_set_node(asset, id);
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+    assert(!graph_connect_data(g, format, 0, set, 1));
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
+    for (int i = 1; i <= 3; i++) {
+        pin_value values[] = { { .type = PIN_F64, .d = i * 100.0 },
+                               { .type = PIN_STR, .str = "pilot" } };
+        flow_run *run = behavior_instance_dispatch(instance, "Score", (flow_inputs){ values, 2 }, NULL);
+        assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
+        assert(!behavior_instance_release_activation(instance, run));
+        pin_value result;
+        char expected[64];
+        snprintf(expected, sizeof expected, "RALLY %d / pilot", i * 100);
+        assert(!behavior_instance_get_variable(instance, id, &result));
+        assert(!strcmp(result.str, expected));
+    }
+    assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+    puts("whole Format Text PASS: fixed format, mixed variadic values, unused spare and retained output; zero oracle calls");
+}
+
 void whole_data_smoke()
 {
+    whole_format_smoke();
     behavior_asset *a = whole_data_nested(false);
     behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(bi, false);

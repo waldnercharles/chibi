@@ -1,0 +1,40 @@
+// Installed only by the local development server. Packaged builds stay standalone.
+(() => {
+    const token = __CHIBI_SAVE_TOKEN__;
+    const query = new URLSearchParams(location.search);
+    const scene = query.get('scene');
+    Module['arguments'] = scene ? ['--scene', scene] : [];
+    if (query.get('play') === '1') Module['arguments'].push('--play');
+    const request = (method, path, body) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, path, false);
+        xhr.setRequestHeader('X-Chibi-Token', token);
+        if (body) xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(body ? JSON.stringify(body) : null);
+        if (xhr.status < 200 || xhr.status >= 300) throw new Error(xhr.responseText || 'Local save failed');
+        return xhr.responseText;
+    };
+    Module['chibiSaveAsset'] = (path, text) => {
+        try {
+            request('POST', '/__chibi/save', {path, text});
+            return 0;
+        } catch (error) {
+            Module['showError'](error.message);
+            return -1;
+        }
+    };
+    const initialize = Module['onRuntimeInitialized'];
+    Module['onRuntimeInitialized'] = () => {
+        try {
+            const files = JSON.parse(request('GET', '/__chibi/assets'));
+            for (const [path, text] of Object.entries(files)) {
+                Module['FS'].mkdirTree('/' + path.slice(0, path.lastIndexOf('/')));
+                Module['FS'].writeFile('/' + path, text);
+            }
+        } catch (error) {
+            Module['showError'](error.message);
+            throw error;
+        }
+        initialize?.();
+    };
+})();

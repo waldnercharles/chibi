@@ -42,6 +42,9 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 enum
 {
@@ -57,8 +60,21 @@ int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
 bool scene_search_matches(const char *query, const char *text);
 
+#ifdef __EMSCRIPTEN__
+EM_JS(int, web_save_asset, (const char *path, const char *text), {
+    return Module['chibiSaveAsset']
+             ? Module['chibiSaveAsset'](UTF8ToString(path), UTF8ToString(text))
+             : 0;
+})
+#endif
+
 int write_text_file_atomic(const char *path, const char *text)
 {
+#ifdef __EMSCRIPTEN__
+    if (web_save_asset(path, text)) {
+        return -1;
+    }
+#endif
     size_t size = strlen(path) + 5;
     char *temporary = (char *)xmalloc(size);
     snprintf(temporary, size, "%s.tmp", path);
@@ -1423,7 +1439,7 @@ static int app_ui_command(editor_ui_command command, void *user)
             editor_redo(scene->graph_editor);
             return 0;
         case EDITOR_UI_COMMAND_NEW_PROTOTYPE:
-            return create_new_prototype(scene);
+            return create_new_prototype(scene, NULL);
         case EDITOR_UI_COMMAND_NEW_BEHAVIOR:
             return create_behavior_asset(scene);
         case EDITOR_UI_COMMAND_FOCUS_SCENE:

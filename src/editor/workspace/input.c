@@ -4,6 +4,18 @@
 #include <cute_binding.h>
 #include <math.h>
 
+static const CF_KeyButton keys[] = {
+    CF_KEY_ESCAPE, CF_KEY_Z,      CF_KEY_Y,     CF_KEY_C,
+    CF_KEY_X,      CF_KEY_V,      CF_KEY_D,     CF_KEY_S,
+    CF_KEY_DELETE, CF_KEY_LSHIFT, CF_KEY_LCTRL,
+#ifdef __APPLE__
+    CF_KEY_LGUI,
+#else
+    CF_KEY_LCTRL,
+#endif
+};
+_Static_assert(sizeof keys / sizeof *keys == APP_INPUT_COUNT, "action keys");
+
 static CF_ButtonBinding buttons[APP_INPUT_COUNT];
 static CF_AxisBinding horizontal, vertical;
 static CF_AxisBinding aim_horizontal, aim_vertical;
@@ -11,26 +23,51 @@ static bool ready;
 static bool first_frame;
 static bool held_at_reload[APP_INPUT_COUNT];
 static bool controller_aim;
+static bool pressed_actions[APP_INPUT_COUNT], frame_actions[APP_INPUT_COUNT];
 static uint64_t held_controls;
+static uint64_t pressed_controls, frame_controls;
 static uint64_t raw_controls();
+
+/* Preserve a tap whose down and up events arrive between rendered frames. */
+static void key_changed(CF_KeyButton key, bool down)
+{
+    if (!down) {
+        return;
+    }
+    for (int i = 0; i < APP_INPUT_COUNT; i++) {
+        pressed_actions[i] |= key == keys[i];
+    }
+    pressed_actions[APP_INPUT_DELETE] |= key == CF_KEY_BACKSPACE;
+    pressed_actions[APP_INPUT_SHIFT] |= key == CF_KEY_RSHIFT;
+    pressed_actions[APP_INPUT_CONTROL] |= key == CF_KEY_RCTRL;
+#ifdef __APPLE__
+    pressed_actions[APP_INPUT_COMMAND] |= key == CF_KEY_RGUI;
+#else
+    pressed_actions[APP_INPUT_COMMAND] |= key == CF_KEY_RCTRL;
+#endif
+    int source = GAME_CONTROL_NONE;
+    if (key >= CF_KEY_A && key <= CF_KEY_Z) {
+        source = GAME_CONTROL_A + key - CF_KEY_A;
+    } else {
+        switch (key) {
+            case CF_KEY_SPACE: source = GAME_CONTROL_SPACE; break;
+            case CF_KEY_LSHIFT:
+            case CF_KEY_RSHIFT: source = GAME_CONTROL_SHIFT; break;
+            case CF_KEY_TAB: source = GAME_CONTROL_TAB; break;
+            case CF_KEY_RETURN: source = GAME_CONTROL_ENTER; break;
+            default: return;
+        }
+    }
+    pressed_controls |= UINT64_C(1) << source;
+}
 
 void app_input_initialize()
 {
     if (ready) {
         return;
     }
-    const CF_KeyButton keys[] = {
-        CF_KEY_ESCAPE, CF_KEY_Z,      CF_KEY_Y,     CF_KEY_C,
-        CF_KEY_X,      CF_KEY_V,      CF_KEY_D,     CF_KEY_S,
-        CF_KEY_DELETE, CF_KEY_LSHIFT, CF_KEY_LCTRL,
-#ifdef __APPLE__
-        CF_KEY_LGUI,
-#else
-        CF_KEY_LCTRL,
-#endif
-    };
-    _Static_assert(sizeof keys / sizeof *keys == APP_INPUT_COUNT, "action keys");
     for (int i = 0; i < APP_INPUT_COUNT; i++) {
+        pressed_actions[i] = frame_actions[i] = false;
         buttons[i] = cf_make_button_binding(0, 0);
         cf_button_binding_add_key(buttons[i], keys[i]);
         if (i >= APP_INPUT_UNDO && i <= APP_INPUT_DELETE) {
@@ -61,6 +98,8 @@ void app_input_initialize()
     cf_axis_binding_set_conflict(vertical, CF_AXIS_CONFLICT_CANCEL);
     first_frame = true;
     controller_aim = false;
+    pressed_controls = frame_controls = 0;
+    cf_register_key_callback(key_changed);
     ready = true;
 }
 
@@ -73,6 +112,8 @@ void app_input_frame()
         return;
     }
     for (int i = 0; i < APP_INPUT_COUNT; i++) {
+        frame_actions[i] = pressed_actions[i];
+        pressed_actions[i] = false;
         bool down = cf_button_binding_down(buttons[i]);
         if (first_frame) {
             held_at_reload[i] = down;
@@ -82,6 +123,8 @@ void app_input_frame()
         }
     }
     uint64_t controls = raw_controls();
+    frame_controls = controls | pressed_controls;
+    pressed_controls = 0;
     held_controls = first_frame ? controls : held_controls & controls;
     first_frame = false;
     float aim_x = cf_axis_binding_value(aim_horizontal);
@@ -105,6 +148,7 @@ void app_input_shutdown()
     cf_destroy_axis_binding(vertical);
     cf_destroy_axis_binding(aim_horizontal);
     cf_destroy_axis_binding(aim_vertical);
+    cf_register_key_callback(NULL);
     ready = false;
 }
 
@@ -112,14 +156,15 @@ bool app_input_pressed(app_input_action action)
 {
     assert(action >= 0 && action < APP_INPUT_COUNT);
     return ready && !held_at_reload[action] &&
-           (cf_button_binding_pressed(buttons[action]) ||
+           (frame_actions[action] || cf_button_binding_pressed(buttons[action]) ||
             cf_button_binding_repeated(buttons[action]));
 }
 
 bool app_input_down(app_input_action action)
 {
     assert(action >= 0 && action < APP_INPUT_COUNT);
-    return ready && cf_button_binding_down(buttons[action]);
+    return ready &&
+           (frame_actions[action] || cf_button_binding_down(buttons[action]));
 }
 
 bool app_input_released(app_input_action action)
@@ -198,7 +243,7 @@ static uint64_t raw_controls()
 
 uint64_t app_input_controls()
 {
-    return ready ? raw_controls() & ~held_controls : 0;
+    return ready ? frame_controls & ~held_controls : 0;
 }
 
 bool app_input_mouse_aiming()

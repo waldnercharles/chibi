@@ -26,6 +26,12 @@
 #include <string.h>
 #include <time.h>
 
+typedef struct
+{
+    ecs_entity entity;
+    int layer;
+} draw_actor;
+
 struct app_scene_renderer
 {
     render_arena *arena;
@@ -44,6 +50,7 @@ struct app_scene_renderer
     bool background_valid;
     double previous_frame;
     render_material_entity *entities;
+    draw_actor *actors;
     ecs_world *world;
     engine_viewport_camera camera;
     int width, height;
@@ -110,6 +117,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_programs_free(renderer->fragment);
     afree(renderer->fragment_programs);
     afree(renderer->entities);
+    afree(renderer->actors);
     free(renderer);
 }
 
@@ -529,6 +537,39 @@ static bool mask_visible(
            y + ry >= view.max_y - view.height && y - ry <= view.max_y;
 }
 
+static int compare_actors(const void *left, const void *right)
+{
+    const draw_actor *a = left, *b = right;
+    if (a->layer != b->layer) {
+        return (a->layer > b->layer) - (a->layer < b->layer);
+    }
+    return (a->entity.slot > b->entity.slot) - (a->entity.slot < b->entity.slot);
+}
+
+static void collect_order(app_scene_renderer *renderer, ecs_world *world)
+{
+    aclear(renderer->actors);
+    ecs_component_id component = GAME_COMPONENT_GameTransform.id;
+    ecs_query query;
+    if (ecs_query_begin(world, &query, &component, 1) != ECS_OK) {
+        return;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
+        apush(renderer->actors, ((draw_actor){ entity, appearance ? appearance->layer : 0 }));
+    }
+    ecs_query_end(&query);
+    if (acount(renderer->actors) > 1) {
+        qsort(
+            renderer->actors,
+            (size_t)acount(renderer->actors),
+            sizeof *renderer->actors,
+            compare_actors
+        );
+    }
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -539,172 +580,151 @@ static void collect(
 {
     asetlen(renderer->entities, 0);
     aclear(renderer->reflectors);
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
-    ecs_query query;
-    if (ecs_query_begin(world, &query, required, 1) == ECS_OK) {
-        ecs_entity entity;
-        while (ecs_query_next(&query, &entity)) {
-            if (!engine_entity_visible(runtime, world, entity)) {
+    collect_order(renderer, world);
+    for (int actor = 0; actor < acount(renderer->actors); actor++) {
+        ecs_entity entity = renderer->actors[actor].entity;
+        if (!engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
+        const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
+        const GameShader *binding = GAME_GameShader_get_const(world, entity);
+        const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);
+        const GameGeometry3D *geometry = GAME_GameGeometry3D_get_const(world, entity);
+        if (!authored && !geometry) {
+            continue;
+        }
+        GameAppearance fallback = authored
+                                    ? *authored
+                                    : (GameAppearance){ .width = geometry->width,
+                                                        .height = geometry->depth,
+                                                        .color = 0xffffffffu,
+                                                        .shape = GAME_SHAPE_BOX,
+                                                        .antialias = 1 };
+        const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+        float heading = orientation ? orientation->radians : 0;
+        GameAppearance appearance;
+        float angle;
+        if (!render_geometry_2d_project(authored ? NULL : geometry, &fallback, visual, heading, &appearance, &angle)) {
+            continue;
+        }
+        int shape = !authored && binding ? render_shader_find(binding->shape) : 0;
+        float bounds[2];
+        if (!authored && render_shader_bounds(shape, bounds)) {
+            float scale = visual ? visual->scale : 1;
+            appearance.shape = GAME_SHAPE_BOX;
+            appearance.width = 2 *
+                               (binding->bounds_x > 0 ? binding->bounds_x : bounds[0]) *
+                               scale;
+            appearance.height = 2 *
+                                (binding->bounds_y > 0 ? binding->bounds_y
+                                                       : bounds[1]) *
+                                scale;
+        }
+        GameTransform position = *GAME_GameTransform_get_const(world, entity);
+        if (runtime) {
+            engine_render_position(runtime, entity, &position);
+        }
+        const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
+        if (mask) {
+            float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
+            material_rect bounds = { 0,
+                                     0,
+                                     mask->width * mask->cell_size,
+                                     mask->height * mask->cell_size };
+            if (!mask_visible(view, position, bounds, heading, padding)) {
                 continue;
             }
-            const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-            const GameShader *binding = GAME_GameShader_get_const(world, entity);
-            const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);
-            const GameGeometry3D *geometry = GAME_GameGeometry3D_get_const(world, entity);
-            if (!authored && !geometry) {
-                continue;
+            int shader = binding ? render_shader_find(binding->material) : 0;
+            float parameters[32][4] = { 0 };
+            if (shader && !render_shader_is_shape(shader)) {
+                render_shader_parameters(shader, world, entity, binding->parameters, parameters);
             }
-            GameAppearance fallback = authored
-                                        ? *authored
-                                        : (GameAppearance){ .width = geometry->width,
-                                                            .height = geometry->depth,
-                                                            .color = 0xffffffffu,
-                                                            .shape = GAME_SHAPE_BOX,
-                                                            .antialias = 1 };
-            const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
-            float heading = orientation ? orientation->radians : 0;
-            GameAppearance appearance;
-            float angle;
-            if (!render_geometry_2d_project(
-                    authored ? NULL : geometry,
-                    &fallback,
-                    visual,
-                    heading,
-                    &appearance,
-                    &angle
-                )) {
-                continue;
+            const GameReflection *reflection = GAME_GameReflection_get_const(world, entity);
+            if (reflection) {
+                for (int i = 0; i < acount(mask->rects); i++) {
+                    reflect_rect(
+                        renderer,
+                        mask->rects[i],
+                        position,
+                        heading,
+                        *reflection,
+                        GAME_GameMaterial_get_const(world, entity)
+                    );
+                }
             }
-            int shape = !authored && binding ? render_shader_find(binding->shape) : 0;
-            float bounds[2];
-            if (!authored && render_shader_bounds(shape, bounds)) {
-                float scale = visual ? visual->scale : 1;
-                appearance.shape = GAME_SHAPE_BOX;
-                appearance.width = 2 *
-                                   (binding->bounds_x > 0 ? binding->bounds_x
-                                                          : bounds[0]) *
-                                   scale;
-                appearance.height = 2 *
-                                    (binding->bounds_y > 0 ? binding->bounds_y
-                                                           : bounds[1]) *
-                                    scale;
-            }
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
-            }
-            const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
-            if (mask) {
-                float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
-                material_rect bounds = { 0,
-                                         0,
-                                         mask->width * mask->cell_size,
-                                         mask->height * mask->cell_size };
-                if (!mask_visible(view, position, bounds, heading, padding)) {
+            for (int i = 0; i < acount(mask->surface); i++) {
+                const material_polygon *polygon = &mask->surface[i];
+                float min_x = polygon->points[0], max_x = min_x;
+                float min_y = polygon->points[1], max_y = min_y;
+                for (int j = 1; j < polygon->count; j++) {
+                    min_x = fminf(min_x, polygon->points[2 * j]);
+                    max_x = fmaxf(max_x, polygon->points[2 * j]);
+                    min_y = fminf(min_y, polygon->points[2 * j + 1]);
+                    max_y = fmaxf(max_y, polygon->points[2 * j + 1]);
+                }
+                material_rect rect = { (min_x + max_x) * .5f,
+                                       (min_y + max_y) * .5f,
+                                       max_x - min_x,
+                                       max_y - min_y };
+                if (!mask_visible(view, position, rect, heading, padding)) {
                     continue;
                 }
-                int shader = binding ? render_shader_find(binding->material) : 0;
-                float parameters[32][4] = { 0 };
-                if (shader && !render_shader_is_shape(shader)) {
-                    render_shader_parameters(shader, world, entity, binding->parameters, parameters);
+                GameTransform p = {
+                    position.x + cosf(heading) * rect.x - sinf(heading) * rect.y,
+                    position.y + sinf(heading) * rect.x + cosf(heading) * rect.y
+                };
+                GameAppearance part = { .width = rect.width,
+                                        .height = rect.height,
+                                        .shape = GAME_SHAPE_BOX,
+                                        .color = appearance.color,
+                                        .antialias = appearance.antialias };
+                if (!append_entity(renderer, &p, &part, -heading, NULL, GAME_GameMaterial_get_const(world, entity))) {
+                    continue;
                 }
-                const GameReflection *reflection = GAME_GameReflection_get_const(world, entity);
-                if (reflection) {
-                    for (int i = 0; i < acount(mask->rects); i++) {
-                        reflect_rect(
-                            renderer,
-                            mask->rects[i],
-                            position,
-                            heading,
-                            *reflection,
-                            GAME_GameMaterial_get_const(world, entity)
-                        );
+                render_material_entity *draw = &alast(renderer->entities);
+                bool box = polygon->count == 4 &&
+                           polygon->points[0] == polygon->points[6] &&
+                           polygon->points[2] == polygon->points[4] &&
+                           polygon->points[1] == polygon->points[3] &&
+                           polygon->points[5] == polygon->points[7];
+                if (!box) {
+                    draw->shape_type = RENDER_SHAPE_POLY_FILL;
+                    draw->point_count = polygon->count;
+                    for (int j = 0; j < polygon->count; j++) {
+                        draw->points[2 * j] = polygon->points[2 * j] - rect.x;
+                        draw->points[2 * j + 1] = rect.y - polygon->points[2 * j + 1];
                     }
                 }
-                for (int i = 0; i < acount(mask->surface); i++) {
-                    const material_polygon *polygon = &mask->surface[i];
-                    float min_x = polygon->points[0], max_x = min_x;
-                    float min_y = polygon->points[1], max_y = min_y;
-                    for (int j = 1; j < polygon->count; j++) {
-                        min_x = fminf(min_x, polygon->points[2 * j]);
-                        max_x = fmaxf(max_x, polygon->points[2 * j]);
-                        min_y = fminf(min_y, polygon->points[2 * j + 1]);
-                        max_y = fmaxf(max_y, polygon->points[2 * j + 1]);
-                    }
-                    material_rect rect = { (min_x + max_x) * .5f,
-                                           (min_y + max_y) * .5f,
-                                           max_x - min_x,
-                                           max_y - min_y };
-                    if (!mask_visible(view, position, rect, heading, padding)) {
-                        continue;
-                    }
-                    GameTransform p = { position.x + cosf(heading) * rect.x -
-                                            sinf(heading) * rect.y,
-                                        position.y + sinf(heading) * rect.x +
-                                            cosf(heading) * rect.y };
-                    GameAppearance part = { .width = rect.width,
-                                            .height = rect.height,
-                                            .shape = GAME_SHAPE_BOX,
-                                            .color = appearance.color,
-                                            .antialias = appearance.antialias };
-                    if (!append_entity(renderer, &p, &part, -heading, NULL, GAME_GameMaterial_get_const(world, entity))) {
-                        continue;
-                    }
-                    render_material_entity *draw = &alast(renderer->entities);
-                    bool box = polygon->count == 4 &&
-                               polygon->points[0] == polygon->points[6] &&
-                               polygon->points[2] == polygon->points[4] &&
-                               polygon->points[1] == polygon->points[3] &&
-                               polygon->points[5] == polygon->points[7];
-                    if (!box) {
-                        draw->shape_type = RENDER_SHAPE_POLY_FILL;
-                        draw->point_count = polygon->count;
-                        for (int j = 0; j < polygon->count; j++) {
-                            draw->points[2 * j] = polygon->points[2 * j] - rect.x;
-                            draw->points[2 * j + 1] = rect.y -
-                                                      polygon->points[2 * j + 1];
-                        }
-                    }
-                    draw->reserved[0] = render_shader_is_shape(shader) ? 0 : (float)shader;
-                    memcpy(draw->material_parameters, parameters, sizeof parameters);
-                }
-                mask_edges(
-                    renderer,
-                    mask,
-                    position,
-                    heading,
-                    &appearance,
-                    GAME_GameMaterial_get_const(world, entity)
-                );
-                continue;
+                draw->reserved[0] = render_shader_is_shape(shader) ? 0 : (float)shader;
+                memcpy(draw->material_parameters, parameters, sizeof parameters);
             }
-            if (!append_entity(
-                    renderer,
-                    &position,
-                    &appearance,
-                    angle,
-                    GAME_GameSdfMotion_get_const(world, entity),
-                    GAME_GameMaterial_get_const(world, entity)
-                )) {
-                continue;
-            }
-            /* Appearance owns the 2D footprint; its shader still owns the
-             * material channels used by the SDF raster and HRC inputs. */
-            if (binding) {
-                render_material_entity
-                    *draw = &renderer->entities[acount(renderer->entities) - 1];
-                int material = render_shader_find(binding->material);
-                draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
-                draw->reserved[1] = !authored && render_shader_is_shape(shape)
-                                      ? (float)shape
-                                      : 0;
-                render_shader_parameters(material, world, entity, binding->parameters, draw->material_parameters);
-                if (!authored) {
-                    render_shader_parameters(shape, world, entity, binding->parameters, draw->shape_parameters);
-                }
+            mask_edges(renderer, mask, position, heading, &appearance, GAME_GameMaterial_get_const(world, entity));
+            continue;
+        }
+        if (!append_entity(
+                renderer,
+                &position,
+                &appearance,
+                angle,
+                GAME_GameSdfMotion_get_const(world, entity),
+                GAME_GameMaterial_get_const(world, entity)
+            )) {
+            continue;
+        }
+        /* Appearance owns the 2D footprint; its shader still owns the
+         * material channels used by the SDF raster and HRC inputs. */
+        if (binding) {
+            render_material_entity *draw = &renderer->entities[acount(renderer->entities) - 1];
+            int material = render_shader_find(binding->material);
+            draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
+            draw->reserved[1] = !authored && render_shader_is_shape(shape)
+                                  ? (float)shape
+                                  : 0;
+            render_shader_parameters(material, world, entity, binding->parameters, draw->material_parameters);
+            if (!authored) {
+                render_shader_parameters(shape, world, entity, binding->parameters, draw->shape_parameters);
             }
         }
-        ecs_query_end(&query);
     }
     const game_particle *items = game_particles_data(particles);
     for (int i = 0; i < game_particles_count(particles); i++) {
@@ -983,7 +1003,9 @@ bool app_scene_renderer_draw(
     }
     const int pad_pixels = 16;
     if (!renderer->raster) {
-        snprintf(renderer->error, sizeof renderer->error, "radiance cascades unavailable; using GLES3 fragment fallback");
+        /* This is a supported rendering path, not a scene error. Its status is
+         * available in the renderer diagnostics without covering the game. */
+        renderer->error[0] = '\0';
         renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                              0.5f;
         collect(renderer, world, particles, runtime, padded_view(&camera, width, height, 0));

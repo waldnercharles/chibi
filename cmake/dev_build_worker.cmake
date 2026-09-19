@@ -43,7 +43,12 @@ if(EXISTS "${build_dir}/CMakeCache.txt")
 endif()
 set(rebuild_args)
 if(EXISTS "${rebuild_marker}")
-    list(APPEND rebuild_args --clean-first)
+    # Ninja tracks sub-second input timestamps and interrupted edges. Retrying
+    # its incremental build preserves unchanged resident binaries; cleaning
+    # those binaries would turn an application edit into a required restart.
+    if(NOT generator STREQUAL "CMAKE_GENERATOR:INTERNAL=Ninja")
+        list(APPEND rebuild_args --clean-first)
+    endif()
     set(SKIP_BUILD OFF)
 endif()
 set(built FALSE)

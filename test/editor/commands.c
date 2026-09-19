@@ -1,6 +1,7 @@
 #include "editor/graph/search.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
+#include "editor/workspace/event_catalog.h"
 #include "graph/document/events.h"
 #include "test/suite_internal.h"
 
@@ -521,6 +522,29 @@ static void check_typed_wire_search()
     editor_free(e);
 }
 
+static void check_binding_target_stability()
+{
+    behavior_asset *asset = behavior_asset_new("Binding targets");
+    editor *e = editor_new(asset);
+    node *bound = graph_add_node(asset->graph, &g_editor_float_sink_desc);
+    node *target = graph_add_node(asset->graph, &g_editor_float_sink_desc);
+    pin_binding binding = { .kind = PIN_BINDING_DELTA_TIME };
+    assert(graph_set_pin_binding(asset->graph, bound, 0, 0, &binding) == 0);
+    ed_open_binding_popup(e, target, 0);
+    ImGui_NewFrame();
+    ImGui_Begin("Inspector regression", NULL, 0);
+    ed_draw_details_pin(e, bound, 0, 0);
+    ImGui_End();
+    ImGui_EndFrame();
+    test_check(e->binding_node_id == target->id && e->binding_pin == 0 && e->binding_open_requested, "drawing a bound Inspector input preserves another input's pending binding target");
+    e->binding_open_requested = false;
+    editor_set_event_catalog(e, APP_EVENT_CATALOG, sizeof APP_EVENT_CATALOG / sizeof *APP_EVENT_CATALOG);
+    search_popup_insert(e, "On Begin");
+    node *begin = asset->graph->nodes[acount(asset->graph->nodes) - 1];
+    test_check(begin->reference_name && !strcmp(begin->reference_name, "Begin"), "the application event catalog exposes behavior initialization through node search");
+    editor_free(e);
+}
+
 void run_editor_command_checks(void)
 {
     ImGuiContext *context = ImGui_CreateContext(NULL);
@@ -529,6 +553,7 @@ void run_editor_command_checks(void)
     check_search_catalog();
     check_library_search_snapshot();
     check_typed_wire_search();
+    check_binding_target_stability();
     char save_path[512];
     if (make_editor_save_path(save_path, sizeof save_path) != 0) {
         test_check(0, "a temporary path can be generated for editor persistence");

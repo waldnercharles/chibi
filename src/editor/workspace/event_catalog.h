@@ -16,6 +16,7 @@ static const editor_event_param APP_DAMAGE_PARAMS[] = {
     { "Source", PIN_HANDLE, "ecs.entity" },
 };
 static const editor_event_signature APP_EVENT_CATALOG[] = {
+    { "Begin", NULL, 0 },
     { "Fire", NULL, 0 },
     { "Dash", NULL, 0 },
     { "Tick", APP_TICK_PARAMS, 1 },

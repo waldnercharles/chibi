@@ -351,6 +351,9 @@ static bool valid(
            fabsf(position->y) + extent < maximum && isfinite(velocity.x) &&
            isfinite(velocity.y) && body->type >= GAME_BODY_STATIC &&
            body->type <= GAME_BODY_KINEMATIC &&
+           isfinite(body->angular_velocity) && isfinite(shape->restitution) &&
+           shape->restitution >= 0 && shape->restitution <= 1 &&
+           isfinite(shape->friction) && shape->friction >= 0 &&
            ((shape->shape == GAME_COLLIDER_CIRCLE && isfinite(shape->radius) &&
              shape->radius >= 0) ||
             (shape->shape == GAME_COLLIDER_BOX && isfinite(shape->width) &&
@@ -367,7 +370,8 @@ static bool same_configuration(const physics_body *body, const GameCollider *sha
            old->category == shape->category && old->mask == shape->mask &&
            old->sensor == shape->sensor &&
            old->pierce_fragments == shape->pierce_fragments &&
-           old->ignore_entity == shape->ignore_entity;
+           old->ignore_entity == shape->ignore_entity &&
+           old->restitution == shape->restitution && old->friction == shape->friction;
 }
 
 static void remove_body(game_physics *physics, physics_body *body)
@@ -440,7 +444,7 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     }
     def.position = position;
     def.rotation = b2MakeRot(angle);
-    def.fixedRotation = true;
+    def.fixedRotation = body->settings.type != GAME_BODY_KINEMATIC;
     /* Box2D excludes bullet targets from CCD, so static/kinematic colliders
      * must stay eligible even when their authored Continuous flag is set. */
     def.isBullet = body->settings.type == GAME_BODY_DYNAMIC &&
@@ -448,8 +452,8 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     body->body = b2CreateBody(physics->simulation, &def);
     b2ShapeDef shape = b2DefaultShapeDef();
     shape.userData = (void *)(uintptr_t)body->entity.slot;
-    shape.material.friction = 0;
-    shape.material.restitution = 0;
+    shape.material.friction = body->collider.friction;
+    shape.material.restitution = body->collider.restitution;
     shape.density = 1.0f / (GAME_UNITS_PER_METER * GAME_UNITS_PER_METER);
     shape.filter.categoryBits = body->collider.category;
     shape.filter.maskBits = body->collider.mask;
@@ -503,6 +507,17 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
         );
         return FLOW_ERR_ARGUMENT;
     }
+    if (settings.angular_velocity != 0 &&
+        (settings.type != GAME_BODY_KINEMATIC || !orientation)) {
+        snprintf(
+            physics->error,
+            sizeof physics->error,
+            "Angular velocity requires a kinematic Body and Orientation on "
+            "entity %u.",
+            entity.slot
+        );
+        return FLOW_ERR_ARGUMENT;
+    }
     if (entity.slot >= (unsigned)acount(physics->bodies)) {
         int previous = acount(physics->bodies);
         asetlen(physics->bodies, (int)entity.slot + 1);
@@ -537,6 +552,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     }
     body->angle = angle;
     body->stop_fraction = 1;
+    b2Body_SetAngularVelocity(body->body, settings.angular_velocity);
     if (drive && settings.type == GAME_BODY_DYNAMIC && delta > 0) {
         if (!isfinite(drive->target.x + drive->target.y + drive->acceleration) ||
             drive->acceleration < 0) {
@@ -1591,6 +1607,11 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
             body->end.p.x,
             body->end.p.y
         };
+        GameOrientation *orientation = GAME_GameOrientation_get(physics->world, body->entity);
+        if (orientation && body->settings.angular_velocity != 0) {
+            orientation->radians = body->angle +
+                                   remainderf(b2Rot_GetAngle(body->end.q) - body->angle, 6.28318530718f);
+        }
         GameVelocity *velocity = GAME_GameVelocity_get(physics->world, body->entity);
         if (velocity) {
             b2Vec2 solved = b2Body_GetLinearVelocity(body->body);

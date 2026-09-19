@@ -682,7 +682,7 @@ static bool tab_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
     if (tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         const char *name = tab->key + strlen("behavior:");
         game_live_definition *definition = game_live_find_definition(scene->live, name);
-        return definition && (definition->dirty || definition->unsaved);
+        return definition && definition->unsaved;
     }
     if (tab->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
         if (tab == active_tab(scene) &&

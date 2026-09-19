@@ -1,0 +1,47 @@
+{
+  "name": "OrbitControls",
+  "identity": "prototype-0000000000000584",
+  "components": {
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.GameWidget": {
+      "accent": 0,
+      "anchor": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "background": 0,
+      "block_input": false,
+      "center_text": true,
+      "color": 0,
+      "disabled": false,
+      "draggable": false,
+      "drop_group": "",
+      "event": "",
+      "font_size": 16.0,
+      "hidden": false,
+      "kind": 0,
+      "maximum": 0.0,
+      "minimum": 0.0,
+      "offset": {
+        "x": 0.0,
+        "y": -60.0
+      },
+      "order": 0,
+      "pivot": {
+        "x": 0.5,
+        "y": 1.0
+      },
+      "rounding": 0.0,
+      "size": {
+        "x": 340.0,
+        "y": 32.0
+      },
+      "text": "Z and M: flippers   |   Space: launch",
+      "tooltip": "",
+      "value": 0.0
+    }
+  }
+}

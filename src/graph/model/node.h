@@ -52,6 +52,7 @@ typedef struct
     const char *missing_service;
     /* Exactly one of invoke/value is set. Value calls have no host service. */
     node_value_call_fn value;
+    /* The final declared input repeats after any fixed prefix. */
     bool variadic;
 } node_host_call;
 /* Synchronous commands may append deferred host effects, but cannot dispatch

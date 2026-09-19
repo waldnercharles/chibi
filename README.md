@@ -66,8 +66,8 @@ A failed build or rejected import leaves the current generation running. A
 successful import replaces the editor and runtime together. Host, framework,
 font, and shader changes request a manual restart: close the editor and run `make dev` again.
 
-For faster incremental builds, choose Ninja in a new development directory:
-`CMAKE_GENERATOR=Ninja make dev DEV_BUILD_DIR=build-dev-ninja`.
+New development directories use Ninja when it is installed. To switch an older
+Make directory, use a fresh directory: `make dev DEV_BUILD_DIR=build-dev/ninja`.
 Existing directories retain their generator. With GNU Make versions before 4,
 changed sources require a clean build because timestamp precision can miss relinks.
 

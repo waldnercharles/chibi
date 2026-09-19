@@ -1,0 +1,43 @@
+{
+  "name": "RotatingGate",
+  "identity": "prototype-0000000000000385",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 0.0,
+      "border_color": 0,
+      "border_width": 0.0,
+      "color": 1440137215,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 12.0,
+      "layer": 0,
+      "shape": 0,
+      "stroke_width": 0.0,
+      "width": 160.0
+    },
+    "GAME.GameBody": {
+      "angular_velocity": 1.0,
+      "continuous": false,
+      "type": 2
+    },
+    "GAME.GameCollider": {
+      "category": 8,
+      "friction": 0.0,
+      "height": 12.0,
+      "ignore_entity": null,
+      "mask": 1,
+      "radius": 0.0,
+      "restitution": 0.0,
+      "sensor": false,
+      "shape": 1,
+      "width": 160.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

@@ -587,13 +587,17 @@ static void enter_vector_item(arena_fixture *f, const char *id, int axis, const 
     assert(editor_ui_item_rect(id, &item));
     ImGuiIO_AddMousePosEvent(
         ImGui_GetIO(),
-        item.x + item.width * (axis + .5f) / 3,
-        item.y + item.height / 2
+        item.x + item.width / 2,
+        item.y + item.height * (axis + .5f) / 3
     );
     frame(f);
+    ImGuiKey modifier = ImGui_GetIO()->ConfigMacOSXBehaviors ? ImGuiMod_Super
+                                                             : ImGuiMod_Ctrl;
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, true);
     ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, true);
     frame(f);
     ImGuiIO_AddMouseButtonEvent(ImGui_GetIO(), 0, false);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), modifier, false);
     frame(f);
     replace_focused_text(f, text);
 }
@@ -939,7 +943,7 @@ static void component_selector(arena_fixture *f)
 {
     editor_ui_set_pane_visible(EDITOR_UI_PANE_NODE_CANVAS, true);
     assert(app_scene_authoring_open_behavior(f->scene, "ArenaWaveBehavior") == 0);
-    graph *members = behavior_asset_find_graph_by_name(editor_behavior_asset(f->graph), "Count Living Members");
+    graph *members = behavior_asset_find_graph_by_name(editor_behavior_asset(f->graph), "Count Members Snapshot");
     assert(members);
     uint64_t graph_id = members->graph_id;
     assert(editor_open_graph(f->graph, graph_id) == 0);
@@ -1767,6 +1771,19 @@ static int standalone_fire(arena_fixture *f, app_game_presentation *game, bool m
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART) == 0);
     assert(standalone_frame(f, game) == 0);
     ecs_entity player = f->scene->actors[player_index(f)].entity;
+    /* The shipped scene maps Space to Dash. Give this input-parity fixture
+     * an explicit keyboard Fire binding instead of assuming game controls. */
+    bool keyboard_binding = false;
+    for (int i = 0; i < acount(f->scene->actors); i++) {
+        GameActionBinding
+            *binding = GAME_GameActionBinding_get(f->world, f->scene->actors[i].entity);
+        if (binding && binding->source == GAME_CONTROL_SPACE) {
+            binding->action = "Fire";
+            binding->firing = true;
+            keyboard_binding = true;
+        }
+    }
+    assert(keyboard_binding);
     if (mouse) {
         mouse_fire_event(true);
     } else {
@@ -1803,6 +1820,14 @@ static int standalone_key(arena_fixture *f, app_game_presentation *game, SDL_Sca
 static void standalone_play(arena_fixture *f)
 {
     assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.json") == 0);
+    /* Projectile lifetime is part of the firing comparison below. */
+    for (int i = 0; i < acount(f->scene->actors); i++) {
+        if (!strcmp(f->scene->actors[i].prototype_name, "PhaseWarden")) {
+            f->scene->selected = i;
+            assert(app_scene_authoring_delete_instance(f->scene) == 0);
+            break;
+        }
+    }
     cf_app_set_size(1280, 960);
     editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     app_game_presentation *game = app_game_presentation_new(f->scene, f->viewport, true);
@@ -2467,6 +2492,9 @@ static void ship_motion_review(arena_fixture *f, const char *directory)
 
 static void performance_panel(arena_fixture *f)
 {
+    /* Standalone play uses a smaller window. Restore the wide layout this
+     * test uses to interact with history, scopes and details side by side. */
+    cf_app_set_size(1920, 1080);
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
     frame(f);
     frame(f);
@@ -2577,6 +2605,17 @@ int arena_ui_run(const char *program, bool profile_only)
     for (int i = 0; i < 30; i++) {
         frame(&f);
     }
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    key_event(SDL_SCANCODE_DELETE, true);
+    key_event(SDL_SCANCODE_DELETE, false);
+    frame(&f);
+    assert(app_input_controls() & (UINT64_C(1) << GAME_CONTROL_SPACE));
+    assert(app_input_pressed(APP_INPUT_DELETE));
+    frame(&f);
+    assert(!(app_input_controls() & (UINT64_C(1) << GAME_CONTROL_SPACE)));
+    assert(!app_input_pressed(APP_INPUT_DELETE));
+    puts("gameplay quick tap PASS: press and release in one frame survives for exactly one sample");
     if (profile_only) {
         performance_panel(&f);
         goto cleanup;

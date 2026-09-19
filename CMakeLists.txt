@@ -507,6 +507,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_options(chibi PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "-sEXPORTED_RUNTIME_METHODS=['FS']"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
@@ -717,6 +718,14 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
     chibi_watch_platform(test_dev)
     add_custom_target(check-dev COMMAND test_dev DEPENDS test_dev VERBATIM)
+    find_program(CHIBI_NINJA_EXECUTABLE ninja)
+    if(CHIBI_NINJA_EXECUTABLE)
+        add_custom_command(TARGET check-dev POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
+                -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/ninja-retry-test
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/dev_ninja_retry.cmake
+            VERBATIM)
+    endif()
     add_executable(concurrent_runner test/dev/concurrent.c src/host/process.c)
     add_custom_target(check-generation
         COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_SOURCE_DIR}"

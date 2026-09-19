@@ -1,5 +1,6 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/extract.h"
+#include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -1392,8 +1393,90 @@ static void executable_extraction_preserves_timing()
     behavior_asset_free(asset);
 }
 
+static void compiled_numeric_variable_binding()
+{
+    for (int wide = 0; wide < 2; wide++) {
+        behavior_asset *asset = behavior_asset_new("NumericBinding");
+        pin_value initial = wide ? (pin_value){ .type = PIN_F64,
+                                                .type_name = "double",
+                                                .d = 2.5 }
+                                 : (pin_value){ .type = PIN_F32,
+                                                .type_name = "float",
+                                                .f = 2.5f };
+        uint64_t source = behavior_asset_add_variable(
+                              asset,
+                              "Source",
+                              initial.type,
+                              initial.type_name,
+                              PIN_CONTAINER_SINGLE,
+                              &initial,
+                              NULL
+        )
+                              ->id;
+        uint64_t result = behavior_asset_add_variable(
+                              asset,
+                              "Result",
+                              wide ? PIN_F32 : PIN_F64,
+                              wide ? "float" : "double",
+                              PIN_CONTAINER_SINGLE,
+                              NULL,
+                              NULL
+        )
+                              ->id;
+        node *event = graph_add_node(asset->graph, &NODE_Event);
+        node *set = behavior_asset_add_set_node(asset, result);
+        assert(graph_set_event_name(asset->graph, event, "Go") == 0);
+        assert(graph_connect_exec(asset->graph, event, 0, set, 0, 0) == 0);
+        assert(
+            graph_set_pin_binding(
+                asset->graph,
+                set,
+                0,
+                1,
+                &(pin_binding){ .kind = PIN_BINDING_VARIABLE, .variable_id = source }
+            ) == 0
+        );
+        behavior_instance *instance = instance_for(asset, NULL, (ecs_entity){ 0 });
+        behavior_instance_set_trace_enabled(instance, false);
+        flow_run *run = dispatch(instance, "Go");
+        pin_value value;
+        test_check(
+            flow_run_status(run) == FLOW_COMPLETED && run->whole_function_executed &&
+                behavior_instance_get_variable(instance, result, &value) == 0 &&
+                (wide ? value.f : value.d) == 2.5,
+            "compiled variable bindings convert float and double using the "
+            "source storage type"
+        );
+        behavior_instance_destroy(instance);
+        behavior_asset_free(asset);
+    }
+}
+
+static void numeric_output_to_text()
+{
+    behavior_asset *asset = behavior_asset_new("NumericOutputToText");
+    editor e = { .asset = asset, .active_graph = asset->graph };
+    node *add = graph_add_node(asset->graph, registry_node_by_name("Add"));
+    node *number = graph_add_node(asset->graph, registry_node_by_name("To Integer"));
+    node *text = graph_add_node(asset->graph, registry_node_by_name("To String"));
+    assert(graph_connect_data(asset->graph, add, 0, number, 0) == 0);
+    ed_pin_view output = { add, ED_PIN_OUTPUT, 0, { 0 } };
+    ed_pin_view input = { text, ED_PIN_INPUT, 0, { 0 } };
+    test_check(
+        ed_connect_with_inline(&e, &output, &input, false) &&
+            add->output_pins[0].type == PIN_F64 && add->input_pins[0].type == PIN_F64 &&
+            graph_input_conversion(asset->graph, text, 0) ==
+                registry_node_by_name("To String"),
+        "displaying arithmetic as text preserves its existing numeric "
+        "connections"
+    );
+    behavior_asset_free(asset);
+}
+
 void test_input_bindings()
 {
+    compiled_numeric_variable_binding();
+    numeric_output_to_text();
     variable_binding_and_precedence();
     flow_timing_and_delta();
     component_and_context_bindings();

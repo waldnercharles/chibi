@@ -276,6 +276,13 @@ static pin_value fmt_text(const pin_value *inputs, int input_count, arena *a)
     return r;
 }
 
+static const char *fmt_text_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    *result = fmt_text(arguments, count, storage);
+    return result->str ? NULL : "text formatting allocation failed";
+}
+
+static const node_access format_access = { .flags = NODE_EFFECT_PURE };
 static pin_spec fmt_text_inputs[] = {
     { .name = "Format", .type = PIN_STR, .type_name = "const char *", .kind = PIN_DATA },
     /* The trailing Generic spare; every arg pin is a wildcard, so the
@@ -293,6 +300,8 @@ node_desc NODE_Format_Text = {
     .outputs = fmt_text_outputs,
     .pure_kind = NODE_PURE_CALL,
     .fn = fmt_text,
+    .host_call = &(const node_host_call){ .value = fmt_text_call, .variadic = true },
+    .access = &format_access,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Text",
     .keywords = "format string text printf substitute",

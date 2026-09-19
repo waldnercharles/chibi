@@ -65,9 +65,12 @@ void run_content_catalog_checks()
         "ArenaShardBehavior.json",
         "ArenaShipMotionBehavior.json",
         "ArenaWaveBehavior.json",
+        "BloomCircuitGoal.json",
         "CombatFeedback.json",
         "EnemyBehavior.json",
         "HealthBehavior.json",
+        "OrbitLaunch.json",
+        "OrbitFlipperMotion.json",
         "PhaseWardenBehavior.json",
         "PlayerContactBehavior.json",
         "ProjectileBehavior.json",
@@ -100,9 +103,16 @@ void run_content_catalog_checks()
         "ArenaHitPulse.json",    "ArenaPlayer.json",
         "ArenaProjectile.json",  "PhaseWarden.json",
         "ArenaSpawnMarker.json", "ArenaWallHorizontal.json",
-        "ArenaWavePulse.json",
+        "ArenaWavePulse.json",   "BloomCircuitGuide.json",
+        "OrbitBall.json",        "OrbitBumper.json",
+        "OrbitCabinet.json",     "OrbitFlipper.json",
+        "OrbitRail.json",        "OrbitRing.json",
+        "OrbitGuide.json",       "OrbitControls.json",
+        "RotatingGate.json",
     };
-    static const char *const scenes[] = { "Arena3D.json" };
+    static const char *const scenes[] = { "Arena3D.json",
+                                          "BloomCircuit.json",
+                                          "OrbitPinball.json" };
     static const char *const shader_libraries[] = { "ShaderMath.json" };
     bool valid = folder_matches("content", "behaviors", behaviors, (int)(sizeof behaviors / sizeof *behaviors));
     valid &= folder_matches("content", "events", events, (int)(sizeof events / sizeof *events));

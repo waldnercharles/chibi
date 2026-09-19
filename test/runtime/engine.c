@@ -1,7 +1,9 @@
 #include "support/array.h"
+#include "support/text_file.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
+#include <math.h>
 #include <time.h>
 
 typedef struct
@@ -193,6 +195,126 @@ static void cadence_checks()
             clock_free(&f);
         }
     }
+}
+
+static void tick_parameter_checks()
+{
+    for (int batch = 0; batch < 2; batch++) {
+        clock_fixture f = clock_new(false, false);
+        behavior_asset *asset = behavior_asset_new("TickParameter");
+        assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+        graph *g = asset->graph;
+        node *tick = clock_event(g, "Tick");
+        assert(
+            graph_add_pin(g, tick, true, &(pin_spec){ "DeltaSeconds", PIN_F32, "float", PIN_DATA }) == 1
+        );
+        node *set = graph_add_node(g, registry_node_by_name("Set_GameVelocity_y"));
+        assert(set && graph_connect_exec(g, tick, 0, set, 0, 0) == 0);
+        assert(graph_connect_data(g, tick, 1, set, 1) == 0);
+        assert(
+            game_live_add_definition(f.live, game_live_definition_new(asset->name, asset)) == 0
+        );
+        assert(game_behavior_attach(f.live->behaviors, f.entity, "TickParameter") == 0);
+        game_behavior_set_batch_enabled(f.live->behaviors, batch);
+        game_behavior_set_delta_seconds(f.live->behaviors, .125);
+        flow_error error;
+        assert(game_behavior_update(f.live->behaviors, &error) >= 0);
+        test_check(GAME_GameVelocity_get_const(f.world, f.entity)->y == .125f, "the editor Tick parameter receives the simulation delta with batching on and off");
+        clock_free(&f);
+    }
+}
+
+static ecs_entity authored_spawn(clock_fixture *f, const char *behavior_path, const char *prototype_path)
+{
+    char *json = text_file_read(behavior_path);
+    assert(json);
+    behavior_asset *asset = behavior_asset_load_json(json);
+    free(json);
+    assert(
+        asset &&
+        game_live_add_definition(f->live, game_live_definition_new(asset->name, asset)) == 0
+    );
+    json = text_file_read(prototype_path);
+    assert(json);
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char error[256];
+    game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+    free(json);
+    assert(prototype);
+    ecs_entity entity;
+    assert(
+        game_prototype_spawn(
+            prototype,
+            f->world,
+            &(game_prototype_spawn_hooks){ clock_attach, f->live->behaviors },
+            &entity,
+            error,
+            sizeof error
+        ) == 0
+    );
+    game_prototype_free(prototype);
+    return entity;
+}
+
+static void authored_motion_checks()
+{
+    for (int mirrored = 0; mirrored < 2; mirrored++) {
+        clock_fixture f = clock_new(false, false);
+        game_behavior_set_deferred(f.live->behaviors, true);
+        ecs_entity flipper = authored_spawn(
+            &f,
+            "content/behaviors/OrbitFlipperMotion.json",
+            "content/prototypes/OrbitFlipper.json"
+        );
+        if (mirrored) {
+            GAME_GameOrientation_get(f.world, flipper)->radians = 3.141593f - .35f;
+            GAME_GameTransform_get(f.world, flipper)->x *= -1;
+            GAME_GameActionBinding_get(f.world, flipper)->source = GAME_CONTROL_M;
+        }
+        game_behavior_set_deferred(f.live->behaviors, false);
+        assert(game_behavior_begin_pending(f.live->behaviors) >= 0);
+        GameTransform origin = *GAME_GameTransform_get_const(f.world, flipper);
+        float rest = GAME_GameOrientation_get_const(f.world, flipper)->radians;
+        float target = rest + (mirrored ? .9f : -.9f);
+        int control = mirrored ? GAME_CONTROL_M : GAME_CONTROL_Z;
+        assert(engine_frame(f.runtime, 0) == FLOW_OK);
+        int frame = 0;
+        bool reached = true;
+        for (int cycle = 0; cycle < 20; cycle++) {
+            bool firing;
+            assert(engine_sample_controls(f.runtime, UINT64_C(1) << control, &firing) >= 0);
+            for (int i = 0; i < 10; i++) {
+                assert(engine_frame(f.runtime, ++frame / 60.0) == FLOW_OK);
+            }
+            float active = GAME_GameOrientation_get_const(f.world, flipper)->radians;
+            reached &= fabsf(active - target) < .002f;
+            assert(engine_sample_controls(f.runtime, 0, &firing) >= 0);
+            for (int i = 0; i < 10; i++) {
+                assert(engine_frame(f.runtime, ++frame / 60.0) == FLOW_OK);
+            }
+        }
+        const GameTransform *position = GAME_GameTransform_get_const(f.world, flipper);
+        test_check(
+            reached &&
+                fabsf(GAME_GameOrientation_get_const(f.world, flipper)->radians - rest) <
+                    .002f &&
+                hypotf(position->x - origin.x, position->y - origin.y) < .25f,
+            "authored flipper motion reaches its stroke and returns to its "
+            "pivot for twenty cycles in either direction"
+        );
+        clock_free(&f);
+    }
+
+    clock_fixture f = clock_new(false, false);
+    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.json", "content/prototypes/OrbitBall.json");
+    assert(engine_frame(f.runtime, 0) == FLOW_OK);
+    assert(engine_frame(f.runtime, 1.0 / 60) == FLOW_OK);
+    test_check(
+        fabsf(GAME_GameVelocity_get_const(f.world, ball)->y - 350.f / 60) < .001f,
+        "the authored ball graph applies gravity using the Tick output"
+    );
+    clock_free(&f);
 }
 
 static void spawn_cadence_checks(int count)
@@ -398,6 +520,31 @@ static void accumulator_checks()
             timing->steps == 0,
         "restart resets simulation time, overload accounting and wall baseline"
     );
+    clock_free(&f);
+}
+
+static void held_binding_checks()
+{
+    clock_fixture f = clock_new(false, false);
+    ecs_entity binding = ecs_world_create_entity(f.world);
+    assert(GAME_GameActionBinding_add(f.world, binding, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GameActionBinding *action = GAME_GameActionBinding_get(f.world, binding);
+    action->action = "HeldOnly";
+    action->source = GAME_CONTROL_Z;
+    bool firing;
+    assert(engine_frame(f.runtime, 0) == FLOW_OK);
+    assert(engine_dispatch_input(f.runtime, "Fire", 0, 0, NULL) == 0);
+    assert(engine_sample_controls(f.runtime, UINT64_C(1) << GAME_CONTROL_Z, &firing) == FLOW_OK);
+    assert(engine_frame(f.runtime, .02) == FLOW_OK);
+    test_check(action->pressed && !firing, "held bindings expose input without an event receiver");
+    assert(engine_sample_controls(f.runtime, 0, &firing) == FLOW_OK);
+    assert(engine_frame(f.runtime, .04) == FLOW_OK);
+    test_check(!action->pressed, "held-only bindings release on the next input sample");
+    assert(engine_sample_controls(f.runtime, UINT64_C(1) << GAME_CONTROL_Z, &firing) == FLOW_OK);
+    assert(engine_frame(f.runtime, .06) == FLOW_OK);
+    assert(engine_set_focus(f.runtime, ENGINE_FOCUS_CANVAS) == 0);
+    test_check(!action->pressed, "leaving the viewport clears held-only bindings immediately");
     clock_free(&f);
 }
 
@@ -664,17 +811,20 @@ static void profile_checks()
     game_behavior_profile_begin(world);
     uint64_t start = profile_clock();
     assert(game_behavior_dispatch(world, parent, "Outer", (flow_inputs){ 0 }, NULL) == 1);
-    double wall_ms = (profile_clock() - start) / 1000000.0;
+    uint64_t wall_ns = profile_clock() - start;
     const game_behavior_profile_frame *frame = game_behavior_profile(world);
     game_behavior_profile_row outer_row = profile_row(frame, outer->name, "Outer");
     game_behavior_profile_row work_row = profile_row(frame, inner->name, "Work");
+    /* Setup can finish within one clock tick. Compare totals in the clock's
+     * integer unit so millisecond conversion does not round past wall time. */
+    uint64_t accounted_ns = (uint64_t)llround((frame->cpu_ms + frame->setup_ms) * 1000000.0);
     test_check(
         frame->count == 2 && outer_row.starts == 1 && work_row.starts == 1 &&
             !outer_row.resumes && !work_row.resumes && work_row.cpu_ms > 0 &&
             outer_row.inclusive_cpu_ms >= outer_row.cpu_ms &&
             work_row.inclusive_cpu_ms >= work_row.cpu_ms && outer_row.dispatches == 1 &&
-            work_row.dispatches == 1 && outer_row.setup_ms > 0 &&
-            work_row.setup_ms > 0 && frame->cpu_ms + frame->setup_ms <= wall_ms,
+            work_row.dispatches == 1 && outer_row.setup_ms >= 0 &&
+            work_row.setup_ms >= 0 && accounted_ns <= wall_ns,
         "nested functions stay in their event while reentrant events are "
         "separated into inclusive and exclusive caller CPU time"
     );
@@ -740,6 +890,8 @@ static void profile_checks()
 
 void run_engine_checks(void)
 {
+    tick_parameter_checks();
+    authored_motion_checks();
     cadence_checks();
     spawn_cadence_checks(8);
     spawn_cadence_checks(72);
@@ -748,6 +900,7 @@ void run_engine_checks(void)
     attachment_clock_checks();
     accumulator_checks();
     action_checks();
+    held_binding_checks();
     reaction_checks(false);
     reaction_checks(true);
     profile_checks();

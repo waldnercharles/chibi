@@ -225,7 +225,10 @@ static bool draw_instance_field(
                 value.str = shader_text;
                 break;
             }
-            property_text(label, pin_value_to_string(&value));
+            snprintf(shader_text, sizeof shader_text, "%s", value.str ? value.str : "");
+            editor_ui_property_label(label, overridden ? 28 : 0);
+            changed = ImGui_InputText("##text_value", shader_text, sizeof shader_text, 0);
+            value.str = shader_text;
             break;
         case PIN_HANDLE:
             if (value.type_name && !strcmp(value.type_name, "ecs.entity")) {

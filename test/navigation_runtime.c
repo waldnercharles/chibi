@@ -205,6 +205,66 @@ static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world 
     puts("prototype spawn refresh PASS: initial registration, edits, Undo/Redo and behavior attachment changes reach the next scene/preview spawn without changing earlier instances");
 }
 
+static void duplicate_instance_preserves_edits(app_scene_authoring *scene, ecs_world *world)
+{
+    assert(app_scene_authoring_add_instance(scene, "First") == 0);
+    ecs_entity original = app_scene_authoring_runtime_state(scene).selected_entity;
+    GAME_GameTransform_get(world, original)->x = 123;
+    GAME_GameHealth_get(world, original)->current = 42;
+    assert(app_scene_authoring_duplicate_instance(scene) == 0);
+    ecs_entity copy = app_scene_authoring_runtime_state(scene).selected_entity;
+    assert(ecs_entity_to_u64(copy) != ecs_entity_to_u64(original));
+    assert(GAME_GameTransform_get_const(world, copy)->x == 123);
+    assert(GAME_GameHealth_get_const(world, copy)->current == 42);
+    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(!ecs_entity_is_alive(world, copy));
+    assert(ecs_entity_is_alive(world, original));
+    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    copy = app_scene_authoring_runtime_state(scene).selected_entity;
+    assert(GAME_GameHealth_get_const(world, copy)->current == 42);
+    GAME_GameHealth_get(world, copy)->current = 10;
+    assert(GAME_GameHealth_get_const(world, original)->current == 42);
+}
+
+static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *world)
+{
+    const char
+        *json = "{\"name\":\"GuideTest\",\"components\":{\"GameTransform\":{},"
+                "\"GameWidget\":{}},\"behaviors\":[]}";
+    assert(app_scene_authoring_register_prototype(scene, json, NULL) == 0);
+    assert(app_scene_authoring_add_instance(scene, "GuideTest") == 0);
+    ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    CF_V2 anchor = { 0.5f, 1.0f };
+    assert(
+        app_scene_authoring_set_prototype_field(
+            scene,
+            "GuideTest",
+            "GameWidget",
+            "anchor",
+            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &anchor }
+        ) == 0
+    );
+    assert(GAME_GameWidget_get_const(world, entity)->anchor.x == 0.5f);
+    assert(app_scene_authoring_open_prototype(scene, "GuideTest") == 0);
+    assert(editor_ui_run_command(EDITOR_UI_COMMAND_UNDO) == 0);
+    assert(GAME_GameWidget_get_const(world, entity)->anchor.x == 0);
+    assert(editor_ui_run_command(EDITOR_UI_COMMAND_REDO) == 0);
+    assert(GAME_GameWidget_get_const(world, entity)->anchor.y == 1);
+    char text[] = "Collect the blooms";
+    assert(
+        app_scene_authoring_set_prototype_field(
+            scene,
+            "GuideTest",
+            "GameWidget",
+            "text",
+            (pin_value){ .type = PIN_STR, .str = text }
+        ) == 0
+    );
+    text[0] = 'X';
+    assert(!strcmp(GAME_GameWidget_get_const(world, entity)->text, "Collect the blooms"));
+    puts("prototype fields PASS: vector Undo/Redo and owned text reach instances");
+}
+
 void test_navigation_runtime()
 {
     ImGuiContext *previous = ImGui_GetCurrentContext();
@@ -278,6 +338,8 @@ void test_navigation_runtime()
     assert(app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     first_attachment_redo_after_prototype_gain(scene, world);
     prototype_spawn_refresh(scene, live, world);
+    duplicate_instance_preserves_edits(scene, world);
+    prototype_vectors_and_text(scene, world);
     app_scene_authoring_free(scene);
     engine_free(runtime);
     game_live_world_free(live);

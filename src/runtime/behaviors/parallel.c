@@ -29,6 +29,7 @@ typedef struct
     update_chunk *chunks;
     void *code;
     int rows;
+    unsigned query_categories;
 } update_plan;
 struct game_behavior_parallel
 {
@@ -142,6 +143,11 @@ void game_behavior_parallel_prepare_incremental(
         int count = span.end - span.begin;
         if (count < PARALLEL_MIN_ROWS || !compatible(rows, span)) {
             continue;
+        }
+        for (int i = 0; i < span.period; i++) {
+            plan->query_categories |= game_entities_query_categories(
+                rows[span.begin + i].binding->function
+            );
         }
         for (uint32_t i = 0; i < slots; i++) {
             owners[i] = -1;
@@ -317,7 +323,7 @@ bool game_behavior_parallel_run(
         }
     }
     CHIBI_TRACE_ZONE_BEGIN(query_zone, "Prepare parallel behavior queries");
-    bool queries_ready = game_entities_parallel_begin(entities);
+    bool queries_ready = game_entities_parallel_begin(entities, plan->query_categories);
     CHIBI_TRACE_ZONE_END(query_zone);
     if (!queries_ready) {
         game_task_pool_end(p->pool);

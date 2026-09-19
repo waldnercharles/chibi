@@ -1,6 +1,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update_internal.h"
+#include "runtime/behaviors/entities.h"
 #include "runtime/task_pool.h"
 #include "test/suite_internal.h"
 #include "test/whole_aggregate_fixture.h"
@@ -18,6 +19,10 @@ static void parallel_fixture(behavior_backend backend, int kind, bool parallel)
     behavior_backend previous = behavior_debug_backend(backend);
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
+    game_entities *queries = game_entities_new(ecs, world);
+    game_behavior_bind_entities(world, queries);
+    /* Query diagnostics must not serialize a batch that has no queries. */
+    game_entities_profile_queries(queries, true);
     game_behavior_set_parallel_updates(world, parallel);
     behavior_asset *asset = kind == 2
                               ? whole_owned_tick_fixture(ARRAY_OP_STRINGS, false)
@@ -110,6 +115,8 @@ static void parallel_fixture(behavior_backend backend, int kind, bool parallel)
         assert(!game_behavior_pump(world, frame + 1));
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
+    assert(!game_entities_query_profile(queries).searches);
+    game_entities_free(queries);
     game_behavior_world_free(world);
     ecs_world_free(ecs);
     behavior_asset_free(asset);

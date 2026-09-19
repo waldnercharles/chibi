@@ -55,6 +55,11 @@ typedef struct
     unsigned categories;
     ecs_entity *entities;
 } nearest_candidates;
+typedef struct
+{
+    CF_V2 position;
+    uint64_t handle;
+} nearest_target;
 
 struct game_entities
 {
@@ -67,7 +72,7 @@ struct game_entities
     event_request *events;
     nearest_candidates nearest[NEAREST_CACHE_MAX];
     int nearest_count;
-    ecs_entity *parallel_candidates[32];
+    nearest_target *parallel_candidates[32];
     bool parallel_queries;
     bool query_scope, profile_queries;
     game_entity_query_profile query_profile;
@@ -99,9 +104,9 @@ void game_entities_query_scope(game_entities *entities, const behavior_function 
     }
     entities->query_scope = stable;
 }
-bool game_entities_parallel_begin(game_entities *entities)
+bool game_entities_parallel_begin(game_entities *entities, unsigned categories)
 {
-    if (!entities) {
+    if (!entities || !categories) {
         return true;
     }
     assert(!entities->parallel_queries);
@@ -117,12 +122,21 @@ bool game_entities_parallel_begin(game_entities *entities)
     if (ecs_query_begin(entities->world, &query, components, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            unsigned categories = GAME_GameCollider_get_const(entities->world, entity)
-                                      ->category;
-            while (categories) {
-                int bit = __builtin_ctz(categories);
-                apush(entities->parallel_candidates[bit], entity);
-                categories &= categories - 1;
+            unsigned matching = GAME_GameCollider_get_const(entities->world, entity)
+                                    ->category &
+                                categories;
+            if (!matching || game_entities_is_retiring(entities, entity)) {
+                continue;
+            }
+            CF_V2 position = *GAME_GameTransform_get_const(entities->world, entity);
+            if (!isfinite(position.x) || !isfinite(position.y)) {
+                continue;
+            }
+            nearest_target target = { position, ecs_entity_to_u64(entity) };
+            while (matching) {
+                int bit = __builtin_ctz(matching);
+                apush(entities->parallel_candidates[bit], target);
+                matching &= matching - 1;
             }
         }
         ecs_query_end(&query);
@@ -698,6 +712,26 @@ static int send_event_node(node *n, flow_context *ctx)
              : flow_context_continue(ctx, 0);
 }
 
+static void nearest_position(nearest_target target, const pin_value *inputs, pin_value *out, double *best)
+{
+    if (target.handle == inputs[3].u64) {
+        return;
+    }
+    CF_V2 origin = *(const CF_V2 *)inputs[0].ptr;
+    double x = (double)target.position.x - origin.x,
+           y = (double)target.position.y - origin.y;
+    double distance = x * x + y * y;
+    if (distance > *best ||
+        (distance == *best && out[0].b && target.handle > out[1].u64)) {
+        return;
+    }
+    *best = distance;
+    out[0].b = true;
+    out[1].u64 = target.handle;
+    *(CF_V2 *)out[2].ptr = target.position;
+    out[3].f = (float)sqrt(distance);
+}
+
 static void nearest_candidate(
     game_entities *entities,
     ecs_entity entity,
@@ -706,26 +740,14 @@ static void nearest_candidate(
     double *best
 )
 {
-    uint64_t handle = ecs_entity_to_u64(entity);
-    if (handle == inputs[3].u64 || destroy_requested(entities, entity)) {
+    if (destroy_requested(entities, entity)) {
         return;
     }
-    const GameTransform *transform = GAME_GameTransform_get_const(entities->world, entity);
-    if (!isfinite(transform->x) || !isfinite(transform->y)) {
+    CF_V2 position = *GAME_GameTransform_get_const(entities->world, entity);
+    if (!isfinite(position.x) || !isfinite(position.y)) {
         return;
     }
-    CF_V2 origin = *(const CF_V2 *)inputs[0].ptr;
-    double x = (double)transform->x - origin.x,
-           y = (double)transform->y - origin.y;
-    double distance = x * x + y * y;
-    if (distance > *best || (distance == *best && out[0].b && handle > out[1].u64)) {
-        return;
-    }
-    *best = distance;
-    out[0].b = true;
-    out[1].u64 = handle;
-    *(CF_V2 *)out[2].ptr = *transform;
-    out[3].f = (float)sqrt(distance);
+    nearest_position((nearest_target){ position, ecs_entity_to_u64(entity) }, inputs, out, best);
 }
 
 static const char *nearest_entity_data(void *service, const pin_value *inputs, pin_value *out)
@@ -756,9 +778,9 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
         unsigned categories = inputs[2].u;
         while (categories) {
             int bit = __builtin_ctz(categories);
-            const ecs_entity *candidates = entities->parallel_candidates[bit];
+            const nearest_target *candidates = entities->parallel_candidates[bit];
             for (int i = 0; i < acount(candidates); i++) {
-                nearest_candidate(entities, candidates[i], inputs, out, &best);
+                nearest_position(candidates[i], inputs, out, &best);
             }
             categories &= categories - 1;
         }
@@ -832,6 +854,11 @@ static const char *nearest_entity(const eval_context *ctx, const pin_value *inpu
 static const node_host_call NEAREST_CALL = { .service = "game.entities",
                                              .invoke = nearest_entity_data,
                                              .reusable = true };
+
+unsigned game_entities_query_categories(const behavior_function *function)
+{
+    return behavior_function_host_mask(function, &NEAREST_CALL, 2);
+}
 
 static const node_access NEAREST_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,

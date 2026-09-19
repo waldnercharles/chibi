@@ -1,6 +1,8 @@
 #include "graph/compiler/behavior_function_internal.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +15,110 @@ typedef struct
     int component; /* one-based component table index */
     int host;      /* one-based host value bank index */
 } origin;
+
+static void mask_predecessor(int *parents, int target, int pc)
+{
+    parents[target] = parents[target] == -1 && pc < target ? pc : -2;
+}
+
+static unsigned constant_mask(
+    const behavior_function_instruction *code,
+    const int *parents,
+    const int *definitions,
+    int slot
+)
+{
+    while (definitions[slot] >= 0) {
+        int pc = definitions[slot];
+        const behavior_function_instruction *value = &code[pc];
+        if (value->op == BF_CONSTANT && value->type == PIN_U32) {
+            return value->value.u;
+        }
+        if (value->op != BF_LOCAL || value->type != PIN_U32) {
+            break;
+        }
+        /* Inlined function parameters are mutable locals. Follow only a
+         * single forward path to their last assignment, never a join/loop. */
+        bool found = false;
+        for (pc = parents[pc]; pc >= 0; pc = parents[pc]) {
+            const behavior_function_instruction *i = &code[pc];
+            if (i->op == BF_SAVE && i->target == value->left) {
+                slot = i->left;
+                found = true;
+                break;
+            }
+            if (i->op == BF_ENTER) {
+                break;
+            }
+        }
+        if (!found) {
+            break;
+        }
+    }
+    return UINT_MAX;
+}
+
+unsigned behavior_function_host_mask(const behavior_function *f, const node_host_call *call, int input)
+{
+    assert(input >= 0);
+    f = f->fast ? f->fast : f;
+    if (acount(f->calls)) {
+        return UINT_MAX;
+    }
+    if (!acount(f->host_calls)) {
+        return 0;
+    }
+    const behavior_function_instruction *code = f->runtime_instructions
+                                                  ? f->runtime_instructions
+                                                  : f->instructions;
+    int count = acount(code);
+    int *parents = xmalloc((size_t)count * sizeof *parents);
+    int *definitions = xmalloc((size_t)(acount(f->slots) + 1) * sizeof *definitions);
+    memset(parents, 0xff, (size_t)count * sizeof *parents);
+    memset(definitions, 0xff, (size_t)(acount(f->slots) + 1) * sizeof *definitions);
+    parents[0] = -2;
+    for (int pc = 0; pc < count; pc++) {
+        const behavior_function_instruction *i = &code[pc];
+        if (i->op < BF_STORE) {
+            definitions[i->output] = pc;
+        }
+        if (i->op == BF_JUMP || i->op == BF_BRANCH) {
+            mask_predecessor(parents, i->target, pc);
+        }
+        if (pc + 1 < count && i->op != BF_JUMP && i->op != BF_RETURN &&
+            i->op != BF_END && i->op != BF_FAIL) {
+            mask_predecessor(parents, pc + 1, pc);
+        }
+    }
+    unsigned mask = 0;
+    for (int pc = 0; pc < count; pc++) {
+        if (code[pc].op != BF_HOST_CALL || f->host_calls[code[pc].target].call != call) {
+            continue;
+        }
+        const behavior_function_host_call *host = &f->host_calls[code[pc].target];
+        assert(host->first + input < host->result_first);
+        unsigned value = UINT_MAX;
+        for (int before = parents[pc]; before >= 0; before = parents[before]) {
+            const behavior_function_instruction *i = &code[before];
+            if (i->op != BF_WRITE || i->offset != offsetof(pin_value, u) ||
+                definitions[i->right] < 0) {
+                continue;
+            }
+            const behavior_function_instruction *address = &code[definitions[i->right]];
+            if (address->op == BF_HOST_SLOT && !address->target &&
+                address->left == host->first + input) {
+                value = i->type == PIN_U32
+                          ? constant_mask(code, parents, definitions, i->left)
+                          : UINT_MAX;
+                break;
+            }
+        }
+        mask |= value;
+    }
+    free(definitions);
+    free(parents);
+    return mask;
+}
 
 void behavior_function_parallel_proof(behavior_function *f)
 {

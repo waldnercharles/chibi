@@ -241,6 +241,11 @@ typedef struct
     int pointer, index, entity, index_local, count_local;
     uint64_t graph_id, node_id, pin_id;
 } behavior_reduction;
+typedef struct
+{
+    uint64_t *components;
+    bool result;
+} behavior_component_proof;
 struct behavior_function
 {
     behavior_reduction *reductions;
@@ -279,6 +284,7 @@ struct behavior_function
     unsigned pure_depth_limit;
     bool component_bindings, component_access;
     uint64_t *component_writes;
+    behavior_component_proof *component_proofs;
     uint64_t *parallel_reads;
     bool parallel;
     struct behavior_function_component *components;

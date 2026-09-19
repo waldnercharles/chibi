@@ -31,6 +31,7 @@ struct game_behavior_parallel
 {
     game_task_pool *pool;
     update_plan *plans;
+    bool invalidated;
 };
 static void clear_plans(game_behavior_parallel *parallel)
 {
@@ -56,6 +57,10 @@ void game_behavior_parallel_free(game_behavior_parallel *p)
     afree(p->plans);
     game_task_pool_release(p->pool);
     free(p);
+}
+void game_behavior_parallel_invalidate(game_behavior_parallel *p)
+{
+    p->invalidated = true;
 }
 static bool compatible(const behavior_update_row *rows, behavior_update_span span)
 {
@@ -85,6 +90,7 @@ void game_behavior_parallel_prepare(
 )
 {
     clear_plans(p);
+    p->invalidated = false;
     const game_task_system *tasks = game_task_pool_tasks(p->pool);
     if (tasks->workers == 1 || !acount(spans)) {
         for (int i = 0; i < acount(spans); i++) {
@@ -227,6 +233,9 @@ bool game_behavior_parallel_run(
     game_behavior_update_stats *stats
 )
 {
+    if (p->invalidated) {
+        return false;
+    }
     update_plan *plan = &p->plans[span];
     if (acount(plan->chunks) < 2) {
         return false;

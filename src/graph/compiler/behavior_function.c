@@ -512,11 +512,9 @@ static bool batch_event(const behavior_function *f, const graph *g, const node *
     }
     return true;
 }
-bool behavior_function_preserves_components(const behavior_function *f, const uint64_t *components, int count)
+
+static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
 {
-    if (!f || !f->batchable) {
-        return false;
-    }
     for (int i = 0; i < count; i++) {
         for (int j = 0; j < acount(f->component_writes); j++) {
             if (f->component_writes[j] == components[i]) {
@@ -538,6 +536,39 @@ bool behavior_function_preserves_components(const behavior_function *f, const ui
         }
     }
     return true;
+}
+
+bool behavior_function_preserves_components(const behavior_function *f, const uint64_t *components, int count)
+{
+    if (!f || !f->batchable) {
+        return false;
+    }
+    for (int i = 0; i < acount(f->component_proofs); i++) {
+        const behavior_component_proof *proof = &f->component_proofs[i];
+        if (acount(proof->components) != count) {
+            continue;
+        }
+        bool same = true;
+        for (int j = 0; j < count; j++) {
+            if (proof->components[j] != components[j]) {
+                same = false;
+                break;
+            }
+        }
+        if (same) {
+            return proof->result;
+        }
+    }
+    /* Published functions are immutable. Keep the proof cache mutable so
+     * repeated query-scope checks do not rescan a function generation. */
+    behavior_component_proof proof = {
+        .result = preserves_components_uncached(f, components, count)
+    };
+    for (int i = 0; i < count; i++) {
+        apush(proof.components, components[i]);
+    }
+    apush(((behavior_function *)f)->component_proofs, proof);
+    return proof.result;
 }
 bool behavior_function_batchable(const behavior_function *f)
 {
@@ -778,6 +809,10 @@ void behavior_function_free(behavior_function *f)
     afree(f->state_selections);
     afree(f->calls);
     afree(f->component_writes);
+    for (int i = 0; i < acount(f->component_proofs); i++) {
+        afree(f->component_proofs[i].components);
+    }
+    afree(f->component_proofs);
     afree(f->parallel_reads);
     afree(f->components);
     afree(f->data_values);

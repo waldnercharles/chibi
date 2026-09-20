@@ -51,6 +51,23 @@ metrics are 8-bit image differences against the same scene at scale 1.0.
 They are useful for finding regressions and sharp-edge failures; they are not
 a perceptual quality score.
 
+One local 960×540 Release run on the five fixtures produced this directional
+comparison. The full-scale reference used mode 1; the two half-scale columns
+include the exact-mip prefilter path. Mean error is mean absolute RGB in 8-bit
+space against the full-scale image.
+
+| Scene | Full median | Half mode 1 | Half mode 3 | Mode 3 mean error |
+| --- | ---: | ---: | ---: | ---: |
+| Pinhole | 10.26 ms | 4.15 ms | 4.37 ms | 1.61 |
+| Bounce | 10.22 ms | 4.34 ms | 4.28 ms | 0.46 |
+| Single pixel | 10.51 ms | 4.38 ms | 4.34 ms | 0.32 |
+| Shadow | 10.40 ms | 4.23 ms | 4.28 ms | 2.31 |
+| Volume | 10.82 ms | 4.19 ms | 4.25 ms | 0.11 |
+
+This is a single local run, so it establishes a useful direction rather than a
+stable hardware benchmark. In this sample, mode 3 improved the full-scale
+image error for every fixture, with the largest changes in pinhole and shadow.
+
 ## GPU phase attribution
 
 The renderer already synchronizes before presenting benchmark frames, so the

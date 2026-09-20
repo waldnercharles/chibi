@@ -14,6 +14,36 @@ so removing it would not change these images or save meaningful work. Lowering
 the authored emission intensity is the source-only exposure control. HRC
 intensity is a later composite gain and affects received light as well.
 
+## Reconstruction modes
+
+The `upscale_mode` field selects how the low-resolution RGB radiance probes are
+reconstructed at canvas resolution:
+
+| Mode | Reconstruction |
+| ---: | --- |
+| 0 | Plain bilinear interpolation. |
+| 1 | Bilinear interpolation blended toward the nearest probe at absorption edges. |
+| 2 | Joint bilateral interpolation weighted by transmittance similarity. |
+| 3 | Five-tap cross: the center probe plus its four axial neighbors. |
+
+Mode 1 is the current default. Mode 3 is the five-tap experiment; it preserves
+small emissive probes well, but its quality change depends on the fixture.
+
+## Scale meaning
+
+`GameHRC2D.scale` is one shared HRC work-grid scale. A `.5` run is half-HRC:
+the filtered emission RGB, scalar absorption, bounce input, and RGB radiance
+probes all use the half-resolution work grid before full-resolution gather and
+composite. A `.25` run is the same arrangement at quarter scale.
+
+The current implementation does not have independent luminance and color
+scales. It also does not store a separate luminance transport buffer: the
+transport probe is RGB, while absorption is the scalar field. Therefore we have
+not yet tested “half luminance plus quarter-resolution color” as a real split
+channel configuration. That requires separate resource sizes and a new
+reconstruction path; the scale sweep below measures the supported shared-scale
+options first.
+
 ## Clean fixtures
 
 | Scene | What it isolates |
@@ -52,10 +82,17 @@ python3 tools/benchmark_hrc_lab.py \
   --output /private/tmp/hrc-clean-lab
 ```
 
+Use `--scale 1 .75 .5 .25` to capture the supported full, three-quarter,
+half, and quarter HRC work grids. Use `--upscale-mode 0`, `1`, `2`, or `3` to
+compare the reconstruction modes. Every generated summary row links to its
+PNG and reports its mean RGB error against that run's full-scale reference.
+
 The runner copies the project into each case directory, disables adaptive scale,
 validates the edited prototype and scene, warms the renderer for 240 frames,
 discards the first 16 measured frames, and writes a PNG plus JSON report. The
 reported time includes GPU completion and is not a per-dispatch GPU timestamp.
+Each row in the generated `summary.md` links directly to its captured
+`frame.png`, alongside the mean RGB error when a scale is compared with 1.0.
 
 The original `projects/arena2d` fixtures remain the default when `--project`
 is omitted. The same runner can therefore compare the clean lab with the

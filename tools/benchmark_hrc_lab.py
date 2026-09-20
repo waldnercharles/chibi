@@ -45,6 +45,13 @@ GPU_LABELS = [
     'HRC composite',
 ]
 
+UPSCALE_MODE_NAMES = {
+    0: 'plain bilinear',
+    1: 'edge-aware bilinear to nearest',
+    2: 'joint bilateral',
+    3: 'five-tap cross',
+}
+
 
 def write_json(path, value):
     path.write_text(json.dumps(value, indent=2) + '\n')
@@ -123,6 +130,7 @@ def render(args, output, runner, scene, scale, repeat):
         repeat=repeat,
         trace_levels=args.trace_levels,
         upscale_mode=args.upscale_mode,
+        upscale_mode_name=UPSCALE_MODE_NAMES[args.upscale_mode],
         adaptive=False,
         width=args.width,
         height=args.height,
@@ -163,25 +171,37 @@ def compare_frozen(output, reports):
             scene=candidate['scene'], scale=candidate['scale'], repeat=candidate['repeat'],
             reference=paths[0], candidate=paths[1], metrics=metrics))
     write_json(output / 'comparisons.json', comparisons)
+    return comparisons
 
 
-def summary(output, reports):
+def summary(output, reports, comparisons=()):
     write_json(output / 'summary.json', reports)
+    comparison_by_key = {
+        (item['scene'], item['scale'], item['repeat']): item['metrics']
+        for item in comparisons
+    }
     lines = [
         '# HRC lab results', '',
         'Frozen scenes use 240 renderer warmup frames and discard the first 16 measured frames.',
         'Frame time includes GPU completion; it is not a per-dispatch GPU timestamp.', '',
-        '| Scene | Scale | Median ms | p95 ms | p99 ms |',
-        '| --- | ---: | ---: | ---: | ---: |',
+        f'Reconstruction mode: {reports[0]["upscale_mode"]} ({reports[0]["upscale_mode_name"]}).' if reports else '',
+        '',
+        'Every row links to its captured `frame.png`.', '',
+        '| Scene | HRC work scale | Median ms | p95 ms | p99 ms | Mean RGB error vs 1.0 | Screenshot |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | --- |',
     ]
     for report in reports:
         performance = report.get('performance')
         if not performance:
             continue
+        metrics = comparison_by_key.get(
+            (report['scene'], report['scale'], report['repeat']))
+        error = '—' if metrics is None else f'{metrics["mean_absolute_rgb_8bit"]:.2f}'
+        link = f'[{report["directory"]}/frame.png]({report["directory"]}/frame.png)'
         lines.append(
             f'| {report["scene"]} | {report["scale"]:g} | '
             f'{performance["median_ms"]:.2f} | {performance["p95_ms"]:.2f} | '
-            f'{performance["p99_ms"]:.2f} |')
+            f'{performance["p99_ms"]:.2f} | {error} | {link} |')
     lines += ['', 'GPU capture label groups:', '']
     lines.extend(f'- `{label}`' for label in GPU_LABELS)
     lines += ['', 'Per-pass numeric timings require opening the `.gputrace` in a Metal debugger or a backend timestamp-query implementation.']
@@ -243,7 +263,8 @@ def main():
                 reports.append(report)
                 summary(args.output, reports)
     if not args.metal_capture:
-        compare_frozen(args.output, reports)
+        comparisons = compare_frozen(args.output, reports)
+        summary(args.output, reports, comparisons)
 
 
 if __name__ == '__main__':

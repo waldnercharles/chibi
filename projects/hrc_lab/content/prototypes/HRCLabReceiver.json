@@ -1,0 +1,40 @@
+{
+  "name": "HRCLabReceiver",
+  "identity": "prototype-17d3108a9bce9070",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 0.25,
+      "border_color": 0,
+      "border_width": 0.0,
+      "color": 4042322175,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 100.0,
+      "layer": 0,
+      "shape": 0,
+      "stroke_width": 0.0,
+      "width": 100.0
+    },
+    "GAME.GameMaterial": {
+      "absorption": 0.0,
+      "albedo": 4042322175,
+      "border_albedo": 0,
+      "border_emission_color": 0,
+      "border_filter": 0,
+      "border_scene": 0,
+      "edge_light": 0.0,
+      "emission_color": 0,
+      "emission_intensity": 0.0,
+      "emission_multiplier": 1.0,
+      "filter": 0,
+      "scene": 724249855
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "name": "HRCLabOpaqueInterior",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "HRCLabCamera",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "HRC",
+      "prototype": "HRCLabHRC",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Backdrop",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 960,
+          "height": 540,
+          "shape": 0,
+          "layer": -100
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 3503345919,
+          "scene": 1802202111,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Low sigma source",
+      "prototype": "HRCLabEmitter",
+      "components": {
+        "GameTransform": {
+          "x": -220,
+          "y": -220
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4294967295,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 28,
+          "layer": 0,
+          "shape": 1,
+          "stroke_width": 0,
+          "width": 28
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 4294967295,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 4294967295,
+          "emission_intensity": 0.03,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 4294967295
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Low sigma slab",
+      "prototype": "HRCLabOccluder",
+      "components": {
+        "GameTransform": {
+          "x": -220,
+          "y": 0
+        },
+        "GameOrientation": {
+          "radians": -0.15
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4042322175,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 210,
+          "layer": 0,
+          "shape": 0,
+          "stroke_width": 0,
+          "width": 100
+        },
+        "GameMaterial": {
+          "absorption": 0.05,
+          "albedo": 4042322175,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 0,
+          "emission_intensity": 0,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 673720575
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Low sigma inner target",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": -220,
+          "y": 150
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4042322175,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 24,
+          "layer": 0,
+          "shape": 0,
+          "stroke_width": 0,
+          "width": 120
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 4042322175,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 0,
+          "emission_intensity": 0,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 724249855
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Medium sigma source",
+      "prototype": "HRCLabEmitter",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -220
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4294967295,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 28,
+          "layer": 0,
+          "shape": 1,
+          "stroke_width": 0,
+          "width": 28
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 4294967295,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 4294967295,
+          "emission_intensity": 0.03,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 4294967295
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Medium sigma slab",
+      "prototype": "HRCLabOccluder",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        },
+        "GameOrientation": {
+          "radians": 0
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4042322175,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 210,
+          "layer": 0,
+          "shape": 0,
+          "stroke_width": 0,
+          "width": 100
+        },
+        "GameMaterial": {
+          "absorption": 0.25,
+          "albedo": 4291830015,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 0,
+          "emission_intensity": 0,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 673720575
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Medium sigma inner target",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 150
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4042322175,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 24,
+          "layer": 0,
+          "shape": 0,
+          "stroke_width": 0,
+          "width": 120
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 4042322175,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 0,
+          "emission_intensity": 0,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 724249855
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "High sigma source",
+      "prototype": "HRCLabEmitter",
+      "components": {
+        "GameTransform": {
+          "x": 220,
+          "y": -220
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4294967295,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 28,
+          "layer": 0,
+          "shape": 1,
+          "stroke_width": 0,
+          "width": 28
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 4294967295,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 4294967295,
+          "emission_intensity": 0.03,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 4294967295
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "High sigma slab",
+      "prototype": "HRCLabOccluder",
+      "components": {
+        "GameTransform": {
+          "x": 220,
+          "y": 0
+        },
+        "GameOrientation": {
+          "radians": 0.15
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4042322175,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 210,
+          "layer": 0,
+          "shape": 0,
+          "stroke_width": 0,
+          "width": 100
+        },
+        "GameMaterial": {
+          "absorption": 0.8,
+          "albedo": 2965428479,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 0,
+          "emission_intensity": 0,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 673720575
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "High sigma inner target",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 220,
+          "y": 150
+        },
+        "GameAppearance": {
+          "antialias": 0.25,
+          "border_color": 0,
+          "border_width": 0,
+          "color": 4042322175,
+          "glow_color": 0,
+          "glow_radius": 0,
+          "height": 24,
+          "layer": 0,
+          "shape": 0,
+          "stroke_width": 0,
+          "width": 120
+        },
+        "GameMaterial": {
+          "absorption": 0,
+          "albedo": 4042322175,
+          "border_albedo": 0,
+          "border_emission_color": 0,
+          "border_filter": 0,
+          "border_scene": 0,
+          "edge_light": 0,
+          "emission_color": 0,
+          "emission_intensity": 0,
+          "emission_multiplier": 1,
+          "filter": 0,
+          "scene": 724249855
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

@@ -49,9 +49,10 @@
         },
         "GameMaterial": {
           "emission_color": 4294967295,
-          "emission_intensity": 8,
+          "emission_intensity": 0.1,
           "absorption": 0,
-          "scene": 4294967295
+          "scene": 4294967295,
+          "edge_light": 0
         }
       },
       "behaviors": []
@@ -120,7 +121,8 @@
           "height": 380
         },
         "GameMaterial": {
-          "absorption": 0.25
+          "absorption": 0.25,
+          "edge_light": 0
         }
       },
       "behaviors": []

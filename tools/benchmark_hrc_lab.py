@@ -10,15 +10,27 @@ import platform
 import shutil
 import subprocess
 
-from check_neon_swarm import PROJECT, ROOT, Runner
+from check_neon_swarm import ROOT, Runner
 
 
-SCENES = [
+DEFAULT_PROJECT = ROOT / 'projects/arena2d'
+DEFAULT_HRC_PROTOTYPE = 'NeonSwarmHRC'
+ARENA_SCENES = [
     'NeonSwarmHRCPinhole',
     'NeonSwarmHRCBounce',
     'NeonSwarmHRCSinglePixel',
     'NeonSwarmHRCShadow',
     'NeonSwarmHRCVolume',
+]
+CLEAN_SCENES = [
+    'HRCLabPinhole',
+    'HRCLabBounce',
+    'HRCLabSinglePixel',
+    'HRCLabShadow',
+    'HRCLabVolume',
+    'HRCLabTwoLights',
+    'HRCLabColorBoundary',
+    'HRCLabOpaqueInterior',
 ]
 
 GPU_LABELS = [
@@ -50,18 +62,18 @@ def fingerprint(path):
 
 def prepare(args, output, scene, scale):
     project = output / 'project'
-    shutil.copytree(PROJECT, project, ignore=shutil.ignore_patterns('.chibi', 'build'))
+    shutil.copytree(args.project, project, ignore=shutil.ignore_patterns('.chibi', 'build'))
     runner = Runner(args.build, output, project)
-    asset = runner.author('readAsset', dict(kind='prototype', name='NeonSwarmHRC'))
+    asset = runner.author('readAsset', dict(kind='prototype', name=args.hrc_prototype))
     runner.author('buildPrototype', dict(
-        kind='prototype', name='NeonSwarmHRC', expected_hash=asset['hash'],
+        kind='prototype', name=args.hrc_prototype, expected_hash=asset['hash'],
         operations=[
             dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
             dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
             dict(op='set_field', component='GameHRC2D', field='trace_levels', value=args.trace_levels),
             dict(op='set_field', component='GameHRC2D', field='upscale_mode', value=args.upscale_mode),
         ]))
-    runner.author('validateAsset', dict(kind='prototype', name='NeonSwarmHRC'))
+    runner.author('validateAsset', dict(kind='prototype', name=args.hrc_prototype))
     runner.author('validateAsset', dict(kind='scene', name=scene))
     return runner
 
@@ -115,6 +127,8 @@ def render(args, output, runner, scene, scale, repeat):
         width=args.width,
         height=args.height,
         purpose='metal-capture' if args.metal_capture else 'benchmark',
+        project=str(args.project),
+        hrc_prototype=args.hrc_prototype,
         backend=result['backend'],
         performance=performance,
         gpu_label_groups=GPU_LABELS,
@@ -178,7 +192,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', default='build-release')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--scene', choices=SCENES + ['all'], default='all')
+    parser.add_argument('--project', type=Path, default=DEFAULT_PROJECT)
+    parser.add_argument('--hrc-prototype', default=DEFAULT_HRC_PROTOTYPE)
+    parser.add_argument('--scene', default='all')
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
     parser.add_argument('--scale', type=float, nargs='+', default=[1.0, .75, .5])
@@ -196,9 +212,16 @@ def main():
         parser.error('dimensions must be 64..2048 pixels')
     if args.metal_capture and (args.scene == 'all' or len(args.scale) != 1 or args.repeat != 1):
         parser.error('Metal capture selects one scene, scale and repeat')
+    args.project = args.project.resolve()
+    if not args.project.is_dir():
+        parser.error(f'project does not exist: {args.project}')
     args.output = args.output.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
-    scenes = SCENES if args.scene == 'all' else [args.scene]
+    default_scenes = CLEAN_SCENES if args.project.name == 'hrc_lab' else ARENA_SCENES
+    scenes = default_scenes if args.scene == 'all' else [args.scene]
+    unknown = sorted(set(scenes) - set(ARENA_SCENES + CLEAN_SCENES))
+    if unknown:
+        parser.error(f'unknown scene(s): {", ".join(unknown)}')
     provenance = dict(
         binary=str((ROOT / args.build / 'chibi_ctl').resolve()),
         binary_sha256=fingerprint(ROOT / args.build / 'chibi_ctl'),

@@ -1,0 +1,26 @@
+{
+  "name": "HRCLabSmoke",
+  "identity": "prototype-cb686ba003fac706",
+  "components": {
+    "GAME.GameFluidVolume": {
+      "absorption": 0.006000000052154064,
+      "color": 1670097312,
+      "emission": 0.0,
+      "height": 280.0,
+      "kind": 0,
+      "mass": 0.00039999998989515007,
+      "refraction": 0.0,
+      "spacing": 5.0,
+      "velocity": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "visibility": 0.012000000104308128,
+      "width": 500.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

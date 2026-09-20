@@ -56,6 +56,12 @@ vec3 F_load(int rot, ivec2 rp)
 	return val;
 }
 
+vec3 F_world_load(int rot, ivec2 p)
+{
+	p = clamp(p, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+	return F_load(rot, world_to_rotated(p, rot, u_work_w, u_work_h) + ivec2(1, 0));
+}
+
 // World-space march direction for each quadrant's rotated +x axis.
 ivec2 quadrant_dir(int rot)
 {
@@ -228,6 +234,24 @@ void main()
 				   : (frac.x >= 0.5 && frac.y < 0.5) ? v10
 				   : (frac.x < 0.5)                   ? v01
 				   :                                     v11;
+		} else if (u_upscale_mode == 3) {
+			// Five-tap cross reconstruction. The nearest work probe is the center;
+			// distance from it distributes weight to the four axial neighbors. This
+			// keeps a single emissive probe from being diluted across four corners.
+			ivec2 center_cell = ivec2(floor(grid_f + vec2(0.5)));
+			vec2 center_delta = grid_f - vec2(center_cell);
+			float wc = max(0.0, 1.0 - abs(center_delta.x) - abs(center_delta.y));
+			float wl = max(0.0, -center_delta.x);
+			float wr = max(0.0, center_delta.x);
+			float wb = max(0.0, -center_delta.y);
+			float wt = max(0.0, center_delta.y);
+			vec3 vc = F_world_load(rot, center_cell);
+			vec3 vl = F_world_load(rot, center_cell + ivec2(-1, 0));
+			vec3 vr = F_world_load(rot, center_cell + ivec2(1, 0));
+			vec3 vb = F_world_load(rot, center_cell + ivec2(0, -1));
+			vec3 vt = F_world_load(rot, center_cell + ivec2(0, 1));
+			float wsum = wc + wl + wr + wb + wt;
+			r0 = wsum > 1e-6 ? (vc * wc + vl * wl + vr * wr + vb * wb + vt * wt) / wsum : vc;
 		} else {
 			// Mode 0: plain bilinear (current behavior).
 			r0 = bilinear_r0;

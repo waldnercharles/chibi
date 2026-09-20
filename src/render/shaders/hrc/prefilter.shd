@@ -32,6 +32,18 @@ void main()
 	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
 	if (gid.x >= u_work_w || gid.y >= u_work_h) return;
 
+	// At an exact 2x reduction the generated mip already is the required
+	// arithmetic 2x2 reduction. Avoid four filtered reads per input texture.
+	if (u_canvas_w == u_work_w * 2 && u_canvas_h == u_work_h * 2) {
+		vec3 emission = texelFetch(u_emission, gid, 1).rgb;
+		vec3 bounce = texelFetch(u_bounce, gid, 1).rgb;
+		float tau = dot(texelFetch(u_transmittance, gid, 1).rgb, vec3(1.0 / 3.0));
+		imageStore(u_emission_out, gid, vec4(emission, 1.0));
+		imageStore(u_transmittance_out, gid, vec4(tau, 0, 0, 0));
+		imageStore(u_bounce_out, gid, vec4(bounce, 1.0));
+		return;
+	}
+
 	// Floating-point cell size (handles non-integer canvas/work ratios).
 	float cell_w = float(u_canvas_w) / float(u_work_w);
 	float cell_h = float(u_canvas_h) / float(u_work_h);

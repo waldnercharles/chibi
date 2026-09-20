@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "name": "NeonSwarmHRCSinglePixel",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "NeonSwarmCamera",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "HRC",
+      "prototype": "NeonSwarmHRC",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Single pixel",
+      "prototype": "NeonSwarmCrystal",
+      "components": {
+        "GameTransform": {
+          "x": -190,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 4,
+          "height": 4,
+          "color": 4294967295
+        },
+        "GameMaterial": {
+          "emission_color": 4294967295,
+          "emission_intensity": 10,
+          "absorption": 0,
+          "scene": 4294967295
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Receiver",
+      "prototype": "NeonSwarmHardRock",
+      "components": {
+        "GameTransform": {
+          "x": 250,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 260,
+          "height": 360
+        },
+        "GameMaterial": {
+          "absorption": 0.2
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Receiver edge",
+      "prototype": "NeonSwarmCrystal",
+      "components": {
+        "GameTransform": {
+          "x": 150,
+          "y": 180
+        },
+        "GameAppearance": {
+          "width": 180,
+          "height": 18
+        },
+        "GameMaterial": {
+          "absorption": 0.5
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

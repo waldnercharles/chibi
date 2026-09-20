@@ -91,6 +91,13 @@ static int s_trace_cutoff(const HRC *hrc)
     return hrc->trace_levels;
 }
 
+static void s_push_gpu_level_label(const char *phase, int level)
+{
+    char label[32];
+    snprintf(label, sizeof label, "%s L%d", phase, level);
+    cf_push_gpu_label(label);
+}
+
 static CF_StorageBuffer s_make_ssbo(int bytes)
 {
     CF_StorageBufferParams p = cf_storage_buffer_defaults(bytes);
@@ -483,7 +490,9 @@ static void s_solve_trace(HRC *hrc, int j, int N)
 {
     int cutoff = hrc->trace_cutoff < N ? hrc->trace_cutoff : N;
     for (int i = 0; i < cutoff; ++i) {
+        s_push_gpu_level_label("Trace", i);
         s_dispatch_trace(hrc, j, i);
+        cf_pop_gpu_label();
     }
 }
 
@@ -493,7 +502,9 @@ static void s_solve_extend(HRC *hrc, int j, int N)
     int rot_h = s_rot_world_h(hrc, j);
     int cutoff = hrc->trace_cutoff < N ? hrc->trace_cutoff : N;
     for (int i = cutoff; i < N; ++i) {
+        s_push_gpu_level_label("Extend", i);
         s_dispatch_extend(hrc, rot_w, rot_h, i);
+        cf_pop_gpu_label();
     }
 }
 
@@ -505,7 +516,9 @@ static void s_solve_merge(HRC *hrc, int j, int N)
         int ping = (N - 1 - i) & 1;
         CF_StorageBuffer r_prev = hrc->r_ping[1 - ping];
         CF_StorageBuffer r_out = (i == 0) ? hrc->frustum[j] : hrc->r_ping[ping];
+        s_push_gpu_level_label("Merge", i);
         s_dispatch_merge(hrc, rot_w, rot_h, i, r_prev, r_out);
+        cf_pop_gpu_label();
     }
 }
 
@@ -762,7 +775,7 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
         lighting.scale > lighting.max_scale || lighting.target_fps <= 0 ||
         lighting.fps_tolerance > 1 || lighting.bounce_hysteresis > 1 ||
         lighting.radiance_hysteresis > 1 || lighting.particle_focal_length <= 0 ||
-        lighting.upscale_mode < 0 || lighting.upscale_mode > 1 ||
+        lighting.upscale_mode < 0 || lighting.upscale_mode > 3 ||
         lighting.debug_view < 0 || lighting.debug_view > 6) {
         return false;
     }

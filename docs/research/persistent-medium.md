@@ -155,6 +155,11 @@ before/after captures and the aperture scene.
 
 ## Remaining rendering work
 
+The [revised realtime direction](realtime-optics-direction.md) makes bounded
+reflection/refraction and caustics the next integrated feature slice. Further
+HRC tuning must include their cost and visual behavior. Controlled approximations
+are acceptable; full physical convergence is not a prerequisite for realtime use.
+
 Physical Snell/Fresnel reflection and refraction, focused caustics, directional
 medium phase functions, body-displaced fog, and an MPM adapter are not part of
 this implementation. The existing screenshot reflection and liquid distortion

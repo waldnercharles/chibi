@@ -2,9 +2,15 @@
 
 Research date: September 21, 2026.
 
+Updated direction: [Realtime optics before further HRC tuning](realtime-optics-direction.md)
+supersedes the implementation order below. Reflection, refraction and caustics
+are required, and realtime performance takes priority over physical exactness.
+Evaluate bounded optical paths with the diffuse/fog renderer before tuning a
+particular cascade implementation further.
+
 The target is beautiful, accurate 2D lighting at 60 fps with screens routinely
-filled with fog. Diffuse bounce and participating media are required. Reflections,
-refraction and caustics are desirable. The minimum GPU is undecided, so the design
+filled with fog. Diffuse bounce, participating media, reflections,
+refraction and caustics are required. The minimum GPU is undecided, so the design
 needs explicit quality levels. Shallow depth is an option, not a requirement.
 
 ## Recommendation
@@ -12,8 +18,10 @@ needs explicit quality levels. Shallow depth is an option, not a requirement.
 Keep Holographic Radiance Cascades as the leading candidate for diffuse and
 volumetric transport, but replace the surrounding optical model and resource
 schedule where the evidence calls for it. Run a small comparison against corrected
-conventional RC before committing. Add specular transport separately after the
-diffuse and fog result earns its frame budget.
+conventional RC before committing. Establish bounded specular transport and
+caustics alongside diffuse/fog lighting, then compare the complete feature set
+at a fixed frame budget. Use controlled approximations where they improve motion
+stability or cost without objectionable artifacts.
 
 My proposed system has these responsibilities:
 
@@ -314,9 +322,10 @@ light paths are not a complete participating-media solver.
 provides a separate example of bounded photon tracing, footprint reconstruction
 and adaptive allocation. Neither supplies a portable performance result for us.
 
-Rough reflections are the first specular feature to attempt. Perfect glass and
-caustics need precise interfaces and a harder sampling problem. Keep them optional
-so fog and diffuse GI retain a predictable cost.
+Reflection, glass and caustics are now required in the integrated comparison.
+Keep their cost predictable through explicit ray/event budgets and quality tiers.
+Rough-reflection cache lookups, broader caustic footprints and short histories
+are useful approximations when they preserve stable motion.
 
 ## Scaling to 1440p and 4K
 
@@ -407,11 +416,11 @@ must be selected before making a product-level 4K/60 commitment.
 | Order | Work | Evidence needed before continuing |
 | --- | --- | --- |
 | 1 | Correct interval blending and establish physical units | Analytic slab and two-path checks; matching 2D reference; pinhole, shadow and dense-volume image comparisons |
-| 2 | Compare HRC scheduling/storage changes with one corrected RC challenger | Same material field, output size, optical model and feature sizes; GPU phase timings plus error and temporal tests |
-| 3 | Continuous fog density and scattering | Full-screen fog, moving body wake, source removal and dense high-albedo stress case; residual, density stability and complete-frame timing |
-| 4 | Compare planar and shallow-volume presentation | Same composition and lights; depth benefit, readable silhouettes, stable motion and measured added cost |
-| 5 | Add bounded specular transport | Matte/glass/mirror scene, Snell and Fresnel checks, moving interfaces; budget scales with reflective area and ray count |
-| 6 | Add caustics if still desired | Converged light-tracing reference, finite beam footprints, no duplicated energy and acceptable response under moving lights |
+| 2 | Bounded reflection/refraction and caustics in continuous fog | Mirror/glass/lens scene, correct ray directions and TIR, finite footprints, no duplicated direct light; fixed ray/event budgets |
+| 3 | Integrate the complete feature slice and choose its view model | Dense fog, diffuse receiver, moving optics and lights; compare planar and shallow-depth presentation at the same frame budget |
+| 4 | Reschedule lighting resources and compare a corrected RC challenger | Same feature set, material field, world extent and output; phase timings, memory, regional error and motion stability |
+| 5 | Improve fog motion and scattering where the images justify it | Body wake, source removal and dense high-albedo stress case; stable density and complete-frame timing with simulation active |
+| 6 | Tune quality tiers | Equal-time comparisons with documented bias, filtering, temporal lag and optical path limits |
 
 Extend `projects/hrc_lab` through Chibi MCP after explicitly pointing the authoring
 session at this worktree. Keep pinhole, tiny emitter, colored bounce and volume

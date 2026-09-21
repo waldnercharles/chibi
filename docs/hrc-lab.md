@@ -31,10 +31,14 @@ small emissive probes well, but its quality change depends on the fixture.
 
 ## Scale meaning
 
-`GameHRC2D.scale` is one shared HRC work-grid scale. A `.5` run is half-HRC:
+`GameHRC2D.scale` is one shared HRC work-grid scale. A `.5` run is half-resolution HRC:
 the filtered emission RGB, scalar absorption, bounce input, and RGB radiance
 probes all use the half-resolution work grid before full-resolution gather and
 composite. A `.25` run is the same arrangement at quarter scale.
+
+This resolution setting is distinct from the separately published Half-HRC
+prototype and from reducing probe density along each plane. See the
+[realtime optics comparison](research/realtime-optics-direction.md).
 
 The current implementation does not have independent luminance and color
 scales. It also does not store a separate luminance transport buffer: the

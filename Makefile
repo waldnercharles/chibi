@@ -125,6 +125,7 @@ check-format:
 
 test:
 	python3 test/web_serve_test.py
+	python3 test/optics_reference_test.py
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
@@ -133,6 +134,11 @@ test:
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 	cmake --build $(BUILD_DIR) --target chibi
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
+
+# CPU-only optical reference checks; no window, graphics device or GPU contention.
+.PHONY: test-optics
+test-optics:
+	python3 test/optics_reference_test.py
 
 clean:
 	@if git worktree list --porcelain | awk -v root="$(abspath $(BUILD_DIR))" \

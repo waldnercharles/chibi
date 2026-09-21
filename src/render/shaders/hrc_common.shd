@@ -44,3 +44,17 @@ vec3 fluence_load(uint value)
     float scale = uintBitsToFloat(((value >> 27) + 103u) << 23);
     return vec3(value & 511u, (value >> 9) & 511u, (value >> 18) & 511u) * scale;
 }
+
+// Integrate the authored source through an additional participating medium.
+// Adding fog must attenuate a clear emitter, never change its source strength
+// when optical depth crosses the original surface/clear emission threshold.
+vec3 medium_emission(vec4 emission, float tau, float distance, float surface_epsilon, float pixel_size, float opacity)
+{
+    float material_tau = max(tau - emission.a, 0.0);
+    float material_depth = material_tau * distance;
+    vec3 source = emission.rgb * (material_depth > -log(1.0 - surface_epsilon) ? material_tau : pixel_size);
+    float depth = tau * distance;
+    float integral = depth < .01 ? distance * (1.0 - .5 * depth + depth * depth / 6.0)
+                                 : opacity / tau;
+    return source * integral;
+}

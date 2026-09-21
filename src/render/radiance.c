@@ -31,10 +31,13 @@ struct render_radiance
     float scale;
     int trace_levels;
     bool feedback;
+    int has_medium;
+    float pixel_size;
+    CF_Color medium_scattering;
     double frame_average;
     int fast_windows;
     int frame_samples;
-    CF_Texture scene, emission, transmittance, albedo, black;
+    CF_Texture scene, emission, transmittance, albedo, medium, black;
     CF_Canvas bounce_canvas;
     CF_Texture radiance_tex[2], radiance_raw_tex, radiance_bounce_tex;
     CF_Texture emission_filtered, transmittance_filtered, bounce_filtered;
@@ -302,6 +305,8 @@ static void s_dispatch_trace(HRC *hrc, int quadrant, int level)
     float step_scale = (float)hrc->canvas_w / (float)hrc->work_w;
     cf_material_set_uniform_cs(mat, "u_step_scale", &step_scale, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_cs(mat, "u_medium", &hrc->has_medium, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_cs(mat, "u_pixel_size", &hrc->pixel_size, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
         s_ceil_div(s_t_width(rot_w, level), HRC_WG),
@@ -431,6 +436,8 @@ static void s_dispatch_gather(HRC *hrc)
     cf_material_set_uniform_cs(mat, "u_upscale_mode", params + 4, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_upscale_threshold", &hrc->upscale_threshold, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_cs(mat, "u_medium", &hrc->has_medium, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_cs(mat, "u_pixel_size", &hrc->pixel_size, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
         s_ceil_div(hrc->canvas_w, HRC_WG),
@@ -547,6 +554,9 @@ static void s_render_bounce(HRC *hrc)
     cf_draw_push_shader(hrc->bounce_shd);
     cf_draw_set_texture("u_radiance", hrc->radiance_bounce_tex);
     cf_draw_set_texture("u_albedo", hrc->albedo);
+    cf_draw_set_texture("u_absorption", hrc->transmittance);
+    cf_draw_set_texture("u_medium", hrc->medium);
+    cf_draw_set_uniform("u_medium_albedo", &hrc->medium_scattering, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("u_hysteresis", &hysteresis, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_quad_fill(hrc->screen, 0);
     cf_draw_pop_shader();
@@ -858,6 +868,10 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     hrc->emission = inputs.emission;
     hrc->transmittance = inputs.absorption;
     hrc->albedo = inputs.albedo;
+    hrc->medium = inputs.medium.id ? inputs.medium : hrc->black;
+    hrc->has_medium = inputs.medium.id != 0;
+    hrc->pixel_size = view.width / hrc->canvas_w;
+    hrc->medium_scattering = inputs.medium_scattering;
     CHIBI_TRACE_ZONE_BEGIN(zone, "HRC submission");
     cf_push_gpu_label("HRC prefilter");
     cf_generate_mipmaps(inputs.emission);
@@ -892,7 +906,7 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     float ambient = lighting.ambient;
     float intensity = lighting.intensity;
     float shadow_floor = lighting.shadow_floor;
-    float fog = lighting.fog;
+    float fog = inputs.medium.id ? 0 : lighting.fog;
     float debug = (float)lighting.debug_view;
     float phase = (float)(hrc->frame_count & 63);
     float crop[] = { view.crop_min_u, view.crop_min_v, view.crop_max_u, view.crop_max_v };
@@ -904,6 +918,9 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     cf_draw_set_texture("albedo_tex", hrc->albedo);
     cf_draw_set_texture("fluence_tex", hrc->radiance_tex[hrc->radiance_ping]);
     cf_draw_set_texture("normal_tex", inputs.normal);
+    cf_draw_set_texture("medium_tex", hrc->medium);
+    cf_draw_set_uniform("medium_albedo", &inputs.medium_scattering, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("medium_depth", &inputs.medium_depth, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);
     cf_draw_set_texture("visibility_tex", inputs.visibility.id ? inputs.visibility : hrc->black);
     cf_draw_set_uniform("ambient", &ambient, CF_UNIFORM_TYPE_FLOAT, 1);

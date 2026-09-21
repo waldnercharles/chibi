@@ -159,9 +159,15 @@ void engine_reset(engine *engine)
         game_behavior_set_delta_seconds(engine->live->behaviors, ENGINE_FIXED_SECONDS);
         game_physics_reset(engine->live->physics);
         game_materials_reset(engine->live->materials);
+        game_medium_reset(engine->live->medium);
         game_visibility_reset(engine->live->visibility);
         game_audio_reset(engine_audio(engine));
     }
+}
+
+const game_medium *engine_medium(const engine *engine)
+{
+    return engine && engine->live ? engine->live->medium : NULL;
 }
 
 const game_materials *engine_materials(const engine *engine)
@@ -402,7 +408,10 @@ static int finish_systems(engine *engine)
         return result;
     }
     if (engine->live) {
-        const char *error = game_visibility_update(engine->live->visibility, ENGINE_FIXED_SECONDS);
+        const char *error = game_medium_update(engine->live->medium, ENGINE_FIXED_SECONDS);
+        if (!error) {
+            error = game_visibility_update(engine->live->visibility, ENGINE_FIXED_SECONDS);
+        }
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);
             return FLOW_ERR_NODE;
@@ -601,7 +610,10 @@ static int advance_frame(engine *engine, double monotonic_time)
     engine->debug_paused = engine->live &&
                            game_behavior_paused(engine->live->behaviors);
     if (engine->live && engine->timing.simulation_steps == 0) {
-        const char *error = game_visibility_update(engine->live->visibility, 0);
+        const char *error = game_medium_update(engine->live->medium, 0);
+        if (!error) {
+            error = game_visibility_update(engine->live->visibility, 0);
+        }
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);
             return FLOW_ERR_NODE;

@@ -1,0 +1,32 @@
+layout(set = 0, binding = 0) uniform sampler2D u_density;
+layout(set = 1, binding = 0, rgba16f) uniform image2D u_absorption;
+layout(set = 1, binding = 1, r16f) uniform writeonly image2D u_medium;
+layout(set = 1, binding = 2, rgba16f) uniform image2D u_emission;
+layout(set = 2, binding = 0) uniform Params
+{
+    vec4 u_view;
+    vec4 u_domain;
+    float u_extinction;
+};
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p, imageSize(u_medium)))) return;
+    vec2 world = u_view.xy + (vec2(p) + .5) * u_view.zw;
+    vec2 uv = (world - u_domain.xy) / u_domain.zw;
+    float rho = 0.0;
+    if (all(greaterThanEqual(uv, vec2(0))) && all(lessThan(uv, vec2(1)))) {
+        rho = texture(u_density, uv).r;
+    }
+    // HRC expects optical depth per canvas pixel. Scaling by world pixel size
+    // preserves extinction when output resolution or the camera zoom changes.
+    float tau = min(rho * u_extinction * u_view.z, 60000.0);
+    vec4 absorption = imageLoad(u_absorption, p);
+    imageStore(u_absorption, p, vec4(absorption.rgb + tau, absorption.a));
+    imageStore(u_medium, p, vec4(tau, 0, 0, 0));
+    // Carry medium extinction through the existing filtered emission texture.
+    // RGB remains the authored source; its alpha was unused by transport.
+    imageStore(u_emission, p, vec4(imageLoad(u_emission, p).rgb, tau));
+}

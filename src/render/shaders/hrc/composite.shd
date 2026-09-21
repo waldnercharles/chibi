@@ -7,6 +7,7 @@ layout(set = 2, binding = 6) uniform sampler2D normal_tex;
 
 layout(set = 2, binding = 7) uniform sampler2D background_tex;
 layout(set = 2, binding = 8) uniform sampler2D visibility_tex;
+layout(set = 2, binding = 9) uniform sampler2D medium_tex;
 
 layout(set = 3, binding = 1) uniform shd_uniforms
 {
@@ -16,6 +17,8 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     float shadow_floor;
     float fog;
     float dither_phase;
+    float medium_depth;
+    vec4 medium_albedo;
     vec4 crop_uv;
 };
 
@@ -77,6 +80,14 @@ vec4 shader(vec4 color, ShaderParams params)
     vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient + lit;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
+    float medium = texture(medium_tex, source_uv).r;
+    if (medium > 0.0) {
+        // Exact homogeneous slab integration toward the camera. The HRC field
+        // supplies isotropic incident light, including temporal diffuse bounce.
+        float tau = medium * medium_depth;
+        float opacity = tau < .01 ? tau * (1.0 - .5 * tau) : 1.0 - exp(-tau);
+        out_linear = out_linear * (1.0 - opacity) + fluence * intensity * medium_albedo.rgb * opacity;
+    }
     vec3 out_srgb = linear_to_srgb(max(out_linear, vec3(0.0)));
     float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);
     return vec4(clamp(out_srgb + vec3(dither), vec3(0.0), vec3(1.0)), 1.0);

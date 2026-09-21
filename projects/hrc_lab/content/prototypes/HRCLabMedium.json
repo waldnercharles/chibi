@@ -1,0 +1,25 @@
+{
+  "name": "HRCLabMedium",
+  "identity": "prototype-ce6e3b648c4d3e96",
+  "components": {
+    "GAME.GameMedium": {
+      "cell_size": 8.0,
+      "columns": 140,
+      "density": 1.0,
+      "depth": 100.0,
+      "detail_size": 320.0,
+      "extinction": 0.003000000026077032,
+      "origin": {
+        "x": -560.0,
+        "y": -336.0
+      },
+      "rows": 84,
+      "scattering": 3033065215,
+      "variation": 0.25,
+      "velocity": {
+        "x": 6.0,
+        "y": -2.0
+      }
+    }
+  }
+}

@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "name": "HRCLabFogPinhole",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "HRCLabCamera",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "HRC",
+      "prototype": "HRCLabHRC",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        },
+        "GameHRC2D": {
+          "scale": 0.25,
+          "fog": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Emitter",
+      "prototype": "HRCLabEmitter",
+      "components": {
+        "GameTransform": {
+          "x": -340,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 24,
+          "height": 24,
+          "shape": 1
+        },
+        "GameMaterial": {
+          "emission_color": 4290145023,
+          "emission_intensity": 0.075
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Upper occluder",
+      "prototype": "HRCLabOccluder",
+      "components": {
+        "GameTransform": {
+          "x": 40,
+          "y": 145
+        },
+        "GameAppearance": {
+          "width": 180,
+          "height": 200
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Lower occluder",
+      "prototype": "HRCLabOccluder",
+      "components": {
+        "GameTransform": {
+          "x": 40,
+          "y": -145
+        },
+        "GameAppearance": {
+          "width": 180,
+          "height": 200
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Receiver",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 320,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 120,
+          "height": 420
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Medium",
+      "prototype": "HRCLabMedium",
+      "components": {
+        "GameMedium": {
+          "density": 0.65,
+          "variation": 0.15,
+          "depth": 160
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

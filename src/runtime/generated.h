@@ -34,6 +34,8 @@ extern const GameDestructible *GAME_GameDestructible_get_const(const ecs_world *
 extern const ecs_component_desc GAME_COMPONENT_GameFragmentGlow;
 extern const GameFragmentGlow *GAME_GameFragmentGlow_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameDestructible_has(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameMedium;
+extern const GameMedium *GAME_GameMedium_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameFluidVolume;
 extern const GameFluidVolume *GAME_GameFluidVolume_get_const(const ecs_world *, ecs_entity);
 

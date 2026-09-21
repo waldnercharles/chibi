@@ -1,14 +1,24 @@
 // Adapted from Neon-Swarm shaders/hrc/bounce.shd; original source comments retained.
 layout (set = 2, binding = 1) uniform sampler2D u_radiance;
 layout (set = 2, binding = 2) uniform sampler2D u_albedo;
+layout (set = 2, binding = 3) uniform sampler2D u_absorption;
+layout (set = 2, binding = 4) uniform sampler2D u_medium;
 
 layout (set = 3, binding = 1) uniform shd_uniforms {
     float u_hysteresis;
+    vec4 u_medium_albedo;
 };
 
 vec4 shader(vec4 color, ShaderParams params)
 {
     vec3 radiance = texture(u_radiance, screen_uv).rgb;
     vec3 albedo = texture(u_albedo, screen_uv).rgb;
+    float medium = texture(u_medium, screen_uv).r;
+    if (medium > 0.0) {
+        vec3 tau = texture(u_absorption, screen_uv).rgb;
+        // Surface reflection and isotropic medium scattering share the same
+        // incident diffuse field. Weight their interaction probabilities.
+        albedo = (albedo * max(tau - medium, vec3(0)) + u_medium_albedo.rgb * medium) / max(tau, vec3(1e-8));
+    }
     return vec4(albedo * radiance, u_hysteresis);
 }

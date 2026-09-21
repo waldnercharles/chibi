@@ -9,6 +9,7 @@
 #include "render/geometry_2d.h"
 #include "render/material.h"
 #include "render/material_raster.h"
+#include "render/medium.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
 #include "render/sdf_motion.h"
@@ -40,6 +41,7 @@ struct app_scene_renderer
     bool arena_attempted, parallel_disabled;
     render_material_raster *raster;
     render_fluid_raster *fluid;
+    render_medium *medium;
     render_radiance *radiance;
     render_reflections *reflections;
     render_reflection *reflectors;
@@ -99,6 +101,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     }
     render_material_raster_free(renderer->raster);
     render_fluid_raster_free(renderer->fluid);
+    render_medium_free(renderer->medium);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
     render_fog_free(renderer->fog);
@@ -1079,7 +1082,11 @@ bool app_scene_renderer_draw(
     }
     render_material_textures textures = render_material_raster_textures(renderer->raster);
     const game_materials *materials = engine_materials(runtime);
+    int fluid_count = 0;
     if (game_materials_enabled(materials)) {
+        material_fluid_particles(game_materials_fluid(materials), &fluid_count);
+    }
+    if (fluid_count) {
         if (!renderer->fluid) {
             renderer->fluid = render_fluid_raster_new();
         }
@@ -1101,8 +1108,26 @@ bool app_scene_renderer_draw(
                                       textures.albedo,
                                       textures.normal };
     inputs.background = scene_background(renderer, world, &camera);
-    if (game_materials_enabled(materials)) {
+    if (fluid_count) {
         inputs.visibility = render_fluid_raster_visibility(renderer->fluid);
+    }
+    GameMedium medium_settings;
+    const game_medium *medium = engine_medium(runtime);
+    if (game_medium_cells(medium, &medium_settings)) {
+        if (!renderer->medium) {
+            renderer->medium = render_medium_new();
+        }
+        inputs.medium = render_medium_draw(renderer->medium, medium, textures, view, raster_width, raster_height);
+        if (!inputs.medium.id) {
+            snprintf(renderer->error, sizeof renderer->error, "Medium raster could not draw its density field");
+            return false;
+        }
+        inputs.medium_depth = medium_settings.depth * raster_width / view.width;
+        unsigned rgb = medium_settings.scattering;
+        inputs.medium_scattering = (CF_Color){ ((rgb >> 24) & 255) / 255.f,
+                                               ((rgb >> 16) & 255) / 255.f,
+                                               ((rgb >> 8) & 255) / 255.f,
+                                               1 };
     }
     if (!render_radiance_draw(renderer->radiance, inputs, view, renderer->output)) {
         return false;

@@ -29,6 +29,8 @@ CLEAN_SCENES = [
     'HRCLabShadow',
     'HRCLabVolume',
     'HRCLabDenseFog',
+    'HRCLabPersistentFog',
+    'HRCLabFogPinhole',
     'HRCLabTwoLights',
     'HRCLabColorBoundary',
     'HRCLabOpaqueInterior',
@@ -38,6 +40,7 @@ GPU_LABELS = [
     'Material tile binning',
     'Material raster batches',
     'Fluid density raster',
+    'Persistent medium raster',
     'HRC prefilter',
     'HRC +X/+Y/-X/-Y: Trace, Extend, Merge',
     'HRC gather',
@@ -81,6 +84,21 @@ def prepare(args, output, scene, scale):
             dict(op='set_field', component='GameHRC2D', field='trace_levels', value=args.trace_levels),
             dict(op='set_field', component='GameHRC2D', field='upscale_mode', value=args.upscale_mode),
         ]))
+    # Scene overrides take precedence over prototypes. Benchmark the requested
+    # settings even when the fixture authors its own lighting quality.
+    asset = runner.author('readAsset', dict(kind='scene', name=scene))
+    operations = []
+    for entity in asset['document']['entities']:
+        components = entity.get('components', {})
+        for component, values in components.items():
+            if component.split('.')[-1] == 'GameHRC2D':
+                values.update(adaptive=False, scale=scale, trace_levels=args.trace_levels,
+                              upscale_mode=args.upscale_mode)
+                operations.append(dict(op='set_entity_components', entity=entity['name'],
+                                       components=components))
+    if operations:
+        runner.author('buildScene', dict(kind='scene', name=scene,
+            expected_hash=asset['hash'], operations=operations))
     runner.author('validateAsset', dict(kind='prototype', name=args.hrc_prototype))
     runner.author('validateAsset', dict(kind='scene', name=scene))
     return runner
@@ -121,6 +139,10 @@ def render(args, output, runner, scene, scale, repeat):
     if result['initial_state'] != result['final_state']:
         raise RuntimeError('frozen fixture changed simulation state')
     performance = result['performance']
+    if abs(performance['hrc_scale'] - scale) > 1e-6:
+        raise RuntimeError(f'requested HRC scale {scale}, rendered {performance["hrc_scale"]}')
+    if not performance.get('hidden_window'):
+        raise RuntimeError('benchmark unexpectedly created a visible window')
     expected_samples = args.render_frames - 16
     if performance['samples'] != expected_samples:
         raise RuntimeError(f'expected {expected_samples} samples, got {performance["samples"]}')

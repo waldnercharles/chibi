@@ -182,6 +182,26 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
 }
 GameFluidVolume;
 
+/* Persistent, axis-aligned participating medium. Density advects periodically
+ * within this world-space domain; no particles or material world are required. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMedium)
+{
+    CF_V2 origin;
+    int columns;
+    int rows;
+    float cell_size;
+    float density;
+    float variation;
+    float detail_size;
+    CF_V2 velocity;
+    /* Extinction per world unit at density 1; linear RGB scattering albedo. */
+    float extinction;
+    unsigned scattering;
+    /* Homogeneous slab depth toward the camera, in world units. */
+    float depth;
+}
+GameMedium;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameHealth)
 {
     int current;

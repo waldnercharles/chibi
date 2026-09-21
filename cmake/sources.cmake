@@ -197,6 +197,7 @@ set(APP_SOURCES
 )
 
 set(RUNTIME_SUPPORT_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/medium.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_mask.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_cave.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_fluid.c

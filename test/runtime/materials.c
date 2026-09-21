@@ -1145,6 +1145,8 @@ static void swept_ignition()
 
 void test_materials()
 {
+    extern void test_medium();
+    test_medium();
     rotated_occlusion();
     fragment_penetration();
     swept_ignition();

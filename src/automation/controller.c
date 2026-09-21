@@ -3819,6 +3819,10 @@ static uint64_t scenario_state_hash(scenario_context *context)
             (size_t)fog.columns * (size_t)fog.rows * 4
         );
     }
+    game_medium_state medium = game_medium_inspect(engine_medium(runtime));
+    if (medium.cells) {
+        hash = scenario_hash_bytes(hash, &medium.hash, sizeof medium.hash);
+    }
     uint64_t sounds = game_audio_hash(engine_audio(runtime));
     if (game_materials_enabled(engine_materials(runtime))) {
         game_material_state materials = game_materials_inspect(engine_materials(runtime));
@@ -3831,6 +3835,15 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
 {
     engine *runtime = game_prototype_preview_runtime(context->preview);
     yyjson_mut_obj_add_uint(doc, value, "sound_cues", game_audio_count(engine_audio(runtime)));
+    game_medium_state medium = game_medium_inspect(engine_medium(runtime));
+    if (medium.cells) {
+        yyjson_mut_val *field = yyjson_mut_obj_add_obj(doc, value, "medium");
+        yyjson_mut_obj_add_int(doc, field, "cells", medium.cells);
+        yyjson_mut_obj_add_real(doc, field, "mass", medium.mass);
+        yyjson_mut_obj_add_real(doc, field, "minimum", medium.minimum);
+        yyjson_mut_obj_add_real(doc, field, "maximum", medium.maximum);
+        add_hash_named(doc, field, "hash", medium.hash);
+    }
     if (game_materials_enabled(engine_materials(runtime))) {
         game_material_state state = game_materials_inspect(engine_materials(runtime));
         yyjson_mut_val *material = yyjson_mut_obj_add_obj(doc, value, "materials");

@@ -21,6 +21,8 @@ layout(set = 2, binding = 0) uniform Params
 	int u_work_h;
 	float u_step_scale;
 	float u_bounce_intensity;
+	int u_medium;
+	float u_pixel_size;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -113,14 +115,15 @@ void main()
 		vec2 sample_pos = rot_start + rot_delta * ii;
 		vec2 uv = (clamp(sample_pos, vec2(0.0), vec2(u_work_w - 1, u_work_h - 1)) + vec2(0.5)) * inv_work;
 
-		vec3 emiss = texture(u_emission, uv).rgb;
+		vec4 emiss = texture(u_emission, uv);
 		vec3 bounce = texture(u_bounce, uv).rgb * u_bounce_intensity;
 		float tau = max(texture(u_transmittance, uv).r, 0.0);
 
 		float tau_step = tau * dda_step;
 		float T_step = exp(-tau_step);
 		float opacity = 1.0 - T_step;
-		vec3 rad = opacity > eps ? opacity * emiss : emiss * dda_step;
+		vec3 rad = u_medium != 0 ? medium_emission(emiss, tau, dda_step, eps, u_pixel_size, opacity)
+                                      : (opacity > eps ? opacity * emiss.rgb : emiss.rgb * dda_step);
 		// Reflected light requires an interaction with matter. The emissive
 		// fallback in nearly empty cells must never amplify temporal bounce.
 		rad += opacity * bounce;

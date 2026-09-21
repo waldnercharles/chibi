@@ -35,14 +35,41 @@ void main()
 	// At an exact 2x reduction the generated mip already is the required
 	// arithmetic 2x2 reduction. Avoid four filtered reads per input texture.
 	if (u_canvas_w == u_work_w * 2 && u_canvas_h == u_work_h * 2) {
-		vec3 emission = texelFetch(u_emission, gid, 1).rgb;
+		vec4 emission = texelFetch(u_emission, gid, 1);
 		vec3 bounce = texelFetch(u_bounce, gid, 1).rgb;
 		float tau = dot(texelFetch(u_transmittance, gid, 1).rgb, vec3(1.0 / 3.0));
-		imageStore(u_emission_out, gid, vec4(emission, 1.0));
+		imageStore(u_emission_out, gid, emission);
 		imageStore(u_transmittance_out, gid, vec4(tau, 0, 0, 0));
 		imageStore(u_bounce_out, gid, vec4(bounce, 1.0));
 		return;
 	}
+
+    // At exact 4x, every tap samples the same mip cell and its neighbours.
+    // Bilinear filtering is linear within each quadrant. Collapse the sixteen
+    // Gaussian taps to four taps at their weighted mean offsets. Extinction
+    // uses the corresponding uniform mean. This preserves the existing filter.
+    if (u_canvas_w == u_work_w * 4 && u_canvas_h == u_work_h * 4) {
+        vec2 inv_canvas = 1.0 / vec2(u_canvas_w, u_canvas_h);
+        vec2 center = (vec2(gid) + .5) / vec2(u_work_w, u_work_h);
+        // (1.5*exp(-1.5^2/8) + .5*exp(-.5^2/8)) / sum(weights)
+        const float gaussian_offset = .9378234991;
+        vec4 emission = vec4(0);
+        vec3 bounce = vec3(0);
+        float tau = 0.0;
+        for (int y = -1; y <= 1; y += 2) {
+            for (int x = -1; x <= 1; x += 2) {
+                vec2 offset = vec2(x, y) * inv_canvas;
+                vec2 uv = center + offset * gaussian_offset;
+                emission += textureLod(u_emission, uv, 2.0);
+                bounce += textureLod(u_bounce, uv, 2.0).rgb;
+                tau += dot(textureLod(u_transmittance, center + offset, 2.0).rgb, vec3(1.0 / 3.0));
+            }
+        }
+        imageStore(u_emission_out, gid, emission * .25);
+        imageStore(u_transmittance_out, gid, vec4(tau * .25, 0, 0, 0));
+        imageStore(u_bounce_out, gid, vec4(bounce * .25, 1.0));
+        return;
+    }
 
 	// Floating-point cell size (handles non-integer canvas/work ratios).
 	float cell_w = float(u_canvas_w) / float(u_work_w);
@@ -68,7 +95,7 @@ void main()
 	float cx = fx0 + cell_w * 0.5;
 	float cy = fy0 + cell_h * 0.5;
 
-	vec3 emission_sum = vec3(0.0);
+	vec4 emission_sum = vec4(0.0);
 	vec3 bounce_sum = vec3(0.0);
 	float tau_sum = 0.0;
 
@@ -80,7 +107,7 @@ void main()
 				float px = float(x0 + dx) + 0.5;
 				float py = float(y0 + dy) + 0.5;
 				vec2 uv = vec2(px, py) / vec2(u_canvas_w, u_canvas_h);
-				emission_sum += textureLod(u_emission, uv, emission_lod).rgb;
+				emission_sum += textureLod(u_emission, uv, emission_lod);
 				bounce_sum += textureLod(u_bounce, uv, emission_lod).rgb;
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 			}
@@ -100,7 +127,7 @@ void main()
 				float ddy = py - cy;
 				float w = exp(-(ddx * ddx * inv2s2_x + ddy * ddy * inv2s2_y));
 
-				emission_sum += textureLod(u_emission, uv, emission_lod).rgb * w;
+				emission_sum += textureLod(u_emission, uv, emission_lod) * w;
 				bounce_sum += textureLod(u_bounce, uv, emission_lod).rgb * w;
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 				weight_sum += w;
@@ -111,7 +138,7 @@ void main()
 		tau_sum /= float(sx * sy);
 	}
 
-	imageStore(u_emission_out, gid, vec4(emission_sum, 1.0));
+	imageStore(u_emission_out, gid, emission_sum);
 	imageStore(u_transmittance_out, gid, vec4(tau_sum, 0, 0, 0));
 	imageStore(u_bounce_out, gid, vec4(bounce_sum, 1.0));
 }

@@ -5,10 +5,12 @@
 #include "render/fluid_raster.h"
 #include "render/light_field_2d.h"
 #include "render/material_raster.h"
+#include "render/medium.h"
 #include "render/reflections.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
+#include "render/shader_program.h"
 #include "runtime/generated.h"
 
 #include <math.h>
@@ -334,7 +336,7 @@ static CF_Texture blank_hdr_texture(int width, int height)
     return texture;
 }
 
-static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
+static bool read_half_texture(CF_Texture texture, uint16_t *pixels, int count, int channels)
 {
     CF_CanvasParams params = cf_canvas_defaults(0, 0);
     params.attach_target = texture;
@@ -347,13 +349,18 @@ static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
     if (ok) {
         while (!cf_readback_ready(readback)) {
         }
-        int bytes = count * 4 * (int)sizeof *pixels;
+        int bytes = count * channels * (int)sizeof *pixels;
         ok = cf_readback_size(readback) == bytes &&
              cf_readback_data(readback, pixels, bytes) == bytes;
         cf_destroy_readback(readback);
     }
     cf_destroy_canvas(canvas);
     return ok;
+}
+
+static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
+{
+    return read_half_texture(texture, pixels, count, 4);
 }
 
 static render_view_2d light_view(int width, int height)
@@ -701,6 +708,176 @@ static bool graph_material_pixels(render_material_raster *raster)
     behavior_asset_free(shape);
     behavior_asset_free(material);
     printf("shader-material %s: graph GPU channels, hot replacement, coverage and fragment compilation\n", ok ? "PASS" : "FAIL");
+    return ok;
+}
+
+/* The same physical 64-unit path must transmit equally at different output
+ * sizes, and the field must remain registered under camera translation. */
+static bool medium_pixels(render_material_raster *raster)
+{
+    ecs_world *world = ecs_world_new();
+    bool ok = ecs_world_register_component(world, &GAME_COMPONENT_GameMedium, NULL) ==
+              ECS_OK;
+    ecs_entity entity = ecs_world_create_entity(world);
+    GameMedium settings = { .origin = { -32, 8 },
+                            .columns = 16,
+                            .rows = 16,
+                            .cell_size = 4,
+                            .density = 2,
+                            .detail_size = 32,
+                            .extinction = .005f,
+                            .scattering = 0x804020ff,
+                            .depth = 30 };
+    ok &= ecs_world_record_add(world, entity, GAME_COMPONENT_GameMedium.id, &settings, 0) ==
+          ECS_OK;
+    ok &= ecs_world_apply_commands(world) == ECS_OK;
+    game_medium *field = game_medium_new(world);
+    ok &= !game_medium_update(field, 0);
+    uint64_t hash = game_medium_inspect(field).hash;
+    render_medium *draw = render_medium_new();
+    uint16_t pixels[PIXELS * 4];
+    for (int size = 64; size <= 128; size *= 2) {
+        for (int offset = 0; offset <= 16; offset += 16) {
+            cf_app_update(NULL);
+            render_material_view view = { .min_x = -64,
+                                          .max_y = 16 - offset,
+                                          .width = 128,
+                                          .height = 128,
+                                          .crop_max_u = 1,
+                                          .crop_max_v = 1 };
+            ok &= render_material_raster_resize(raster, size, size);
+            ok &= render_material_raster_draw(raster, NULL, 0, view);
+            render_material_textures textures = render_material_raster_textures(raster);
+            CF_Texture optical = render_medium_draw(draw, field, textures, view, size, size);
+            cf_app_draw_onto_screen(false);
+            ok &= optical.id &&
+                  read_hdr_texture(textures.absorption, pixels, size * size);
+            double depth = 0;
+            int row = (40 + 16 - offset) * size / 128;
+            for (int x = 0; x < size; x++) {
+                depth += half_value(pixels[4 * (row * size + x)]);
+            }
+            double transmission = exp(-depth), expected = exp(-.005 * 2 * 64);
+            ok &= fabs(transmission - expected) < .0002;
+            ok &= read_half_texture(optical, pixels, size * size, 1);
+            int center = row * size + size / 2;
+            float tau = half_value(pixels[center]);
+            ok &= fabsf(tau - .01f * 128 / size) < .00002f;
+            ok &= pixels[0] == 0 && pixels[3] == 0;
+            printf(
+                "medium world path size=%d offset=%d: T=%.6f expected=%.6f\n",
+                size,
+                offset,
+                transmission,
+                expected
+            );
+        }
+    }
+    ok &= hash == game_medium_inspect(field).hash;
+    render_radiance *lighting = render_radiance_new();
+    CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    CF_Texture background = cf_make_texture(cf_texture_defaults(1, 1));
+    CF_Pixel gray = cf_make_pixel_rgba(64, 64, 64, 255);
+    cf_texture_update(background, &gray, sizeof gray);
+    CF_Pixel image[PIXELS];
+    ok &= lighting && render_radiance_resize(lighting, SIDE, SIDE);
+    render_material_view view = { .min_x = -64,
+                                  .max_y = 64,
+                                  .width = SIDE,
+                                  .height = SIDE,
+                                  .crop_max_u = 1,
+                                  .crop_max_v = 1 };
+    float depths[] = { 0, 30, 3000 };
+    for (int i = 0; i < 3; i++) {
+        cf_app_update(NULL);
+        render_radiance_reset(lighting);
+        ok &= render_material_raster_draw(raster, NULL, 0, view);
+        render_material_textures textures = render_material_raster_textures(raster);
+        CF_Texture optical = render_medium_draw(draw, field, textures, view, SIDE, SIDE);
+        render_radiance_inputs inputs = { .scene = textures.scene,
+                                          .emission = textures.emission,
+                                          .absorption = textures.absorption,
+                                          .albedo = textures.albedo,
+                                          .normal = textures.normal,
+                                          .background = background,
+                                          .medium = optical,
+                                          .medium_depth = depths[i] };
+        cf_draw_push();
+        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+        ok &= render_radiance_draw(lighting, inputs, view, canvas);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(false);
+        ok &= read_pixels(canvas, image, PIXELS);
+        double linear = 64.0 / 255 * exp(-.01 * depths[i]);
+        double expected = 255 * (linear <= .0031308
+                                     ? 12.92 * linear
+                                     : 1.055 * pow(linear, 1 / 2.4) - .055);
+        int actual = image[104 * SIDE + 64].colors.r;
+        ok &= fabs(actual - expected) <= 2;
+        printf("medium camera slab depth=%.0f: display=%d expected=%.2f\n", depths[i], actual, expected);
+    }
+    /* Isolate camera scattering with known incident radiance, using the actual
+     * composite shader and R16F field. This checks color and energy separately
+     * from HRC reconstruction and its temporal history. */
+    char *source = render_shader_source("hrc/composite.shd");
+    assert(source);
+    CF_Shader composite = cf_make_draw_shader_from_source(source);
+    free(source);
+    CF_TextureParams params = cf_texture_defaults(1, 1);
+    params.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+    CF_Texture incident = cf_make_texture(params);
+    float received[] = { .4f, .5f, .6f, 1 };
+    cf_texture_update(incident, received, sizeof received);
+    float albedo[] = { .25f, .5f, .75f, 1 };
+    cf_app_update(NULL);
+    ok &= render_material_raster_draw(raster, NULL, 0, view);
+    render_material_textures textures = render_material_raster_textures(raster);
+    CF_Texture optical = render_medium_draw(draw, field, textures, view, SIDE, SIDE);
+    float zero = 0, one = 1, depth = 30, crop[] = { 0, 0, 1, 1 };
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+    cf_draw_push_shader(composite);
+    cf_draw_set_texture("scene_tex", textures.scene);
+    cf_draw_set_texture("fluence_tex", incident);
+    cf_draw_set_texture("emission_tex", textures.emission);
+    cf_draw_set_texture("absorption_tex", textures.absorption);
+    cf_draw_set_texture("albedo_tex", textures.albedo);
+    cf_draw_set_texture("normal_tex", textures.normal);
+    cf_draw_set_texture("background_tex", background);
+    cf_draw_set_texture("visibility_tex", textures.scene);
+    cf_draw_set_texture("medium_tex", optical);
+    const char *zeros[] = { "ambient", "debug_view", "shadow_floor", "fog", "dither_phase" };
+    for (int i = 0; i < 5; i++) {
+        cf_draw_set_uniform(zeros[i], &zero, CF_UNIFORM_TYPE_FLOAT, 1);
+    }
+    cf_draw_set_uniform("intensity", &one, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_draw_set_uniform("medium_depth", &depth, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_draw_set_uniform("medium_albedo", albedo, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT, 4);
+    cf_draw_quad_fill((CF_Aabb){ { -64, -64 }, { 64, 64 } }, 0);
+    cf_draw_pop_shader();
+    cf_render_to(canvas, true);
+    cf_draw_pop();
+    cf_app_draw_onto_screen(false);
+    ok &= read_pixels(canvas, image, PIXELS);
+    CF_Pixel actual = image[104 * SIDE + 64];
+    unsigned char rgb[] = { actual.colors.r, actual.colors.g, actual.colors.b };
+    for (int c = 0; c < 3; c++) {
+        double linear = exp(-.3) * 64 / 255.0 +
+                        (1 - exp(-.3)) * albedo[c] * received[c];
+        double expected = 255 * (1.055 * pow(linear, 1 / 2.4) - .055);
+        ok &= fabs(rgb[c] - expected) <= 2;
+        printf("medium scattering channel=%d: display=%d expected=%.2f\n", c, rgb[c], expected);
+    }
+    cf_destroy_texture(incident);
+    cf_destroy_shader(composite);
+    cf_destroy_canvas(canvas);
+    cf_destroy_texture(background);
+    render_radiance_free(lighting);
+    render_medium_free(draw);
+    game_medium_free(field);
+    ecs_world_free(world);
+    printf("medium %s: GPU world-distance extinction, scattering, bounds and camera registration\n", ok ? "PASS" : "FAIL");
     return ok;
 }
 
@@ -1137,6 +1314,7 @@ static bool reflection_pixels()
 int test_radiance()
 {
     extern bool test_radiance_intervals();
+    extern bool test_radiance_medium();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -1323,6 +1501,8 @@ int test_radiance()
         ok &= render_radiance_set_lighting(radiance, lighting) &&
               render_radiance_get_settings(radiance).scale == .5f;
     }
+    ok &= medium_pixels(raster);
+    ok &= render_material_raster_resize(raster, SIDE, SIDE);
     ok &= fluid_alignment(raster);
     ok &= fluid_surfaces(raster);
     cf_destroy_canvas(canvas);
@@ -1337,6 +1517,7 @@ int test_radiance()
     bool light_ok = light_field_checks();
     ok &= light_ok;
     ok &= test_radiance_intervals();
+    ok &= test_radiance_medium();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }

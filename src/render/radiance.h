@@ -16,7 +16,10 @@ typedef struct
 
 typedef struct
 {
-    CF_Texture scene, emission, absorption, albedo, normal, background, visibility;
+    CF_Texture scene, emission, absorption, albedo, normal, background,
+        visibility, medium;
+    CF_Color medium_scattering;
+    float medium_depth; /* Camera path length in canvas pixels. */
 } render_radiance_inputs;
 /* Requires a current Cute context and shader directory containing the hrc shader subdirectory. */
 render_radiance *render_radiance_new();

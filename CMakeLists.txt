@@ -42,7 +42,7 @@ endif()
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
-foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-hidden-background)
+foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-hidden-background cute-hidden-present)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CUTE_PATCH}")
     include(cmake/apply_cute_patch.cmake)
@@ -365,6 +365,15 @@ target_link_libraries(chibi_render PUBLIC runtime_support core cute)
 target_compile_options(chibi_render PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(chibi_render)
 set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
+
+# Hidden native GPU optics experiments, independent of authored game content.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_executable(gi_lab tools/gi_lab/main.c)
+    target_compile_definitions(gi_lab PRIVATE GI_LAB_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tools/gi_lab/shaders")
+    target_link_libraries(gi_lab PRIVATE core cute)
+    # The lab validates argument ranges, shader resources, and HDR readback in Release too.
+    target_compile_options(gi_lab PRIVATE -UNDEBUG)
+endif()
 
 # --- host frame loop and optional viewport surface --------------------------
 

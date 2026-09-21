@@ -162,3 +162,8 @@ dev:
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+
+# Uses a hidden native GPU context; the CPU reference checks remain windowless.
+.PHONY: test-optics-gpu
+test-optics-gpu:
+	python3 tools/benchmark_optics.py --binary $(BUILD_DIR)/gi_lab --check --output $(BUILD_DIR)/optics-gpu-check

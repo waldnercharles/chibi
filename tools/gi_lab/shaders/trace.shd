@@ -1,0 +1,57 @@
+#include "common.shd"
+layout(set=1,binding=0,std430) buffer Accumulator { uint values[]; };
+layout(local_size_x=64) in;
+// Box footprint and exact pixel path length, midpoint density per crossed pixel.
+vec3 deposit(vec2 p, vec2 d, float length, vec3 power, bool glass) {
+    vec2 cell=EXTENT/vec2(u_grid.xy);
+    float t=0;
+    for (int steps=0;steps<u_grid.x+u_grid.y+2 && t<length;steps++) {
+        vec2 pos=p+d*(t+EPS);
+        ivec2 xy=clamp(ivec2(floor(pos/cell)),ivec2(0),u_grid.xy-1);
+        vec2 boundary=(vec2(xy)+step(vec2(0),d))*cell;
+        vec2 next=vec2(1e10);
+        if (abs(d.x)>1e-8) next.x=(boundary.x-p.x)/d.x;
+        if (abs(d.y)>1e-8) next.y=(boundary.y-p.y)/d.y;
+        float end=min(length,min(next.x,next.y)), ds=max(0,end-t);
+        vec3 sigma=extinction(p+d*(t+.5*ds),glass), tr=exp(-sigma*ds);
+        vec3 integral=power*mix(ds*(1-.5*sigma*ds),(1-tr)/max(sigma,vec3(1e-8)),step(vec3(.001),sigma*ds));
+        uvec3 v=uvec3(round(integral/(cell.x*cell.y)*ACCUM_SCALE));
+        int index=(xy.y*u_grid.x+xy.x)*3;
+        atomicAdd(values[index],v.r); atomicAdd(values[index+1],v.g); atomicAdd(values[index+2],v.b);
+        power*=tr;
+        t=max(end,t+EPS);
+    }
+    return power;
+}
+void main() {
+    int ray=int(gl_GlobalInvocationID.x);
+    if (ray>=u_budget.x || u_scene.y==0) return;
+    // Depth-first splitting uses at most events+1 stack entries, not 2^events storage.
+    vec2 origins[5], directions[5]; vec3 powers[5]; int depths[5];
+    origins[0]=vec2(.06,.3625+.4*(float(ray)+.5)/float(u_budget.x));
+    directions[0]=vec2(1,0); powers[0]=vec3(u_scene.y/float(u_budget.x)); depths[0]=0;
+    int count=1;
+    for (int path=0;path<31 && count>0;path++) {
+        count--;
+        vec2 p=origins[count], d=directions[count], n;
+        vec3 power=powers[count]; int depth=depths[count];
+        float boundary=hit(p,d,n), escape=exit_distance(p,d);
+        bool glass=inside(p);
+        power=deposit(p,d,min(boundary,escape),power,glass);
+        // Still deposit the final outgoing segment after the last allowed event.
+        if (boundary>=escape || depth>=u_budget.y) continue;
+        vec2 at=p+d*boundary;
+        if (dot(n,d)>0) n=-n;
+        vec2 reflected=reflect(d,n), transmitted;
+        float f=u_grid.w == 4 ? 1 : fresnel(d,n,glass?1.5:1,glass?1:1.5,transmitted);
+        if (f<1) {
+            origins[count]=at+transmitted*EPS*4; directions[count]=transmitted;
+            powers[count]=power*(1-f); depths[count++]=depth+1;
+        }
+        if (f>0) {
+            origins[count]=at+reflected*EPS*4; directions[count]=reflected;
+            powers[count]=power*f*(u_grid.w == 4 ? vec3(.95,.85,.7) : vec3(1));
+            depths[count++]=depth+1;
+        }
+    }
+}

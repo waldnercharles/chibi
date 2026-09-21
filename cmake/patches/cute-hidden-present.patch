@@ -1,0 +1,16 @@
+diff --git a/src/cute_graphics_sdlgpu.cpp b/src/cute_graphics_sdlgpu.cpp
+--- a/src/cute_graphics_sdlgpu.cpp
++++ b/src/cute_graphics_sdlgpu.cpp
+@@ -1071,6 +1071,12 @@ void cf_sdlgpu_begin_frame()
+ void cf_sdlgpu_blit_canvas(CF_Canvas canvas)
+ {
+ 	s_end_active_pass();
++	// Offscreen tools submit their work normally, but must not wait for a hidden
++	// window's swapchain. On macOS acquisition can still block for a refresh.
++	if (SDL_GetWindowFlags(g_ctx.window) & SDL_WINDOW_HIDDEN) {
++		g_ctx.skip_drawing = true;
++		return;
++	}
+ 	// Try to acquire a swapchain texture
+ 	if (g_ctx.swapchain_tex == NULL && !g_ctx.skip_drawing) {
+ 		if (

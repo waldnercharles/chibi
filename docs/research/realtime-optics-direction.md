@@ -3,6 +3,11 @@
 September 21, 2026. Worktree: `.worktrees/gi-research`, branch
 `cwaldner/gi-research`, renderer baseline `0e8561f2`.
 
+The first native GPU experiments and corrected hidden-window timing are recorded
+in [gi-experiments.md](gi-experiments.md). This document preserves the earlier
+research and implementation order; its historical renderer timings include the
+old hidden-presentation path.
+
 ## Decision
 
 Reflections, refraction and caustics are required features. Realtime performance

@@ -1,0 +1,10 @@
+#include "common.shd"
+layout(set=0,binding=0,std430) readonly buffer Accumulator { uint values[]; };
+layout(set=1,binding=0,rgba32f) uniform writeonly image2D u_result;
+layout(local_size_x=16,local_size_y=16) in;
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p,u_grid.xy))) return;
+    int i=(p.y*u_grid.x+p.x)*3;
+    imageStore(u_result,p,vec4(vec3(values[i],values[i+1],values[i+2])/ACCUM_SCALE,1));
+}

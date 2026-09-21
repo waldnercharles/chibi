@@ -176,3 +176,6 @@ At an exact 2× canvas-to-work reduction, prefilter reads the generated mip 1
 directly. The old path sampled that mip four times per source texture for each
 work pixel; the exact path uses one `texelFetch` for emission, absorption and
 bounce. Fractional reductions retain the weighted path.
+
+Native optical candidates, the hidden swapchain fix, and matched measurements are
+documented in [GPU optics experiments](research/gi-experiments.md).

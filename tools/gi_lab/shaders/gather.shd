@@ -1,0 +1,11 @@
+#include "common.shd"
+layout(set=0,binding=0) uniform sampler2D u_previous;
+layout(set=1,binding=0,rgba32f) uniform writeonly image2D u_result;
+layout(local_size_x=16,local_size_y=16) in;
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(p,u_grid.xy))) return;
+    vec3 value=vec3(0);
+    for (int a=0;a<u_grid.z;a++) value+=texelFetch(u_previous,p+ivec2(a%8,a/8)*u_grid.xy,0).rgb;
+    imageStore(u_result,p,vec4(value*(2*PI/float(u_grid.z)),1));
+}

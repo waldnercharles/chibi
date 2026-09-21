@@ -37,6 +37,12 @@ busy burning region; the scenario is not an average combat measurement.
 
 ## What the timings mean
 
+Scene previews now use hidden windows for captures and benchmarks. The
+`performance.hidden_window` result identifies these runs. They still execute
+GPU rendering and require a desktop/GPU session on macOS, but do not show a
+window or require interaction. They exclude visible presentation overhead;
+rerun both sides of a comparison before comparing against older visible runs.
+
 Live mode prepares the scenario at a fixed step, warms the renderer for 240
 frames with simulation held still, then advances and renders 180 frames.
 The first 16 advancing frames are discarded, leaving 164 measurements. Simulation
@@ -54,9 +60,9 @@ state must also match across scales, modes and repeats. World hashes include
 authored HRC configuration, so changing scale intentionally changes that hash.
 The tool reports state from the process that actually rendered the image.
 
-Render/present is host elapsed time including submission and GPU waiting. It is
-not a GPU shader duration. GPU-complete scene rendering is synchronized before
-presentation, matching the existing benchmark boundary. Startup, shader compilation,
+Render time is host elapsed time including submission and waiting for scene GPU
+work. It is not a GPU shader duration. Scene rendering is synchronized before
+the final offscreen application composition. Startup, shader compilation,
 fixture authoring, state inspection, readback and pacing are outside measurement.
 
 The output includes:

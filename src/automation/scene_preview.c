@@ -104,8 +104,7 @@ static bool render_scene(
         0,
         width,
         height,
-        CF_APP_OPTIONS_NO_AUDIO_BIT |
-            (render_frames > 2 ? 0 : CF_APP_OPTIONS_HIDDEN_BIT) |
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
             (options->capture_path ? CF_APP_OPTIONS_GFX_METAL_BIT : 0),
         NULL
     );
@@ -305,8 +304,8 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             continue;
         }
         if (!yyjson_is_int(value) || yyjson_get_sint(value) < 64 ||
-            yyjson_get_sint(value) > 2048) {
-            snprintf(error, sizeof error, "%s must be an integer between 64 and 2048", keys[i]);
+            yyjson_get_sint(value) > 4096) {
+            snprintf(error, sizeof error, "%s must be an integer between 64 and 4096", keys[i]);
             break;
         }
         *sides[i] = (int)yyjson_get_sint(value);
@@ -390,6 +389,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         instrumented = true;
 #endif
         yyjson_mut_obj_add_bool(response, performance, "frozen", options.frozen);
+        yyjson_mut_obj_add_bool(response, performance, "hidden_window", true);
         yyjson_mut_obj_add_bool(response, performance, "instrumented", instrumented);
         yyjson_mut_obj_add_int(response, performance, "samples", measurement.samples);
         yyjson_mut_obj_add_int(response, performance, "warmup_frames", render_frames > 2 ? 240 : 0);

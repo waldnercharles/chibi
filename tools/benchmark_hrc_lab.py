@@ -28,6 +28,7 @@ CLEAN_SCENES = [
     'HRCLabSinglePixel',
     'HRCLabShadow',
     'HRCLabVolume',
+    'HRCLabDenseFog',
     'HRCLabTwoLights',
     'HRCLabColorBoundary',
     'HRCLabOpaqueInterior',
@@ -183,7 +184,7 @@ def summary(output, reports, comparisons=()):
     lines = [
         '# HRC lab results', '',
         'Frozen scenes use 240 renderer warmup frames and discard the first 16 measured frames.',
-        'Frame time includes GPU completion; it is not a per-dispatch GPU timestamp.', '',
+        'Hidden-window scene time includes GPU completion and excludes visible presentation; it is not a per-dispatch GPU timestamp.', '',
         f'Reconstruction mode: {reports[0]["upscale_mode"]} ({reports[0]["upscale_mode_name"]}).' if reports else '',
         '',
         'Every row links to its captured `frame.png`.', '',
@@ -228,8 +229,8 @@ def main():
         parser.error('use 17..1200 render frames and a positive repeat count')
     if any(not .1 <= scale <= 1 for scale in args.scale) or len(set(args.scale)) != len(args.scale):
         parser.error('HRC scales must be distinct values in 0.1..1')
-    if not all(64 <= size <= 2048 for size in [args.width, args.height]):
-        parser.error('dimensions must be 64..2048 pixels')
+    if not all(64 <= size <= 4096 for size in [args.width, args.height]):
+        parser.error('dimensions must be 64..4096 pixels')
     if args.metal_capture and (args.scene == 'all' or len(args.scale) != 1 or args.repeat != 1):
         parser.error('Metal capture selects one scene, scale and repeat')
     args.project = args.project.resolve()

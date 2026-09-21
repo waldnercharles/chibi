@@ -53,6 +53,7 @@ options first.
 | `HRCLabSinglePixel` | Tiny source and broad receiver. |
 | `HRCLabShadow` | Blocker, source, floor and receiving wall. |
 | `HRCLabVolume` | Source through smoke and liquid volumes. |
+| `HRCLabDenseFog` | Smoke across the fixed camera view, a source and an opaque blocker. |
 | `HRCLabTwoLights` | Warm and white circular sources around a circular blocker. |
 | `HRCLabColorBoundary` | Red, green and blue sources through one aperture. |
 | `HRCLabOpaqueInterior` | Three slabs with different absorption/albedo values and interior targets. |
@@ -87,10 +88,19 @@ half, and quarter HRC work grids. Use `--upscale-mode 0`, `1`, `2`, or `3` to
 compare the reconstruction modes. Every generated summary row links to its
 PNG and reports its mean RGB error against that run's full-scale reference.
 
+The runner and scene preview accept dimensions from 64 through 4096 pixels.
+For desktop measurements, use `--width 2560 --height 1440 --scale .5` or
+`--width 3840 --height 2160 --scale .25`. These select 1280x720 and 960x540
+transport grids. They are benchmark configurations, not quality presets.
+See [the first transport correction](research/hrc-transport-correction.md)
+for matched baseline measurements and the dense-fog fixture.
+
 The runner copies the project into each case directory, disables adaptive scale,
 validates the edited prototype and scene, warms the renderer for 240 frames,
 discards the first 16 measured frames, and writes a PNG plus JSON report. The
 reported time includes GPU completion and is not a per-dispatch GPU timestamp.
+Runs use a hidden window and exclude visible presentation overhead. The result's
+`performance.hidden_window` field distinguishes these from older visible runs.
 Each row in the generated `summary.md` links directly to its captured
 `frame.png`, alongside the mean RGB error when a scale is compared with 1.0.
 

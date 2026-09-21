@@ -1,0 +1,15 @@
+diff --git a/src/cute_app.cpp b/src/cute_app.cpp
+--- a/src/cute_app.cpp
++++ b/src/cute_app.cpp
+@@ -235,6 +235,11 @@ CF_Result cf_make_app(const char* window_title, CF_DisplayID display_id, int x, int
+ 		CF_ASSERT(!use_vulkan);
+ 	}
+ 
++	// Hidden GPU tools should not register a foreground macOS app or Dock icon.
++	// Set this before SDL video initialization; explicit environment hints win.
++	SDL_SetHintWithPriority(SDL_HINT_MAC_BACKGROUND_APP,
++		(options & (CF_APP_OPTIONS_HIDDEN_BIT | CF_APP_OPTIONS_NO_GFX_BIT)) ? "1" : "0",
++		SDL_HINT_DEFAULT);
+ 	Uint32 sdl_options = SDL_INIT_EVENTS | SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC;
+ 	if (options & CF_APP_OPTIONS_NO_GFX_BIT) {
+ 		sdl_options &= ~SDL_INIT_VIDEO;

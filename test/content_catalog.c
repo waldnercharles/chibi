@@ -161,7 +161,9 @@ void run_content_catalog_checks()
         "NeonSwarmTrailEmitter.json",
     };
     static const char *const arena2d_scenes[] = {
-        "NeonSwarmSandbox.json",
+        "NeonSwarmHRCBounce.json", "NeonSwarmHRCPinhole.json",
+        "NeonSwarmHRCShadow.json", "NeonSwarmHRCSinglePixel.json",
+        "NeonSwarmHRCVolume.json", "NeonSwarmSandbox.json",
     };
     static const char *const arena2d_libraries[] = { "DirectionMath.json",
                                                      "WeaponActions.json" };

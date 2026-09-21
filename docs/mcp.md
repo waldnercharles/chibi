@@ -466,7 +466,9 @@ The web 2D renderer uses the authored ambient and emission gains directly; indir
 Use `previewScene` with a scene/prototype name, optional frames, inputs and
 saved state to inspect a running result. It uses the same 2D/3D renderer,
 authored camera and widgets, with pixel dimensions independent of display DPI.
-This tool needs GPU/display access. Returned images include the UI; structured
+Each dimension accepts 64 through 4096 pixels, including 1440p and 4K output.
+Previews and timing runs use a hidden window and need GPU/display access.
+Returned images include the UI; structured
 JSON omits the base64 bytes. For visual fixtures, explicitly author material
 emission rather than relying on the emissive appearance fallback.
 

@@ -1136,6 +1136,7 @@ static bool reflection_pixels()
 /* The host initializes Cute and mounts/configures render/shaders before this call. */
 int test_radiance()
 {
+    extern bool test_radiance_intervals();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -1335,6 +1336,7 @@ int test_radiance()
     ok &= reflection_pixels();
     bool light_ok = light_field_checks();
     ok &= light_ok;
+    ok &= test_radiance_intervals();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }

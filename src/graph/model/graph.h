@@ -21,6 +21,15 @@ typedef enum
     GRAPH_MACRO,
 } graph_kind;
 
+/* Mode inferred for a generated Behavior Expression graph. */
+typedef enum
+{
+    GRAPH_EXPRESSION_NONE = 0,
+    GRAPH_EXPRESSION_VALUE,
+    GRAPH_EXPRESSION_ACTION,
+    GRAPH_EXPRESSION_BRANCH,
+} graph_expression_mode;
+
 typedef struct behavior_asset behavior_asset;
 
 typedef struct graph_comment_box
@@ -92,6 +101,7 @@ typedef struct graph
     uint64_t source_graph_id;
     uint64_t clipboard_owner_id; /* transient source ownership for pasted graph JSON */
     char *math_expression; /* graph-owned source for generated scalar functions */
+    graph_expression_mode expression_mode;
     unsigned long long topology_revision;
     unsigned flow_pause_count;
     unsigned breakpoints_enabled;
@@ -136,6 +146,15 @@ int graph_remove_node(graph *g, node *n);
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
+/* Resolve a reference-capable data output to a stable writable binding. The
+ * returned strings are borrowed from the graph or registry; a field path
+ * assembled from nested projections is graph-owned. */
+int graph_resolve_reference(
+    graph *g,
+    const node *source,
+    int source_pin,
+    pin_binding *binding
+);
 /* A presentation hint for folding a pure source into its single downstream
  * data consumer. The node and edge remain ordinary graph data. */
 bool graph_node_is_inline(const graph *g, const node *n);

@@ -1,6 +1,6 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/registry.h"
-#include "graph/nodes/math_expression.h"
+#include "graph/nodes/behavior_expression.h"
 
 /* Generated readers formerly had one Exec input and one Then continuation.
  * Keep data pin IDs and bypass the old execution step when opening an asset. */
@@ -53,15 +53,17 @@ int serialize_repair_math_calls(behavior_asset *asset)
         graph *caller = asset->graphs[i];
         for (int j = 0; j < acount(caller->nodes); j++) {
             node *call = caller->nodes[j];
-            if (call->desc != &NODE_CallPureFunction || call->reference_asset) {
+            if ((call->desc != &NODE_CallPureFunction &&
+                 call->desc != &NODE_BehaviorExpression &&
+                 call->desc != &NODE_CallFunction) || call->reference_asset) {
                 continue;
             }
             graph *generated = behavior_asset_find_graph(asset, call->reference_id);
-            if (!generated || !generated->math_expression) {
+            if (!generated || !generated->math_expression || generated->source_asset) {
                 continue;
             }
-            if (math_expression_repair(asset, call) != 0) {
-                serialize_error_set("could not repair math expression call");
+            if (behavior_expression_repair(asset, call) != 0) {
+                serialize_error_set("could not repair Behavior Expression call");
                 return -1;
             }
         }

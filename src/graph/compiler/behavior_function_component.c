@@ -3,6 +3,7 @@
 #include "graph/compiler/behavior_lower_internal.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/eval.h"
 #include "support/array.h"
 
@@ -310,8 +311,13 @@ int behavior_lower_component_binding(builder *b, node *n, int pin)
         return behavior_lower_unsupported(b, n, pin, false, "component binding field");
     }
     pin_spec actual = { .type = field ? field->type : PIN_STRUCT,
-                        .type_name = field ? field->type_name : desc->type->name };
-    if (!pin_compatible(&actual, spec)) {
+                        .type_name = field ? field->type_name : desc->type->name,
+                        .container = PIN_CONTAINER_SINGLE,
+                        .kind = PIN_DATA };
+    const node_desc *conversion = pin_compatible(&actual, spec)
+                                    ? NULL
+                                    : conversion_for_pins(&actual, spec);
+    if (!pin_compatible(&actual, spec) && !conversion) {
         return behavior_lower_unsupported(b, n, pin, false, "component binding type");
     }
     b->function->component_bindings = true;
@@ -340,6 +346,9 @@ int behavior_lower_component_binding(builder *b, node *n, int pin)
         assert(member);
         value = behavior_lower_field(b, value, member, n, pin);
         path = end ? end + 1 : NULL;
+    }
+    if (conversion) {
+        value = behavior_lower_apply_conversion(b, value, conversion, n, pin);
     }
     return behavior_lower_convert(b, value, spec->type);
 }

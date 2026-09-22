@@ -383,6 +383,13 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
     fprintf(out, "static pin_spec %s_%s_entity_inputs[] = { { \"Entity\", PIN_HANDLE, \"ecs.entity\" } };\n", g_prefix, name);
     fprintf(
         out,
+        "static pin_spec %s_%s_get_entity_outputs[] = { { \"Value\", PIN_STRUCT, \"%s\" } };\n",
+        g_prefix,
+        name,
+        name
+    );
+    fprintf(
+        out,
         "static pin_spec %s_%s_set_entity_inputs[] = { { \"Exec\", PIN_FLOW, "
         "NULL, PIN_EXEC }, { \"Entity\", PIN_HANDLE, \"ecs.entity\" }, { "
         "\"Value\", PIN_STRUCT, \"%s\" } };\n",
@@ -394,7 +401,7 @@ void emit_component_entity_nodes_desc(FILE *out, const struct_info *s)
         out,
         "node_desc %s_NODE_GetEntity_%s = { .name = \"GetEntity_%s\", "
         ".input_count = 1, .inputs = %s_%s_entity_inputs, .output_count = 1, "
-        ".outputs = %s_%s_get_outputs, .pure_kind = NODE_PURE_READ, "
+        ".outputs = %s_%s_get_entity_outputs, .pure_kind = NODE_PURE_READ, "
         ".read_inputs = __read_%s_get_entity_%s, .type = &%s_T_%s, .access = "
         "&%s_%s_entity_read_access, ",
         g_prefix,
@@ -507,7 +514,13 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         name
     );
     fprintf(out, "static pin_spec %s_%s_exec_inputs[] = { { \"Exec\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
-    fprintf(out, "static pin_spec %s_%s_get_outputs[] = { { \"Value\", PIN_STRUCT, \"%s\" } };\n", g_prefix, name, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_get_outputs[] = { { \"Value\", PIN_STRUCT, \"%s\", PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_STRUCT }, 0, PIN_FLAG_REFERENCE } };\n",
+        g_prefix,
+        name,
+        name
+    );
     fprintf(
         out,
         "node_desc %s_NODE_Get_%s = { .name = \"Get_%s\", .output_count = 1, "

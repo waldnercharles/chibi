@@ -71,6 +71,55 @@ static int graph_has_node(const graph *g, const node *n)
     return g && n && graph_node_by_id(g, n->id) == n;
 }
 
+static bool flow_is_delta_output(const pin_spec *pin)
+{
+    return pin && pin->kind == PIN_DATA &&
+           (pin->type == PIN_F32 || pin->type == PIN_F64) && pin->name &&
+           (!strcmp(pin->name, "DeltaSeconds") || !strcmp(pin->name, "Delta Seconds"));
+}
+
+static bool flow_event_delta(
+    const node *entry,
+    const pin_value *inputs,
+    int input_count,
+    double *delta
+)
+{
+    if (!entry || entry->desc->flow_kind != NODE_FLOW_EVENT || !delta) {
+        return false;
+    }
+    int parameter = 0;
+    for (int i = 0; i < entry->output_count; i++) {
+        const pin_spec *pin = &entry->output_pins[i];
+        if (pin->kind != PIN_DATA || pin->field_source) {
+            continue;
+        }
+        if (flow_is_delta_output(pin)) {
+            pin_value value = pin->default_value;
+            if (parameter < input_count && inputs &&
+                pin_compatible(
+                    pin,
+                    &(pin_spec){ .type = inputs[parameter].type,
+                                 .type_name = inputs[parameter].type_name,
+                                 .container = inputs[parameter].container }
+                )) {
+                value = inputs[parameter];
+                pin_coerce(&value, pin);
+            }
+            if (value.type == PIN_F32) {
+                *delta = value.f;
+                return true;
+            }
+            if (value.type == PIN_F64) {
+                *delta = value.d;
+                return true;
+            }
+        }
+        parameter++;
+    }
+    return false;
+}
+
 void flow_fail(flow_run *run, int code, node *n, const char *message)
 {
     if (run->host_request) {
@@ -823,6 +872,7 @@ flow_run *flow_run_start_reuse(
     runtime_store_reset(run->runtime);
     eval_context_reset(&run->eval);
     run->eval.delta_seconds = options ? options->delta_seconds : run->eval.delta_seconds;
+    run->eval.event_entry = entry;
     run->eval.instance = run->instance;
     run->eval.program = run->program;
     run->eval.observer = run;
@@ -850,6 +900,9 @@ flow_run *flow_run_start_reuse(
             }
         }
     }
+    /* The event payload is authoritative when the event declares the
+     * conventional DeltaSeconds output. */
+    (void)flow_event_delta(entry, run->inputs, run->input_count, &run->eval.delta_seconds);
     push_frame(run, (activation_frame){ .node = entry, .kind = ACTIVATION_BLOCK, .input_pin = -1 });
     if (run->graph_guard_owned) {
         graph_pause(run);
@@ -1516,6 +1569,44 @@ int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *o
     }
     *flow_context_input_value(ctx, input_pin) = *out;
     return FLOW_OK;
+}
+
+int flow_context_eval_output(struct flow_context *ctx, int output_pin, pin_value *out)
+{
+    if (!ctx || !ctx->run || !out || output_pin < 0 ||
+        output_pin >= ctx->node->output_count ||
+        ctx->node->output_pins[output_pin].kind != PIN_DATA) {
+        return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "invalid data output");
+    }
+    int result;
+    if (ctx->run->program) {
+        result = behavior_program_output(
+            ctx->run->program,
+            ctx->node,
+            output_pin,
+            &ctx->run->scratch,
+            out,
+            &ctx->run->eval,
+            ctx->run->backend
+        );
+    } else {
+        result = graph_eval_output(
+            ctx->run->graph,
+            ctx->node,
+            output_pin,
+            &ctx->run->scratch,
+            out,
+            &ctx->run->eval
+        );
+    }
+    if (!result) {
+        return FLOW_OK;
+    }
+    const eval_status *status = eval_context_status(&ctx->run->eval);
+    flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, status->message);
+    ctx->run->error.node = status->node;
+    ctx->run->error.pin = status->pin;
+    return ctx->run->error.code;
 }
 
 int flow_context_fail(struct flow_context *ctx, int code, const char *message)

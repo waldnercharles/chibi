@@ -19,6 +19,7 @@ static const char *asset_kind_label(asset_index_kind kind)
         case ASSET_INDEX_BEHAVIOR: return "Behavior";
         case ASSET_INDEX_EVENT: return "Event";
         case ASSET_INDEX_MATERIAL: return "Material";
+        case ASSET_INDEX_FIELD: return "Procedural Field";
         case ASSET_INDEX_SHAPE: return "Shape";
         case ASSET_INDEX_LIBRARY: return "Library";
         case ASSET_INDEX_SYSTEM: return "System";

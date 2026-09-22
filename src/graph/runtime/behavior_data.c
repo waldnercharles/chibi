@@ -99,8 +99,24 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         return fail(ctx, n, -1, "compiled function entry or return is missing");
     }
     runtime_node *caller = runtime_store_node(ctx->runtime, n);
-    pin_value *arguments = runtime_node_inputs(caller);
+    pin_value *call_inputs = runtime_node_inputs(caller);
     pin_value *outputs = runtime_node_outputs(caller);
+    int argument_count = 0;
+    for (int i = 0; i < n->input_count; i++) {
+        if (n->input_pins[i].kind == PIN_DATA && !n->input_pins[i].field_source) {
+            argument_count++;
+        }
+    }
+    pin_value *arguments = call_inputs;
+    if (argument_count != n->input_count) {
+        arguments = arena_alloc(a, (size_t)argument_count * sizeof *arguments);
+        int at = 0;
+        for (int i = 0; i < n->input_count; i++) {
+            if (n->input_pins[i].kind == PIN_DATA && !n->input_pins[i].field_source) {
+                arguments[at++] = call_inputs[i];
+            }
+        }
+    }
     const behavior_function *function = behavior_program_function(program, entry);
     behavior_function_context host = { 0 };
     if (function &&
@@ -126,7 +142,7 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         behavior_function_prepare_results(function, results, a);
         behavior_function_context call = {
             .arguments = arguments,
-            .argument_count = n->input_count,
+            .argument_count = argument_count,
             .results = results,
             .delta_seconds = ctx->delta_seconds,
             .owner = host.owner,
@@ -176,7 +192,9 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         if (results != outputs) {
             int at = 0;
             for (int i = 0; i < ret->input_count; i++) {
-                while (at < n->output_count && n->output_pins[at].field_source) {
+                while (at < n->output_count &&
+                       (n->output_pins[at].kind != PIN_DATA ||
+                        n->output_pins[at].field_source)) {
                     at++;
                 }
                 assert(at < n->output_count);
@@ -206,7 +224,9 @@ int behavior_data_call(node *n, arena *a, eval_context *ctx)
         if (ret->input_pins[i].kind != PIN_DATA) {
             continue;
         }
-        while (output < n->output_count && n->output_pins[output].field_source) {
+        while (output < n->output_count &&
+               (n->output_pins[output].kind != PIN_DATA ||
+                n->output_pins[output].field_source)) {
             output++;
         }
         pin_value value;

@@ -34,7 +34,7 @@ static void open_reference_source(
     if (reference->node_id && scene->graph_editor &&
         (source->kind == ASSET_INDEX_BEHAVIOR || source->kind == ASSET_INDEX_EVENT ||
          source->kind == ASSET_INDEX_LIBRARY || source->kind == ASSET_INDEX_MATERIAL ||
-         source->kind == ASSET_INDEX_SHAPE || source->kind == ASSET_INDEX_SYSTEM)) {
+         source->kind == ASSET_INDEX_FIELD || source->kind == ASSET_INDEX_SHAPE || source->kind == ASSET_INDEX_SYSTEM)) {
         editor_reveal_node_by_id(
             scene->graph_editor,
             reference->graph_id,
@@ -162,6 +162,9 @@ static const char *binding_usage_label(const asset_index_binding_usage *usage, c
             usage->field ? usage->field : "?"
         );
         return buffer;
+    }
+    if (usage->kind == PIN_BINDING_EVENT_OUTPUT) {
+        return "Event Output";
     }
     return "Delta Time";
 }
@@ -416,6 +419,7 @@ static void draw_asset_overview(app_scene_authoring *scene, const behavior_asset
             );
             return;
         }
+        case BEHAVIOR_DOMAIN_FIELD:
         case BEHAVIOR_DOMAIN_EVENT: break;
     }
     ImGui_TextUnformatted(asset->name);

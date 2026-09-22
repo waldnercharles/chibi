@@ -2,7 +2,7 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
-#include "graph/nodes/math_expression.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
@@ -230,6 +230,17 @@ static int load_pins(graph *g, node *n, yyjson_val *arr, int output)
                     return -1;
                 }
                 binding.local_id = yyjson_get_uint(local_id);
+            } else if (!strcmp(kind_name, "event_output")) {
+                binding.kind = PIN_BINDING_EVENT_OUTPUT;
+                yyjson_val *event_node_id = yyjson_obj_get(binding_json, "event_node_id");
+                yyjson_val *event_pin_id = yyjson_obj_get(binding_json, "event_pin_id");
+                if (!yyjson_is_uint(event_node_id) || !yyjson_get_uint(event_node_id) ||
+                    !yyjson_is_uint(event_pin_id) || !yyjson_get_uint(event_pin_id)) {
+                    serialize_error_set("event output binding is incomplete");
+                    return -1;
+                }
+                binding.event_node_id = yyjson_get_uint(event_node_id);
+                binding.event_pin_id = yyjson_get_uint(event_pin_id);
             } else if (!strcmp(kind_name, "delta_time")) {
                 binding.kind = PIN_BINDING_DELTA_TIME;
             } else {
@@ -826,6 +837,19 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
         }
         g->math_expression = graph_own_str(g, yyjson_get_str(expression), yyjson_get_len(expression));
     }
+    yyjson_val *expression_mode = yyjson_obj_get(obj, "expression_mode");
+    if (expression_mode) {
+        if (!yyjson_is_int(expression_mode) ||
+            yyjson_get_sint(expression_mode) < GRAPH_EXPRESSION_NONE ||
+            yyjson_get_sint(expression_mode) > GRAPH_EXPRESSION_BRANCH) {
+            serialize_error_set("expression_mode must be a valid expression mode");
+            return -1;
+        }
+        g->expression_mode = (graph_expression_mode)yyjson_get_sint(expression_mode);
+    } else if (g->math_expression) {
+        /* Documents written before mode metadata are pure value expressions. */
+        g->expression_mode = GRAPH_EXPRESSION_VALUE;
+    }
     yyjson_val *breakpoints = yyjson_obj_get(obj, "breakpoints_enabled");
     if (breakpoints && yyjson_is_bool(breakpoints)) {
         g->breakpoints_enabled = yyjson_get_bool(breakpoints);
@@ -954,7 +978,7 @@ behavior_asset *behavior_asset_load_json(const char *json)
     const char *domain = yyjson_get_str(yyjson_obj_get(root, "domain"));
     if (domain) {
         int found = 0;
-        for (int i = BEHAVIOR_DOMAIN_EVENT; i <= BEHAVIOR_DOMAIN_SHADER_LIBRARY; i++) {
+        for (int i = BEHAVIOR_DOMAIN_EVENT; i <= BEHAVIOR_DOMAIN_FIELD; i++) {
             if (!strcmp(domain, behavior_domain_name((behavior_domain)i))) {
                 asset->domain = (behavior_domain)i;
                 found = 1;

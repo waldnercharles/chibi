@@ -89,12 +89,33 @@ static int type_desc_validate(const type_desc *type)
     return 1;
 }
 
+static int enum_desc_validate(const enum_desc *enumeration)
+{
+    if (!enumeration || !enumeration->name ||
+        !array_shape(enumeration->values, enumeration->value_count)) {
+        return 0;
+    }
+    for (int i = 0; i < enumeration->value_count; i++) {
+        const enum_value_desc *value = &enumeration->values[i];
+        if (!value->name || !value->name[0] || !value->label || !value->label[0]) {
+            return 0;
+        }
+        for (int j = 0; j < i; j++) {
+            if (enumeration->values[j].value == value->value) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 static int pack_shape(const registry_pack *pack)
 {
     return pack && pack->name && array_shape(pack->nodes, pack->node_count) &&
            array_shape(pack->types, pack->type_count) &&
            array_shape(pack->services, pack->service_count) &&
-           array_shape(pack->operators, pack->operator_count);
+           array_shape(pack->operators, pack->operator_count) &&
+           array_shape(pack->enums, pack->enum_count);
 }
 
 static int node_identity_unique(
@@ -177,6 +198,25 @@ static int operator_identity_unique(
     return 1;
 }
 
+static int enum_identity_unique(
+    const registry_pack *const packs[],
+    int pack_index,
+    int item_index,
+    const char *name
+)
+{
+    for (int i = 0; i <= pack_index; i++) {
+        const registry_pack *pack = packs[i];
+        int limit = i == pack_index ? item_index : pack->enum_count;
+        for (int j = 0; j < limit; j++) {
+            if (strcmp(pack->enums[j]->name, name) == 0) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 int registry_validate_packs(const registry_pack *const packs[], int pack_count)
 {
     if (pack_count < 0 || (pack_count > 0 && !packs)) {
@@ -215,6 +255,12 @@ int registry_validate_packs(const registry_pack *const packs[], int pack_count)
             const operator_signature *signature = &pack->operators[j];
             if (!signature->name || !signature->name[0] ||
                 !operator_identity_unique(packs, i, j, signature)) {
+                return 0;
+            }
+        }
+        for (int j = 0; j < pack->enum_count; j++) {
+            if (!enum_desc_validate(pack->enums[j]) ||
+                !enum_identity_unique(packs, i, j, pack->enums[j]->name)) {
                 return 0;
             }
         }

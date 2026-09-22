@@ -28,6 +28,7 @@ typedef enum
     BEHAVIOR_DOMAIN_SHAPE,
     BEHAVIOR_DOMAIN_EVENT_DEFINITION,
     BEHAVIOR_DOMAIN_SHADER_LIBRARY,
+    BEHAVIOR_DOMAIN_FIELD,
 } behavior_domain;
 
 typedef struct behavior_asset

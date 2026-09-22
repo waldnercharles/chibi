@@ -1,0 +1,10 @@
+services:
+  laya:
+    environment:
+      HF_HUB_OFFLINE: "1"
+      LAYA_MODEL_PATH: /models/laya
+    volumes:
+      - type: bind
+        source: ${LAYA_MODEL_DIR:?Set LAYA_MODEL_DIR to the downloaded Laya directory}
+        target: /models/laya
+        read_only: true

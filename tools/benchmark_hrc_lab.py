@@ -3,6 +3,7 @@
 import argparse
 import base64
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -14,13 +15,13 @@ from check_neon_swarm import ROOT, Runner
 
 
 DEFAULT_PROJECT = ROOT / 'projects/arena2d'
-DEFAULT_HRC_PROTOTYPE = 'NeonSwarmHRC'
+DEFAULT_HRC_PROTOTYPE = 'HRC'
 ARENA_SCENES = [
-    'NeonSwarmHRCPinhole',
-    'NeonSwarmHRCBounce',
-    'NeonSwarmHRCSinglePixel',
-    'NeonSwarmHRCShadow',
-    'NeonSwarmHRCVolume',
+    'HRCPinhole',
+    'HRCBounce',
+    'HRCSinglePixel',
+    'HRCShadow',
+    'HRCVolume',
 ]
 CLEAN_SCENES = [
     'HRCLabPinhole',
@@ -38,10 +39,15 @@ GPU_LABELS = [
     'Material raster batches',
     'Fluid density raster',
     'HRC prefilter',
+    'HRC luminance prefilter',
     'HRC +X/+Y/-X/-Y: Trace, Extend, Merge',
+    'HRC luminance +X/+Y/-X/-Y: Trace, Extend, Merge',
     'HRC gather',
+    'HRC luminance gather',
     'HRC filter',
+    'HRC luminance filter',
     'HRC bounce',
+    'HRC luminance bounce',
     'HRC composite',
 ]
 
@@ -77,6 +83,8 @@ def prepare(args, output, scene, scale):
         operations=[
             dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
             dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
+            dict(op='set_field', component='GameHRC2D', field='luminance_scale', value=args.luminance_scale),
+            dict(op='set_field', component='GameHRC2D', field='luminance_mode', value=args.luminance_mode),
             dict(op='set_field', component='GameHRC2D', field='trace_levels', value=args.trace_levels),
             dict(op='set_field', component='GameHRC2D', field='upscale_mode', value=args.upscale_mode),
         ]))
@@ -127,6 +135,8 @@ def render(args, output, runner, scene, scale, repeat):
     report = dict(
         scene=scene,
         scale=scale,
+        luminance_scale=args.luminance_scale,
+        luminance_mode=args.luminance_mode,
         repeat=repeat,
         trace_levels=args.trace_levels,
         upscale_mode=args.upscale_mode,
@@ -187,8 +197,8 @@ def summary(output, reports, comparisons=()):
         f'Reconstruction mode: {reports[0]["upscale_mode"]} ({reports[0]["upscale_mode_name"]}).' if reports else '',
         '',
         'Every row links to its captured `frame.png`.', '',
-        '| Scene | HRC work scale | Median ms | p95 ms | p99 ms | Mean RGB error vs 1.0 | Screenshot |',
-        '| --- | ---: | ---: | ---: | ---: | ---: | --- |',
+        '| Scene | Color scale | Luminance scale | Luminance mode | Median ms | p95 ms | p99 ms | Mean RGB error vs 1.0 | Screenshot |',
+        '| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |',
     ]
     for report in reports:
         performance = report.get('performance')
@@ -199,13 +209,166 @@ def summary(output, reports, comparisons=()):
         error = '—' if metrics is None else f'{metrics["mean_absolute_rgb_8bit"]:.2f}'
         link = f'[{report["directory"]}/frame.png]({report["directory"]}/frame.png)'
         lines.append(
-            f'| {report["scene"]} | {report["scale"]:g} | '
+            f'| {report["scene"]} | {report["scale"]:g} | {report.get("luminance_scale", 0):g} | '
+            f'{report.get("luminance_mode", 0)} | '
             f'{performance["median_ms"]:.2f} | {performance["p95_ms"]:.2f} | '
             f'{performance["p99_ms"]:.2f} | {error} | {link} |')
     lines += ['', 'GPU capture label groups:', '']
     lines.extend(f'- `{label}`' for label in GPU_LABELS)
     lines += ['', 'Per-pass numeric timings require opening the `.gputrace` in a Metal debugger or a backend timestamp-query implementation.']
     (output / 'summary.md').write_text('\n'.join(lines) + '\n')
+
+    gallery = [
+        '# HRC lab screenshot gallery', '',
+        'These are the captured frames from the matching `summary.md` run.', '',
+    ]
+    for report in reports:
+        image = (output / report['directory'] / 'frame.png').resolve()
+        gallery += [
+            f'## {report["scene"]} — color scale {report["scale"]:g}, '
+            f'luminance scale {report.get("luminance_scale", 0):g}, '
+            f'mode {report.get("luminance_mode", 0)}', '',
+            f'![{report["scene"]} color {report["scale"]:g} luminance {report.get("luminance_scale", 0):g}]({image})', '',
+        ]
+    (output / 'gallery.md').write_text('\n'.join(gallery) + '\n')
+
+    comparison_by_key = {
+        (item['scene'], item['scale'], item['repeat']): item['metrics']
+        for item in comparisons
+    }
+    rows = []
+    for report in reports:
+        performance = report.get('performance')
+        if not performance:
+            continue
+        metrics = comparison_by_key.get(
+            (report['scene'], report['scale'], report['repeat']))
+        rows.append(dict(
+            scene=report['scene'],
+            scale=report['scale'],
+            luminance_scale=report.get('luminance_scale', 0),
+            luminance_mode=report.get('luminance_mode', 0),
+            repeat=report['repeat'],
+            image=(Path(report['directory']) / 'frame.png').as_posix(),
+            median_ms=performance['median_ms'],
+            p95_ms=performance['p95_ms'],
+            error=None if metrics is None else metrics['mean_absolute_rgb_8bit'],
+        ))
+    data = json.dumps(rows, separators=(',', ':')).replace('<', '\\u003c')
+    title = html.escape(output.name)
+    (output / 'compare.html').write_text(f'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HRC before and after — {title}</title>
+  <style>
+    :root {{ color-scheme: light dark; font-family: system-ui, sans-serif; }}
+    body {{ margin: 0; padding: 24px; background: #16181b; color: #f2f3f5; }}
+    main {{ max-width: 1120px; margin: auto; }}
+    h1 {{ margin: 0 0 16px; font-size: 1.35rem; font-weight: 600; }}
+    .controls {{ display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; margin-bottom: 16px; }}
+    label {{ display: grid; gap: 5px; color: #c7cbd1; font-size: .88rem; }}
+    select, input[type="range"] {{ accent-color: #78a9ff; }}
+    select {{ min-width: 220px; padding: 6px 8px; border: 1px solid #4b515b; border-radius: 5px; background: #22262b; color: inherit; }}
+    .stage {{ --position: 50%; position: relative; overflow: hidden; aspect-ratio: 16 / 9; background: #0a0b0d; }}
+    .stage img {{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }}
+    .stage .after {{ clip-path: polygon(var(--position) 0, 100% 0, 100% 100%, var(--position) 100%); }}
+    .divider {{ position: absolute; inset: 0 auto 0 var(--position); width: 2px; transform: translateX(-1px); background: #fff; box-shadow: 0 0 0 1px #111; pointer-events: none; }}
+    .range {{ position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }}
+    .labels {{ display: flex; justify-content: space-between; margin: 8px 0 12px; color: #d9dce1; font-size: .9rem; }}
+    .stats {{ color: #b7bdc6; font-size: .9rem; }}
+    .stats strong {{ color: #fff; font-weight: 600; }}
+    .hint {{ margin: 10px 0 0; color: #8f97a3; font-size: .82rem; }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>HRC before and after</h1>
+    <div class="controls">
+      <label>Scene<select id="scene"></select></label>
+      <label>Candidate<select id="candidate"></select></label>
+    </div>
+    <div class="stage" id="stage">
+      <img id="before" alt="Reference render">
+      <img id="after" class="after" alt="Candidate render">
+      <div class="divider" aria-hidden="true"></div>
+      <input id="range" class="range" type="range" min="0" max="100" value="50" aria-label="Reveal candidate render">
+    </div>
+    <div class="labels"><span id="before-label"></span><span id="after-label"></span></div>
+    <div id="stats" class="stats" aria-live="polite"></div>
+    <p class="hint">Drag the divider, or use the left and right arrow keys after focusing the image.</p>
+  </main>
+  <script>
+    const rows = {data};
+    const scene = document.getElementById('scene');
+    const candidate = document.getElementById('candidate');
+    const stage = document.getElementById('stage');
+    const range = document.getElementById('range');
+    const before = document.getElementById('before');
+    const after = document.getElementById('after');
+    const beforeLabel = document.getElementById('before-label');
+    const afterLabel = document.getElementById('after-label');
+    const stats = document.getElementById('stats');
+
+    const scenes = [...new Set(rows.map(row => row.scene))];
+    for (const name of scenes) scene.add(new Option(name, name));
+
+    function formatScale(value) {{
+      return Number(value).toString();
+    }}
+
+    function scaleLabel(row) {{
+        return `color ${{formatScale(row.scale)}} · luminance ${{formatScale(row.luminance_scale)}} · mode ${{row.luminance_mode}}`;
+    }}
+
+    function sceneRows() {{
+      return rows.filter(row => row.scene === scene.value);
+    }}
+
+    function referenceRow(items) {{
+      return items.find(row => row.scale === 1) || items[0];
+    }}
+
+    function updateCandidates() {{
+      const items = sceneRows();
+      const reference = referenceRow(items);
+      candidate.replaceChildren();
+      for (const row of items) {{
+        if (row === reference) continue;
+        candidate.add(new Option(scaleLabel(row), `${{row.scale}}:${{row.luminance_scale}}:${{row.repeat}}`));
+      }}
+      if (!candidate.options.length) candidate.add(new Option(scaleLabel(reference), 'reference'));
+      update();
+    }}
+
+    function update() {{
+      const items = sceneRows();
+      const reference = referenceRow(items);
+      const selected = items.find(row => `${{row.scale}}:${{row.luminance_scale}}:${{row.repeat}}` === candidate.value) ||
+        items.find(row => row !== reference) || reference;
+      before.src = reference.image;
+      after.src = selected.image;
+      before.alt = `${{reference.scene}} reference, ${{scaleLabel(reference)}}`;
+      after.alt = `${{selected.scene}} candidate, ${{scaleLabel(selected)}}`;
+      beforeLabel.textContent = `Reference · ${{scaleLabel(reference)}}`;
+      afterLabel.textContent = `Candidate · ${{scaleLabel(selected)}}`;
+      const error = selected.error === null ? 'not measured' : `${{selected.error.toFixed(2)}} RGB error`;
+      stats.innerHTML = `<strong>Reference:</strong> ${{reference.median_ms.toFixed(2)}} ms median · ` +
+        `<strong>Candidate:</strong> ${{selected.median_ms.toFixed(2)}} ms median · ` +
+        `${{selected.p95_ms.toFixed(2)}} ms p95 · ${{error}}`;
+      stage.style.setProperty('--position', `${{range.value}}%`);
+    }}
+
+    range.addEventListener('input', () => stage.style.setProperty('--position', `${{range.value}}%`));
+    scene.addEventListener('change', updateCandidates);
+    candidate.addEventListener('change', update);
+    scene.selectedIndex = 0;
+    updateCandidates();
+  </script>
+</body>
+</html>
+''')
 
 
 def main():
@@ -218,6 +381,10 @@ def main():
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
     parser.add_argument('--scale', type=float, nargs='+', default=[1.0, .75, .5])
+    parser.add_argument('--luminance-scale', type=float, default=0,
+                        help='Optional higher-resolution monochrome HRC scale; 0 disables split transport')
+    parser.add_argument('--luminance-mode', type=int, choices=[0, 1], default=0,
+                        help='0 runs independent monochrome transport; 1 derives luminance from RGB gather')
     parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=1)
     parser.add_argument('--upscale-mode', type=int, choices=[0, 1, 2, 3], default=1)
     parser.add_argument('--render-frames', type=int, default=180)
@@ -228,6 +395,8 @@ def main():
         parser.error('use 17..1200 render frames and a positive repeat count')
     if any(not .1 <= scale <= 1 for scale in args.scale) or len(set(args.scale)) != len(args.scale):
         parser.error('HRC scales must be distinct values in 0.1..1')
+    if args.luminance_scale != 0 and not .1 <= args.luminance_scale <= 1:
+        parser.error('luminance scale must be 0 or a value in 0.1..1')
     if not all(64 <= size <= 2048 for size in [args.width, args.height]):
         parser.error('dimensions must be 64..2048 pixels')
     if args.metal_capture and (args.scene == 'all' or len(args.scale) != 1 or args.repeat != 1):

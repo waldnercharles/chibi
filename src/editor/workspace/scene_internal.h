@@ -72,6 +72,13 @@ typedef struct
     unsigned system_query_revision;
 } scene_document_tab;
 
+typedef struct
+{
+    char *name;
+    char *path;
+    char *source;
+} scene_behavior_source;
+
 /* Private authoring state. Module replacement transfers versioned document
  * checkpoints, never this layout or its runtime pointers. */
 struct app_scene_authoring
@@ -97,6 +104,8 @@ struct app_scene_authoring
     game_prototype_registry registry;
     editor_choices component_choices;
     editor_choices image_choices; /* Labels and names borrow content paths. */
+    editor_choices prototype_choices; /* Names are owned across prototype Undo/reload. */
+    editor_choices global_choices; /* Names and labels are owned by this scene. */
     game_system_document *system_document;
     char *system_path;
     engine *runtime;
@@ -164,10 +173,14 @@ struct app_scene_authoring
     int quick_open_selected;
     bool quick_open;
     bool quick_open_focus;
+    struct editor_command_palette *commands;
+    struct editor_command_runtime *command_runtime;
+    uint64_t command_incarnation;
     asset_index_kind content_kind;
     double content_scan_time;
     unsigned asset_index_editor_revision;
     unsigned asset_index_system_revision;
+    unsigned system_runtime_editor_revision;
     char scene_search[128];
     app_editor_document_context document;
     char *document_id;
@@ -181,6 +194,9 @@ struct app_scene_authoring
     int next_scene_key;
     int close_tab;
     bool tabs_transitioning;
+    scene_behavior_source *behavior_sources;
+    char **external_behavior_changes;
+    bool external_behavior_prompt_open;
     char message[256];
     char prototype_message[256];
 };
@@ -294,6 +310,7 @@ void free_behavior_snapshots(game_prototype **snapshots);
 void invalidate_runtime_snapshot(app_scene_authoring *scene);
 int load_system_asset(app_scene_authoring *scene, const char *path, bool reload);
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name);
+int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name);
 void open_prototype(app_scene_authoring *scene, int index);
 int open_system_asset(app_scene_authoring *scene, const char *path);
 void preview_behavior_edits(app_scene_authoring *scene);
@@ -319,4 +336,19 @@ void sync_editor_inspection(app_scene_authoring *scene);
 const char *system_component_name(ecs_component_id id, void *);
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
 int write_text_file_atomic(const char *path, const char *text);
+const char *scene_behavior_source_snapshot(
+    const app_scene_authoring *scene,
+    const char *name,
+    const char *path
+);
+void scene_behavior_source_set(
+    app_scene_authoring *scene,
+    const char *name,
+    const char *path,
+    const char *source
+);
+void scene_behavior_sources_clear(app_scene_authoring *scene);
+void scene_external_behavior_changes_clear(app_scene_authoring *scene);
+void scene_external_behavior_change_add(app_scene_authoring *scene, const char *name);
+void scene_external_behavior_change_remove(app_scene_authoring *scene, const char *name);
 #endif

@@ -6,6 +6,7 @@
 #include "render/particles.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
+#include "runtime/material_fluid.h"
 
 #include <assert.h>
 #include <math.h>
@@ -160,8 +161,10 @@ static const editor_choice SHAPES[] = {
     { GAME_SHAPE_CHEVRON, "Chevron" },
     { GAME_SHAPE_STROKED_CHEVRON, "Chevron Outline" },
     { GAME_SHAPE_CAPSULE, "Capsule" },
+    { GAME_SHAPE_TRIANGLE, "Triangle" },
+    { GAME_SHAPE_STROKED_TRIANGLE, "Triangle Outline" },
 };
-static const editor_choices APPEARANCE_SHAPES = { SHAPES, 6 };
+static const editor_choices APPEARANCE_SHAPES = { SHAPES, 8 };
 static const editor_choice PRIMITIVES[] = {
     { GAME_PRIMITIVE_BOX, "Box" },
     { GAME_PRIMITIVE_SPHERE, "Sphere" },
@@ -207,6 +210,33 @@ static const editor_choice ENCOUNTER_ROLES[] = {
     { GAME_ENCOUNTER_ENEMY, "Enemy" },
 };
 static const editor_choices ENCOUNTER_MEMBERS = { ENCOUNTER_ROLES, 2 };
+static const editor_choice FLUID_KINDS[] = {
+    { FLUID_GAS, "Gas" },
+    { FLUID_LIQUID, "Liquid" },
+};
+static const editor_choices MATERIAL_FLUID_KINDS = { FLUID_KINDS, 2 };
+static const editor_choice HRC_LUMINANCE_MODES[] = {
+    { 0, "Independent" },
+    { 1, "Reuse transport" },
+};
+static const editor_choices HRC_LUMINANCE_MODE_CHOICES = { HRC_LUMINANCE_MODES, 2 };
+static const editor_choice HRC_UPSCALE_MODES[] = {
+    { 0, "Plain bilinear" },
+    { 1, "Edge aware" },
+    { 2, "Joint bilateral" },
+    { 3, "Five tap cross" },
+};
+static const editor_choices HRC_UPSCALE_MODE_CHOICES = { HRC_UPSCALE_MODES, 4 };
+static const editor_choice HRC_DEBUG_VIEWS[] = {
+    { 0, "Normal" },
+    { 1, "Scene" },
+    { 2, "Emission" },
+    { 3, "Absorption" },
+    { 4, "Albedo" },
+    { 5, "Fluence" },
+    { 6, "Normals" },
+};
+static const editor_choices HRC_DEBUG_VIEW_CHOICES = { HRC_DEBUG_VIEWS, 7 };
 
 static bool part_vector(const char *label, CF_V3 *value)
 {
@@ -301,51 +331,6 @@ bool property_mesh_parts(char *text, size_t size)
     return changed;
 }
 
-static const editor_choice CONTROL_SOURCES[] = {
-    { 0, "None" },
-    { 1, "Mouse left" },
-    { 2, "Mouse right" },
-    { 3, "Space" },
-    { 4, "Shift" },
-    { 5, "Tab" },
-    { 6, "Enter" },
-    { 7, "A" },
-    { 8, "B" },
-    { 9, "C" },
-    { 10, "D" },
-    { 11, "E" },
-    { 12, "F" },
-    { 13, "G" },
-    { 14, "H" },
-    { 15, "I" },
-    { 16, "J" },
-    { 17, "K" },
-    { 18, "L" },
-    { 19, "M" },
-    { 20, "N" },
-    { 21, "O" },
-    { 22, "P" },
-    { 23, "Q" },
-    { 24, "R" },
-    { 25, "S" },
-    { 26, "T" },
-    { 27, "U" },
-    { 28, "V" },
-    { 29, "W" },
-    { 30, "X" },
-    { 31, "Y" },
-    { 32, "Z" },
-    { 33, "Pad A" },
-    { 34, "Pad B" },
-    { 35, "Pad X" },
-    { 36, "Pad Y" },
-    { 37, "Left shoulder" },
-    { 38, "Right shoulder" },
-    { 39, "Left trigger" },
-    { 40, "Right trigger" },
-    { 41, "Aim stick" },
-};
-static const editor_choices ACTION_SOURCES = { CONTROL_SOURCES, GAME_CONTROL_COUNT };
 static const editor_choice WIDGET_TYPES[] = {
     { GAME_WIDGET_LABEL, "Label" },   { GAME_WIDGET_PANEL, "Panel" },
     { GAME_WIDGET_BUTTON, "Button" }, { GAME_WIDGET_PROGRESS, "Progress" },
@@ -358,10 +343,6 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
 {
     if (!field || (field->type != PIN_I32 && field->type != PIN_ENUM)) {
         return NULL;
-    }
-    if (type == GAME_COMPONENT_GameActionBinding.type &&
-        field->offset == offsetof(GameActionBinding, source)) {
-        return &ACTION_SOURCES;
     }
     if (type == GAME_COMPONENT_GameWidget.type &&
         field->offset == offsetof(GameWidget, kind)) {
@@ -379,6 +360,14 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
         field->offset == offsetof(GameParticleEmitter, shape)) {
         return &EMITTER_SHAPES;
     }
+    if (type == GAME_COMPONENT_GameFluidVolume.type &&
+        field->offset == offsetof(GameFluidVolume, kind)) {
+        return &MATERIAL_FLUID_KINDS;
+    }
+    if (type == GAME_COMPONENT_GameParticleEmitter.type &&
+        field->offset == offsetof(GameParticleEmitter, fluid_kind)) {
+        return &MATERIAL_FLUID_KINDS;
+    }
     if (type == GAME_COMPONENT_GameBody.type &&
         field->offset == offsetof(GameBody, type)) {
         return &PHYSICS_BODIES;
@@ -395,7 +384,18 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
         field->offset == offsetof(GameEncounterMember, role)) {
         return &ENCOUNTER_MEMBERS;
     }
-    return NULL;
+    if (type == GAME_COMPONENT_GameHRC2D.type) {
+        if (field->offset == offsetof(GameHRC2D, luminance_mode)) {
+            return &HRC_LUMINANCE_MODE_CHOICES;
+        }
+        if (field->offset == offsetof(GameHRC2D, upscale_mode)) {
+            return &HRC_UPSCALE_MODE_CHOICES;
+        }
+        if (field->offset == offsetof(GameHRC2D, debug_view)) {
+            return &HRC_DEBUG_VIEW_CHOICES;
+        }
+    }
+    return field->type == PIN_ENUM ? editor_choices_for_enum(field->type_name) : NULL;
 }
 
 bool property_field_visible(const ecs_component_desc *component, const type_field *field, const void *data)

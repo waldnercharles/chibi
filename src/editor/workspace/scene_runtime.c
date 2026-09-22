@@ -11,9 +11,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-// pi-lens-ignore: fatal error
-#include <imgui/dcimgui.h>
-
 void invalidate_runtime_snapshot(app_scene_authoring *scene)
 {
     scene->runtime_selected = (ecs_entity){ 0 };
@@ -113,6 +110,10 @@ static int restart_runtime(app_scene_authoring *scene)
             snprintf(scene->message, sizeof scene->message, "Could not restart Scene Runtime.");
             return -1;
         }
+    }
+    if (game_entities_rebuild_global_bindings(scene->live->entities) != 0) {
+        snprintf(scene->message, sizeof scene->message, "Global binding names must be unique.");
+        return -1;
     }
     if (scene->selected >= 0 && scene->selected < acount(scene->actors)) {
         select_instance(scene, scene->selected);
@@ -375,55 +376,6 @@ void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool
 {
     engine_set_behavior_profiling(scene->runtime, enabled);
     engine_set_behavior_profiling(game_prototype_preview_runtime(scene->prototype_preview), enabled);
-}
-
-void app_scene_authoring_draw_render_settings(app_scene_authoring *scene)
-{
-    if (!scene) {
-        return;
-    }
-    render_radiance_settings settings = app_scene_renderer_radiance_settings(
-        scene->renderer
-    );
-    ImGui_SeparatorText("Radiance cascades");
-    if (!settings.available) {
-        ImGui_TextDisabled("Radiance cascades unavailable; using GLES3 fragment fallback.");
-        editor_ui_track_item("performance.radiance.unavailable");
-        return;
-    }
-
-    float scale = settings.scale;
-    editor_ui_property_label("Work scale", 0);
-    if (ImGui_SliderFloatEx("##performance.radiance.scale", &scale, .1f, 1, "%.3f", ImGuiSliderFlags_AlwaysClamp)) {
-        settings.scale = scale;
-        if (!app_scene_renderer_set_radiance_settings(scene->renderer, settings)) {
-            snprintf(scene->message, sizeof scene->message, "Could not resize radiance work buffers.");
-        }
-    }
-    editor_ui_track_item("performance.radiance.scale");
-    ImGui_TextDisabled("Fraction of viewport resolution used for transport.");
-
-    int trace_levels = settings.trace_levels;
-    editor_ui_property_label("Trace levels", 0);
-    if (ImGui_SliderIntEx("##performance.radiance.trace_levels", &trace_levels, 1, 5, "%d", ImGuiSliderFlags_AlwaysClamp)) {
-        settings.trace_levels = trace_levels;
-        if (!app_scene_renderer_set_radiance_settings(scene->renderer, settings)) {
-            snprintf(scene->message, sizeof scene->message, "Could not update radiance settings.");
-        }
-    }
-    editor_ui_track_item("performance.radiance.trace_levels");
-    ImGui_TextDisabled("More direct trace levels improve long-range response at higher GPU cost.");
-
-    bool feedback = settings.feedback;
-    if (ImGui_Checkbox("One bounce feedback", &feedback)) {
-        settings.feedback = feedback;
-        if (!app_scene_renderer_set_radiance_settings(scene->renderer, settings)) {
-            snprintf(scene->message, sizeof scene->message, "Could not update radiance settings.");
-        }
-    }
-    editor_ui_track_item("performance.radiance.feedback");
-    ImGui_SetItemTooltip("Keep enabled for the temporal indirect color bleed used by Arena2D.");
-    ImGui_TextDisabled("Transport cost is fixed by the work grid, independent of light count.");
 }
 
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene)

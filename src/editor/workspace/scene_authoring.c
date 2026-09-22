@@ -4,6 +4,8 @@
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/panels/scene_properties.h"
+#include "editor/panels/command_palette.h"
+#include "editor/commands/command.h"
 #include "editor/ui/choices.h"
 #include "editor/ui/color.h"
 #include "editor/ui/flags.h"
@@ -24,6 +26,7 @@
 #include "render/scene_renderer.h"
 #include "render/sdf_motion.h"
 #include "render/shader_images.h"
+#include "runtime/behaviors/entities.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/gameplay.h"
 #include "runtime/scenes/prototype_preview.h"
@@ -114,20 +117,97 @@ void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 
 static const editor_choices *resolve_pin_choices(const node *n, int output, int pin, void *user)
 {
+    app_scene_authoring *scene = user;
     if (!output && pin == SHADER_IMAGE_INPUT_IMAGE &&
         n->desc == registry_node_by_name("Shader Image Texture")) {
-        return &((app_scene_authoring *)user)->image_choices;
+        return &scene->image_choices;
     }
     if (!output && pin == 0 &&
         (n->desc == registry_node_by_name("Has Entities With Component") ||
          n->desc == registry_node_by_name("Find Entities With Component"))) {
-        return &((app_scene_authoring *)user)->component_choices;
+        return &scene->component_choices;
+    }
+    if (!output && pin == 1 && n->desc == registry_node_by_name("Spawn Prototype")) {
+        return scene->prototype_choices.count ? &scene->prototype_choices : NULL;
+    }
+    if (!output && pin == 0 && n->desc == registry_node_by_name("Get Global Variable")) {
+        return scene->global_choices.count ? &scene->global_choices : NULL;
     }
     const type_desc *type = n->desc->type;
     return !output && type && n->desc->pure_kind == NODE_PURE_MAKE &&
                    pin >= 0 && pin < type->field_count
              ? property_choices(type, &type->fields[pin])
              : NULL;
+}
+
+static void free_prototype_choices(app_scene_authoring *scene)
+{
+    for (int i = 0; i < scene->prototype_choices.count; i++) {
+        free((void *)scene->prototype_choices.items[i].name);
+    }
+    free((void *)scene->prototype_choices.items);
+    scene->prototype_choices = (editor_choices){ 0 };
+}
+
+static void refresh_prototype_choices(app_scene_authoring *scene)
+{
+    int count = acount(scene->prototypes);
+    bool unchanged = scene->prototype_choices.count == count;
+    for (int i = 0; unchanged && i < count; i++) {
+        unchanged = !strcmp(
+            scene->prototype_choices.items[i].name,
+            scene->prototypes[i].prototype->name
+        );
+    }
+    if (unchanged) {
+        return;
+    }
+    free_prototype_choices(scene);
+    if (!count) {
+        return;
+    }
+    editor_choice *choices = xmalloc((size_t)count * sizeof *choices);
+    for (int i = 0; i < count; i++) {
+        const char *name = xstrdup(scene->prototypes[i].prototype->name);
+        choices[i] = (editor_choice){ .label = name, .name = name };
+    }
+    scene->prototype_choices = (editor_choices){ choices, count };
+}
+
+static void free_global_choices(app_scene_authoring *scene)
+{
+    for (int i = 0; i < scene->global_choices.count; i++) {
+        free((void *)scene->global_choices.items[i].name);
+        free((void *)scene->global_choices.items[i].label);
+    }
+    free((void *)scene->global_choices.items);
+    scene->global_choices = (editor_choices){ 0 };
+}
+
+static void refresh_global_choices(app_scene_authoring *scene)
+{
+    const game_entities *entities = scene->live ? scene->live->entities : NULL;
+    int count = game_entities_global_name_count(entities);
+    bool unchanged = scene->global_choices.count == count;
+    for (int i = 0; unchanged && i < count; i++) {
+        const char *name = game_entities_global_name_at(entities, i);
+        unchanged = name && !strcmp(scene->global_choices.items[i].name, name);
+    }
+    if (unchanged) {
+        return;
+    }
+    free_global_choices(scene);
+    if (!count) {
+        return;
+    }
+    editor_choice *choices = xmalloc((size_t)count * sizeof *choices);
+    for (int i = 0; i < count; i++) {
+        const char *name = game_entities_global_name_at(entities, i);
+        char label[128];
+        editor_identifier_label(name, label, sizeof label);
+        choices[i] = (editor_choice){ .name = xstrdup(name), .label = xstrdup(label) };
+    }
+    scene->global_choices = (editor_choices){ choices, count };
 }
 
 static bool resolve_pin_color(const node *n, int output, int pin, void *)
@@ -1217,7 +1297,7 @@ void preview_behavior_edits(app_scene_authoring *scene)
                             );
     char prototype_message[256] = { 0 };
     bool mirrored = scene->definition->working->domain == BEHAVIOR_DOMAIN_EVENT ||
-                    library ||
+                    library || scene->definition->working->domain==BEHAVIOR_DOMAIN_FIELD ||
                     scene->definition->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     int prototype_result = result == 0 && mirrored
                              ? game_prototype_preview_update_behavior(
@@ -1321,12 +1401,147 @@ int app_scene_authoring_seed_default(app_scene_authoring *scene)
     return app_scene_authoring_load(scene, path);
 }
 
+static int behavior_source_index(const app_scene_authoring *scene, const char *name, const char *path)
+{
+    for (int i = 0; i < acount(scene->behavior_sources); i++) {
+        const scene_behavior_source *source = &scene->behavior_sources[i];
+        bool same_path = (!source->path && !path) ||
+                         (source->path && path && !strcmp(source->path, path));
+        if (same_path && !strcmp(source->name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+const char *scene_behavior_source_snapshot(
+    const app_scene_authoring *scene,
+    const char *name,
+    const char *path
+)
+{
+    if (!scene || !name) {
+        return NULL;
+    }
+    int index = behavior_source_index(scene, name, path);
+    return index >= 0 ? scene->behavior_sources[index].source : NULL;
+}
+
+void scene_behavior_source_set(
+    app_scene_authoring *scene,
+    const char *name,
+    const char *path,
+    const char *source
+)
+{
+    if (!scene || !name) {
+        return;
+    }
+    int index = behavior_source_index(scene, name, path);
+    if (!source) {
+        if (index < 0) {
+            return;
+        }
+        free(scene->behavior_sources[index].name);
+        free(scene->behavior_sources[index].path);
+        free(scene->behavior_sources[index].source);
+        adel(scene->behavior_sources, index);
+        return;
+    }
+    if (index < 0) {
+        for (int i = acount(scene->behavior_sources) - 1; i >= 0; i--) {
+            if (strcmp(scene->behavior_sources[i].name, name) != 0) {
+                continue;
+            }
+            free(scene->behavior_sources[i].name);
+            free(scene->behavior_sources[i].path);
+            free(scene->behavior_sources[i].source);
+            adel(scene->behavior_sources, i);
+        }
+        apush(
+            scene->behavior_sources,
+            ((scene_behavior_source){
+                .name = xstrdup(name),
+                .path = path ? xstrdup(path) : NULL,
+                .source = xstrdup(source),
+            })
+        );
+        return;
+    }
+    free(scene->behavior_sources[index].source);
+    scene->behavior_sources[index].source = xstrdup(source);
+}
+
+void scene_behavior_sources_clear(app_scene_authoring *scene)
+{
+    if (!scene) {
+        return;
+    }
+    for (int i = 0; i < acount(scene->behavior_sources); i++) {
+        free(scene->behavior_sources[i].name);
+        free(scene->behavior_sources[i].path);
+        free(scene->behavior_sources[i].source);
+    }
+    afree(scene->behavior_sources);
+}
+
+void scene_external_behavior_changes_clear(app_scene_authoring *scene)
+{
+    if (!scene) {
+        return;
+    }
+    for (int i = 0; i < acount(scene->external_behavior_changes); i++) {
+        free(scene->external_behavior_changes[i]);
+    }
+    afree(scene->external_behavior_changes);
+    scene->external_behavior_prompt_open = false;
+}
+
+void scene_external_behavior_change_add(app_scene_authoring *scene, const char *name)
+{
+    if (!scene || !name) {
+        return;
+    }
+    for (int i = 0; i < acount(scene->external_behavior_changes); i++) {
+        if (!strcmp(scene->external_behavior_changes[i], name)) {
+            return;
+        }
+    }
+    apush(scene->external_behavior_changes, xstrdup(name));
+}
+
+void scene_external_behavior_change_remove(app_scene_authoring *scene, const char *name)
+{
+    if (!scene || !name) {
+        return;
+    }
+    for (int i = 0; i < acount(scene->external_behavior_changes); i++) {
+        if (strcmp(scene->external_behavior_changes[i], name) != 0) {
+            continue;
+        }
+        free(scene->external_behavior_changes[i]);
+        int count = acount(scene->external_behavior_changes);
+        memmove(
+            &scene->external_behavior_changes[i],
+            &scene->external_behavior_changes[i + 1],
+            (size_t)(count - i - 1) * sizeof *scene->external_behavior_changes
+        );
+        asetlen(scene->external_behavior_changes, count - 1);
+        if (!acount(scene->external_behavior_changes)) {
+            scene->external_behavior_prompt_open = false;
+        }
+        return;
+    }
+}
+
 void app_scene_authoring_free(app_scene_authoring *scene)
 {
     if (!scene) {
         return;
     }
     editor_ui_set_graph_debug_header(NULL, NULL);
+    editor_command_palette_free(scene->commands);
+    editor_commands_free(scene);
     scene_debug_clear(&scene->debug);
     editor_set_inspection_blocked(scene->graph_editor, false);
     app_scene_renderer_free(scene->renderer);
@@ -1343,6 +1558,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         free((void *)scene->component_choices.items[i].label);
     }
     free((void *)scene->component_choices.items);
+    free_prototype_choices(scene);
+    free_global_choices(scene);
     while (acount(scene->actors)) {
         scene->selected = acount(scene->actors) - 1;
         remove_selected(scene);
@@ -1375,6 +1592,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     free(scene->content_selected_path);
     free(scene->document_id);
     free(scene->graph_document_id);
+    scene_behavior_sources_clear(scene);
+    scene_external_behavior_changes_clear(scene);
     free(scene);
 }
 
@@ -1473,6 +1692,50 @@ static int open_library_source(void *user, const char *name, uint64_t graph_id)
     return editor_open_graph(scene->graph_editor, graph_id);
 }
 
+static void draw_external_behavior_prompt(app_scene_authoring *scene)
+{
+    if (!acount(scene->external_behavior_changes) || !ImGui_GetCurrentContext()) {
+        return;
+    }
+    if (!scene->external_behavior_prompt_open) {
+        ImGui_OpenPopup("workspace.external_behavior", 0);
+        scene->external_behavior_prompt_open = true;
+    }
+    if (!ImGui_BeginPopupModal("workspace.external_behavior", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    const char *name = scene->external_behavior_changes[0];
+    game_live_definition *definition = game_live_find_definition(scene->live, name);
+    const char *path = definition ? game_live_definition_path(definition) : NULL;
+    ImGui_TextWrapped("The authored behavior changed on disk after this workspace checkpoint was saved.");
+    ImGui_Spacing();
+    ImGui_Text("Behavior: %s", name);
+    if (path) {
+        ImGui_TextWrapped("File: %s", path);
+    }
+    ImGui_TextWrapped("Choose whether to replace the checkpointed graph with the file on disk.");
+    ImGui_Spacing();
+    bool reload = ImGui_ButtonEx("Reload from disk", (ImVec2){ 140, 32 });
+    editor_ui_track_item("workspace.external_behavior.reload");
+    ImGui_SameLine();
+    bool keep = ImGui_ButtonEx("Keep workspace copy", (ImVec2){ 160, 32 });
+    editor_ui_track_item("workspace.external_behavior.keep");
+    if (reload) {
+        if (reload_behavior_from_disk(scene, name) == 0) {
+            scene->external_behavior_prompt_open = false;
+            ImGui_CloseCurrentPopup();
+        } else if (scene->message[0]) {
+            ImGui_TextWrapped("%s", scene->message);
+        }
+    }
+    if (keep) {
+        scene_external_behavior_change_remove(scene, name);
+        scene->external_behavior_prompt_open = false;
+        ImGui_CloseCurrentPopup();
+    }
+    ImGui_EndPopup();
+}
+
 void app_scene_authoring_draw(app_scene_authoring *scene)
 {
     editor_set_asset_opener(scene->graph_editor, open_library_source, scene);
@@ -1480,6 +1743,8 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         return;
     }
     scene_tabs_draw(scene);
+    refresh_prototype_choices(scene);
+    refresh_global_choices(scene);
     const behavior_asset **assets = NULL;
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
         apush(assets, game_live_definition_at(scene->live, i)->working);
@@ -1533,6 +1798,19 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         defer_asset_index = scene->asset_index_built_generation != 0;
     }
     unsigned system_revision = game_system_document_revision(scene->system_document);
+    if (scene->document.kind==APP_EDITOR_DOCUMENT_SYSTEM && scene->system_document &&
+        (system_revision != scene->asset_index_system_revision || editor_revision != scene->system_runtime_editor_revision)) {
+        scene->system_runtime_editor_revision=editor_revision;
+        if (scene_authoring_sync_document(scene)==0) {
+            char *json=game_system_document_save(scene->system_document,resolve_system_component,system_component_name,NULL);
+            const behavior_asset *asset=game_system_document_behavior_asset(scene->system_document);
+            if (json) {
+                game_live_register_system(scene->live,asset->name,json,scene->preview_message,sizeof scene->preview_message);
+                game_prototype_preview_register_system(scene->prototype_preview,asset->name,json,scene->preview_message,sizeof scene->preview_message);
+                free(json);
+            }
+        }
+    }
     if (system_revision != scene->asset_index_system_revision) {
         scene->asset_index_system_revision = system_revision;
         asset_index_invalidate(scene);
@@ -1545,6 +1823,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         app_scene_authoring_refresh_asset_index(scene);
     }
     draw_quick_open(scene);
+    editor_command_palette_draw(scene);
     draw_navigator(scene);
     draw_asset_document_overview(scene);
     int navigation = editor_ui_take_navigation();
@@ -1596,6 +1875,7 @@ void app_scene_authoring_draw(app_scene_authoring *scene)
         case APP_EDITOR_DOCUMENT_SYSTEM: sync_editor_inspection(scene); break;
     }
     app_scene_authoring_navigation_sync(scene);
+    draw_external_behavior_prompt(scene);
 }
 
 int scene_authoring_sync_document(app_scene_authoring *scene)

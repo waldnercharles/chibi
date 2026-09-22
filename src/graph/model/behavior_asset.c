@@ -13,6 +13,7 @@ static atomic_ullong behavior_asset_identity = 1;
 const char *behavior_domain_name(behavior_domain domain)
 {
     switch (domain) {
+        case BEHAVIOR_DOMAIN_FIELD: return "field";
         case BEHAVIOR_DOMAIN_EVENT: return "behavior";
         case BEHAVIOR_DOMAIN_LIBRARY: return "library";
         case BEHAVIOR_DOMAIN_MATERIAL: return "material";
@@ -129,7 +130,8 @@ static void behavior_asset_refresh_graph_references(
             node *n = g->nodes[node_index];
             if (n->reference_asset || n->reference_id != graph_id ||
                 (n->desc != &NODE_CallFunction &&
-                 n->desc != &NODE_CallPureFunction && n->desc != &NODE_CallMacro)) {
+                 n->desc != &NODE_CallPureFunction &&
+                 n->desc != &NODE_BehaviorExpression && n->desc != &NODE_CallMacro)) {
                 continue;
             }
             n->reference_name = graph_own_str(g, name, strlen(name));
@@ -628,7 +630,9 @@ static node *behavior_asset_add_call_node(behavior_asset *asset, graph *caller, 
     }
     const node_desc *desc = kind == GRAPH_MACRO
                               ? &NODE_CallMacro
-                              : (pure ? &NODE_CallPureFunction : &NODE_CallFunction);
+                              : target->math_expression
+                                  ? &NODE_BehaviorExpression
+                                  : (pure ? &NODE_CallPureFunction : &NODE_CallFunction);
     node *call = graph_add_node(caller, desc);
     if (!call) {
         return NULL;

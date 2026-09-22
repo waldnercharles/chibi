@@ -66,7 +66,8 @@ static void tick_queries(const behavior_asset *asset, compile_report *out)
             append(out, d);
         }
         if (n->desc == &NODE_CallFunction ||
-            n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallMacro) {
+            n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression ||
+            n->desc == &NODE_CallMacro) {
             graph *callee = behavior_asset_find_graph(asset, n->reference_id);
             if (callee) {
                 node *entry = graph_node_by_id(callee, callee->entry_id);

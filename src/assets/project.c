@@ -170,9 +170,9 @@ static void choose_start_scene(chibi_project *project)
     if (project->start_scene) {
         return;
     }
-    char *arena_2d = join_path(project->content, "scenes/NeonSwarmSandbox.json");
+    char *arena_2d = join_path(project->content, "scenes/Sandbox.json");
     if (is_file(arena_2d)) {
-        project->start_scene = xstrdup("scenes/NeonSwarmSandbox.json");
+        project->start_scene = xstrdup("scenes/Sandbox.json");
         free(arena_2d);
         return;
     }
@@ -204,6 +204,9 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     }
     chibi_project_free(project);
     const char *requested = path && path[0] ? path : ".";
+    if ((!path || !path[0]) && is_file("projects/arena2d/project.json")) {
+        requested = "projects/arena2d";
+    }
     char *input = absolute_path(requested);
     if (!input) {
         set_errorf(error, error_size, "Project path does not exist: %s", requested);

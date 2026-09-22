@@ -1,5 +1,7 @@
 #include "reflect_internal.h"
 
+#include <ctype.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -157,6 +159,118 @@ static const char *pin_name(CXType t)
 
 /* ---------- collection ---------- */
 
+static int enum_name_exists(const collect_ctx *ctx, const char *name)
+{
+    for (int i = 0; i < acount(ctx->enums); i++) {
+        if (!strcmp(ctx->enums[i].name, name)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static char *enum_label(const char *name, const char *prefix)
+{
+    const char *start = name + strlen(prefix);
+    size_t size = strlen(start);
+    char *label = malloc(size + 1);
+    if (!label) {
+        abort();
+    }
+    int word_start = 1;
+    size_t out = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = (unsigned char)start[i];
+        if (c == '_') {
+            label[out++] = ' ';
+            word_start = 1;
+        } else if (word_start) {
+            label[out++] = (char)toupper(c);
+            word_start = 0;
+        } else {
+            label[out++] = (char)tolower(c);
+        }
+    }
+    label[out] = '\0';
+    return label;
+}
+
+static void enum_labels(enum_info *enumeration)
+{
+    if (!acount(enumeration->values)) {
+        return;
+    }
+    size_t common = strlen(enumeration->values[0].name);
+    for (int i = 1; i < acount(enumeration->values); i++) {
+        size_t j = 0;
+        while (j < common && enumeration->values[0].name[j] == enumeration->values[i].name[j]) {
+            j++;
+        }
+        common = j;
+    }
+    while (common && enumeration->values[0].name[common - 1] != '_') {
+        common--;
+    }
+    char *prefix = malloc(common + 1);
+    if (!prefix) {
+        abort();
+    }
+    memcpy(prefix, enumeration->values[0].name, common);
+    prefix[common] = '\0';
+    for (int i = 0; i < acount(enumeration->values); i++) {
+        enumeration->values[i].label = enum_label(enumeration->values[i].name, prefix);
+    }
+    free(prefix);
+}
+
+static enum CXChildVisitResult enum_value_visitor(CXCursor c, CXCursor, CXClientData data)
+{
+    if (clang_getCursorKind(c) != CXCursor_EnumConstantDecl) {
+        return CXChildVisit_Continue;
+    }
+    enum_info *enumeration = data;
+    char *name = cxstr(clang_getCursorSpelling(c));
+    if (ends_with(name, "_COUNT")) {
+        free(name);
+        return CXChildVisit_Continue;
+    }
+    long long value = clang_getEnumConstantDeclValue(c);
+    if (value < INT_MIN || value > INT_MAX) {
+        free(name);
+        reflect_error(c, "enum values must fit in an int");
+        return CXChildVisit_Continue;
+    }
+    apush(enumeration->values, ((enum_value_info){ .name = name, .value = (int)value }));
+    return CXChildVisit_Continue;
+}
+
+static void collect_enum_alias(collect_ctx *ctx, CXCursor c, const char *name)
+{
+    if (!name || !name[0] || enum_name_exists(ctx, name)) {
+        return;
+    }
+    CXType underlying = clang_getTypedefDeclUnderlyingType(c);
+    CXType enum_type = clang_getCanonicalType(underlying);
+    CXCursor definition = clang_getTypeDeclaration(enum_type);
+    if (clang_getCursorKind(definition) != CXCursor_EnumDecl ||
+        !clang_isCursorDefinition(definition)) {
+        return;
+    }
+    enum_info enumeration = { .name = strdup(name) };
+    clang_visitChildren(definition, enum_value_visitor, &enumeration);
+    if (g_failed || !acount(enumeration.values)) {
+        free(enumeration.name);
+        for (int i = 0; i < acount(enumeration.values); i++) {
+            free(enumeration.values[i].name);
+            free(enumeration.values[i].label);
+        }
+        afree(enumeration.values);
+        return;
+    }
+    enum_labels(&enumeration);
+    apush(ctx->enums, enumeration);
+}
+
 static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData data)
 {
     if (clang_getCursorKind(c) != CXCursor_FieldDecl) {
@@ -294,15 +408,18 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
     enum CXCursorKind k = clang_getCursorKind(c);
 
     if (k == CXCursor_TypedefDecl) {
+        char *typedef_name = cxstr(clang_getCursorSpelling(c));
+        CXType underlying = clang_getCanonicalType(clang_getTypedefDeclUnderlyingType(c));
         char *component_alias = annotation_value(c, "node:component-alias:");
         char *type_alias = annotation_value(c, "node:type-alias:");
         char *external_type = annotation_value(c, "node:external-type:");
-        if (component_alias || type_alias || external_type) {
-            char *typedef_name = cxstr(clang_getCursorSpelling(c));
+        if (underlying.kind == CXType_Enum) {
+            collect_enum_alias(ctx, c, typedef_name);
+        } else if (component_alias || type_alias || external_type) {
             const char *name = external_type ? external_type : typedef_name;
             collect_alias(ctx, c, name, component_alias != NULL, 0);
-            free(typedef_name);
         }
+        free(typedef_name);
         free(component_alias);
         free(type_alias);
         free(external_type);
@@ -491,7 +608,17 @@ void reflect_dispose(collect_ctx *ctx)
         free(f->conversion_from);
         free(f->conversion_to);
     }
+    for (int i = 0; i < acount(ctx->enums); i++) {
+        enum_info *enumeration = &ctx->enums[i];
+        free(enumeration->name);
+        for (int j = 0; j < acount(enumeration->values); j++) {
+            free(enumeration->values[j].name);
+            free(enumeration->values[j].label);
+        }
+        afree(enumeration->values);
+    }
     afree(ctx->structs);
     afree(ctx->fns);
+    afree(ctx->enums);
     g_collection = NULL;
 }

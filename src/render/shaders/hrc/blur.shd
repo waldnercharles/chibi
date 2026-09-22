@@ -7,7 +7,11 @@ layout (set = 0, binding = 0) uniform sampler2D u_in_radiance;
 layout (set = 0, binding = 1) uniform sampler2D u_transmittance;
 layout (set = 0, binding = 2) uniform sampler2D u_prev_radiance;
 
+#ifdef HRC_LUMINANCE
+layout (set = 1, binding = 0, r16f) uniform writeonly image2D u_out;
+#else
 layout (set = 1, binding = 0, rgba16f) uniform writeonly image2D u_out;
+#endif
 
 layout (set = 2, binding = 0) uniform blur_params
 {
@@ -17,6 +21,18 @@ layout (set = 2, binding = 0) uniform blur_params
 };
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+vec3 input_radiance(vec2 uv)
+{
+    vec3 value = texture(u_in_radiance, uv).rgb;
+    #ifdef HRC_LUMINANCE_FROM_RGB
+    return vec3(dot(value, vec3(0.2126, 0.7152, 0.0722)));
+    #elif defined(HRC_LUMINANCE)
+    return vec3(value.r);
+    #else
+    return value;
+    #endif
+}
 
 void main()
 {
@@ -44,13 +60,17 @@ void main()
             float edge_w = 1.0 - smoothstep(0.0, u_threshold, abs(s - center_s));
 
             float w = w1d[dx + 1] * w1d[dy + 1] * edge_w;
-            sum += texture(u_in_radiance, uv_q).rgb * w;
+            sum += input_radiance(uv_q) * w;
             wsum += w;
         }
     }
 
-    vec3 out_r = wsum > 0.0 ? sum / wsum : texture(u_in_radiance, uv).rgb;
+    vec3 out_r = wsum > 0.0 ? sum / wsum : input_radiance(uv);
     vec3 prev = texture(u_prev_radiance, uv).rgb;
     out_r = mix(prev, out_r, u_hysteresis);
+    #ifdef HRC_LUMINANCE
+    imageStore(u_out, p, vec4(out_r.r, 0, 0, 0));
+    #else
     imageStore(u_out, p, vec4(out_r, 1.0));
+    #endif
 }

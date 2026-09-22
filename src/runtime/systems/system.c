@@ -106,6 +106,7 @@ struct game_system
     ecs_query_expr *compiled_query_expression;
     node *tick;
     int match_count;
+    ecs_entity *snapshot;
 };
 
 static void set_error(flow_error *error, int code, const node *origin, const char *message)
@@ -1753,6 +1754,7 @@ void game_system_free(game_system *system)
     ecs_query_expr_free(system->compiled_query_expression);
     compile_report_free(&system->compile);
     afree(system->query);
+    afree(system->snapshot);
     behavior_asset_free(system->definition);
     free(system);
 }
@@ -1979,11 +1981,10 @@ int game_system_tick_mode(
         return FLOW_ERR_STATE;
     }
     if (mode == GAME_SYSTEM_EXEC_AUTO) {
-#ifdef __EMSCRIPTEN__
-        mode = GAME_SYSTEM_EXEC_GENERIC_BYTECODE;
-#else
-        mode = GAME_SYSTEM_EXEC_SJLIT;
-#endif
+        mode = system->program && system->program->sljit ? GAME_SYSTEM_EXEC_SJLIT
+             : system->program && system->program->typed
+                 ? GAME_SYSTEM_EXEC_TYPED_BYTECODE
+                 : GAME_SYSTEM_EXEC_GENERIC_BYTECODE;
     }
     if (mode == GAME_SYSTEM_EXEC_ORACLE && system->definition->graph->dataflow) {
         set_error(error, FLOW_ERR_STATE, system->tick, "System dataflow has no interpreter oracle");
@@ -2125,4 +2126,75 @@ const graph_ir *game_system_graph_ir(const game_system *system)
 const graph_program *game_system_program(const game_system *system)
 {
     return system && system->program ? &system->program->shared : NULL;
+}
+
+int game_system_prepare_snapshot(game_system *system, flow_error *error)
+{
+    aclear(system->snapshot);
+    if (system->compile.error_count || !system->program ||
+        program_bind_world(system->program, system->world) != 0) {
+        set_error(error, FLOW_ERR_COMPILE, NULL, "System has no valid compiled program or registered columns");
+        return FLOW_ERR_COMPILE;
+    }
+    ecs_query query;
+    int result = system->compiled_query_expression
+                   ? ecs_query_begin_expression(system->world, &query, system->compiled_query_expression)
+                   : ecs_query_begin(
+                         system->world,
+                         &query,
+                         system->query,
+                         acount(system->query)
+                     );
+    if (result != ECS_OK) {
+        set_error(error, FLOW_ERR_STATE, NULL, "System query could not start");
+        return FLOW_ERR_STATE;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity) > 0) {
+        apush(system->snapshot, entity);
+    }
+    ecs_query_end(&query);
+    return FLOW_OK;
+}
+
+int game_system_run_snapshot(game_system *system, double time, double delta, flow_error *error)
+{
+    system_program *p = system->program;
+    system->match_count = 0;
+    if (p->sljit) {
+        system_jit_user user = { p, error };
+        graph_jit_host host = { .user = &user, .error = system_jit_error };
+        graph_jit_entry_fn entry = graph_sljit_entry(p->sljit);
+        graph_jit_context context = { .abi_version = GRAPH_JIT_ABI_VERSION,
+                                      .delta_seconds = (float)delta,
+                                      .monotonic_time = time,
+                                      .columns = p->sljit_columns,
+                                      .column_count = p->sljit_column_count,
+                                      .host = &host };
+        for (int i = 0; i < acount(system->snapshot); i++) {
+            ecs_entity entity = system->snapshot[i];
+            for (int j = 0; j < p->sljit_column_count; j++) {
+                p->sljit_columns[j].data = (unsigned char *)p->sljit_bases[j] +
+                                           (size_t)entity.slot *
+                                               p->sljit_columns[j].size;
+            }
+            context.entity_slot = entity.slot;
+            context.entity_generation = entity.generation;
+            if (entry(&context) != GRAPH_JIT_OK) {
+                return error && error->code ? error->code : FLOW_ERR_NODE;
+            }
+            system->match_count++;
+        }
+        return FLOW_OK;
+    }
+    for (int i = 0; i < acount(system->snapshot); i++) {
+        int result = p->typed
+                       ? program_run_typed(p, system->snapshot[i], delta, error)
+                       : program_run_generic(p, system->snapshot[i], delta, error);
+        if (result != FLOW_OK) {
+            return result;
+        }
+        system->match_count++;
+    }
+    return FLOW_OK;
 }

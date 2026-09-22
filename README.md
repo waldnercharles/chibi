@@ -27,10 +27,11 @@ ASan and UBSan by default. Use `make debug-san SANITIZERS=thread` when a TSan
 run is useful; TSan cannot be linked into the same binary as ASan, so the one
 target switches the sanitizer mode in the shared Debug build directory.
 
-To open a project with an editor profile, pass its project root and scene:
-`make debug PROJECT=projects/arena2d SCENE=scenes/Arena2D.json`
-or use `PROJECT=.` and `SCENE=scenes/Arena3D.json` for the 3D reference. Add
-`ARGS=--play` to launch directly into Play.
+Neon Swarm is the default project for native launches, editor profiles, MCP,
+and `make web-serve`. Its manifest selects `scenes/Sandbox.json`.
+Use `make debug PROJECT=.` for the Arena3D reference, or
+`make debug PROJECT=. SCENE=scenes/OrbitPinball.json` for pinball.
+Add `ARGS=--play` to launch into Play.
 
 Run `make help` for the complete target list and the purpose of each target.
 
@@ -43,6 +44,10 @@ profile and its MCP analysis server.
 When available, Chibi MCP is the default interface for authoring shaders,
 behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
 the public tools and validation sequence.
+
+Cmd+K submits natural-language requests to local Laya through the live editor's
+typed command API. See [Editor commands](tools/editor-command/README.md) for
+examples, native/browser setup, and the [evaluation results](tools/editor-command/evals/direct-report.md).
 
 ### Zed
 
@@ -76,6 +81,8 @@ Undo/Redo, selection, graph views, navigation, docking and native window geometr
 authored scene with its previous running or paused intent. Live simulation
 memory and in-progress pointer gestures are recreated. Checkpoints live in
 `.chibi/workspace.json`; source documents are saved only through editor Save.
+When a behavior source changed after the checkpoint was written, the editor
+asks whether to reload that source or keep the checkpointed workspace copy.
 
 ## Code map
 

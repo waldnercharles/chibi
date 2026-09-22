@@ -161,7 +161,7 @@ void eval_view_refresh(eval_view *v, graph *g)
     arena_reset(&v->a);
     if (g->owner && (g->owner->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                      g->owner->domain == BEHAVIOR_DOMAIN_SHAPE ||
-                     g->owner->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY)) {
+                     g->owner->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY || g->owner->domain == BEHAVIOR_DOMAIN_FIELD)) {
         return;
     }
     g = preview_graph(v, g);

@@ -1,0 +1,12 @@
+diff --git a/jev_ultrafast/model.py b/jev_ultrafast/model.py
+index d311747..4fde2ad 100644
+--- a/jev_ultrafast/model.py
++++ b/jev_ultrafast/model.py
+@@ -116,7 +116,8 @@ def choose(state, goal, history):
+         "questions": questions,
+     }
+     started = time.perf_counter()
+-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
++    base = os.environ.get("TYPESAFE_BASE_URL", "https://api.typesafe.ai/v1/systemone")
++    result = post_json(base, os.environ["TYPESAFE_API_KEY"], body)
+     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)

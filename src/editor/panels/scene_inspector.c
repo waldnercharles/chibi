@@ -134,12 +134,19 @@ static bool draw_instance_field(
             break;
         case PIN_I32:
         case PIN_ENUM: {
+            if (component->desc->id == GAME_COMPONENT_GameHRC2D.id &&
+                field->offset == offsetof(GameHRC2D, trace_levels)) {
+                editor_ui_property_label(label, overridden ? 28.0f : 0.0f);
+                changed = ImGui_SliderIntEx("###field_value", &value.i, 1, 5, "%d", ImGuiSliderFlags_AlwaysClamp);
+                break;
+            }
             const editor_choices *choices = property_choices(component->desc->type, field);
             if (choices) {
                 editor_ui_property_label(label, overridden ? 28.0f : 0.0f);
             }
+            int *choice_value = value.type == PIN_ENUM ? &value.e : &value.i;
             changed = choices
-                        ? editor_choices_draw("instance.shape", &value.i, choices)
+                        ? editor_choices_draw("instance.shape", choice_value, choices)
                         : property_number(label, ImGuiDataType_S32, &value.i, overridden);
             break;
         }
@@ -180,6 +187,12 @@ static bool draw_instance_field(
         case PIN_F32:
             if (component->desc->id == GAME_COMPONENT_GameEnvironment.id) {
                 changed = property_environment(label, field, &value.f, overridden);
+                break;
+            }
+            if (component->desc->id == GAME_COMPONENT_GameHRC2D.id &&
+                field->offset == offsetof(GameHRC2D, scale)) {
+                editor_ui_property_label(label, overridden ? 28.0f : 0.0f);
+                changed = ImGui_SliderFloatEx("###field_value", &value.f, .1f, 1, "%.3f", ImGuiSliderFlags_AlwaysClamp);
                 break;
             }
             changed = position_field
@@ -618,18 +631,6 @@ static void draw_instance_behaviors(app_scene_authoring *scene, scene_actor *act
     free_behavior_names(names);
 }
 
-static void physics_hint(const char *text)
-{
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        if (ImGui_BeginTooltip()) {
-            ImGui_PushTextWrapPos(320);
-            ImGui_TextUnformatted(text);
-            ImGui_PopTextWrapPos();
-            ImGui_EndTooltip();
-        }
-    }
-}
-
 static bool physics_count(const char *id, int *value, int minimum, int maximum)
 {
     char label[32];
@@ -663,28 +664,21 @@ static void draw_physics_settings(app_scene_authoring *scene)
     editor_ui_property_label("Workers", 0);
     changed |= physics_count("##physics.workers", &settings.workers, 0, GAME_PHYSICS_WORKER_MAX);
     editor_ui_track_item("scene.physics.workers");
-    physics_hint("Includes the main thread. Auto uses up to 8 workers, preferring the detected performance-core count on macOS. Hardware limits apply; web runs serially. More workers can be slower.");
     editor_ui_property_label("Substeps", 0);
     changed |= physics_count("##physics.substeps", &settings.substeps, 1, GAME_PHYSICS_SUBSTEP_MAX);
     editor_ui_track_item("scene.physics.substeps");
-    physics_hint("Solver steps within each fixed 60 Hz tick. Fewer steps cost less but reduce contact accuracy.");
     changed |= ImGui_Checkbox("Allow sleeping", &settings.sleep);
     editor_ui_track_item("scene.physics.sleep");
-    physics_hint("Resting bodies can leave the active solver. Disabling sleep may help constantly moving crowds.");
     changed |= ImGui_Checkbox("Solid continuous collision", &settings.continuous);
     editor_ui_track_item("scene.physics.continuous");
-    physics_hint("Prevents fast solid bodies from tunneling. Authored continuous sensor sweeps remain active independently.");
     changed |= ImGui_Checkbox("Drive with forces", &settings.force_drive);
     editor_ui_track_item("scene.physics.force_drive");
-    physics_hint("Reach the authored velocity using force across a tick. Changes acceleration and contact response. Kinematic bodies still set velocity directly.");
     editor_ui_property_label("Contact Hz", 0);
     changed |= ImGui_InputFloatEx("##physics.hertz", &settings.contact_hertz, 0, 0, "%.1f Hz", 0);
     editor_ui_track_item("scene.physics.contact_hertz");
-    physics_hint("Higher frequency resolves overlap faster but can introduce jitter. Zero disables spring recovery.");
     editor_ui_property_label("Damping", 0);
     changed |= ImGui_InputFloatEx("##physics.damping", &settings.contact_damping, 0, 0, "%.2f", 0);
     editor_ui_track_item("scene.physics.contact_damping");
-    physics_hint("Contact damping ratio, not body drag. Lower values make overlap recovery more energetic; they do not reduce solver iterations.");
     if (ImGui_Button("Reset physics defaults")) {
         settings = game_physics_defaults();
         changed = true;
@@ -700,8 +694,58 @@ static void draw_physics_settings(app_scene_authoring *scene)
         "Available worker budget: %d",
         game_physics_worker_budget(scene->live->physics)
     );
-    if (!stopped) {
-        ImGui_TextDisabled("Stop Play and preview to edit physics.");
+    ImGui_Separator();
+}
+
+static scene_actor *radiance_actor(app_scene_authoring *scene)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (GAME_GameHRC2D_has(scene->world, scene->actors[i].entity)) {
+            return &scene->actors[i];
+        }
+    }
+    return NULL;
+}
+
+static bool radiance_field(const type_field *field)
+{
+    return field->offset == offsetof(GameHRC2D, scale) ||
+           field->offset == offsetof(GameHRC2D, trace_levels) ||
+           field->offset == offsetof(GameHRC2D, feedback);
+}
+
+static void draw_radiance_settings(app_scene_authoring *scene)
+{
+    if (scene->document.kind != APP_EDITOR_DOCUMENT_SCENE) {
+        return;
+    }
+    scene_actor *actor = radiance_actor(scene);
+    game_prototype_component added = { .desc = &GAME_COMPONENT_GameHRC2D };
+    const game_prototype_component *component = actor
+                                                  ? prototype_component_by_id(
+                                                        actor->base,
+                                                        GAME_COMPONENT_GameHRC2D.id
+                                                    )
+                                                  : NULL;
+    if (!component && actor) {
+        component = &added;
+    }
+    if (!component) {
+        return;
+    }
+    bool open = ImGui_CollapsingHeader("Radiance Cascades", 0);
+    editor_ui_track_item("scene.radiance");
+    if (!open) {
+        return;
+    }
+    for (int i = 0; i < component->desc->type->field_count; i++) {
+        const type_field *field = &component->desc->type->fields[i];
+        if (!radiance_field(field)) {
+            continue;
+        }
+        ImGui_PushIDInt(i);
+        draw_instance_field(scene, actor, component, field);
+        ImGui_PopID();
     }
     ImGui_Separator();
 }
@@ -720,6 +764,7 @@ void draw_scene_inspector(app_scene_authoring *scene)
     }
 
     if (scene->document.kind == APP_EDITOR_DOCUMENT_SCENE) {
+        draw_radiance_settings(scene);
         draw_physics_settings(scene);
     }
     scene_actor *actor = selected_actor(scene);

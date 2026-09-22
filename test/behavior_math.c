@@ -2,7 +2,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
-#include "graph/nodes/math_expression.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/math_nodes.h"
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
@@ -50,8 +50,8 @@ static behavior_asset *load(const char *path)
 static float evaluate(const char *source, float x, float y)
 {
     behavior_asset *asset = behavior_asset_new("Math boundary");
-    math_expression_error error;
-    node *call = math_expression_add(asset, asset->graph, source, &error);
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, source, &error);
     assert(call);
     for (int i = 0; i < call->input_count; i++) {
         pin_value value = { .type = PIN_F64, .d = i ? y : x };
@@ -104,7 +104,7 @@ static void health_damage()
                 setter = n;
                 setter_graph = g;
             }
-            const char *source = math_expression_source(asset, n);
+            const char *source = behavior_expression_source(asset, n);
             if (source && strcmp(source, "clamp(current - clamp(amount, 0, current), 0, maximum)") ==
                               0) {
                 expression = n;
@@ -399,8 +399,8 @@ void test_behavior_math()
     node *magnitude = graph_node_by_id(direction, 150);
     node *rate = graph_node_by_id(emission, 153);
     assert(magnitude && rate);
-    const char *magnitude_source = math_expression_source(projectile, magnitude);
-    const char *rate_source = math_expression_source(trail, rate);
+    const char *magnitude_source = behavior_expression_source(projectile, magnitude);
+    const char *rate_source = behavior_expression_source(trail, rate);
     assert(magnitude_source && rate_source);
     assert(
         !graph_node_by_id(direction, 95) && !graph_node_by_id(direction, 98) &&
@@ -426,5 +426,5 @@ void test_behavior_math()
     }
     behavior_asset_free(projectile);
     behavior_asset_free(trail);
-    puts("PASS: authored Math expressions preserve projectile and trail float boundaries");
+    puts("PASS: authored Behavior Expressions preserve projectile and trail float boundaries");
 }

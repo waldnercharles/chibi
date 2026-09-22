@@ -62,25 +62,25 @@ mcp:
 	@cmake -S . -B "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
 	@cmake --build "$(BUILD_DIR)" --target chibi_ctl >&2
 	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
-	@sh tools/mcp/launch.sh
+	@CHIBI_ROOT="$(PROJECT)" sh tools/mcp/launch.sh
 
 mcp-setup:
 	node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
 PROJECT ?= projects/arena2d
-SCENE ?= scenes/NeonSwarmSandbox.json
+SCENE ?=
 
 run: build-release
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(if $(strip $(SCENE)),--scene "$(SCENE)",) $(ARGS)
 
 debug: build-debug
-	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(if $(strip $(SCENE)),--scene "$(SCENE)",) $(ARGS)
 
 debug-san: build
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(if $(strip $(SCENE)),--scene "$(SCENE)",) $(ARGS)
 
 play: build-release
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" $(if $(strip $(SCENE)),--scene "$(SCENE)",) $(ARGS)
 
 # User-facing release builds use the compiler's full Release optimization.
 build-release:
@@ -91,7 +91,7 @@ build-tracy:
 	cmake --build "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl
 
 run-tracy: build-tracy
-	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(if $(strip $(SCENE)),--scene "$(SCENE)",) $(ARGS)
 
 build-tracy-mcp:
 	cmake -S . -B "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
@@ -112,10 +112,10 @@ benchmark:
 web:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target reflect
 	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
-	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend
+	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend check-material-engine
 
 web-serve: web
-	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project . --port 8099
+	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port 8099
 
 format:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target format
@@ -124,7 +124,9 @@ check-format:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target check-format
 
 test:
+	$(if $(wildcard .chibi/commands-venv/bin/python),.chibi/commands-venv/bin/python,python3) -m unittest discover -s tools/editor-command -p 'test_*.py'
 	python3 test/web_serve_test.py
+	node test/web_workspace_test.mjs
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
@@ -155,4 +157,4 @@ dev:
 	cmake -S . -B "$(DEV_BUILD_DIR)" $(DEV_GENERATOR_FLAGS) $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(if $(strip $(SCENE)),--scene "$(SCENE)",) $(ARGS)

@@ -10,6 +10,9 @@ const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = process.env.CHIBI_CTL || resolve(root, "build/chibi_ctl");
 const expectedPublicNames = [
+  "buildField",
+  "buildSystem",
+  "previewField",
   "buildShader",
   "buildBehavior",
   "buildPrototype",
@@ -36,6 +39,11 @@ const expectedPublicNames = [
   "replayScenario",
   "describeRegistry",
   "describeContract",
+  "editorCommand",
+  "chooseEditorAction",
+  "startComputerTask",
+  "resumeComputerTask",
+  "getComputerTask",
 ];
 
 function nativeRequestAt(projectRoot, operation, args = {}) {
@@ -102,6 +110,13 @@ const requests = [
   { jsonrpc: "2.0", id: 33, method: "tools/call", params: { name: "getAssetCatalog", arguments: { cursor: "1" } } },
   { jsonrpc: "2.0", id: 35, method: "tools/call", params: { name: "searchAssets", arguments: { query: "__mcp_no_such_asset__" } } },
   { jsonrpc: "2.0", id: 36, method: "tools/call", params: { name: "searchNodes", arguments: { query: "__mcp_no_such_node__" } } },
+  { jsonrpc: "2.0", id: 37, method: "tools/call", params: { name: "buildBehavior", arguments: {
+    kind: "behavior", name: "McpExpressionProbe", create: true, dry_run: true,
+    operations: [
+      { op: "add_node", ref: "expression", type: "Behavior Expression", source: "x + 1" },
+      { op: "set_expression", node: "expression", source: "x * 2" },
+    ],
+  } } },
   { jsonrpc: "2.0", method: "ping" },
 ];
 const result = spawnSync(process.execPath, [server], {
@@ -149,6 +164,9 @@ if (typeof responseById.get(1)?.result?.instructions !== "string" ||
   throw new Error("initialize did not expose server instructions");
 }
 const listedTools = responseById.get(2)?.result?.tools || [];
+if (!toolPayload(responseById.get(37))?.ok) {
+  throw new Error("MCP rejected Behavior Expression creation or source editing");
+}
 const listedNames = listedTools.map((tool) => tool.name);
 if (JSON.stringify(toolCatalog.map((entry) => entry.name)) !== JSON.stringify(expectedPublicNames) ||
     JSON.stringify(listedNames) !== JSON.stringify(expectedPublicNames) ||
@@ -160,8 +178,8 @@ if (JSON.stringify(toolCatalog.map((entry) => entry.name)) !== JSON.stringify(ex
       Object.hasOwn(tool, "operation"))) {
   throw new Error("tools/list did not expose the deterministic public catalog");
 }
-if (listedTools.slice(0, 4).map((tool) => tool.name).join(",") !==
-    "buildShader,buildBehavior,buildPrototype,buildScene") {
+if (listedTools.slice(0, 7).map((tool) => tool.name).join(",") !==
+    "buildField,buildSystem,previewField,buildShader,buildBehavior,buildPrototype,buildScene") {
   throw new Error("tools/list did not put authoring tools first");
 }
 if (listedTools.some((tool) => tool.name.includes("_") || tool.name.includes("-") ||
@@ -324,15 +342,25 @@ if (cwdResponses[0]?.result?.isError ||
 }
 
 const launcher = resolve(root, "tools/mcp/launch.sh");
-const launcherProbe = spawnSync("/bin/sh", [launcher], {
-  cwd: "/tmp",
-  env: cleanEnvironment,
-  input: JSON.stringify({
+const defaultProjectRoot = resolve(root, "projects/arena2d");
+const launcherRequests = [
+  {
     jsonrpc: "2.0",
     id: 1,
     method: "tools/list",
     params: {},
-  }) + "\n",
+  },
+  {
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: { name: "getProjectStatus", arguments: {} },
+  },
+];
+const launcherProbe = spawnSync("/bin/sh", [launcher], {
+  cwd: "/tmp",
+  env: cleanEnvironment,
+  input: `${launcherRequests.map((request) => JSON.stringify(request)).join("\n")}\n`,
   encoding: "utf8",
   maxBuffer: 32 * 1024 * 1024,
 });
@@ -340,8 +368,29 @@ if (launcherProbe.error || launcherProbe.status !== 0) {
   throw launcherProbe.error || new Error(launcherProbe.stderr || "MCP launcher failed");
 }
 const launcherResponses = launcherProbe.stdout.trim().split(/\r?\n/).filter(Boolean).map(JSON.parse);
-if (launcherResponses.length !== 1 || launcherResponses[0]?.result?.tools?.length !== expectedPublicNames.length) {
+const launcherTools = launcherResponses.find((response) => response.id === 1);
+const launcherStatus = launcherResponses.find((response) => response.id === 2);
+if (launcherResponses.length !== launcherRequests.length ||
+    launcherTools?.result?.tools?.length !== expectedPublicNames.length) {
   throw new Error("MCP launcher did not keep stdout protocol-only from another CWD");
+}
+if (launcherStatus?.result?.structuredContent?.result?.project_root !== defaultProjectRoot) {
+  throw new Error(`MCP launcher defaulted to the wrong project root: ${launcherStatus?.result?.structuredContent?.result?.project_root}`);
+}
+
+const explicitRootProbe = spawnSync("/bin/sh", [launcher], {
+  cwd: "/tmp",
+  env: { ...cleanEnvironment, CHIBI_ROOT: root },
+  input: `${JSON.stringify(launcherRequests[1])}\n`,
+  encoding: "utf8",
+  maxBuffer: 32 * 1024 * 1024,
+});
+if (explicitRootProbe.error || explicitRootProbe.status !== 0) {
+  throw explicitRootProbe.error || new Error(explicitRootProbe.stderr || "MCP launcher explicit-root probe failed");
+}
+const explicitRootResponse = explicitRootProbe.stdout.trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)[0];
+if (explicitRootResponse?.result?.structuredContent?.result?.project_root !== root) {
+  throw new Error("MCP launcher did not honor an explicit CHIBI_ROOT");
 }
 
 const nativeStatus = nativeRequest("status");

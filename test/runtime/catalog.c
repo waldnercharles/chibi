@@ -1,5 +1,8 @@
 #include "test/suite_internal.h"
 
+#include "editor/panels/scene_properties.h"
+#include "editor/ui/choices.h"
+
 void run_runtime_catalog_checks()
 {
     /* Phase 7/8: stateful flow, catalog families, and breakpoints. */
@@ -94,6 +97,45 @@ void run_runtime_catalog_checks()
         );
         test_check(registry_node_by_name("Switch on String") != NULL, "Switch on String is registered");
         test_check(registry_node_by_name("Switch on Enum") != NULL, "Switch on Enum is registered");
+        const enum_desc *controls = registry_enum_by_name("GameControl");
+        const type_desc *binding = registry_type_by_name("GameActionBinding");
+        test_check(
+            controls && controls->value_count == GAME_CONTROL_COUNT &&
+                controls->values[GAME_CONTROL_SPACE].value == GAME_CONTROL_SPACE &&
+                !strcmp(controls->values[GAME_CONTROL_SPACE].label, "Space"),
+            "reflected enums retain values and readable labels"
+        );
+        test_check(
+            binding && binding->fields[0].type == PIN_ENUM &&
+                !strcmp(binding->fields[0].type_name, "GameControl"),
+            "enum component fields retain their nominal type"
+        );
+        char enum_label[64];
+        const editor_choices *enum_choices = editor_choices_for_enum("GameControl");
+        if (enum_choices) {
+            editor_choices_format(GAME_CONTROL_PAD_A, enum_choices, enum_label, sizeof enum_label);
+        } else {
+            enum_label[0] = '\0';
+        }
+        test_check(
+            enum_choices && !strcmp(enum_label, "Pad A"),
+            "the editor exposes reflected enums through the choice catalog"
+        );
+        const editor_choices *property = NULL;
+        if (binding) {
+            property = property_choices(binding, &binding->fields[0]);
+        }
+        test_check(
+            property && property->enumeration == controls,
+            "component inspectors use reflected enum catalogs"
+        );
+        pin_value enum_value = { .type = PIN_ENUM,
+                                 .type_name = "GameControl",
+                                 .e = GAME_CONTROL_PAD_A };
+        test_check(
+            !strcmp(pin_value_to_string(&enum_value), "Pad A"),
+            "enum values use readable labels outside input controls"
+        );
         test_check(registry_node_by_name("Select") != NULL, "Select is registered as a pure choice node");
         test_check(registry_node_by_name("Switch on Name") != NULL, "Switch on Name is registered");
         test_check(registry_node_by_name("Retriggerable Delay") != NULL, "Retriggerable Delay is registered as a latent node");

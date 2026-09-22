@@ -17,5 +17,6 @@ extern node_desc NODE_Not_Equal;
 extern node_desc NODE_Integer_Not_Equal;
 
 extern node_desc NODE_Has_Any_Flags;
+extern node_desc NODE_And, NODE_Or, NODE_Not;
 
 #endif

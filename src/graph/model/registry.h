@@ -16,6 +16,8 @@ typedef struct registry_pack
     int service_count;
     const operator_signature *operators;
     int operator_count;
+    const enum_desc *const *enums;
+    int enum_count;
 } registry_pack;
 
 /* Each final target supplies one ordered, process-global pack list. */
@@ -58,11 +60,12 @@ extern node_desc NODE_Event, NODE_Branch, NODE_Sequence, NODE_ForLoop,
     NODE_ForLoopWithBreak, NODE_WhileLoop, NODE_ForEach, NODE_ForEachWithBreak,
     NODE_Break, NODE_Delay, NODE_PrintString, NODE_GetVariable, NODE_SetVariable,
     NODE_Self, NODE_FunctionEntry, NODE_Return, NODE_CallFunction,
-    NODE_CallPureFunction, NODE_CallMacro, NODE_SwitchInt, NODE_SwitchString,
+    NODE_CallPureFunction, NODE_BehaviorExpression, NODE_CallMacro, NODE_SwitchInt, NODE_SwitchString,
     NODE_SwitchName, NODE_SwitchEnum, NODE_Select, NODE_RerouteData,
     NODE_RerouteExec, NODE_SetMembers, NODE_Add, NODE_Multiply, NODE_Subtract,
     NODE_Divide, NODE_Min, NODE_Max, NODE_DeltaTime;
 extern node_desc NODE_Clamp, NODE_Modulo, NODE_Negate, NODE_Abs;
+extern node_desc NODE_And, NODE_Or, NODE_Not;
 
 int registry_node_count(void);
 const node_desc *registry_node(int index);
@@ -78,5 +81,9 @@ const service_desc *registry_service_by_name(const char *name);
 
 int registry_operator_count(void);
 const operator_signature *registry_operator(int index);
+
+int registry_enum_count(void);
+const enum_desc *registry_enum(int index);
+const enum_desc *registry_enum_by_name(const char *name);
 
 #endif

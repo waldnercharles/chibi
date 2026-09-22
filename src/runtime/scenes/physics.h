@@ -33,7 +33,7 @@ void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks
 /* Effective worker budget for the last step; 1 before the first step. */
 int game_physics_workers(const game_physics *physics);
 /* Synchronize authored state, integrate, then queue deduplicated Contact Begin.
- * Payload: Other, Point X, Point Y. Sweeps report the cast contact in world
+ * Payload: Other, Point (CF_V2). Sweeps report the cast contact in world
  * units; initial overlaps and ordinary contacts use a representative center.
  * Swept events are delivered in travel order, clipped to the first blocker.
  * A zero delta synchronizes and checks overlaps without advancing simulation. */

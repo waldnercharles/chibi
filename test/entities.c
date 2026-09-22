@@ -960,9 +960,132 @@ static void prototype_registry_lifetime()
     game_prototype_free(source);
 }
 
+static void global_values()
+{
+    ecs_world *ecs = ecs_world_new();
+    assert(ecs_world_register_component(ecs, &GAME_COMPONENT_GameGlobalBinding, NULL) == ECS_OK);
+    game_entities *entities = game_entities_new(ecs, NULL);
+    const node_desc *get_global = registry_node_by_name("Get Global Variable");
+    const node_desc *set_global = registry_node_by_name("Set Global Variable");
+    assert(get_global && !strcmp(get_global->category, "Global"));
+    assert(get_global->pure_kind == NODE_PURE_READ && get_global->read_inputs);
+    assert(get_global->output_count == 1 &&
+           (get_global->outputs[0].flags & PIN_FLAG_WILDCARD));
+    assert(set_global && !strcmp(set_global->category, "Global"));
+    assert(set_global->flow_kind == NODE_FLOW_CUSTOM && set_global->flow);
+    assert(set_global->input_count == 3 && set_global->output_count == 2 &&
+           (set_global->inputs[2].flags & PIN_FLAG_WILDCARD) &&
+           (set_global->outputs[1].flags & PIN_FLAG_WILDCARD));
+
+    behavior_asset *node_asset = behavior_asset_new("GlobalVariableNode");
+    assert(behavior_asset_set_owner_type(node_asset, "ecs.entity") == 0);
+    graph *node_graph = node_asset->graph;
+    node *event = add(node_graph, "Event");
+    assert(graph_set_event_name(node_graph, event, "Set") == 0);
+    node *set = graph_add_node(node_graph, set_global);
+    assert(set);
+    assert(graph_set_pin_default(
+               node_graph,
+               set,
+               0,
+               1,
+               &(pin_value){ .type = PIN_NAME, .type_name = "name", .str = "NodeValue" }
+           ) == 0);
+    assert(graph_set_pin_default(
+               node_graph,
+               set,
+               0,
+               2,
+               &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 17 }
+           ) == 0);
+    assert(graph_connect_exec(node_graph, event, 0, set, 0, 0) == 0);
+    behavior_instance *node_instance = behavior_instance_create(node_asset, NULL, NULL, NULL);
+    assert(node_instance);
+    assert(behavior_instance_bind_service(node_instance, "game.entities", entities) == 0);
+    flow_error node_error;
+    flow_run *node_run = behavior_instance_dispatch(
+        node_instance,
+        "Set",
+        (flow_inputs){ 0 },
+        &node_error
+    );
+    assert(node_run && flow_run_status(node_run) == FLOW_COMPLETED);
+    arena node_storage;
+    arena_init(&node_storage, 64);
+    pin_value node_result;
+    assert(game_entities_get_global_value(entities, "NodeValue", &node_storage, &node_result) == 0);
+    assert(node_result.type == PIN_I32 && node_result.i == 17);
+    arena_free(&node_storage);
+    behavior_instance_destroy(node_instance);
+    behavior_asset_free(node_asset);
+
+    ecs_entity player = ecs_world_create_entity(ecs);
+    assert(GAME_GameGlobalBinding_add(ecs, player, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(ecs) == ECS_OK);
+    GAME_GameGlobalBinding_get(ecs, player)->name = ecs_world_intern_string(ecs, "Player");
+    assert(game_entities_rebuild_global_bindings(entities) == 0);
+    arena storage;
+    arena_init(&storage, 256);
+    pin_value result;
+    assert(game_entities_get_global_value(entities, "Player", &storage, &result) == 0);
+    assert(result.type == PIN_HANDLE && result.u64 == ecs_entity_to_u64(player));
+    assert(game_entities_get_global_value(entities, "Camera", &storage, &result) != 0);
+
+    ecs_entity camera = ecs_world_create_entity(ecs);
+    pin_value camera_value = { .type = PIN_HANDLE,
+                               .type_name = "ecs.entity",
+                               .u64 = ecs_entity_to_u64(camera) };
+    assert(game_entities_set_global_value(entities, "Camera", &camera_value) == 0);
+    arena_reset(&storage);
+    assert(game_entities_get_global_value(entities, "Camera", &storage, &result) == 0);
+    assert(result.type == PIN_HANDLE && result.u64 == ecs_entity_to_u64(camera));
+
+    pin_value zoom = { .type = PIN_F32, .type_name = "float", .f = 1.5f };
+    assert(game_entities_set_global_value(entities, "CameraZoom", &zoom) == 0);
+    arena_reset(&storage);
+    assert(game_entities_get_global_value(entities, "CameraZoom", &storage, &result) == 0);
+    assert(result.type == PIN_F32 && result.f == 1.5f);
+    service_binding *services = NULL;
+    apush(services, ((service_binding){ "game.entities", entities }));
+    eval_context context = { .services = services };
+    pin_value name = { .type = PIN_NAME, .type_name = "name", .str = "CameraZoom" };
+    arena_reset(&storage);
+    assert(get_global->read_inputs(&context, &name, &storage, &result) == NULL);
+    assert(result.type == PIN_F32 && result.f == 1.5f);
+    afree(services);
+    pin_value wrong_zoom = { .type = PIN_I32, .type_name = "int", .i = 2 };
+    assert(game_entities_set_global_value(entities, "CameraZoom", &wrong_zoom) != 0);
+
+    ecs_entity stale = ecs_world_create_entity(ecs);
+    pin_value stale_value = { .type = PIN_HANDLE,
+                              .type_name = "ecs.entity",
+                              .u64 = ecs_entity_to_u64(stale) };
+    assert(game_entities_set_global_value(entities, "Stale", &stale_value) == 0);
+    assert(ecs_world_destroy_entity(ecs, stale) == ECS_OK);
+    assert(ecs_world_apply_commands(ecs) == ECS_OK);
+    arena_reset(&storage);
+    assert(game_entities_get_global_value(entities, "Stale", &storage, &result) == 0);
+    assert(result.type == PIN_HANDLE && result.u64 == 0);
+
+    ecs_entity duplicate = ecs_world_create_entity(ecs);
+    assert(GAME_GameGlobalBinding_add(ecs, duplicate, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(ecs) == ECS_OK);
+    GAME_GameGlobalBinding_get(ecs, duplicate)->name = ecs_world_intern_string(ecs, "Player");
+    assert(game_entities_rebuild_global_bindings(entities) != 0);
+    arena_reset(&storage);
+    assert(game_entities_get_global_value(entities, "Player", &storage, &result) == 0);
+    assert(result.type == PIN_HANDLE && result.u64 == ecs_entity_to_u64(player));
+    arena_free(&storage);
+
+    game_entities_free(entities);
+    ecs_world_free(ecs);
+    puts("global values PASS: authored entity bindings and typed world values resolve with lifetime checks");
+}
+
 void test_entities()
 {
     prototype_registry_lifetime();
+    global_values();
     test_attachment_lists();
     test_attachment_index();
     test_deferred_attachments();

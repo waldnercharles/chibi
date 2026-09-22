@@ -132,6 +132,18 @@ int app_scene_authoring_set_prototype_field(
     const char *field_name,
     pin_value value
 );
+typedef struct
+{
+    const char *component, *field;
+    pin_value value;
+} app_prototype_field_change;
+/* Validates the complete edit and records one Undo step. */
+int app_scene_authoring_set_prototype_fields(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const app_prototype_field_change *changes,
+    int count
+);
 int app_scene_authoring_add_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
@@ -170,8 +182,6 @@ int app_scene_authoring_runtime_command(
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
 void app_scene_authoring_set_behavior_profiling(app_scene_authoring *scene, bool enabled);
-/* Draw live renderer controls inside the Performance pane. */
-void app_scene_authoring_draw_render_settings(app_scene_authoring *scene);
 const game_behavior_profile_frame *app_scene_authoring_behavior_profile(
     const app_scene_authoring *scene
 );
@@ -180,6 +190,7 @@ int app_scene_authoring_save_as(app_scene_authoring *scene);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_reload(app_scene_authoring *scene);
 const char *app_scene_authoring_message(const app_scene_authoring *scene);
+const char *app_scene_authoring_content_root(const app_scene_authoring *scene);
 /* Select a live host-spawned entity without adding it to the authored scene. */
 int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity);
 const char *app_scene_authoring_selected_content(const app_scene_authoring *scene);

@@ -229,7 +229,7 @@ void material_mask_rebuild(material_mask *mask)
     rectangles(mask);
 }
 
-int material_mask_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness)
+int material_mask_apply_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness)
 {
     assert(
         isfinite(x + y + radius + energy + hardness) && radius >= 0 &&
@@ -297,7 +297,7 @@ int material_mask_damage(material_mask *mask, float x, float y, float radius, fl
 
 int material_mask_carve(material_mask *mask, float x, float y, float radius)
 {
-    int removed = material_mask_damage(mask, x, y, radius, 1, 1);
+    int removed = material_mask_apply_damage(mask, x, y, radius, 1, 1);
     if (removed) {
         rectangles(mask);
     }
@@ -404,3 +404,15 @@ material_mask *material_mask_split_anchored(material_mask *mask, int min_cells, 
 {
     return split(mask, min_cells, dust, true);
 }
+
+material_mask *material_mask_extract_fragments(material_mask *mask, int minimum, bool anchored, int *dust)
+{
+    return split(mask, minimum, dust, anchored);
+}
+
+material_occupancy_view material_mask_occupancy(const material_mask *mask)
+{ return (material_occupancy_view){mask->cells,mask->distance,mask->width,mask->height,mask->count,mask->cell_size,mask->revision}; }
+material_collision_view material_mask_collision(const material_mask *mask)
+{ return (material_collision_view){mask->rects,acount(mask->rects),mask->revision}; }
+material_surface_view material_mask_surface(const material_mask *mask)
+{ return (material_surface_view){mask->surface,acount(mask->surface),mask->revision}; }

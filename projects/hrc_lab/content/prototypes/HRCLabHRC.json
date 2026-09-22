@@ -24,19 +24,21 @@
       "upscale_mode": 1,
       "upscale_threshold": 0.10000000149011612
     },
-    "GAME.GameMaterialWorld": {
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.MaterialFluidWorld": {
       "buffer": 192.0,
       "chunk_size": 256.0,
-      "fragment_limit": 96,
       "gas_cell_size": 20.0,
       "gas_drag": 0.10000000149011612,
       "gas_vorticity": 2.0,
       "kernel": 10.0,
       "particle_limit": 32768
     },
-    "game.GameTransform": {
-      "x": 0.0,
-      "y": 0.0
+    "GAME.MaterialDestructionWorld": {
+      "fragment_limit": 96
     }
   }
 }

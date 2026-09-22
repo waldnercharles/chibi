@@ -3,7 +3,9 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
+#include "editor/panels/command_palette.h"
 #include "editor/ui/ui_shell.h"
+#include "editor/ui/control.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
 #include "editor/workspace/frame_profile.h"
@@ -118,7 +120,9 @@ static int app_frame(app_loop *loop)
         CHIBI_TRACE_ZONE_BEGIN(ui_zone, "Editor UI");
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
-        editor_frame_profile_draw(&loop->profile, loop->authoring);
+        editor_frame_profile_draw(&loop->profile);
+        editor_command_palette_frame(loop->authoring);
+        editor_control_frame(loop->graph_editor, loop->authoring);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
         CHIBI_TRACE_ZONE_END(ui_zone);
     }
@@ -409,6 +413,7 @@ static char *application_checkpoint(void *state)
 
 static void application_activate(void *state)
 {
+    editor_control_open();
     app_loop *loop = state;
     editor_ui_initialize(!loop->game && !loop->headless && !loop->screenshot_path);
     if (loop->workspace) {
@@ -430,6 +435,7 @@ static void application_activate(void *state)
 
 static void application_deactivate(void *)
 {
+    editor_control_close();
     app_input_shutdown();
     editor_ui_deactivate();
 }

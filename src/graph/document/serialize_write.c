@@ -39,7 +39,9 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
                              ? "component_field"
                          : p->binding->kind == PIN_BINDING_COMPONENT
                              ? "component"
-                             : "delta_time";
+                         : p->binding->kind == PIN_BINDING_EVENT_OUTPUT
+                             ? "event_output"
+                         : "delta_time";
         yyjson_mut_val *binding = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_str(doc, binding, "kind", kind);
         if (p->binding->local_id) {
@@ -47,6 +49,12 @@ static void write_pin(yyjson_mut_doc *doc, yyjson_mut_val *arr, const pin_spec *
         }
         if (p->binding->variable_id) {
             yyjson_mut_obj_add_uint(doc, binding, "variable_id", p->binding->variable_id);
+        }
+        if (p->binding->event_node_id) {
+            yyjson_mut_obj_add_uint(doc, binding, "event_node_id", p->binding->event_node_id);
+        }
+        if (p->binding->event_pin_id) {
+            yyjson_mut_obj_add_uint(doc, binding, "event_pin_id", p->binding->event_pin_id);
         }
         if (p->binding->source_asset) {
             yyjson_mut_obj_add_str(doc, binding, "source_asset", p->binding->source_asset);
@@ -371,6 +379,7 @@ static void write_behavior_asset_graph(yyjson_mut_doc *doc, yyjson_mut_val *grap
     }
     if (g->math_expression) {
         yyjson_mut_obj_add_str(doc, obj, "math_expression", g->math_expression);
+        yyjson_mut_obj_add_int(doc, obj, "expression_mode", g->expression_mode);
     }
     write_comment_boxes(doc, obj, g);
     if (g->entry_id) {

@@ -880,9 +880,49 @@ static void physics_settings_checkpoint()
     fixture_free(&f);
 }
 
+static void checkpoint_detects_external_behavior_change()
+{
+    const char *path = "/tmp/chibi-39-behavior-source.json";
+    remove(path);
+    checkpoint_fixture f = fixture_new();
+    game_live_definition *definition = game_live_find_definition(f.live, "ReloadBehavior");
+    assert(definition && game_live_definition_set_path(definition, path) == 0);
+    char *source_json = behavior_asset_save_json(definition->working);
+    assert(source_json && write_text_file_atomic(path, source_json) == 0);
+    free(source_json);
+    char *checkpoint = app_scene_authoring_checkpoint(f.scene);
+    assert(checkpoint);
+
+    behavior_asset *external = behavior_asset_new("ReloadBehavior");
+    assert(external && graph_add_node(external->graph, registry_node_by_name("Integer")));
+    char *external_json = behavior_asset_save_json(external);
+    assert(external_json && write_text_file_atomic(path, external_json) == 0);
+    int source_nodes = acount(definition->working->graph->nodes);
+    behavior_asset_free(external);
+    fixture_free(&f);
+
+    checkpoint_fixture candidate = fixture_new();
+    assert(app_scene_authoring_restore_checkpoint(candidate.scene, checkpoint) == 0);
+    assert(acount(candidate.scene->external_behavior_changes) == 1);
+    definition = game_live_find_definition(candidate.live, "ReloadBehavior");
+    assert(definition && acount(definition->working->graph->nodes) == source_nodes);
+    const char *snapshot = scene_behavior_source_snapshot(candidate.scene, "ReloadBehavior", path);
+    assert(snapshot && strcmp(snapshot, external_json) != 0);
+    assert(reload_behavior_from_disk(candidate.scene, "ReloadBehavior") == 0);
+    assert(acount(definition->working->graph->nodes) == source_nodes + 1);
+    assert(acount(candidate.scene->external_behavior_changes) == 0);
+    snapshot = scene_behavior_source_snapshot(candidate.scene, "ReloadBehavior", path);
+    assert(snapshot && strcmp(snapshot, external_json) == 0);
+    free(external_json);
+    free(checkpoint);
+    remove(path);
+    fixture_free(&candidate);
+}
+
 static int test_scene_checkpoint()
 {
     physics_settings_checkpoint();
+    checkpoint_detects_external_behavior_change();
     asset_references_follow_authored_edits();
     shader_scene_load();
     scene_tabs_retain_authored_state();

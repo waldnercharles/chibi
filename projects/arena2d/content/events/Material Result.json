@@ -1,0 +1,71 @@
+{
+  "version": 3,
+  "name": "Material Result",
+  "domain": "event",
+  "id_counter": 8,
+  "description": "",
+  "variables": [
+    {
+      "id": 1,
+      "name": "Energy",
+      "type": 10,
+      "container": 0,
+      "default": 0.0
+    },
+    {
+      "id": 2,
+      "name": "Cause",
+      "type": 6,
+      "container": 0,
+      "default": 0
+    },
+    {
+      "id": 3,
+      "name": "Point",
+      "type": 15,
+      "type_name": "CF_V2",
+      "container": 0,
+      "default": null
+    },
+    {
+      "id": 4,
+      "name": "Kind",
+      "type": 6,
+      "container": 0,
+      "default": 0
+    },
+    {
+      "id": 5,
+      "name": "Removed",
+      "type": 6,
+      "container": 0,
+      "default": 0
+    },
+    {
+      "id": 6,
+      "name": "Dust",
+      "type": 6,
+      "container": 0,
+      "default": 0
+    },
+    {
+      "id": 7,
+      "name": "Target",
+      "type": 14,
+      "type_name": "ecs.entity",
+      "container": 0,
+      "default": null
+    }
+  ],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [],
+      "edges": []
+    }
+  ]
+}

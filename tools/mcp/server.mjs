@@ -14,6 +14,9 @@ import {
   validateAuthoringArguments,
 } from "./authoring.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
+import { editorCommand, editorCommandDefinition } from "./editor-command.mjs";
+import { chooseEditorAction, layaToolDefinition } from "./laya.mjs";
+import { computerToolCall, computerToolDefinitions, cancelComputerRequest } from "./computer-use.mjs";
 
 const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
@@ -21,9 +24,9 @@ const serverVersion = "0.2.0";
 const serverInstructions = [
   "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
   "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, describeComponents, or getProjectStatus.",
-  "2. Build with buildShader, buildBehavior, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
+  "2. Build with buildShader, buildBehavior, buildField, buildSystem, buildPrototype, or buildScene. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
-  "4. Use previewShader, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
+  "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
   "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
 ].join(" ");
 const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -812,6 +815,9 @@ function rawToolDefinitions() {
       outputSchema,
     },
     ...authoringToolDefinitions(),
+    layaToolDefinition,
+    editorCommandDefinition,
+    ...computerToolDefinitions,
   ];
 }
 
@@ -971,6 +977,13 @@ async function toolCall(name, args, requestId) {
     throw protocolError(-32602, "tools/call requires a tool name");
   }
   validateToolArguments(name, args);
+  if (name === "editorCommand") return editorCommand(args);
+  if (name === "chooseEditorAction") {
+    return chooseEditorAction(args);
+  }
+  if (computerToolDefinitions.some((tool) => tool.name === name)) {
+    return computerToolCall(name, args, requestId);
+  }
   if (isAuthoringTool(name)) {
     return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
   }
@@ -1040,6 +1053,10 @@ function withToolGuidance(name, response) {
 
 function toolResult(name, response) {
   const guidedResponse = withToolGuidance(name, response);
+  if (computerToolDefinitions.some((tool) => tool.name === name)) {
+    return { content: [{ type: "text", text: boundedJson(guidedResponse, "computer task") }],
+      structuredContent: guidedResponse, isError: guidedResponse.ok !== true };
+  }
   const authoringResult = authoringToolResult(guidedResponse, name);
   if (authoringResult) {
     return authoringResult;
@@ -1066,6 +1083,15 @@ function toolSummary(name, response) {
     return summary;
   }
   const scalarKeys = [
+    "status",
+    "reason",
+    "action_id",
+    "label",
+    "confidence",
+    "observation_hash",
+    "model",
+    "elapsed_ms",
+    "executed",
     "project_root",
     "content_root",
     "kind",
@@ -1210,6 +1236,7 @@ async function dispatch(message) {
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
       cancelAuthoringRequest(message.params.requestId);
+      cancelComputerRequest(message.params.requestId);
     }
     return null;
   }

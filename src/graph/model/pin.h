@@ -73,6 +73,7 @@ typedef enum
     PIN_BINDING_DELTA_TIME,
     PIN_BINDING_COMPONENT,
     PIN_BINDING_LOCAL,
+    PIN_BINDING_EVENT_OUTPUT,
 } pin_binding_kind;
 
 /* Authored source for an unconnected data input. Strings are owned by the
@@ -80,12 +81,15 @@ typedef enum
  * source asset is retained so clipboard copies cannot silently bind a local
  * ID from another behavior. Component bindings use component_key as the
  * stable reflected identity; field_name is NULL for a whole component or a
- * dot-delimited path for a nested field. */
+ * dot-delimited path for a nested field. Event output bindings use the event
+ * node and output pin IDs from the containing event graph. */
 typedef struct pin_binding
 {
     pin_binding_kind kind;
     uint64_t variable_id;
     uint64_t local_id;
+    uint64_t event_node_id;
+    uint64_t event_pin_id;
     const char *source_asset;
     const char *component_key;
     const char *field_name;

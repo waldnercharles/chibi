@@ -284,7 +284,14 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
     if (pin < 0 || pin >= n->output_count) {
         return error(l, n->id, "Invalid shader output pin");
     }
-    if (n->desc == &NODE_CallPureFunction) {
+    if (n->desc == &NODE_CallPureFunction || n->desc == &NODE_BehaviorExpression) {
+        graph *target = n->desc == &NODE_BehaviorExpression && s->source->owner
+                          ? behavior_asset_find_graph(s->source->owner, n->reference_id)
+                          : NULL;
+        if (n->desc == &NODE_BehaviorExpression &&
+            (!target || target->expression_mode != GRAPH_EXPRESSION_VALUE)) {
+            return error(l, n->id, "Only value expressions are supported in shader graphs");
+        }
         return call(l, s, n, pin);
     }
     if (n->desc == &NODE_FunctionEntry) {

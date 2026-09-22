@@ -156,11 +156,12 @@ static void clock_render(void *user)
     (*(int *)user)++;
 }
 
-static void clock_system(ecs_world *, double now, void *user)
+static int clock_system(ecs_world *, double now, double, void *user, flow_error *)
 {
     double *last = user;
     assert(now > *last && now - *last < ENGINE_FIXED_SECONDS + 1e-10);
     *last = now;
+    return 0;
 }
 
 static void cadence_checks()
@@ -172,7 +173,7 @@ static void cadence_checks()
             int renders = 0;
             double system_time = 0;
             engine_set_render_callback(f.runtime, clock_render, &renders);
-            assert(engine_add_system(f.runtime, clock_system, &system_time) == 0);
+            assert(engine_register_system(f.runtime, &(engine_system_desc){.name="clock",.phase=SYSTEM_POST_EVENTS,.run=clock_system,.user=&system_time}) == 0);
             assert(engine_sample_movement(f.runtime, 1, 0) == FLOW_OK);
             assert(engine_sample_aim(f.runtime, (CF_V2){ 1, 1 }, true, false) == FLOW_OK);
             for (int i = 0; i <= rates[r]; i++) {
@@ -365,7 +366,7 @@ static void spawn_cadence_checks(int count)
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     ecs_entity *children = NULL;
     double system_time = 0;
-    assert(engine_add_system(f.runtime, clock_system, &system_time) == 0);
+    assert(engine_register_system(f.runtime, &(engine_system_desc){.name="clock",.phase=SYSTEM_POST_EVENTS,.run=clock_system,.user=&system_time}) == 0);
     const int steps[] = { 1, 4, 6 };
     int frames = count == 8 ? (int)(sizeof steps / sizeof *steps) : 1;
     for (int frame = 0; frame < frames; frame++) {

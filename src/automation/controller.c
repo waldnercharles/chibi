@@ -1,4 +1,5 @@
 #include "automation/controller.h"
+#include "automation/field_preview.h"
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
@@ -59,6 +60,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "library", "libraries", ASSET_GRAPH },
     { "material", "materials", ASSET_GRAPH },
     { "shape", "shapes", ASSET_GRAPH },
+    { "field", "fields", ASSET_GRAPH },
     { "shader-library", "shader-libraries", ASSET_GRAPH },
     { "system", "systems", ASSET_SYSTEM },
     { "prototype", "prototypes", ASSET_PROTOTYPE },
@@ -276,7 +278,7 @@ static const contract_field CONTRACT_READ_RECORDING[] = {
 
 static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "query", "string", false, "Match node name, category, keywords, or pin names and types." },
-    { "domain", "string", false, "Filter to behavior or shader nodes." },
+    { "domain", "string", false, "Filter to behavior, shader, or field nodes." },
     { "pin_type", "string", false, "Require a matching pin type or struct type name." },
     { "pin_container", "string", false, "Require a matching pin container: single, array, set, or map." },
     { "pin_kind", "string", false, "Require a matching pin kind: data or exec." },
@@ -300,6 +302,7 @@ static const contract_field CONTRACT_EDIT_GRAPH[] = {
     { "graph_name", "string", false, "Unique graph name." },
     { "description", "string", false, "Top-level asset description; empty clears it." },
     { "owner_type", "string", false, "Optional owner handle type for behavior and library assets." },
+    { "query", "object|null", false, "System query; null clears the filter." },
     { "graph_description", "string", false, "Description for the selected graph; empty clears it." },
     { "operations", "array", true, "Atomic semantic edit batch, at most 128 operations." },
 };
@@ -348,6 +351,17 @@ static const contract_field CONTRACT_OPTIMIZE_GRAPH[] = {
     { "fanout_threshold", "integer", false, "Minimum compatible fanout for local alias creation; 2 through 64." },
     { "preserve_debug", "boolean", false, "Keep watched, disabled, and breakpoint graph state intact; defaults to true." },
     { "local_aliases", "boolean", false, "Create local aliases for safe high-fanout values; defaults to true." },
+};
+static const contract_field CONTRACT_PREVIEW_FIELD[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Field asset path, or use kind/name." },
+    { "kind", "string", false, "Field asset family." },
+    { "name", "string", false, "Field asset name." },
+    { "width", "integer", false, "Preview width, default 256, maximum 512." },
+    { "height", "integer", false, "Preview height, default 256, maximum 512." },
+    { "cell_size", "number", false, "Positive grid spacing, default 2, maximum 1024." },
+    { "seed", "uint32", false, "Deterministic noise seed." },
+    { "parameters", "object", false, "Typed field parameter overrides." },
 };
 static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "project_root", "string", false, "Project directory." },
@@ -436,6 +450,7 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       true,
       true,
       false },
+    { "preview_field", "Bake a pure scalar field and return a PNG preview.", CONTRACT_PREVIEW_FIELD, CONTRACT_FIELD_COUNT(CONTRACT_PREVIEW_FIELD), 1, true, true, false },
     { "preview_shader",
       "Compile a material or shape on the GPU and return a bounded PNG "
       "preview.",
@@ -1166,6 +1181,12 @@ static void catalog_scan_references(catalog_asset *asset, yyjson_val *value)
         while ((key = yyjson_obj_iter_next(&iterator))) {
             const char *field = yyjson_get_str(key);
             yyjson_val *child = yyjson_obj_iter_get_val(key);
+            if (yyjson_is_obj(child) && (!strcmp(field,"MaterialTerrain") || !strcmp(field,"GAME.MaterialTerrain"))) {
+                catalog_reference_add(asset,"field",request_string(child,"field"));
+            }
+            if (yyjson_is_obj(child) && (!strcmp(field,"EngineSystem") || !strcmp(field,"GAME.EngineSystem"))) {
+                catalog_reference_add(asset,"system",request_string(child,"asset"));
+            }
             if (yyjson_is_str(child)) {
                 const char *kind = NULL;
                 if (!strcmp(field, "reference_asset") ||
@@ -1279,14 +1300,36 @@ static void catalog_add_diagnostic(
     apush(asset->diagnostics, diagnostic);
 }
 
-static void catalog_validate_asset(catalog_asset *asset, const char *json)
+static void free_behavior_assets(behavior_asset **assets);
+static int load_behavior_family_assets(
+    const char *root,
+    const asset_family *family,
+    behavior_asset ***out,
+    char *error,
+    size_t error_size
+);
+
+static void catalog_validate_asset(const char *root, catalog_asset *asset, const char *json)
 {
     const asset_family *family = asset->asset.family;
     if (family->loader == ASSET_GRAPH) {
         behavior_asset *behavior = behavior_asset_load_json(json);
+        char link_error[256] = {0};
+        if (behavior && behavior->domain == BEHAVIOR_DOMAIN_FIELD) {
+            behavior_asset **libraries = NULL;
+            int status = load_behavior_family_assets(root, family_by_kind("library"), &libraries,
+                                                     link_error, sizeof link_error);
+            behavior_asset *linked = status == CHIBI_AUTOMATION_OK
+                ? behavior_asset_link_libraries(behavior, (const behavior_asset *const *)libraries,
+                                                acount(libraries), link_error, sizeof link_error)
+                : NULL;
+            behavior_asset_free(behavior);
+            free_behavior_assets(libraries);
+            behavior = linked;
+        }
         if (!behavior) {
             asset->errors = 1;
-            catalog_add_diagnostic(asset, "error", 0, "LOAD", graph_last_error());
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", link_error[0] ? link_error : graph_last_error());
         } else {
             compile_report report;
             compile_report_init(&report);
@@ -1499,7 +1542,7 @@ static int load_catalog_asset(
         catalog_scan_members(asset, json_root);
         catalog_scan_references(asset, json_root);
         yyjson_doc_free(document);
-        catalog_validate_asset(asset, json);
+        catalog_validate_asset(root, asset, json);
     }
     free(json);
     return 0;
@@ -1538,7 +1581,7 @@ static int build_catalog_from_entries(
 {
     catalog_asset *assets = NULL;
     for (int i = 0; i < acount(entries); i++) {
-        int previous_index = previous
+        int previous_index = previous && strcmp(entries[i].family->kind, "field")
                                ? cached_catalog_asset_index(previous, &entries[i])
                                : -1;
         if (previous_index >= 0) {
@@ -2625,6 +2668,7 @@ static yyjson_mut_val *inspect_graph_value(
     }
     if (source->math_expression) {
         yyjson_mut_obj_add_strcpy(doc, object, "math_expression", source->math_expression);
+        yyjson_mut_obj_add_int(doc, object, "expression_mode", source->expression_mode);
     }
     yyjson_val *serialized_root = document ? yyjson_doc_get_root(document) : NULL;
     yyjson_val *description = yyjson_obj_get(serialized_root, "description");
@@ -2980,7 +3024,7 @@ static int add_system_execution_status(
         reason = "generic bytecode is active; typed storage or SLJIT was "
                  "unavailable";
     }
-    const bool interpreter = has_tick && asset && !asset->graph->dataflow;
+    const bool interpreter = !bytecode && has_tick && asset && !asset->graph->dataflow;
     if (interpreter) {
         backend = "interpreter";
         reason = "this system graph requires the flow interpreter";
@@ -3392,15 +3436,6 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     free(json);
     return 0;
 }
-
-static void free_behavior_assets(behavior_asset **assets);
-static int load_behavior_family_assets(
-    const char *root,
-    const asset_family *family,
-    behavior_asset ***out,
-    char *error,
-    size_t error_size
-);
 
 static int handle_validate_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
@@ -3972,7 +4007,7 @@ static bool scenario_runtime_asset(const scenario_context *context, const asset_
 {
     const char *kind = entry->family->kind;
     return !strcmp(kind, "prototype") || !strcmp(kind, "behavior") ||
-           !strcmp(kind, "library") || !strcmp(kind, "event") ||
+           !strcmp(kind, "library") || !strcmp(kind, "event") || !strcmp(kind,"field") || !strcmp(kind,"system") ||
            (context->scene_target &&
             !strcmp(entry->relative, context->prototype_ref.relative));
 }
@@ -3985,6 +4020,24 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         return status;
     }
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
+        const char *kind=entries[i].family->kind;
+        if (!strcmp(kind,"field") || !strcmp(kind,"system")) {
+            char *name=asset_name_from_filename(entries[i].filename), *json=NULL;
+            asset_ref ref;
+            status=load_named_asset(root,entries[i].family,name,&ref,&json,NULL,NULL,error,error_size);
+            if (status==CHIBI_AUTOMATION_OK) {
+                if (!strcmp(kind,"system")) {
+                    if (game_prototype_preview_register_system(context->preview,name,json,error,error_size)!=0) { status=CHIBI_AUTOMATION_VALIDATION_ERROR; }
+                } else {
+                    behavior_asset *asset=behavior_asset_load_json(json);
+                    if (!asset || game_prototype_preview_register_behavior(context->preview,name,asset)!=0) {
+                        snprintf(error,error_size,"Could not compile field %s",name); status=CHIBI_AUTOMATION_VALIDATION_ERROR;
+                    }
+                    behavior_asset_free(asset);
+                }
+            }
+            free(name); free(json); continue;
+        }
         if (strcmp(entries[i].family->kind, "prototype")) {
             continue;
         }
@@ -6958,7 +7011,7 @@ static int handle_search_nodes(yyjson_val *request, response *result, int *exit_
     yyjson_val *pure_value = yyjson_obj_get(request, "pure");
     if ((yyjson_obj_get(request, "query") && !query) ||
         (yyjson_obj_get(request, "domain") &&
-         (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior")))) ||
+         (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior") && strcmp(domain, "field")))) ||
         (yyjson_obj_get(request, "pin_type") && (!pin_type || strlen(pin_type) > 128)) ||
         (yyjson_obj_get(request, "pin_container") &&
          (!pin_container ||
@@ -6986,7 +7039,9 @@ static int handle_search_nodes(yyjson_val *request, response *result, int *exit_
     for (int i = 0; i < registry_node_count(); i++) {
         const node_desc *node = registry_node(i);
         bool shader = node->category && !strncmp(node->category, "Shader", 6);
-        if ((domain && shader != !strcmp(domain, "shader")) ||
+        bool field = node->category && !strcmp(node->category, "Procedural Field");
+        const char *node_domain = shader ? "shader" : field ? "field" : "behavior";
+        if ((domain && strcmp(domain,node_domain)) ||
             !search_node_matches(node, query, pin_type, pin_container, pin_kind, pure_value)) {
             continue;
         }
@@ -7010,6 +7065,25 @@ static int handle_search_nodes(yyjson_val *request, response *result, int *exit_
     return 0;
 }
 
+static int handle_preview_field(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    asset_ref ref = {0}; char *json=NULL; size_t bytes; uint64_t hash; char error[256] = {0};
+    int status=load_asset(root,request,&ref,&json,&bytes,&hash,error,sizeof error);
+    if (status!=CHIBI_AUTOMATION_OK) { response_error(result,exit_code,status,error); return -1; }
+    behavior_asset *asset=behavior_asset_load_json(json); free(json);
+    behavior_asset **libraries=NULL;
+    if (!asset) {response_error(result,exit_code,CHIBI_AUTOMATION_VALIDATION_ERROR,"Invalid field asset");return -1;}
+    status=load_behavior_family_assets(root,family_by_kind("library"),&libraries,error,sizeof error);
+    behavior_asset *linked=status==CHIBI_AUTOMATION_OK ? behavior_asset_link_libraries(asset,(const behavior_asset *const *)libraries,acount(libraries),error,sizeof error) : NULL;
+    yyjson_mut_val *value=yyjson_mut_obj_add_obj(result->doc,result->root,"result");
+    add_asset_identity(result->doc,value,&ref,bytes,hash);
+    bool valid=linked && automation_field_preview(linked,request,result->doc,value,error,sizeof error);
+    behavior_asset_free(asset);behavior_asset_free(linked);free_behavior_assets(libraries);
+    if (!valid) {response_error(result,exit_code,CHIBI_AUTOMATION_VALIDATION_ERROR,error);return -1;}
+
+    return 0;
+}
+
 static int handle_edit_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     yyjson_val *create_value = yyjson_obj_get(request, "create");
@@ -7026,7 +7100,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
     asset_ref ref = { 0 };
     char error[256] = { 0 };
     if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_GRAPH) {
+        (ref.family->loader != ASSET_GRAPH && ref.family->loader != ASSET_SYSTEM)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_graph requires a graph asset");
         return -1;
     }
@@ -7101,6 +7175,29 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
             error,
             sizeof error
         );
+    }
+    if (status==CHIBI_AUTOMATION_OK && ref.family->loader==ASSET_SYSTEM) {
+        yyjson_doc *original=source ? yyjson_read(source,strlen(source),0) : NULL;
+        yyjson_val *query=yyjson_obj_get(request,"query");
+        if (!query && original) { query=yyjson_obj_get(yyjson_doc_get_root(original),"query"); }
+        game_system_document *document=game_system_document_load(edited,automation_query_component,NULL,error,sizeof error);
+        char *query_json=query ? yyjson_val_write(query,0,NULL) : NULL;
+        ecs_query_expr *expression=query && !yyjson_is_null(query)
+            ? game_query_load(query_json,automation_query_component,NULL,error,sizeof error) : NULL;
+        if (!document || (query && !yyjson_is_null(query) && !expression)) { status=CHIBI_AUTOMATION_VALIDATION_ERROR; }
+        if (status==CHIBI_AUTOMATION_OK) {
+            game_system_document_set_query(document,expression);
+            compile_report report; compile_report_init(&report);
+            if (behavior_asset_compile_for_system(game_system_document_behavior_asset(document),&report)) {
+                snprintf(error,sizeof error,"%s",compile_report_first_error(&report)->message); status=CHIBI_AUTOMATION_VALIDATION_ERROR;
+            }
+            compile_report_free(&report);
+        }
+        if (status==CHIBI_AUTOMATION_OK) {
+            char *saved=game_system_document_save(document,automation_query_component,automation_query_component_name,NULL);
+            free(edited); edited=saved;
+        }
+        ecs_query_expr_free(expression); free(query_json); game_system_document_free(document); yyjson_doc_free(original);
     }
     free_behavior_assets(libraries);
     free(name);
@@ -7735,7 +7832,7 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "execution_status") ||
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
-           !strcmp(operation, "validate_asset") ||
+           !strcmp(operation, "validate_asset") || !strcmp(operation, "preview_field") ||
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "inspect_graph") ||
@@ -7806,6 +7903,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_search_nodes(root_value, &result, exit_code);
     } else if (!strcmp(operation, "describe_components")) {
         handle_describe_components(root_value, &result, exit_code);
+    } else if (!strcmp(operation,"preview_field")) {
+        handle_preview_field(root,root_value,&result,exit_code);
     } else if (!strcmp(operation, "preview_shader")) {
         response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires chibi_ctl --render");
     } else if (!strcmp(operation, "describe_contract")) {

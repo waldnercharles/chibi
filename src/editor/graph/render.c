@@ -2,7 +2,6 @@
 #include "editor/panels/shader_inline.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
-#include "graph/model/local.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -98,7 +97,7 @@ static void ed_draw_controls_for_node(editor *e, ed_node_view *view)
         ed_pin_view *pin = &e->pins[view->input_first + p];
         int offset = ed_pin_rows(e, e->active_graph, n, ED_PIN_INPUT, p) - 1;
         const pin_spec *spec = &n->input_pins[p];
-        if (ed_vector_width(spec) && !(spec->flags & PIN_FLAG_COLOR) &&
+        if (ed_vector_width(spec) && !(spec->flags & PIN_FLAG_COLOR) && !spec->binding &&
             (!inline_source || ed_vector_source(e, n, p))) {
             offset = 1;
         }
@@ -187,6 +186,23 @@ static void ed_draw_pin(const editor *e, ImDrawList *dl, const ed_pin_view *pin,
     float stroke = ed_max(1.0f, 1.8f * e->zoom);
     ImU32 color = ed_color(ed_spec_color(spec));
     bool connected = ed_pin_connected(e->active_graph, pin);
+    char id[96], title[128], label[256];
+    snprintf(id, sizeof id, "graph.pin.%llu.%d.%d", (unsigned long long)pin->n->id, pin->kind, pin->index);
+    snprintf(
+        label,
+        sizeof label,
+        "%s · %s %s",
+        ed_node_title(e, pin->n, title, sizeof title),
+        pin->kind == ED_PIN_INPUT ? "input" : "output",
+        spec->name
+    );
+    editor_ui_track_region(
+        id,
+        label,
+        "pin",
+        connected ? "connected" : "unconnected",
+        (editor_ui_rect){ pin->pos.x - radius, pin->pos.y - radius, radius * 2, radius * 2 }
+    );
     ImU32 fill = connected ? color : IM_COL32(29, 32, 39, 255);
     if (spec->kind == PIN_EXEC) {
         ImVec2 points[] = {
@@ -422,23 +438,6 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         title = ed_dim_color(title, 0.60f);
     }
     ImDrawList_AddRectFilledEx(dl, v->min, v->max, bg, 5.0f * e->zoom, ImDrawFlags_RoundCornersAll);
-    float local_y = v->max.y;
-    for (int p = n->output_count - 1; p >= 0; p--) {
-        const graph_local *local = graph_output_local(e->active_graph, n, p);
-        if (local) {
-            local_y -= (ImGui_GetTextLineHeight() + 4.0f) * e->zoom;
-            char marker[192];
-            snprintf(marker, sizeof marker, "let %s", local->name);
-            ed_draw_text(
-                e,
-                dl,
-                (ImVec2){ v->min.x + ED_PAD * e->zoom, local_y },
-                IM_COL32(151, 193, 210, 255),
-                marker
-            );
-        }
-    }
-
     ImDrawList_AddRectFilledEx(
         dl,
         v->min,
@@ -493,6 +492,20 @@ static void ed_draw_node(editor *e, ImDrawList *dl, ed_node_view *v)
         );
     }
     char node_title[256];
+    char target_id[96];
+    snprintf(
+        target_id,
+        sizeof target_id,
+        "graph.node.%llu",
+        (unsigned long long)n->id
+    );
+    editor_ui_track_region(
+        target_id,
+        ed_node_title(e, n, node_title, sizeof node_title),
+        "node",
+        selected ? "selected" : "",
+        (editor_ui_rect){ v->min.x, v->min.y, v->max.x - v->min.x, v->title_height }
+    );
     ed_draw_text(
         e,
         dl,
@@ -617,6 +630,15 @@ void ed_draw_canvas(editor *e)
 {
     ImDrawList *dl = ImGui_GetWindowDrawList();
     ImDrawList_PushClipRect(dl, e->canvas_min, ed_add(e->canvas_min, e->canvas_size), true);
+    editor_ui_track_region(
+        "graph.canvas",
+        "Graph canvas",
+        "canvas",
+        NULL,
+        (
+            editor_ui_rect
+        ){ e->canvas_min.x, e->canvas_min.y, e->canvas_size.x, e->canvas_size.y }
+    );
     ed_draw_grid(e, dl);
     ed_draw_comment_boxes(e, dl);
     for (int i = 0; i < acount(e->active_graph->edges); i++) {

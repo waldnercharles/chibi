@@ -419,6 +419,9 @@ static int pure_call(builder *b, node *n, int pin)
     }
     int *args = NULL;
     for (int i = 0; i < n->input_count; i++) {
+        if (n->input_pins[i].kind != PIN_DATA || n->input_pins[i].field_source) {
+            continue;
+        }
         int arg = behavior_lower_input(b, n, i);
         if (arg < 0) {
             afree(args);
@@ -460,7 +463,9 @@ static int pure_call(builder *b, node *n, int pin)
         /* Evaluation computes every return, even when the caller reads only
          * one. Cache the complete call so shared expressions run once. */
         int slot = behavior_lower_input(b, ret, i);
-        while (at < n->output_count && n->output_pins[at].field_source) {
+        while (at < n->output_count &&
+               (n->output_pins[at].kind != PIN_DATA ||
+                n->output_pins[at].field_source)) {
             at++;
         }
         if (slot < 0 || at >= n->output_count ||
@@ -609,7 +614,9 @@ static int output_value(builder *b, node *n, int pin)
         }
     } else if (
         n == b->entry || n->desc == &NODE_SetVariable ||
-        n->desc == &NODE_CallFunction || behavior_lower_is_state(n->desc) ||
+        n->desc == &NODE_CallFunction ||
+        behavior_expression_mode_for(b, n) == GRAPH_EXPRESSION_ACTION ||
+        behavior_lower_is_state(n->desc) ||
         (n->desc->command && n->desc->command->begin) ||
         n->desc == &NODE_ForLoop || n->desc == &NODE_ForLoopWithBreak ||
         n->desc == &NODE_ForEach || n->desc == &NODE_ForEachWithBreak ||
@@ -720,6 +727,54 @@ static int output_value(builder *b, node *n, int pin)
         }
         if (n->desc == &NODE_Has_Any_Flags) {
             op = BF_FLAGS;
+        }
+        if (n->desc == &NODE_And || n->desc == &NODE_Or || n->desc == &NODE_Not) {
+            int condition = behavior_lower_input(b, n, 0);
+            int yes = -1;
+            int no = -1;
+            if (n->desc == &NODE_And) {
+                yes = behavior_lower_input(b, n, 1);
+                no = behavior_lower_value(
+                    b,
+                    (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                     .type = PIN_BOOL,
+                                                     .value = { .type = PIN_BOOL } }
+                );
+            } else if (n->desc == &NODE_Or) {
+                yes = behavior_lower_value(
+                    b,
+                    (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                     .type = PIN_BOOL,
+                                                     .value = { .type = PIN_BOOL, .b = true } }
+                );
+                no = behavior_lower_input(b, n, 1);
+            } else {
+                yes = behavior_lower_value(
+                    b,
+                    (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                     .type = PIN_BOOL,
+                                                     .value = { .type = PIN_BOOL } }
+                );
+                no = behavior_lower_value(
+                    b,
+                    (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                     .type = PIN_BOOL,
+                                                     .value = { .type = PIN_BOOL, .b = true } }
+                );
+            }
+            if (condition >= 0 && yes >= 0 && no >= 0 &&
+                b->function->slots[condition] == PIN_BOOL &&
+                b->function->slots[yes] == PIN_BOOL && b->function->slots[no] == PIN_BOOL) {
+                result = behavior_lower_value(
+                    b,
+                    (behavior_function_instruction){ .op = BF_SELECT,
+                                                     .type = PIN_BOOL,
+                                                     .left = condition,
+                                                     .right = yes,
+                                                     .target = no }
+                );
+                result = behavior_lower_named_constant(b, result, NULL);
+            }
         }
         bool numeric = (op >= BF_ADD && op <= BF_MOD) || op == BF_MIN || op == BF_MAX;
         if (numeric && n->input_count == 2) {
@@ -883,7 +938,13 @@ int behavior_lower_output(builder *b, node *n, int pin)
     b->suppress_trace = suppressed;
     return value;
 }
-static int edge_conversion(builder *b, int slot, const node_desc *conversion, node *n, int pin)
+int behavior_lower_apply_conversion(
+    builder *b,
+    int slot,
+    const node_desc *conversion,
+    node *n,
+    int pin
+)
 {
     if (!conversion || slot < 0) {
         return slot;
@@ -912,6 +973,71 @@ static int edge_conversion(builder *b, int slot, const node_desc *conversion, no
     }
     return behavior_lower_unsupported(b, n, pin, false, "input conversion");
 }
+
+static int behavior_lower_event_output(
+    builder *b,
+    node *n,
+    int pin,
+    const pin_binding *binding,
+    const pin_spec *target
+)
+{
+    if (!b->root_entry || b->root_entry->id != binding->event_node_id) {
+        return behavior_lower_unsupported(
+            b,
+            n,
+            pin,
+            false,
+            "event output belongs to another event"
+        );
+    }
+    int output = 0;
+    int source_pin = -1;
+    const pin_spec *source = graph_pin_by_id(
+        b->root_entry,
+        binding->event_pin_id,
+        &output,
+        &source_pin
+    );
+    if (!source || !output || source->kind != PIN_DATA) {
+        return behavior_lower_unsupported(b, n, pin, false, "event output binding");
+    }
+    int aggregate_pin = source_pin;
+    const type_field *field = graph_output_field(b->root_entry, source_pin, &aggregate_pin);
+    if (source->field_source && !field) {
+        return behavior_lower_unsupported(b, n, pin, false, "event output field");
+    }
+    const pin_spec *argument = &b->root_entry->output_pins[aggregate_pin];
+    if (argument->kind != PIN_DATA || argument->field_source) {
+        return behavior_lower_unsupported(b, n, pin, false, "event output aggregate");
+    }
+    int ordinal = 0;
+    for (int i = 0; i < aggregate_pin; i++) {
+        ordinal += b->root_entry->output_pins[i].kind == PIN_DATA &&
+                   !b->root_entry->output_pins[i].field_source;
+    }
+    int value = behavior_lower_source(b, BF_ARGUMENT, ordinal, argument, n, pin);
+    if (value < 0) {
+        return value;
+    }
+    if (field) {
+        value = behavior_lower_field(b, value, field, n, pin);
+    }
+    pin_spec actual = field ? (pin_spec){ .type = field->type,
+                                          .type_name = field->type_name,
+                                          .container = PIN_CONTAINER_SINGLE,
+                                          .kind = PIN_DATA }
+                            : *argument;
+    if (!pin_compatible(&actual, target)) {
+        const node_desc *conversion = conversion_for_pins(&actual, target);
+        if (!conversion) {
+            return behavior_lower_unsupported(b, n, pin, false, "event output binding type");
+        }
+        value = behavior_lower_apply_conversion(b, value, conversion, n, pin);
+    }
+    return behavior_lower_coerce(b, value, target, true);
+}
+
 static int input_value(builder *b, node *n, int pin)
 {
     const pin_spec *s = &n->input_pins[pin];
@@ -930,7 +1056,13 @@ static int input_value(builder *b, node *n, int pin)
             (array && array->container != s->container)) {
             return -1;
         }
-        slot = edge_conversion(b, slot, graph_input_conversion(b->graph, n, pin), n, pin);
+        slot = behavior_lower_apply_conversion(
+            b,
+            slot,
+            graph_input_conversion(b->graph, n, pin),
+            n,
+            pin
+        );
         return behavior_lower_coerce(b, slot, s, false);
     }
     if (!s->binding) {
@@ -957,12 +1089,15 @@ static int input_value(builder *b, node *n, int pin)
             pin_spec source = *s;
             source.type = variable->type;
             source.type_name = variable->type_name;
-            return behavior_lower_coerce(
-                b,
-                behavior_lower_source(b, BF_VARIABLE, index, &source, n, pin),
-                s,
-                true
-            );
+            int value = behavior_lower_source(b, BF_VARIABLE, index, &source, n, pin);
+            if (!pin_compatible(&source, s)) {
+                const node_desc *conversion = conversion_for_pins(&source, s);
+                if (!conversion) {
+                    return behavior_lower_unsupported(b, n, pin, false, "variable binding type");
+                }
+                value = behavior_lower_apply_conversion(b, value, conversion, n, pin);
+            }
+            return behavior_lower_coerce(b, value, s, true);
         }
     }
     if (binding->kind == PIN_BINDING_DELTA_TIME && s->type == PIN_F32) {
@@ -971,6 +1106,9 @@ static int input_value(builder *b, node *n, int pin)
             behavior_lower_value(b, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }),
             s->type_name
         );
+    }
+    if (binding->kind == PIN_BINDING_EVENT_OUTPUT) {
+        return behavior_lower_event_output(b, n, pin, binding, s);
     }
     return behavior_lower_unsupported(b, n, pin, false, "input binding");
 }

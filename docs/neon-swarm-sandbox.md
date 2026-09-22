@@ -1,12 +1,13 @@
-# NeonSwarm material sandbox
+# Neon Swarm material sandbox
 
-`projects/arena2d/content/scenes/NeonSwarmSandbox.json` is the Arena2D default.
+Neon Swarm lives in `projects/arena2d`. Its startup scene is
+`content/scenes/Sandbox.json`, selected by native launches and the Make targets.
 Run `make play`, or build an optimized native version:
 
 ```sh
 make build-release
 ./build-release/chibi --project-root projects/arena2d \
-  --scene content/scenes/NeonSwarmSandbox.json --play
+  --scene content/scenes/Sandbox.json --play
 ```
 
 Move with WASD or the left stick, boost with Space, and aim/fire with the mouse
@@ -19,22 +20,53 @@ scene to reset damage and consumed fuel; the current run retains them.
 
 The seeded cave spans 4096x1536 world units. Camera and movement are unconstrained
 by the old arena walls. Terrain uses two-unit cells in 128x128-cell chunks.
-`NeonSwarmCave.GameCaveTerrain` controls seed, size and passage shape. Three
+`Cave.MaterialTerrain` controls seed and size; `CaveField` and its parameters
+control passage shape. Three
 placed guardians replace the old spawn director. The alternate Arena2D scene
 and its exclusive assets have been removed; the root Arena3D project remains.
+
+Asset names describe their role within this project. `Player`, `Swarmer`,
+`Projectile`, `Camera`, and `Cave` own composition and tuning. Behavior graphs
+use expressions for small calculations and assignments, with explicit branches,
+shot loops, spawning, and contact handling. `HullDamage` is distinct from the
+`Damage` event because loaded graph assets share a name registry.
+
+| Behavior | Visible nodes before | After | Edges before | After |
+| --- | ---: | ---: | ---: | ---: |
+| Movement | 23 | 7 | 27 | 6 |
+| Pursuit | 20 | 7 | 27 | 7 |
+| Weapon | 22 | 16 | 27 | 19 |
+| CameraFollow | 6 | 4 | 5 | 3 |
+| MovementEmitter | 10 | 4 | 12 | 3 |
+| BoostEmitter | 3 | 3 | 2 | 2 |
+| HullDamage | 12 | 10 | 14 | 12 |
+| ProjectileHit | 10 | 9 | 14 | 13 |
+| ProjectileLifecycle | 11 | 7 | 13 | 6 |
+
+These counts cover the visible event graphs. Expressions retain their generated
+functions for inspection. Movement speed, weapon cooldown, and shot damage read
+the prototype's components. The short spawn-effect graphs remain separate.
+Behavior attachment keeps these rules scoped to their entities; compatible Tick
+entries can already use the runtime's compiled system loops.
+
+`FreeMotion` demonstrates a standalone System. Its query selects visible entities
+with transform and velocity, excluding physics bodies and colliders. It moves
+`DriftingMarker` in both `Sandbox` and the noncombat `MaterialStudy` scene.
+Combat, firing, and particle lifecycles remain attached behaviors.
 
 Movement targets speed 120 with acceleration 800; boost targets 240. Fire emits
 400-unit-per-second projectiles at 8 Hz with a 2.5-second lifetime. Shots start
 16 units along the ship's rendered heading, then travel toward aim. Swept contacts carry the impact point; an authored half-unit forward offset
-and four-unit damage disk cut into the contacted surface. Shots chip debris and
-continue to the next blocking body. Intact walls and live enemies stop shots.
+and four-unit damage disk cut into the contacted surface. Shots chip enemy debris
+and continue to the next blocking body. Ordinary debris, intact walls, and live
+enemies stop shots.
 
 Swarmers retain their original 20x20 dark square and red emissive border. Cuts
 leave permanent gaps. Removed chips and disconnected pieces become drifting
 rigid bodies and retain their material. Tiny/excess pieces become a small,
 non-emissive dust puff. The fragment limit is 96. Rotation remains locked.
 Each projectile hit also consumes health. The third hit, or a main hull reduced
-below 60% of its original area, releases the remaining hull as inert debris. Detached pieces flicker and lose their
+below 30% of its original area, releases the remaining hull as inert debris. Detached pieces flicker and lose their
 glow over 3.5 seconds; their collision and motion remain.
 
 Clouds, cohesive liquid blobs, fuel, smoke and engine exhaust share the optional

@@ -204,6 +204,7 @@ extern "C"
     struct flow_context;
     double flow_context_now(const struct flow_context *ctx);
     int flow_context_eval_data(struct flow_context *ctx, int input_pin, pin_value *out);
+    int flow_context_eval_output(struct flow_context *ctx, int output_pin, pin_value *out);
     int flow_context_fail(struct flow_context *ctx, int code, const char *message);
     int flow_context_pause_until(struct flow_context *ctx, double monotonic_time);
     /* Schedule EXEC with flow_context_continue before requesting a host wait.

@@ -38,6 +38,10 @@ void test_shader_effects_cpu();
 void test_shader_image_cpu();
 void test_physics();
 void test_materials();
+void test_fields();
+void test_system_schedule();
+int bench_fields();
+int bench_system_schedule();
 void test_game_capabilities();
 void test_player_widgets();
 void test_dash();
@@ -99,7 +103,7 @@ TEST_CASE(all_checks)
     test_projectile();
     test_combat();
     test_physics();
-    test_materials();
+    test_materials();test_fields();test_system_schedule();
     test_game_capabilities();
     test_player_widgets();
     test_dash();
@@ -167,6 +171,11 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--radiance")) {
         extern int radiance_run(const char *program);
         return radiance_run(program_name);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
+        registry_validate();
+        test_math_expression();
+        return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();
@@ -729,8 +738,11 @@ int main(int argc, char **argv)
         test_encounter();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--material-engine")) { test_fields();test_system_schedule();return fails ? 1 : 0; }
+    if (argc > 1 && !strcmp(argv[1], "--bench-fields")) {return bench_fields();}
+    if (argc > 1 && !strcmp(argv[1], "--bench-system-schedule")) {return bench_system_schedule();}
     if (argc > 1 && strcmp(argv[1], "--materials") == 0) {
-        test_materials();
+        test_materials();test_fields();test_system_schedule();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--simulation") == 0) {

@@ -1,4 +1,6 @@
+#include "editor/panels/field_details.h"
 #include "editor/panels/shader_details.h"
+#include "editor/ui/choices.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
@@ -79,7 +81,12 @@ static int ed_draw_variable_default(editor *e, behavior_variable *v)
         case PIN_F64:
             changed = ImGui_InputDoubleEx(id, &value.d, 0.1, 0.0, "%.12g", 0);
             break;
-        case PIN_ENUM: changed = ImGui_InputInt(id, &value.e); break;
+        case PIN_ENUM: {
+            const editor_choices *choices = editor_choices_for_enum(value.type_name);
+            changed = choices ? editor_choices_draw("variable.enum", &value.e, choices)
+                              : ImGui_InputInt(id, &value.e);
+            break;
+        }
         case PIN_STR: {
             snprintf(e->edit_text, sizeof e->edit_text, "%s", value.str ? value.str : "");
             changed = ImGui_InputTextMultilineEx(
@@ -421,7 +428,7 @@ static void ed_draw_math_graph_name(editor *e, graph *g)
 
 static void ed_draw_math_source(editor *e, node *n)
 {
-    const char *source = math_expression_source(e->asset, n);
+    const char *source = behavior_expression_source(e->asset, n);
     if (!source) {
         return;
     }
@@ -432,7 +439,7 @@ static void ed_draw_math_source(editor *e, node *n)
         e->math_capacity = strlen(source) + 256;
         e->math_text = xrealloc(e->math_text, e->math_capacity);
         snprintf(e->math_text, e->math_capacity, "%s", source);
-        e->math_error = (math_expression_error){ 0 };
+        e->expression_error = (behavior_expression_error){ 0 };
     }
     graph *generated = behavior_asset_find_graph(e->asset, n->reference_id);
     assert(generated && generated->math_expression);
@@ -449,7 +456,7 @@ static void ed_draw_math_source(editor *e, node *n)
     );
     editor_ui_track_item("math.expression");
     if (ImGui_IsItemEdited()) {
-        e->math_error = (math_expression_error){ 0 };
+        e->expression_error = (behavior_expression_error){ 0 };
     }
     bool changed = strcmp(e->math_text, source) != 0;
     ImGui_SameLine();
@@ -458,10 +465,10 @@ static void ed_draw_math_source(editor *e, node *n)
     }
     editor_ui_track_item("math.inspect");
     if (apply && changed) {
-        editor_set_math_expression(e, n, e->math_text, &e->math_error);
+        editor_set_behavior_expression(e, n, e->math_text, &e->expression_error);
     }
-    if (e->math_error.message[0]) {
-        ImGui_TextWrapped("%s (column %d)", e->math_error.message, e->math_error.offset + 1);
+    if (e->expression_error.message[0]) {
+        ImGui_TextWrapped("%s (column %d)", e->expression_error.message, e->expression_error.offset + 1);
         editor_ui_track_item("math.error");
     }
 }
@@ -480,7 +487,7 @@ void ed_draw_details(editor *e)
         return;
     }
     if (e->active_graph->math_expression) {
-        ImGui_TextUnformatted("Generated math graph · Read-only");
+        ImGui_TextUnformatted("Generated Behavior Expression graph · Read-only");
         ed_draw_math_graph_name(e, e->active_graph);
         ImGui_TextWrapped("%s", e->active_graph->math_expression);
         ImGui_End();
@@ -488,6 +495,7 @@ void ed_draw_details(editor *e)
     }
     if (!e->selected_variable && !acount(e->selected) && !acount(e->selected_links)) {
         ed_draw_shader_details(e, NULL);
+        ed_draw_field_details(e);
         if (e->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
             e->asset->domain != BEHAVIOR_DOMAIN_SHAPE &&
             e->asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {

@@ -1,0 +1,5 @@
+services:
+  laya:
+    environment:
+      LAYA_DEVICE: cuda
+    gpus: all

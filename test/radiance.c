@@ -827,47 +827,62 @@ static bool medium_pixels(render_material_raster *raster)
     params.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
     CF_Texture incident = cf_make_texture(params);
     float received[] = { .4f, .5f, .6f, 1 };
-    cf_texture_update(incident, received, sizeof received);
-    float albedo[] = { .25f, .5f, .75f, 1 };
-    cf_app_update(NULL);
-    ok &= render_material_raster_draw(raster, NULL, 0, view);
-    render_material_textures textures = render_material_raster_textures(raster);
-    CF_Texture optical = render_medium_draw(draw, field, textures, view, SIDE, SIDE);
-    float zero = 0, one = 1, depth = 30, crop[] = { 0, 0, 1, 1 };
-    cf_draw_push();
-    cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
-    cf_draw_push_shader(composite);
-    cf_draw_set_texture("scene_tex", textures.scene);
-    cf_draw_set_texture("fluence_tex", incident);
-    cf_draw_set_texture("emission_tex", textures.emission);
-    cf_draw_set_texture("absorption_tex", textures.absorption);
-    cf_draw_set_texture("albedo_tex", textures.albedo);
-    cf_draw_set_texture("normal_tex", textures.normal);
-    cf_draw_set_texture("background_tex", background);
-    cf_draw_set_texture("visibility_tex", textures.scene);
-    cf_draw_set_texture("medium_tex", optical);
-    const char *zeros[] = { "ambient", "debug_view", "shadow_floor", "fog", "dither_phase" };
-    for (int i = 0; i < 5; i++) {
-        cf_draw_set_uniform(zeros[i], &zero, CF_UNIFORM_TYPE_FLOAT, 1);
-    }
-    cf_draw_set_uniform("intensity", &one, CF_UNIFORM_TYPE_FLOAT, 1);
-    cf_draw_set_uniform("medium_depth", &depth, CF_UNIFORM_TYPE_FLOAT, 1);
-    cf_draw_set_uniform("medium_albedo", albedo, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT, 4);
-    cf_draw_quad_fill((CF_Aabb){ { -64, -64 }, { 64, 64 } }, 0);
-    cf_draw_pop_shader();
-    cf_render_to(canvas, true);
-    cf_draw_pop();
-    cf_app_draw_onto_screen(false);
-    ok &= read_pixels(canvas, image, PIXELS);
-    CF_Pixel actual = image[104 * SIDE + 64];
-    unsigned char rgb[] = { actual.colors.r, actual.colors.g, actual.colors.b };
-    for (int c = 0; c < 3; c++) {
-        double linear = exp(-.3) * 64 / 255.0 +
-                        (1 - exp(-.3)) * albedo[c] * received[c];
-        double expected = 255 * (1.055 * pow(linear, 1 / 2.4) - .055);
-        ok &= fabs(rgb[c] - expected) <= 2;
-        printf("medium scattering channel=%d: display=%d expected=%.2f\n", c, rgb[c], expected);
+    for (int optical_path = 0; optical_path < 2; optical_path++) {
+        float scale = optical_path ? 100000 : 0;
+        float encoded[4] = { received[0], received[1], received[2], 1 };
+        if (optical_path) {
+            for (int c = 0; c < 3; c++) {
+                encoded[c] /= scale;
+            }
+        }
+        cf_texture_update(incident, encoded, sizeof encoded);
+        float albedo[] = { .25f, .5f, .75f, 1 };
+        cf_app_update(NULL);
+        ok &= render_material_raster_draw(raster, NULL, 0, view);
+        render_material_textures textures = render_material_raster_textures(raster);
+        CF_Texture optical = render_medium_draw(draw, field, textures, view, SIDE, SIDE);
+        float zero = 0, one = 1, depth = 30, crop[] = { 0, 0, 1, 1 };
+        cf_draw_push();
+        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+        cf_draw_push_shader(composite);
+        cf_draw_set_texture("scene_tex", textures.scene);
+        cf_draw_set_texture("fluence_tex", optical_path ? textures.scene : incident);
+        cf_draw_set_texture(
+            "optical_direct_tex",
+            optical_path ? incident : textures.scene
+        );
+        cf_draw_set_texture("optical_surface_tex", textures.scene);
+        cf_draw_set_uniform("optical_display_scale", &scale, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_draw_set_texture("emission_tex", textures.emission);
+        cf_draw_set_texture("absorption_tex", textures.absorption);
+        cf_draw_set_texture("albedo_tex", textures.albedo);
+        cf_draw_set_texture("normal_tex", textures.normal);
+        cf_draw_set_texture("background_tex", background);
+        cf_draw_set_texture("visibility_tex", textures.scene);
+        cf_draw_set_texture("medium_tex", optical);
+        const char *zeros[] = { "ambient", "debug_view", "shadow_floor", "fog", "dither_phase" };
+        for (int i = 0; i < 5; i++) {
+            cf_draw_set_uniform(zeros[i], &zero, CF_UNIFORM_TYPE_FLOAT, 1);
+        }
+        cf_draw_set_uniform("intensity", &one, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_draw_set_uniform("medium_depth", &depth, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_draw_set_uniform("medium_albedo", albedo, CF_UNIFORM_TYPE_FLOAT4, 1);
+        cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT, 4);
+        cf_draw_quad_fill((CF_Aabb){ { -64, -64 }, { 64, 64 } }, 0);
+        cf_draw_pop_shader();
+        cf_render_to(canvas, true);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(false);
+        ok &= read_pixels(canvas, image, PIXELS);
+        CF_Pixel actual = image[104 * SIDE + 64];
+        unsigned char rgb[] = { actual.colors.r, actual.colors.g, actual.colors.b };
+        for (int c = 0; c < 3; c++) {
+            double linear = exp(-.3) * 64 / 255.0 +
+                            (1 - exp(-.3)) * albedo[c] * received[c];
+            double expected = 255 * (1.055 * pow(linear, 1 / 2.4) - .055);
+            ok &= fabs(rgb[c] - expected) <= 2;
+            printf("medium scattering optical=%d channel=%d: display=%d expected=%.2f\n", optical_path, c, rgb[c], expected);
+        }
     }
     cf_destroy_texture(incident);
     cf_destroy_shader(composite);
@@ -1315,6 +1330,7 @@ int test_radiance()
 {
     extern bool test_radiance_intervals();
     extern bool test_radiance_medium();
+    extern bool test_radiance_prefilter();
     extern bool test_optics();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
@@ -1534,6 +1550,7 @@ int test_radiance()
     ok &= light_ok;
     ok &= test_radiance_intervals();
     ok &= test_radiance_medium();
+    ok &= test_radiance_prefilter();
     ok &= test_optics();
     if (canvas.id) {
         cf_destroy_canvas(canvas);

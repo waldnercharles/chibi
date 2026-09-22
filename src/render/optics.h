@@ -16,6 +16,8 @@ typedef struct
 {
     /* Angular mean radiance, isotropic source per world length, surface radiance. */
     CF_Texture direct, source, surface;
+    /* Direct/surface use scaled RGBA16F; source remains unscaled RGBA32F. */
+    float display_scale;
 } render_optical_field;
 render_optics *render_optics_new();
 void render_optics_free(render_optics *optics);

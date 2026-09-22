@@ -2,6 +2,10 @@
 
 September 21, 2026. Follow-up to `gi-experiments.md`.
 
+Status: this remains an experimental candidate. Current implementation work
+focuses on the [integrated HRC scene renderer](scene-renderer-optimization.md).
+The experiments below have not earned replacing it.
+
 Later follow-up: [conservative angular transfer and surface-band transport](directional-flux-transport.md).
 It identifies a discrete flux error in the initial directional operator below.
 

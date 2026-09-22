@@ -21,6 +21,7 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     float fog;
     float dither_phase;
     float medium_depth;
+    float optical_display_scale;
     vec4 medium_albedo;
     vec4 crop_uv;
 };
@@ -36,8 +37,8 @@ vec4 shader(vec4 color, ShaderParams params)
     vec3 albedo = texture(albedo_tex, source_uv).rgb;
     vec3 fluence = max(texture(fluence_tex, source_uv).rgb, vec3(0.0));
     vec4 normal = texture(normal_tex, source_uv);
-    vec3 optical_direct = texture(optical_direct_tex, source_uv).rgb;
-    vec3 optical_surface = texture(optical_surface_tex, source_uv).rgb;
+    vec3 optical_direct = texture(optical_direct_tex, source_uv).rgb * optical_display_scale;
+    vec3 optical_surface = texture(optical_surface_tex, source_uv).rgb * optical_display_scale;
 
     int mode = int(debug_view + 0.5);
     if (mode == 1) return scene;

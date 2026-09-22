@@ -34,6 +34,33 @@ vec3 sample_bounce(vec2 uv)
     return textureLod(u_bounce,uv,lod).rgb;
 }
 
+// A block spans at most two bilinear interpolation regions at these LODs.
+// Within each region, averaging samples equals sampling their weighted mean.
+vec4 axis_taps(int start, int count, float center, float inv_sigma,
+               float inv_canvas, int texels)
+{
+    float first = (float(start) + .5) * inv_canvas;
+    float split = (floor(first * float(texels) - .5) + 1.5) / float(texels);
+    vec2 weights = vec2(0), positions = vec2(0);
+    for (int i = 0; i < count; i++) {
+        float pixel = float(start + i) + .5;
+        float uv = pixel * inv_canvas, d = pixel - center;
+        float weight = exp(-d * d * inv_sigma);
+        int side = uv < split ? 0 : 1;
+        weights[side] += weight;
+        positions[side] += weight * uv;
+    }
+    return vec4(positions / max(weights, vec2(1e-20)), weights / (weights.x + weights.y));
+}
+
+vec4 filtered_taps(sampler2D input_tex, vec4 x, vec4 y, float lod)
+{
+    return textureLod(input_tex, vec2(x.x, y.x), lod) * x.z * y.z +
+           textureLod(input_tex, vec2(x.y, y.x), lod) * x.w * y.z +
+           textureLod(input_tex, vec2(x.x, y.y), lod) * x.z * y.w +
+           textureLod(input_tex, vec2(x.y, y.y), lod) * x.w * y.w;
+}
+
 void main()
 {
 	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
@@ -105,6 +132,28 @@ void main()
 	vec4 emission_sum = vec4(0.0);
 	vec3 bounce_sum = vec3(0.0);
 	float tau_sum = 0.0;
+
+    // Capped lighting commonly has one history texel per work cell. Collapse
+    // the full material block to four reads per field instead of sx * sy reads.
+    // Keep the fractional history-LOD path below for other grid ratios.
+    ivec2 history_size = textureSize(u_bounce, 0);
+    if ((sx > 2 || sy > 2) && all(equal(history_size, ivec2(u_work_w, u_work_h)))) {
+        ivec2 mip_size = textureSize(u_emission, int(emission_lod));
+        vec2 inv_canvas = 1.0 / vec2(u_canvas_w, u_canvas_h);
+        vec4 ex = axis_taps(x0, sx, cx, inv2s2_x, inv_canvas.x, mip_size.x);
+        vec4 ey = axis_taps(y0, sy, cy, inv2s2_y, inv_canvas.y, mip_size.y);
+        vec4 tx = axis_taps(x0, sx, cx, 0.0, inv_canvas.x, mip_size.x);
+        vec4 ty = axis_taps(y0, sy, cy, 0.0, inv_canvas.y, mip_size.y);
+        vec4 bx = axis_taps(x0, sx, cx, inv2s2_x, inv_canvas.x, history_size.x);
+        vec4 by = axis_taps(y0, sy, cy, inv2s2_y, inv_canvas.y, history_size.y);
+        vec4 emission = filtered_taps(u_emission, ex, ey, emission_lod);
+        vec3 bounce = filtered_taps(u_bounce, bx, by, 0.0).rgb;
+        float tau = dot(filtered_taps(u_transmittance, tx, ty, emission_lod).rgb, vec3(1.0 / 3.0));
+        imageStore(u_emission_out, gid, emission);
+        imageStore(u_transmittance_out, gid, vec4(tau, 0, 0, 0));
+        imageStore(u_bounce_out, gid, vec4(bounce, 1));
+        return;
+    }
 
 	// Small blocks: uniform average (Gaussian weights ≈ equal at this size).
 	if (sx <= 2 && sy <= 2) {

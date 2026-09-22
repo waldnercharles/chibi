@@ -116,7 +116,7 @@ def render(args, output, runner, scene, scale, repeat):
         name=scene,
         frames=1,
         render_frames=args.render_frames,
-        freeze_simulation=True,
+        freeze_simulation=not args.animate,
         width=args.width,
         height=args.height,
     )
@@ -140,9 +140,14 @@ def render(args, output, runner, scene, scale, repeat):
     if not response.get('ok'):
         raise RuntimeError(response)
     result = response['result']
-    if result['initial_state'] != result['final_state']:
+    if not args.animate and result['initial_state'] != result['final_state']:
         raise RuntimeError('frozen fixture changed simulation state')
+    if args.animate and (result['final_state']['frame'] - result['initial_state']['frame']
+                         != args.render_frames):
+        raise RuntimeError('animated fixture did not advance every measured frame')
     performance = result['performance']
+    if performance['frozen'] == args.animate:
+        raise RuntimeError('renderer used the wrong simulation mode')
     if abs(performance['hrc_scale'] - scale) > 1e-6:
         raise RuntimeError(f'requested HRC scale {scale}, rendered {performance["hrc_scale"]}')
     if not performance.get('hidden_window'):
@@ -160,6 +165,7 @@ def render(args, output, runner, scene, scale, repeat):
         upscale_mode=args.upscale_mode,
         upscale_mode_name=UPSCALE_MODE_NAMES[args.upscale_mode],
         adaptive=False,
+        frozen=not args.animate,
         width=args.width,
         height=args.height,
         purpose='metal-capture' if args.metal_capture else 'benchmark',
@@ -182,7 +188,8 @@ def render(args, output, runner, scene, scale, repeat):
 def compare_frozen(output, reports):
     comparisons = []
     for candidate in reports:
-        if candidate.get('purpose') != 'benchmark' or candidate['scale'] == 1:
+        if (candidate.get('purpose') != 'benchmark' or candidate['scale'] == 1
+                or not candidate['performance']['frozen']):
             continue
         reference = next((item for item in reports
                           if item.get('purpose') == 'benchmark'
@@ -210,13 +217,14 @@ def summary(output, reports, comparisons=()):
     }
     lines = [
         '# HRC lab results', '',
-        'Frozen scenes use 240 renderer warmup frames and discard the first 16 measured frames.',
+        'Runs warm the renderer for 240 frames with simulation frozen, then discard the first 16 measured frames.',
         'Hidden-window scene time includes GPU completion and excludes visible presentation; it is not a per-dispatch GPU timestamp.', '',
         f'Reconstruction mode: {reports[0]["upscale_mode"]} ({reports[0]["upscale_mode_name"]}).' if reports else '',
         '',
+        'Animated runs include simulation; frozen runs measure the renderer only.',
         'Every row links to its captured `frame.png`.', '',
-        '| Scene | HRC work scale | Median ms | p95 ms | p99 ms | Mean RGB error vs 1.0 | Screenshot |',
-        '| --- | ---: | ---: | ---: | ---: | ---: | --- |',
+        '| Scene | Frozen | HRC work scale | Median ms | p95 ms | p99 ms | Mean RGB error vs 1.0 | Screenshot |',
+        '| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |',
     ]
     for report in reports:
         performance = report.get('performance')
@@ -227,7 +235,7 @@ def summary(output, reports, comparisons=()):
         error = '—' if metrics is None else f'{metrics["mean_absolute_rgb_8bit"]:.2f}'
         link = f'[{report["directory"]}/frame.png]({report["directory"]}/frame.png)'
         lines.append(
-            f'| {report["scene"]} | {report["scale"]:g} | '
+            f'| {report["scene"]} | {performance["frozen"]} | {report["scale"]:g} | '
             f'{performance["median_ms"]:.2f} | {performance["p95_ms"]:.2f} | '
             f'{performance["p99_ms"]:.2f} | {error} | {link} |')
     lines += ['', 'GPU capture label groups:', '']
@@ -252,6 +260,8 @@ def main():
     parser.add_argument('--render-frames', type=int, default=180)
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--metal-capture', action='store_true')
+    parser.add_argument('--animate', action='store_true',
+                        help='advance fixed-step simulation during measured frames')
     args = parser.parse_args()
     if not 17 <= args.render_frames <= 1200 or args.repeat < 1:
         parser.error('use 17..1200 render frames and a positive repeat count')

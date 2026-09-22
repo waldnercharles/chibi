@@ -33,6 +33,7 @@ struct render_optics
     CF_Material material;
     CF_StorageBuffer shapes, lights, nodes, accumulator;
     CF_Texture direct, source, surface, black;
+    float display_scale;
     int width, height, shape_capacity, light_capacity, node_capacity;
     optical_shape *geometry, *previous;
     optical_node *tree;
@@ -99,7 +100,7 @@ const char *render_optics_error(const render_optics *r)
 }
 render_optical_field render_optics_field(const render_optics *r)
 {
-    return (render_optical_field){ r->direct, r->source, r->surface };
+    return (render_optical_field){ r->direct, r->source, r->surface, r->display_scale };
 }
 
 static bool fail(render_optics *r, const char *error)
@@ -239,7 +240,8 @@ static bool resize(render_optics *r, int width, int height)
             cf_destroy_texture(*textures[i]);
         }
         CF_TextureParams p = cf_texture_defaults(width, height);
-        p.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+        p.pixel_format = i == 1 ? CF_PIXEL_FORMAT_R32G32B32A32_FLOAT
+                                : CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         p.filter = CF_FILTER_LINEAR;
         p.usage = CF_TEXTURE_USAGE_SAMPLER_BIT |
                   CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
@@ -377,7 +379,13 @@ bool render_optics_draw(
                       hypotf(cx, cy) / (area * 6.2831853f),
                       fmaxf(1 / (area * 3.14159265f), 1 / (2 * fminf(cx, cy)))
                   );
-    float control[] = { 1e9f / fmaxf(bound, 1), view.width / width, fminf(cx, cy) * 1e-4f, 0 };
+    /* Keep filtered display fields within half-float range even for bright
+     * lights or small world cells. The source retains full precision for HRC. */
+    r->display_scale = fmaxf(1, bound / 32768);
+    float control[] = { 1e9f / fmaxf(bound, 1),
+                        view.width / width,
+                        fminf(cx, cy) * 1e-4f,
+                        r->display_scale };
     float camera[] = { view.min_x, -view.max_y, view.width, view.height };
     int grid[] = { w, h, acount(r->geometry), light_count };
     int limits[] = { budget.rays, budget.events, acount(r->tree), 0 };

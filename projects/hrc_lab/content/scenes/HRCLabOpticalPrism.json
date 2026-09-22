@@ -154,16 +154,16 @@
       "prototype": "HRCLabGlass",
       "components": {
         "GameTransform": {
-          "x": 205,
-          "y": 50
+          "x": 100,
+          "y": -170
         },
         "GameAppearance": {
           "shape": 0,
-          "width": 16,
-          "height": 240
+          "width": 12,
+          "height": 190
         },
         "GameOrientation": {
-          "radians": -0.48
+          "radians": 1.57079632679
         },
         "GameOpticalSurface": {
           "ior": 1,

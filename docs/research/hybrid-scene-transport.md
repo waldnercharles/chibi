@@ -1,9 +1,10 @@
 # Integrated optical transport reference
 
 September 21, 2026. Worktree `.worktrees/gi-research`, based on `0f9de0ea`.
-This is a working hybrid reference, not a final renderer selection. See
-[the unified solver follow-up](unified-directional-transport.md) for the current
-research direction.
+This integrated HRC renderer is the current development baseline. See
+[scene renderer optimization](scene-renderer-optimization.md) for current work.
+The [unified solver experiments](unified-directional-transport.md) have not
+justified replacing HRC.
 
 ## Implemented
 
@@ -65,7 +66,8 @@ Artifacts live under ignored `build-release/hybrid-evidence`:
 - `lens-balanced-4k`: 480 diffuse/optical grids, 2048 rays, two repeats,
   medians 17.03 / 16.94 ms; p95 18.23 / 18.42 ms.
 - `prism-balanced-4k`: same budgets, medians 17.05 / 16.93 ms;
-  p95 18.27 / 18.38 ms. The fixture needs mirror placement refinement.
+  p95 18.27 / 18.38 ms. The fixture originally missed the mirror; the placement is corrected in the
+  later optimization follow-up.
 
 All are hidden-window, frozen-scene, uninstrumented completion timings on the
 shared development host. They exclude simulation, visible presentation and

@@ -134,5 +134,6 @@ const char *render_scene_optics_draw(
     inputs->optical_direct = field.direct;
     inputs->optical_source = field.source;
     inputs->optical_surface = field.surface;
+    inputs->optical_display_scale = field.display_scale;
     return NULL;
 }

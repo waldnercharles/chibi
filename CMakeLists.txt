@@ -609,6 +609,7 @@ add_executable(test_suite
     test/radiance.c
     test/radiance_intervals.c
     test/radiance_medium.c
+    test/radiance_prefilter.c
     test/interior_border.c
     test/sdf_coverage.c
     test/draw_backend.cpp

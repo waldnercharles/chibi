@@ -26,6 +26,7 @@ typedef struct
     CF_Texture scene, emission, absorption, albedo, normal, background,
         visibility, medium;
     CF_Texture optical_direct, optical_source, optical_surface;
+    float optical_display_scale; /* Multiplier for direct and surface fields. */
     CF_Color medium_scattering;
     float medium_depth; /* Camera path length in canvas pixels. */
 } render_radiance_inputs;

@@ -952,6 +952,7 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
         "optical_surface_tex",
         inputs.optical_surface.id ? inputs.optical_surface : hrc->black
     );
+    cf_draw_set_uniform("optical_display_scale", &inputs.optical_display_scale, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("medium_albedo", &inputs.medium_scattering, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("medium_depth", &inputs.medium_depth, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);

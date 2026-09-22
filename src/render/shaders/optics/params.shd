@@ -2,7 +2,7 @@ layout(set=2,binding=0) uniform Params {
     vec4 u_view; // Y-down origin, extent
     ivec4 u_grid; // width, height, shape count, light count
     ivec4 u_budget; // rays, interface events
-    vec4 u_control; // fixed-point scale, canvas pixel world size, epsilon, unused
+    vec4 u_control; // fixed-point scale, canvas pixel world size, epsilon, display scale
     vec4 u_scattering;
 };
 const float PI=3.14159265359;

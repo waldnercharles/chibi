@@ -7,6 +7,8 @@
 
 /* External reflected types are emitted alongside component descriptors. */
 extern const type_desc GAME_T_CF_V2;
+extern const ecs_component_desc GAME_COMPONENT_EngineSystem;
+extern const EngineSystem *GAME_EngineSystem_get_const(const ecs_world *, ecs_entity);
 
 extern const ecs_component_desc GAME_COMPONENT_GameCombustion;
 extern const GameCombustion *GAME_GameCombustion_get_const(const ecs_world *, ecs_entity);
@@ -25,11 +27,19 @@ extern const ecs_component_desc GAME_COMPONENT_GameDrive;
 extern GameDrive *GAME_GameDrive_get(ecs_world *, ecs_entity);
 extern const GameDrive *GAME_GameDrive_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameDrive_add(ecs_world *, ecs_entity, uint64_t);
-extern const ecs_component_desc GAME_COMPONENT_GameMaterialWorld;
-extern const GameMaterialWorld *GAME_GameMaterialWorld_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialFluidWorld;
+extern const MaterialFluidWorld *GAME_MaterialFluidWorld_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialDestructionWorld;
+extern const MaterialDestructionWorld *GAME_MaterialDestructionWorld_get_const(
+    const ecs_world *,
+    ecs_entity
+);
+extern const ecs_component_desc GAME_COMPONENT_MaterialBreakProfile;
+extern const MaterialBreakProfile *GAME_MaterialBreakProfile_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameDestructible;
-extern const ecs_component_desc GAME_COMPONENT_GameCaveTerrain;
-extern const GameCaveTerrain *GAME_GameCaveTerrain_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialTerrain;
+extern MaterialTerrain *GAME_MaterialTerrain_get(ecs_world *, ecs_entity);
+extern const MaterialTerrain *GAME_MaterialTerrain_get_const(const ecs_world *, ecs_entity);
 extern const GameDestructible *GAME_GameDestructible_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameFragmentGlow;
 extern const GameFragmentGlow *GAME_GameFragmentGlow_get_const(const ecs_world *, ecs_entity);
@@ -49,6 +59,12 @@ extern const GameVelocity *GAME_GameVelocity_get_const(const ecs_world *, ecs_en
 extern int GAME_GameVelocity_has(const ecs_world *, ecs_entity);
 extern int GAME_GameVelocity_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameVelocity_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameGlobalBinding;
+extern GameGlobalBinding *GAME_GameGlobalBinding_get(ecs_world *, ecs_entity);
+extern const GameGlobalBinding *GAME_GameGlobalBinding_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameGlobalBinding_has(const ecs_world *, ecs_entity);
+extern int GAME_GameGlobalBinding_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameGlobalBinding_remove(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_GameTransform;
 extern const ecs_component_desc GAME_COMPONENT_GameEnvironment;
 extern const ecs_component_desc GAME_COMPONENT_GamePointLight;

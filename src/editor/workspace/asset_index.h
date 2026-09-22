@@ -16,6 +16,7 @@ typedef enum
     ASSET_INDEX_EVENT,
     ASSET_INDEX_MATERIAL,
     ASSET_INDEX_SHAPE,
+    ASSET_INDEX_FIELD,
     ASSET_INDEX_LIBRARY,
     ASSET_INDEX_SYSTEM,
     ASSET_INDEX_KIND_COUNT,
@@ -94,6 +95,7 @@ const asset_index_binding_usage *asset_index_binding_usage_at(const asset_index 
 
 int asset_index_asset_count(const asset_index *index);
 const asset_index_asset *asset_index_asset_at(const asset_index *index, int position);
+bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind);
 int asset_index_reference_count(const asset_index *index);
 const asset_index_reference *asset_index_reference_at(const asset_index *index, int position);
 int asset_index_score(const asset_index_asset *asset, const char *query);

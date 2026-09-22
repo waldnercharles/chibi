@@ -60,6 +60,18 @@ static node *find_node_type(graph *graph, const char *type)
     return NULL;
 }
 
+static int find_pin(const node *n, const char *name, bool output)
+{
+    const pin_spec *pins = output ? n->output_pins : n->input_pins;
+    int count = output ? n->output_count : n->input_count;
+    for (int i = 0; i < count; i++) {
+        if (pins[i].name && !strcmp(pins[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static bool result_has_node_ref(yyjson_mut_doc *doc, const char *name)
 {
     yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
@@ -101,6 +113,43 @@ void test_automation_graph_edit(void)
                        strstr(edited, "\"type\": \"Integer\"") &&
                        yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "nodes");
     test_check(behavior_ok, "MCP graph edits add typed behavior nodes and return refs");
+    yyjson_mut_doc_free(response);
+    free(edited);
+
+    edited = NULL;
+    response = NULL;
+    status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        NULL,
+        0,
+        "{\"operations\":[{\"op\":\"add_node\",\"ref\":\"expression\","
+        "\"type\":\"Behavior Expression\",\"source\":\"x >= 0\"},"
+        "{\"op\":\"set_expression\",\"node\":\"expression\","
+        "\"source\":\"x < 10\"}]}",
+        &edited,
+        &response
+    );
+    behavior_asset *expression_result = edited ? behavior_asset_load_json(edited)
+                                               : NULL;
+    node *expression = expression_result
+                         ? find_node_type(expression_result->graph, "Behavior Expression")
+                         : NULL;
+    graph *expression_graph = expression_result && expression
+                                ? behavior_asset_find_graph(
+                                      expression_result,
+                                      expression->reference_id
+                                  )
+                                : NULL;
+    bool expression_edit = status == CHIBI_AUTOMATION_OK && expression_graph &&
+                           expression_graph->expression_mode == GRAPH_EXPRESSION_BRANCH &&
+                           find_pin(expression, "Exec", false) >= 0 &&
+                           find_pin(expression, "True", true) >= 0 &&
+                           find_pin(expression, "False", true) >= 0 &&
+                           find_pin(expression, "Result", true) >= 0;
+    test_check(expression_edit, "MCP graph edits add and update Behavior Expression nodes");
+    behavior_asset_free(expression_result);
     yyjson_mut_doc_free(response);
     free(edited);
 

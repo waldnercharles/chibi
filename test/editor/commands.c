@@ -1,4 +1,5 @@
 #include "editor/graph/search.h"
+#include "editor/panels/field_details.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/event_catalog.h"
@@ -8,28 +9,103 @@
 static pin_spec g_editor_float_outputs[] = {
     { "Value", PIN_F32, "float", PIN_DATA },
 };
+static pin_spec g_editor_vector_outputs[] = {
+    { "Value", PIN_STRUCT, "CF_V2", PIN_DATA },
+};
 static pin_spec g_editor_float_inputs[] = {
     { "Value", PIN_F32, "float", PIN_DATA },
+};
+static pin_spec g_editor_double_inputs[] = {
+    { "Value", PIN_F64, "double", PIN_DATA },
+};
+static pin_spec g_editor_vector_inputs[] = {
+    { "Value", PIN_STRUCT, "CF_V2", PIN_DATA },
+};
+static pin_spec g_editor_vector_constructor_inputs[] = {
+    { "X", PIN_F32, "float", PIN_DATA },
+    { "Y", PIN_F32, "float", PIN_DATA },
 };
 static pin_spec g_editor_int_inputs[] = {
     { "Value", PIN_I32, "int", PIN_DATA },
     { "Condition", PIN_BOOL, "bool", PIN_DATA },
+};
+static pin_spec g_editor_single_value_inputs[] = {
+    { "Integer", PIN_I32, "int", PIN_DATA },
+    { "UInt", PIN_U32, "uint", PIN_DATA },
+    { "Enum", PIN_ENUM, "Mode", PIN_DATA },
+    { "String", PIN_STR, "const char *", PIN_DATA },
+    { "Name", PIN_NAME, "name", PIN_DATA },
+};
+static pin_spec g_editor_multi_value_inputs[] = {
+    { "Vector", PIN_STRUCT, "CF_V2", PIN_DATA },
+    { "Color", PIN_U32, "uint", PIN_DATA, .flags = PIN_FLAG_COLOR },
+    { "Array", PIN_I32, "int", PIN_DATA, .container = PIN_CONTAINER_ARRAY },
+    { "Struct", PIN_STRUCT, "CustomStruct", PIN_DATA },
+    { "Flags", PIN_U32, "uint", PIN_DATA },
 };
 static node_desc g_editor_float_sink_desc = {
     .name = "editor_float_sink",
     .input_count = 1,
     .inputs = g_editor_float_inputs,
 };
+static node_desc g_editor_double_sink_desc = {
+    .name = "editor_double_sink",
+    .input_count = 1,
+    .inputs = g_editor_double_inputs,
+};
 static node_desc g_editor_float_desc = {
     .name = "editor_float_source",
     .output_count = 1,
     .outputs = g_editor_float_outputs,
+};
+static node_desc g_editor_vector_desc = {
+    .name = "editor_vector_source",
+    .output_count = 1,
+    .outputs = g_editor_vector_outputs,
+};
+static node_desc g_editor_vector_sink_desc = {
+    .name = "editor_vector_sink",
+    .input_count = 1,
+    .inputs = g_editor_vector_inputs,
+};
+static node_desc g_editor_vector_constructor_desc = {
+    .name = "editor_vector_constructor",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = g_editor_vector_constructor_inputs,
+    .outputs = g_editor_vector_outputs,
+    .pure_kind = NODE_PURE_MAKE,
 };
 static node_desc g_editor_int_desc = {
     .name = "editor_int_sink",
     .input_count = 2,
     .inputs = g_editor_int_inputs,
 };
+static node_desc g_editor_single_value_desc = {
+    .name = "editor_single_value_sink",
+    .input_count = 5,
+    .inputs = g_editor_single_value_inputs,
+};
+static node_desc g_editor_multi_value_desc = {
+    .name = "editor_multi_value_sink",
+    .input_count = 5,
+    .inputs = g_editor_multi_value_inputs,
+};
+static const editor_flag g_editor_flags[] = {
+    { 1u, "One" },
+};
+static const editor_flags g_editor_flag_catalog = {
+    g_editor_flags,
+    1,
+};
+
+static const editor_flags *editor_test_flags(const node *n, int output, int pin, void *user)
+{
+    (void)user;
+    return !output && n->desc == &g_editor_multi_value_desc && pin == 4
+             ? &g_editor_flag_catalog
+             : NULL;
+}
 
 static int make_editor_save_path(char *path, size_t path_size)
 {
@@ -156,6 +232,198 @@ static void check_linked_preview()
     behavior_asset_free(library);
 }
 
+static void check_inline_node_layout()
+{
+    behavior_asset *asset = behavior_asset_new("Inline node layout");
+    editor *e = editor_new(asset);
+    node *source = asset ? graph_add_node(asset->graph, &g_editor_vector_desc) : NULL;
+    node *target = asset ? graph_add_node(asset->graph, &g_editor_vector_sink_desc)
+                         : NULL;
+    node *constructor = asset ? graph_add_node(asset->graph, &g_editor_vector_constructor_desc)
+                              : NULL;
+    node *constructor_target = asset ? graph_add_node(asset->graph, &g_editor_vector_sink_desc)
+                                     : NULL;
+    node *scalar_source = asset ? graph_add_node(asset->graph, &g_editor_float_desc)
+                                : NULL;
+    node *scalar_target = asset ? graph_add_node(asset->graph, &g_editor_float_sink_desc)
+                                : NULL;
+    bool vector_compact = false;
+    bool constructor_rows = false;
+    bool scalar_compact = false;
+    if (e && source && target) {
+        assert(graph_connect_data(asset->graph, source, 0, target, 0) == 0);
+        assert(graph_set_node_inline(asset->graph, source, true) == 0);
+        vector_compact = ed_pin_rows(e, asset->graph, target, ED_PIN_INPUT, 0) == 1;
+    }
+    if (e && constructor && constructor_target) {
+        assert(graph_connect_data(asset->graph, constructor, 0, constructor_target, 0) == 0);
+        assert(graph_set_node_inline(asset->graph, constructor, true) == 0);
+        constructor_rows = ed_pin_rows(e, asset->graph, constructor_target, ED_PIN_INPUT, 0) >
+                           1;
+    }
+    if (e && scalar_source && scalar_target) {
+        assert(graph_connect_data(asset->graph, scalar_source, 0, scalar_target, 0) == 0);
+        assert(graph_set_node_inline(asset->graph, scalar_source, true) == 0);
+        scalar_compact = ed_pin_rows(e, asset->graph, scalar_target, ED_PIN_INPUT, 0) == 1;
+    }
+    test_check(vector_compact, "vector-valued inline sources share the target label row");
+    test_check(constructor_rows, "inline vector constructors retain multiple value rows");
+    test_check(scalar_compact, "scalar inline nodes share the target label row");
+    if (e) {
+        editor_free(e);
+    } else {
+        behavior_asset_free(asset);
+    }
+}
+
+static void check_value_layout()
+{
+    behavior_asset *asset = behavior_asset_new("Value layout");
+    editor *e = editor_new(asset);
+    node *single = asset ? graph_add_node(asset->graph, &g_editor_single_value_desc)
+                         : NULL;
+    node *multi = asset ? graph_add_node(asset->graph, &g_editor_multi_value_desc)
+                        : NULL;
+    bool single_rows = false;
+    bool multi_rows = false;
+    if (e && single && multi) {
+        editor_set_flags_resolver(e, editor_test_flags, NULL);
+        single_rows = true;
+        for (int pin = 0; pin < single->input_count; pin++) {
+            single_rows &= ed_pin_rows(e, asset->graph, single, ED_PIN_INPUT, pin) == 1;
+        }
+        multi_rows = true;
+        for (int pin = 0; pin < multi->input_count; pin++) {
+            multi_rows &= ed_pin_rows(e, asset->graph, multi, ED_PIN_INPUT, pin) > 1;
+        }
+    }
+    test_check(single_rows, "single-value inputs share the target label row");
+    test_check(multi_rows, "multi-value inputs retain multiple value rows");
+    if (e) {
+        editor_free(e);
+    } else {
+        behavior_asset_free(asset);
+    }
+}
+
+static void check_context_layout()
+{
+    behavior_asset *asset = behavior_asset_new("Context layout");
+    editor *e = editor_new(asset);
+    const node_desc *fractal_desc = registry_node_by_name("Shader Fractal Noise");
+    node *fractal = asset && fractal_desc ? graph_add_node(asset->graph, fractal_desc)
+                                          : NULL;
+    bool compact = false;
+    if (e && fractal) {
+        compact = ed_pin_rows(e, asset->graph, fractal, ED_PIN_INPUT, 0) == 1;
+    }
+    test_check(compact, "contextual vector inputs share the target label row");
+    if (e) {
+        editor_free(e);
+    } else {
+        behavior_asset_free(asset);
+    }
+}
+
+static void check_bound_scalar_layout()
+{
+    behavior_asset *asset = behavior_asset_new("Bound scalar layout");
+    editor *e = editor_new(asset);
+    node *target = asset ? graph_add_node(asset->graph, &g_editor_double_sink_desc)
+                         : NULL;
+    pin_binding binding = { .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = "GAME.GameOrientation",
+                            .field_name = "radians" };
+    bool compact = false;
+    if (e && target) {
+        assert(graph_set_pin_binding(asset->graph, target, 0, 0, &binding) == 0);
+        compact = ed_pin_rows(e, asset->graph, target, ED_PIN_INPUT, 0) == 1;
+    }
+    test_check(compact, "scalar bindings share the target label row");
+    if (e) {
+        editor_free(e);
+    } else {
+        behavior_asset_free(asset);
+    }
+}
+
+static void check_bound_vector_layout()
+{
+    behavior_asset *asset = behavior_asset_new("Bound vector layout");
+    editor *e = editor_new(asset);
+    node *target = asset ? graph_add_node(asset->graph, &g_editor_vector_sink_desc)
+                         : NULL;
+    pin_binding binding = { .kind = PIN_BINDING_COMPONENT,
+                            .component_key = "GAME.GameVelocity" };
+    bool compact = false;
+    if (e && target) {
+        assert(graph_set_pin_binding(asset->graph, target, 0, 0, &binding) == 0);
+        compact = ed_pin_rows(e, asset->graph, target, ED_PIN_INPUT, 0) == 1;
+    }
+    test_check(compact, "vector component bindings share the target label row");
+    if (e) {
+        editor_free(e);
+    } else {
+        behavior_asset_free(asset);
+    }
+}
+
+static void check_component_struct_layout()
+{
+    behavior_asset *asset = behavior_asset_new("Component struct layout");
+    editor *e = editor_new(asset);
+    const node_desc *desc = registry_node_by_name("SetEntity_GameTransform");
+    node *target = asset && desc ? graph_add_node(asset->graph, desc) : NULL;
+    bool value_single_row = false;
+    bool value_control_aligned = false;
+    if (e && target) {
+        pin_binding binding = { .kind = PIN_BINDING_COMPONENT,
+                                .component_key = "game.GameTransform" };
+        assert(graph_set_pin_binding(asset->graph, target, 0, 2, &binding) == 0);
+        value_single_row = ed_pin_rows(e, asset->graph, target, ED_PIN_INPUT, 2) == 1;
+
+        ImGuiIO *io = ImGui_GetIO();
+        io->DisplaySize = (ImVec2){ 800, 600 };
+        io->DeltaTime = 1.0f / 60.0f;
+        ImFontAtlas_Build(io->Fonts);
+        e->icon_font = ed_find_font("Chibi Body");
+        e->math_font = ed_find_font("Chibi Math");
+        ImGui_NewFrame();
+        ImGui_SetNextWindowPos((ImVec2){ 0, 0 }, ImGuiCond_Always);
+        ImGui_SetNextWindowSize((ImVec2){ 800, 600 }, ImGuiCond_Always);
+        ImGui_Begin("Component struct layout", NULL, ImGuiWindowFlags_NoSavedSettings);
+        e->canvas_min = ImGui_GetCursorScreenPos();
+        e->canvas_size = ImGui_GetContentRegionAvail();
+        e->pan = (ImVec2){ 0, 0 };
+        e->zoom = 1.0f;
+        ed_build_layout(e);
+        ed_draw_canvas(e);
+        ImVec2 control_min = ImGui_GetItemRectMin();
+        ImVec2 control_max = ImGui_GetItemRectMax();
+        const ed_pin_view *value_pin = NULL;
+        for (int i = 0; i < acount(e->pins); i++) {
+            if (e->pins[i].n == target && e->pins[i].kind == ED_PIN_INPUT &&
+                e->pins[i].index == 2) {
+                value_pin = &e->pins[i];
+                break;
+            }
+        }
+        float control_center = (control_min.y + control_max.y) * 0.5f;
+        value_control_aligned = value_pin &&
+                                control_center - value_pin->pos.y > -0.1f &&
+                                control_center - value_pin->pos.y < 0.1f;
+        ImGui_End();
+        ImGui_EndFrame();
+    }
+    test_check(value_single_row, "component setter values use one graph row");
+    test_check(value_control_aligned, "component setter value controls share their pin row");
+    if (e) {
+        editor_free(e);
+    } else {
+        behavior_asset_free(asset);
+    }
+}
+
 static void check_search_catalog()
 {
     behavior_asset *asset = behavior_asset_new("Search catalog");
@@ -199,7 +467,7 @@ static void check_search_catalog()
                                   "Compute Velocity",
                                   "Compute Velocity",
                                   "Get Trail Budget",
-                                  "Math Expression" };
+                                  "Behavior Expression" };
     for (int i = 0; i < 5; i++) {
         ed_search_match *matches = ed_search_matches(e, fuzzy_queries[i]);
         test_check(acount(matches) > 0 && !strcmp(matches[0].name, fuzzy_names[i]), "ranked node search handles reordered words, initials and transposed letters");
@@ -271,6 +539,9 @@ static void check_search_catalog()
             "inserts the selected symbol once"
         );
     }
+    int comment_count = acount(asset->graph->comment_boxes);
+    search_popup_insert(e, "Comment Box");
+    test_check(acount(asset->graph->comment_boxes) == comment_count + 1, "typing Comment Box in the context popup inserts a comment box from the standard results");
     node *event = graph_add_node(asset->graph, &NODE_Event);
     ed_snapshot_before(e);
     e->spawn_link_pending = true;
@@ -318,9 +589,66 @@ static void check_search_catalog()
     );
     afree(shader_matches);
     behavior_asset_free(shader_library);
+    behavior_asset *fields = behavior_asset_new("ScalarFields");
+    fields->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    graph *disc = behavior_asset_add_function(fields, "Disc", true);
+    node *disc_return = graph_node_by_id(disc, disc->return_id);
+    graph_add_pin(disc, disc_return, 0, &(pin_spec){ .name = "Value", .type = PIN_F32 });
+    graph_add_node(disc, registry_node_by_name("Field Circle"));
+    asset->domain = BEHAVIOR_DOMAIN_FIELD;
+    const behavior_asset *field_assets[] = { fields };
+    editor_set_asset_catalog(e, field_assets, 1);
+    ed_search_match *field_matches = ed_search_matches(e, "ScalarFields / Disc");
+    node *field_call = acount(field_matches) ? ed_spawn_match(e, &field_matches[0])
+                                             : NULL;
+    test_check(
+        field_call && field_call->desc == &NODE_CallPureFunction &&
+            field_call->reference_asset &&
+            !strcmp(field_call->reference_asset, "ScalarFields"),
+        "field search inserts pure scalar library functions"
+    );
+    afree(field_matches);
+    field_matches = ed_search_matches(e, "Print String");
+    test_check(!acount(field_matches), "field search excludes host effects");
+    afree(field_matches);
+    behavior_asset_free(fields);
     editor_free(e);
     behavior_asset_free(library);
     behavior_asset_free(event_definition);
+}
+
+static void check_field_preview()
+{
+    behavior_asset *asset = behavior_asset_new("Field preview");
+    asset->domain = BEHAVIOR_DOMAIN_FIELD;
+    node *x = graph_add_node(asset->graph, registry_node_by_name("Field X"));
+    node *y = graph_add_node(asset->graph, registry_node_by_name("Field Y"));
+    node *disc = graph_add_node(asset->graph, registry_node_by_name("Field Circle"));
+    node *out = graph_add_node(asset->graph, registry_node_by_name("Field Output"));
+    graph_set_pin_default(asset->graph, disc, 0, 2, &(pin_value){ .type = PIN_F32, .f = 40 });
+    graph_connect_data(asset->graph, x, 0, disc, 0);
+    graph_connect_data(asset->graph, y, 0, disc, 1);
+    graph_connect_data(asset->graph, disc, 0, out, 0);
+    editor *e = editor_new(asset);
+    ImGui_NewFrame();
+    ImGui_Begin("Field details", NULL, 0);
+    ed_draw_field_details(e);
+    ImGui_End();
+    ImGui_Render();
+    test_check(
+        e->field_preview_valid && e->field_values[32 * 64 + 32] < 0 &&
+            e->field_values[0] > 0,
+        "field Details bakes and draws the authored contour"
+    );
+    graph_set_pin_default(asset->graph, disc, 0, 2, &(pin_value){ .type = PIN_F32, .f = 80 });
+    e->edit_revision++;
+    ImGui_NewFrame();
+    ImGui_Begin("Field details", NULL, 0);
+    ed_draw_field_details(e);
+    ImGui_End();
+    ImGui_Render();
+    test_check(e->field_preview_valid && e->field_values[32 * 64 + 32] < -70, "field Details refreshes after an authored edit");
+    editor_free(e);
 }
 
 static void check_library_search_snapshot()
@@ -552,6 +880,7 @@ void run_editor_command_checks(void)
     check_linked_preview();
     check_search_catalog();
     check_library_search_snapshot();
+    check_field_preview();
     check_typed_wire_search();
     check_binding_target_stability();
     char save_path[512];
@@ -778,5 +1107,11 @@ void run_editor_command_checks(void)
     );
     remove(save_path);
     editor_free(e);
+    check_inline_node_layout();
+    check_value_layout();
+    check_context_layout();
+    check_bound_scalar_layout();
+    check_bound_vector_layout();
+    check_component_struct_layout();
     ImGui_DestroyContext(context);
 }

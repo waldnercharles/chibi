@@ -316,18 +316,36 @@ typedef enum
 {
     NEW_SCENE,
     NEW_PROTOTYPE,
-    NEW_BEHAVIOR
+    NEW_BEHAVIOR,
+    NEW_LIBRARY,
+    NEW_SHADER_LIBRARY,
+    NEW_EVENT,
+    NEW_MATERIAL,
+    NEW_FIELD,
+    NEW_SHAPE,
+    NEW_ASSET_COUNT
 } new_asset_kind;
+
+static const struct
+{
+    const char *label, *id;
+    behavior_domain domain;
+} NEW_ASSETS[] = {
+    { "Scene", "content.new_scene", BEHAVIOR_DOMAIN_EVENT },
+    { "Prototype", "content.new_prototype", BEHAVIOR_DOMAIN_EVENT },
+    { "Behavior", "content.new_behavior", BEHAVIOR_DOMAIN_EVENT },
+    { "Function Library", "content.new_library", BEHAVIOR_DOMAIN_LIBRARY },
+    { "Shader Function Library", "content.new_shader_library", BEHAVIOR_DOMAIN_SHADER_LIBRARY },
+    { "Event Definition", "content.new_event", BEHAVIOR_DOMAIN_EVENT_DEFINITION },
+    { "Material", "content.new_material", BEHAVIOR_DOMAIN_MATERIAL },
+    { "Procedural Field", "content.new_field", BEHAVIOR_DOMAIN_FIELD },
+    { "Shape", "content.new_shape", BEHAVIOR_DOMAIN_SHAPE },
+};
 
 static void draw_create_asset(app_scene_authoring *scene, new_asset_kind kind, char *name)
 {
-    static const char *descriptions[] = {
-        "Start with an empty 2D scene.",
-        "Create a reusable object. Add components to give it form and "
-        "behavior.",
-        "Build logic with events, values and connections.",
-    };
-    static const char *buttons[] = { "Create Scene", "Create Prototype", "Create Behavior" };
+    char button[64];
+    snprintf(button, sizeof button, "Create %s", NEW_ASSETS[kind].label);
     ImVec2 viewport = ImGui_GetMainViewport()->Size;
     float dialog_width = fminf(400.0f, viewport.x - 32.0f);
     ImGui_SetNextWindowPosEx(
@@ -337,36 +355,28 @@ static void draw_create_asset(app_scene_authoring *scene, new_asset_kind kind, c
     );
     ImGui_SetNextWindowSize((ImVec2){ dialog_width, 0 }, ImGuiCond_Always);
     if (ImGui_BeginPopupModal("Create Asset", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui_TextWrapped("%s", descriptions[kind]);
-        ImGui_Spacing();
         ImGui_TextUnformatted("Name");
         if (ImGui_IsWindowAppearing()) {
             ImGui_SetKeyboardFocusHere();
         }
         ImGui_SetNextItemWidth(-1);
         bool submit = ImGui_InputText("##name", name, 128, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
-        editor_ui_track_item("scene.new.name");
+        editor_ui_track_control("scene.new.name", "Asset name", "textbox", name);
         if (scene->message[0]) {
             ImGui_PushStyleColorImVec4(ImGuiCol_Text, (ImVec4){ 1.0f, 0.55f, 0.55f, 1.0f });
             ImGui_TextWrapped("%s", scene->message);
             ImGui_PopStyleColor();
-        } else {
-            ImGui_TextDisabled(
-                "%s",
-                kind != NEW_SCENE ? "Save to keep this asset in your project."
-                                  : "Saved in the scenes folder."
-            );
         }
         ImGui_Spacing();
         bool cancel = ImGui_ButtonEx("Cancel", (ImVec2){ 90, 32 });
-        editor_ui_track_item("scene.new.cancel");
+        editor_ui_track_control("scene.new.cancel", "Cancel", "button", NULL);
         ImGui_SameLine();
         ImGui_BeginDisabled(!name[0]);
         bool create = ImGui_ButtonEx(
-            buttons[kind],
+            button,
             (ImVec2){ ImGui_GetContentRegionAvail().x, 32 }
         );
-        editor_ui_track_item("scene.new.create");
+        editor_ui_track_control("scene.new.create", button, "button", NULL);
         ImGui_EndDisabled();
         if (name[0] && (create || submit)) {
             int result = -1;
@@ -375,8 +385,8 @@ static void draw_create_asset(app_scene_authoring *scene, new_asset_kind kind, c
                 case NEW_PROTOTYPE:
                     result = create_new_prototype(scene, name);
                     break;
-                case NEW_BEHAVIOR:
-                    result = create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT, name);
+                default:
+                    result = create_graph_asset(scene, NEW_ASSETS[kind].domain, name);
                     break;
             }
             if (!result) {
@@ -403,43 +413,19 @@ static void draw_files(app_scene_authoring *scene)
     if (ImGui_Button("+ New")) {
         ImGui_OpenPopup("create_asset", 0);
     }
-    editor_ui_track_item("content.create");
+    editor_ui_track_control("content.create", "New asset", "button", NULL);
     if (ImGui_BeginPopup("create_asset", 0)) {
-        if (ImGui_MenuItem("Scene")) {
-            create = true;
-            kind = NEW_SCENE;
+        for (int i = 0; i < NEW_ASSET_COUNT; i++) {
+            if (ImGui_MenuItem(NEW_ASSETS[i].label)) {
+                create = true;
+                kind = i;
+            }
+            editor_ui_track_control(NEW_ASSETS[i].id, NEW_ASSETS[i].label, "menuitem", NULL);
         }
-        editor_ui_track_item("content.new_scene");
-        if (ImGui_MenuItem("Behavior")) {
-            create = true;
-            kind = NEW_BEHAVIOR;
-        }
-        editor_ui_track_item("content.new_behavior");
-        if (ImGui_MenuItem("Function Library")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_LIBRARY, NULL);
-        }
-        if (ImGui_MenuItem("Shader Function Library")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_SHADER_LIBRARY, NULL);
-        }
-        if (ImGui_MenuItem("Event Definition")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_EVENT_DEFINITION, NULL);
-        }
-        if (ImGui_MenuItem("Material")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_MATERIAL, NULL);
-        }
-        if (ImGui_MenuItem("Shape")) {
-            create_graph_asset(scene, BEHAVIOR_DOMAIN_SHAPE, NULL);
-        }
-        if (ImGui_MenuItem("Prototype")) {
-            create = true;
-            kind = NEW_PROTOTYPE;
-        }
-        editor_ui_track_item("content.new_prototype");
         ImGui_EndPopup();
     }
     if (create) {
-        static const char *names[] = { "NewScene", "NewPrototype", "NewBehavior" };
-        snprintf(name, sizeof name, "%s", names[kind]);
+        name[0] = '\0';
         scene->message[0] = 0;
         ImGui_OpenPopup("Create Asset", 0);
     }
@@ -547,11 +533,14 @@ void draw_navigator(app_scene_authoring *scene)
         const behavior_asset *asset = editor_behavior_asset(scene->graph_editor);
         if (asset && (asset->domain == BEHAVIOR_DOMAIN_EVENT ||
                       asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                      asset->domain == BEHAVIOR_DOMAIN_SHAPE)) {
+                      asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                      asset->domain == BEHAVIOR_DOMAIN_FIELD)) {
             asset_index_kind kind = asset->domain == BEHAVIOR_DOMAIN_MATERIAL
                                       ? ASSET_INDEX_MATERIAL
                                   : asset->domain == BEHAVIOR_DOMAIN_SHAPE
                                       ? ASSET_INDEX_SHAPE
+                                  : asset->domain == BEHAVIOR_DOMAIN_FIELD
+                                      ? ASSET_INDEX_FIELD
                                       : ASSET_INDEX_BEHAVIOR;
             const asset_index *index = app_scene_authoring_asset_index(scene);
             draw_asset_references(

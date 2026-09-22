@@ -1,0 +1,4357 @@
+{
+  "method": "Before/after direct resolvers on identical regression cases and catalog; same local CPU service. Not interleaved or repeated latency runs.",
+  "previous_direct": {
+    "heldout": {
+      "cases": 46,
+      "supported": 40,
+      "correct_resolution": 12,
+      "resolution_rate": 0.3,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 1,
+      "p50_seconds": 2.1819022710551508,
+      "p95_seconds": 3.606379541102797
+    },
+    "fresh": {
+      "cases": 12,
+      "supported": 10,
+      "correct_resolution": 3,
+      "resolution_rate": 0.3,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 2.1835718539659865,
+      "p95_seconds": 2.9498382500605658
+    },
+    "all": {
+      "cases": 58,
+      "supported": 50,
+      "correct_resolution": 15,
+      "resolution_rate": 0.3,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 1,
+      "p50_seconds": 2.1819022710551508,
+      "p95_seconds": 3.606379541102797
+    }
+  },
+  "retired_interpreter": {
+    "heldout": {
+      "cases": 46,
+      "supported": 40,
+      "correct_resolution": 40,
+      "resolution_rate": 1.0,
+      "automatic_coverage": 0.75,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 0.3545073120039888,
+      "p95_seconds": 0.4836281669558957
+    },
+    "fresh": {
+      "cases": 12,
+      "supported": 10,
+      "correct_resolution": 4,
+      "resolution_rate": 0.4,
+      "automatic_coverage": 0.3,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 0.0014445625129155815,
+      "p95_seconds": 0.6584462079918012
+    },
+    "all": {
+      "cases": 58,
+      "supported": 50,
+      "correct_resolution": 44,
+      "resolution_rate": 0.88,
+      "automatic_coverage": 0.66,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 0.34511108353035524,
+      "p95_seconds": 0.5239713330520317
+    }
+  },
+  "current": {
+    "development": {
+      "cases": 0,
+      "supported": 0,
+      "correct_resolution": 0,
+      "resolution_rate": 0.0,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 0,
+      "p95_seconds": 0
+    },
+    "calibration": {
+      "cases": 0,
+      "supported": 0,
+      "correct_resolution": 0,
+      "resolution_rate": 0.0,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 0,
+      "p95_seconds": 0
+    },
+    "heldout": {
+      "cases": 46,
+      "supported": 40,
+      "correct_resolution": 29,
+      "resolution_rate": 0.725,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 2,
+      "p50_seconds": 0.7241451254230924,
+      "p95_seconds": 1.307396834017709
+    },
+    "fresh": {
+      "cases": 12,
+      "supported": 10,
+      "correct_resolution": 7,
+      "resolution_rate": 0.7,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 0,
+      "p50_seconds": 0.8054498750134371,
+      "p95_seconds": 2.1456615830538794
+    },
+    "all": {
+      "cases": 58,
+      "supported": 50,
+      "correct_resolution": 36,
+      "resolution_rate": 0.72,
+      "automatic_coverage": 0.0,
+      "wrong_automatic": 0,
+      "unsupported_with_operations": 2,
+      "p50_seconds": 0.7325666669639759,
+      "p95_seconds": 1.9652202499564737
+    },
+    "corpus_sha256": "9885a320e3a386c4fdeab319dec102e1ae3850098306db536752da5e0705d418",
+    "resolver": "direct",
+    "resolver_sha256": "6adadd11a7dc799538bc8c676bcb9ba0f04260b31831af0e7cb058668a7debca"
+  },
+  "current_wrong_nonempty": 9,
+  "model": {
+    "max_len": 512,
+    "head_max_len": 192,
+    "max_questions": 6,
+    "max_option_tokens": 48,
+    "config_sha256": "09be4eba68942b64f9e04fa8493e03bae65017887b7d8005f368a2598cf348fd",
+    "tokenizer_sha256": "f64652c0d4292921662f8a34068ed38c9db4a8e78daae667eaff88a30494ef8b",
+    "encoder": "answerdotai/ModernBERT-large",
+    "device": "cpu"
+  },
+  "hashes": {
+    "resolve.py": "6adadd11a7dc799538bc8c676bcb9ba0f04260b31831af0e7cb058668a7debca",
+    "objects.py": "36b3a2a4bad652bc26efcf9a5c0f7abab857e1f3e86d8b10e76ce0eab0fbd73f",
+    "values.py": "b4a277143946395c56720665b73746a25080a4cdcd43dafc26ffc2558b2f076b",
+    "provider.py": "92599848448f9004248bf65eab985d0ba8d279e1a54cdf733cbc42b0d8c71a58",
+    "evals/catalog.json": "2b104f8785ebb3e43fed7c73dd7326bffb661dfb9596e829916be43a19ed57a4",
+    "evals/direct-probes.jsonl": "91c77367cd1d20fe45c3b39211f6e1e54040812249e5fce2b5845f386ea0c789"
+  },
+  "historical_cases": [
+    {
+      "id": "command-003",
+      "split": "heldout",
+      "command": "Change the boost emitter particle color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4411556670675054,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-003",
+      "split": "heldout",
+      "command": "Change the boost emitter particle color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.31319283391349,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-006",
+      "split": "heldout",
+      "command": "Change the boost emitter particle end color to blue",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.6165083330124617,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-006",
+      "split": "heldout",
+      "command": "Change the boost emitter particle end color to blue",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3527549169957638,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-009",
+      "split": "heldout",
+      "command": "Change the boost emitter particle color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.305243166978471,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-009",
+      "split": "heldout",
+      "command": "Change the boost emitter particle color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.6322148330509663,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-012",
+      "split": "heldout",
+      "command": "Change the boost emitter particle end color to white",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.558773791999556,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-012",
+      "split": "heldout",
+      "command": "Change the boost emitter particle end color to white",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3600962080527097,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-015",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.38707095803692937,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-015",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.5563712500734255,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-018",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 1000",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 3.5831343749305233,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-018",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 1000",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4703947090310976,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-021",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.45114112505689263,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-021",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 4.3589510419406,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-024",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle end color to blue",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 3.225232125027105,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        },
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 65348
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 3
+    },
+    {
+      "id": "command-024",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle end color to blue",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.35337908298242837,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-027",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3556355410255492,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-027",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.2548825840931386,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-030",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle end color to white",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 3.3867499580373988,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        },
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 4294967108
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 3
+    },
+    {
+      "id": "command-030",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle end color to white",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4709074159618467,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-033",
+      "split": "heldout",
+      "command": "Set TrailEmitter rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4836281669558957,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-033",
+      "split": "heldout",
+      "command": "Set TrailEmitter rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.8032105420716107,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-036",
+      "split": "heldout",
+      "command": "Set TrailEmitter rate to 1000",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.399970290949568,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-036",
+      "split": "heldout",
+      "command": "Set TrailEmitter rate to 1000",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.45459616696462035,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-039",
+      "split": "heldout",
+      "command": "Increase Marker width by 10 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 110.00000000000001
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4590320830466226,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 110.00000000000001
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-039",
+      "split": "heldout",
+      "command": "Increase Marker width by 10 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 110.00000000000001
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.9121149169513956,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-042",
+      "split": "heldout",
+      "command": "Decrease Marker width by 20",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 80
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.7485694580245763,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-042",
+      "split": "heldout",
+      "command": "Decrease Marker width by 20",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 80
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.41419054206926376,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 80.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-045",
+      "split": "heldout",
+      "command": "double the Marker height",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 100
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3959206249564886,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 100
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-045",
+      "split": "heldout",
+      "command": "double the Marker height",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 100
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.9533874170156196,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-048",
+      "split": "heldout",
+      "command": "Decrease Marker height by 10",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 40
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.4941316249314696,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-048",
+      "split": "heldout",
+      "command": "Decrease Marker height by 10",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 40
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.39490729104727507,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 40.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-051",
+      "split": "heldout",
+      "command": "Increase Marker height by 50 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 75.0
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.374036708031781,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 75.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-051",
+      "split": "heldout",
+      "command": "Increase Marker height by 50 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 75.0
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.108921958017163,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-054",
+      "split": "heldout",
+      "command": "halve the Marker x",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 5.0
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 3.033851542044431,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 3
+    },
+    {
+      "id": "command-054",
+      "split": "heldout",
+      "command": "halve the Marker x",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 5.0
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3443039170233533,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 5.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-057",
+      "split": "heldout",
+      "command": "Increase Marker x by 20 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 12.0
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3459182500373572,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 12.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-057",
+      "split": "heldout",
+      "command": "Increase Marker x by 20 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 12.0
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.6596165410010144,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-060",
+      "split": "heldout",
+      "command": "Decrease Marker x by 50",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": -40
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.7024995409883559,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-060",
+      "split": "heldout",
+      "command": "Decrease Marker x by 50",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": -40
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.35581499990075827,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": -40.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-063",
+      "split": "heldout",
+      "command": "Increase Marker y by 10 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 22.0
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3437523751053959,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 22.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-063",
+      "split": "heldout",
+      "command": "Increase Marker y by 10 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 22.0
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.598423833027482,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-066",
+      "split": "heldout",
+      "command": "Decrease Marker y by 20",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 0
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.7519905000226572,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-066",
+      "split": "heldout",
+      "command": "Decrease Marker y by 20",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 0
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.39373295893892646,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 0.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-069",
+      "split": "heldout",
+      "command": "Open the boost emitter prototype",
+      "expected": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0022809579968452454,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "message": "Ready",
+      "calls": 0
+    },
+    {
+      "id": "command-069",
+      "split": "heldout",
+      "command": "Open the boost emitter prototype",
+      "expected": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.8952784999273717,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No complete direct proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-072",
+      "split": "heldout",
+      "command": "Set BoostEmitter rate to 30",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.8185707500670105,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-072",
+      "split": "heldout",
+      "command": "Set BoostEmitter rate to 30",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4459120000246912,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-075",
+      "split": "heldout",
+      "command": "Open the boost emiter prototype",
+      "expected": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.361374625004828,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-075",
+      "split": "heldout",
+      "command": "Open the boost emiter prototype",
+      "expected": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.0158925829455256,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-078",
+      "split": "heldout",
+      "command": "Set BOOST EMITTER rate to 30",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.5427707920316607,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 20.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-078",
+      "split": "heldout",
+      "command": "Set BOOST EMITTER rate to 30",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4223148749442771,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-081",
+      "split": "heldout",
+      "command": "Set Marker disabled to true",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3097540420712903,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-081",
+      "split": "heldout",
+      "command": "Set Marker disabled to true",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.62671500002034,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 2
+    },
+    {
+      "id": "command-084",
+      "split": "heldout",
+      "command": "Set Marker disabled to off",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": false
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.882959458976984,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 2
+    },
+    {
+      "id": "command-084",
+      "split": "heldout",
+      "command": "Set Marker disabled to off",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": false
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3324177499162033,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": false
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-087",
+      "split": "heldout",
+      "command": "Set Marker action to \"launch\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "launch"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3150446250801906,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "launch"
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-087",
+      "split": "heldout",
+      "command": "Set Marker action to \"launch\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "launch"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.506276792031713,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        },
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "launch"
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 3
+    },
+    {
+      "id": "command-090",
+      "split": "heldout",
+      "command": "Set Marker action to \"left; right\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "left; right"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 3.606379541102797,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-090",
+      "split": "heldout",
+      "command": "Set Marker action to \"left; right\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "left; right"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4936502909986302,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "left; right"
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-093",
+      "split": "heldout",
+      "command": "Set Marker shape to Square",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.3984193750657141,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-093",
+      "split": "heldout",
+      "command": "Set Marker shape to Square",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.1802942920476198,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "command-096",
+      "split": "heldout",
+      "command": "Change boost emitter rate to 10 and end color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 3.760154208051972,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-096",
+      "split": "heldout",
+      "command": "Change boost emitter rate to 10 and end color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.7800437080441043,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10.0
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-099",
+      "split": "heldout",
+      "command": "Set its rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.4055814170278609,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "command-099",
+      "split": "heldout",
+      "command": "Set its rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 3.502128499909304,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Direct decision limit reached",
+      "calls": 4
+    },
+    {
+      "id": "command-102",
+      "split": "heldout",
+      "command": "Duplicate Marker 1 then move the copy 2 units right",
+      "expected": [
+        {
+          "op": "duplicate",
+          "target": "entity:marker0",
+          "result": "copy:0"
+        },
+        {
+          "op": "set",
+          "target": "entity:marker0",
+          "field": "x",
+          "value": 12,
+          "result_target": "copy:0"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.022313916007988,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "duplicate",
+          "target": "entity:marker0"
+        },
+        {
+          "op": "duplicate",
+          "target": "entity:marker1"
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 3
+    },
+    {
+      "id": "command-102",
+      "split": "heldout",
+      "command": "Duplicate Marker 1 then move the copy 2 units right",
+      "expected": [
+        {
+          "op": "duplicate",
+          "target": "entity:marker0",
+          "result": "copy:0"
+        },
+        {
+          "op": "set",
+          "target": "entity:marker0",
+          "field": "x",
+          "value": 12,
+          "result_target": "copy:0"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.33902799990028143,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "duplicate",
+          "target": "entity:marker0",
+          "result": "copy:0"
+        },
+        {
+          "op": "set",
+          "target": "entity:marker0",
+          "field": "x",
+          "value": 12.0,
+          "result_target": "copy:0"
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "command-105",
+      "split": "heldout",
+      "command": "Select all Marker instances",
+      "expected": [
+        {
+          "op": "select",
+          "target": "entity:marker0"
+        },
+        {
+          "op": "select",
+          "target": "entity:marker1"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0007124999538064003,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "select",
+          "target": "entity:marker0"
+        },
+        {
+          "op": "select",
+          "target": "entity:marker1"
+        }
+      ],
+      "message": "Review changes",
+      "calls": 0
+    },
+    {
+      "id": "command-105",
+      "split": "heldout",
+      "command": "Select all Marker instances",
+      "expected": [
+        {
+          "op": "select",
+          "target": "entity:marker0"
+        },
+        {
+          "op": "select",
+          "target": "entity:marker1"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.0498447089921683,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 2
+    },
+    {
+      "id": "command-108",
+      "split": "heldout",
+      "command": "hide the Inspector",
+      "expected": [
+        {
+          "op": "panel",
+          "target": "panel:3",
+          "value": false
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 0.7189675839617848,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "panel",
+          "target": "panel:3",
+          "value": false
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-108",
+      "split": "heldout",
+      "command": "hide the Inspector",
+      "expected": [
+        {
+          "op": "panel",
+          "target": "panel:3",
+          "value": false
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.000759500078856945,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "panel",
+          "target": "panel:3",
+          "value": false
+        }
+      ],
+      "message": "Ready",
+      "calls": 0
+    },
+    {
+      "id": "command-111",
+      "split": "heldout",
+      "command": "save",
+      "expected": [
+        {
+          "op": "save"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0004819169407710433,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "save"
+        }
+      ],
+      "message": "Review changes",
+      "calls": 0
+    },
+    {
+      "id": "command-111",
+      "split": "heldout",
+      "command": "save",
+      "expected": [
+        {
+          "op": "save"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.4992771660909057,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 2
+    },
+    {
+      "id": "command-114",
+      "split": "heldout",
+      "command": "play the scene",
+      "expected": [
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 0.7549243329558522,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-114",
+      "split": "heldout",
+      "command": "play the scene",
+      "expected": [
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0006897499551996589,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "message": "Ready",
+      "calls": 0
+    },
+    {
+      "id": "command-117",
+      "split": "heldout",
+      "command": "play the preview",
+      "expected": [
+        {
+          "op": "runtime",
+          "target": "preview",
+          "value": "play"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0003476659767329693,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "runtime",
+          "target": "preview",
+          "value": "play"
+        }
+      ],
+      "message": "Ready",
+      "calls": 0
+    },
+    {
+      "id": "command-117",
+      "split": "heldout",
+      "command": "play the preview",
+      "expected": [
+        {
+          "op": "runtime",
+          "target": "preview",
+          "value": "play"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.1298387080896646,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "runtime",
+          "target": "preview",
+          "value": "play"
+        },
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 3
+    },
+    {
+      "id": "command-120",
+      "split": "heldout",
+      "command": "Connect Timer Tick to Counter Increment",
+      "expected": [
+        {
+          "op": "connect",
+          "target": "node:a",
+          "field": "out",
+          "destination": "node:b",
+          "pin": "in"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 0.7137323329225183,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "panel",
+          "target": "panel:0",
+          "value": true
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-120",
+      "split": "heldout",
+      "command": "Connect Timer Tick to Counter Increment",
+      "expected": [
+        {
+          "op": "connect",
+          "target": "node:a",
+          "field": "out",
+          "destination": "node:b",
+          "pin": "in"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0011359159834682941,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "connect",
+          "target": "node:a",
+          "field": "out",
+          "destination": "node:b",
+          "pin": "in"
+        }
+      ],
+      "message": "Review changes",
+      "calls": 0
+    },
+    {
+      "id": "command-123",
+      "split": "heldout",
+      "command": "Delete everything",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.00017041689716279507,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "command-123",
+      "split": "heldout",
+      "command": "Delete everything",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.560206082998775,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "command-126",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 10 and erase the project",
+      "expected": null,
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.526983416057192,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "command-126",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 10 and erase the project",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.001598041970282793,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "command-129",
+      "split": "heldout",
+      "command": "Set Marker shape to Triangle",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0014544159639626741,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which property?",
+      "calls": 0
+    },
+    {
+      "id": "command-129",
+      "split": "heldout",
+      "command": "Set Marker shape to Triangle",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.257174375001341,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "command-132",
+      "split": "heldout",
+      "command": "Set missing character health to 50",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 3.1146869589574635,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 3
+    },
+    {
+      "id": "command-132",
+      "split": "heldout",
+      "command": "Set missing character health to 50",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0011070000473409891,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which target?",
+      "calls": 0
+    },
+    {
+      "id": "command-135",
+      "split": "heldout",
+      "command": "Set Marker width to 10 if it is visible",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.00017133296933025122,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Clarify the condition",
+      "calls": 0
+    },
+    {
+      "id": "command-135",
+      "split": "heldout",
+      "command": "Set Marker width to 10 if it is visible",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.6899350420571864,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 2
+    },
+    {
+      "id": "command-138",
+      "split": "heldout",
+      "command": "Disable every gameplay system",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.423417582991533,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "command-138",
+      "split": "heldout",
+      "command": "Disable every gameplay system",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.0030958749121055007,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which target?",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-01",
+      "split": "fresh",
+      "command": "Change the boost emitter particle color to green, and the end color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16711748
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.5239713330520317,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16711748
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "message": "Review changes",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-01",
+      "split": "fresh",
+      "command": "Change the boost emitter particle color to green, and the end color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16711748
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.541914791916497,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16711748
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-02",
+      "split": "fresh",
+      "command": "For BoostEmitter, purple for the particle color and green for the end color",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 16711816
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.409077165997587,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 16711816
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-02",
+      "split": "fresh",
+      "command": "For BoostEmitter, purple for the particle color and green for the end color",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 16711816
+        }
+      ],
+      "resolver": "current",
+      "correct": false,
+      "seconds": 0.00020508305169641972,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-03",
+      "split": "fresh",
+      "command": "Make the Marker twice as wide",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 200
+        }
+      ],
+      "resolver": "current",
+      "correct": false,
+      "seconds": 0.001845667022280395,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which property?",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-03",
+      "split": "fresh",
+      "command": "Make the Marker twice as wide",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 200
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.5044177080271766,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 200
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-04",
+      "split": "fresh",
+      "command": "The Marker should be 75 wide and 35 high",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 75
+        },
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 35
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.9013497499981895,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 75.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-04",
+      "split": "fresh",
+      "command": "The Marker should be 75 wide and 35 high",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 75
+        },
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 35
+        }
+      ],
+      "resolver": "current",
+      "correct": false,
+      "seconds": 0.00020174996461719275,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-05",
+      "split": "fresh",
+      "command": "Could the boost emitter rate be 25?",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "current",
+      "correct": false,
+      "seconds": 0.00015495799016207457,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-05",
+      "split": "fresh",
+      "command": "Could the boost emitter rate be 25?",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.5191121249226853,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-06",
+      "split": "fresh",
+      "command": "Use Triangle Outline for the boost emitter shape",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.shape",
+          "value": 2
+        }
+      ],
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 2.4442791250767186,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.shape",
+          "value": 2
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-06",
+      "split": "fresh",
+      "command": "Use Triangle Outline for the boost emitter shape",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.shape",
+          "value": 2
+        }
+      ],
+      "resolver": "current",
+      "correct": false,
+      "seconds": 0.006211333908140659,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which property?",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-07",
+      "split": "fresh",
+      "command": "Switch Marker shape to Square",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "resolver": "current",
+      "correct": false,
+      "seconds": 0.00021520908921957016,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-07",
+      "split": "fresh",
+      "command": "Switch Marker shape to Square",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.8742826250381768,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-08",
+      "split": "fresh",
+      "command": "Change boost emiter color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 1.5688641250599176,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-08",
+      "split": "fresh",
+      "command": "Change boost emiter color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.6584462079918012,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Ready",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-09",
+      "split": "fresh",
+      "command": "Set its rate to 23",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 23
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.368940707994625,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 23.0
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-09",
+      "split": "fresh",
+      "command": "Set its rate to 23",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 23
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.9498382500605658,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 23.0
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "game.GameTransform.y",
+          "value": 23.0
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "game.GameTransform.x",
+          "value": 23.0
+        }
+      ],
+      "message": "Review direct Laya proposal",
+      "calls": 4
+    },
+    {
+      "id": "direct-probe-10",
+      "split": "fresh",
+      "command": "Set Marker action to \"green and purple\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "green and purple"
+        }
+      ],
+      "resolver": "direct",
+      "correct": false,
+      "seconds": 2.445408917032182,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Changes span multiple documents",
+      "calls": 3
+    },
+    {
+      "id": "direct-probe-10",
+      "split": "fresh",
+      "command": "Set Marker action to \"green and purple\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "green and purple"
+        }
+      ],
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.31021395802963525,
+      "status": "ready",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "green and purple"
+        }
+      ],
+      "message": "Ready",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-11",
+      "split": "fresh",
+      "command": "Set Marker width to 42 and invent a name for its action",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.001043458003550768,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-11",
+      "split": "fresh",
+      "command": "Set Marker width to 42 and invent a name for its action",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.958066541934386,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Text generation needs a generative provider",
+      "calls": 2
+    },
+    {
+      "id": "direct-probe-12",
+      "split": "fresh",
+      "command": "Paint every object to match a sunset",
+      "expected": null,
+      "resolver": "direct",
+      "correct": true,
+      "seconds": 1.4979242499684915,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-12",
+      "split": "fresh",
+      "command": "Paint every object to match a sunset",
+      "expected": null,
+      "resolver": "current",
+      "correct": true,
+      "seconds": 0.00022658309899270535,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Unsupported instruction",
+      "calls": 0
+    }
+  ],
+  "cases": [
+    {
+      "id": "command-003",
+      "split": "heldout",
+      "command": "Change the boost emitter particle color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "correct": true,
+      "seconds": 0.8724735419964418,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-006",
+      "split": "heldout",
+      "command": "Change the boost emitter particle end color to blue",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "correct": true,
+      "seconds": 0.8503592500928789,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-009",
+      "split": "heldout",
+      "command": "Change the boost emitter particle color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7053980829659849,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-012",
+      "split": "heldout",
+      "command": "Change the boost emitter particle end color to white",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "correct": true,
+      "seconds": 0.8283206659834832,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-015",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "correct": true,
+      "seconds": 1.0574678330449387,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-018",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 1000",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000
+        }
+      ],
+      "correct": true,
+      "seconds": 1.307396834017709,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-021",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "correct": true,
+      "seconds": 1.9652202499564737,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-024",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle end color to blue",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7383540000300854,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 65416
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-027",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7147570829838514,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-030",
+      "split": "heldout",
+      "command": "Change the TrailEmitter particle end color to white",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "correct": true,
+      "seconds": 0.8412922499701381,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 4294967176
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-033",
+      "split": "heldout",
+      "command": "Set TrailEmitter rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "correct": false,
+      "seconds": 0.7874392078956589,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No complete direct proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-036",
+      "split": "heldout",
+      "command": "Set TrailEmitter rate to 1000",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 1000
+        }
+      ],
+      "correct": false,
+      "seconds": 1.01233608298935,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No complete direct proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-039",
+      "split": "heldout",
+      "command": "Increase Marker width by 10 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 110.00000000000001
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7188060829648748,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 110.00000000000001
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-042",
+      "split": "heldout",
+      "command": "Decrease Marker width by 20",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 80
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7267793338978663,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 80.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-045",
+      "split": "heldout",
+      "command": "double the Marker height",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 100
+        }
+      ],
+      "correct": true,
+      "seconds": 0.5077892920235172,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 100
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-048",
+      "split": "heldout",
+      "command": "Decrease Marker height by 10",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 40
+        }
+      ],
+      "correct": true,
+      "seconds": 0.8566218330524862,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 40.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-051",
+      "split": "heldout",
+      "command": "Increase Marker height by 50 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 75.0
+        }
+      ],
+      "correct": true,
+      "seconds": 0.6943172080209479,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 75.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-054",
+      "split": "heldout",
+      "command": "halve the Marker x",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 5.0
+        }
+      ],
+      "correct": false,
+      "seconds": 0.509420666960068,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 20
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-057",
+      "split": "heldout",
+      "command": "Increase Marker x by 20 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 12.0
+        }
+      ],
+      "correct": false,
+      "seconds": 0.7822216249769554,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": 30.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-060",
+      "split": "heldout",
+      "command": "Decrease Marker x by 50",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": -40
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7215109169483185,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "x",
+          "value": -40.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-063",
+      "split": "heldout",
+      "command": "Increase Marker y by 10 percent",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 22.0
+        }
+      ],
+      "correct": false,
+      "seconds": 0.7477835409808904,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 30.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-066",
+      "split": "heldout",
+      "command": "Decrease Marker y by 20",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 0
+        }
+      ],
+      "correct": true,
+      "seconds": 1.073632000014186,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "y",
+          "value": 0.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-069",
+      "split": "heldout",
+      "command": "Open the boost emitter prototype",
+      "expected": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.5408838329603896,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-072",
+      "split": "heldout",
+      "command": "Set BoostEmitter rate to 30",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30
+        }
+      ],
+      "correct": false,
+      "seconds": 0.9525539169553667,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No complete direct proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-075",
+      "split": "heldout",
+      "command": "Open the boost emiter prototype",
+      "expected": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.49845504097174853,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:boost"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-078",
+      "split": "heldout",
+      "command": "Set BOOST EMITTER rate to 30",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 30
+        }
+      ],
+      "correct": false,
+      "seconds": 1.006811041967012,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No complete direct proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-081",
+      "split": "heldout",
+      "command": "Set Marker disabled to true",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        }
+      ],
+      "correct": true,
+      "seconds": 0.5905235839309171,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-084",
+      "split": "heldout",
+      "command": "Set Marker disabled to off",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": false
+        }
+      ],
+      "correct": false,
+      "seconds": 0.5368565409444273,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "disabled",
+          "value": true
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-087",
+      "split": "heldout",
+      "command": "Set Marker action to \"launch\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "launch"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.581293832976371,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "launch"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-090",
+      "split": "heldout",
+      "command": "Set Marker action to \"left; right\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "left; right"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7682842500507832,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "left; right"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-093",
+      "split": "heldout",
+      "command": "Set Marker shape to Square",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "correct": true,
+      "seconds": 0.6061512080486864,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-096",
+      "split": "heldout",
+      "command": "Change boost emitter rate to 10 and end color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "correct": true,
+      "seconds": 1.1333521670894697,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-099",
+      "split": "heldout",
+      "command": "Set its rate to 25",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "correct": true,
+      "seconds": 0.826572542078793,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-102",
+      "split": "heldout",
+      "command": "Duplicate Marker 1 then move the copy 2 units right",
+      "expected": [
+        {
+          "op": "duplicate",
+          "target": "entity:marker0",
+          "result": "copy:0"
+        },
+        {
+          "op": "set",
+          "target": "entity:marker0",
+          "field": "x",
+          "value": 12,
+          "result_target": "copy:0"
+        }
+      ],
+      "correct": false,
+      "seconds": 0.5569136250996962,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "duplicate",
+          "target": "entity:marker0"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-105",
+      "split": "heldout",
+      "command": "Select all Marker instances",
+      "expected": [
+        {
+          "op": "select",
+          "target": "entity:marker0"
+        },
+        {
+          "op": "select",
+          "target": "entity:marker1"
+        }
+      ],
+      "correct": false,
+      "seconds": 0.0025909580290317535,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which target?",
+      "calls": 0
+    },
+    {
+      "id": "command-108",
+      "split": "heldout",
+      "command": "hide the Inspector",
+      "expected": [
+        {
+          "op": "panel",
+          "target": "panel:3",
+          "value": false
+        }
+      ],
+      "correct": true,
+      "seconds": 0.4344424579758197,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "panel",
+          "target": "panel:3",
+          "value": false
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-111",
+      "split": "heldout",
+      "command": "save",
+      "expected": [
+        {
+          "op": "save"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.3957373748999089,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "save"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-114",
+      "split": "heldout",
+      "command": "play the scene",
+      "expected": [
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.45326974999625236,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "runtime",
+          "target": "scene",
+          "value": "play"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-117",
+      "split": "heldout",
+      "command": "play the preview",
+      "expected": [
+        {
+          "op": "runtime",
+          "target": "preview",
+          "value": "play"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.5780678750015795,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "runtime",
+          "target": "preview",
+          "value": "play"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-120",
+      "split": "heldout",
+      "command": "Connect Timer Tick to Counter Increment",
+      "expected": [
+        {
+          "op": "connect",
+          "target": "node:a",
+          "field": "out",
+          "destination": "node:b",
+          "pin": "in"
+        }
+      ],
+      "correct": false,
+      "seconds": 0.0043996250024065375,
+      "status": "needs_clarification",
+      "operations": [],
+      "message": "Which target?",
+      "calls": 0
+    },
+    {
+      "id": "command-123",
+      "split": "heldout",
+      "command": "Delete everything",
+      "expected": null,
+      "correct": true,
+      "seconds": 0.008141250000335276,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No matching editor actions",
+      "calls": 0
+    },
+    {
+      "id": "command-126",
+      "split": "heldout",
+      "command": "Set boost emitter rate to 10 and erase the project",
+      "expected": null,
+      "correct": false,
+      "seconds": 1.2029639169340953,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 10.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-129",
+      "split": "heldout",
+      "command": "Set Marker shape to Triangle",
+      "expected": null,
+      "correct": true,
+      "seconds": 1.050254209083505,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "command-132",
+      "split": "heldout",
+      "command": "Set missing character health to 50",
+      "expected": null,
+      "correct": true,
+      "seconds": 0.023877125000581145,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No matching editor actions",
+      "calls": 0
+    },
+    {
+      "id": "command-135",
+      "split": "heldout",
+      "command": "Set Marker width to 10 if it is visible",
+      "expected": null,
+      "correct": false,
+      "seconds": 1.9775457080686465,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 10.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "command-138",
+      "split": "heldout",
+      "command": "Disable every gameplay system",
+      "expected": null,
+      "correct": true,
+      "seconds": 0.0111511250725016,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No matching editor actions",
+      "calls": 0
+    },
+    {
+      "id": "direct-probe-01",
+      "split": "fresh",
+      "command": "Change the boost emitter particle color to green, and the end color to purple",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16711748
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        }
+      ],
+      "correct": true,
+      "seconds": 2.1456615830538794,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 2147549064
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16711748
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-02",
+      "split": "fresh",
+      "command": "For BoostEmitter, purple for the particle color and green for the end color",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 16711816
+        }
+      ],
+      "correct": true,
+      "seconds": 1.129748958046548,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.end_color",
+          "value": 16711816
+        },
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 2147548996
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-03",
+      "split": "fresh",
+      "command": "Make the Marker twice as wide",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 200
+        }
+      ],
+      "correct": false,
+      "seconds": 0.5692322090035304,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:marker"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-04",
+      "split": "fresh",
+      "command": "The Marker should be 75 wide and 35 high",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "width",
+          "value": 75
+        },
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "height",
+          "value": 35
+        }
+      ],
+      "correct": false,
+      "seconds": 0.4665588749339804,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "open",
+          "target": "prototype:marker"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-05",
+      "split": "fresh",
+      "command": "Could the boost emitter rate be 25?",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25
+        }
+      ],
+      "correct": true,
+      "seconds": 0.9973175000632182,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 25.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-06",
+      "split": "fresh",
+      "command": "Use Triangle Outline for the boost emitter shape",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.shape",
+          "value": 2
+        }
+      ],
+      "correct": true,
+      "seconds": 0.8646501250332221,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.shape",
+          "value": 2
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-07",
+      "split": "fresh",
+      "command": "Switch Marker shape to Square",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "correct": true,
+      "seconds": 0.7462496249936521,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "shape",
+          "value": 1
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-08",
+      "split": "fresh",
+      "command": "Change boost emiter color to cyan",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:boost",
+          "field": "GAME.GameParticleEmitter.color",
+          "value": 16777028
+        }
+      ],
+      "correct": false,
+      "seconds": 0.57210216706153,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No complete direct proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-09",
+      "split": "fresh",
+      "command": "Set its rate to 23",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 23
+        }
+      ],
+      "correct": true,
+      "seconds": 0.9298578749876469,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:trail",
+          "field": "GAME.GameParticleEmitter.rate",
+          "value": 23.0
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-10",
+      "split": "fresh",
+      "command": "Set Marker action to \"green and purple\"",
+      "expected": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "green and purple"
+        }
+      ],
+      "correct": true,
+      "seconds": 0.563614375074394,
+      "status": "needs_review",
+      "operations": [
+        {
+          "op": "set",
+          "target": "prototype:marker",
+          "field": "action",
+          "value": "green and purple"
+        }
+      ],
+      "message": "Review Laya proposal",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-11",
+      "split": "fresh",
+      "command": "Set Marker width to 42 and invent a name for its action",
+      "expected": null,
+      "correct": true,
+      "seconds": 1.2834350410848856,
+      "status": "unsupported",
+      "operations": [],
+      "message": "Laya did not choose a value for the requested property",
+      "calls": 1
+    },
+    {
+      "id": "direct-probe-12",
+      "split": "fresh",
+      "command": "Paint every object to match a sunset",
+      "expected": null,
+      "correct": true,
+      "seconds": 0.02072200004477054,
+      "status": "unsupported",
+      "operations": [],
+      "message": "No matching editor actions",
+      "calls": 0
+    }
+  ],
+  "fixture_packet_equivalence_after_component_fix": 150,
+  "live": {
+    "url": "http://127.0.0.1:8114/chibi.html",
+    "request": "Change the boost emitter particle color to green, and the end color to purple",
+    "proposed_fields": [
+      "GAME.GameParticleEmitter.end_color",
+      "GAME.GameParticleEmitter.color"
+    ],
+    "resolution_ms": 1270,
+    "applied_processing_ms": 1290,
+    "readback": true,
+    "appearance_unchanged": true,
+    "undo_restored_all_fields": true,
+    "note": "End color was already purple; both requested fields were correctly proposed, one value actually changed. No save."
+  }
+}

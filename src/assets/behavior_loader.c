@@ -58,7 +58,8 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     }
     char **paths = NULL;
     const char *folders[] = { "libraries", "shader-libraries", "events",
-                              "materials", "shapes",           "behaviors" };
+                              "systems",   "fields",           "materials",
+                              "shapes",    "behaviors" };
     for (int f = 0; f < (int)(sizeof folders / sizeof *folders); f++) {
         size_t size = strlen(content_root) + strlen(folders[f]) + 2;
         char *directory_path = xmalloc(size);
@@ -90,6 +91,22 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     game_live_definition **pending = NULL;
     for (int i = 0; i < acount(paths); i++) {
         char *json = read_file(paths[i]);
+        if (json && strstr(paths[i], "/systems/")) {
+            char error[256];
+            behavior_asset *definition = behavior_asset_load_json(json);
+            if (!definition ||
+                game_live_register_system(world, definition->name, json, error, sizeof error) !=
+                    0 ||
+                (preview &&
+                 game_prototype_preview_register_system(preview, definition->name, json, error, sizeof error) !=
+                     0)) {
+                load_error(paths[i], "register system", definition ? error : graph_last_error());
+            }
+            behavior_asset_free(definition);
+            free(json);
+            free(paths[i]);
+            continue;
+        }
         behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
         if (json && !asset) {
             load_error(paths[i], "deserialize", graph_last_error());
@@ -119,7 +136,9 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
             }
             behavior_domain domain = definition->working->domain;
             int stage = domain == BEHAVIOR_DOMAIN_EVENT ? 2
-                      : (domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE)
+                      : (domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                         domain == BEHAVIOR_DOMAIN_SHAPE ||
+                         domain == BEHAVIOR_DOMAIN_FIELD)
                           ? 1
                           : 0;
             if (stage != pass) {

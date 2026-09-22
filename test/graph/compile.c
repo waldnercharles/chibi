@@ -438,13 +438,14 @@ void run_graph_compile_checks()
         behavior_asset *asset = behavior_asset_new("CMPL20");
         static pin_spec nominal_in[] = {
             { "CF_V3In", PIN_STRUCT, "CF_V3", PIN_DATA },
+            { "Control", PIN_ENUM, "GameControl", PIN_DATA },
         };
         static pin_spec nominal_out[] = {
             { "Handle", PIN_HANDLE, "MissingType", PIN_DATA },
         };
         static node_desc nominal_desc = {
             .name = "Nominal",
-            .input_count = 1,
+            .input_count = 2,
             .output_count = 1,
             .inputs = nominal_in,
             .outputs = nominal_out,
@@ -453,7 +454,7 @@ void run_graph_compile_checks()
         graph_add_node(asset->graph, &nominal_desc);
         compile_report rep;
         compile_report_init(&rep);
-        test_check(behavior_asset_compile(asset, &rep) == 1, "a registry-known struct pin compiles, an unknown handle name errors");
+        test_check(behavior_asset_compile(asset, &rep) == 1, "registered struct and enum pins compile; an unknown handle name errors");
         test_check(
             rep.items[0].rule == CMPL_RULE_UNKNOWN_NOMINAL_TYPE &&
                 strstr(rep.items[0].message, "MissingType") != NULL,

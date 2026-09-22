@@ -1,0 +1,8 @@
+services:
+  laya:
+    build: !reset null
+    image: ${LAYA_PRELOADED_IMAGE:-laya-jev:pr3-offline}
+    environment:
+      HF_HUB_OFFLINE: "1"
+      LAYA_MODEL_PATH: /models/laya
+    volumes: !reset []

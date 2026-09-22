@@ -2,7 +2,10 @@
 """Serve a consistent browser build with saves routed to the selected local project."""
 import argparse
 import json
+import importlib.util
 import secrets
+import os
+import sys
 import shutil
 import tempfile
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -34,15 +37,35 @@ def save_asset(project, content, request):
         temporary.unlink(missing_ok=True)
 
 
+sys.path.insert(0, str(Path(__file__).with_name('editor-command')))
+if __name__ == '__main__':
+    from environment import activate
+    activate()
+from sessions import Sessions
+import resolve as command_resolver
+
+
+def resolve_command(packet):
+    if packet.get('operation') == 'resolve_objects':
+        return {'ok': True, 'status': 'resolved', 'objects': command_resolver.retrieve(packet['catalog'], packet['query'], packet.get('kinds', []))}
+    return command_resolver.resolve(packet)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, default=Path('build-web'))
-    parser.add_argument('--project', type=Path, default=Path('.'))
+    parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
     args = parser.parse_args()
     project = args.project.resolve()
     content = content_directory(project)
     token = secrets.token_urlsafe(32)
+    sessions = Sessions()
+    connection = Path('.chibi') / f'web-editor-{args.port}.json'
+    connection.parent.mkdir(exist_ok=True)
+    descriptor = os.open(connection, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, 'w') as file:
+        json.dump({'url': f'http://127.0.0.1:{args.port}', 'token': token, 'project': str(project), 'pid': os.getpid()}, file)
     # A served generation never changes under the browser's JS/WASM/data requests.
     with tempfile.TemporaryDirectory(prefix='chibi-web-') as directory:
         snapshot = Path(directory)
@@ -70,12 +93,19 @@ def main():
                 super().end_headers()
 
             def do_GET(self):
+                if self.path == '/__chibi/sessions':
+                    if self.headers.get('X-Chibi-Token') != token:
+                        self.send_error(403)
+                        return
+                    self.json_response(sessions.list())
+                    return
                 if urlsplit(self.path).path == '/__chibi/assets':
                     if self.headers.get('X-Chibi-Token') != token:
                         self.send_error(403)
                         return
                     assets = {str(p.relative_to(project)): p.read_text()
                               for p in content.rglob('*.json') if p.resolve().is_relative_to(content)}
+                    assets['project.json'] = (project / 'project.json').read_text()
                     body = json.dumps(assets).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
@@ -88,8 +118,16 @@ def main():
                     del self.headers['If-Modified-Since']
                 super().do_GET()
 
+            def json_response(self, result):
+                body = json.dumps(result).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
             def do_POST(self):
-                if self.path != '/__chibi/save' or self.headers.get('X-Chibi-Token') != token:
+                if self.path not in ('/__chibi/save', '/__chibi/command', '/__chibi/editor', '/__chibi/session/register', '/__chibi/session/poll', '/__chibi/session/reply', '/__chibi/trace') or self.headers.get('X-Chibi-Token') != token:
                     self.send_error(403)
                     return
                 try:
@@ -101,7 +139,22 @@ def main():
                     self.send_error(413)
                     return
                 try:
-                    save_asset(project, content, json.loads(self.rfile.read(length)))
+                    packet = json.loads(self.rfile.read(length))
+                    if self.path != '/__chibi/save':
+                        if self.path == '/__chibi/trace':
+                            traces = project / '.chibi'
+                            traces.mkdir(mode=0o700, exist_ok=True)
+                            descriptor = os.open(traces / 'command-traces.jsonl', os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                            with os.fdopen(descriptor, 'w') as file: file.write(json.dumps(packet) + '\n')
+                            result = {'ok': True}
+                        elif self.path == '/__chibi/command': result = resolve_command(packet)
+                        elif self.path == '/__chibi/editor': result = sessions.forward(packet['session'], packet['packet'])
+                        elif self.path == '/__chibi/session/register': result = sessions.register()
+                        elif self.path == '/__chibi/session/poll': result = sessions.poll(packet['session'])
+                        else: result = sessions.reply(packet['session'], packet['id'], packet['result'])
+                        self.json_response(result)
+                        return
+                    save_asset(project, content, packet)
                 except (ValueError, KeyError, TypeError, OSError) as error:
                     self.send_error(400, str(error))
                     return

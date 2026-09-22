@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laya-jev
+spec:
+  template:
+    spec:
+      containers:
+        - name: laya
+          env:
+            - name: LAYA_DEVICE
+              value: cuda
+          resources:
+            limits:
+              nvidia.com/gpu: "1"

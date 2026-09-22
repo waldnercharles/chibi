@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "name": "Laya lab",
+  "content": "content",
+  "start_scene": "scenes/LayaLab.json"
+}

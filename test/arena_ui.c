@@ -1,4 +1,7 @@
 #include "assets/physics_settings.h"
+#include "editor/commands/command.h"
+#include "editor/panels/command_palette.h"
+#include "editor/ui/interaction.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/frame_profile.h"
@@ -23,12 +26,14 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_timer.h>
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 extern int test_arena_input();
 extern void test_navigation_runtime();
@@ -68,7 +73,8 @@ static void draw_frame(arena_fixture *f)
     editor_frame_mark(&f->profile, EDITOR_FRAME_SCENE);
     app_scene_authoring_draw(f->scene);
     editor_draw(f->graph);
-    editor_frame_profile_draw(&f->profile, NULL);
+    editor_command_palette_frame(f->scene);
+    editor_frame_profile_draw(&f->profile);
     editor_frame_mark(&f->profile, EDITOR_FRAME_UI);
     cf_app_draw_onto_screen(true);
     editor_frame_mark(&f->profile, EDITOR_FRAME_PRESENT);
@@ -2573,6 +2579,453 @@ static void performance_panel(arena_fixture *f)
     puts("performance UI PASS: View menu, live history, behavior/event expansion, owned labels, freeze and resume");
 }
 
+static const editor_ui_control *semantic_control(const char *id)
+{
+    int count;
+    const editor_ui_control *controls = editor_ui_controls(&count);
+    for (int i = 0; i < count; i++) {
+        if (strcmp(controls[i].id, id) == 0) {
+            return &controls[i];
+        }
+    }
+    assert(!"Required semantic control is absent");
+    return NULL;
+}
+
+static void semantic_asset_creation(arena_fixture *f)
+{
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, true);
+    editor_ui_restore_navigator_tab(EDITOR_UI_PANE_CONTENT);
+    frame(f);
+    assert(strcmp(semantic_control("content.create")->label, "New asset") == 0);
+    click_item(f, "content.create");
+    frame(f);
+    assert(editor_ui_popup_depth() == 1);
+    assert(semantic_control("content.new_material")->popup_depth == 1);
+    click_item(f, "content.new_material");
+    frame(f);
+    const editor_ui_control *name = semantic_control("scene.new.name");
+    assert(strcmp(name->role, "textbox") == 0 && name->active && !name->value[0]);
+    assert(!semantic_control("scene.new.create")->enabled);
+    assert(strcmp(semantic_control("scene.new.create")->label, "Create Material") == 0);
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), "SemanticMaterial");
+    frame(f);
+    assert(strcmp(semantic_control("scene.new.name")->value, "SemanticMaterial") == 0);
+    assert(semantic_control("scene.new.create")->enabled);
+    click_item(f, "scene.new.create");
+    frame(f);
+    assert(strcmp(editor_behavior_asset(f->graph)->name, "SemanticMaterial") == 0);
+    assert(editor_behavior_asset(f->graph)->domain == BEHAVIOR_DOMAIN_MATERIAL);
+    assert(editor_ui_popup_depth() == 0);
+    puts("editor semantics PASS: named material, focus, text readback, disabled create and popup scope");
+}
+
+static uint32_t command_color(arena_fixture *f, const char *field)
+{
+    pin_value value;
+    assert(
+        app_scene_authoring_read_prototype_field(f->scene, "BoostEmitter", "GameParticleEmitter", field, &value) ==
+        0
+    );
+    return value.u;
+}
+
+static void perform_editor_input(arena_fixture *f, const char *action)
+{
+    ImVec2 pointer = ImGui_GetIO()->MousePos;
+    char *snapshot = editor_interaction_snapshot();
+    char error[256];
+    editor_interaction *input = editor_interaction_start(snapshot, action, error, sizeof error);
+    free(snapshot);
+    assert(input);
+    int result = 0;
+    for (int i = 0; !result && i < 20; i++) {
+        result = editor_interaction_frame(input);
+        frame(f);
+    }
+    assert(result == 1);
+    editor_interaction_free(input);
+    frame(f);
+    assert(
+        ImGui_GetIO()->MousePos.x == pointer.x &&
+        ImGui_GetIO()->MousePos.y == pointer.y
+    );
+}
+
+static void generic_editor_controls(arena_fixture *f)
+{
+    editor_command_palette_open(f->scene);
+    frame(f);
+    perform_editor_input(f, "{\"action\":\"click\",\"id\":\"view.menu\"}");
+    int count;
+    const editor_ui_control *controls = editor_ui_controls(&count);
+    char target[192] = "";
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(controls[i].label, "Reset Layout")) {
+            snprintf(target, sizeof target, "%s", controls[i].id);
+        }
+    }
+    assert(!strncmp(target, "widget.", 7));
+    char action[512];
+    snprintf(action, sizeof action, "{\"action\":\"click\",\"id\":\"%s\"}", target);
+    perform_editor_input(f, action);
+    assert(editor_ui_popup_depth() == 0);
+    frame(f);
+    controls = editor_ui_controls(&count);
+    target[0] = 0;
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(controls[i].role, "node")) {
+            snprintf(target, sizeof target, "%s", controls[i].id);
+            break;
+        }
+    }
+    assert(target[0]);
+    snprintf(action, sizeof action, "{\"action\":\"click\",\"id\":\"%s\"}", target);
+    perform_editor_input(f, action);
+    assert(!strcmp(semantic_control(target)->value, "selected"));
+    editor_ui_set_pane_visible(EDITOR_UI_PANE_CONTENT, true);
+    editor_ui_restore_navigator_tab(EDITOR_UI_PANE_CONTENT);
+    frame(f);
+    perform_editor_input(f, "{\"action\":\"click\",\"id\":\"content.create\"}");
+    perform_editor_input(f, "{\"action\":\"click\",\"id\":\"content.new_material\"}");
+    click_item(f, "commands.query");
+    frame(f);
+    assert(semantic_control("commands.query")->active);
+    assert(editor_ui_popup_depth() > 0);
+    perform_editor_input(f, "{\"action\":\"type\",\"id\":\"scene.new.name\",\"text\":\"GenericMaterial\"}");
+    assert(!strcmp(semantic_control("scene.new.name")->value, "GenericMaterial"));
+    click_item(f, "commands.query");
+    frame(f);
+    perform_editor_input(f, "{\"action\":\"press\",\"key\":\"Enter\",\"id\":\"scene.new.name\"}");
+    assert(!strcmp(editor_behavior_asset(f->graph)->name, "GenericMaterial"));
+    puts("generic controls PASS: discovered widget, layout action, graph node selection, menu navigation, modal supervision, text readback and asset creation");
+}
+
+static char *command_proposal(
+    const char *catalog,
+    const char *name,
+    const char *kind,
+    const char *property,
+    uint32_t value,
+    bool second,
+    bool invalid
+)
+{
+    yyjson_doc *read = yyjson_read(catalog, strlen(catalog), 0);
+    yyjson_val *root = yyjson_doc_get_root(read), *object = NULL, *field = NULL,
+               *end = NULL;
+    yyjson_val *objects = yyjson_obj_get(root, "objects");
+    for (int i = 0; i < (int)yyjson_arr_size(objects); i++) {
+        yyjson_val *candidate = yyjson_arr_get(objects, i);
+        if (!strcmp(yyjson_get_str(yyjson_obj_get(candidate, "name")), name) &&
+            !strcmp(yyjson_get_str(yyjson_obj_get(candidate, "kind")), kind)) {
+            object = candidate;
+        }
+    }
+    assert(object);
+    yyjson_val *fields = yyjson_obj_get(object, "fields");
+    for (int i = 0; i < (int)yyjson_arr_size(fields); i++) {
+        yyjson_val *candidate = yyjson_arr_get(fields, i);
+        if (!strcmp(yyjson_get_str(yyjson_obj_get(candidate, "name")), property)) {
+            field = candidate;
+        }
+        if (!strcmp(yyjson_get_str(yyjson_obj_get(candidate, "name")), "end_color")) {
+            end = candidate;
+        }
+    }
+    assert(field);
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *proposal = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, proposal);
+    yyjson_mut_obj_add_str(doc, proposal, "revision", yyjson_get_str(yyjson_obj_get(root, "revision")));
+    yyjson_mut_val *ops = yyjson_mut_obj_add_arr(doc, proposal, "operations");
+    for (int i = 0; i < (second ? 2 : 1); i++) {
+        yyjson_mut_val *op = yyjson_mut_arr_add_obj(doc, ops);
+        yyjson_mut_obj_add_str(doc, op, "op", "set");
+        yyjson_mut_obj_add_str(doc, op, "target", yyjson_get_str(yyjson_obj_get(object, "id")));
+        yyjson_mut_obj_add_str(
+            doc,
+            op,
+            "field",
+            i && invalid ? "missing"
+                         : yyjson_get_str(yyjson_obj_get(i ? end : field, "id"))
+        );
+        yyjson_mut_obj_add_uint(doc, op, "value", i ? 0x8000ff88 : value);
+    }
+    char *result = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read);
+    return result;
+}
+
+static void command_graph_transaction(arena_fixture *f)
+{
+    char *original = ed_snapshot(f->graph);
+    node *a = graph_add_node(f->graph->active_graph, registry_node_by_name("Real"));
+    node *b = graph_add_node(f->graph->active_graph, registry_node_by_name("Real"));
+    assert(a && b);
+    uint64_t ids[] = { a->id, b->id };
+    char *catalog = editor_commands_catalog(f->scene);
+    yyjson_doc *read = yyjson_read(catalog, strlen(catalog), 0);
+    yyjson_val *root = yyjson_doc_get_root(read),
+               *objects = yyjson_obj_get(root, "objects");
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *proposal = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, proposal);
+    yyjson_mut_obj_add_str(doc, proposal, "revision", yyjson_get_str(yyjson_obj_get(root, "revision")));
+    yyjson_mut_val *ops = yyjson_mut_obj_add_arr(doc, proposal, "operations");
+    for (int j = 0; j < 2; j++) {
+        yyjson_val *object = NULL;
+        for (int i = 0; i < (int)yyjson_arr_size(objects); i++) {
+            yyjson_val *candidate = yyjson_arr_get(objects, i);
+            if (yyjson_get_uint(yyjson_obj_get(candidate, "node")) == ids[j]) {
+                object = candidate;
+            }
+        }
+        assert(object);
+        yyjson_val *field = yyjson_arr_get(yyjson_obj_get(object, "fields"), 0);
+        yyjson_mut_val *op = yyjson_mut_arr_add_obj(doc, ops);
+        yyjson_mut_obj_add_str(doc, op, "op", "set");
+        yyjson_mut_obj_add_str(doc, op, "target", yyjson_get_str(yyjson_obj_get(object, "id")));
+        yyjson_mut_obj_add_str(doc, op, "field", yyjson_get_str(yyjson_obj_get(field, "id")));
+        yyjson_mut_obj_add_real(doc, op, "value", 6 + j);
+    }
+    char *json = yyjson_mut_write(doc, 0, NULL), error[256];
+    int undo = acount(f->graph->undo);
+    assert(!editor_commands_apply(f->scene, catalog, json, error, sizeof error));
+    assert(acount(f->graph->undo) == undo + 1);
+    assert(
+        graph_node_by_id(f->graph->active_graph, ids[0])
+            ->input_pins[0]
+            .default_value.d == 6
+    );
+    assert(
+        graph_node_by_id(f->graph->active_graph, ids[1])
+            ->input_pins[0]
+            .default_value.d == 7
+    );
+    editor_undo(f->graph);
+    assert(
+        graph_node_by_id(f->graph->active_graph, ids[0])
+            ->input_pins[0]
+            .default_value.d == 0
+    );
+    editor_redo(f->graph);
+    assert(
+        graph_node_by_id(f->graph->active_graph, ids[1])
+            ->input_pins[0]
+            .default_value.d == 7
+    );
+    assert(!ed_adopt_behavior_asset(f->graph, original));
+    free(original);
+    free(catalog);
+    free(json);
+    yyjson_doc_free(read);
+    yyjson_mut_doc_free(doc);
+    puts("command graph transaction PASS: staged pin edits, one Undo/Redo");
+}
+
+static void command_scene_transactions(arena_fixture *f)
+{
+    assert(
+        !app_scene_authoring_register_prototype(f->scene, "{\"name\":\"CommandMarker\",\"components\":{\"GameTransform\":{\"x\":5,\"y\":10}},\"behaviors\":[]}", "/tmp/chibi-command-marker.json")
+    );
+    int before_count = acount(f->scene->actors);
+    assert(!add_instance_at(f->scene, "CommandMarker", NULL));
+    assert(!add_instance_at(f->scene, "CommandMarker", NULL));
+    ecs_entity first = f->scene->actors[before_count].entity,
+               second = f->scene->actors[before_count + 1].entity;
+    char *catalog = editor_commands_catalog(f->scene);
+    char *a = command_proposal(catalog, f->scene->actors[before_count].name, "entity", "x", 20, false, false);
+    char *b = command_proposal(catalog, f->scene->actors[before_count + 1].name, "entity", "x", 30, false, false);
+    yyjson_doc *read_a = yyjson_read(a, strlen(a), 0),
+               *read_b = yyjson_read(b, strlen(b), 0);
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read_a, NULL);
+    yyjson_mut_val *ops = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "operations");
+    yyjson_mut_arr_append(
+        ops,
+        yyjson_val_mut_copy(doc, yyjson_arr_get(yyjson_obj_get(yyjson_doc_get_root(read_b), "operations"), 0))
+    );
+    char *batch = yyjson_mut_write(doc, 0, NULL), error[256];
+    assert(!editor_commands_apply(f->scene, catalog, batch, error, sizeof error));
+    assert(
+        GAME_GameTransform_get(f->world, first)->x == 20 &&
+        GAME_GameTransform_get(f->world, second)->x == 30
+    );
+    assert(!replay_scene_edit(f->scene, false));
+    assert(
+        GAME_GameTransform_get(f->world, first)->x == 5 &&
+        GAME_GameTransform_get(f->world, second)->x == 5
+    );
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read_a);
+    yyjson_doc_free(read_b);
+    free(batch);
+    free(a);
+    free(b);
+    free(catalog);
+    catalog = editor_commands_catalog(f->scene);
+    a = command_proposal(catalog, f->scene->actors[before_count].name, "entity", "x", 25, false, false);
+    read_a = yyjson_read(a, strlen(a), 0);
+    doc = yyjson_doc_mut_copy(read_a, NULL);
+    ops = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "operations");
+    yyjson_mut_val *edit = yyjson_mut_arr_get(ops, 0);
+    yyjson_mut_obj_add_str(doc, edit, "result_target", "copy:0");
+    yyjson_mut_val *duplicate = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_str(doc, duplicate, "op", "duplicate");
+    yyjson_mut_obj_add_str(doc, duplicate, "target", yyjson_mut_get_str(yyjson_mut_obj_get(edit, "target")));
+    yyjson_mut_obj_add_str(doc, duplicate, "result", "copy:0");
+    yyjson_mut_arr_prepend(ops, duplicate);
+    batch = yyjson_mut_write(doc, 0, NULL);
+    assert(!editor_commands_apply(f->scene, catalog, batch, error, sizeof error));
+    assert(acount(f->scene->actors) == before_count + 3);
+    assert(GAME_GameTransform_get(f->world, first)->x == 5);
+    assert(GAME_GameTransform_get(f->world, alast(f->scene->actors).entity)->x == 25);
+    assert(!replay_scene_edit(f->scene, false));
+    assert(acount(f->scene->actors) == before_count + 2);
+    assert(!replay_scene_edit(f->scene, true));
+    assert(GAME_GameTransform_get(f->world, alast(f->scene->actors).entity)->x == 25);
+    assert(!replay_scene_edit(f->scene, false));
+    assert(!replay_scene_edit(f->scene, false));
+    assert(!replay_scene_edit(f->scene, false));
+    assert(acount(f->scene->actors) == before_count);
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read_a);
+    free(batch);
+    free(a);
+    free(catalog);
+    puts("command scene transactions PASS: grouped entity fields, copy references, one Undo/Redo");
+}
+
+static void command_playback_document_guard(arena_fixture *f)
+{
+    scene_authoring_select_document(f->scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    char *catalog = editor_commands_catalog(f->scene);
+    yyjson_doc *doc = yyjson_read(catalog, strlen(catalog), 0);
+    const char *revision = yyjson_get_str(
+        yyjson_obj_get(yyjson_doc_get_root(doc), "revision")
+    );
+    char proposal[256], message[256];
+    snprintf(proposal, sizeof proposal, "{\"revision\":\"%s\",\"operations\":[{\"op\":\"runtime\",\"target\":\"scene\",\"value\":\"play\"}]}", revision);
+    char *original = f->scene->current_scene_tab_key;
+    f->scene->current_scene_tab_key = xstrdup("scene:another-tab");
+    assert(editor_commands_apply(f->scene, catalog, proposal, message, sizeof message));
+    assert(strstr(message, "Editor changed"));
+    assert(!f->scene->runtime_snapshot_valid);
+    free(f->scene->current_scene_tab_key);
+    f->scene->current_scene_tab_key = original;
+    yyjson_doc_free(doc);
+    free(catalog);
+    puts("command playback guard PASS: a different scene tab rejects the observed command");
+}
+
+static void command_palette(arena_fixture *f)
+{
+    const char *prototype = "{\"name\":\"BoostEmitter\",\"components\":{"
+                            "\"GameTransform\":{},\"GameParticleEmitter\":{"
+                            "\"color\":287454020,\"end_color\":1432778632,"
+                            "\"rate\":10}},\"behaviors\":[]}";
+    assert(!app_scene_authoring_register_prototype(f->scene, prototype, "/tmp/chibi-command-test.json"));
+    command_graph_transaction(f);
+    command_scene_transactions(f);
+    command_playback_document_guard(f);
+    assert(!app_scene_authoring_open_prototype(f->scene, "BoostEmitter"));
+    frame(f);
+    char *catalog = editor_commands_catalog(f->scene);
+    if (getenv("CHIBI_COMMAND_CATALOG")) {
+        write_fixture(getenv("CHIBI_COMMAND_CATALOG"), catalog);
+    }
+    char message[256];
+    char *proposal = command_proposal(catalog, "BoostEmitter", "prototype", "color", 0x00ff0044, true, true);
+    assert(editor_commands_apply(f->scene, catalog, proposal, message, sizeof message) != 0);
+    assert(command_color(f, "color") == 0x11223344);
+    free(proposal);
+    proposal = command_proposal(catalog, "BoostEmitter", "prototype", "color", 0x00ff0044, true, false);
+    assert(!editor_commands_apply(f->scene, catalog, proposal, message, sizeof message));
+    assert(command_color(f, "color") == 0x00ff0044 && command_color(f, "end_color") == 0x8000ff88);
+    assert(editor_commands_apply(f->scene, catalog, proposal, message, sizeof message) != 0);
+    assert(strstr(message, "Editor changed"));
+    assert(!prototype_undo(f->scene));
+    assert(command_color(f, "color") == 0x11223344 && command_color(f, "end_color") == 0x55667788);
+    assert(!prototype_redo(f->scene));
+    assert(command_color(f, "color") == 0x00ff0044);
+    assert(!prototype_undo(f->scene));
+    free(proposal);
+    free(catalog);
+    catalog = editor_commands_catalog(f->scene);
+    proposal = command_proposal(catalog, "BoostEmitter", "prototype", "color", 0x00ff0044, false, false);
+    yyjson_doc *read = yyjson_read(proposal, strlen(proposal), 0);
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_obj_add_str(doc, root, "operation", "submit");
+    yyjson_mut_obj_add_str(doc, root, "request_id", "native-dry-run");
+    yyjson_mut_obj_add_bool(doc, root, "dry_run", true);
+    char *request = yyjson_mut_write(doc, 0, NULL);
+    char *result = editor_commands_api(f->scene, request);
+    char *repeat = editor_commands_api(f->scene, request);
+    assert(!strcmp(result, repeat));
+    assert(strstr(result, "Validated"));
+    assert(command_color(f, "color") == 0x11223344);
+    free(result);
+    free(repeat);
+    free(request);
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read);
+    free(proposal);
+    free(catalog);
+    result = editor_commands_api(f->scene, "{\"operation\":\"submit\",\"command\":\"Open BoostEmitter\"}");
+    assert(strstr(result, "resolving"));
+    free(result);
+    result = editor_commands_api(f->scene, "{\"operation\":\"cancel\"}");
+    assert(strstr(result, "cancelled"));
+    free(result);
+    frame(f);
+    assert(command_color(f, "color") == 0x11223344);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Super, true);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_K, true);
+    frame(f);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_K, false);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiMod_Super, false);
+    frame(f);
+    assert(semantic_control("commands.query")->active);
+    assert(!semantic_control("commands.run")->enabled);
+    const char *query = getenv("CHIBI_COMMAND_GOAL");
+    if (!query) {
+        query = "Change the boost emitter particle color to Green";
+    }
+    ImGuiIO_AddInputCharactersUTF8(ImGui_GetIO(), query);
+    frame(f);
+    assert(!strcmp(semantic_control("commands.query")->value, query));
+    if (getenv("CHIBI_COMMAND_LIVE")) {
+        click_item(f, "commands.run");
+        Uint64 start = SDL_GetTicks();
+        do {
+            frame(f);
+            SDL_Delay(10);
+        } while (!semantic_control("commands.run")->enabled &&
+                 SDL_GetTicks() - start < 15000);
+        printf("Laya palette: %s\n", editor_commands_result(f->scene));
+        char *after_catalog = editor_commands_catalog(f->scene);
+        write_fixture("/tmp/chibi-command-after.json", after_catalog);
+        free(after_catalog);
+        if (getenv("CHIBI_COMMAND_APPROVE")) {
+            click_item(f, "commands.apply");
+            frame(f);
+        }
+        if (!getenv("CHIBI_COMMAND_GOAL")) {
+            assert(command_color(f, "color") == 0x00ff0044);
+        }
+        if (getenv("CHIBI_COMMAND_CAPTURE")) {
+            assert(!app_save_screenshot(getenv("CHIBI_COMMAND_CAPTURE")));
+        }
+    }
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, true);
+    frame(f);
+    ImGuiIO_AddKeyEvent(ImGui_GetIO(), ImGuiKey_Escape, false);
+    frame(f);
+    puts("command runtime PASS: atomic batch, stale rejection, Undo/Redo, dry run, idempotency, cancellation, Cmd+K and Escape");
+}
+
 int arena_ui_run(const char *program, bool profile_only)
 {
     CF_Result result = cf_make_app(
@@ -2597,13 +3050,28 @@ int arena_ui_run(const char *program, bool profile_only)
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
     bool input_only = getenv("CHIBI_ARENA_INPUT_ONLY") != NULL;
-    if (!input_only && !profile_only) {
+    bool semantics_only = getenv("CHIBI_EDITOR_SEMANTICS_ONLY") != NULL;
+    bool commands_only = getenv("CHIBI_EDITOR_COMMANDS_ONLY") != NULL;
+    bool agent_only = getenv("CHIBI_EDITOR_AGENT_ONLY") != NULL;
+    if (!input_only && !profile_only && !semantics_only && !commands_only && !agent_only) {
         assert(test_arena_input() == 0);
     }
     fflush(stdout);
     arena_fixture f = fixture_new();
     for (int i = 0; i < 30; i++) {
         frame(&f);
+    }
+    if (semantics_only) {
+        semantic_asset_creation(&f);
+        goto cleanup;
+    }
+    if (commands_only) {
+        command_palette(&f);
+        goto cleanup;
+    }
+    if (agent_only) {
+        generic_editor_controls(&f);
+        goto cleanup;
     }
     key_event(SDL_SCANCODE_SPACE, true);
     key_event(SDL_SCANCODE_SPACE, false);
@@ -2687,12 +3155,12 @@ cleanup:
     game_live_world_free(f.live);
     editor_free(f.graph);
     ecs_world_free(f.world);
-    if (!input_only && !profile_only) {
+    if (!input_only && !profile_only && !semantics_only) {
         test_navigation_runtime();
     }
     app_input_shutdown();
     cf_destroy_app();
-    if (!input_only && !profile_only) {
+    if (!input_only && !profile_only && !semantics_only) {
         puts("arena UI PASS: scene save/reload, independent preview projection, actual pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, component dropdown/Undo/Redo/save/reload, spatial-only fit/marquee/preview/placement");
     }
     return 0;

@@ -5,7 +5,16 @@
 
 static pin_spec set_members_inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Struct", PIN_STRUCT, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_STRUCT }, 0, PIN_FLAG_REFERENCE, 0 },
+    { "Struct",
+      PIN_STRUCT,
+      NULL,
+      PIN_DATA,
+      0,
+      PIN_CONTAINER_SINGLE,
+      { .type = PIN_STRUCT },
+      0,
+      PIN_FLAG_REFERENCE | PIN_FLAG_WILDCARD,
+      0 },
 };
 static pin_spec set_members_outputs[] = {
     { "Then", PIN_FLOW, NULL, PIN_EXEC },

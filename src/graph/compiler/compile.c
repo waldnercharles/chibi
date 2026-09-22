@@ -5,6 +5,7 @@
  * signatures arrive with the reflection v2 widening ladder. */
 #include "graph/compiler/compile.h"
 
+#include "graph/compiler/field_program.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
@@ -475,7 +476,19 @@ static bool call_signature_matches(const node *call, const graph *target)
              execution_count(call->output_pins, call->output_count))) {
         return false;
     }
-    bool execution = call->desc != &NODE_CallPureFunction;
+    if (call->desc == &NODE_BehaviorExpression &&
+        target->expression_mode == GRAPH_EXPRESSION_BRANCH) {
+        return !has_execution(entry->output_pins, entry->output_count) &&
+               !has_execution(ret->input_pins, ret->input_count) &&
+               has_execution(call->input_pins, call->input_count) &&
+               has_execution(call->output_pins, call->output_count) &&
+               parameters_match(entry->output_pins, entry->output_count, call->input_pins, call->input_count) &&
+               parameters_match(ret->input_pins, ret->input_count, call->output_pins, call->output_count);
+    }
+    bool execution = call->desc == &NODE_CallFunction ||
+                     call->desc == &NODE_CallMacro ||
+                     (call->desc == &NODE_BehaviorExpression &&
+                      target->expression_mode == GRAPH_EXPRESSION_ACTION);
     return has_execution(entry->output_pins, entry->output_count) == execution &&
            has_execution(ret->input_pins, ret->input_count) == execution &&
            has_execution(call->input_pins, call->input_count) == execution &&
@@ -508,7 +521,10 @@ static void pass_references(compile_report *out, const behavior_asset *asset, bo
                         (unsigned long long)n->reference_id
                     );
                 }
-            } else if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallMacro) {
+            } else if (
+                n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction ||
+                n->desc == &NODE_BehaviorExpression || n->desc == &NODE_CallMacro
+            ) {
                 const graph *target = n->reference_asset
                                         ? NULL
                                         : behavior_asset_find_graph(asset, n->reference_id);
@@ -582,7 +598,8 @@ static void pass_references(compile_report *out, const behavior_asset *asset, bo
                                             .type_name = variable->type_name,
                                             .container = variable->container,
                                             .kind = PIN_DATA };
-                        if (!pin_compatible(&source, pin)) {
+                        if (!pin_compatible(&source, pin) &&
+                            !conversion_for_pins(&source, pin)) {
                             emit(
                                 out,
                                 CMPL_ERROR,
@@ -613,7 +630,8 @@ static void pass_references(compile_report *out, const behavior_asset *asset, bo
                                             .type_name = field->type_name,
                                             .container = PIN_CONTAINER_SINGLE,
                                             .kind = PIN_DATA };
-                        if (!pin_compatible(&source, pin)) {
+                        if (!pin_compatible(&source, pin) &&
+                            !conversion_for_pins(&source, pin)) {
                             emit(
                                 out,
                                 CMPL_ERROR,
@@ -649,6 +667,27 @@ static void pass_references(compile_report *out, const behavior_asset *asset, bo
                                 pin_name(pin)
                             );
                         }
+                    }
+                } else if (binding->kind == PIN_BINDING_EVENT_OUTPUT) {
+                    node *event = graph_node_by_id(g, binding->event_node_id);
+                    int output = 0;
+                    const pin_spec *source = event
+                                               ? graph_pin_by_id(event, binding->event_pin_id, &output, NULL)
+                                               : NULL;
+                    if (!event || event->desc->flow_kind != NODE_FLOW_EVENT ||
+                        !output || !source || source->kind != PIN_DATA) {
+                        emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "event output binding references a missing event output");
+                    } else if (!pin_compatible(source, pin) && !conversion_for_pins(source, pin)) {
+                        emit(
+                            out,
+                            CMPL_ERROR,
+                            n->id,
+                            pin->id,
+                            CMPL_RULE_INPUT_BINDING,
+                            "event output '%s' is incompatible with '%s'",
+                            pin_name(source),
+                            pin_name(pin)
+                        );
                     }
                 } else {
                     emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input binding has an unknown source kind");
@@ -811,12 +850,14 @@ static void pass_wildcards(compile_report *out, const graph *g)
  * preserves the unresolved name. The owner handle type is covered through
  * the Self node's output pin; a declared owner type with no Self node is
  * not exercised and is deferred with the editor's owner-type surface. */
-static int nominal_in_registry(const char *type_name)
+static int nominal_in_registry(const pin_spec *pin)
 {
+    const char *type_name = pin->type_name;
     if (!type_name || !type_name[0]) {
         return 1;
     }
-    return registry_type_by_name(type_name) != NULL;
+    return registry_type_by_name(type_name) != NULL ||
+           (pin->type == PIN_ENUM && registry_enum_by_name(type_name) != NULL);
 }
 
 static int nominal_pin(const pin_spec *p)
@@ -833,7 +874,7 @@ static void pass_nominal_types(compile_report *out, const graph *g)
         }
         for (int p = 0; p < n->input_count; p++) {
             const pin_spec *pin = &n->input_pins[p];
-            if (nominal_pin(pin) && !nominal_in_registry(pin->type_name)) {
+            if (nominal_pin(pin) && !nominal_in_registry(pin)) {
                 emit(
                     out,
                     CMPL_ERROR,
@@ -847,7 +888,7 @@ static void pass_nominal_types(compile_report *out, const graph *g)
         }
         for (int p = 0; p < n->output_count; p++) {
             const pin_spec *pin = &n->output_pins[p];
-            if (nominal_pin(pin) && !nominal_in_registry(pin->type_name)) {
+            if (nominal_pin(pin) && !nominal_in_registry(pin)) {
                 emit(
                     out,
                     CMPL_ERROR,
@@ -1116,6 +1157,15 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
         if (local_error) {
             emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_INPUT_BINDING, "%s", local_error);
         }
+        if (asset->domain != BEHAVIOR_DOMAIN_LIBRARY) {
+            for (int j = 0; j < acount(g->nodes); j++) {
+                const node *n = g->nodes[j];
+                if (n->desc->category &&
+                    !strcmp(n->desc->category, "Procedural Field")) {
+                    emit(out, CMPL_ERROR, n->id, 0, CMPL_RULE_BACKEND, "Procedural field nodes require a field graph");
+                }
+            }
+        }
         pass_disabled(out, g);
         pass_unconnected_exec(out, g);
         pass_incompatible_edges(out, g);
@@ -1143,6 +1193,18 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
 
 int behavior_asset_compile(const behavior_asset *asset, compile_report *out)
 {
+    if (asset->domain == BEHAVIOR_DOMAIN_FIELD) {
+        compile_report_free(out);
+        compile_report_init(out);
+        char error[256];
+        field_program *program = field_program_compile(asset, error, sizeof error);
+        if (!program) {
+            compile_graph_id = asset->graph->graph_id;
+            emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_BACKEND, "%s", error);
+        }
+        field_program_free(program);
+        return out->error_count;
+    }
     if (asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
         asset->domain == BEHAVIOR_DOMAIN_SHAPE) {
         compile_report_free(out);

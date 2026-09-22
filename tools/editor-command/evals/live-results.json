@@ -1,0 +1,65 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "command": "Change boost emitter particle color to green and end color to blue",
+      "reviewed": true,
+      "elapsed_ms": 478
+    },
+    {
+      "command": "Set its rate to 31",
+      "reviewed": true,
+      "elapsed_ms": 310
+    },
+    {
+      "command": "Undo",
+      "reviewed": true,
+      "elapsed_ms": 36
+    },
+    {
+      "command": "Open Boost Emittr prototype",
+      "reviewed": true,
+      "elapsed_ms": 336
+    },
+    {
+      "command": "Select all LayaBlueMarker instances",
+      "reviewed": true,
+      "elapsed_ms": 38
+    },
+    {
+      "command": "Set selected width to 72",
+      "reviewed": false,
+      "elapsed_ms": 388
+    },
+    {
+      "command": "Duplicate Marker then move the copy 30 units right",
+      "reviewed": true,
+      "elapsed_ms": 311
+    },
+    {
+      "command": "Open LayoutLab scene",
+      "reviewed": false,
+      "elapsed_ms": 37
+    },
+    {
+      "command": "Set Left Tile width to 80 and height to 50",
+      "reviewed": false,
+      "elapsed_ms": 431
+    },
+    {
+      "command": "Play the scene",
+      "reviewed": false,
+      "elapsed_ms": 36
+    },
+    {
+      "command": "Stop the scene",
+      "reviewed": false,
+      "elapsed_ms": 35
+    },
+    {
+      "command": "Open LayaLab scene",
+      "reviewed": false,
+      "elapsed_ms": 37
+    }
+  ]
+}

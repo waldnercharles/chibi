@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "name": "HRCVolume",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "Camera",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "HRC",
+      "prototype": "HRC",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Source",
+      "prototype": "Crystal",
+      "components": {
+        "GameTransform": {
+          "x": -330,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 28,
+          "height": 28,
+          "color": 4294967295
+        },
+        "GameMaterial": {
+          "emission_color": 4294967295,
+          "emission_intensity": 0.1,
+          "absorption": 0,
+          "scene": 4294967295,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Cloud band",
+      "prototype": "Cloud",
+      "components": {
+        "GameTransform": {
+          "x": -130,
+          "y": 0
+        },
+        "GameFluidVolume": {
+          "width": 180,
+          "height": 360,
+          "absorption": 0.018,
+          "visibility": 0.03
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Liquid band",
+      "prototype": "Liquid",
+      "components": {
+        "GameTransform": {
+          "x": 60,
+          "y": 0
+        },
+        "GameFluidVolume": {
+          "width": 70,
+          "height": 260,
+          "absorption": 0.08,
+          "visibility": 0.02
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Upper mist",
+      "prototype": "Cloud",
+      "components": {
+        "GameTransform": {
+          "x": 20,
+          "y": 145
+        },
+        "GameFluidVolume": {
+          "width": 240,
+          "height": 80,
+          "absorption": 0.025,
+          "visibility": 0.05
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Receiver",
+      "prototype": "HardRock",
+      "components": {
+        "GameTransform": {
+          "x": 300,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 180,
+          "height": 380
+        },
+        "GameMaterial": {
+          "absorption": 0.25,
+          "edge_light": 0
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

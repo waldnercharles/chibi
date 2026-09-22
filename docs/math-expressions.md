@@ -1,13 +1,19 @@
-# MathExpression
+# Behavior Expression
 
-Find **Math Expression** in Add-node search. Select its call and edit **Source**
+Find **Behavior Expression** in Add-node search. Select its call and edit **Source**
 in Inspector, then press Enter. For example, `(1 + x) * sin(myVar) - 2.4 / rand()` infers
 inputs named `x` and `myVar`. Reusing an input name preserves its pin identity,
-default, and compatible wires. An invalid edit leaves the working graph unchanged.
+default, and compatible wires. Renaming an input in place preserves that input's
+pin identity, wire, default, and binding, and updates every call to the expression.
+When several names change together, the editor pairs unmatched old and new names
+in pin order; make one rename at a time when an edit also adds or removes inputs.
+An invalid edit leaves the working graph unchanged.
 
-Expressions accept decimal numbers, identifiers, parentheses, unary `+` and `-`,
-and `+`, `-`, `*`, `/`, `%`, `^`, and `**`. Both power operators associate
-right to left. Multiplication and division bind before addition and subtraction.
+Expressions accept decimal numbers, identifiers, parentheses, unary `+`, `-`, and
+`!`, and `+`, `-`, `*`, `/`, `%`, `^`, and `**`. Comparisons use `==`, `!=`, `<`,
+`<=`, `>`, and `>=`; boolean expressions use `&&` and `||`. Both power operators
+associate right to left. Multiplication and division bind before addition and
+subtraction.
 The constants `pi` and `e` are built in. Use parentheses to make grouping explicit.
 
 | Functions | Arguments |
@@ -19,6 +25,8 @@ The constants `pi` and `e` are built in. Use parentheses to make grouping explic
 | `atan2` | `y, x` |
 | `clamp` | `value, minimum, maximum` |
 | `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive |
+| `vec2` | `x, y`; constructs a `CF_V2` |
+| `vec3` | `x, y, z`; constructs a `CF_V3` |
 
 Inputs and the result infer their connected graph types. Numeric operators support
 scalar broadcasting across reflected numeric structs such as `CF_V2` and
@@ -30,16 +38,34 @@ fractional values truncate toward zero; values outside the destination range,
 including infinities, clamp to its bounds; NaN becomes zero. Float and double
 boundaries still follow the graph's pin types.
 
-MathExpression also works in System graphs, including creation from a dragged
+Behavior Expression also works in System graphs, including creation from a dragged
 scalar or structured output pin. The connected input belongs to the inferred
 expression signature. Press Enter to regenerate from the expression Inspector.
 
 Applying Source parses the expression into ordinary graph nodes in a generated
 function; runtime execution uses that graph rather than evaluating arbitrary text.
+An assignment's leftmost identifier names its binding input. Choose a name that
+matches the value being written, such as `position = value`, `position += amount`,
+`aim.direction.x = desired_x`, or `items[index] *= scale`. The leftmost input uses
+the existing binding picker. Assignments expose `Exec`, `Then`, and a `Result`
+containing the value after the write. The binding is stored by variable or
+component identity, so renaming a variable or changing an expression input does
+not turn it into a name lookup.
+Boolean expressions retain their boolean `Result`. When placed in an executable
+behavior graph they also expose `Exec`, `True`, and `False`; dataflow and pure
+contexts keep the boolean result without flow pins.
 **Inspect generated graph** opens the ordinary function graph used to evaluate
 the expression. Its contents are read-only; edit the source to regenerate them.
 Deleting that generated definition removes its calls too. Undo restores the
 definition and calls together; source edits also support Undo/Redo.
+
+To replace an existing calculation, select its connected pure numeric math nodes,
+open the node context menu, and choose **Convert to Behavior Expression**. The editor
+preserves incoming wires and component or variable bindings, including reflected
+numeric structs such as `GameTransform`, reconnects the new call to the selected
+result's consumers, and selects the replacement call. A selection may also end at
+one terminal result before it has a consumer. Keep state, component reads,
+execution nodes, and time reads at the boundary of the selection.
 
 Three supplied behaviors use expressions:
 

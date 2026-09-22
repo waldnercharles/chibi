@@ -269,7 +269,11 @@ static graph_ir_control lower_control(graph *g, node *n)
     if (n->desc == &NODE_Return) {
         op = GRAPH_IR_FUNCTION_RETURN;
     }
-    if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallMacro) {
+    graph *expression = n->desc == &NODE_BehaviorExpression && g->owner
+                          ? behavior_asset_find_graph(g->owner, n->reference_id)
+                          : NULL;
+    if (n->desc == &NODE_CallFunction || n->desc == &NODE_CallMacro ||
+        (expression && expression->expression_mode == GRAPH_EXPRESSION_ACTION)) {
         op = GRAPH_IR_FUNCTION_CALL;
     }
     if (n->desc == &NODE_WhileLoop) {

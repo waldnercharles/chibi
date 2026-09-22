@@ -1,0 +1,19 @@
+{
+  "name": "LayaLabCamera",
+  "identity": "prototype-9682eb1acd4ea5e2",
+  "components": {
+    "GAME.GameCamera": {
+      "disabled": false,
+      "height": 300.0,
+      "offset": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "width": 400.0
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

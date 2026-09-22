@@ -99,6 +99,8 @@ static flow_run *dispatch(behavior_instance *instance, const char *event)
     return run;
 }
 
+static node *find_function_node(graph *g, const node_desc *desc, uint64_t reference_id);
+
 static void variable_binding_and_precedence()
 {
     behavior_asset *asset = behavior_asset_new("BindingBehavior");
@@ -390,6 +392,220 @@ static void flow_timing_and_delta()
         "Delta Time is sampled again for each flow activation"
     );
     behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+}
+
+static void event_context_sources()
+{
+    behavior_asset *asset = behavior_asset_new("EventContextSources");
+    behavior_variable *observed_delta = behavior_asset_add_variable(
+        asset,
+        "ObservedDelta",
+        PIN_F32,
+        "float",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_F32, .type_name = "float", .f = 0 },
+        NULL
+    );
+    behavior_variable *observed_value = behavior_asset_add_variable(
+        asset,
+        "ObservedValue",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 0 },
+        NULL
+    );
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    node *delta = graph_add_node(asset->graph, &NODE_DeltaTime);
+    node *store_delta = behavior_asset_add_set_node(asset, observed_delta->id);
+    node *store_value = behavior_asset_add_set_node(asset, observed_value->id);
+    pin_spec delta_seconds = { "DeltaSeconds", PIN_F32, "float", PIN_DATA };
+    pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
+    assert(observed_delta && observed_value && event && delta && store_delta && store_value);
+    assert(graph_set_event_name(asset->graph, event, "Tick") == 0);
+    assert(graph_add_pin(asset->graph, event, 1, &delta_seconds) == 1);
+    assert(graph_add_pin(asset->graph, event, 1, &value) == 2);
+    assert(graph_connect_exec(asset->graph, event, 0, store_delta, 0, 0) == 0);
+    assert(graph_connect_exec(asset->graph, store_delta, 0, store_value, 0, 0) == 0);
+    assert(graph_connect_data(asset->graph, delta, 0, store_delta, 1) == 0);
+    assert(
+        graph_set_pin_binding(
+            asset->graph,
+            store_value,
+            0,
+            1,
+            &(pin_binding){ .kind = PIN_BINDING_EVENT_OUTPUT,
+                            .event_node_id = event->id,
+                            .event_pin_id = event->output_pins[2].id }
+        ) == 0
+    );
+    const pin_binding *binding = graph_pin_binding(asset->graph, store_value, 0, 1);
+    test_check(
+        binding && binding->kind == PIN_BINDING_EVENT_OUTPUT &&
+            binding->event_node_id == event->id &&
+            binding->event_pin_id == event->output_pins[2].id,
+        "event output bindings retain stable event and pin identity"
+    );
+
+    char *json = behavior_asset_save_json(asset);
+    behavior_asset *roundtrip = json ? behavior_asset_load_json(json) : NULL;
+    graph *roundtrip_graph = roundtrip ? roundtrip->graph : NULL;
+    node *roundtrip_store = roundtrip_graph
+                              ? graph_node_by_id(roundtrip_graph, store_value->id)
+                              : NULL;
+    binding = roundtrip_store
+                ? graph_pin_binding(roundtrip_graph, roundtrip_store, 0, 1)
+                : NULL;
+    test_check(
+        roundtrip && binding && binding->kind == PIN_BINDING_EVENT_OUTPUT &&
+            binding->event_node_id == event->id &&
+            binding->event_pin_id == event->output_pins[2].id,
+        "event output bindings survive asset serialization"
+    );
+    free(json);
+    behavior_asset_free(roundtrip);
+
+    node *subset[] = { store_value };
+    char *clipboard = graph_save_nodes_json(asset->graph, subset, 1);
+    graph partial;
+    graph_init(&partial);
+    int appended = clipboard ? graph_append_json(&partial, clipboard, 0, 0) : -1;
+    node *pasted = acount(partial.nodes) == 1 ? partial.nodes[0] : NULL;
+    test_check(
+        appended == 0 && pasted && !graph_pin_binding(&partial, pasted, 0, 1),
+        "partial clipboard drops an event binding without its source event"
+    );
+    graph_free(&partial);
+    free(clipboard);
+
+    for (int backend = 0; backend < 2; backend++) {
+        behavior_instance *instance = instance_for(asset, NULL, (ecs_entity){ 0 });
+        if (backend) {
+            assert(behavior_instance_set_backend(instance, BEHAVIOR_ORACLE) == 0);
+        }
+        behavior_instance_set_delta_seconds(instance, .75);
+        pin_value inputs[] = {
+            { .type = PIN_F32, .type_name = "float", .f = .25f },
+            { .type = PIN_I32, .type_name = "int", .i = 17 },
+        };
+        flow_error error = { 0 };
+        flow_run *run = behavior_instance_dispatch(
+            instance,
+            "Tick",
+            (flow_inputs){ inputs, 2, NULL },
+            &error
+        );
+        pin_value observed;
+        test_check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                behavior_instance_get_variable(instance, observed_delta->id, &observed) == 0 &&
+                fabsf(observed.f - .25f) < .0001f &&
+                behavior_instance_get_variable(instance, observed_value->id, &observed) == 0 &&
+                observed.i == 17,
+            backend ? "event outputs and Delta Time agree in the interpreter"
+                    : "event outputs and Delta Time agree in compiled execution"
+        );
+        behavior_instance_destroy(instance);
+    }
+    behavior_asset_free(asset);
+}
+
+static void executable_event_binding_extraction()
+{
+    behavior_asset *asset = behavior_asset_new("ExecutableEventBindingExtraction");
+    behavior_variable *observed = behavior_asset_add_variable(
+        asset,
+        "Observed",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 0 },
+        NULL
+    );
+    behavior_variable *tail = behavior_asset_add_variable(
+        asset,
+        "Tail",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_I32, .type_name = "int", .i = 0 },
+        NULL
+    );
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    node *write = observed ? behavior_asset_add_set_node(asset, observed->id) : NULL;
+    node *after = tail ? behavior_asset_add_set_node(asset, tail->id) : NULL;
+    pin_spec value = { "Value", PIN_I32, "int", PIN_DATA };
+    assert(observed && tail && event && write && after);
+    assert(graph_set_event_name(asset->graph, event, "Input Event") == 0);
+    assert(graph_add_pin(asset->graph, event, 1, &value) == 1);
+    assert(graph_connect_exec(asset->graph, event, 0, write, 0, 0) == 0);
+    assert(graph_connect_exec(asset->graph, write, 0, after, 0, 0) == 0);
+    assert(
+        graph_set_pin_binding(
+            asset->graph,
+            write,
+            0,
+            1,
+            &(pin_binding){ .kind = PIN_BINDING_EVENT_OUTPUT,
+                            .event_node_id = event->id,
+                            .event_pin_id = event->output_pins[1].id }
+        ) == 0
+    );
+
+    node *selection[] = { write };
+    behavior_asset *extracted = NULL;
+    uint64_t call_id = 0;
+    const char *error = behavior_asset_extract_function(
+        asset,
+        asset->graph,
+        selection,
+        1,
+        "EventValue",
+        &extracted,
+        &call_id
+    );
+    graph *function = extracted
+                        ? behavior_asset_find_graph_by_name(extracted, "EventValue")
+                        : NULL;
+    node *call = extracted ? graph_node_by_id(extracted->graph, call_id) : NULL;
+    node *copy = function
+                   ? find_function_node(function, &NODE_SetVariable, observed->id)
+                   : NULL;
+    const pin_binding *call_binding = call
+                                        ? graph_pin_binding(extracted->graph, call, 0, 1)
+                                        : NULL;
+    test_check(
+        !error && function && call && copy &&
+            !graph_pin_binding(function, copy, 0, 1) && call_binding &&
+            call_binding->kind == PIN_BINDING_EVENT_OUTPUT,
+        "executable extraction moves event output bindings to the call input"
+    );
+
+    for (int backend = 0; backend < 2 && extracted; backend++) {
+        behavior_instance *instance = instance_for(extracted, NULL, (ecs_entity){ 0 });
+        if (backend) {
+            assert(behavior_instance_set_backend(instance, BEHAVIOR_ORACLE) == 0);
+        }
+        pin_value input = { .type = PIN_I32, .type_name = "int", .i = 17 };
+        flow_error flow_error = { 0 };
+        flow_run *run = behavior_instance_dispatch(
+            instance,
+            "Input Event",
+            (flow_inputs){ &input, 1, NULL },
+            &flow_error
+        );
+        pin_value result;
+        test_check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                behavior_instance_get_variable(instance, observed->id, &result) == 0 &&
+                result.i == 17,
+            backend ? "extracted event output reaches the interpreter"
+                    : "extracted event output reaches compiled execution"
+        );
+        behavior_instance_destroy(instance);
+    }
+    behavior_asset_free(extracted);
     behavior_asset_free(asset);
 }
 
@@ -721,6 +937,145 @@ static void component_and_context_bindings()
         "direct Delta Time bindings use the evaluation context"
     );
     behavior_asset_free(asset);
+}
+
+static void converted_component_field_binding()
+{
+    ecs_world *world = ecs_world_new();
+    assert(world);
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);
+    ecs_entity owner = ecs_world_create_entity(world);
+    GameHealth health = { .current = 17, .maximum = 100 };
+    assert(ecs_world_record_add(world, owner, GAME_COMPONENT_GameHealth.id, &health, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+
+    behavior_asset *asset = behavior_asset_new("ConvertedComponentBinding");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    node *target = typed_reroute(asset->graph, PIN_F64, "double");
+    assert(
+        graph_set_pin_binding(
+            asset->graph,
+            target,
+            0,
+            0,
+            &(pin_binding){ .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = GAME_COMPONENT_GameHealth.key,
+                            .field_name = "current" }
+        ) == 0
+    );
+    compile_report report;
+    compile_report_init(&report);
+    test_check(
+        behavior_asset_compile(asset, &report) == 0 && report.error_count == 0,
+        "component field bindings accept registered scalar conversions"
+    );
+    compile_report_free(&report);
+
+    eval_component_reader reader;
+    ecs_eval_component_reader_init(&reader, world);
+    service_binding *services = NULL;
+    apush(services, ((service_binding){ EVAL_COMPONENT_READER_SERVICE, &reader }));
+    behavior_instance *instance = instance_for(asset, world, owner);
+    float result = 0;
+    char message[192];
+    test_check(
+        eval_f32(asset, target, instance, services, 0, &result, message, sizeof message) == 0 &&
+            fabsf(result - 17) < .0001f,
+        "direct component field evaluation applies the registered conversion"
+    );
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+
+    behavior_asset *auto_asset = behavior_asset_new("ConvertedGetterSimplification");
+    assert(behavior_asset_set_owner_type(auto_asset, "ecs.entity") == 0);
+    editor e = { .asset = auto_asset,
+                 .active_graph = auto_asset->graph,
+                 .ui_context = EDITOR_UI_CONTEXT_BEHAVIOR };
+    node *getter = graph_add_node(auto_asset->graph, registry_node_by_name("Get_GameHealth"));
+    assert(getter && graph_expose_output_fields(auto_asset->graph, getter, 0) == 0);
+    node *converted = graph_add_node(auto_asset->graph, registry_node_by_name("Sine"));
+    ed_pin_view output = { getter, ED_PIN_OUTPUT, 1, { 0.0f, 0.0f } };
+    ed_pin_view input = { converted, ED_PIN_INPUT, 0, { 0.0f, 0.0f } };
+    bool connected = getter && converted && ed_connect(&e, &output, &input);
+    const pin_binding *binding = connected
+                                   ? graph_pin_binding(auto_asset->graph, converted, 0, 0)
+                                   : NULL;
+    test_check(
+        connected && binding && binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+            binding->component_key &&
+            !strcmp(binding->component_key, GAME_COMPONENT_GameHealth.key) &&
+            binding->field_name && !strcmp(binding->field_name, "current") &&
+            acount(auto_asset->graph->nodes) == 1,
+        "inlining a converted component getter stores the field binding"
+    );
+    instance = instance_for(auto_asset, world, owner);
+    int inline_status = eval_f32(auto_asset, converted, instance, services, 0, &result, message, sizeof message);
+    test_check(
+        inline_status == 0 && fabsf(result - (float)sin(17.0)) < .0001f,
+        "an inlined converted getter evaluates through the field binding"
+    );
+    behavior_instance_destroy(instance);
+    ed_free_string_stack(&e.undo);
+    behavior_asset_free(auto_asset);
+
+    behavior_asset *flow_asset = behavior_asset_new("CompiledConvertedComponentBinding");
+    assert(behavior_asset_set_owner_type(flow_asset, "ecs.entity") == 0);
+    behavior_variable *observed = behavior_asset_add_variable(
+        flow_asset,
+        "Observed",
+        PIN_F64,
+        "double",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 0 },
+        NULL
+    );
+    node *event = graph_add_node(flow_asset->graph, &NODE_Event);
+    node *set = observed ? behavior_asset_add_set_node(flow_asset, observed->id) : NULL;
+    assert(observed && event && set);
+    assert(graph_set_event_name(flow_asset->graph, event, "Read") == 0);
+    assert(graph_connect_exec(flow_asset->graph, event, 0, set, 0, 0) == 0);
+    assert(
+        graph_set_pin_binding(
+            flow_asset->graph,
+            set,
+            0,
+            1,
+            &(pin_binding){ .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = GAME_COMPONENT_GameHealth.key,
+                            .field_name = "current" }
+        ) == 0
+    );
+    compile_report flow_report;
+    compile_report_init(&flow_report);
+    test_check(
+        behavior_asset_compile(flow_asset, &flow_report) == 0 &&
+            flow_report.error_count == 0,
+        "compiled component field bindings accept the same conversion"
+    );
+    compile_report_free(&flow_report);
+    for (int backend = 0; backend < 2; backend++) {
+        instance = instance_for(flow_asset, world, owner);
+        assert(
+            behavior_instance_bind_service(instance, EVAL_COMPONENT_READER_SERVICE, &reader) == 0
+        );
+        if (backend) {
+            assert(behavior_instance_set_backend(instance, BEHAVIOR_ORACLE) == 0);
+        }
+        flow_error error = { 0 };
+        flow_run *run = behavior_instance_dispatch(instance, "Read", (flow_inputs){ 0 }, &error);
+        pin_value value;
+        test_check(
+            run && flow_run_status(run) == FLOW_COMPLETED &&
+                behavior_instance_get_variable(instance, observed->id, &value) == 0 &&
+                value.type == PIN_F64 && fabs(value.d - 17) < .0001,
+            backend ? "converted component bindings run in the interpreter"
+                    : "converted component bindings run in compiled execution"
+        );
+        behavior_instance_destroy(instance);
+    }
+    behavior_asset_free(flow_asset);
+    afree(services);
+    ecs_world_free(world);
 }
 
 static void serialization_and_clipboard_ownership()
@@ -1479,7 +1834,10 @@ void test_input_bindings()
     numeric_output_to_text();
     variable_binding_and_precedence();
     flow_timing_and_delta();
+    event_context_sources();
+    executable_event_binding_extraction();
     component_and_context_bindings();
+    converted_component_field_binding();
     serialization_and_clipboard_ownership();
     inline_source_graphs();
     component_getter_optimization();

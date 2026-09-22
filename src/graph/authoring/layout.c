@@ -1,12 +1,10 @@
 #include "graph/authoring/layout.h"
 
 #include "graph/authoring/arrange.h"
-#include "graph/model/local.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>
-#include <string.h>
 
 static int node_index(const graph *graph, uint64_t id)
 {
@@ -36,16 +34,6 @@ void graph_layout(graph *graph)
                                   .title_height = 28,
                                   .row_height = 24,
                                   .pad = 4 };
-        for (int p = 0; p < node->output_count; p++) {
-            const graph_local *local = graph_output_local(graph, node, p);
-            if (local) {
-                boxes[i].height += 20;
-                float width = 60 + 8 * strlen(local->name);
-                if (width > boxes[i].width) {
-                    boxes[i].width = width;
-                }
-            }
-        }
         positions[i] = (arrange_point){ node->x, node->y };
     }
     for (int i = 0; i < acount(graph->edges); i++) {

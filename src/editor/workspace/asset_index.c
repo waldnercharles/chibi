@@ -383,6 +383,7 @@ static asset_index_kind kind_for_domain(behavior_domain domain)
         case BEHAVIOR_DOMAIN_LIBRARY:
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return ASSET_INDEX_LIBRARY;
         case BEHAVIOR_DOMAIN_MATERIAL: return ASSET_INDEX_MATERIAL;
+        case BEHAVIOR_DOMAIN_FIELD: return ASSET_INDEX_FIELD;
         case BEHAVIOR_DOMAIN_SHAPE: return ASSET_INDEX_SHAPE;
         case BEHAVIOR_DOMAIN_EVENT_DEFINITION: return ASSET_INDEX_EVENT;
     }
@@ -540,6 +541,31 @@ static bool override_has_field(const char *json, const char *component, const ch
     return present;
 }
 
+static const struct
+{
+    const char *component, *field;
+    asset_index_kind kind;
+} component_bindings[] = {
+    { "MaterialTerrain", "field", ASSET_INDEX_FIELD },
+    { "EngineSystem", "asset", ASSET_INDEX_SYSTEM },
+    { "GameShader", "material", ASSET_INDEX_MATERIAL },
+    { "GameShader", "shape", ASSET_INDEX_SHAPE },
+};
+
+bool asset_index_component_kind(const char *component, const char *field, asset_index_kind *kind)
+{
+    for (int i = 0;
+         i < (int)(sizeof component_bindings / sizeof component_bindings[0]);
+         i++) {
+        if (!strcmp(component, component_bindings[i].component) &&
+            !strcmp(field, component_bindings[i].field)) {
+            *kind = component_bindings[i].kind;
+            return true;
+        }
+    }
+    return false;
+}
+
 static void add_component_references(
     asset_index *index,
     int source_id,
@@ -549,38 +575,30 @@ static void add_component_references(
 )
 {
     pin_value value;
-    if (game_prototype_read_field(prototype, "GameShader", "material", &value) == 0 &&
-        value.str && value.str[0] &&
-        !override_has_field(overrides_json, "GameShader", "material")) {
-        int target = asset_index_ensure_name(index, ASSET_INDEX_MATERIAL, value.str);
-        asset_index_add_reference(
+    for (int i = 0;
+         i < (int)(sizeof component_bindings / sizeof component_bindings[0]);
+         i++) {
+        const char *component = component_bindings[i].component,
+                   *field = component_bindings[i].field;
+        if (game_prototype_read_field(prototype, component, field, &value) ||
+            !value.str || !value.str[0] ||
+            override_has_field(overrides_json, component, field)) {
+            continue;
+        }
+        int target = asset_index_ensure_name(
             index,
-            (asset_index_reference){
-                .kind = ASSET_INDEX_COMPONENT_BINDING,
-                .source = source_id,
-                .target = target,
-                .detail = "GameShader",
-                .component = "GameShader",
-                .field = "material",
-                .actor = actor,
-            }
+            component_bindings[i].kind,
+            value.str
         );
-    }
-    if (game_prototype_read_field(prototype, "GameShader", "shape", &value) == 0 &&
-        value.str && value.str[0] &&
-        !override_has_field(overrides_json, "GameShader", "shape")) {
-        int target = asset_index_ensure_name(index, ASSET_INDEX_SHAPE, value.str);
         asset_index_add_reference(
             index,
-            (asset_index_reference){
-                .kind = ASSET_INDEX_COMPONENT_BINDING,
-                .source = source_id,
-                .target = target,
-                .detail = "GameShader",
-                .component = "GameShader",
-                .field = "shape",
-                .actor = actor,
-            }
+            (asset_index_reference){ .kind = ASSET_INDEX_COMPONENT_BINDING,
+                                     .source = source_id,
+                                     .target = target,
+                                     .detail = component,
+                                     .component = component,
+                                     .field = field,
+                                     .actor = actor }
         );
     }
     if (override_has_field(overrides_json, "GameMeshParts", "parts") ||
@@ -786,6 +804,7 @@ static asset_index_kind content_asset_kind(const app_scene_authoring *scene, con
         { "events", ASSET_INDEX_EVENT },
         { "materials", ASSET_INDEX_MATERIAL },
         { "shapes", ASSET_INDEX_SHAPE },
+        { "fields", ASSET_INDEX_FIELD },
         { "libraries", ASSET_INDEX_LIBRARY },
         { "shader-libraries", ASSET_INDEX_LIBRARY },
         { "systems", ASSET_INDEX_SYSTEM },
@@ -1082,6 +1101,7 @@ int app_scene_authoring_open_asset(app_scene_authoring *scene, int asset_positio
         case ASSET_INDEX_EVENT:
         case ASSET_INDEX_MATERIAL:
         case ASSET_INDEX_SHAPE:
+        case ASSET_INDEX_FIELD:
         case ASSET_INDEX_LIBRARY:
             return app_scene_authoring_open_behavior(scene, asset->name);
         case ASSET_INDEX_KIND_COUNT: break;

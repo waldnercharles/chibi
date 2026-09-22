@@ -334,10 +334,10 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
     game_live_world *live = game_live_world_new(world);
-    load_definition(live, "projects/arena2d/content/behaviors/NeonSwarmPursuit.json");
+    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.json");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *json = text_file_read("projects/arena2d/content/prototypes/NeonSwarmSwarmer.json"),
+    char *json = text_file_read("projects/arena2d/content/prototypes/Swarmer.json"),
          error[256];
     assert(json);
     game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
@@ -363,7 +363,7 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
             100 + (i % 100) * 8,
             100 + (i / 100) * 8,
         };
-        const char *behavior = "NeonSwarmPursuit";
+        const char *behavior = "Pursuit";
         assert(!game_behavior_set_attachments(live->behaviors, enemy, &behavior, 1));
         apush(enemies, enemy);
     }

@@ -41,6 +41,13 @@ endif()
 # WebGL has no base-vertex draw support; large graph canvases exceed 16-bit indices.
 # PUBLIC keeps ImGui, dcimgui and every consumer on the same ABI.
 target_compile_definitions(cute PUBLIC IMGUI_USE_WCHAR32 "ImDrawIdx=unsigned int")
+set_source_files_properties(
+    "${cute_framework_SOURCE_DIR}/libraries/imgui/imgui.cpp"
+    "${cute_framework_SOURCE_DIR}/libraries/imgui/imgui_widgets.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/widget_observation.cpp"
+    TARGET_DIRECTORY cute
+    PROPERTIES COMPILE_DEFINITIONS IMGUI_ENABLE_TEST_ENGINE)
+target_sources(cute PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/widget_observation.cpp")
 set(CUTE_SOURCE "${cute_framework_SOURCE_DIR}")
 foreach(CUTE_PATCH_NAME cute-interior-border cute-custom-coverage cute-imgui-close-glyph cute-custom-shape-cache cute-imgui-render-target cute-imgui-smooth-scroll cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming)
     set(CUTE_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${CUTE_PATCH_NAME}.patch")
@@ -260,6 +267,7 @@ set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
     SHADER_PACK
+    FIELD_NODE_PACK
     CORE_EVENT_PACK
     CORE_EXTRA_PACK
     CORE_FLOW_PACK
@@ -347,7 +355,7 @@ endif()
 
 # --- headless automation controller ----------------------------------------
 
-add_library(automation STATIC src/automation/controller.c
+add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
     src/automation/graph_edit.c src/automation/graph_optimize.c
     src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -380,13 +388,17 @@ add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GE
 add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute)
+set_source_files_properties(src/editor/ui/command_transport.c PROPERTIES
+    COMPILE_DEFINITIONS "CHIBI_COMMAND_WORKER=\"${CMAKE_CURRENT_SOURCE_DIR}/tools/editor-command/resolve.py\"")
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
 set(APP_REGISTRY_PACKS
     SHADER_BINDING_PACK
     SHADER_PACK
+    FIELD_NODE_PACK
     CORE_EVENT_PACK
+    GAME_MATERIAL_PACK
     GAME_ENTITY_PACK
     GAME_SAVE_PACK
     GAME_AUDIO_PACK
@@ -477,10 +489,13 @@ chibi_enable_tracy(chibi_ctl)
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
+        COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/tools/mcp/editor-command.test.mjs
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
@@ -557,6 +572,12 @@ add_executable(test_suite
     src/assets/behavior_loader.c
     src/assets/project.c
     src/editor/workspace/scene_authoring.c
+    src/editor/ui/command_transport.c
+    src/editor/ui/interaction.c
+    src/editor/panels/command_palette.c
+    src/editor/commands/catalog.c
+    src/editor/commands/execute.c
+    src/editor/commands/task.c
     src/editor/workspace/asset_index.c
     src/editor/panels/asset_browser.c
     src/editor/panels/asset_document.c
@@ -772,4 +793,24 @@ else()
         COMMAND "$<TARGET_FILE:behavior_backend_smoke>"
         COMMAND "$<TARGET_FILE:runtime_backend_smoke>"
         DEPENDS behavior_backend_smoke runtime_backend_smoke VERBATIM)
+endif()
+
+# The same material/field/schedule contracts run natively and in Web bytecode.
+add_executable(material_engine_smoke test/material_engine_smoke.c
+    test/runtime/materials.c test/runtime/reference_cave.c test/runtime/fields.c
+    test/runtime/system_schedule.c ${APP_REGISTRY})
+target_include_directories(material_engine_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(material_engine_smoke PRIVATE engine runtime_support)
+target_compile_options(material_engine_smoke PRIVATE -UNDEBUG)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_options(material_engine_smoke PRIVATE "-g2" "-sSTACK_SIZE=524288" "-sASSERTIONS=1" "-sSTACK_OVERFLOW_CHECK=2" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "--embed-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content@projects/arena2d/content")
+    add_custom_target(check-material-engine
+        COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:material_engine_smoke>"
+        DEPENDS material_engine_smoke VERBATIM)
+else()
+    add_custom_target(check-material-engine COMMAND material_engine_smoke
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        DEPENDS material_engine_smoke VERBATIM)
 endif()

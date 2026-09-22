@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laya-jev
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: laya-jev
+  template:
+    metadata:
+      labels:
+        app: laya-jev
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: laya
+          image: ghcr.io/your-org/laya-jev:pr3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LAYA_MODEL
+              value: laya
+            - name: LAYA_DEVICE
+              value: cpu
+            - name: LAYA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: laya-jev
+                  key: LAYA_API_KEY
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: laya-jev
+                  key: HF_TOKEN
+                  optional: true
+            - name: HF_HOME
+              value: /cache/huggingface
+            - name: LAYA_MODEL_PATH
+              value: /cache/huggingface/laya-model
+            - name: TOKENIZERS_PARALLELISM
+              value: "false"
+            - name: USE_TF
+              value: "0"
+            - name: USE_TORCH
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /cache/huggingface
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: laya-hf-cache

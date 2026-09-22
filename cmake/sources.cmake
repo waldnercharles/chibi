@@ -46,6 +46,8 @@ set(CORE_SOURCES
     src/graph/runtime/flow_compiled_frames.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/behavior_data.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/flow_visual.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/field_program.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/field_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/compile.c
     src/graph/compiler/compile_queries.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/graph_ir.c
@@ -83,6 +85,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/flow_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/fmt_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_expression.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_expression_convert.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/math_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/operator.c
@@ -145,6 +148,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/graph/toast.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/details.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/field_details.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_controls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_inline.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/shader_image.c
@@ -177,6 +181,13 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_navigator.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/scene_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/control.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/command_transport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/interaction.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/panels/command_palette.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/catalog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/game_presentation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/gameplay_input.c
@@ -198,9 +209,14 @@ set(APP_SOURCES
 
 set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_mask.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_cave.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_field.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_terrain.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_fluid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_flow.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_destruction.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_fluid.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/materials.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/particle_emitters.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
@@ -240,5 +256,6 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/scenes/scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/access.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/query.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/schedule.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/systems/system.c
 )

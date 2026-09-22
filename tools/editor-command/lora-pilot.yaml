@@ -1,0 +1,21 @@
+model: .chibi/local-model/qwen3-4b-instruct
+data: .chibi/commands/lora-data
+adapter_path: .chibi/commands/lora-adapter
+train: true
+fine_tune_type: lora
+num_layers: 8
+lora_parameters:
+  rank: 8
+  scale: 16.0
+  dropout: 0.0
+batch_size: 1
+iters: 64
+learning_rate: 0.0001
+mask_prompt: true
+max_seq_length: 4096
+grad_checkpoint: true
+steps_per_report: 4
+steps_per_eval: 32
+val_batches: 4
+save_every: 64
+seed: 20260922

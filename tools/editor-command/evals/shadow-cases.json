@@ -1,0 +1,333 @@
+[
+  {
+    "id": "shadow-01",
+    "catalog": "catalog.json",
+    "command": "Open BoostEmitter prototype",
+    "expected": [
+      {
+        "op": "open",
+        "target": "prototype:boost"
+      }
+    ]
+  },
+  {
+    "id": "shadow-02",
+    "catalog": "catalog.json",
+    "command": "Open the BoostEmitter behavior",
+    "expected": [
+      {
+        "op": "open",
+        "target": "behavior:boost"
+      }
+    ]
+  },
+  {
+    "id": "shadow-03",
+    "catalog": "catalog.json",
+    "command": "Open TrailEmitter",
+    "expected": [
+      {
+        "op": "open",
+        "target": "prototype:trail"
+      }
+    ]
+  },
+  {
+    "id": "shadow-04",
+    "catalog": "catalog.json",
+    "command": "Open the Marker prototype",
+    "expected": [
+      {
+        "op": "open",
+        "target": "prototype:marker"
+      }
+    ]
+  },
+  {
+    "id": "shadow-05",
+    "catalog": "catalog.json",
+    "command": "Open TralEmitter",
+    "expected": [
+      {
+        "op": "open",
+        "target": "prototype:trail"
+      }
+    ]
+  },
+  {
+    "id": "shadow-06",
+    "catalog": "catalog.json",
+    "command": "Show Inspector",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:3",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "shadow-07",
+    "catalog": "catalog.json",
+    "command": "Hide Inspector",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:3",
+        "value": false
+      }
+    ]
+  },
+  {
+    "id": "shadow-08",
+    "catalog": "catalog.json",
+    "command": "Hide Content",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:0",
+        "value": false
+      }
+    ]
+  },
+  {
+    "id": "shadow-09",
+    "catalog": "catalog.json",
+    "command": "Show the Content panel",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:0",
+        "value": true
+      }
+    ]
+  },
+  {
+    "id": "shadow-10",
+    "catalog": "catalog.json",
+    "command": "Select Marker 1",
+    "expected": [
+      {
+        "op": "select",
+        "target": "entity:marker0"
+      }
+    ]
+  },
+  {
+    "id": "shadow-11",
+    "catalog": "catalog.json",
+    "command": "Select Marker 2",
+    "expected": [
+      {
+        "op": "select",
+        "target": "entity:marker1"
+      }
+    ]
+  },
+  {
+    "id": "shadow-12",
+    "catalog": "catalog.json",
+    "command": "Frame Marker 2",
+    "expected": [
+      {
+        "op": "frame",
+        "target": "entity:marker1"
+      }
+    ]
+  },
+  {
+    "id": "shadow-13",
+    "catalog": "catalog.json",
+    "command": "Frame Marker 1",
+    "expected": [
+      {
+        "op": "frame",
+        "target": "entity:marker0"
+      }
+    ]
+  },
+  {
+    "id": "shadow-14",
+    "catalog": "catalog.json",
+    "command": "Play the scene",
+    "expected": [
+      {
+        "op": "runtime",
+        "target": "scene",
+        "value": "play"
+      }
+    ]
+  },
+  {
+    "id": "shadow-15",
+    "catalog": "catalog.json",
+    "command": "Stop the scene",
+    "expected": [
+      {
+        "op": "runtime",
+        "target": "scene",
+        "value": "stop"
+      }
+    ]
+  },
+  {
+    "id": "shadow-16",
+    "catalog": "catalog.json",
+    "command": "Pause the preview",
+    "expected": [
+      {
+        "op": "runtime",
+        "target": "preview",
+        "value": "pause"
+      }
+    ]
+  },
+  {
+    "id": "shadow-17",
+    "catalog": "catalog.json",
+    "command": "Save the current document",
+    "expected": [
+      {
+        "op": "save"
+      }
+    ]
+  },
+  {
+    "id": "shadow-18",
+    "catalog": "catalog.json",
+    "command": "Undo the last edit",
+    "expected": [
+      {
+        "op": "undo"
+      }
+    ]
+  },
+  {
+    "id": "shadow-19",
+    "catalog": "catalog.json",
+    "command": "Redo the last edit",
+    "expected": [
+      {
+        "op": "redo"
+      }
+    ]
+  },
+  {
+    "id": "shadow-20",
+    "catalog": "catalog.json",
+    "command": "Close the inspector panel",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:3",
+        "value": false
+      }
+    ]
+  },
+  {
+    "id": "shadow-21",
+    "catalog": "catalog.json",
+    "command": "Bring up the Marker prototype",
+    "expected": [
+      {
+        "op": "open",
+        "target": "prototype:marker"
+      }
+    ]
+  },
+  {
+    "id": "shadow-22",
+    "catalog": "catalog.json",
+    "command": "Zoom to Marker 2",
+    "expected": [
+      {
+        "op": "frame",
+        "target": "entity:marker1"
+      }
+    ]
+  },
+  {
+    "id": "shadow-23",
+    "catalog": "catalog.json",
+    "command": "Open BoostEmitter",
+    "expected": null
+  },
+  {
+    "id": "shadow-24",
+    "catalog": "catalog.json",
+    "command": "Select Marker",
+    "expected": null
+  },
+  {
+    "id": "shadow-25",
+    "catalog": "catalog.json",
+    "command": "Open Marker then make it wider",
+    "expected": null
+  },
+  {
+    "id": "shadow-26",
+    "catalog": "catalog.json",
+    "command": "Hide Inspector and Content",
+    "expected": null
+  },
+  {
+    "id": "shadow-27",
+    "catalog": "catalog.json",
+    "command": "Select Marker 1 and Marker 2",
+    "expected": null
+  },
+  {
+    "id": "shadow-28",
+    "catalog": "catalog.json",
+    "command": "Do not hide Inspector",
+    "expected": null
+  },
+  {
+    "id": "shadow-29",
+    "catalog": "catalog.json",
+    "command": "Can you explain what the Inspector does?",
+    "expected": null
+  },
+  {
+    "id": "shadow-30",
+    "catalog": "catalog.json",
+    "command": "Delete the Marker prototype",
+    "expected": null
+  },
+  {
+    "id": "shadow-31",
+    "catalog": "catalog.json",
+    "command": "Set Marker width to 42",
+    "expected": null
+  },
+  {
+    "id": "shadow-32",
+    "catalog": "catalog.json",
+    "command": "Change boost particle color to green",
+    "expected": null
+  },
+  {
+    "id": "shadow-33",
+    "catalog": "catalog.json",
+    "command": "Rename the scene to Forest",
+    "expected": null
+  },
+  {
+    "id": "shadow-34",
+    "catalog": "catalog.json",
+    "command": "Build a jumping behavior graph",
+    "expected": null
+  },
+  {
+    "id": "shadow-35",
+    "catalog": "catalog.json",
+    "command": "Hide Inspector and erase my project",
+    "expected": null
+  },
+  {
+    "id": "shadow-36",
+    "catalog": "catalog.json",
+    "command": "Play the scene if Marker is wider than 200",
+    "expected": null
+  }
+]

@@ -56,11 +56,7 @@ static behavior_asset *asset()
 
 static bool unavailable(game_system *system, int mode)
 {
-#ifndef __EMSCRIPTEN__
-    if (mode == GAME_SYSTEM_EXEC_AUTO && !game_system_uses_sljit(system)) {
-        return true;
-    }
-#endif
+
     return (mode == GAME_SYSTEM_EXEC_TYPED_BYTECODE &&
             !game_system_uses_typed_bytecode(system)) ||
            (mode == GAME_SYSTEM_EXEC_SJLIT && !game_system_uses_sljit(system));

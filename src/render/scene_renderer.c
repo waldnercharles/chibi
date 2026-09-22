@@ -490,17 +490,17 @@ static void mask_edges(
     float c = cosf(heading), s = sinf(heading);
     for (int y = 0; y < mask->height; y++) {
         for (int x = 0; x < mask->width; x++) {
-            if (!mask->cells[y * mask->width + x]) {
+            if (!material_mask_occupancy(mask).cells[y * mask->width + x]) {
                 continue;
             }
             bool border = false;
             for (int d = 1; d <= reach && !border; d++) {
                 border = x < d || y < d || x + d >= mask->width || y + d >= mask->height;
                 if (!border) {
-                    border = !mask->cells[y * mask->width + x - d] ||
-                             !mask->cells[y * mask->width + x + d] ||
-                             !mask->cells[(y - d) * mask->width + x] ||
-                             !mask->cells[(y + d) * mask->width + x];
+                    border = !material_mask_occupancy(mask).cells[y * mask->width + x - d] ||
+                             !material_mask_occupancy(mask).cells[y * mask->width + x + d] ||
+                             !material_mask_occupancy(mask).cells[(y - d) * mask->width + x] ||
+                             !material_mask_occupancy(mask).cells[(y + d) * mask->width + x];
                 }
             }
             if (!border) {
@@ -641,10 +641,10 @@ static void collect(
             }
             const GameReflection *reflection = GAME_GameReflection_get_const(world, entity);
             if (reflection) {
-                for (int i = 0; i < acount(mask->rects); i++) {
+                for (int i = 0; i < material_mask_collision(mask).count; i++) {
                     reflect_rect(
                         renderer,
-                        mask->rects[i],
+                        material_mask_collision(mask).rects[i],
                         position,
                         heading,
                         *reflection,
@@ -652,8 +652,8 @@ static void collect(
                     );
                 }
             }
-            for (int i = 0; i < acount(mask->surface); i++) {
-                const material_polygon *polygon = &mask->surface[i];
+            for (int i = 0; i < material_mask_surface(mask).count; i++) {
+                const material_polygon *polygon = &material_mask_surface(mask).polygons[i];
                 float min_x = polygon->points[0], max_x = min_x;
                 float min_y = polygon->points[1], max_y = min_y;
                 for (int j = 1; j < polygon->count; j++) {
@@ -866,8 +866,9 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
             const GameHRC2D *source = GAME_GameHRC2D_get_const(world, entity);
             if (found || !isfinite(source->ambient) || !isfinite(source->intensity) ||
                 !isfinite(source->fog) || !isfinite(source->shadow_floor) ||
-                source->ambient < 0 || source->intensity < 0 ||
-                source->fog < 0 || source->shadow_floor < 0 ||
+                !isfinite(source->luminance_scale) || source->ambient < 0 ||
+                source->intensity < 0 || source->fog < 0 || source->shadow_floor < 0 ||
+                source->luminance_scale < 0 || source->luminance_scale > 1 ||
                 source->ambient > 100 || source->intensity > 100 ||
                 source->fog > 100 || source->shadow_floor > 100) {
                 valid = false;
@@ -1079,7 +1080,7 @@ bool app_scene_renderer_draw(
     }
     render_material_textures textures = render_material_raster_textures(renderer->raster);
     const game_materials *materials = engine_materials(runtime);
-    if (game_materials_enabled(materials)) {
+    if (materials && game_materials_fluid(materials)) {
         if (!renderer->fluid) {
             renderer->fluid = render_fluid_raster_new();
         }
@@ -1101,7 +1102,7 @@ bool app_scene_renderer_draw(
                                       textures.albedo,
                                       textures.normal };
     inputs.background = scene_background(renderer, world, &camera);
-    if (game_materials_enabled(materials)) {
+    if (materials && game_materials_fluid(materials)) {
         inputs.visibility = render_fluid_raster_visibility(renderer->fluid);
     }
     if (!render_radiance_draw(renderer->radiance, inputs, view, renderer->output)) {
@@ -1229,17 +1230,6 @@ void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)
     if (renderer->arena) {
         render_arena_set_parallel(renderer->arena, enabled);
     }
-}
-
-render_radiance_settings app_scene_renderer_radiance_settings(const app_scene_renderer *renderer)
-{
-    return renderer ? render_radiance_get_settings(renderer->radiance)
-                    : (render_radiance_settings){ 0 };
-}
-
-bool app_scene_renderer_set_radiance_settings(app_scene_renderer *renderer, render_radiance_settings settings)
-{
-    return renderer && render_radiance_set_settings(renderer->radiance, settings);
 }
 
 render_arena_work app_scene_renderer_last_work(const app_scene_renderer *renderer)

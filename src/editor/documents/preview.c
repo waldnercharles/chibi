@@ -108,7 +108,7 @@ static void ed_run_pause(editor *e)
 }
 void ed_compile(editor *e)
 {
-    ed_refresh_stale_math_expressions(e);
+    ed_refresh_stale_behavior_expressions(e);
     compile_report_free(&e->compile);
     compile_report_init(&e->compile);
     char message[256];

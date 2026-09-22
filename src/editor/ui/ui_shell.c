@@ -1,5 +1,6 @@
 #include "editor/ui/ui_shell.h"
 
+#include "editor/ui/widget_observation.h"
 #include "editor/workspace/editor.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -12,6 +13,9 @@
 #include <string.h>
 // pi-lens-ignore: fatal error
 #include <imgui/dcimgui.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 /* The generated internal header exposes one namespace-qualified stb type when
  * this namespace macro is defined. The shell only needs its C docking wrappers. */
@@ -227,6 +231,10 @@ void editor_ui_initialize(bool persist)
 {
     editor_initialize_fonts();
     ImGui_GetIO()->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+#ifdef __EMSCRIPTEN__
+    ImGui_GetIO()->ConfigMacOSXBehaviors = emscripten_run_script_int("/Mac|iPhone|iPad|iPod/.test(navigator.platform)") !=
+                                           0;
+#endif
     if (!persist) {
         ImGui_GetIO()->IniFilename = NULL;
     }
@@ -1202,6 +1210,7 @@ bool editor_ui_search_field(const char *id, char *buffer, size_t buffer_size, co
         (ImVec2){ 30.0f, ImGui_GetStyle()->FramePadding.y }
     );
     bool changed = ImGui_InputTextWithHint("##input", hint, buffer, buffer_size, 0);
+    editor_ui_track_control(id, hint, "textbox", buffer);
     ImGui_PopStyleVar();
     if (ImGui_IsItemActive() || ImGui_IsItemFocused()) {
         ImDrawList_AddRectEx(
@@ -1233,7 +1242,7 @@ bool editor_ui_search_field(const char *id, char *buffer, size_t buffer_size, co
         }
         char clear_id[192];
         snprintf(clear_id, sizeof clear_id, "%s.clear", id);
-        editor_ui_track_item(clear_id);
+        editor_ui_track_control(clear_id, "Clear search", "button", NULL);
         ui_draw_centered_icon(
             ImGui_GetWindowDrawList(),
             ImGui_GetFont(),
@@ -1455,6 +1464,112 @@ typedef struct
 } ui_item_hit;
 
 static ui_item_hit *ui_item_hits;
+static editor_ui_control *ui_controls;
+static int ui_named_controls;
+
+const editor_ui_control *editor_ui_controls(int *count)
+{
+    asetlen(ui_controls, ui_named_controls);
+    int widgets_count;
+    const editor_widget *widgets = editor_widgets(&widgets_count);
+    for (int i = 0; i < widgets_count; i++) {
+        const editor_widget *w = &widgets[i];
+        if (!w->label[0] || !w->role[0]) {
+            continue;
+        }
+        bool named = false;
+        for (int n = 0; n < ui_named_controls; n++) {
+            editor_ui_rect r = ui_controls[n].rect;
+            named |= fabsf(r.x - w->x) < 1 && fabsf(r.y - w->y) < 1;
+        }
+        if (named) {
+            continue;
+        }
+        editor_ui_control control = {
+            .rect = { w->x, w->y, w->width, w->height },
+            .popup_depth = w->depth,
+            .enabled = w->enabled,
+            .focused = w->focused,
+            .active = w->active,
+        };
+        snprintf(control.id, sizeof control.id, "widget.%08x", w->id);
+        snprintf(control.label, sizeof control.label, "%s", w->label);
+        snprintf(control.role, sizeof control.role, "%s", w->role);
+        snprintf(control.value, sizeof control.value, "%s", w->value);
+        snprintf(control.window, sizeof control.window, "%s", w->window);
+        apush(ui_controls, control);
+    }
+    *count = acount(ui_controls);
+    return ui_controls;
+}
+
+int editor_ui_popup_depth()
+{
+    return ImGui_GetCurrentContext()->OpenPopupStack.Size;
+}
+
+void editor_ui_track_region(const char *id, const char *label, const char *role, const char *value, editor_ui_rect rect)
+{
+    ImGuiContext *ctx = ImGui_GetCurrentContext();
+    ImVec2 min = ImDrawList_GetClipRectMin(ImGui_GetWindowDrawList());
+    ImVec2 max = ImDrawList_GetClipRectMax(ImGui_GetWindowDrawList());
+    float right = fminf(rect.x + rect.width, max.x);
+    float bottom = fminf(rect.y + rect.height, max.y);
+    rect.x = fmaxf(rect.x, min.x);
+    rect.y = fmaxf(rect.y, min.y);
+    rect.width = right - rect.x;
+    rect.height = bottom - rect.y;
+    if (rect.width <= 0 || rect.height <= 0) {
+        return;
+    }
+    editor_ui_control control = {
+        .rect = rect,
+        .popup_depth = ctx->BeginPopupStack.Size,
+        .enabled = true,
+    };
+    snprintf(control.id, sizeof control.id, "%s", id);
+    snprintf(control.label, sizeof control.label, "%s", label);
+    snprintf(control.role, sizeof control.role, "%s", role);
+    snprintf(control.value, sizeof control.value, "%s", value ? value : "");
+    snprintf(
+        control.window,
+        sizeof control.window,
+        "%s",
+        ImGui_GetCurrentWindow()->Name
+    );
+    asetlen(ui_controls, ui_named_controls);
+    apush(ui_controls, control);
+    ui_named_controls++;
+}
+
+void editor_ui_track_control(const char *id, const char *label, const char *role, const char *value)
+{
+    editor_ui_track_item(id);
+    if (!ImGui_IsItemVisible()) {
+        return;
+    }
+    ImGuiContext *context = ImGui_GetCurrentContext();
+    editor_ui_control control = {
+        .popup_depth = context->BeginPopupStack.Size,
+        .enabled = !(context->LastItemData.ItemFlags & ImGuiItemFlags_Disabled),
+        .focused = ImGui_IsItemFocused(),
+        .active = ImGui_IsItemActive(),
+    };
+    snprintf(control.id, sizeof control.id, "%s", id);
+    snprintf(control.label, sizeof control.label, "%s", label);
+    snprintf(control.role, sizeof control.role, "%s", role);
+    snprintf(control.value, sizeof control.value, "%s", value ? value : "");
+    editor_ui_item_rect(id, &control.rect);
+    snprintf(
+        control.window,
+        sizeof control.window,
+        "%s",
+        ImGui_GetCurrentWindow()->Name
+    );
+    asetlen(ui_controls, ui_named_controls);
+    apush(ui_controls, control);
+    ui_named_controls++;
+}
 
 bool editor_ui_item_center(const char *id, float *x, float *y)
 {
@@ -1486,6 +1601,7 @@ void editor_ui_track_item(const char *id)
     }
     ImVec2 min = ImGui_GetItemRectMin();
     ImVec2 max = ImGui_GetItemRectMax();
+    editor_widgets_label(ImGui_GetCurrentContext()->LastItemData.ID, id);
     apush(
         ui_item_hits,
         ((ui_item_hit){ cImHashStr(id), { min.x, min.y, max.x - min.x, max.y - min.y } })
@@ -1679,7 +1795,7 @@ static void ui_document_action(const char *label, const char *shortcut, const ch
     if (ImGui_MenuItemEx(label, shortcut, false, enabled)) {
         editor_ui_run_command(command);
     }
-    editor_ui_track_item(id);
+    editor_ui_track_control(id, label, "menuitem", NULL);
 }
 
 static void ui_draw_menu(void)
@@ -1690,7 +1806,7 @@ static void ui_draw_menu(void)
     ui_menu_bottom = ImGui_GetWindowPos().y + ImGui_GetWindowSize().y;
     ImGui_TextColoredUnformatted(UI_ACCENT, "Chibi");
     bool open = ImGui_BeginMenu("File");
-    editor_ui_track_item("file.menu");
+    editor_ui_track_control("file.menu", "File", "menu", NULL);
     if (open) {
         ui_document_action("Save", "Ctrl+S", "file.save", EDITOR_UI_COMMAND_SAVE);
         ui_document_action("Save As", NULL, "file.save_as", EDITOR_UI_COMMAND_SAVE_AS);
@@ -1699,14 +1815,14 @@ static void ui_draw_menu(void)
         ImGui_EndMenu();
     }
     bool edit = ImGui_BeginMenu("Edit");
-    editor_ui_track_item("edit.menu");
+    editor_ui_track_control("edit.menu", "Edit", "menu", NULL);
     if (edit) {
         ui_document_action("Undo", "Ctrl+Z", "edit.undo", EDITOR_UI_COMMAND_UNDO);
         ui_document_action("Redo", "Ctrl+Shift+Z", "edit.redo", EDITOR_UI_COMMAND_REDO);
         ImGui_EndMenu();
     }
     bool view = ImGui_BeginMenu("View");
-    editor_ui_track_item("view.menu");
+    editor_ui_track_control("view.menu", "View", "menu", NULL);
     if (view) {
         if (ImGui_MenuItemEx("Reset Workspace", NULL, false, true)) {
             editor_ui_show_graph_and_scene();
@@ -2025,6 +2141,8 @@ static void ui_prepare_sidebars()
 void editor_ui_prepare(void)
 {
     afree(ui_item_hits);
+    afree(ui_controls);
+    ui_named_controls = 0;
     for (int i = 0; i < EDITOR_UI_PANE_COUNT; i++) {
         ui_pane_rect_valid[i] = false;
     }
@@ -2032,6 +2150,7 @@ void editor_ui_prepare(void)
     if (!context) {
         return;
     }
+    editor_widgets_begin();
     if (context != ui_context) {
         ImGui_GetIO()->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ui_apply_theme();
@@ -2102,4 +2221,6 @@ void editor_ui_deactivate()
     ui_graph_debug_header = NULL;
     ui_graph_debug_user = NULL;
     afree(ui_item_hits);
+    afree(ui_controls);
+    ui_named_controls = 0;
 }

@@ -1,9 +1,11 @@
 #include "runtime/behaviors/live.h"
 
+#include "assets/system_document.h"
 #include "graph/document/events.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "render/shader_catalog.h"
+#include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -178,6 +180,11 @@ void game_live_world_free(game_live_world *world)
         definition->registered = 0;
         game_live_definition_free(definition);
     }
+    for (int i = 0; i < acount(world->systems); i++) {
+        free(world->systems[i].name);
+        free(world->systems[i].json);
+    }
+    afree(world->systems);
     afree(world->definitions);
     free(world);
 }
@@ -262,6 +269,17 @@ int game_live_add_definition(game_live_world *world, game_live_definition *defin
         if (game_behavior_register_asset(world->behaviors, definition->name, linked) != 0) {
             behavior_asset_free(linked);
             return registration_error(definition, "A runtime behavior with this name is already registered.");
+        }
+        behavior_asset_free(definition->applied);
+        definition->applied = linked;
+    }
+    if (definition->working->domain == BEHAVIOR_DOMAIN_FIELD) {
+        char message[256];
+        behavior_asset *linked = linked_snapshot(world, definition->working, NULL, message, sizeof message);
+        if (!linked ||
+            !material_field_compile(game_materials_fields(world->materials), linked, message, sizeof message)) {
+            behavior_asset_free(linked);
+            return registration_error(definition, message);
         }
         behavior_asset_free(definition->applied);
         definition->applied = linked;
@@ -369,7 +387,8 @@ static int update_library(
     for (int i = 0; i < acount(world->definitions); i++) {
         game_live_definition *d = world->definitions[i];
         if (d->working->domain != BEHAVIOR_DOMAIN_EVENT &&
-            !shader_domain(d->working->domain)) {
+            !shader_domain(d->working->domain) &&
+            d->working->domain != BEHAVIOR_DOMAIN_FIELD) {
             continue;
         }
         bool uses = false;
@@ -390,6 +409,14 @@ static int update_library(
             if (!validate_shader(snapshot, message, size)) {
                 goto cleanup;
             }
+            continue;
+        }
+        if (snapshot->domain == BEHAVIOR_DOMAIN_FIELD) {
+            field_program *program = field_program_compile(snapshot, message, size);
+            if (!program) {
+                goto cleanup;
+            }
+            field_program_free(program);
             continue;
         }
         if (!snapshot->owner_type_name) {
@@ -418,7 +445,16 @@ static int update_library(
     }
     for (int i = 0; i < acount(dependents); i++) {
         behavior_asset *old = NULL;
-        if (shader_domain(snapshots[i]->domain)) {
+        if (snapshots[i]->domain == BEHAVIOR_DOMAIN_FIELD) {
+            bool applied = material_field_compile(
+                game_materials_fields(world->materials),
+                snapshots[i],
+                message,
+                size
+            );
+            assert(applied);
+            old = dependents[i]->applied;
+        } else if (shader_domain(snapshots[i]->domain)) {
             shader_error error = { 0 };
             bool applied = render_shader_upsert(snapshots[i], &error);
             assert(applied);
@@ -493,6 +529,11 @@ static int update_definition(
             &definition->diagnostics
         );
         set_message(message, message_size, "apply blocked: %s", diagnostic->message);
+        behavior_asset_free(snapshot);
+        return -1;
+    }
+    if (definition->working->domain == BEHAVIOR_DOMAIN_FIELD &&
+        !material_field_compile(game_materials_fields(world->materials), snapshot, message, message_size)) {
         behavior_asset_free(snapshot);
         return -1;
     }
@@ -572,4 +613,67 @@ int game_live_apply(game_live_world *world, game_live_definition *definition, ch
 int game_live_preview(game_live_world *world, game_live_definition *definition, char *message, size_t message_size)
 {
     return update_definition(world, definition, message, message_size, false);
+}
+
+static const ecs_component_desc *resolve_system_component(const char *name, void *)
+{
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        const ecs_component_desc *c = GAME_REGISTRY_COMPONENTS[i];
+        if (!strcmp(c->name, name) || !strcmp(c->key, name)) {
+            return c;
+        }
+    }
+    return NULL;
+}
+const game_live_system_asset *game_live_find_system(const game_live_world *world, const char *name)
+{
+    for (int i = 0; name && i < acount(world->systems); i++) {
+        if (!strcmp(world->systems[i].name, name)) {
+            return &world->systems[i];
+        }
+    }
+    return NULL;
+}
+int game_live_register_system(
+    game_live_world *world,
+    const char *name,
+    const char *json,
+    char *error,
+    size_t size
+)
+{
+    game_system_document *
+        document = game_system_document_load(json, resolve_system_component, NULL, error, size);
+    if (!document) {
+        return -1;
+    }
+    compile_report report;
+    compile_report_init(&report);
+    int invalid = behavior_asset_compile_for_system(
+        game_system_document_behavior_asset(document),
+        &report
+    );
+    if (invalid) {
+        snprintf(error, size, "%s", compile_report_first_error(&report)->message);
+    }
+    compile_report_free(&report);
+    game_system_document_free(document);
+    if (invalid) {
+        return -1;
+    }
+    for (int i = 0; i < acount(world->systems); i++) {
+        game_live_system_asset *asset = &world->systems[i];
+        if (strcmp(asset->name, name)) {
+            continue;
+        }
+        if (!strcmp(asset->json, json)) {
+            return 0;
+        }
+        free(asset->json);
+        asset->json = xstrdup(json);
+        asset->revision++;
+        return 0;
+    }
+    apush(world->systems, ((game_live_system_asset){ xstrdup(name), xstrdup(json), 1 }));
+    return 0;
 }

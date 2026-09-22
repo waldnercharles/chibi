@@ -1,0 +1,120 @@
+[
+  {
+    "request": {
+      "goal": "Find and open the LayaBlueMarker prototype in the editor.",
+      "observation": "Project panel has an empty Search files field and a New button. Asset folders are collapsed.",
+      "actions": [
+        {
+          "id": "search",
+          "label": "Click Search files"
+        },
+        {
+          "id": "new",
+          "label": "Click New"
+        }
+      ]
+    },
+    "response": {
+      "contract": 1,
+      "operation": "choose_editor_action",
+      "ok": true,
+      "result": {
+        "status": "needs_supervisor",
+        "reason": "low_confidence",
+        "action_id": "search",
+        "label": "Click Search files",
+        "confidence": 0.2779,
+        "probabilities": {
+          "search": 0.7999,
+          "new": 0.2001
+        },
+        "observation_hash": "0b4838b0f45a8d95e4c757d894701ba587f08d56dd3a5bbb82449890489e211a",
+        "model": "laya-rl-agent",
+        "elapsed_ms": 394,
+        "executed": false
+      }
+    },
+    "supervisor": "Codex reviewed search choice and clicked the observed field at 148,145."
+  },
+  {
+    "request": {
+      "goal": "Find and open the LayaBlueMarker prototype in the editor.",
+      "observation": "Search files is focused and empty. It accepts an asset name.",
+      "actions": [
+        {
+          "id": "type",
+          "label": "Type the asset name in Search files",
+          "needs_text": true
+        },
+        {
+          "id": "clear",
+          "label": "Clear the search field"
+        }
+      ]
+    },
+    "response": {
+      "contract": 1,
+      "operation": "choose_editor_action",
+      "ok": true,
+      "result": {
+        "status": "needs_supervisor",
+        "reason": "low_confidence",
+        "action_id": "clear",
+        "label": "Clear the search field",
+        "confidence": 0.0002,
+        "probabilities": {
+          "type": 0.4916,
+          "clear": 0.5084
+        },
+        "observation_hash": "e99fbd5eb71dfecf01389f9854e925a03b167d919a0183b273f69e0b10e9242d",
+        "model": "laya-rl-agent",
+        "elapsed_ms": 406,
+        "executed": false
+      }
+    },
+    "supervisor": "Codex rejected clear on an empty field and typed LayaBlueMarker. Search results visibly confirmed the text."
+  },
+  {
+    "request": {
+      "goal": "Open the LayaBlueMarker prototype.",
+      "observation": "The search results show LayaBlueMarkerMaterial.json, LayaBlueMarker.json, and LayaBlueMarkerShape.json.",
+      "actions": [
+        {
+          "id": "material",
+          "label": "Open LayaBlueMarkerMaterial.json material"
+        },
+        {
+          "id": "prototype",
+          "label": "Open LayaBlueMarker.json prototype"
+        },
+        {
+          "id": "shape",
+          "label": "Open LayaBlueMarkerShape.json shape"
+        }
+      ]
+    },
+    "response": {
+      "contract": 1,
+      "operation": "choose_editor_action",
+      "ok": true,
+      "result": {
+        "status": "needs_supervisor",
+        "reason": "low_confidence",
+        "action_id": "prototype",
+        "label": "Open LayaBlueMarker.json prototype",
+        "confidence": 0.1189,
+        "probabilities": {
+          "material": 0.3011,
+          "prototype": 0.5544,
+          "shape": 0.1445
+        },
+        "observation_hash": "d8fa5572a7c8b1f48c2aaba8be8a1db4242ab097645aee61c8b68e72a8746b7c",
+        "model": "laya-rl-agent",
+        "elapsed_ms": 422,
+        "executed": false
+      }
+    },
+    "supervisor": "Codex reviewed prototype choice and double-clicked the observed result at 176,212. Inspector visibly showed LayaBlueMarker and its components.",
+    "verified": true
+  }
+]

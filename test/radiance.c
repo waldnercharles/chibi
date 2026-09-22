@@ -290,6 +290,61 @@ static double receiver_light(const CF_Pixel *pixels)
     return sum / (24 * 16);
 }
 
+static bool split_luminance_bounce(render_material_raster *raster)
+{
+    render_radiance *full = render_radiance_new();
+    render_radiance *split = render_radiance_new();
+    CF_Canvas full_canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    CF_Canvas split_canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    CF_Pixel full_pixels[PIXELS], split_pixels[PIXELS];
+    render_material_entity entities[] = { emitter(), wall_with(.2f, .8f) };
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = false;
+    lighting.fog = 0;
+    lighting.scale = 1;
+    lighting.trace_levels = 1;
+    bool ok = full && split && full_canvas.id && split_canvas.id;
+    if (ok) {
+        ok = render_radiance_set_lighting(full, lighting) &&
+             render_radiance_resize(full, SIDE, SIDE);
+    }
+    if (ok) {
+        lighting.luminance_scale = 1;
+        ok = render_radiance_set_lighting(split, lighting) &&
+             render_radiance_resize(split, SIDE, SIDE);
+    }
+    if (ok) {
+        ok = solve(raster, full, full_canvas, entities, 2, SIDE, 8, full_pixels) &&
+             solve(raster, split, split_canvas, entities, 2, SIDE, 8, split_pixels);
+    }
+    int maximum = 0;
+    for (int i = 0; i < PIXELS && ok; i++) {
+        int error = abs(
+            (int)full_pixels[i].colors.r - (int)split_pixels[i].colors.r
+        );
+        int channel = abs(
+            (int)full_pixels[i].colors.g - (int)split_pixels[i].colors.g
+        );
+        error = error > channel ? error : channel;
+        channel = abs((int)full_pixels[i].colors.b - (int)split_pixels[i].colors.b);
+        error = error > channel ? error : channel;
+        maximum = maximum > error ? maximum : error;
+        if (maximum > 2) {
+            ok = false;
+        }
+    }
+    printf("radiance split luminance bounce: maximum RGB error %d\n", maximum);
+    if (split_canvas.id) {
+        cf_destroy_canvas(split_canvas);
+    }
+    if (full_canvas.id) {
+        cf_destroy_canvas(full_canvas);
+    }
+    render_radiance_free(split);
+    render_radiance_free(full);
+    return ok;
+}
+
 static bool save_capture(const CF_Pixel *pixels)
 {
     const char *path = getenv("CHIBI_RADIANCE_SCREENSHOT");
@@ -1214,6 +1269,9 @@ int test_radiance()
         double settled = receiver_light(bounce_settled);
         printf("radiance bounce: first %.3f, settled %.3f\n", first, settled);
         ok = settled > first + 0.1;
+    }
+    if (ok) {
+        ok = split_luminance_bounce(raster);
     }
     if (ok) {
         /* Transparent reflective edges must not turn reflected light into an

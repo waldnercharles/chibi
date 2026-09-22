@@ -1,6 +1,7 @@
 #ifndef CHIBI_BEHAVIOR_LOWER_INTERNAL_H
 #define CHIBI_BEHAVIOR_LOWER_INTERNAL_H
 #include "graph/compiler/behavior_function_internal.h"
+#include "graph/model/registry.h"
 typedef struct
 {
     size_t offset;
@@ -83,6 +84,15 @@ typedef struct behavior_lower_builder
     behavior_function_diagnostic *diagnostic;
 } builder;
 
+static inline graph_expression_mode behavior_expression_mode_for(const builder *b, const node *n)
+{
+    if (!b || !n || n->desc != &NODE_BehaviorExpression) {
+        return GRAPH_EXPRESSION_NONE;
+    }
+    const graph *target = behavior_asset_find_graph(b->asset, n->reference_id);
+    return target ? target->expression_mode : GRAPH_EXPRESSION_NONE;
+}
+
 int behavior_lower_schedule(builder *b, task t);
 int behavior_lower_label(builder *b);
 void behavior_lower_bind_label(builder *b, int label);
@@ -149,6 +159,7 @@ int behavior_lower_emit(builder *b, behavior_function_instruction i);
 int behavior_lower_variable(const builder *b, uint64_t id, pin_type type, pin_container container);
 int behavior_lower_local(builder *b, int frame, const node *n, int pin);
 int behavior_lower_convert(builder *b, int slot, pin_type type);
+int behavior_lower_apply_conversion(builder *b, int slot, const node_desc *conversion, node *n, int pin);
 int behavior_lower_input(builder *b, node *n, int pin);
 int behavior_lower_output(builder *b, node *n, int pin);
 void behavior_lower_watch(builder *b, const node *n, int pin, bool output, int value);

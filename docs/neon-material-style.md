@@ -62,15 +62,18 @@ coarser gas simulation. Its population control is not verified as FPS-driven.
   Near-surface normals redistribute incoming light and offset background/light
   sampling. `GameFluidVolume.refraction` controls that offset in output pixels;
   the authored liquid uses eight. Opacity is reduced to show the background.
-- **Enemy damage:** three projectile hits exhaust health; falling below 60% of
+- **Enemy damage:** three projectile hits exhaust health; falling below 30% of
   the original hull area releases the remaining body sooner. Released debris
   retains material and collision but has no pursuit behavior or health.
 - **Debris penetration:** optional `GameCollider.pierce_fragments` lets continuous
-  sensors report debris contacts while continuing to the first blocking body.
-  `Contact Begin` carries world-space Point X/Y; the projectile carves there,
+  sensors report contacts from fragments authored with
+  `GameDestructible.pierceable_fragments` while continuing to the first blocking
+  body.
+  `Contact Begin` carries the world-space Point (`CF_V2`); the projectile carves there,
   then remains alive for debris hits. Swept events are delivered in travel order,
   and fragments behind a blocking wall receive no hit. A normal shot still stops
-  on live enemies and intact terrain. This is an authored penetration rule,
+  on live enemies, ordinary debris, and intact terrain. This is an authored
+  penetration rule,
   without energy loss or a ballistics model.
 - **Fragment power:** optional `GameFragmentGlow` fades emitted light over 3.5
   seconds with staggered flicker. Dark fragments keep their collision and motion.

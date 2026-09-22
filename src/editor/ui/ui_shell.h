@@ -176,6 +176,27 @@ void editor_ui_track_rect(const char *id, editor_ui_rect rect);
 bool editor_ui_item_center(const char *id, float *x, float *y);
 bool editor_ui_item_rect(const char *id, editor_ui_rect *out);
 
+/* Semantic controls share the hit-test registry. Strings are owned by the frame.
+ * A popup blocks controls at a shallower depth. Unknown tracked rectangles are
+ * not implicitly actionable. This is also the seam for platform accessibility. */
+typedef struct
+{
+    char id[192], label[192], role[24], value[256], window[128];
+    editor_ui_rect rect;
+    int popup_depth;
+    bool enabled, focused, active;
+} editor_ui_control;
+void editor_ui_track_control(const char *id, const char *label, const char *role, const char *value);
+void editor_ui_track_region(
+    const char *id,
+    const char *label,
+    const char *role,
+    const char *value,
+    editor_ui_rect rect
+);
+const editor_ui_control *editor_ui_controls(int *count);
+int editor_ui_popup_depth();
+
 /* A 200ms fade for hover and focus. First changed frame retains current alpha.
  * Call in the stable owner window; hidden controls must stop accepting input
  * immediately while their returned opacity fades to zero. */

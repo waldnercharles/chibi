@@ -1,0 +1,46 @@
+[
+  {
+    "catalog": "catalog.json",
+    "id": "local-01",
+    "command": "Scale the Marker prototype width to 125 percent of its current size",
+    "expected": [
+      {
+        "op": "set",
+        "target": "prototype:marker",
+        "field": "width",
+        "value": 125
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-07",
+    "command": "Hide the Inspector",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:3",
+        "value": false
+      }
+    ]
+  },
+  {
+    "id": "live-colors",
+    "catalog": "tuning-live-catalog.json",
+    "command": "Change the BoostEmitter prototype particle color to green and end color to purple",
+    "expected": [
+      {
+        "op": "set",
+        "target": "/workspace/content/prototypes/BoostEmitter.json",
+        "field": "GAME.GameParticleEmitter.color",
+        "value": 16711935
+      },
+      {
+        "op": "set",
+        "target": "/workspace/content/prototypes/BoostEmitter.json",
+        "field": "GAME.GameParticleEmitter.end_color",
+        "value": 2147548928
+      }
+    ]
+  }
+]

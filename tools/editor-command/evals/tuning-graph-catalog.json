@@ -1,0 +1,2310 @@
+{
+  "contract": 2,
+  "incarnation": 1790051711954000,
+  "capabilities": [
+    "open",
+    "select",
+    "set",
+    "assert",
+    "duplicate",
+    "connect",
+    "panel",
+    "frame",
+    "runtime",
+    "save",
+    "undo",
+    "redo"
+  ],
+  "document": "2:CommandMath",
+  "project": "/workspace/content",
+  "playing": false,
+  "objects": [
+    {
+      "id": "/workspace/content/behaviors/CommandMath.json",
+      "name": "CommandMath",
+      "kind": "behavior",
+      "document": "/workspace/content/behaviors/CommandMath.json",
+      "selected": false,
+      "path": "/workspace/content/behaviors/CommandMath.json",
+      "asset_kind": 2
+    },
+    {
+      "id": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "name": "LayaBlueMarkerMaterial",
+      "kind": "material",
+      "document": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "selected": false,
+      "path": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "asset_kind": 4
+    },
+    {
+      "id": "/workspace/content/materials/LayaConfidentMaterial.json",
+      "name": "LayaConfidentMaterial",
+      "kind": "material",
+      "document": "/workspace/content/materials/LayaConfidentMaterial.json",
+      "selected": false,
+      "path": "/workspace/content/materials/LayaConfidentMaterial.json",
+      "asset_kind": 4
+    },
+    {
+      "id": "/workspace/content/prototypes/BoostEmitter.json",
+      "name": "BoostEmitter",
+      "kind": "prototype",
+      "document": "/workspace/content/prototypes/BoostEmitter.json",
+      "selected": false,
+      "path": "/workspace/content/prototypes/BoostEmitter.json",
+      "asset_kind": 1,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": -100,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 60,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameAppearance.width",
+          "name": "width",
+          "label": "2D Appearance Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 24,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameAppearance.height",
+          "name": "height",
+          "label": "2D Appearance Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 24,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameAppearance.color",
+          "name": "color",
+          "label": "2D Appearance Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 4286578943,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 2
+        },
+        {
+          "id": "GAME.GameAppearance.shape",
+          "name": "shape",
+          "label": "2D Appearance Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "choices": [
+            {
+              "label": "Box",
+              "value": 0
+            },
+            {
+              "label": "Circle",
+              "value": 1
+            },
+            {
+              "label": "Diamond",
+              "value": 2
+            },
+            {
+              "label": "Chevron",
+              "value": 3
+            },
+            {
+              "label": "Chevron Outline",
+              "value": 4
+            },
+            {
+              "label": "Capsule",
+              "value": 5
+            },
+            {
+              "label": "Triangle",
+              "value": 6
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 7
+            }
+          ],
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 3
+        },
+        {
+          "id": "GAME.GameAppearance.border_width",
+          "name": "border_width",
+          "label": "2D Appearance Border Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 4
+        },
+        {
+          "id": "GAME.GameAppearance.border_color",
+          "name": "border_color",
+          "label": "2D Appearance Border Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 5
+        },
+        {
+          "id": "GAME.GameAppearance.glow_radius",
+          "name": "glow_radius",
+          "label": "2D Appearance Glow Radius",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 6
+        },
+        {
+          "id": "GAME.GameAppearance.glow_color",
+          "name": "glow_color",
+          "label": "2D Appearance Glow Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 7
+        },
+        {
+          "id": "GAME.GameAppearance.stroke_width",
+          "name": "stroke_width",
+          "label": "2D Appearance Stroke Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 8
+        },
+        {
+          "id": "GAME.GameAppearance.antialias",
+          "name": "antialias",
+          "label": "2D Appearance Antialias",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 9
+        },
+        {
+          "id": "GAME.GameAppearance.layer",
+          "name": "layer",
+          "label": "2D Appearance Layer",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 10
+        },
+        {
+          "id": "GAME.GameParticleEmitter.shape",
+          "name": "shape",
+          "label": "Particle Emitter Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "choices": [
+            {
+              "label": "Round",
+              "value": 0
+            },
+            {
+              "label": "Triangle",
+              "value": 1
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 2
+            },
+            {
+              "label": "Ring",
+              "value": 3
+            },
+            {
+              "label": "Streak",
+              "value": 4
+            }
+          ],
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameParticleEmitter.color",
+          "name": "color",
+          "label": "Particle Emitter Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 4286578943,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameParticleEmitter.end_color",
+          "name": "end_color",
+          "label": "Particle Emitter End Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 2147548928,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 2
+        },
+        {
+          "id": "GAME.GameParticleEmitter.rate",
+          "name": "rate",
+          "label": "Particle Emitter Rate",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 20,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 3
+        },
+        {
+          "id": "GAME.GameParticleEmitter.burst_count",
+          "name": "burst_count",
+          "label": "Particle Emitter Burst Count",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 4
+        },
+        {
+          "id": "GAME.GameParticleEmitter.spread",
+          "name": "spread",
+          "label": "Particle Emitter Spread",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0.30000001192092896,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 8
+        },
+        {
+          "id": "GAME.GameParticleEmitter.absorption",
+          "name": "absorption",
+          "label": "Particle Emitter Absorption",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0.009999999776482582,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 12
+        },
+        {
+          "id": "GAME.GameParticleEmitter.metaball_group",
+          "name": "metaball_group",
+          "label": "Particle Emitter Metaball Group",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 13
+        },
+        {
+          "id": "GAME.GameParticleEmitter.metaball_blend",
+          "name": "metaball_blend",
+          "label": "Particle Emitter Metaball Blend",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 14
+        },
+        {
+          "id": "GAME.GameParticleEmitter.velocity_align",
+          "name": "velocity_align",
+          "label": "Particle Emitter Velocity Align",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 15
+        },
+        {
+          "id": "GAME.GameParticleEmitter.velocity_inherit",
+          "name": "velocity_inherit",
+          "label": "Particle Emitter Velocity Inherit",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 1,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 17
+        },
+        {
+          "id": "GAME.GameParticleEmitter.active",
+          "name": "active",
+          "label": "Particle Emitter Active",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": true,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 21
+        },
+        {
+          "id": "GAME.GameParticleEmitter.planar",
+          "name": "planar",
+          "label": "Particle Emitter Planar",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 22
+        },
+        {
+          "id": "GAME.GameParticleEmitter.heading_only",
+          "name": "heading_only",
+          "label": "Particle Emitter Heading Only",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 23
+        },
+        {
+          "id": "GAME.GameParticleEmitter.fluid",
+          "name": "fluid",
+          "label": "Particle Emitter Fluid",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 24
+        },
+        {
+          "id": "GAME.GameParticleEmitter.fluid_kind",
+          "name": "fluid_kind",
+          "label": "Particle Emitter Fluid Kind",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "choices": [
+            {
+              "label": "Gas",
+              "value": 0
+            },
+            {
+              "label": "Liquid",
+              "value": 1
+            }
+          ],
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 25
+        },
+        {
+          "id": "GAME.GameParticleEmitter.fluid_mass",
+          "name": "fluid_mass",
+          "label": "Particle Emitter Fluid Mass",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 26
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameAppearance",
+        "GameParticleEmitter"
+      ]
+    },
+    {
+      "id": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "name": "LayaBlueMarker",
+      "kind": "prototype",
+      "document": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "selected": false,
+      "path": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "asset_kind": 1,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameAppearance.width",
+          "name": "width",
+          "label": "2D Appearance Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 48,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameAppearance.height",
+          "name": "height",
+          "label": "2D Appearance Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 48,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameAppearance.color",
+          "name": "color",
+          "label": "2D Appearance Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 4294967295,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 2
+        },
+        {
+          "id": "GAME.GameAppearance.shape",
+          "name": "shape",
+          "label": "2D Appearance Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 1,
+          "choices": [
+            {
+              "label": "Box",
+              "value": 0
+            },
+            {
+              "label": "Circle",
+              "value": 1
+            },
+            {
+              "label": "Diamond",
+              "value": 2
+            },
+            {
+              "label": "Chevron",
+              "value": 3
+            },
+            {
+              "label": "Chevron Outline",
+              "value": 4
+            },
+            {
+              "label": "Capsule",
+              "value": 5
+            },
+            {
+              "label": "Triangle",
+              "value": 6
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 7
+            }
+          ],
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 3
+        },
+        {
+          "id": "GAME.GameAppearance.border_width",
+          "name": "border_width",
+          "label": "2D Appearance Border Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 4
+        },
+        {
+          "id": "GAME.GameAppearance.border_color",
+          "name": "border_color",
+          "label": "2D Appearance Border Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 5
+        },
+        {
+          "id": "GAME.GameAppearance.glow_radius",
+          "name": "glow_radius",
+          "label": "2D Appearance Glow Radius",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 6
+        },
+        {
+          "id": "GAME.GameAppearance.glow_color",
+          "name": "glow_color",
+          "label": "2D Appearance Glow Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 7
+        },
+        {
+          "id": "GAME.GameAppearance.stroke_width",
+          "name": "stroke_width",
+          "label": "2D Appearance Stroke Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 8
+        },
+        {
+          "id": "GAME.GameAppearance.antialias",
+          "name": "antialias",
+          "label": "2D Appearance Antialias",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 1,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 9
+        },
+        {
+          "id": "GAME.GameAppearance.layer",
+          "name": "layer",
+          "label": "2D Appearance Layer",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 10
+        },
+        {
+          "id": "GAME.GameShader.material",
+          "name": "material",
+          "label": "Shader Material",
+          "pin_type": 13,
+          "integer": true,
+          "value": "LayaBlueMarkerMaterial",
+          "type": "choice",
+          "asset_reference": true,
+          "choices": [
+            {
+              "label": "LayaBlueMarkerMaterial",
+              "value": "LayaBlueMarkerMaterial"
+            },
+            {
+              "label": "LayaConfidentMaterial",
+              "value": "LayaConfidentMaterial"
+            }
+          ],
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameShader.shape",
+          "name": "shape",
+          "label": "Shader Shape",
+          "pin_type": 13,
+          "integer": true,
+          "value": "",
+          "type": "choice",
+          "asset_reference": true,
+          "choices": [
+            {
+              "label": "LayaBlueMarkerShape",
+              "value": "LayaBlueMarkerShape"
+            }
+          ],
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameShader.parameters",
+          "name": "parameters",
+          "label": "Shader Parameters",
+          "type": "text",
+          "pin_type": 13,
+          "integer": true,
+          "value": "",
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 2
+        },
+        {
+          "id": "GAME.GameShader.bounds_x",
+          "name": "bounds_x",
+          "label": "Shader Bounds X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 3
+        },
+        {
+          "id": "GAME.GameShader.bounds_y",
+          "name": "bounds_y",
+          "label": "Shader Bounds Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 4
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameAppearance",
+        "GameShader"
+      ]
+    },
+    {
+      "id": "/workspace/content/prototypes/LayaConfidentPrototype.json",
+      "name": "LayaConfidentPrototype",
+      "kind": "prototype",
+      "document": "/workspace/content/prototypes/LayaConfidentPrototype.json",
+      "selected": false,
+      "path": "/workspace/content/prototypes/LayaConfidentPrototype.json",
+      "asset_kind": 1,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1
+        }
+      ],
+      "components": [
+        "GameTransform"
+      ]
+    },
+    {
+      "id": "/workspace/content/prototypes/LayaLabCamera.json",
+      "name": "LayaLabCamera",
+      "kind": "prototype",
+      "document": "/workspace/content/prototypes/LayaLabCamera.json",
+      "selected": false,
+      "path": "/workspace/content/prototypes/LayaLabCamera.json",
+      "asset_kind": 1,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameCamera.width",
+          "name": "width",
+          "label": "Camera Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 400,
+          "component": "GameCamera",
+          "component_key": "GAME.GameCamera",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameCamera.height",
+          "name": "height",
+          "label": "Camera Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 300,
+          "component": "GameCamera",
+          "component_key": "GAME.GameCamera",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameCamera.disabled",
+          "name": "disabled",
+          "label": "Camera Disabled",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameCamera",
+          "component_key": "GAME.GameCamera",
+          "field_index": 3
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameCamera"
+      ]
+    },
+    {
+      "id": "/workspace/content/prototypes/TrailEmitter.json",
+      "name": "TrailEmitter",
+      "kind": "prototype",
+      "document": "/workspace/content/prototypes/TrailEmitter.json",
+      "selected": false,
+      "path": "/workspace/content/prototypes/TrailEmitter.json",
+      "asset_kind": 1,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 100,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 60,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameAppearance.width",
+          "name": "width",
+          "label": "2D Appearance Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 24,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameAppearance.height",
+          "name": "height",
+          "label": "2D Appearance Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 24,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameAppearance.color",
+          "name": "color",
+          "label": "2D Appearance Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 65535,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 2
+        },
+        {
+          "id": "GAME.GameAppearance.shape",
+          "name": "shape",
+          "label": "2D Appearance Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "choices": [
+            {
+              "label": "Box",
+              "value": 0
+            },
+            {
+              "label": "Circle",
+              "value": 1
+            },
+            {
+              "label": "Diamond",
+              "value": 2
+            },
+            {
+              "label": "Chevron",
+              "value": 3
+            },
+            {
+              "label": "Chevron Outline",
+              "value": 4
+            },
+            {
+              "label": "Capsule",
+              "value": 5
+            },
+            {
+              "label": "Triangle",
+              "value": 6
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 7
+            }
+          ],
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 3
+        },
+        {
+          "id": "GAME.GameAppearance.border_width",
+          "name": "border_width",
+          "label": "2D Appearance Border Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 4
+        },
+        {
+          "id": "GAME.GameAppearance.border_color",
+          "name": "border_color",
+          "label": "2D Appearance Border Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 5
+        },
+        {
+          "id": "GAME.GameAppearance.glow_radius",
+          "name": "glow_radius",
+          "label": "2D Appearance Glow Radius",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 6
+        },
+        {
+          "id": "GAME.GameAppearance.glow_color",
+          "name": "glow_color",
+          "label": "2D Appearance Glow Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 7
+        },
+        {
+          "id": "GAME.GameAppearance.stroke_width",
+          "name": "stroke_width",
+          "label": "2D Appearance Stroke Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 8
+        },
+        {
+          "id": "GAME.GameAppearance.antialias",
+          "name": "antialias",
+          "label": "2D Appearance Antialias",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 9
+        },
+        {
+          "id": "GAME.GameAppearance.layer",
+          "name": "layer",
+          "label": "2D Appearance Layer",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 10
+        },
+        {
+          "id": "GAME.GameParticleEmitter.shape",
+          "name": "shape",
+          "label": "Particle Emitter Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "choices": [
+            {
+              "label": "Round",
+              "value": 0
+            },
+            {
+              "label": "Triangle",
+              "value": 1
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 2
+            },
+            {
+              "label": "Ring",
+              "value": 3
+            },
+            {
+              "label": "Streak",
+              "value": 4
+            }
+          ],
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 0
+        },
+        {
+          "id": "GAME.GameParticleEmitter.color",
+          "name": "color",
+          "label": "Particle Emitter Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 65535,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 1
+        },
+        {
+          "id": "GAME.GameParticleEmitter.end_color",
+          "name": "end_color",
+          "label": "Particle Emitter End Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 255,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 2
+        },
+        {
+          "id": "GAME.GameParticleEmitter.rate",
+          "name": "rate",
+          "label": "Particle Emitter Rate",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 10,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 3
+        },
+        {
+          "id": "GAME.GameParticleEmitter.burst_count",
+          "name": "burst_count",
+          "label": "Particle Emitter Burst Count",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 4
+        },
+        {
+          "id": "GAME.GameParticleEmitter.spread",
+          "name": "spread",
+          "label": "Particle Emitter Spread",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0.30000001192092896,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 8
+        },
+        {
+          "id": "GAME.GameParticleEmitter.absorption",
+          "name": "absorption",
+          "label": "Particle Emitter Absorption",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0.009999999776482582,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 12
+        },
+        {
+          "id": "GAME.GameParticleEmitter.metaball_group",
+          "name": "metaball_group",
+          "label": "Particle Emitter Metaball Group",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 13
+        },
+        {
+          "id": "GAME.GameParticleEmitter.metaball_blend",
+          "name": "metaball_blend",
+          "label": "Particle Emitter Metaball Blend",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 14
+        },
+        {
+          "id": "GAME.GameParticleEmitter.velocity_align",
+          "name": "velocity_align",
+          "label": "Particle Emitter Velocity Align",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 15
+        },
+        {
+          "id": "GAME.GameParticleEmitter.velocity_inherit",
+          "name": "velocity_inherit",
+          "label": "Particle Emitter Velocity Inherit",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 1,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 17
+        },
+        {
+          "id": "GAME.GameParticleEmitter.active",
+          "name": "active",
+          "label": "Particle Emitter Active",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": true,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 21
+        },
+        {
+          "id": "GAME.GameParticleEmitter.planar",
+          "name": "planar",
+          "label": "Particle Emitter Planar",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 22
+        },
+        {
+          "id": "GAME.GameParticleEmitter.heading_only",
+          "name": "heading_only",
+          "label": "Particle Emitter Heading Only",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 23
+        },
+        {
+          "id": "GAME.GameParticleEmitter.fluid",
+          "name": "fluid",
+          "label": "Particle Emitter Fluid",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 24
+        },
+        {
+          "id": "GAME.GameParticleEmitter.fluid_kind",
+          "name": "fluid_kind",
+          "label": "Particle Emitter Fluid Kind",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "choices": [
+            {
+              "label": "Gas",
+              "value": 0
+            },
+            {
+              "label": "Liquid",
+              "value": 1
+            }
+          ],
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 25
+        },
+        {
+          "id": "GAME.GameParticleEmitter.fluid_mass",
+          "name": "fluid_mass",
+          "label": "Particle Emitter Fluid Mass",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameParticleEmitter",
+          "component_key": "GAME.GameParticleEmitter",
+          "field_index": 26
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameAppearance",
+        "GameParticleEmitter"
+      ]
+    },
+    {
+      "id": "/workspace/content/scenes/LayaLab.json",
+      "name": "scene-1",
+      "kind": "scene",
+      "document": "/workspace/content/scenes/LayaLab.json",
+      "selected": false,
+      "path": "/workspace/content/scenes/LayaLab.json",
+      "asset_kind": 0
+    },
+    {
+      "id": "/workspace/content/scenes/LayoutLab.json",
+      "name": "LayoutLab",
+      "kind": "scene",
+      "document": "/workspace/content/scenes/LayoutLab.json",
+      "selected": false,
+      "path": "/workspace/content/scenes/LayoutLab.json",
+      "asset_kind": 0
+    },
+    {
+      "id": "/workspace/content/shapes/LayaBlueMarkerShape.json",
+      "name": "LayaBlueMarkerShape",
+      "kind": "shape",
+      "document": "/workspace/content/shapes/LayaBlueMarkerShape.json",
+      "selected": false,
+      "path": "/workspace/content/shapes/LayaBlueMarkerShape.json",
+      "asset_kind": 5
+    },
+    {
+      "id": "session:2:1",
+      "name": "AppBehavior",
+      "kind": "behavior",
+      "document": "session:2:1",
+      "selected": false,
+      "path": "",
+      "asset_kind": 2
+    },
+    {
+      "id": "entity:scene:/workspace/content/scenes/LayoutLab.json:8589934593",
+      "name": "Camera",
+      "kind": "entity",
+      "document": "scene:/workspace/content/scenes/LayoutLab.json",
+      "selected": false,
+      "prototype": "LayaLabCamera",
+      "entity": 8589934593,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0,
+          "inherited": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameCamera.width",
+          "name": "width",
+          "label": "Camera Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 400,
+          "component": "GameCamera",
+          "component_key": "GAME.GameCamera",
+          "field_index": 0,
+          "inherited": 400
+        },
+        {
+          "id": "GAME.GameCamera.height",
+          "name": "height",
+          "label": "Camera Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 300,
+          "component": "GameCamera",
+          "component_key": "GAME.GameCamera",
+          "field_index": 1,
+          "inherited": 300
+        },
+        {
+          "id": "GAME.GameCamera.disabled",
+          "name": "disabled",
+          "label": "Camera Disabled",
+          "type": "bool",
+          "pin_type": 1,
+          "integer": true,
+          "value": false,
+          "component": "GameCamera",
+          "component_key": "GAME.GameCamera",
+          "field_index": 3,
+          "inherited": false
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameCamera"
+      ]
+    },
+    {
+      "id": "entity:scene:/workspace/content/scenes/LayoutLab.json:8589934594",
+      "name": "Left Tile",
+      "kind": "entity",
+      "document": "scene:/workspace/content/scenes/LayoutLab.json",
+      "selected": false,
+      "prototype": "LayaBlueMarker",
+      "entity": 8589934594,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": -90,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0,
+          "inherited": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.width",
+          "name": "width",
+          "label": "2D Appearance Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 70,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 0,
+          "inherited": 48
+        },
+        {
+          "id": "GAME.GameAppearance.height",
+          "name": "height",
+          "label": "2D Appearance Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 40,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 1,
+          "inherited": 48
+        },
+        {
+          "id": "GAME.GameAppearance.color",
+          "name": "color",
+          "label": "2D Appearance Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 4294967295,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 2,
+          "inherited": 4294967295
+        },
+        {
+          "id": "GAME.GameAppearance.shape",
+          "name": "shape",
+          "label": "2D Appearance Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 1,
+          "choices": [
+            {
+              "label": "Box",
+              "value": 0
+            },
+            {
+              "label": "Circle",
+              "value": 1
+            },
+            {
+              "label": "Diamond",
+              "value": 2
+            },
+            {
+              "label": "Chevron",
+              "value": 3
+            },
+            {
+              "label": "Chevron Outline",
+              "value": 4
+            },
+            {
+              "label": "Capsule",
+              "value": 5
+            },
+            {
+              "label": "Triangle",
+              "value": 6
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 7
+            }
+          ],
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 3,
+          "inherited": 1
+        },
+        {
+          "id": "GAME.GameAppearance.border_width",
+          "name": "border_width",
+          "label": "2D Appearance Border Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 4,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.border_color",
+          "name": "border_color",
+          "label": "2D Appearance Border Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 5,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.glow_radius",
+          "name": "glow_radius",
+          "label": "2D Appearance Glow Radius",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 6,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.glow_color",
+          "name": "glow_color",
+          "label": "2D Appearance Glow Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 7,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.stroke_width",
+          "name": "stroke_width",
+          "label": "2D Appearance Stroke Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 8,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.antialias",
+          "name": "antialias",
+          "label": "2D Appearance Antialias",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 1,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 9,
+          "inherited": 1
+        },
+        {
+          "id": "GAME.GameAppearance.layer",
+          "name": "layer",
+          "label": "2D Appearance Layer",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 10,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameShader.material",
+          "name": "material",
+          "label": "Shader Material",
+          "pin_type": 13,
+          "integer": true,
+          "value": "LayaBlueMarkerMaterial",
+          "type": "choice",
+          "asset_reference": true,
+          "choices": [
+            {
+              "label": "LayaBlueMarkerMaterial",
+              "value": "LayaBlueMarkerMaterial"
+            },
+            {
+              "label": "LayaConfidentMaterial",
+              "value": "LayaConfidentMaterial"
+            }
+          ],
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 0,
+          "inherited": "LayaBlueMarkerMaterial"
+        },
+        {
+          "id": "GAME.GameShader.shape",
+          "name": "shape",
+          "label": "Shader Shape",
+          "pin_type": 13,
+          "integer": true,
+          "value": "",
+          "type": "choice",
+          "asset_reference": true,
+          "choices": [
+            {
+              "label": "LayaBlueMarkerShape",
+              "value": "LayaBlueMarkerShape"
+            }
+          ],
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 1,
+          "inherited": ""
+        },
+        {
+          "id": "GAME.GameShader.parameters",
+          "name": "parameters",
+          "label": "Shader Parameters",
+          "type": "text",
+          "pin_type": 13,
+          "integer": true,
+          "value": "",
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 2,
+          "inherited": ""
+        },
+        {
+          "id": "GAME.GameShader.bounds_x",
+          "name": "bounds_x",
+          "label": "Shader Bounds X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 3,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameShader.bounds_y",
+          "name": "bounds_y",
+          "label": "Shader Bounds Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 4,
+          "inherited": 0
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameAppearance",
+        "GameShader"
+      ]
+    },
+    {
+      "id": "entity:scene:/workspace/content/scenes/LayoutLab.json:8589934595",
+      "name": "Right Tile",
+      "kind": "entity",
+      "document": "scene:/workspace/content/scenes/LayoutLab.json",
+      "selected": false,
+      "prototype": "LayaBlueMarker",
+      "entity": 8589934595,
+      "fields": [
+        {
+          "id": "game.GameTransform.x",
+          "name": "x",
+          "label": "Transform X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 90,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 0,
+          "inherited": 0
+        },
+        {
+          "id": "game.GameTransform.y",
+          "name": "y",
+          "label": "Transform Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameTransform",
+          "component_key": "game.GameTransform",
+          "field_index": 1,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.width",
+          "name": "width",
+          "label": "2D Appearance Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 40,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 0,
+          "inherited": 48
+        },
+        {
+          "id": "GAME.GameAppearance.height",
+          "name": "height",
+          "label": "2D Appearance Height",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 70,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 1,
+          "inherited": 48
+        },
+        {
+          "id": "GAME.GameAppearance.color",
+          "name": "color",
+          "label": "2D Appearance Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 4294967295,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 2,
+          "inherited": 4294967295
+        },
+        {
+          "id": "GAME.GameAppearance.shape",
+          "name": "shape",
+          "label": "2D Appearance Shape",
+          "type": "choice",
+          "pin_type": 6,
+          "integer": true,
+          "value": 1,
+          "choices": [
+            {
+              "label": "Box",
+              "value": 0
+            },
+            {
+              "label": "Circle",
+              "value": 1
+            },
+            {
+              "label": "Diamond",
+              "value": 2
+            },
+            {
+              "label": "Chevron",
+              "value": 3
+            },
+            {
+              "label": "Chevron Outline",
+              "value": 4
+            },
+            {
+              "label": "Capsule",
+              "value": 5
+            },
+            {
+              "label": "Triangle",
+              "value": 6
+            },
+            {
+              "label": "Triangle Outline",
+              "value": 7
+            }
+          ],
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 3,
+          "inherited": 1
+        },
+        {
+          "id": "GAME.GameAppearance.border_width",
+          "name": "border_width",
+          "label": "2D Appearance Border Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 4,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.border_color",
+          "name": "border_color",
+          "label": "2D Appearance Border Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 5,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.glow_radius",
+          "name": "glow_radius",
+          "label": "2D Appearance Glow Radius",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 6,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.glow_color",
+          "name": "glow_color",
+          "label": "2D Appearance Glow Color",
+          "type": "color",
+          "pin_type": 7,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 7,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.stroke_width",
+          "name": "stroke_width",
+          "label": "2D Appearance Stroke Width",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 8,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameAppearance.antialias",
+          "name": "antialias",
+          "label": "2D Appearance Antialias",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 1,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 9,
+          "inherited": 1
+        },
+        {
+          "id": "GAME.GameAppearance.layer",
+          "name": "layer",
+          "label": "2D Appearance Layer",
+          "type": "number",
+          "pin_type": 6,
+          "integer": true,
+          "value": 0,
+          "component": "GameAppearance",
+          "component_key": "GAME.GameAppearance",
+          "field_index": 10,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameShader.material",
+          "name": "material",
+          "label": "Shader Material",
+          "pin_type": 13,
+          "integer": true,
+          "value": "LayaBlueMarkerMaterial",
+          "type": "choice",
+          "asset_reference": true,
+          "choices": [
+            {
+              "label": "LayaBlueMarkerMaterial",
+              "value": "LayaBlueMarkerMaterial"
+            },
+            {
+              "label": "LayaConfidentMaterial",
+              "value": "LayaConfidentMaterial"
+            }
+          ],
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 0,
+          "inherited": "LayaBlueMarkerMaterial"
+        },
+        {
+          "id": "GAME.GameShader.shape",
+          "name": "shape",
+          "label": "Shader Shape",
+          "pin_type": 13,
+          "integer": true,
+          "value": "",
+          "type": "choice",
+          "asset_reference": true,
+          "choices": [
+            {
+              "label": "LayaBlueMarkerShape",
+              "value": "LayaBlueMarkerShape"
+            }
+          ],
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 1,
+          "inherited": ""
+        },
+        {
+          "id": "GAME.GameShader.parameters",
+          "name": "parameters",
+          "label": "Shader Parameters",
+          "type": "text",
+          "pin_type": 13,
+          "integer": true,
+          "value": "",
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 2,
+          "inherited": ""
+        },
+        {
+          "id": "GAME.GameShader.bounds_x",
+          "name": "bounds_x",
+          "label": "Shader Bounds X",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 3,
+          "inherited": 0
+        },
+        {
+          "id": "GAME.GameShader.bounds_y",
+          "name": "bounds_y",
+          "label": "Shader Bounds Y",
+          "type": "number",
+          "pin_type": 10,
+          "integer": false,
+          "value": 0,
+          "component": "GameShader",
+          "component_key": "GAME.GameShader",
+          "field_index": 4,
+          "inherited": 0
+        }
+      ],
+      "components": [
+        "GameTransform",
+        "GameAppearance",
+        "GameShader"
+      ]
+    },
+    {
+      "id": "graph:33:node:1",
+      "name": "Real",
+      "kind": "node",
+      "document": "graph:33",
+      "selected": false,
+      "node": 1,
+      "fields": [
+        {
+          "id": "pin:2",
+          "name": "Value",
+          "label": "Value",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 2,
+          "editable": true,
+          "index": 0,
+          "pin": 2,
+          "output": false,
+          "pin_kind": 0
+        },
+        {
+          "id": "pin:3",
+          "name": "Value",
+          "label": "Value",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 0,
+          "editable": false,
+          "index": 0,
+          "pin": 3,
+          "output": true,
+          "pin_kind": 0
+        }
+      ]
+    },
+    {
+      "id": "graph:33:node:4",
+      "name": "Real",
+      "kind": "node",
+      "document": "graph:33",
+      "selected": false,
+      "node": 4,
+      "fields": [
+        {
+          "id": "pin:5",
+          "name": "Value",
+          "label": "Value",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 3,
+          "editable": true,
+          "index": 0,
+          "pin": 5,
+          "output": false,
+          "pin_kind": 0
+        },
+        {
+          "id": "pin:6",
+          "name": "Value",
+          "label": "Value",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 0,
+          "editable": false,
+          "index": 0,
+          "pin": 6,
+          "output": true,
+          "pin_kind": 0
+        }
+      ]
+    },
+    {
+      "id": "graph:33:node:7",
+      "name": "Multiply",
+      "kind": "node",
+      "document": "graph:33",
+      "selected": false,
+      "node": 7,
+      "fields": [
+        {
+          "id": "pin:8",
+          "name": "A",
+          "label": "A",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 0,
+          "editable": false,
+          "index": 0,
+          "pin": 8,
+          "output": false,
+          "pin_kind": 0
+        },
+        {
+          "id": "pin:9",
+          "name": "B",
+          "label": "B",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 0,
+          "editable": false,
+          "index": 1,
+          "pin": 9,
+          "output": false,
+          "pin_kind": 0
+        },
+        {
+          "id": "pin:10",
+          "name": "Result",
+          "label": "Result",
+          "type": "number",
+          "pin_type": 11,
+          "integer": false,
+          "value": 0,
+          "editable": false,
+          "index": 0,
+          "pin": 10,
+          "output": true,
+          "pin_kind": 0
+        }
+      ]
+    }
+  ],
+  "graph_revision": 2,
+  "relationships": [
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "label": "GameShader"
+    },
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/prototypes/LayaLabCamera.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/prototypes/BoostEmitter.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/prototypes/TrailEmitter.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayaLab.json",
+      "target": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "label": "GameShader"
+    },
+    {
+      "source": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "target": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "label": "GameShader"
+    },
+    {
+      "source": "/workspace/content/scenes/LayoutLab.json",
+      "target": "/workspace/content/prototypes/LayaLabCamera.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayoutLab.json",
+      "target": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayoutLab.json",
+      "target": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "label": "GameShader"
+    },
+    {
+      "source": "/workspace/content/scenes/LayoutLab.json",
+      "target": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "label": "Scene instance"
+    },
+    {
+      "source": "/workspace/content/scenes/LayoutLab.json",
+      "target": "/workspace/content/materials/LayaBlueMarkerMaterial.json",
+      "label": "GameShader"
+    },
+    {
+      "source": "entity:scene:/workspace/content/scenes/LayoutLab.json:8589934593",
+      "target": "/workspace/content/prototypes/LayaLabCamera.json",
+      "label": "prototype"
+    },
+    {
+      "source": "entity:scene:/workspace/content/scenes/LayoutLab.json:8589934594",
+      "target": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "label": "prototype"
+    },
+    {
+      "source": "entity:scene:/workspace/content/scenes/LayoutLab.json:8589934595",
+      "target": "/workspace/content/prototypes/LayaBlueMarker.json",
+      "label": "prototype"
+    }
+  ],
+  "panels": [
+    {
+      "id": "panel:0",
+      "name": "Content",
+      "visible": true
+    },
+    {
+      "id": "panel:1",
+      "name": "Outliner",
+      "visible": true
+    },
+    {
+      "id": "panel:2",
+      "name": "Behavior",
+      "visible": true
+    },
+    {
+      "id": "panel:3",
+      "name": "Inspector",
+      "visible": true
+    },
+    {
+      "id": "panel:4",
+      "name": "Graph",
+      "visible": true
+    },
+    {
+      "id": "panel:5",
+      "name": "Scene",
+      "visible": true
+    },
+    {
+      "id": "panel:6",
+      "name": "Compiler",
+      "visible": false
+    },
+    {
+      "id": "panel:7",
+      "name": "Output",
+      "visible": false
+    },
+    {
+      "id": "panel:8",
+      "name": "Performance",
+      "visible": false
+    }
+  ],
+  "revision": "b02775c6940eafdd"
+}

@@ -1,0 +1,83 @@
+{
+  "name": "HRC",
+  "identity": "prototype-e1e4aac0a24ad0c0",
+  "components": {
+    "GAME.GameCombustion": {
+      "blast_damage": 1.5,
+      "blast_radius": 80.0,
+      "blast_speed": 100.0,
+      "burn_rate": 1.5,
+      "cooling": 2.5,
+      "flame_color": 4284094176,
+      "flame_emission": 0.07999999821186066,
+      "heat_release": 2.0,
+      "ignition": 1.0,
+      "smoke_absorption": 0.006000000052154064,
+      "smoke_color": 1550153856,
+      "smoke_lifetime": 4.5
+    },
+    "GAME.GameHRC2D": {
+      "adaptive": false,
+      "ambient": 0.0,
+      "bounce_hysteresis": 0.800000011920929,
+      "bounce_intensity": 1.0,
+      "debug_view": 0,
+      "falloff": 1.0,
+      "feedback": true,
+      "fog": 0.15000000596046448,
+      "fps_tolerance": 0.10000000149011612,
+      "intensity": 7.5,
+      "max_scale": 1.0,
+      "min_scale": 0.10000000149011612,
+      "particle_focal_length": 300.0,
+      "radiance_hysteresis": 0.800000011920929,
+      "scale": 0.5,
+      "shadow_floor": 0.0005000000237487257,
+      "target_fps": 60.0,
+      "trace_levels": 1,
+      "upscale_mode": 1,
+      "upscale_threshold": 0.10000000149011612
+    },
+    "GAME.GameStarfield2D": {
+      "color_a": 1300299775,
+      "color_b": 2572025855,
+      "color_c": 869072895,
+      "color_d": 3436838911,
+      "far_layer": {
+        "w": 0.4000000059604645,
+        "x": 100.0,
+        "y": 1.2000000476837158,
+        "z": 0.18000000715255737
+      },
+      "middle_layer": {
+        "w": 0.699999988079071,
+        "x": 140.0,
+        "y": 1.5,
+        "z": 0.15000000596046448
+      },
+      "near_layer": {
+        "w": 1.0,
+        "x": 200.0,
+        "y": 2.0,
+        "z": 0.11999999731779099
+      },
+      "parallax": {
+        "x": 0.10000000149011612,
+        "y": 0.30000001192092896,
+        "z": 0.6000000238418579
+      }
+    },
+    "GAME.MaterialFluidWorld": {
+      "buffer": 192.0,
+      "chunk_size": 256.0,
+      "gas_cell_size": 20.0,
+      "gas_drag": 0.10000000149011612,
+      "gas_vorticity": 2.0,
+      "kernel": 10.0,
+      "particle_limit": 32768
+    },
+    "GAME.MaterialDestructionWorld": {
+      "fragment_limit": 96
+    }
+  }
+}

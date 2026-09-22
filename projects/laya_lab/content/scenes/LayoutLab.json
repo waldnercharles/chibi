@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "LayoutLab",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "LayaLabCamera",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Left Tile",
+      "prototype": "LayaBlueMarker",
+      "components": {
+        "game.GameTransform": {
+          "x": -90,
+          "y": 0
+        },
+        "GAME.GameAppearance": {
+          "width": 70,
+          "height": 40
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Right Tile",
+      "prototype": "LayaBlueMarker",
+      "components": {
+        "game.GameTransform": {
+          "x": 90,
+          "y": 0
+        },
+        "GAME.GameAppearance": {
+          "width": 40,
+          "height": 70
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

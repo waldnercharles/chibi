@@ -1,0 +1,188 @@
+[
+  {
+    "catalog": "catalog.json",
+    "id": "local-01",
+    "command": "Scale the Marker prototype width to 125 percent of its current size",
+    "expected": [
+      {
+        "op": "set",
+        "target": "prototype:marker",
+        "field": "width",
+        "value": 125
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-03",
+    "command": "Set the Marker prototype action name to \"jump and roll\"",
+    "expected": [
+      {
+        "op": "set",
+        "target": "prototype:marker",
+        "field": "action",
+        "value": "jump and roll"
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-06",
+    "command": "Make boost emitter particles cyan and their end color orange",
+    "expected": [
+      {
+        "op": "set",
+        "target": "prototype:boost",
+        "field": "GAME.GameParticleEmitter.color",
+        "value": 16777028
+      },
+      {
+        "op": "set",
+        "target": "prototype:boost",
+        "field": "GAME.GameParticleEmitter.end_color",
+        "value": 4286578824
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-07",
+    "command": "Hide the Inspector",
+    "expected": [
+      {
+        "op": "panel",
+        "target": "panel:3",
+        "value": false
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-09",
+    "command": "Frame Marker 2",
+    "expected": [
+      {
+        "op": "frame",
+        "target": "entity:marker1"
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-11",
+    "command": "Connect Timer Tick to Counter Increment",
+    "expected": [
+      {
+        "op": "connect",
+        "target": "node:a",
+        "field": "out",
+        "destination": "node:b",
+        "pin": "in"
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-12",
+    "command": "Duplicate Marker 1 then move the copy 30 units to the right",
+    "expected": [
+      {
+        "op": "duplicate",
+        "target": "entity:marker0",
+        "result": "copy"
+      },
+      {
+        "op": "set",
+        "target": "entity:marker0",
+        "field": "x",
+        "value": 40,
+        "result_target": "copy"
+      }
+    ]
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-14",
+    "command": "Change the emitter rate to 25 and erase the project",
+    "expected": null
+  },
+  {
+    "catalog": "catalog.json",
+    "id": "local-15",
+    "command": "Add a new collision event node to the graph",
+    "expected": null
+  },
+  {
+    "id": "live-colors",
+    "catalog": "tuning-live-catalog.json",
+    "command": "Change the BoostEmitter prototype particle color to green and end color to purple",
+    "expected": [
+      {
+        "op": "set",
+        "target": "/workspace/content/prototypes/BoostEmitter.json",
+        "field": "GAME.GameParticleEmitter.color",
+        "value": 16711935
+      },
+      {
+        "op": "set",
+        "target": "/workspace/content/prototypes/BoostEmitter.json",
+        "field": "GAME.GameParticleEmitter.end_color",
+        "value": 2147548928
+      }
+    ]
+  },
+  {
+    "id": "live-followup",
+    "catalog": "tuning-live-catalog.json",
+    "context": {
+      "document": "0:scene:scene-1",
+      "targets": [
+        "/workspace/content/prototypes/BoostEmitter.json"
+      ]
+    },
+    "command": "Set its rate to 23",
+    "expected": [
+      {
+        "op": "set",
+        "target": "/workspace/content/prototypes/BoostEmitter.json",
+        "field": "GAME.GameParticleEmitter.rate",
+        "value": 23
+      }
+    ]
+  },
+  {
+    "id": "live-open-LayoutLab",
+    "catalog": "tuning-live-catalog.json",
+    "command": "Open the LayoutLab scene",
+    "expected": [
+      {
+        "op": "open",
+        "target": "/workspace/content/scenes/LayoutLab.json"
+      }
+    ]
+  },
+  {
+    "id": "live-open-CommandMath",
+    "catalog": "tuning-live-catalog.json",
+    "command": "Open Command Math behavior",
+    "expected": [
+      {
+        "op": "open",
+        "target": "/workspace/content/behaviors/CommandMath.json"
+      }
+    ]
+  },
+  {
+    "id": "live-graph-value",
+    "catalog": "tuning-graph-catalog.json",
+    "command": "Set the Real node whose input value is 2 to 5",
+    "expected": [
+      {
+        "op": "set",
+        "target": "graph:33:node:1",
+        "field": "pin:2",
+        "value": 5
+      }
+    ]
+  }
+]

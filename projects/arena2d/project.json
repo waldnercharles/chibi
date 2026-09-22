@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "Arena2D",
+  "name": "Neon Swarm",
   "content": "content",
-  "start_scene": "scenes/NeonSwarmSandbox.json"
+  "start_scene": "scenes/Sandbox.json"
 }

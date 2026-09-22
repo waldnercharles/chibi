@@ -1,0 +1,126 @@
+{
+  "version": 3,
+  "name": "LayaConfidentMaterial",
+  "domain": "material",
+  "id_counter": 9,
+  "description": "",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Shader Surface Output",
+          "x": 0.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 2,
+              "name": "Base Color",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 64,
+              "group": 0,
+              "default": {
+                "x": 1.0,
+                "y": 1.0,
+                "z": 1.0
+              }
+            },
+            {
+              "id": 3,
+              "name": "Emission",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 64,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              }
+            },
+            {
+              "id": 4,
+              "name": "Roughness",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.5
+            },
+            {
+              "id": 5,
+              "name": "Metallic",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 0.0
+            },
+            {
+              "id": 6,
+              "name": "Normal",
+              "type": 15,
+              "type_name": "ShaderVec3",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+              }
+            },
+            {
+              "id": 7,
+              "name": "Opacity",
+              "type": 10,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": 1.0
+            },
+            {
+              "id": 8,
+              "name": "Unlit",
+              "type": 1,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": false
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "edges": []
+    }
+  ]
+}

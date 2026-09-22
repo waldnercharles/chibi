@@ -3,6 +3,23 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd -P)
+default_project_root="$repo_root/projects/arena2d"
+project_root=${CHIBI_ROOT:-}
+if [ -z "$project_root" ]; then
+    if [ -f "$default_project_root/project.json" ]; then
+        project_root="$default_project_root"
+    else
+        project_root="$repo_root"
+    fi
+fi
+case "$project_root" in
+    /*) ;;
+    *) project_root="$repo_root/$project_root" ;;
+esac
+if ! project_root=$(CDPATH= cd -- "$project_root" && pwd -P); then
+    printf '%s\n' "chibi MCP project root is not a directory: $project_root" >&2
+    exit 1
+fi
 build_dir=${BUILD_DIR:-build}
 case "$build_dir" in
     /*) ;;
@@ -38,7 +55,7 @@ else
     exit 1
 fi
 
-printf '%s\n' "chibi MCP starting from $repo_root" >&2
-CHIBI_ROOT="$repo_root" \
+printf '%s\n' "chibi MCP starting from project root $project_root" >&2
+CHIBI_ROOT="$project_root" \
 CHIBI_CTL="$controller" \
 exec "$node_bin" "$repo_root/tools/mcp/server.mjs"

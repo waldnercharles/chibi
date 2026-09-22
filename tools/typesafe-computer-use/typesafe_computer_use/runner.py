@@ -1,0 +1,297 @@
+"""The step loop and the run folder."""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+import anthropic
+
+from . import macos
+from .actions import Context, is_noop, perform
+from .config import DEFAULT_DELAY, DEFAULT_MIN_CONFIDENCE, DEFAULT_STEPS, MAX_OPTIONS
+from .decide import Decision, decide, offscreen_records
+from .laya import LayaClient
+from .models import Abort, Item, Screen
+from .perception import OcrCache, capture, perceive
+from .report import Log, annotate, ax_count, render_payload, top
+from .supervisor import Finished, Pause, Supervisor
+from .timing import format_timing, phase, summarize
+from .writer import Answer, compose_answer
+
+MAX_CONSECUTIVE_NOOPS = 2
+
+# The outcomes that end with an answer, each in words the writer can pass on. A dry run took no
+# action and an abort is the user's own stop, so neither has anything to report.
+STOPPED = {
+    "done": "the classifier judged the goal already achieved on this screen",
+    "nothing helps": "the classifier found nothing on this screen that helps with the goal",
+    "low confidence": "the classifier was not confident enough in any next action",
+    "stalled": "the last actions changed nothing",
+    "step limit": "the run used every step it was allowed",
+}
+
+
+@dataclass
+class RunConfig:
+    goal: str
+    out: Path
+    act: bool = False
+    steps: int = DEFAULT_STEPS
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE
+    delay: float = DEFAULT_DELAY
+    image: Path | None = None  # replay a saved capture (never acts)
+    app: str | None = None  # frontmost app to report during replay
+    url: str | None = None  # browser URL to report during replay
+
+    burst: int = 3  # return control to Codex after this many decisions
+    target_app: str | None = None
+    editor_socket: str | None = None
+    workflow: str | None = None
+
+    @property
+    def replay(self) -> bool:
+        return self.image is not None
+
+
+@dataclass
+class RunState:
+    history: list[str] = field(default_factory=list)
+    timings: list[dict[str, float]] = field(default_factory=list)
+    consecutive_noops: int = 0
+    last_url: str | None = None
+    outcome: str = "crashed"  # every way out of the loop names its own; only an exception leaves this
+    ocr_cache: OcrCache = field(default_factory=OcrCache)  # carries one step's OCR into the next
+    view: tuple[Screen, list[Item]] | None = None  # the latest capture, until an action makes it stale
+    answer: Answer | None = None
+    step: int = 0
+    pending: dict | None = None
+    editor: dict = field(default_factory=dict)
+
+
+def run(cfg: RunConfig, ctx_factory, state: RunState | None = None, checkpoint=None) -> RunState:
+    """Run upstream capture/decide/execute steps with Laya and resumable supervision."""
+    cfg.out.mkdir(parents=True, exist_ok=True)
+    log = Log(cfg.out / "run.log")
+    state = state or RunState()
+    state.pending = None
+    state.outcome = "running"
+    started = time.time()
+    try:
+        if cfg.act and not cfg.replay:
+            macos.focus_process(cfg.target_app)
+        with LayaClient(trace=cfg.out / "laya-requests.jsonl") as client:
+            ctx = ctx_factory(client, state.history)
+            for _ in range(cfg.burst):
+                # A pending final verification is still resumable at the step limit.
+                if len(state.history) >= cfg.steps and not ctx.writer.pending:
+                    state.outcome = "step limit"
+                    break
+                state.step += 1
+                keep_going = run_step(cfg, ctx, state, state.step, log)
+                if checkpoint:
+                    checkpoint(state)
+                if not keep_going:
+                    break
+            else:
+                state.outcome = "checkpoint"
+            if state.outcome == "checkpoint":
+                screen = capture(cfg.image, cfg.app, cfg.url, ctx.browser)
+                items = perceive(screen, MAX_OPTIONS, cfg.goal)
+                screen.image.save(cfg.out / "checkpoint.png")
+                state.view = screen, items
+                ctx.writer.bind(screen, items)
+                ctx.writer.decision = None
+                ctx.writer.ask("continue", {"message": "Review progress; reply with retry to continue."})
+            conclude(cfg, ctx, state, log)
+    except Finished as finished:
+        state.answer = Answer(text=finished.answer["answer"], achieved=finished.answer["achieved"])
+        state.outcome = "complete" if state.answer.achieved else "incomplete"
+    except Pause as pause:
+        state.pending = pause.packet
+        state.view = ctx.writer.view
+        state.outcome = "paused"
+    except (KeyboardInterrupt, Abort) as error:
+        state.outcome = f"aborted ({error or 'Ctrl-C'})"
+    except Exception:
+        state.outcome = "failed"
+        raise
+    finally:
+        if state.view:
+            state.view[0].image.save(cfg.out / "latest.png")
+        summary = {
+            "goal": cfg.goal,
+            "act": cfg.act,
+            "steps_taken": len(state.history),
+            "outcome": state.outcome,
+            "answer": state.answer.text if state.answer else None,
+            "goal_achieved": state.answer.achieved if state.answer else None,
+            "seconds": round(time.time() - started, 1),
+            "timing": summarize(state.timings),
+            "history": state.history,
+            "pending": state.pending,
+            "screenshot": str((cfg.out / "latest.png").resolve()),
+        }
+        (cfg.out / "run.json").write_text(json.dumps(summary, indent=2))
+        if checkpoint:
+            checkpoint(state)
+    return state
+
+
+def conclude(cfg: RunConfig, ctx: Context, state: RunState, log: Log) -> None:
+    """Hand the screen the run ended on to the writer, for the answer the classifier cannot put into words.
+
+    The last step's capture serves when nothing acted after it. An action makes it stale, so the
+    screen is captured again, and saved so the answer can be checked against what it was read from.
+    """
+    if isinstance(ctx.writer, Supervisor) and (not cfg.act or cfg.replay):
+        return
+    stopped = STOPPED.get(state.outcome)
+    if stopped is None:
+        return
+    if ctx.writer is None:
+        log("\nno answer: the writer is disabled (set ANTHROPIC_API_KEY)")
+        return
+    started = time.perf_counter()
+    if state.view is None:
+        macos.check_abort()
+        screen = capture(cfg.image, cfg.app, cfg.url, ctx.browser)
+        screen.image.save(cfg.out / "answer-raw.png")
+        state.view = (screen, perceive(screen, MAX_OPTIONS, cfg.goal))
+    screen, items = state.view
+    try:
+        state.answer = compose_answer(ctx.writer, cfg.goal, screen, items, state.history, stopped)
+    except anthropic.APIError as e:
+        log(f"\nno answer: the writer failed ({e})")
+        return
+    verdict = "goal achieved" if state.answer.achieved else "goal not achieved"
+    log(f"\nanswer ({verdict}, {time.perf_counter() - started:.1f}s):\n  {state.answer.text}")
+
+
+def run_step(cfg: RunConfig, ctx: Context, state: RunState, step: int, log: Log) -> bool:
+    macos.check_abort()
+    timing: dict[str, float] = {}
+    started = time.perf_counter()
+    with phase(timing, "capture"):
+        screen = capture(cfg.image, cfg.app, cfg.url, ctx.browser, timing)
+    items = perceive(screen, MAX_OPTIONS, cfg.goal, timing, None if cfg.replay else state.ocr_cache)
+    state.view = (screen, items)
+    prefix = cfg.out / f"step-{step:03d}"  # three digits, so a run of 100 steps still lists in order
+    screen.image.save(prefix.with_name(prefix.name + "-raw.png"))
+    prefix.with_name(prefix.name + "-payload.txt").write_text(
+        render_payload(cfg.goal, screen, items, state.history, ctx.browser, ctx.email)
+    )
+
+    with phase(timing, "decide"):
+        decision = ctx.writer.next_decision(screen, items) if isinstance(ctx.writer, Supervisor) else None
+        if len(state.history) >= cfg.steps:
+            state.outcome = "step limit"
+            return False
+        if decision is None:
+            decision = decide(ctx.typesafe, cfg.goal, screen, items, state.history, ctx.browser, ctx.email)
+    by_index = {str(it.index): it for it in items}
+    annotate(screen, items, decision.chosen, prefix.with_suffix(".png"))
+
+    field_desc = f" field={screen.field.role}:{screen.field.label!r}" if screen.field else ""
+    log(
+        f"\nstep {step}: app={screen.app!r}{field_desc} url={screen.url!r} items={len(items)} ax={ax_count(items)} "
+        f"offscreen={len(screen.offscreen)} kind={decision.kind.choice} ({decision.kind.confidence:.2f}) "
+        f"site={decision.site.choice}"
+    )
+    for key, p in top(decision.kind, 4):
+        log(f"  {p:5.2f}  {key}")
+    if decision.item is not None:
+        log(f"  item ({decision.item.confidence:.2f}):")
+        for key, p in top(decision.item, 4):
+            log(f"  {p:5.2f}  [{key}] {by_index[key].text!r}")
+    if decision.offscreen is not None:
+        log(f"  offscreen ({decision.offscreen.confidence:.2f}):")
+        for key, p in top(decision.offscreen, 3):
+            log(f"  {p:5.2f}  [{key}] {screen.offscreen[int(key)].label!r}")
+
+    keep_going = resolve(cfg, ctx, state, screen, items, decision, timing, log)
+    timing.setdefault("act", 0.0)
+    timing["total"] = round(time.perf_counter() - started, 3)
+    state.timings.append(timing)
+
+    prefix.with_name(prefix.name + "-answers.json").write_text(json.dumps(answers(decision, screen, items, timing), indent=2))
+    log(f"  files: {prefix.name}-raw.png, {prefix.name}.png, {prefix.name}-payload.txt, {prefix.name}-answers.json")
+    log(format_timing(timing))
+
+    if state.view is None:  # an action ran: let the screen settle before the next step, or the answer, reads it
+        macos.sleep_watching(cfg.delay)
+    return keep_going
+
+
+def resolve(
+    cfg: RunConfig,
+    ctx: Context,
+    state: RunState,
+    screen: Screen,
+    items: list[Item],
+    decision: Decision,
+    timing: dict[str, float],
+    log: Log,
+) -> bool:
+    """Apply the stop rules, then the action. True to keep looping."""
+    reviewed = False
+    if isinstance(ctx.writer, Supervisor) and cfg.act and not cfg.replay:
+        reviewed = ctx.writer.before_action(cfg, decision)
+    if decision.stops:
+        log(f"  model says {decision.kind.choice!r}; stopping")
+        state.outcome = "done" if decision.kind.choice == "done" else "nothing helps"
+        return False
+    if decision.confidence < cfg.min_confidence and not reviewed:
+        log(f"  confidence {decision.confidence:.2f} below {cfg.min_confidence}; stopping")
+        state.outcome = "low confidence"
+        return False
+    if not cfg.act or cfg.replay:
+        log(f"  would do: {decision.chosen}. dry run (pass --act without --image to drive the machine)")
+        state.outcome = "dry run"
+        return False
+
+    with phase(timing, "act"):
+        if isinstance(ctx.writer, Supervisor):
+            screen, items, decision = ctx.writer.reobserve(cfg.goal)
+            state.view = screen, items
+        what = perform(decision, screen, items, ctx)
+    state.view = None
+    repeated = bool(state.history) and state.history[-1] == what and screen.url == state.last_url
+    state.last_url = screen.url
+    state.history.append(what)
+    log(f"  did: {what}")
+    if is_noop(what) or repeated:
+        state.consecutive_noops += 1
+        if state.consecutive_noops >= MAX_CONSECUTIVE_NOOPS:
+            log(f"  {MAX_CONSECUTIVE_NOOPS} consecutive no-ops; stopping")
+            state.outcome = "stalled"
+            return False
+    else:
+        state.consecutive_noops = 0
+    return True
+
+
+def answers(decision: Decision, screen: Screen, items: list[Item], timing: dict[str, float]) -> dict:
+    """What the classifier returned for this step, plus what it cost."""
+    return {
+        "kind": decision.kind.choice,
+        "kind_confidence": decision.kind.confidence,
+        "kind_probabilities": decision.kind.probabilities,
+        "item": decision.item.choice if decision.item else None,
+        "item_confidence": decision.item.confidence if decision.item else None,
+        "item_probabilities": decision.item.probabilities if decision.item else None,
+        "site": decision.site.choice,
+        "site_probabilities": decision.site.probabilities,
+        "offscreen": decision.offscreen.choice if decision.offscreen else None,
+        "offscreen_probabilities": decision.offscreen.probabilities if decision.offscreen else None,
+        "offscreen_controls": offscreen_records(screen.offscreen),
+        "chosen": decision.chosen,
+        "confidence": decision.confidence,
+        "timing": timing,
+        "items": [asdict(it) for it in items],
+        "field": screen.field.record() if screen.field else None,
+        "app": screen.app,
+        "url": screen.url,
+    }

@@ -1,5 +1,29 @@
 const entries = [
   {
+    name: "buildField", operation: "edit_graph", adapter: "authoring",
+    title: "Build or edit a procedural field",
+    description: "Create or edit a pure scalar field using native field nodes and scalar library functions. Inspect nodes and assets first. Edits are atomic, hash-checked and automatically arranged.",
+    intentTerms: ["build", "field"], candidates: ["buildField"], legacyName: "edit_graph",
+    nextSteps: ["Call validateAsset with the field selector.", "Call previewField to inspect the baked contour."],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+  },
+  {
+    name: "buildSystem", operation: "edit_graph", adapter: "authoring",
+    title: "Build or edit a standalone System",
+    description: "Create or edit a standalone System graph and its ECS query. Inspect the query, nodes and effects first. Edits are atomic, hash-checked and automatically arranged.",
+    intentTerms: ["build", "system"], candidates: ["buildSystem"], legacyName: "edit_graph",
+    nextSteps: ["Call inspectSystem to check the query and inferred effects.", "Call getExecutionStatus to verify the selected backend."],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+  },
+  {
+    name: "previewField", operation: "preview_field", adapter: "authoring",
+    title: "Preview a procedural field",
+    description: "Bake a pure scalar field with a seed, cell size and parameter overrides. Return a deterministic CPU PNG, scalar range and hash without a graphics context.",
+    intentTerms: ["preview", "field"], candidates: ["previewField"], legacyName: "preview_field",
+    nextSteps: ["Use buildField to edit the field, then preview it again."],
+    annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
+  },
+  {
     name: "buildShader",
     operation: "edit_graph",
     adapter: "authoring",
@@ -329,6 +353,35 @@ const entries = [
     nextSteps: ["Use the public names in tools/list when calling the MCP."],
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
+  {
+    name: "editorCommand", operation: "editorCommand", adapter: "live-editor",
+    title: "Run a command in a live editor",
+    description: "Use the shared Cmd+K runtime through a native socket or registered browser session. Inspect, submit, poll, clarify, review, and cancel revision-checked editor transactions.",
+    intentTerms: ["editor", "command"],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false, openWorldHint: false },
+    candidates: ["editorCommand"], nextSteps: ["Poll the returned task ID. Reply to listed choices or review concrete operations. Verify applied status before continuing."],
+  },
+  {
+    name: "chooseEditorAction",
+    operation: "choose_editor_action",
+    adapter: "laya",
+    title: "Choose an editor action with local Laya",
+    description: "Ask the configured Laya service to choose among 2-6 actions grounded in a fresh editor observation. Prefer Chibi authoring tools; use observed computer-use controls when needed. This tool returns a decision and never executes it. Codex supplies text for needs_text, handles needs_supervisor, checks state freshness before execution, and verifies the result before asking again. Confidence is uncalibrated for editor tasks. Use short English descriptions, offer an explicit supervisor option when appropriate, and never equate a model stop choice with verified completion.",
+    intentTerms: ["choose", "editor", "action"],
+    candidates: ["chooseEditorAction"],
+    nextSteps: ["Check the returned status and current state. Execute the selected offered action through Chibi MCP or computer-use, supply text if requested, then verify the result. Stop after 12 decisions or any failed action and let Codex reassess."],
+    annotations: { readOnlyHint: true, idempotentHint: false, destructiveHint: false, openWorldHint: true },
+  },
+  ...[
+    ["startComputerTask", "Start a local computer task", "Run local Laya with Codex supervision. For named asset creation in a running Chibi editor, prefer editor_socket plus workflow:create_asset: Laya selects from the real asset menu, Codex supplies the name, and the executor verifies creation and saving. This bounded workflow does not author graph contents. Without editor_socket, run the adapted typesafe-computer-use macOS OCR/accessibility/input loop. act defaults false. Inspect the pending request before resuming. Confidence is uncalibrated outside the recorded evaluation."],
+    ["resumeComputerTask", "Resume a local computer task", "Resume a single-use pending computer task with Codex text, an approved/overridden decision, retry, or a verified final answer. Reobserves the desktop before any input and pauses if the observation changed. For OCR-only fields, supply confirm_canvas_field:true after checking the screenshot. This executes local input when the original task has act:true."],
+    ["getComputerTask", "Get a local computer task", "Read the durable computer-use task status, history, screenshot path, and pending request without capturing or acting."],
+  ].map(([name, title, description]) => ({
+    name, operation: name, adapter: "computer-use", title, description,
+    intentTerms: [name.replace(/ComputerTask$/, "").toLowerCase(), "computer", "task"], candidates: [name],
+    nextSteps: ["Inspect screenshot and pending.reason. Supply text for text, retry after verification for continue/verify_text/stale_observation, approve or override for review, or answer plus achieved for verify_done. Use the returned run_id and request_id."],
+    annotations: { readOnlyHint: name === "getComputerTask", idempotentHint: name === "getComputerTask", destructiveHint: name !== "getComputerTask", openWorldHint: true },
+  })),
 ];
 
 export const toolCatalog = Object.freeze(entries.map((entry) => Object.freeze(entry)));

@@ -1,0 +1,10 @@
+{
+  "name": "LayaConfidentPrototype",
+  "identity": "prototype-000000000000036f",
+  "components": {
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

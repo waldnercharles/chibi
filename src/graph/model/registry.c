@@ -145,3 +145,43 @@ const operator_signature *registry_operator(int index)
     }
     return NULL;
 }
+
+int registry_enum_count(void)
+{
+    int count = 0;
+    for (int i = 0; i < REGISTRY_PACK_COUNT; i++) {
+        count += REGISTRY_PACKS[i]->enum_count;
+    }
+    return count;
+}
+
+const enum_desc *registry_enum(int index)
+{
+    if (index < 0) {
+        return NULL;
+    }
+    for (int i = 0; i < REGISTRY_PACK_COUNT; i++) {
+        const registry_pack *pack = REGISTRY_PACKS[i];
+        if (index < pack->enum_count) {
+            return pack->enums[index];
+        }
+        index -= pack->enum_count;
+    }
+    return NULL;
+}
+
+const enum_desc *registry_enum_by_name(const char *name)
+{
+    if (!name) {
+        return NULL;
+    }
+    for (int i = 0; i < REGISTRY_PACK_COUNT; i++) {
+        const registry_pack *pack = REGISTRY_PACKS[i];
+        for (int j = 0; j < pack->enum_count; j++) {
+            if (strcmp(pack->enums[j]->name, name) == 0) {
+                return pack->enums[j];
+            }
+        }
+    }
+    return NULL;
+}

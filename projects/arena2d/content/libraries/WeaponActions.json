@@ -2,7 +2,7 @@
   "version": 3,
   "name": "WeaponActions",
   "domain": "library",
-  "id_counter": 256,
+  "id_counter": 298,
   "description": "Shared weapon cooldown and projectile initialization functions.",
   "variables": [],
   "graphs": [
@@ -320,144 +320,10 @@
       "call_depth_limit": 64,
       "nodes": [
         {
-          "id": 91,
-          "type": "Spawn Prototype",
-          "x": 310.0,
-          "y": 157.5,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 92,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 93,
-              "name": "Prototype",
-              "type": 12,
-              "type_name": "name",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": "NeonSwarmProjectile"
-            }
-          ],
-          "outputs": [
-            {
-              "id": 94,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 95,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
-          "id": 104,
-          "type": "SetEntity_GameTransform",
-          "x": 648.0,
-          "y": 1.0,
-          "reference_id": 0,
-          "disabled": false,
-          "show_advanced": false,
-          "breakpoint": false,
-          "breakpoint_enabled": false,
-          "inputs": [
-            {
-              "id": 105,
-              "name": "Exec",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 106,
-              "name": "Entity",
-              "type": 14,
-              "type_name": "ecs.entity",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 107,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ],
-          "outputs": [
-            {
-              "id": 108,
-              "name": "Then",
-              "type": 0,
-              "kind": "exec",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            },
-            {
-              "id": 109,
-              "name": "Value",
-              "type": 15,
-              "type_name": "GameTransform",
-              "kind": "data",
-              "container": 0,
-              "split_parent": 0,
-              "flags": 0,
-              "group": 0,
-              "default": null
-            }
-          ]
-        },
-        {
           "id": 110,
           "type": "GetEntity_GameProjectile",
           "x": 620.0,
-          "y": 130.0,
+          "y": 85.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -510,7 +376,7 @@
           "id": 133,
           "type": "Set_GameProjectile_damage",
           "x": 1860.0,
-          "y": 142.0,
+          "y": 214.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -583,7 +449,7 @@
           "id": 174,
           "type": "Function Entry",
           "x": 0.0,
-          "y": 148.75,
+          "y": 321.5,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -648,7 +514,7 @@
               "split_parent": 0,
               "flags": 0,
               "group": 0,
-              "default": "NeonSwarmProjectile"
+              "default": "Projectile"
             },
             {
               "id": 255,
@@ -668,7 +534,7 @@
           "id": 179,
           "type": "Return",
           "x": 2480.0,
-          "y": 308.0,
+          "y": 324.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -705,7 +571,7 @@
           "id": 225,
           "type": "Multiply",
           "x": 930.0,
-          "y": 131.0,
+          "y": 149.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -828,8 +694,8 @@
         {
           "id": 235,
           "type": "Call Pure Function",
-          "x": 958.0,
-          "y": 330.0,
+          "x": 1240.0,
+          "y": 202.0,
           "reference_id": 1,
           "reference_name": "Direction Orientation",
           "reference_asset": "DirectionMath",
@@ -885,7 +751,7 @@
           "id": 239,
           "type": "SetEntity_GameOrientation",
           "x": 1550.0,
-          "y": 95.0,
+          "y": 151.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -958,7 +824,7 @@
           "id": 247,
           "type": "Set_GameCollider_ignore_entity",
           "x": 2170.0,
-          "y": 261.0,
+          "y": 277.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -1031,7 +897,7 @@
           "id": 253,
           "type": "Normalize Vector 2",
           "x": 620.0,
-          "y": 316.0,
+          "y": 279.0,
           "reference_id": 0,
           "disabled": false,
           "show_advanced": false,
@@ -1093,74 +959,85 @@
               "default": 0.0
             }
           ]
+        },
+        {
+          "id": 292,
+          "type": "Call Function",
+          "x": 310.0,
+          "y": 204.0,
+          "reference_id": 256,
+          "reference_name": "Spawn Prototype At",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 293,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 295,
+              "declaration_id": 261,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": ""
+            },
+            {
+              "id": 296,
+              "declaration_id": 262,
+              "name": "Transform",
+              "type": 15,
+              "type_name": "GameTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 294,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 297,
+              "declaration_id": 263,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
         }
       ],
       "edges": [
-        {
-          "from": 91,
-          "from_pin": 94,
-          "to": 104,
-          "to_pin": 105,
-          "kind": "exec",
-          "order": 0
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 104,
-          "to_pin": 106,
-          "kind": "data"
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 110,
-          "to_pin": 111,
-          "kind": "data"
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 133,
-          "to_pin": 135,
-          "kind": "data"
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 179,
-          "to_pin": 181,
-          "kind": "data"
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 229,
-          "to_pin": 231,
-          "kind": "data"
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 239,
-          "to_pin": 241,
-          "kind": "data"
-        },
-        {
-          "from": 91,
-          "from_pin": 95,
-          "to": 247,
-          "to_pin": 250,
-          "kind": "data"
-        },
-        {
-          "from": 104,
-          "from_pin": 108,
-          "to": 229,
-          "to_pin": 230,
-          "kind": "exec",
-          "order": 0
-        },
         {
           "from": 110,
           "from_pin": 115,
@@ -1179,17 +1056,18 @@
         {
           "from": 174,
           "from_pin": 175,
-          "to": 91,
-          "to_pin": 92,
+          "to": 292,
+          "to_pin": 293,
           "kind": "exec",
           "order": 0
         },
         {
           "from": 174,
           "from_pin": 176,
-          "to": 104,
-          "to_pin": 107,
-          "kind": "data"
+          "to": 292,
+          "to_pin": 296,
+          "kind": "data",
+          "conversion": "game_transform_to_cf"
         },
         {
           "from": 174,
@@ -1208,8 +1086,8 @@
         {
           "from": 174,
           "from_pin": 220,
-          "to": 91,
-          "to_pin": 93,
+          "to": 292,
+          "to_pin": 295,
           "kind": "data"
         },
         {
@@ -1277,6 +1155,342 @@
           "to": 235,
           "to_pin": 237,
           "kind": "data"
+        },
+        {
+          "from": 292,
+          "from_pin": 294,
+          "to": 229,
+          "to_pin": 230,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 292,
+          "from_pin": 297,
+          "to": 110,
+          "to_pin": 111,
+          "kind": "data"
+        },
+        {
+          "from": 292,
+          "from_pin": 297,
+          "to": 133,
+          "to_pin": 135,
+          "kind": "data"
+        },
+        {
+          "from": 292,
+          "from_pin": 297,
+          "to": 179,
+          "to_pin": 181,
+          "kind": "data"
+        },
+        {
+          "from": 292,
+          "from_pin": 297,
+          "to": 229,
+          "to_pin": 231,
+          "kind": "data"
+        },
+        {
+          "from": 292,
+          "from_pin": 297,
+          "to": 239,
+          "to_pin": 241,
+          "kind": "data"
+        },
+        {
+          "from": 292,
+          "from_pin": 297,
+          "to": 247,
+          "to_pin": 250,
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "id": 256,
+      "kind": "function",
+      "name": "Spawn Prototype At",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "entry_id": 257,
+      "return_id": 259,
+      "call_depth_limit": 64,
+      "nodes": [
+        {
+          "id": 257,
+          "type": "Function Entry",
+          "x": 0.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 258,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 261,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": ""
+            },
+            {
+              "id": 262,
+              "name": "Transform",
+              "type": 15,
+              "type_name": "GameTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 259,
+          "type": "Return",
+          "x": 930.0,
+          "y": 14.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 260,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 263,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": []
+        },
+        {
+          "id": 264,
+          "type": "Spawn Prototype",
+          "x": 310.0,
+          "y": 8.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 265,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 266,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": ""
+            }
+          ],
+          "outputs": [
+            {
+              "id": 267,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 268,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 269,
+          "type": "SetEntity_GameTransform",
+          "x": 570.5,
+          "y": 87.0,
+          "reference_id": 0,
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 270,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 271,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 272,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 273,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 274,
+              "name": "Value",
+              "type": 15,
+              "type_name": "GameTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 257,
+          "from_pin": 258,
+          "to": 264,
+          "to_pin": 265,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 257,
+          "from_pin": 261,
+          "to": 264,
+          "to_pin": 266,
+          "kind": "data"
+        },
+        {
+          "from": 257,
+          "from_pin": 262,
+          "to": 269,
+          "to_pin": 272,
+          "kind": "data",
+          "conversion": "game_transform_to_cf"
+        },
+        {
+          "from": 264,
+          "from_pin": 267,
+          "to": 269,
+          "to_pin": 270,
+          "kind": "exec",
+          "order": 0
+        },
+        {
+          "from": 264,
+          "from_pin": 268,
+          "to": 259,
+          "to_pin": 263,
+          "kind": "data"
+        },
+        {
+          "from": 264,
+          "from_pin": 268,
+          "to": 269,
+          "to_pin": 271,
+          "kind": "data"
+        },
+        {
+          "from": 269,
+          "from_pin": 273,
+          "to": 259,
+          "to_pin": 260,
+          "kind": "exec",
+          "order": 0
         }
       ]
     }

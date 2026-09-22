@@ -6,7 +6,7 @@ Build a playable NeonSwarm cave spanning several screens. Fly through an HRC-lit
 cloud and leave a wake, disturb a floating liquid blob, shoot pieces off an
 enemy, breach a cave wall, leave the area, and return to its changed state.
 
-NeonSwarmSandbox becomes the Arena2D project's default scene. Remove the other
+Sandbox becomes the Arena2D project's default scene. Remove the other
 Arena2D scene and assets used exclusively by it after checking dependencies.
 The separate root Arena3D project is outside this cleanup.
 
@@ -42,7 +42,7 @@ rigid physics. MPM is a fluid candidate, not a mandated implementation.
 
 ## Second iteration: fuel, exhaust, rock properties and reflections
 
-Design confirmed September 19, 2026. Implement in NeonSwarmSandbox:
+Design confirmed September 19, 2026. Implement in Sandbox:
 
 - Normal projectiles and hot engine exhaust ignite finite fuel pockets. Exhaust
   uses the shared fluid solver, pushes gas/liquid, and cools; it does not directly
@@ -222,8 +222,8 @@ low-end integrated GPU remain unverified. Fluid rendering currently requires
 the native compute renderer; there is no GLES fallback for the new fluid pass.
 
 Launch with `make play`. Move with the existing movement controls, aim/fire with
-mouse or stick, and use the existing boost action. Change `GameCaveTerrain` on
-`NeonSwarmCave` through authoring to choose the seed, extent, tunnel radius,
+mouse or stick, and use the existing boost action. Change `MaterialTerrain` on
+`Cave` through authoring to choose the seed, extent, tunnel radius,
 roughness, or damage cell size; restart the scene to regenerate it. The current
 map is 4096x1536 world units at two units per cell, stored as 128x128-cell chunks.
 The cloud silhouette, feathering and grain are seeded particle appearance; rock

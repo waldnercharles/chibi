@@ -17,6 +17,7 @@ typedef struct editor_choices
 {
     const editor_choice *items;
     int count;
+    const enum_desc *enumeration;
 } editor_choices;
 
 typedef const editor_choices
@@ -27,5 +28,6 @@ typedef const editor_choices
 void editor_choices_format(int value, const editor_choices *choices, char *buf, size_t cap);
 bool editor_choices_draw(const char *id, int *value, const editor_choices *choices);
 bool editor_choices_draw_name(const char *id, const char **value, const editor_choices *choices);
+const editor_choices *editor_choices_for_enum(const char *type_name);
 
 #endif

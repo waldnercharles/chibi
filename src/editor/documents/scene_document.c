@@ -408,6 +408,11 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
             }
         }
     }
+    if (game_entities_rebuild_global_bindings(scene->live->entities) != 0) {
+        game_scene_document_free(document);
+        snprintf(scene->message, sizeof scene->message, "Global binding names must be unique.");
+        return -1;
+    }
     scene->perspective = document->perspective;
     game_scene_document_free(document);
     char *saved_path = path ? xstrdup(path) : NULL;
@@ -446,6 +451,11 @@ int app_scene_authoring_load(app_scene_authoring *scene, const char *path)
 const char *app_scene_authoring_message(const app_scene_authoring *scene)
 {
     return scene ? scene->message : NULL;
+}
+
+const char *app_scene_authoring_content_root(const app_scene_authoring *scene)
+{
+    return scene->content_root;
 }
 
 const char *app_scene_authoring_selected_content(const app_scene_authoring *scene)

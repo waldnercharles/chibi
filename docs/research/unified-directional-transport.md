@@ -133,3 +133,20 @@ The next work must improve the transport discretization and boundary handling,
 and avoid recomputing geometry/filter decisions on every relaxation sweep.
 HRC/SDF acceleration for straight spans remains relevant. No unified replacement
 has passed the quality and frame-time requirements. The active goal remains open.
+
+### Rejected clearance shortcut
+
+A follow-up computed exact analytic distance to the nearest optical boundary
+inside each directional texture sample. When a full interpolation footprint was
+clear, it used hardware bilinear sampling instead of four material checks.
+The lens four-cycle test took 13.40 ms median versus the earlier 12.19 ms, and
+its field changed by 0.245%. This failed the 0.01% equivalence check and offered
+no measured speedup. The change was removed. Its patch, provenance, captures and
+timing report remain under `multigrid-evidence`. A precomputed transport stencil
+or clearance field is a separate experiment; these results do not measure it.
+
+The shared-operator refactor passed `make test-optics-gpu`, including all four
+forward-reference fixtures, light-off checks and the grid-aligned mirror leak
+check. The residual-correction benchmark passed its settled-control check for
+all four fixtures and immediate light removal. These checks establish the
+experiment's behavior, not that its image quality or speed is acceptable.

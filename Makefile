@@ -165,5 +165,10 @@ dev:
 
 # Uses a hidden native GPU context; the CPU reference checks remain windowless.
 .PHONY: test-optics-gpu
-test-optics-gpu:
+test-optics-gpu: test-directional-gpu
 	python3 tools/benchmark_optics.py --binary $(BUILD_DIR)/gi_lab --check --output $(BUILD_DIR)/optics-gpu-check
+
+.PHONY: test-directional-gpu
+test-directional-gpu:
+	python3 test/directional_transport_test.py --binary $(BUILD_DIR)/gi_lab --output $(BUILD_DIR)/directional-check
+	python3 test/directional_transport_test.py --binary $(BUILD_DIR)/gi_lab --angular-transfer 2 --long-rays 1 --surface-band 1 --output $(BUILD_DIR)/directional-band-check

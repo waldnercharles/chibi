@@ -5,7 +5,7 @@
 /* Experimental residual-correction solver for the analytic optical fixtures. */
 typedef struct gi_multigrid gi_multigrid;
 
-gi_multigrid *gi_multigrid_create(int width, int height, int directions);
+gi_multigrid *gi_multigrid_create(int width, int height, int directions, int angular_transfer, bool hierarchy);
 void gi_multigrid_destroy(gi_multigrid *solver);
 CF_Texture gi_multigrid_solve(
     gi_multigrid *solver,

@@ -15,9 +15,10 @@ typedef struct
     int width, height, display_width, display_height, directions;
     int rays, events, iterations, warmup, frames, off_frame, move_frame, scene;
     float fog, shift, move_shift;
-    bool iterative, coarse, multigrid;
+    bool iterative, coarse, multigrid, long_rays, surface_band;
     int cycles;
     int boundary_filter;
+    int angular_transfer;
     const char *output;
 } Options;
 
@@ -101,6 +102,7 @@ static Options options(int argc, char **argv)
                   .events = 4,
                   .iterations = 4,
                   .cycles = 1,
+                  .angular_transfer = 2,
                   .warmup = 128,
                   .frames = 64,
                   .off_frame = -1,
@@ -153,6 +155,14 @@ static Options options(int argc, char **argv)
             o.move_shift = strtof(value, NULL);
         } else if (!strcmp(key, "--boundary-filter")) {
             o.boundary_filter = atoi(value);
+        } else if (!strcmp(key, "--angular-transfer")) {
+            o.angular_transfer = atoi(value);
+        } else if (!strcmp(key, "--long-rays")) {
+            assert(atoi(value) == 0 || atoi(value) == 1);
+            o.long_rays = atoi(value) != 0;
+        } else if (!strcmp(key, "--surface-band")) {
+            assert(atoi(value) == 0 || atoi(value) == 1);
+            o.surface_band = atoi(value) != 0;
         } else if (!strcmp(key, "--scene")) {
             o.scene = atoi(value);
         } else if (!strcmp(key, "--fog")) {
@@ -171,9 +181,13 @@ static Options options(int argc, char **argv)
         o.display_width > 0 && o.display_width <= 4096 &&
         o.display_height > 0 && o.display_height <= 4096
     );
-    assert(o.directions >= 8 && o.directions <= 64 && o.directions % 8 == 0);
+    assert(o.directions >= 8 && o.directions <= 256 && o.directions % 8 == 0);
+    assert(o.width * 8 <= 8192 && o.height * (o.directions / 8) <= 8192);
     assert(o.boundary_filter == 0 || o.boundary_filter == 1);
+    assert(o.angular_transfer >= 0 && o.angular_transfer <= 2);
     assert(o.cycles >= 0 && o.cycles <= 64);
+    assert(!o.long_rays || (o.multigrid && o.cycles == 0));
+    assert(!o.surface_band || o.long_rays);
     assert(o.events >= 0 && o.events <= 4 && o.rays > 0 && o.rays <= 16384);
     assert(
         o.iterations > 0 && o.iterations <= 4096 && o.warmup >= 0 &&
@@ -221,7 +235,7 @@ int main(int argc, char **argv)
     gi_multigrid *multigrid = NULL;
     CF_ComputeShader clear = { 0 }, trace = { 0 }, solve = { 0 };
     if (o.multigrid) {
-        multigrid = gi_multigrid_create(o.width, o.height, o.directions);
+        multigrid = gi_multigrid_create(o.width, o.height, o.directions, o.angular_transfer, o.cycles > 0);
         solve = shader("gather.shd");
     } else if (o.iterative) {
         for (int level = 0; level < levels; level++) {
@@ -250,7 +264,9 @@ int main(int argc, char **argv)
     CF_ComputeShader present = shader("present.shd");
     int grid[] = { o.width, o.height, o.directions, o.scene };
     int budget[] = { o.rays, o.events, 0, o.boundary_filter };
-    float scene[] = { o.fog, 1, o.shift, 1 };
+    float scene[] = { o.fog, 1, o.shift, o.long_rays ? (o.surface_band ? -1 : 0) : 1 };
+    int transport[] = { 0, 0, o.angular_transfer, 0 };
+    cf_material_set_uniform_cs(m, "u_multigrid", transport, CF_UNIFORM_TYPE_INT, 4);
     cf_material_set_uniform_cs(m, "u_grid", grid, CF_UNIFORM_TYPE_INT, 4);
     cf_material_set_uniform_cs(m, "u_budget", budget, CF_UNIFORM_TYPE_INT, 4);
     cf_material_set_uniform_cs(m, "u_scene", scene, CF_UNIFORM_TYPE_FLOAT, 4);
@@ -396,10 +412,11 @@ int main(int argc, char **argv)
         "{\"method\":\"%s\",\"scene\":%d,\"hidden_window\":true,\"grid\":[%d,%"
         "d],"
         "\"display\":[%d,%d],\"directions\":%d,\"rays\":%d,\"events\":%d,"
-        "\"iterations\":%d,\"cycles\":%d,"
+        "\"iterations\":%d,\"cycles\":%d,\"long_rays\":%d,\"surface_band\":%d,"
         "\"warmup\":%d,\"frames\":%d,\"p50_ms\":%.4f,\"p95_ms\":%.4f,\"p99_"
         "ms\":%.4f,"
-        "\"boundary_filter\":%d,\"allocated_field_mib\":%.3f,\"levels\":%d,"
+        "\"boundary_filter\":%d,\"angular_transfer\":%d,\"allocated_field_"
+        "mib\":%.3f,\"levels\":%d,"
         "\"timing\":\"CPU dispatch "
         "plus synchronized GPU completion; optical field and display "
         "reconstruction only\"}\n",
@@ -417,12 +434,15 @@ int main(int argc, char **argv)
         o.events,
         o.iterations,
         o.cycles,
+        o.long_rays,
+        o.surface_band,
         o.warmup,
         o.frames,
         times[o.frames / 2],
         times[(int)(o.frames * .95)],
         times[(int)(o.frames * .99)],
         o.boundary_filter,
+        o.angular_transfer,
         (double)field_bytes / (1024 * 1024),
         multigrid ? gi_multigrid_levels(multigrid) : levels
     );

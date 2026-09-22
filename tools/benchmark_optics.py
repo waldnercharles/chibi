@@ -69,7 +69,8 @@ def reference(output, name, width, height, rays, shift=0, fog=.2):
 
 def run(binary, output, label, method, scene="lens", width=240, height=135,
         rays=1024, directions=32, display=(2560,1440), change=None, repeats=3,
-        warmup=128, frames=64, fog=.2, boundary_filter=0, iterations=4, cycles=1):
+        warmup=128, frames=64, fog=.2, boundary_filter=0, iterations=4, cycles=1,
+        angular_transfer=0, long_rays=0, surface_band=0, shift=0):
     directory = output / label
     directory.mkdir(exist_ok=True)
     reports = []
@@ -80,6 +81,10 @@ def run(binary, output, label, method, scene="lens", width=240, height=135,
             "--display-height", str(display[1]), "--frames", str(frames),
             "--warmup", str(warmup), "--fog", str(fog),
             "--iterations", str(iterations), "--cycles", str(cycles),
+            "--angular-transfer", str(angular_transfer),
+            "--long-rays", str(long_rays),
+            "--surface-band", str(surface_band),
+            "--shift", str(shift),
             "--boundary-filter", str(boundary_filter),
             "--output", str(directory/f"run{repeat}")]
         if change:
@@ -93,6 +98,7 @@ def run(binary, output, label, method, scene="lens", width=240, height=135,
         assert report["hidden_window"]
         reports.append(report)
     report = dict(label=label, method=method, scene=scene, fog=fog, change=change,
+                  angular_transfer=angular_transfer, long_rays=long_rays, surface_band=surface_band, shift=shift,
                   boundary_filter=boundary_filter, runs=reports, median_ms=statistics.median(r["p50_ms"] for r in reports),
                   worst_p95_ms=max(r["p95_ms"] for r in reports))
     captures = []
@@ -104,7 +110,7 @@ def run(binary, output, label, method, scene="lens", width=240, height=135,
                        integrated_fluence=sum(values)*(2*1.125)/(w*h*3))
         if change != "off" or frame < 1:
             ref, ref_path = reference(output, scene, w, h, rays,
-                                      .1 if change == "move" and frame >= 1 else 0, fog)
+                                      shift+(.1 if change == "move" and frame >= 1 else 0), fog)
             capture.update(difference(ref, values, w, h))
             capture["reference"] = str(ref_path.with_suffix(".png").relative_to(output))
             if method == "trace" and capture["relative_l1"] > .003:
@@ -154,6 +160,7 @@ def main():
     parser.add_argument("--check", action="store_true", help="Short physical GPU regression checks")
     parser.add_argument("--filtered", action="store_true", help="Only test interpolation that respects optical boundaries")
     parser.add_argument("--multigrid", action="store_true", help="Check residual-correction convergence and motion at matched discretization")
+    parser.add_argument("--directional", action="store_true", help="Compare conservative angular transfer, surface bands and angular resolution")
     parser.add_argument("--repeats", type=int, default=3)
     args = parser.parse_args()
     assert args.repeats > 0
@@ -167,7 +174,55 @@ def main():
                       presentation="Hidden swapchain acquisition bypassed; CPU dispatch plus GPU completion")
     (output/"provenance.json").write_text(json.dumps(provenance,indent=2)+"\n")
     reports=[]
-    if args.multigrid:
+    if args.directional:
+        def field(report):
+            return read_pfm((output/report["captures"][-1]["image"]).with_suffix(".pfm"))[2]
+        for name in SCENES:
+            controls = []
+            for variant, angular, band in (("full", 1, 0), ("bounded", 2, 0), ("band", 2, 1)):
+                report = run(binary, output, f"{name}-{variant}-32", "multigrid", scene=name,
+                             width=120, height=68, rays=2048, cycles=0, iterations=8,
+                             angular_transfer=angular, long_rays=1, surface_band=band,
+                             boundary_filter=1, warmup=16, frames=32, repeats=args.repeats)
+                controls.append(report)
+                delta = difference(field(controls[0]), field(report), 120, 68)["relative_l1"]
+                assert delta < .00001, (name, variant, delta)
+                report["exhaustive_relative_l1"] = delta
+                reports.append(report)
+                gallery(output, reports)
+        for name in ("lens", "prism"):
+            for directions in (64, 128, 256):
+                reports.append(run(binary, output, f"{name}-band-{directions}", "multigrid", scene=name,
+                                   width=120, height=68, directions=directions, rays=2048,
+                                   cycles=0, iterations=8, angular_transfer=2, long_rays=1,
+                                   surface_band=1, boundary_filter=1, warmup=16, frames=32,
+                                   repeats=args.repeats))
+                gallery(output, reports)
+            reports.append(run(binary, output, f"{name}-band-128-240-4k", "multigrid", scene=name,
+                               width=240, height=135, directions=128, display=(3840,2160), rays=2048,
+                               cycles=0, iterations=8, angular_transfer=2, long_rays=1,
+                               surface_band=1, boundary_filter=1, warmup=16, frames=32,
+                               repeats=args.repeats))
+        for change in ("off", "move"):
+            reports.append(run(binary, output, f"lens-band-128-{change}", "multigrid",
+                               width=120, height=68, directions=128, rays=2048, change=change,
+                               cycles=0, iterations=8, angular_transfer=2, long_rays=1,
+                               surface_band=1, boundary_filter=1, warmup=16, frames=32,
+                               repeats=args.repeats))
+        settled = run(binary, output, "lens-band-128-shifted-fresh", "multigrid",
+                      width=120, height=68, directions=128, rays=2048, shift=.1,
+                      cycles=0, iterations=8, angular_transfer=2, long_rays=1,
+                      surface_band=1, boundary_filter=1, warmup=0, frames=1, repeats=1)
+        settled["cold_reference"] = True
+        expected = field(settled)
+        moved = reports[-1]
+        for capture in moved["captures"]:
+            if capture["frame"] >= 1:
+                current = read_pfm((output/capture["image"]).with_suffix(".pfm"))[2]
+                assert current == expected, "Moving glass retains stale directional light"
+        moved["matches_fresh_shifted_field"] = True
+        reports.append(settled)
+    elif args.multigrid:
         def values(report):
             return read_pfm((output/report["captures"][-1]["image"]).with_suffix(".pfm"))[2]
         for name in SCENES:

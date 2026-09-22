@@ -8,8 +8,8 @@ const float EPS = 0.000002;
 layout(set=2, binding=0) uniform Params {
     ivec4 u_grid; // width, height, directions, scene (0 empty, 1 lens, 2 slab, 3 prism, 4 mirror)
     ivec4 u_budget; // paths, interfaces, initialize, boundary filter
-    vec4 u_scene; // fog extinction, light power, lens Y shift, iteration step in cells
-    ivec4 u_multigrid; // residual solver operation, physical solution, reserved
+    vec4 u_scene; // fog, power, Y shift, step: 1 local / 0 long / -1 surface band
+    ivec4 u_multigrid; // residual solver operation, physical solution, angular transfer, reserved
 };
 float cross2(vec2 a, vec2 b) { return a.x*b.y-a.y*b.x; }
 vec2 fixture_vertex(int i) {
@@ -34,6 +34,20 @@ bool inside(vec2 p) {
         if (cross2(b-a,p-a)<=0) return false;
     }
     return true;
+}
+float surface_distance(vec2 p) {
+    if (u_grid.w==0) return 1e10;
+    p.y-=u_scene.z;
+    if (u_grid.w==1) return abs(length(p-vec2(.8,.5625))-.23);
+    int count=u_grid.w==2 ? 4 : (u_grid.w==4 ? 1 : 3);
+    float nearest=1e10;
+    for (int i=0;i<count;i++) {
+        vec2 a=fixture_vertex(i), b=fixture_vertex((i+1)%(u_grid.w==2 ? 4 : 3));
+        vec2 edge=b-a;
+        vec2 delta=p-a-edge*clamp(dot(p-a,edge)/dot(edge,edge),0,1);
+        nearest=min(nearest,length(delta));
+    }
+    return nearest;
 }
 float hit_near(vec2 p, vec2 d, float minimum, out vec2 normal) {
     normal=vec2(0);

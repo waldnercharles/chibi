@@ -7,12 +7,13 @@ void main() {
     ivec2 xy=ivec2(gl_GlobalInvocationID.xy); int angle=int(gl_GlobalInvocationID.z);
     if (any(greaterThanEqual(xy,u_grid.xy))) return;
     ivec2 at=xy+ivec2(angle%8,angle/8)*u_grid.xy;
-    if (u_budget.z==1) { imageStore(u_next,at,vec4(0)); return; }
     vec2 p=(vec2(xy)+.5)/vec2(u_grid.xy)*EXTENT;
+    float medium=inside(p) ? 1 : 0;
+    if (u_budget.z==1) { imageStore(u_next,at,vec4(0,0,0,medium)); return; }
     float theta=float(angle)*2*PI/float(u_grid.z);
     vec2 back=-vec2(cos(theta),sin(theta));
-    if (u_budget.z==2) { imageStore(u_next,at,vec4(sample_field(p,-back),1)); return; }
+    if (u_budget.z==2) { imageStore(u_next,at,vec4(sample_field(p,-back),medium)); return; }
     float step_length=u_scene.w*EXTENT.x/float(u_grid.x);
     vec3 value=transport(p,back,step_length,u_scene.y,false);
-    imageStore(u_next,at,vec4(value,1));
+    imageStore(u_next,at,vec4(value,medium));
 }

@@ -13,15 +13,16 @@ vec3 sample_direction(vec2 p, int angle) {
     bool material=inside(p);
     for (int y=0;y<2;y++) for (int x=0;x<2;x++) {
         ivec2 cell=clamp(base+ivec2(x,y),ivec2(0),ivec2(dims)-1);
-        vec2 q=(vec2(cell)+.5)/dims*EXTENT;
-        if (material ? !inside(q) : inside(q)) continue;
+        vec4 sample=texelFetch(u_previous,ivec2(tile*dims)+cell,0);
+        if (material ? sample.a<.5 : sample.a>=.5) continue;
         if (u_grid.w==4) {
+            vec2 q=(vec2(cell)+.5)/dims*EXTENT;
             vec2 delta=q-p,n;
             float distance=length(delta);
             if (distance>EPS && hit(p,delta/distance,n)<distance) continue;
         }
         float weight=(x==0 ? 1-f.x : f.x)*(y==0 ? 1-f.y : f.y);
-        sum+=texelFetch(u_previous,ivec2(tile*dims)+cell,0).rgb*weight;
+        sum+=sample.rgb*weight;
         total+=weight;
     }
     return total>1e-6 ? sum/total : vec3(0);
@@ -31,18 +32,123 @@ vec3 sample_field(vec2 p, vec2 d) {
     int a=int(floor(angle));
     return mix(sample_direction(p,a),sample_direction(p,a+1),fract(angle));
 }
+vec3 segment_transmittance(vec2 p, vec2 d, float distance, bool glass) {
+    if (u_scene.w>0 || glass) return exp(-extinction(p,glass)*distance);
+    // Long characteristics integrate the persistent density grid explicitly.
+    // A straight segment crosses at most 32+18 cells of this analytic fixture.
+    vec2 size=EXTENT/vec2(32,18);
+    ivec2 cell=clamp(ivec2(floor(p/size)),ivec2(0),ivec2(31,17));
+    ivec2 advance=ivec2(d.x>=0 ? 1 : -1,d.y>=0 ? 1 : -1);
+    vec2 next=vec2(1e20), delta=vec2(1e20);
+    if (abs(d.x)>1e-8) {
+        next.x=(float(cell.x+(d.x>0 ? 1 : 0))*size.x-p.x)/d.x;
+        delta.x=size.x/abs(d.x);
+    }
+    if (abs(d.y)>1e-8) {
+        next.y=(float(cell.y+(d.y>0 ? 1 : 0))*size.y-p.y)/d.y;
+        delta.y=size.y/abs(d.y);
+    }
+    float t=0, depth=0;
+    for (int i=0;i<52;i++) {
+        float end=min(distance,min(next.x,next.y));
+        vec2 at=(vec2(clamp(cell,ivec2(0),ivec2(31,17)))+.5)*size;
+        depth+=extinction(at,false).x*max(0,end-t);
+        if (end>=distance) break;
+        bool x=next.x<=next.y, y=next.y<=next.x;
+        if (x) { cell.x+=advance.x; next.x+=delta.x; }
+        if (y) { cell.y+=advance.y; next.y+=delta.y; }
+        t=end;
+    }
+    return vec3(exp(-depth));
+}
 vec3 pull(vec2 p, vec2 back, float length, float power, bool source_only) {
     // Boundary emitter, with unit total power integrated over its .4 world-unit span.
     if (back.x<-.999999) {
         float t=(.06-p.x)/back.x;
         float y=p.y+back.y*t;
         if (t>=0 && t<=length && y>=.3625 && y<.7625)
-            return vec3(power/(.4*(2*PI/float(u_grid.z))))*exp(-extinction(p,false)*t);
+            return vec3(power/(.4*(2*PI/float(u_grid.z))))*segment_transmittance(p,back,t,false);
     }
-    return source_only ? vec3(0) : sample_field(p+back*length,-back)*exp(-extinction(p,inside(p))*length);
+    return source_only ? vec3(0) : sample_field(p+back*length,-back)*segment_transmittance(p,back,length,inside(p));
+}
+vec2 angular_direction(int index) {
+    float theta=float(index)*2*PI/float(u_grid.z);
+    return vec2(cos(theta),sin(theta));
+}
+float angular_weight(vec2 d, vec2 normal, int destination) {
+    float angle=mod(atan(d.y,d.x)+2*PI,2*PI)*float(u_grid.z)/(2*PI);
+    int a=int(floor(angle)), b=(a+1)%u_grid.z;
+    float wa=1-fract(angle), wb=fract(angle);
+    if (dot(angular_direction(a),normal)<=1e-5) wa=0;
+    if (dot(angular_direction(b),normal)<=1e-5) wb=0;
+    float total=wa+wb;
+    if (total<=0) return 0;
+    return (destination==a ? wa : (destination==b ? wb : 0))/total;
+}
+vec3 boundary_input(vec2 q, vec2 normal, float ni, float nt, float distance,
+                    float power, bool source_only, int destination, int a) {
+    vec2 incoming=angular_direction(a), redirected;
+    float c=dot(incoming,normal), fraction;
+    vec3 tint=vec3(1);
+    if (c < -1e-5) {
+        vec2 unused;
+        fraction=u_grid.w==4 ? 1 : fresnel(incoming,normal,ni,nt,unused);
+        redirected=reflect(incoming,normal);
+        if (u_grid.w==4) tint=vec3(.95,.85,.7);
+    } else if (c>1e-5 && u_grid.w!=4) {
+        fraction=1-fresnel(incoming,-normal,nt,ni,redirected);
+        if (fraction<=0) return vec3(0);
+    } else return vec3(0);
+    float weight=angular_weight(redirected,normal,destination);
+    if (weight<=0) return vec3(0);
+    return pull(q-incoming*EPS*4,-incoming,distance,power,source_only)*
+           tint*(fraction*weight*abs(c));
+}
+vec3 boundary_flux(vec2 q, vec2 outgoing, vec2 normal, float ni, float nt,
+                   float distance, float power, bool source_only) {
+    float cosine=dot(outgoing,normal);
+    if (cosine<=1e-5) return vec3(0);
+    float scale=float(u_grid.z)/(2*PI);
+    float angle=mod(atan(outgoing.y,outgoing.x)+2*PI,2*PI)*scale;
+    int destination=int(floor(angle+.5))%u_grid.z;
+    vec3 sum=vec3(0);
+    // Remap incident angular-bin flux, not point-sampled radiance. Equal bin
+    // widths cancel; projected incident/outgoing cosines preserve normal flux.
+    if (u_multigrid.z==1) {
+        for (int a=0;a<u_grid.z;a++)
+            sum+=boundary_input(q,normal,ni,nt,distance,power,source_only,destination,a);
+        return sum/cosine;
+    }
+    // Reflection reverses angle with unit slope. Only bins in the triangular
+    // reconstruction footprint can contribute; pad by one for roundoff.
+    vec2 reflected=reflect(outgoing,normal);
+    int center=int(floor(atan(reflected.y,reflected.x)*scale));
+    for (int i=center-1;i<=center+2;i++) {
+        int a=(i+2*u_grid.z)%u_grid.z;
+        if (dot(angular_direction(a),normal)>=-1e-5) continue;
+        sum+=boundary_input(q,normal,ni,nt,distance,power,source_only,destination,a);
+    }
+    if (u_grid.w==4) return sum/cosine;
+    // Invert the output bin's full angular support, clipped to the physically
+    // reachable cone. Near the critical angle this range deliberately widens.
+    float beta=atan(dot(outgoing,vec2(-normal.y,normal.x)),cosine);
+    float critical=asin(min(1,nt/ni));
+    float lo=max(-critical,beta-1/scale), hi=min(critical,beta+1/scale);
+    if (lo>hi) return sum/cosine;
+    float base=atan(normal.y,normal.x);
+    int first=int(floor((base+asin(clamp(ni/nt*sin(lo),-1,1)))*scale))-1;
+    int last=int(ceil((base+asin(clamp(ni/nt*sin(hi),-1,1)))*scale))+1;
+    for (int i=first;i<=last;i++) {
+        int a=(i+2*u_grid.z)%u_grid.z;
+        if (dot(angular_direction(a),normal)<=1e-5) continue;
+        sum+=boundary_input(q,normal,ni,nt,distance,power,source_only,destination,a);
+    }
+    return sum/cosine;
 }
 vec3 transport(vec2 p, vec2 back, float step_length, float power, bool source_only) {
     vec2 n;
+    bool long_rays=u_scene.w<=0;
+    if (long_rays) step_length=exit_distance(p,back)+EPS*4;
     // A grid center can lie exactly on a mirror. Skipping t=0 would let the
     // direct beam leak through that entire row. Select the outgoing side.
     float t=hit_near(p,back,-EPS,n);
@@ -53,12 +159,15 @@ vec3 transport(vec2 p, vec2 back, float step_length, float power, bool source_on
         if (dot(n,back)>0) n=-n;
         vec2 transmitted, reflected=reflect(back,n), q=p+t*back;
         float ni=glass?1.5:1, nt=glass?1:1.5;
+        float remaining=long_rays ? EXTENT.x/float(u_grid.x) : step_length-t;
+        if (u_multigrid.z!=0)
+            return boundary_flux(q,-back,n,ni,nt,remaining,power,source_only)*segment_transmittance(p,back,t,glass);
         float f=u_grid.w == 4 ? 1 : fresnel(back,n,ni,nt,transmitted);
-        value=f*pull(q+reflected*EPS*4,reflected,step_length-t,power,source_only)*
+        value=f*pull(q+reflected*EPS*4,reflected,remaining,power,source_only)*
             (u_grid.w == 4 ? vec3(.95,.85,.7) : vec3(1));
         // Intrinsic 2D radiance conserves L/n across refraction, not 3D L/n^2.
-        if (f<1) value+=(1-f)*(ni/nt)*pull(q+transmitted*EPS*4,transmitted,step_length-t,power,source_only);
-        value*=exp(-extinction(p,glass)*t);
+        if (f<1) value+=(1-f)*(ni/nt)*pull(q+transmitted*EPS*4,transmitted,remaining,power,source_only);
+        value*=segment_transmittance(p,back,t,glass);
     }
     return value;
 }

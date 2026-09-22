@@ -10,6 +10,7 @@ const int RELAX=2;
 const int RESIDUAL=3;
 const int RESTRICT=4;
 const int CORRECT=5;
+const int EVALUATE=6;
 
 // Keep values in step-integrated units: A_h L = (I - K_h) L = b_h.
 // Coarse residuals scale with the larger transport step, h_coarse / h_fine.
@@ -25,9 +26,9 @@ vec3 restrict_residual(ivec2 xy, int angle, vec2 p) {
         vec2 overlap=max(vec2(0),min(vec2(cell+1),hi)-max(vec2(cell),lo));
         float w=overlap.x*overlap.y;
         if (w==0) continue;
-        vec2 q=(vec2(cell)+.5)/vec2(dims)*EXTENT;
-        if (u_budget.w!=0 && (inside(p) ? !inside(q) : inside(q))) continue;
-        sum+=texelFetch(u_previous,tile+cell,0).rgb*w;
+        vec4 sample=texelFetch(u_previous,tile+cell,0);
+        if (u_budget.w!=0 && (inside(p) ? sample.a<.5 : sample.a>=.5)) continue;
+        sum+=sample.rgb*w;
         weight+=w;
     }
     return weight>0 ? sum/weight*ratio.x : vec3(0);
@@ -37,8 +38,15 @@ void main() {
     if (any(greaterThanEqual(xy,u_grid.xy))) return;
     ivec2 at=xy+ivec2(angle%8,angle/8)*u_grid.xy;
     int mode=u_multigrid.x;
-    if (mode==CLEAR) { imageStore(u_next,at,vec4(0)); return; }
     vec2 p=(vec2(xy)+.5)/vec2(u_grid.xy)*EXTENT;
+    float medium=inside(p) ? 1 : 0;
+    if (mode==CLEAR) { imageStore(u_next,at,vec4(0,0,0,medium)); return; }
+    // Every interface lookup lies one cell upstream of a boundary, plus a
+    // bilinear footprint. Other locations cannot feed these optical iterates.
+    float band=EXTENT.x/float(u_grid.x)+length(EXTENT/vec2(u_grid.xy))+EPS*16;
+    if (u_scene.w<0 && mode!=EVALUATE && surface_distance(p)>band) {
+        imageStore(u_next,at,vec4(0,0,0,medium)); return;
+    }
     vec2 back=-vec2(cos(float(angle)*2*PI/float(u_grid.z)),sin(float(angle)*2*PI/float(u_grid.z)));
     vec3 value;
     if (mode==RESTRICT) value=restrict_residual(xy,angle,p);
@@ -49,9 +57,9 @@ void main() {
         if (u_multigrid.y!=0) value=max(vec3(0),value);
     } else {
         float step_length=u_scene.w*EXTENT.x/float(u_grid.x);
-        value=transport(p,back,step_length,mode==SOURCE ? u_scene.y : 0,mode==SOURCE);
-        if (mode!=SOURCE) value+=texelFetch(u_rhs,at,0).rgb;
+        value=transport(p,back,step_length,(mode==SOURCE || mode==EVALUATE) ? u_scene.y : 0,mode==SOURCE);
+        if (mode!=SOURCE && mode!=EVALUATE) value+=texelFetch(u_rhs,at,0).rgb;
         if (mode==RESIDUAL) value-=texelFetch(u_previous,at,0).rgb;
     }
-    imageStore(u_next,at,vec4(value,1));
+    imageStore(u_next,at,vec4(value,medium));
 }

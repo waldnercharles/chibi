@@ -17,7 +17,8 @@ enum
     RELAX,
     RESIDUAL,
     RESTRICT,
-    CORRECT
+    CORRECT,
+    EVALUATE
 };
 
 typedef struct
@@ -29,7 +30,7 @@ typedef struct
 struct gi_multigrid
 {
     Level levels[MAX_LEVELS];
-    int count, directions;
+    int count, directions, angular_transfer;
     size_t bytes;
     CF_Material material;
     CF_ComputeShader shader;
@@ -47,11 +48,12 @@ static CF_Canvas canvas(int width, int height)
     return c;
 }
 
-gi_multigrid *gi_multigrid_create(int width, int height, int directions)
+gi_multigrid *gi_multigrid_create(int width, int height, int directions, int angular_transfer, bool hierarchy)
 {
     gi_multigrid *s = xmalloc(sizeof *s);
     memset(s, 0, sizeof *s);
     s->directions = directions;
+    s->angular_transfer = angular_transfer;
     s->material = cf_make_material();
     s->shader = cf_make_compute_shader("multigrid.shd");
     assert(s->shader.id);
@@ -63,9 +65,11 @@ gi_multigrid *gi_multigrid_create(int width, int height, int directions)
         l->field[0] = canvas(w, h);
         l->field[1] = canvas(w, h);
         l->rhs = canvas(w, h);
-        l->residual = canvas(w, h);
-        s->bytes += (size_t)w * h * 16 * 4;
-        if (width <= 16 || s->count == MAX_LEVELS) {
+        if (hierarchy) {
+            l->residual = canvas(w, h);
+        }
+        s->bytes += (size_t)w * h * 16 * (hierarchy ? 4 : 3);
+        if (!hierarchy || width <= 16 || s->count == MAX_LEVELS) {
             break;
         }
         width = (width + 1) / 2;
@@ -80,7 +84,7 @@ static void dispatch(gi_multigrid *s, int level, int operation, CF_Canvas previo
     s->grid[0] = l->width;
     s->grid[1] = l->height;
     cf_material_set_uniform_cs(s->material, "u_grid", s->grid, CF_UNIFORM_TYPE_INT, 4);
-    int controls[] = { operation, level == 0, 0, 0 };
+    int controls[] = { operation, level == 0, s->angular_transfer, 0 };
     cf_material_set_uniform_cs(s->material, "u_multigrid", controls, CF_UNIFORM_TYPE_INT, 4);
     cf_material_set_texture_cs(s->material, "u_previous", cf_canvas_get_target(previous));
     cf_material_set_texture_cs(s->material, "u_rhs", cf_canvas_get_target(rhs));
@@ -142,7 +146,12 @@ CF_Texture gi_multigrid_solve(
     dispatch(s, 0, SOURCE, l->field[0], l->field[0], l->rhs);
     // Zero cycles isolates convergence of the same 32-bit fine-grid operator.
     if (!cycles) {
-        relax(s, 0, smooth);
+        bool band = fixture[3] < 0;
+        relax(s, 0, smooth - (band ? 1 : 0));
+        if (band) {
+            dispatch(s, 0, EVALUATE, l->field[l->ping], l->rhs, l->field[1 - l->ping]);
+            l->ping = 1 - l->ping;
+        }
     }
     for (int i = 0; i < cycles; i++) {
         cycle(s, 0, smooth);
@@ -166,7 +175,9 @@ void gi_multigrid_destroy(gi_multigrid *s)
         cf_destroy_canvas(l->field[0]);
         cf_destroy_canvas(l->field[1]);
         cf_destroy_canvas(l->rhs);
-        cf_destroy_canvas(l->residual);
+        if (l->residual.id) {
+            cf_destroy_canvas(l->residual);
+        }
     }
     cf_destroy_compute_shader(s->shader);
     cf_destroy_material(s->material);

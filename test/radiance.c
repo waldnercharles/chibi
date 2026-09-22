@@ -1315,6 +1315,7 @@ int test_radiance()
 {
     extern bool test_radiance_intervals();
     extern bool test_radiance_medium();
+    extern bool test_optics();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -1462,10 +1463,11 @@ int test_radiance()
     if (ok) {
         render_material_entity light = emitter();
         light.pos[0] = 0;
-        const float scales[] = { .5f, .25f, .5f, .976883f };
-        for (int scale = 0; scale < 4 && ok; scale++) {
+        const float scales[] = { .5f, .25f, .5f, .976883f, 1, .5f };
+        for (int scale = 0; scale < 6 && ok; scale++) {
             render_radiance_settings settings = render_radiance_get_settings(radiance);
             settings.scale = scales[scale];
+            settings.max_light_size = scale >= 4 ? 32 : 0;
             render_radiance *fresh = render_radiance_new();
             ok = fresh && render_radiance_set_settings(fresh, settings) &&
                  render_radiance_resize(fresh, 64, 64) &&
@@ -1476,6 +1478,20 @@ int test_radiance()
                 ok = abs((int)reset[i].colors.r - open[i].colors.r) <= 2 &&
                      abs((int)reset[i].colors.g - open[i].colors.g) <= 2 &&
                      abs((int)reset[i].colors.b - open[i].colors.b) <= 2;
+            }
+            if (scale >= 4) {
+                render_radiance_dimensions dims = render_radiance_get_dimensions(radiance);
+                ok &= dims.canvas_width == 64 && dims.light_width == 32 &&
+                      dims.work_width == 32;
+                double sum = 0;
+                for (int i = 0; i < 64 * 64; i++) {
+                    sum += open[i].colors.r;
+                }
+                ok &= sum > 100;
+                ok &= solve(raster, radiance, canvas, NULL, 0, 64, 4, reset);
+                for (int i = 0; i < 64 * 64; i++) {
+                    ok &= reset[i].colors.r <= 2;
+                }
             }
             render_radiance_free(fresh);
         }
@@ -1518,6 +1534,7 @@ int test_radiance()
     ok &= light_ok;
     ok &= test_radiance_intervals();
     ok &= test_radiance_medium();
+    ok &= test_optics();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }

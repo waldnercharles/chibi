@@ -33,78 +33,94 @@ bool test_radiance_medium()
     CF_Texture emission = cf_make_texture(texture_params);
     CF_Texture absorption = cf_make_texture(texture_params);
     CF_Texture bounce = cf_make_texture(texture_params);
-    bool ok = trace.id && decode.id && intervals.id && canvas.id &&
-              emission.id && absorption.id && bounce.id && material.id;
+    CF_Texture source = cf_make_texture(texture_params);
+    bool ok = trace.id && decode.id && intervals.id && canvas.id && emission.id &&
+              absorption.id && bounce.id && source.id && material.id;
     float empty[40] = { 0 };
     cf_texture_update(bounce, empty, sizeof empty);
     float densities[] = { 0, .0001f, .001f, .003f, .2f, 10 };
-    for (int i = 0; i < 6 && ok; i++) {
-        for (int scale = 1; scale <= 4 && ok; scale *= 2) {
-            float tau = densities[i] / scale, light[40], depth[40];
-            for (int p = 0; p < 10; p++) {
-                for (int c = 0; c < 3; c++) {
-                    light[p * 4 + c] = .2f;
-                    depth[p * 4 + c] = tau;
+    for (int optics = 0; optics <= 1 && ok; optics++) {
+        for (int i = 0; i < 6 && ok; i++) {
+            for (int scale = 1; scale <= 4 && ok; scale *= 2) {
+                float tau = densities[i] / scale, light[40], depth[40],
+                      optical_source[40];
+                for (int p = 0; p < 10; p++) {
+                    for (int c = 0; c < 3; c++) {
+                        light[p * 4 + c] = optics ? 0 : .2f;
+                        optical_source[p * 4 + c] = optics ? .2f : 0;
+                        depth[p * 4 + c] = tau;
+                    }
+                    light[p * 4 + 3] = tau;
+                    depth[p * 4 + 3] = 1;
+                    optical_source[p * 4 + 3] = 0;
                 }
-                light[p * 4 + 3] = tau;
-                depth[p * 4 + 3] = 1;
+                cf_app_update(NULL);
+                cf_texture_update(emission, light, sizeof light);
+                cf_texture_update(absorption, depth, sizeof depth);
+                cf_texture_update(source, optical_source, sizeof optical_source);
+                cf_material_set_texture_cs(material, "u_emission", emission);
+                cf_material_set_texture_cs(material, "u_transmittance", absorption);
+                cf_material_set_texture_cs(material, "u_bounce", bounce);
+                cf_material_set_texture_cs(material, "u_optical_source", source);
+                cf_material_set_uniform_cs(material, "u_optics", &optics, CF_UNIFORM_TYPE_INT, 1);
+                const char *names[] = { "u_cascade", "u_rotate", "u_world_w",
+                                        "u_world_h", "u_work_w", "u_work_h",
+                                        "u_medium" };
+                int values[] = { 0, 0, 2, 5, 2, 5, 1 };
+                for (int v = 0; v < 7; v++) {
+                    cf_material_set_uniform_cs(material, names[v], values + v, CF_UNIFORM_TYPE_INT, 1);
+                }
+                float step = (float)scale, zero = 0, pixel_size = 1.f / scale;
+                cf_material_set_uniform_cs(material, "u_pixel_size", &pixel_size, CF_UNIFORM_TYPE_FLOAT, 1);
+                cf_material_set_uniform_cs(material, "u_step_scale", &step, CF_UNIFORM_TYPE_FLOAT, 1);
+                cf_material_set_uniform_cs(material, "u_bounce_intensity", &zero, CF_UNIFORM_TYPE_FLOAT, 1);
+                CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
+                dispatch.rw_buffers = &intervals;
+                dispatch.rw_buffer_count = 1;
+                cf_dispatch_compute(trace, material, dispatch);
+                CF_Texture target = cf_canvas_get_target(canvas);
+                dispatch.rw_buffers = NULL;
+                dispatch.rw_buffer_count = 0;
+                dispatch.ro_buffers = &intervals;
+                dispatch.ro_buffer_count = 1;
+                dispatch.rw_textures = &target;
+                dispatch.rw_texture_count = 1;
+                cf_dispatch_compute(decode, material, dispatch);
+                cf_app_draw_onto_screen(false);
+                CF_Readback readback = cf_canvas_readback(canvas);
+                if (!readback.id) {
+                    ok = false;
+                    break;
+                }
+                while (!cf_readback_ready(readback)) {
+                }
+                float pixels[80];
+                ok &= cf_readback_data(readback, pixels, sizeof pixels) == sizeof pixels;
+                cf_destroy_readback(readback);
+                double length = sqrt(2);
+                double expected = densities[i] > 0
+                                    ? .2 * -expm1(-densities[i] * length) /
+                                          densities[i]
+                                    : .2 * length;
+                double actual = pixels[2 * 4 * 4];
+                bool passed = isfinite(actual) &&
+                              fabs(actual - expected) < expected * .001;
+                printf(
+                    "%s: source mode=%d tau=%.4f step=%d L=%.6f "
+                    "expected=%.6f\n",
+                    passed ? "PASS" : "FAIL",
+                    optics,
+                    tau,
+                    scale,
+                    actual,
+                    expected
+                );
+                ok &= passed;
             }
-            cf_app_update(NULL);
-            cf_texture_update(emission, light, sizeof light);
-            cf_texture_update(absorption, depth, sizeof depth);
-            cf_material_set_texture_cs(material, "u_emission", emission);
-            cf_material_set_texture_cs(material, "u_transmittance", absorption);
-            cf_material_set_texture_cs(material, "u_bounce", bounce);
-            const char *names[] = { "u_cascade", "u_rotate", "u_world_w",
-                                    "u_world_h", "u_work_w", "u_work_h",
-                                    "u_medium" };
-            int values[] = { 0, 0, 2, 5, 2, 5, 1 };
-            for (int v = 0; v < 7; v++) {
-                cf_material_set_uniform_cs(material, names[v], values + v, CF_UNIFORM_TYPE_INT, 1);
-            }
-            float step = (float)scale, zero = 0, pixel_size = 1.f / scale;
-            cf_material_set_uniform_cs(material, "u_pixel_size", &pixel_size, CF_UNIFORM_TYPE_FLOAT, 1);
-            cf_material_set_uniform_cs(material, "u_step_scale", &step, CF_UNIFORM_TYPE_FLOAT, 1);
-            cf_material_set_uniform_cs(material, "u_bounce_intensity", &zero, CF_UNIFORM_TYPE_FLOAT, 1);
-            CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
-            dispatch.rw_buffers = &intervals;
-            dispatch.rw_buffer_count = 1;
-            cf_dispatch_compute(trace, material, dispatch);
-            CF_Texture target = cf_canvas_get_target(canvas);
-            dispatch.rw_buffers = NULL;
-            dispatch.rw_buffer_count = 0;
-            dispatch.ro_buffers = &intervals;
-            dispatch.ro_buffer_count = 1;
-            dispatch.rw_textures = &target;
-            dispatch.rw_texture_count = 1;
-            cf_dispatch_compute(decode, material, dispatch);
-            cf_app_draw_onto_screen(false);
-            CF_Readback readback = cf_canvas_readback(canvas);
-            if (!readback.id) {
-                ok = false;
-                break;
-            }
-            while (!cf_readback_ready(readback)) {
-            }
-            float pixels[80];
-            ok &= cf_readback_data(readback, pixels, sizeof pixels) == sizeof pixels;
-            cf_destroy_readback(readback);
-            double length = sqrt(2);
-            double expected = densities[i] > 0
-                                ? .2 * -expm1(-densities[i] * length) / densities[i]
-                                : .2 * length;
-            double actual = pixels[2 * 4 * 4];
-            bool passed = isfinite(actual) && fabs(actual - expected) < expected * .001;
-            printf(
-                "%s: medium source tau=%.4f step=%d L=%.6f expected=%.6f\n",
-                passed ? "PASS" : "FAIL",
-                tau,
-                scale,
-                actual,
-                expected
-            );
-            ok &= passed;
         }
+    }
+    if (source.id) {
+        cf_destroy_texture(source);
     }
     if (emission.id) {
         cf_destroy_texture(emission);

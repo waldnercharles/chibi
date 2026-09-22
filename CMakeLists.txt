@@ -354,7 +354,7 @@ target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core)
 
 # --- material rasterization and radiance transport --------------------------
-add_library(chibi_render STATIC src/render/medium.c src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c
+add_library(chibi_render STATIC src/render/optics.c src/render/scene_optics.c src/render/medium.c src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c
     src/render/geometry_2d.c src/render/light_field_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
@@ -605,6 +605,7 @@ add_executable(test_suite
     src/render/scene_renderer.c
     test/material.c
     test/wave.c
+    test/optics.c
     test/radiance.c
     test/radiance_intervals.c
     test/radiance_medium.c

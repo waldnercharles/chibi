@@ -5,6 +5,13 @@
 #include "graph/model/node.h"
 #include "runtime/components.h"
 
+extern const ecs_component_desc GAME_COMPONENT_GameLight2D;
+extern const GameLight2D *GAME_GameLight2D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameOptics2D;
+extern const GameOptics2D *GAME_GameOptics2D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameOpticalSurface;
+extern const GameOpticalSurface *GAME_GameOpticalSurface_get_const(const ecs_world *, ecs_entity);
+
 /* External reflected types are emitted alongside component descriptors. */
 extern const type_desc GAME_T_CF_V2;
 

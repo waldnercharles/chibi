@@ -1,0 +1,11 @@
+{
+  "name": "HRCLabOpticalSettings",
+  "identity": "prototype-2ff3eb11297ddefe",
+  "components": {
+    "GAME.GameOptics2D": {
+      "events": 4,
+      "max_size": 480,
+      "rays": 2048
+    }
+  }
+}

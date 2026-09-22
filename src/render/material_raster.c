@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-_Static_assert(sizeof(render_material_entity) == 1344, "entity std430 stride");
+_Static_assert(sizeof(render_material_entity) == 1368, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");

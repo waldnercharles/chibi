@@ -1,0 +1,19 @@
+{
+  "name": "HRCLabOpticalLight",
+  "identity": "prototype-73ea091719186a5d",
+  "components": {
+    "GAME.GameLight2D": {
+      "color": 4293906175,
+      "power": 600.0,
+      "spread": 0.0,
+      "width": 190.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "game.GameTransform": {
+      "x": -420.0,
+      "y": 0.0
+    }
+  }
+}

@@ -61,6 +61,7 @@ typedef struct
     double simulation_ms, render_ms;
     int samples, particles, entities;
     float scale;
+    render_radiance_dimensions light;
     const char *backend;
     char *initial_state, *final_state;
 } render_measurement;
@@ -261,6 +262,7 @@ static bool render_scene(
             game_prototype_preview_world(scene.preview)
         );
         measurement->scale = app_scene_renderer_hrc_scale(scene.renderer);
+        measurement->light = app_scene_renderer_light_dimensions(scene.renderer);
         ok = chibi_preview_readback(width, height, png, error, size);
     }
     if (scene.viewport) {
@@ -411,6 +413,42 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         yyjson_mut_obj_add_int(response, performance, "particles", measurement.particles);
         yyjson_mut_obj_add_int(response, performance, "entities", measurement.entities);
         yyjson_mut_obj_add_real(response, performance, "hrc_scale", measurement.scale);
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "canvas_width",
+            measurement.light.canvas_width
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "canvas_height",
+            measurement.light.canvas_height
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "work_width",
+            measurement.light.work_width
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "work_height",
+            measurement.light.work_height
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "light_width",
+            measurement.light.light_width
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "light_height",
+            measurement.light.light_height
+        );
         yyjson_mut_val *preview = yyjson_mut_obj_add_obj(response, result, "preview");
         yyjson_mut_obj_add_str(response, preview, "mime_type", "image/png");
         yyjson_mut_obj_add_int(response, preview, "width", width);

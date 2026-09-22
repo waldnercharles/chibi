@@ -12,6 +12,7 @@
 #include "render/medium.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
+#include "render/scene_optics.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
@@ -42,6 +43,7 @@ struct app_scene_renderer
     render_material_raster *raster;
     render_fluid_raster *fluid;
     render_medium *medium;
+    render_scene_optics *optics;
     render_radiance *radiance;
     render_reflections *reflections;
     render_reflection *reflectors;
@@ -85,6 +87,7 @@ app_scene_renderer *app_scene_renderer_new()
     if (cf_query_backend() == CF_BACKEND_TYPE_GLES3) {
         return renderer;
     }
+    renderer->optics = render_scene_optics_new();
     renderer->raster = render_material_raster_new();
     renderer->radiance = render_radiance_new();
     if (!renderer->raster || !renderer->radiance) {
@@ -102,6 +105,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_material_raster_free(renderer->raster);
     render_fluid_raster_free(renderer->fluid);
     render_medium_free(renderer->medium);
+    render_scene_optics_free(renderer->optics);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
     render_fog_free(renderer->fog);
@@ -271,6 +275,11 @@ void app_scene_renderer_reset(app_scene_renderer *renderer)
     if (renderer && renderer->radiance) {
         render_radiance_reset(renderer->radiance);
     }
+}
+
+render_radiance_dimensions app_scene_renderer_light_dimensions(const app_scene_renderer *renderer)
+{
+    return render_radiance_get_dimensions(renderer->radiance);
 }
 
 float app_scene_renderer_hrc_scale(const app_scene_renderer *renderer)
@@ -714,6 +723,16 @@ static void collect(
             )) {
             continue;
         }
+        const GameOpticalSurface *optical = GAME_GameOpticalSurface_get_const(world, entity);
+        if (optical) {
+            render_material_entity *draw = &renderer->entities[acount(renderer->entities) - 1];
+            draw->optical_surface = true;
+            draw->optical[0] = optical->ior;
+            draw->optical[1] = optical->mirror;
+            draw->optical[2] = optical->absorption.x;
+            draw->optical[3] = optical->absorption.y;
+            draw->optical[4] = optical->absorption.z;
+        }
         /* Appearance owns the 2D footprint; its shader still owns the
          * material channels used by the SDF raster and HRC inputs. */
         if (binding) {
@@ -1128,6 +1147,20 @@ bool app_scene_renderer_draw(
                                                ((rgb >> 16) & 255) / 255.f,
                                                ((rgb >> 8) & 255) / 255.f,
                                                1 };
+    }
+    const char *optical_error = render_scene_optics_draw(
+        renderer->optics,
+        world,
+        renderer->entities,
+        acount(renderer->entities),
+        view,
+        raster_width,
+        raster_height,
+        &inputs
+    );
+    if (optical_error) {
+        snprintf(renderer->error, sizeof renderer->error, "%s", optical_error);
+        return false;
     }
     if (!render_radiance_draw(renderer->radiance, inputs, view, renderer->output)) {
         return false;

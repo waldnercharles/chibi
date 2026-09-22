@@ -9,6 +9,9 @@ layout(set = 2, binding = 7) uniform sampler2D background_tex;
 layout(set = 2, binding = 8) uniform sampler2D visibility_tex;
 layout(set = 2, binding = 9) uniform sampler2D medium_tex;
 
+layout(set=2,binding=10) uniform sampler2D optical_direct_tex;
+layout(set=2,binding=11) uniform sampler2D optical_surface_tex;
+
 layout(set = 3, binding = 1) uniform shd_uniforms
 {
     float ambient;
@@ -33,6 +36,8 @@ vec4 shader(vec4 color, ShaderParams params)
     vec3 albedo = texture(albedo_tex, source_uv).rgb;
     vec3 fluence = max(texture(fluence_tex, source_uv).rgb, vec3(0.0));
     vec4 normal = texture(normal_tex, source_uv);
+    vec3 optical_direct = texture(optical_direct_tex, source_uv).rgb;
+    vec3 optical_surface = texture(optical_surface_tex, source_uv).rgb;
 
     int mode = int(debug_view + 0.5);
     if (mode == 1) return scene;
@@ -77,7 +82,7 @@ vec4 shader(vec4 color, ShaderParams params)
     float volume_exposure = mix(1.0, intensity, visibility.a);
     vec3 lit = albedo * (fluence * volume_exposure + edge_received * edge * intensity) +
                max(albedo * shadow_floor, visibility.rgb);
-    vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient + lit;
+    vec3 out_linear = optical_surface * intensity + (fluence + optical_direct) * fog + emission * intensity + scene.rgb * ambient + lit;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
     float medium = texture(medium_tex, source_uv).r;
@@ -86,7 +91,7 @@ vec4 shader(vec4 color, ShaderParams params)
         // supplies isotropic incident light, including temporal diffuse bounce.
         float tau = medium * medium_depth;
         float opacity = tau < .01 ? tau * (1.0 - .5 * tau) : 1.0 - exp(-tau);
-        out_linear = out_linear * (1.0 - opacity) + fluence * intensity * medium_albedo.rgb * opacity;
+        out_linear = out_linear * (1.0 - opacity) + (fluence + optical_direct) * intensity * medium_albedo.rgb * opacity;
     }
     vec3 out_srgb = linear_to_srgb(max(out_linear, vec3(0.0)));
     float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);

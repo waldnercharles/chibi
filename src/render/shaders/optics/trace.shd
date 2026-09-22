@@ -1,0 +1,197 @@
+#include "optics/params.shd"
+struct Shape {
+    vec4 bounds, geometry, p01, p23, p45, p67, optical, surface;
+};
+struct Node { vec4 bounds; ivec4 links; };
+struct Light { vec4 pose, power, aperture; };
+layout(set=0,binding=0) uniform sampler2D u_medium;
+layout(set=0,binding=1,std430) readonly buffer Shapes { Shape shapes[]; };
+layout(set=0,binding=2,std430) readonly buffer Lights { Light lights[]; };
+layout(set=0,binding=3,std430) readonly buffer Tree { Node nodes[]; };
+layout(set=1,binding=0,std430) buffer Accumulator { uint values[]; };
+layout(local_size_x=64) in;
+float cross2(vec2 a,vec2 b) { return a.x*b.y-a.y*b.x; }
+vec2 point(Shape s,int i) {
+    vec4 pair=i<2?s.p01:(i<4?s.p23:(i<6?s.p45:s.p67));
+    return (i%2)==0?pair.xy:pair.zw;
+}
+bool contains(Shape s,vec2 p) {
+    int count=int(s.geometry.w);
+    if(count==0) return distance(p,s.geometry.xy)<s.geometry.z;
+    if(count<0) {
+        vec2 a=s.p01.xy, ab=s.p01.zw-a;
+        float t=clamp(dot(p-a,ab)/max(dot(ab,ab),1e-12),0,1);
+        return distance(p,a+t*ab)<s.geometry.z;
+    }
+    bool inside=false;
+    for(int i=0,j=count-1;i<count;j=i++) {
+        vec2 a=point(s,i),b=point(s,j);
+        if((a.y>p.y && b.y<=p.y)||(b.y>p.y && a.y<=p.y)) {
+            if(p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) inside=!inside;
+        }
+    }
+    return inside;
+}
+// The smallest containing dielectric defines the current medium for nested shapes.
+int medium_at(vec2 p) {
+    int found=-1; float area=1e30;
+    for(int node=0;node<u_budget.z;) {
+        Node item=nodes[node];
+        if(any(lessThan(p,item.bounds.xy))||any(greaterThan(p,item.bounds.zw))) {node=item.links.x;continue;}
+        node++;
+        int i=item.links.y;
+        if(i<0) continue;
+        Shape s=shapes[i];
+        float a=(s.bounds.z-s.bounds.x)*(s.bounds.w-s.bounds.y);
+        if(s.optical.x>1 && a<area && contains(s,p)) {found=i;area=a;}
+    }
+    return found;
+}
+float circle_hit(vec2 p,vec2 d,vec2 center,float radius,out vec2 n) {
+    vec2 q=p-center;
+    float b=dot(q,d),disc=b*b-dot(q,q)+radius*radius;
+    n=vec2(0);
+    if(disc<=0) return 1e30;
+    float t=-b-sqrt(disc);
+    if(t<=u_control.z) t=-b+sqrt(disc);
+    if(t<=u_control.z) return 1e30;
+    n=normalize(q+t*d); return t;
+}
+float edge_hit(vec2 p,vec2 d,vec2 a,vec2 b) {
+    vec2 edge=b-a;
+    float det=cross2(d,edge);
+    if(abs(det)<1e-8) return 1e30;
+    float t=cross2(a-p,edge)/det,f=cross2(a-p,d)/det;
+    return t>u_control.z && f>=0 && f<=1?t:1e30;
+}
+float shape_hit(Shape s,vec2 p,vec2 d,out vec2 n) {
+    int count=int(s.geometry.w); n=vec2(0);
+    if(count==0) return circle_hit(p,d,s.geometry.xy,s.geometry.z,n);
+    float best=1e30;
+    if(count<0) {
+        vec2 a=s.p01.xy,b=s.p01.zw,axis=normalize(b-a);
+        if(distance(a,b)<u_control.z) return circle_hit(p,d,a,s.geometry.z,n);
+        vec2 cn; float t=circle_hit(p,d,a,s.geometry.z,cn);
+        if(t<best && dot(p+t*d-a,axis)<=0) { best=t; n=cn; }
+        t=circle_hit(p,d,b,s.geometry.z,cn);
+        if(t<best && dot(p+t*d-b,axis)>=0) { best=t; n=cn; }
+        vec2 normal=vec2(-axis.y,axis.x);
+        for(int side=-1;side<=1;side+=2) {
+            vec2 offset=normal*(float(side)*s.geometry.z);
+            t=edge_hit(p,d,a+offset,b+offset);
+            if(t<best) {best=t;n=normal*float(side);}
+        }
+        return best;
+    }
+    for(int i=0;i<count;i++) {
+        vec2 a=point(s,i),b=point(s,(i+1)%count);
+        float t=edge_hit(p,d,a,b);
+        if(t<best) {best=t;n=normalize(vec2(b.y-a.y,a.x-b.x));}
+    }
+    return best;
+}
+float nearest(vec2 p,vec2 d,out vec2 normal,out int object) {
+    float best=1e30;object=-1;normal=vec2(0);
+    vec2 inv=1.0/(mix(vec2(-1),vec2(1),step(vec2(0),d))*max(abs(d),vec2(1e-20)));
+    for(int node=0;node<u_budget.z;) {
+        Node item=nodes[node];
+        vec2 ta=(item.bounds.xy-p)*inv,tb=(item.bounds.zw-p)*inv;
+        vec2 lo=min(ta,tb),hi=max(ta,tb);
+        if(min(hi.x,hi.y)<max(0,max(lo.x,lo.y)) || max(lo.x,lo.y)>best) {node=item.links.x;continue;}
+        node++;
+        int i=item.links.y;
+        if(i<0) continue;
+        vec2 n;float t=shape_hit(shapes[i],p,d,n);
+        if(t<best) {best=t;normal=n;object=i;}
+    }
+    return best;
+}
+void add(ivec2 xy,int field,vec3 value) {
+    if(any(lessThan(xy,ivec2(0)))||any(greaterThanEqual(xy,u_grid.xy))) return;
+    int i=(xy.y*u_grid.x+xy.x)*9+field*3;
+    uvec3 v=uvec3(round(max(value,vec3(0))*u_control.x));
+    atomicAdd(values[i],v.r);atomicAdd(values[i+1],v.g);atomicAdd(values[i+2],v.b);
+}
+vec3 deposit(vec2 p,vec2 d,float distance,vec3 power,int medium) {
+    vec2 cell=u_view.zw/vec2(u_grid.xy);
+    float t=0,area=cell.x*cell.y;
+    for(int steps=0;steps<u_grid.x+u_grid.y+2 && t<distance;steps++) {
+        vec2 pos=p+d*(t+u_control.z);
+        ivec2 xy=clamp(ivec2(floor((pos-u_view.xy)/cell)),ivec2(0),u_grid.xy-1);
+        vec2 boundary=u_view.xy+(vec2(xy)+step(vec2(0),d))*cell;
+        vec2 next=vec2(1e30);
+        if(abs(d.x)>1e-8) next.x=(boundary.x-p.x)/d.x;
+        if(abs(d.y)>1e-8) next.y=(boundary.y-p.y)/d.y;
+        float end=min(distance,min(next.x,next.y)),ds=max(0,end-t);
+        vec2 uv=(p+d*(t+.5*ds)-u_view.xy)/u_view.zw;
+        vec3 sigma=medium>=0?vec3(shapes[medium].optical.zw,shapes[medium].surface.x):vec3(textureLod(u_medium,uv,0).r/u_control.y);
+        vec3 tr=exp(-sigma*ds);
+        vec3 integral=power*mix(ds*(1-.5*sigma*ds),(1-tr)/max(sigma,vec3(1e-12)),step(vec3(.001),sigma*ds));
+        add(xy,0,integral/(area*2*PI));
+        if(medium<0) add(xy,1,power*(1-tr)*u_scattering.rgb/(area*2*PI));
+        power*=tr;t=max(end,t+u_control.z);
+    }
+    return power;
+}
+float fresnel(vec2 d,vec2 n,float ni,float nt,out vec2 transmitted) {
+    float c=clamp(-dot(d,n),0,1),eta=ni/nt,k=1-eta*eta*(1-c*c);
+    if(k<=0) {transmitted=vec2(0);return 1;}
+    float ct=sqrt(k);transmitted=eta*d+(eta*c-ct)*n;
+    float rs=(ni*c-nt*ct)/max(ni*c+nt*ct,1e-12),rp=(nt*c-ni*ct)/max(nt*c+ni*ct,1e-12);
+    return .5*(rs*rs+rp*rp);
+}
+void main() {
+    int ray=int(gl_GlobalInvocationID.x);
+    if(ray>=u_budget.x) return;
+    Light light=lights[0];
+    for(int i=0;i<u_grid.w;i++) {
+        Light candidate=lights[i];
+        if(float(ray)>=candidate.aperture.z && float(ray)<candidate.aperture.z+candidate.aperture.w) {light=candidate;break;}
+    }
+    float index=float(ray)-light.aperture.z;
+    vec2 axis=light.pose.zw;
+    vec2 p=light.pose.xy+vec2(-axis.y,axis.x)*light.aperture.x*((index+.5)/light.aperture.w-.5);
+    float angle=light.aperture.y*(fract((index+.5)*.61803398875)-.5);
+    vec2 d=vec2(axis.x*cos(angle)-axis.y*sin(angle),axis.x*sin(angle)+axis.y*cos(angle));
+    // Clip rays from offscreen emitters to the padded transport rectangle.
+    vec2 inv=1.0/(mix(vec2(-1),vec2(1),step(vec2(0),d))*max(abs(d),vec2(1e-20)));
+    vec2 a=(u_view.xy-p)*inv,b=(u_view.xy+u_view.zw-p)*inv;
+    float entry=max(0,max(min(a.x,b.x),min(a.y,b.y))),exit=min(max(a.x,b.x),max(a.y,b.y));
+    if(exit<=entry) return;
+    p+=d*(entry+u_control.z*4);
+    vec2 origins[5],directions[5];vec3 powers[5];int depths[5];
+    origins[0]=p;directions[0]=d;powers[0]=light.power.rgb/light.aperture.w;depths[0]=0;
+    int count=1;
+    for(int path=0;path<31 && count>0;path++) {
+        count--;p=origins[count];d=directions[count];vec3 power=powers[count];int depth=depths[count];
+        vec2 n;int object;float hit=nearest(p,d,n,object);
+        vec2 far=vec2(1e30);
+        if(abs(d.x)>1e-8) far.x=((d.x>0?u_view.x+u_view.z:u_view.x)-p.x)/d.x;
+        if(abs(d.y)>1e-8) far.y=((d.y>0?u_view.y+u_view.w:u_view.y)-p.y)/d.y;
+        float end=max(0,min(far.x,far.y));
+        int current=medium_at(p);
+        power=deposit(p,d,min(hit,end),power,current);
+        if(hit>=end || object<0) continue;
+        if(dot(n,d)>0) n=-n;
+        vec2 at=p+d*hit;
+        Shape s=shapes[object];
+        if(s.optical.x<=1) {
+            vec2 cell=u_view.zw/vec2(u_grid.xy);
+            vec3 reflected=power*s.surface.yzw*(1-s.optical.y);
+            // Place a hemispherical diffuse source just outside the receiving surface.
+            vec2 outside=at+n*length(cell)*.75;
+            add(ivec2(floor((outside-u_view.xy)/cell)),1,reflected/(PI*cell.x*cell.y));
+            float footprint=abs(n.y)*cell.x+abs(n.x)*cell.y;
+            add(ivec2(floor((at-n*u_control.z*4-u_view.xy)/cell)),2,reflected/(2*footprint));
+            if(depth>=u_budget.y || s.optical.y==0) continue;
+            d=reflect(d,n);origins[count]=at+d*u_control.z*4;directions[count]=d;
+            powers[count]=power*s.optical.y*s.surface.yzw;depths[count++]=depth+1;continue;
+        }
+        if(depth>=u_budget.y) continue;
+        int next=medium_at(at+d*u_control.z*4);
+        float ni=current<0?1:shapes[current].optical.x,nt=next<0?1:shapes[next].optical.x;
+        vec2 transmitted;float f=fresnel(d,n,ni,nt,transmitted);
+        if(f<1) {origins[count]=at+transmitted*u_control.z*4;directions[count]=transmitted;powers[count]=power*(1-f);depths[count++]=depth+1;}
+        if(f>0) {d=reflect(d,n);origins[count]=at+d*u_control.z*4;directions[count]=d;powers[count]=power*f;depths[count++]=depth+1;}
+    }
+}

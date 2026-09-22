@@ -20,7 +20,10 @@
 #define HRC_FLUENCE_BYTES 4
 struct render_radiance
 {
-    int canvas_w, canvas_h, work_w, work_h, world_w, world_h, N, trace_cutoff;
+    int canvas_w, canvas_h, work_w, work_h, light_w, light_h, max_light_size;
+    int world_w, world_h, N, trace_cutoff;
+    CF_Texture optical_source;
+    int has_optics;
     float falloff, bounce_intensity, bounce_hysteresis, radiance_hysteresis;
     int upscale_mode, radiance_ping, frame_count;
     CF_Aabb screen;
@@ -306,6 +309,8 @@ static void s_dispatch_trace(HRC *hrc, int quadrant, int level)
     cf_material_set_uniform_cs(mat, "u_step_scale", &step_scale, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_medium", &hrc->has_medium, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_texture_cs(mat, "u_optical_source", hrc->optical_source);
+    cf_material_set_uniform_cs(mat, "u_optics", &hrc->has_optics, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_pixel_size", &hrc->pixel_size, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
@@ -346,14 +351,7 @@ static void s_dispatch_extend(HRC *hrc, int rot_w, int rot_h, int level)
     cf_dispatch_compute(hrc->extend_shd, mat, d);
 }
 
-static void s_dispatch_merge(
-    HRC *hrc,
-    int rot_w,
-    int rot_h,
-    int level,
-    CF_StorageBuffer r_prev,
-    CF_StorageBuffer r_curr
-)
+static void s_dispatch_merge(HRC *hrc, int rot_w, int rot_h, int level, CF_StorageBuffer r_prev, CF_StorageBuffer r_curr)
 {
     CF_Material mat = hrc->compute_material;
     int t_curr_w = s_t_width(rot_w, level);
@@ -437,11 +435,13 @@ static void s_dispatch_gather(HRC *hrc)
     cf_material_set_uniform_cs(mat, "u_upscale_threshold", &hrc->upscale_threshold, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_material_set_uniform_cs(mat, "u_medium", &hrc->has_medium, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_texture_cs(mat, "u_optical_source", hrc->optical_source);
+    cf_material_set_uniform_cs(mat, "u_optics", &hrc->has_optics, CF_UNIFORM_TYPE_INT, 1);
     cf_material_set_uniform_cs(mat, "u_pixel_size", &hrc->pixel_size, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
-        s_ceil_div(hrc->canvas_w, HRC_WG),
-        s_ceil_div(hrc->canvas_h, HRC_WG),
+        s_ceil_div(hrc->light_w, HRC_WG),
+        s_ceil_div(hrc->light_h, HRC_WG),
         1
     );
     CF_StorageBuffer ro[4] = { hrc->frustum[0],
@@ -467,7 +467,7 @@ static void s_dispatch_blur(HRC *hrc)
     cf_material_set_texture_cs(mat, "u_transmittance", hrc->transmittance);
     cf_material_set_texture_cs(mat, "u_prev_radiance", hrc->radiance_tex[prev]);
 
-    float texel_size[2] = { 1.0f / hrc->canvas_w, 1.0f / hrc->canvas_h };
+    float texel_size[2] = { 1.0f / hrc->light_w, 1.0f / hrc->light_h };
     float threshold = 0.1f;
     float hysteresis = hrc->radiance_hysteresis;
     if (hysteresis < 0.01f) {
@@ -481,8 +481,8 @@ static void s_dispatch_blur(HRC *hrc)
     cf_material_set_uniform_cs(mat, "u_hysteresis", &hysteresis, CF_UNIFORM_TYPE_FLOAT, 1);
 
     CF_ComputeDispatch d = cf_compute_dispatch_defaults(
-        s_ceil_div(hrc->canvas_w, HRC_WG),
-        s_ceil_div(hrc->canvas_h, HRC_WG),
+        s_ceil_div(hrc->light_w, HRC_WG),
+        s_ceil_div(hrc->light_h, HRC_WG),
         1
     );
     CF_Texture rw_tex[1] = { hrc->radiance_tex[curr] };
@@ -583,6 +583,7 @@ static void destroy_images(HRC *hrc)
         *textures[i] = (CF_Texture){ 0 };
     }
     hrc->canvas_w = hrc->canvas_h = 0;
+    hrc->light_w = hrc->light_h = 0;
 }
 
 render_radiance *render_radiance_new()
@@ -661,7 +662,7 @@ void render_radiance_reset(render_radiance *hrc)
     if (!hrc->canvas_w) {
         return;
     }
-    int bytes = hrc->canvas_w * hrc->canvas_h * 8;
+    int bytes = hrc->light_w * hrc->light_h * 8;
     void *zero = xmalloc((size_t)bytes);
     memset(zero, 0, (size_t)bytes);
     for (int i = 0; i < 2; i++) {
@@ -680,31 +681,36 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     if (width < 2 || height < 2 || width > 4096 || height > 4096) {
         return false;
     }
-    if (hrc->canvas_w == width && hrc->canvas_h == height &&
-        hrc->work_w == (int)ceilf(width * hrc->scale) &&
-        hrc->work_h == (int)ceilf(height * hrc->scale)) {
+    float light_scale = hrc->max_light_size > 0
+                          ? fminf(1, (float)hrc->max_light_size / fmaxf(width, height))
+                          : 1;
+    int light_w = (int)fmaxf(2, floorf(width * light_scale));
+    int light_h = (int)fmaxf(2, floorf(height * light_scale));
+    float work_scale = fminf(hrc->scale, light_scale);
+    int work_w = (int)fminf(light_w, fmaxf(2, ceilf(width * work_scale)));
+    int work_h = (int)fminf(light_h, fmaxf(2, ceilf(height * work_scale)));
+    if (hrc->canvas_w == width && hrc->canvas_h == height && hrc->work_w == work_w &&
+        hrc->work_h == work_h && hrc->light_w == light_w && hrc->light_h == light_h) {
         return true;
     }
-    bool images_changed = hrc->canvas_w != width || hrc->canvas_h != height;
+    bool images_changed = hrc->light_w != light_w || hrc->light_h != light_h;
+    bool camera_grid_changed = hrc->canvas_w != width || hrc->canvas_h != height;
     bool ok = true;
     if (images_changed) {
         destroy_images(hrc);
-        hrc->bounce_canvas = s_make_canvas_rgba16f(width, height, true);
+        hrc->bounce_canvas = s_make_canvas_rgba16f(light_w, light_h, true);
         CF_Texture *textures[] = { &hrc->radiance_tex[0],
                                    &hrc->radiance_tex[1],
                                    &hrc->radiance_raw_tex,
                                    &hrc->radiance_bounce_tex };
         for (int i = 0; i < 4; i++) {
-            *textures[i] = s_make_compute_texture(width, height, CF_FILTER_NEAREST, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
+            *textures[i] = s_make_compute_texture(light_w, light_h, CF_FILTER_LINEAR, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
         }
         ok = hrc->bounce_canvas.id != 0;
         for (int i = 0; i < 4; i++) {
             ok = ok && textures[i]->id != 0;
         }
     }
-    float scale = hrc->scale;
-    int work_w = (int)fmaxf(2, ceilf(width * scale));
-    int work_h = (int)fmaxf(2, ceilf(height * scale));
     if (!ok || !s_create_work_resources(hrc, work_w, work_h)) {
         s_destroy_work_resources(hrc);
         destroy_images(hrc);
@@ -712,10 +718,21 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     }
     hrc->canvas_w = width;
     hrc->canvas_h = height;
-    if (images_changed) {
+    hrc->light_w = light_w;
+    hrc->light_h = light_h;
+    if (images_changed || camera_grid_changed) {
         render_radiance_reset(hrc);
     }
     return true;
+}
+
+render_radiance_dimensions render_radiance_get_dimensions(const render_radiance *r)
+{
+    if (!r) {
+        return (render_radiance_dimensions){ 0 };
+    }
+    return (render_radiance_dimensions){ r->canvas_w, r->canvas_h, r->work_w,
+                                         r->work_h,   r->light_w,  r->light_h };
 }
 
 render_radiance_settings render_radiance_get_settings(const render_radiance *radiance)
@@ -726,6 +743,7 @@ render_radiance_settings render_radiance_get_settings(const render_radiance *rad
     return (render_radiance_settings){
         .scale = radiance->scale,
         .trace_levels = radiance->trace_levels,
+        .max_light_size = radiance->max_light_size,
         .feedback = radiance->feedback,
         .available = true,
     };
@@ -735,12 +753,16 @@ bool render_radiance_set_settings(render_radiance *radiance, render_radiance_set
 {
     if (!radiance || !isfinite(settings.scale) || settings.scale < HRC_MIN_SCALE ||
         settings.scale > HRC_MAX_SCALE || settings.trace_levels < HRC_MIN_TRACE_LEVELS ||
-        settings.trace_levels > HRC_MAX_TRACE_LEVELS) {
+        settings.trace_levels > HRC_MAX_TRACE_LEVELS ||
+        settings.max_light_size < 0 || settings.max_light_size > 4096 ||
+        (settings.max_light_size > 0 && settings.max_light_size < 16)) {
         return false;
     }
     bool resized = true;
-    if (radiance->scale != settings.scale) {
+    if (radiance->scale != settings.scale ||
+        radiance->max_light_size != settings.max_light_size) {
         radiance->scale = settings.scale;
+        radiance->max_light_size = settings.max_light_size;
         if (radiance->canvas_w && radiance->canvas_h) {
             resized = render_radiance_resize(
                 radiance,
@@ -798,6 +820,7 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
                      )
                    : lighting.scale,
         .trace_levels = lighting.trace_levels,
+        .max_light_size = lighting.max_light_size,
         .feedback = lighting.feedback
     };
     if (!render_radiance_set_settings(radiance, settings)) {
@@ -864,6 +887,8 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
                                       view.max_y - view.height * view.crop_max_v },
                              .max = { view.min_x + view.width * view.crop_max_u,
                                       view.max_y - view.height * view.crop_min_v } };
+    hrc->optical_source = inputs.optical_source.id ? inputs.optical_source : hrc->black;
+    hrc->has_optics = inputs.optical_source.id != 0;
     hrc->scene = inputs.scene;
     hrc->emission = inputs.emission;
     hrc->transmittance = inputs.absorption;
@@ -919,6 +944,14 @@ bool render_radiance_draw(render_radiance *hrc, render_radiance_inputs inputs, r
     cf_draw_set_texture("fluence_tex", hrc->radiance_tex[hrc->radiance_ping]);
     cf_draw_set_texture("normal_tex", inputs.normal);
     cf_draw_set_texture("medium_tex", hrc->medium);
+    cf_draw_set_texture(
+        "optical_direct_tex",
+        inputs.optical_direct.id ? inputs.optical_direct : hrc->black
+    );
+    cf_draw_set_texture(
+        "optical_surface_tex",
+        inputs.optical_surface.id ? inputs.optical_surface : hrc->black
+    );
     cf_draw_set_uniform("medium_albedo", &inputs.medium_scattering, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("medium_depth", &inputs.medium_depth, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);

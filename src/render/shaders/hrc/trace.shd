@@ -9,6 +9,8 @@ layout(set = 0, binding = 0) uniform sampler2D u_emission;
 layout(set = 0, binding = 1) uniform sampler2D u_transmittance;
 layout(set = 0, binding = 2) uniform sampler2D u_bounce;
 
+layout(set=0,binding=3) uniform sampler2D u_optical_source;
+
 layout(std430, set = 1, binding = 0) writeonly buffer OutBuf { uvec2 data[]; } u_out;
 
 layout(set = 2, binding = 0) uniform Params
@@ -23,6 +25,7 @@ layout(set = 2, binding = 0) uniform Params
 	float u_bounce_intensity;
 	int u_medium;
 	float u_pixel_size;
+    int u_optics;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
@@ -126,6 +129,11 @@ void main()
                                       : (opacity > eps ? opacity * emiss.rgb : emiss.rgb * dda_step);
 		// Reflected light requires an interaction with matter. The emissive
 		// fallback in nearly empty cells must never amplify temporal bounce.
+        if (u_optics != 0) {
+            vec2 source_uv=(clamp(sample_pos,vec2(0),vec2(u_work_w-1,u_work_h-1))+.5)/vec2(u_work_w,u_work_h);
+            float integral=tau_step<.01?dda_step*(1-.5*tau_step):opacity/max(tau,1e-20);
+            rad+=textureLod(u_optical_source,source_uv,0).rgb*u_pixel_size*integral;
+        }
 		rad += opacity * bounce;
 
 		total_rad += total_trn * rad;

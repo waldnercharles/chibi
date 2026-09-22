@@ -1,0 +1,49 @@
+{
+  "name": "HRCLabGlass",
+  "identity": "prototype-952854036c25edab",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 0.20000000298023224,
+      "border_color": 0,
+      "border_width": 0.0,
+      "color": 270546431,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 210.0,
+      "layer": 0,
+      "shape": 1,
+      "stroke_width": 0.0,
+      "width": 210.0
+    },
+    "GAME.GameMaterial": {
+      "absorption": 8.0,
+      "albedo": 0,
+      "border_albedo": 0,
+      "border_emission_color": 0,
+      "border_filter": 0,
+      "border_scene": 0,
+      "edge_light": 0.0,
+      "emission_color": 0,
+      "emission_intensity": 0.0,
+      "emission_multiplier": 0.0,
+      "filter": 0,
+      "scene": 270546240
+    },
+    "GAME.GameOpticalSurface": {
+      "absorption": {
+        "x": 0.0003000000142492354,
+        "y": 0.00009999999747378752,
+        "z": 0.000019999999494757503
+      },
+      "ior": 1.5,
+      "mirror": 0.0
+    },
+    "GAME.GameOrientation": {
+      "radians": 0.0
+    },
+    "game.GameTransform": {
+      "x": -100.0,
+      "y": 0.0
+    }
+  }
+}

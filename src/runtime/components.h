@@ -286,6 +286,34 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSdfMotion)
 }
 GameSdfMotion;
 
+/* Planar source: watts per unit depth, aperture width, angular spread in radians. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameLight2D)
+{
+    unsigned color;
+    float power;
+    float width;
+    float spread;
+}
+GameLight2D;
+
+/* Dielectric IOR > 1, or opaque mirror with IOR = 1. Beer absorption per world unit. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameOpticalSurface)
+{
+    float ior;
+    float mirror;
+    CF_V3 absorption;
+}
+GameOpticalSurface;
+
+/* Fixed per-frame optical budget. No temporal accumulation of primary paths. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameOptics2D)
+{
+    int max_size;
+    int rays;
+    int events;
+}
+GameOptics2D;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
 {
     unsigned scene;
@@ -725,6 +753,8 @@ GameStarfield2D;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
+    /* Zero follows the display; otherwise bound both transport and light history. */
+    int max_light_size;
     float scale;
     float min_scale;
     float max_scale;

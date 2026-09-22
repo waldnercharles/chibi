@@ -27,6 +27,13 @@ layout(set = 2, binding = 0) uniform Params
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
+vec3 sample_bounce(vec2 uv)
+{
+    // History may be smaller than the material raster. Its LOD is independent.
+    float lod=max(0.0,log2(float(textureSize(u_bounce,0).x)/float(u_work_w)));
+    return textureLod(u_bounce,uv,lod).rgb;
+}
+
 void main()
 {
 	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
@@ -36,7 +43,7 @@ void main()
 	// arithmetic 2x2 reduction. Avoid four filtered reads per input texture.
 	if (u_canvas_w == u_work_w * 2 && u_canvas_h == u_work_h * 2) {
 		vec4 emission = texelFetch(u_emission, gid, 1);
-		vec3 bounce = texelFetch(u_bounce, gid, 1).rgb;
+		vec3 bounce = sample_bounce((vec2(gid)+.5)/vec2(u_work_w,u_work_h));
 		float tau = dot(texelFetch(u_transmittance, gid, 1).rgb, vec3(1.0 / 3.0));
 		imageStore(u_emission_out, gid, emission);
 		imageStore(u_transmittance_out, gid, vec4(tau, 0, 0, 0));
@@ -61,7 +68,7 @@ void main()
                 vec2 offset = vec2(x, y) * inv_canvas;
                 vec2 uv = center + offset * gaussian_offset;
                 emission += textureLod(u_emission, uv, 2.0);
-                bounce += textureLod(u_bounce, uv, 2.0).rgb;
+                bounce += sample_bounce(uv);
                 tau += dot(textureLod(u_transmittance, center + offset, 2.0).rgb, vec3(1.0 / 3.0));
             }
         }
@@ -108,7 +115,7 @@ void main()
 				float py = float(y0 + dy) + 0.5;
 				vec2 uv = vec2(px, py) / vec2(u_canvas_w, u_canvas_h);
 				emission_sum += textureLod(u_emission, uv, emission_lod);
-				bounce_sum += textureLod(u_bounce, uv, emission_lod).rgb;
+				bounce_sum += sample_bounce(uv);
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 			}
 		}
@@ -128,7 +135,7 @@ void main()
 				float w = exp(-(ddx * ddx * inv2s2_x + ddy * ddy * inv2s2_y));
 
 				emission_sum += textureLod(u_emission, uv, emission_lod) * w;
-				bounce_sum += textureLod(u_bounce, uv, emission_lod).rgb * w;
+				bounce_sum += sample_bounce(uv) * w;
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 				weight_sum += w;
 			}

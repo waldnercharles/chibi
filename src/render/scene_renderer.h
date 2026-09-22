@@ -19,6 +19,7 @@ render_arena_work app_scene_renderer_last_work(const app_scene_renderer *rendere
 void app_scene_renderer_reset(app_scene_renderer *renderer);
 const char *app_scene_renderer_error(const app_scene_renderer *renderer);
 int app_scene_renderer_particle_count(const app_scene_renderer *renderer);
+render_radiance_dimensions app_scene_renderer_light_dimensions(const app_scene_renderer *renderer);
 float app_scene_renderer_hrc_scale(const app_scene_renderer *renderer);
 float app_scene_renderer_time(const app_scene_renderer *renderer);
 void app_scene_renderer_set_time(app_scene_renderer *renderer, float time);

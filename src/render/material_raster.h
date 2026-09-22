@@ -44,6 +44,9 @@ typedef struct
     float wobble[4], pluck[4], time[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
+    /* CPU-only transport metadata: IOR, mirror fraction, RGB Beer coefficients. */
+    float optical[5];
+    bool optical_surface;
 } render_material_entity;
 
 typedef struct

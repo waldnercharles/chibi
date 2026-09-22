@@ -10,10 +10,12 @@ layout(set = 0, binding = 1) uniform sampler2D u_transmittance;
 layout(set = 0, binding = 2) uniform sampler2D u_transmittance_filtered;
 layout(set = 0, binding = 3) uniform sampler2D u_bounce;
 
-layout(std430, set = 0, binding = 4) readonly buffer F0 { uint data[]; } u_f0;
-layout(std430, set = 0, binding = 5) readonly buffer F1 { uint data[]; } u_f1;
-layout(std430, set = 0, binding = 6) readonly buffer F2 { uint data[]; } u_f2;
-layout(std430, set = 0, binding = 7) readonly buffer F3 { uint data[]; } u_f3;
+layout(set=0,binding=4) uniform sampler2D u_optical_source;
+
+layout(std430, set = 0, binding = 5) readonly buffer F0 { uint data[]; } u_f0;
+layout(std430, set = 0, binding = 6) readonly buffer F1 { uint data[]; } u_f1;
+layout(std430, set = 0, binding = 7) readonly buffer F2 { uint data[]; } u_f2;
+layout(std430, set = 0, binding = 8) readonly buffer F3 { uint data[]; } u_f3;
 
 layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D u_out;
 layout(set = 1, binding = 1, rgba16f) uniform writeonly image2D u_out_bounce;
@@ -29,11 +31,18 @@ layout(set = 2, binding = 0) uniform Params
 	float u_bounce_intensity;
 	int u_medium;
 	float u_pixel_size;
+    int u_optics;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "hrc_common.shd"
+
+vec3 optical_emission(ivec2 p,float depth,float distance,float opacity) {
+    if(u_optics==0) return vec3(0);
+    float integral=depth<.01?distance*(1-.5*depth):distance*opacity/max(depth,1e-20);
+    return textureLod(u_optical_source,(vec2(p)+.5)/vec2(u_canvas_w,u_canvas_h),0).rgb*u_pixel_size*integral;
+}
 
 // Inverse of seed's rotate_pixel in integer pixel space.
 ivec2 world_to_rotated(ivec2 p, int rot, int w, int h)
@@ -112,7 +121,7 @@ Interval trace_cminus1(ivec2 canvas_pos, int rot, vec3 init_rad, float init_tau,
 		ivec2 p = clamp(canvas_pos + dir * offset, ivec2(0), ivec2(u_canvas_w - 1, u_canvas_h - 1));
 
 		vec4 e = texelFetch(u_emission, p, 0);
-		vec3 bounce = texelFetch(u_bounce, p, 0).rgb * u_bounce_intensity;
+		vec3 bounce = textureLod(u_bounce, (vec2(p)+.5)/vec2(u_canvas_w,u_canvas_h), 0.0).rgb * u_bounce_intensity;
 		float tau = max(dot(texelFetch(u_transmittance, p, 0).rgb, vec3(1.0/3.0)), 0.0);
 		tau *= stride;
 		float T = exp(-tau);
@@ -120,7 +129,7 @@ Interval trace_cminus1(ivec2 canvas_pos, int rot, vec3 init_rad, float init_tau,
 
 		vec3 rad = u_medium != 0 ? medium_emission(e, tau / stride, stride, .001, u_pixel_size, opacity)
                                     : (opacity > .001 ? opacity * e.rgb : e.rgb * stride);
-		rad += opacity * bounce;
+		rad += opacity * bounce + optical_emission(p,tau,stride,opacity);
 		acc_rad += acc_trn * rad;
 		acc_trn *= T;
 		acc_tau += tau;
@@ -131,27 +140,31 @@ Interval trace_cminus1(ivec2 canvas_pos, int rot, vec3 init_rad, float init_tau,
 
 void main()
 {
-	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
-	if (gid.x >= u_canvas_w || gid.y >= u_canvas_h) return;
+	ivec2 output_pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 output_size = imageSize(u_out);
+    if (any(greaterThanEqual(output_pixel, output_size))) return;
+    ivec2 gid = min(ivec2((vec2(output_pixel)+.5)*vec2(u_canvas_w,u_canvas_h)/vec2(output_size)),
+                    ivec2(u_canvas_w-1,u_canvas_h-1));
 
 	// Matching grids need one probe per quadrant and only the center interval.
 	// Keep the same accumulation order as the reconstruction path below.
 	if (u_canvas_w == u_work_w && u_canvas_h == u_work_h) {
 		vec4 e = texelFetch(u_emission, gid, 0);
-		vec3 bounce = texelFetch(u_bounce, gid, 0).rgb * u_bounce_intensity;
+		vec3 bounce = textureLod(u_bounce, (vec2(gid)+.5)/vec2(u_canvas_w,u_canvas_h), 0.0).rgb * u_bounce_intensity;
 		float tau = max(dot(texelFetch(u_transmittance, gid, 0).rgb, vec3(1.0/3.0)), 0.0);
 		float trn = exp(-tau);
 		float opacity = 1.0 - trn;
 		vec3 near_rad = (u_medium != 0 ? medium_emission(e, tau, 1.0, .001, u_pixel_size, opacity)
                                        : (opacity > .001 ? opacity * e.rgb : e.rgb)) + opacity * bounce;
+		near_rad += optical_emission(gid,tau,1.0,opacity);
 		vec3 total = vec3(0.0), raw = vec3(0.0);
 		for (int rot = 0; rot < 4; rot++) {
 			vec3 far_rad = F_load(rot, world_to_rotated(gid, rot, u_work_w, u_work_h) + ivec2(1, 0));
 			total += near_rad + trn * far_rad;
 			raw += far_rad;
 		}
-		imageStore(u_out, gid, vec4(total * 0.25, 1.0));
-		imageStore(u_out_bounce, gid, vec4(raw * 0.25, 1.0));
+		imageStore(u_out, output_pixel, vec4(total * 0.25, 1.0));
+		imageStore(u_out_bounce, output_pixel, vec4(raw * 0.25, 1.0));
 		return;
 	}
 
@@ -199,13 +212,13 @@ void main()
 
 	// Sample center pixel once for all quadrants (step 0 of trace_cminus1).
 	vec4 center_e = texelFetch(u_emission, gid, 0);
-	vec3 center_bounce = texelFetch(u_bounce, gid, 0).rgb * u_bounce_intensity;
+	vec3 center_bounce = textureLod(u_bounce, (vec2(gid)+.5)/vec2(u_canvas_w,u_canvas_h), 0.0).rgb * u_bounce_intensity;
 	float center_tau = max(dot(texelFetch(u_transmittance, gid, 0).rgb, vec3(1.0/3.0)), 0.0);
 	float center_T = exp(-center_tau);
 	float center_opacity = 1.0 - center_T;
 	vec3 center_rad = u_medium != 0 ? medium_emission(center_e, center_tau, 1.0, .001, u_pixel_size, center_opacity)
                                       : (center_opacity > .001 ? center_opacity * center_e.rgb : center_e.rgb);
-	center_rad += center_opacity * center_bounce;
+	center_rad += center_opacity * center_bounce + optical_emission(gid,center_tau,1.0,center_opacity);
 
 	vec3 total = vec3(0.0);
 	vec3 total_raw = vec3(0.0);
@@ -267,6 +280,6 @@ void main()
 		total_raw += r0;
 	}
 
-	imageStore(u_out, gid, vec4(total * 0.25, 1.0));
-	imageStore(u_out_bounce, gid, vec4(total_raw * 0.25, 1.0));
+	imageStore(u_out, output_pixel, vec4(total * 0.25, 1.0));
+	imageStore(u_out_bounce, output_pixel, vec4(total_raw * 0.25, 1.0));
 }

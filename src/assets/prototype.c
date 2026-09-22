@@ -1515,12 +1515,27 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
             (pin_value){ .type = PIN_STR, .str = "[]" }
         );
     }
-    if (!strcmp(desc->name, "GameHRC2D")) {
-        GameHRC2D defaults = game_hrc2d_defaults();
+    if (!strcmp(desc->name, "GameHRC2D") || !strcmp(desc->name, "GameOptics2D") ||
+        !strcmp(desc->name, "GameLight2D") ||
+        !strcmp(desc->name, "GameOpticalSurface")) {
+        GameHRC2D hrc = game_hrc2d_defaults();
+        GameOptics2D optics = { .max_size = 480, .rays = 2048, .events = 4 };
+        GameLight2D light = { .color = 0xffffffffu, .power = 1 };
+        GameOpticalSurface surface = { .ior = 1.5f };
+        const void *defaults = &hrc;
+        if (!strcmp(desc->name, "GameOptics2D")) {
+            defaults = &optics;
+        }
+        if (!strcmp(desc->name, "GameLight2D")) {
+            defaults = &light;
+        }
+        if (!strcmp(desc->name, "GameOpticalSurface")) {
+            defaults = &surface;
+        }
         for (int i = 0; i < desc->type->field_count; i++) {
             const type_field *field = &desc->type->fields[i];
             pin_value value = { 0 };
-            pin_read_field(&defaults, field, &value);
+            pin_read_field(defaults, field, &value);
             int result = game_prototype_write_field(prototype, desc->name, field->name, value);
             if (result) {
                 return result;

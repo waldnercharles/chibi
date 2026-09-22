@@ -23,6 +23,8 @@ ARENA_SCENES = [
     'NeonSwarmHRCVolume',
 ]
 CLEAN_SCENES = [
+    'HRCLabOpticalLens',
+    'HRCLabOpticalPrism',
     'HRCLabPinhole',
     'HRCLabBounce',
     'HRCLabSinglePixel',
@@ -80,6 +82,7 @@ def prepare(args, output, scene, scale):
         kind='prototype', name=args.hrc_prototype, expected_hash=asset['hash'],
         operations=[
             dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
+            dict(op='set_field', component='GameHRC2D', field='max_light_size', value=args.max_light_size),
             dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
             dict(op='set_field', component='GameHRC2D', field='trace_levels', value=args.trace_levels),
             dict(op='set_field', component='GameHRC2D', field='upscale_mode', value=args.upscale_mode),
@@ -93,6 +96,7 @@ def prepare(args, output, scene, scale):
         for component, values in components.items():
             if component.split('.')[-1] == 'GameHRC2D':
                 values.update(adaptive=False, scale=scale, trace_levels=args.trace_levels,
+                              max_light_size=args.max_light_size,
                               upscale_mode=args.upscale_mode)
                 operations.append(dict(op='set_entity_components', entity=entity['name'],
                                        components=components))
@@ -151,6 +155,7 @@ def render(args, output, runner, scene, scale, repeat):
         scene=scene,
         scale=scale,
         repeat=repeat,
+        max_light_size=args.max_light_size,
         trace_levels=args.trace_levels,
         upscale_mode=args.upscale_mode,
         upscale_mode_name=UPSCALE_MODE_NAMES[args.upscale_mode],
@@ -241,6 +246,7 @@ def main():
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
     parser.add_argument('--scale', type=float, nargs='+', default=[1.0, .75, .5])
+    parser.add_argument('--max-light-size', type=int, default=0)
     parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=1)
     parser.add_argument('--upscale-mode', type=int, choices=[0, 1, 2, 3], default=1)
     parser.add_argument('--render-frames', type=int, default=180)

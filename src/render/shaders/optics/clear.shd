@@ -1,0 +1,7 @@
+#include "optics/params.shd"
+layout(set=1,binding=0,std430) buffer Accumulator { uint values[]; };
+layout(local_size_x=256) in;
+void main() {
+    int i=int(gl_GlobalInvocationID.x);
+    if(i<u_grid.x*u_grid.y*9) values[i]=0u;
+}

@@ -36,6 +36,10 @@ count affect footprint and quantization error.
 
 ## Grant Kot's references
 
+Follow-up: [the spoken explanation and unified transport direction](unified-directional-transport.md).
+The initial investigation below used the written description, not closed captions.
+
+
 The author's [Refracting Radiance Cascades post](https://ko-fi.com/post/Refracting-Radiance-Cascades-J3J01V1XZ9)
 confirms an iterative lighting solver combined with the directional tile layout
 of radiance cascades. Redirecting samples between tiles bends light and produces

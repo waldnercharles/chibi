@@ -1,0 +1,17 @@
+#include "optics/params.shd"
+layout(set=0,binding=0,std430) readonly buffer Accumulator { uint values[]; };
+layout(set=1,binding=0,rgba32f) uniform writeonly image2D u_direct;
+layout(set=1,binding=1,rgba32f) uniform writeonly image2D u_source;
+layout(set=1,binding=2,rgba32f) uniform writeonly image2D u_surface;
+layout(local_size_x=16,local_size_y=16) in;
+vec4 load_field(int index) {
+    return vec4(vec3(values[index],values[index+1],values[index+2])/u_control.x,1);
+}
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(p,u_grid.xy))) return;
+    int i=(p.y*u_grid.x+p.x)*9;
+    imageStore(u_direct,p,load_field(i));
+    imageStore(u_source,p,load_field(i+3));
+    imageStore(u_surface,p,load_field(i+6));
+}

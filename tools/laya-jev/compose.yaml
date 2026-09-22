@@ -1,0 +1,42 @@
+services:
+  laya:
+    build:
+      context: .
+      args:
+        LAYA_REPOSITORY: ${LAYA_REPOSITORY:-https://github.com/sirgio03/laya.git}
+        LAYA_REF: ${LAYA_REF:-e683ef8d37b0828758a4e9e2004d1ab7fc3505bc}
+    image: laya-jev:pr3
+    environment:
+      LAYA_MODEL: ${LAYA_MODEL:-laya}
+      LAYA_DEVICE: ${LAYA_DEVICE:-cpu}
+      LAYA_MODEL_PATH: /models/laya
+      LAYA_API_KEY: ${LAYA_API_KEY:?Set LAYA_API_KEY in .env}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /cache/huggingface
+      TOKENIZERS_PARALLELISM: "false"
+      USE_TF: "0"
+      USE_TORCH: "1"
+    ports:
+      - "${LAYA_BIND:-127.0.0.1}:${LAYA_PORT:-8768}:8000"
+    volumes:
+      - laya-hf-cache:/cache/huggingface
+      - type: bind
+        source: ${LAYA_MODEL_DIR:-${HOME}/.cache/laya-jev/laya}
+        target: /models/laya
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)
+      interval: 15s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+
+volumes:
+  laya-hf-cache:

@@ -1,0 +1,30 @@
+{
+  "name": "LayaBlueMarker",
+  "identity": "prototype-272494c5ec14e268",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 1.0,
+      "border_color": 0,
+      "border_width": 0.0,
+      "color": 4294967295,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 48.0,
+      "layer": 0,
+      "shape": 1,
+      "stroke_width": 0.0,
+      "width": 48.0
+    },
+    "GAME.GameShader": {
+      "bounds_x": 0.0,
+      "bounds_y": 0.0,
+      "material": "LayaBlueMarkerMaterial",
+      "parameters": "",
+      "shape": ""
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    }
+  }
+}

@@ -1,0 +1,7 @@
+ARG BASE_IMAGE=laya-jev:pr3
+FROM ${BASE_IMAGE}
+
+ENV LAYA_MODEL_PATH=/models/laya \
+    HF_HUB_OFFLINE=1
+
+COPY . /models/laya

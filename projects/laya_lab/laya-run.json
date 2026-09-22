@@ -1,0 +1,1837 @@
+{
+  "goal": "Create a blue circle marker.",
+  "decisions": [
+    {
+      "request": {
+        "goal": "Create a blue circle marker.",
+        "observation": "A new asset needs a name. The name field is empty.",
+        "actions": [
+          {
+            "id": "name",
+            "label": "Enter an asset name",
+            "needs_text": true
+          },
+          {
+            "id": "cancel",
+            "label": "Cancel asset creation"
+          }
+        ]
+      },
+      "result": {
+        "status": "needs_text",
+        "reason": null,
+        "action_id": "name",
+        "label": "Enter an asset name",
+        "confidence": 0.8687,
+        "probabilities": {
+          "name": 0.9818,
+          "cancel": 0.0182
+        },
+        "observation_hash": "884b915e0ee2f14dbe9df106b457847516539b9e72a7eb38d517b3adc3db0ff3",
+        "model": "laya-rl-agent",
+        "elapsed_ms": 381,
+        "executed": false
+      },
+      "text_from_codex": "LayaBlueMarker"
+    },
+    {
+      "request": {
+        "goal": "Create a blue circle marker.",
+        "observation": "Choose the color for the marker.",
+        "actions": [
+          {
+            "id": "blue",
+            "label": "Blue"
+          },
+          {
+            "id": "red",
+            "label": "Red"
+          }
+        ]
+      },
+      "result": {
+        "status": "needs_supervisor",
+        "reason": "low_confidence",
+        "action_id": "blue",
+        "label": "Blue",
+        "confidence": 0.2483,
+        "probabilities": {
+          "blue": 0.7846,
+          "red": 0.2154
+        },
+        "observation_hash": "731444a897e31d2e534b398cedac8b2e8b6cb70077b8f706b693fe7fd30d49d5",
+        "model": "laya-rl-agent",
+        "elapsed_ms": 405,
+        "executed": false
+      },
+      "supervisor": "Codex reviewed this blue/circle choice against the stated goal before authorizing this demo."
+    },
+    {
+      "request": {
+        "goal": "Create a blue circle marker.",
+        "observation": "Choose the shape for the marker.",
+        "actions": [
+          {
+            "id": "circle",
+            "label": "Circle"
+          },
+          {
+            "id": "square",
+            "label": "Square"
+          }
+        ]
+      },
+      "result": {
+        "status": "needs_supervisor",
+        "reason": "low_confidence",
+        "action_id": "circle",
+        "label": "Circle",
+        "confidence": 0.5208,
+        "probabilities": {
+          "circle": 0.8967,
+          "square": 0.1033
+        },
+        "observation_hash": "d830af01d351940f2d5ee717dc26a4e49b3565ca94a2412e168bf520a0d44c56",
+        "model": "laya-rl-agent",
+        "elapsed_ms": 520,
+        "executed": false
+      },
+      "supervisor": "Codex reviewed this blue/circle choice against the stated goal before authorizing this demo."
+    }
+  ],
+  "authoring": [
+    {
+      "tool": "getProjectStatus",
+      "args": {},
+      "result": {
+        "contract": 1,
+        "operation": "status",
+        "result": {
+          "project_root": "/Users/cwaldner/Personal/c-blueprints/projects/laya_lab",
+          "content_root": "content",
+          "assets": 0,
+          "families": {
+            "behavior": 0,
+            "event": 0,
+            "library": 0,
+            "material": 0,
+            "shape": 0,
+            "shader-library": 0,
+            "system": 0,
+            "prototype": 0,
+            "scene": 0
+          },
+          "registry": {
+            "packs": 16,
+            "nodes": 1078,
+            "types": 64,
+            "services": 0,
+            "operators": 0,
+            "components": 54
+          },
+          "operations": [
+            "search_nodes",
+            "describe_components",
+            "edit_graph",
+            "edit_prototype",
+            "edit_scene",
+            "optimize_graph",
+            "execution_status",
+            "profile_scenario",
+            "preview_shader",
+            "describe_contract",
+            "status",
+            "list_assets",
+            "read_asset",
+            "validate_asset",
+            "describe_registry",
+            "catalog",
+            "search_assets",
+            "asset_dependencies",
+            "inspect_graph",
+            "inspect_system",
+            "run_scenario",
+            "runtime_snapshot",
+            "record_scenario",
+            "replay_scenario",
+            "read_recording"
+          ]
+        },
+        "ok": true,
+        "next_steps": [
+          "Call searchAssets to find the asset involved in the request."
+        ]
+      }
+    },
+    {
+      "tool": "searchAssets",
+      "args": {
+        "query": "LayaBlueMarker"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "search_assets",
+        "result": {
+          "catalog_revision": 1,
+          "content_hash": "14650fb0739d0383",
+          "query": "LayaBlueMarker",
+          "summary": false,
+          "total": 0,
+          "count": 0,
+          "has_more": false,
+          "next_cursor": null,
+          "assets": []
+        },
+        "ok": true,
+        "next_steps": [
+          "Broaden the search query or call getAssetCatalog for project-wide context."
+        ]
+      }
+    },
+    {
+      "tool": "searchNodes",
+      "args": {
+        "query": "Shader Surface Output",
+        "limit": 1
+      },
+      "result": {
+        "contract": 1,
+        "operation": "search_nodes",
+        "result": {
+          "nodes": [
+            {
+              "name": "Shader Surface Output",
+              "category": "Shader",
+              "pure": true,
+              "inputs": [
+                {
+                  "name": "Base Color",
+                  "type": "struct",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 64,
+                  "group": 0,
+                  "type_name": "ShaderVec3"
+                },
+                {
+                  "name": "Emission",
+                  "type": "struct",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 64,
+                  "group": 0,
+                  "type_name": "ShaderVec3"
+                },
+                {
+                  "name": "Roughness",
+                  "type": "float",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0
+                },
+                {
+                  "name": "Metallic",
+                  "type": "float",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0
+                },
+                {
+                  "name": "Normal",
+                  "type": "struct",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0,
+                  "type_name": "ShaderVec3"
+                },
+                {
+                  "name": "Opacity",
+                  "type": "float",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0
+                },
+                {
+                  "name": "Unlit",
+                  "type": "bool",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0
+                }
+              ],
+              "outputs": []
+            }
+          ],
+          "total": 1,
+          "offset": 0,
+          "count": 1,
+          "has_more": false
+        },
+        "ok": true,
+        "next_steps": [
+          "Pass the returned node and pin signatures to buildShader or buildBehavior."
+        ]
+      }
+    },
+    {
+      "tool": "searchNodes",
+      "args": {
+        "query": "Shader Circle",
+        "limit": 1
+      },
+      "result": {
+        "contract": 1,
+        "operation": "search_nodes",
+        "result": {
+          "nodes": [
+            {
+              "name": "Shader Circle",
+              "category": "Shader",
+              "pure": true,
+              "inputs": [
+                {
+                  "name": "Position",
+                  "type": "struct",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0,
+                  "type_name": "ShaderVec2"
+                },
+                {
+                  "name": "Radius",
+                  "type": "float",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "Value",
+                  "type": "float",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0
+                }
+              ]
+            }
+          ],
+          "total": 1,
+          "offset": 0,
+          "count": 1,
+          "has_more": false
+        },
+        "ok": true,
+        "next_steps": [
+          "Pass the returned node and pin signatures to buildShader or buildBehavior."
+        ]
+      }
+    },
+    {
+      "tool": "searchNodes",
+      "args": {
+        "query": "Shader Position",
+        "limit": 1
+      },
+      "result": {
+        "contract": 1,
+        "operation": "search_nodes",
+        "result": {
+          "nodes": [
+            {
+              "name": "Shader Position",
+              "category": "Shader",
+              "pure": true,
+              "inputs": [],
+              "outputs": [
+                {
+                  "name": "Position",
+                  "type": "struct",
+                  "kind": "data",
+                  "container": "single",
+                  "id": 0,
+                  "flags": 0,
+                  "group": 0,
+                  "type_name": "ShaderVec2"
+                }
+              ]
+            }
+          ],
+          "total": 1,
+          "offset": 0,
+          "count": 1,
+          "has_more": false
+        },
+        "ok": true,
+        "next_steps": [
+          "Pass the returned node and pin signatures to buildShader or buildBehavior."
+        ]
+      }
+    },
+    {
+      "tool": "describeComponents",
+      "args": {
+        "names": [
+          "GameTransform",
+          "GameAppearance",
+          "GameShader"
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "describe_components",
+        "result": {
+          "components": [
+            {
+              "key": "game.GameTransform",
+              "name": "GameTransform",
+              "id": 1376052968821171700,
+              "bytes": 8,
+              "layout_hash": 11176264011264733000,
+              "type": "GameTransform",
+              "fields": [
+                {
+                  "name": "x",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "y",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                }
+              ],
+              "defaults": {
+                "x": 0,
+                "y": 0
+              }
+            },
+            {
+              "key": "GAME.GameAppearance",
+              "name": "GameAppearance",
+              "id": 6860109605235284000,
+              "bytes": 44,
+              "layout_hash": 8449278444039160000,
+              "type": "GameAppearance",
+              "fields": [
+                {
+                  "name": "width",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "height",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "color",
+                  "type": "uint",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "unsigned int"
+                },
+                {
+                  "name": "shape",
+                  "type": "int",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "int"
+                },
+                {
+                  "name": "border_width",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "border_color",
+                  "type": "uint",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "unsigned int"
+                },
+                {
+                  "name": "glow_radius",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "glow_color",
+                  "type": "uint",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "unsigned int"
+                },
+                {
+                  "name": "stroke_width",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "antialias",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "layer",
+                  "type": "int",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "int"
+                }
+              ],
+              "defaults": {
+                "antialias": 0,
+                "border_color": 0,
+                "border_width": 0,
+                "color": 0,
+                "glow_color": 0,
+                "glow_radius": 0,
+                "height": 0,
+                "layer": 0,
+                "shape": 0,
+                "stroke_width": 0,
+                "width": 0
+              }
+            },
+            {
+              "key": "GAME.GameShader",
+              "name": "GameShader",
+              "id": 11044973552956420000,
+              "bytes": 32,
+              "layout_hash": 2167706636177901300,
+              "type": "GameShader",
+              "fields": [
+                {
+                  "name": "material",
+                  "type": "const char *",
+                  "bytes": 8,
+                  "writable": true,
+                  "type_name": "const char *"
+                },
+                {
+                  "name": "shape",
+                  "type": "const char *",
+                  "bytes": 8,
+                  "writable": true,
+                  "type_name": "const char *"
+                },
+                {
+                  "name": "parameters",
+                  "type": "const char *",
+                  "bytes": 8,
+                  "writable": true,
+                  "type_name": "const char *"
+                },
+                {
+                  "name": "bounds_x",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "bounds_y",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                }
+              ],
+              "defaults": {
+                "bounds_x": 0,
+                "bounds_y": 0,
+                "material": "",
+                "parameters": "",
+                "shape": ""
+              }
+            }
+          ],
+          "count": 3
+        },
+        "ok": true,
+        "next_steps": [
+          "Pass the reflected field information to buildPrototype."
+        ]
+      }
+    },
+    {
+      "tool": "buildShader",
+      "args": {
+        "kind": "material",
+        "name": "LayaBlueMarkerMaterial",
+        "create": true,
+        "operations": [
+          {
+            "op": "set_input",
+            "node": "output",
+            "pin": "Base Color",
+            "value": {
+              "x": 0.08,
+              "y": 0.4,
+              "z": 1
+            }
+          },
+          {
+            "op": "set_input",
+            "node": "output",
+            "pin": "Emission",
+            "value": {
+              "x": 0.04,
+              "y": 0.2,
+              "z": 0.5
+            }
+          },
+          {
+            "op": "set_input",
+            "node": "output",
+            "pin": "Unlit",
+            "value": true
+          }
+        ],
+        "dry_run": true
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_graph",
+        "result": {
+          "kind": "material",
+          "name": "LayaBlueMarkerMaterial",
+          "path": "content/materials/LayaBlueMarkerMaterial.json",
+          "bytes": 0,
+          "hash": "0000000000000000",
+          "published": false,
+          "before_hash": "0000000000000000",
+          "diagnostics": [],
+          "graph_id": 0,
+          "description": "",
+          "graph_description": "",
+          "operation_count": 3,
+          "nodes": [
+            {
+              "ref": "output",
+              "id": 1,
+              "type": "Shader Surface Output"
+            }
+          ],
+          "graphs": [],
+          "variables": [],
+          "changed": true,
+          "dry_run": true,
+          "after_hash": "9be241be2581723b",
+          "after_bytes": 3142
+        },
+        "ok": true,
+        "next_steps": [
+          "Review the dry-run diagnostics and proposed changes.",
+          "Call the same build tool with dry_run false and the current expected_hash to publish."
+        ]
+      }
+    },
+    {
+      "tool": "buildShader",
+      "args": {
+        "kind": "material",
+        "name": "LayaBlueMarkerMaterial",
+        "create": true,
+        "operations": [
+          {
+            "op": "set_input",
+            "node": "output",
+            "pin": "Base Color",
+            "value": {
+              "x": 0.08,
+              "y": 0.4,
+              "z": 1
+            }
+          },
+          {
+            "op": "set_input",
+            "node": "output",
+            "pin": "Emission",
+            "value": {
+              "x": 0.04,
+              "y": 0.2,
+              "z": 0.5
+            }
+          },
+          {
+            "op": "set_input",
+            "node": "output",
+            "pin": "Unlit",
+            "value": true
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_graph",
+        "result": {
+          "kind": "material",
+          "name": "LayaBlueMarkerMaterial",
+          "path": "content/materials/LayaBlueMarkerMaterial.json",
+          "before_hash": "0000000000000000",
+          "diagnostics": [],
+          "graph_id": 0,
+          "description": "",
+          "graph_description": "",
+          "operation_count": 3,
+          "nodes": [
+            {
+              "ref": "output",
+              "id": 1,
+              "type": "Shader Surface Output"
+            }
+          ],
+          "graphs": [],
+          "variables": [],
+          "changed": true,
+          "dry_run": false,
+          "after_hash": "9be241be2581723b",
+          "after_bytes": 3142,
+          "published": true,
+          "hash": "9be241be2581723b",
+          "bytes": 3142
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same shader asset selector.",
+          "Call previewShader to inspect the rendered result."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "material",
+        "name": "LayaBlueMarkerMaterial"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "material",
+          "name": "LayaBlueMarkerMaterial",
+          "path": "content/materials/LayaBlueMarkerMaterial.json",
+          "bytes": 3142,
+          "hash": "9be241be2581723b",
+          "diagnostics": [],
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "buildShader",
+      "args": {
+        "kind": "shape",
+        "name": "LayaBlueMarkerShape",
+        "create": true,
+        "operations": [
+          {
+            "op": "set_bounds",
+            "value": [
+              32,
+              32
+            ]
+          },
+          {
+            "op": "add_node",
+            "type": "Shader Position",
+            "ref": "position"
+          },
+          {
+            "op": "add_node",
+            "type": "Shader Circle",
+            "ref": "circle",
+            "inputs": {
+              "Radius": 24
+            }
+          },
+          {
+            "op": "connect",
+            "from": "position",
+            "from_pin": "Position",
+            "to": "circle",
+            "to_pin": "Position",
+            "kind": "data"
+          },
+          {
+            "op": "connect",
+            "from": "circle",
+            "from_pin": "Value",
+            "to": "output",
+            "to_pin": "Distance",
+            "kind": "data"
+          }
+        ],
+        "dry_run": true
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_graph",
+        "result": {
+          "kind": "shape",
+          "name": "LayaBlueMarkerShape",
+          "path": "content/shapes/LayaBlueMarkerShape.json",
+          "bytes": 0,
+          "hash": "0000000000000000",
+          "published": false,
+          "before_hash": "0000000000000000",
+          "diagnostics": [],
+          "graph_id": 0,
+          "description": "",
+          "graph_description": "",
+          "operation_count": 5,
+          "nodes": [
+            {
+              "ref": "output",
+              "id": 1,
+              "type": "Shader Shape Output"
+            },
+            {
+              "ref": "position",
+              "id": 3,
+              "type": "Shader Position"
+            },
+            {
+              "ref": "circle",
+              "id": 5,
+              "type": "Shader Circle"
+            }
+          ],
+          "graphs": [],
+          "variables": [],
+          "changed": true,
+          "dry_run": true,
+          "after_hash": "10a92fcb52c11e3f",
+          "after_bytes": 3184
+        },
+        "ok": true,
+        "next_steps": [
+          "Review the dry-run diagnostics and proposed changes.",
+          "Call the same build tool with dry_run false and the current expected_hash to publish."
+        ]
+      }
+    },
+    {
+      "tool": "buildShader",
+      "args": {
+        "kind": "shape",
+        "name": "LayaBlueMarkerShape",
+        "create": true,
+        "operations": [
+          {
+            "op": "set_bounds",
+            "value": [
+              32,
+              32
+            ]
+          },
+          {
+            "op": "add_node",
+            "type": "Shader Position",
+            "ref": "position"
+          },
+          {
+            "op": "add_node",
+            "type": "Shader Circle",
+            "ref": "circle",
+            "inputs": {
+              "Radius": 24
+            }
+          },
+          {
+            "op": "connect",
+            "from": "position",
+            "from_pin": "Position",
+            "to": "circle",
+            "to_pin": "Position",
+            "kind": "data"
+          },
+          {
+            "op": "connect",
+            "from": "circle",
+            "from_pin": "Value",
+            "to": "output",
+            "to_pin": "Distance",
+            "kind": "data"
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_graph",
+        "result": {
+          "kind": "shape",
+          "name": "LayaBlueMarkerShape",
+          "path": "content/shapes/LayaBlueMarkerShape.json",
+          "before_hash": "0000000000000000",
+          "diagnostics": [],
+          "graph_id": 0,
+          "description": "",
+          "graph_description": "",
+          "operation_count": 5,
+          "nodes": [
+            {
+              "ref": "output",
+              "id": 1,
+              "type": "Shader Shape Output"
+            },
+            {
+              "ref": "position",
+              "id": 3,
+              "type": "Shader Position"
+            },
+            {
+              "ref": "circle",
+              "id": 5,
+              "type": "Shader Circle"
+            }
+          ],
+          "graphs": [],
+          "variables": [],
+          "changed": true,
+          "dry_run": false,
+          "after_hash": "10a92fcb52c11e3f",
+          "after_bytes": 3184,
+          "published": true,
+          "hash": "10a92fcb52c11e3f",
+          "bytes": 3184
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same shader asset selector.",
+          "Call previewShader to inspect the rendered result."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "shape",
+        "name": "LayaBlueMarkerShape"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "shape",
+          "name": "LayaBlueMarkerShape",
+          "path": "content/shapes/LayaBlueMarkerShape.json",
+          "bytes": 3184,
+          "hash": "10a92fcb52c11e3f",
+          "diagnostics": [],
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "buildPrototype",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaBlueMarker",
+        "create": true,
+        "operations": [
+          {
+            "op": "add_component",
+            "component": "GameTransform"
+          },
+          {
+            "op": "add_component",
+            "component": "GameAppearance",
+            "fields": {
+              "width": 64,
+              "height": 64,
+              "color": 4294967295,
+              "antialias": 1
+            }
+          },
+          {
+            "op": "add_component",
+            "component": "GameShader",
+            "fields": {
+              "material": "LayaBlueMarkerMaterial",
+              "shape": "LayaBlueMarkerShape",
+              "bounds_x": 32,
+              "bounds_y": 32
+            }
+          }
+        ],
+        "dry_run": true
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_prototype",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaBlueMarker",
+          "path": "content/prototypes/LayaBlueMarker.json",
+          "bytes": 0,
+          "hash": "0000000000000000",
+          "published": false,
+          "before_hash": "0000000000000000",
+          "operation_count": 3,
+          "component_count": 3,
+          "behavior_count": 0,
+          "changed": true,
+          "dry_run": true,
+          "after_hash": "8b3a9ed99ca788b0",
+          "after_bytes": 640
+        },
+        "ok": true,
+        "next_steps": [
+          "Review the dry-run diagnostics and proposed changes.",
+          "Call the same build tool with dry_run false and the current expected_hash to publish."
+        ]
+      }
+    },
+    {
+      "tool": "buildPrototype",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaBlueMarker",
+        "create": true,
+        "operations": [
+          {
+            "op": "add_component",
+            "component": "GameTransform"
+          },
+          {
+            "op": "add_component",
+            "component": "GameAppearance",
+            "fields": {
+              "width": 64,
+              "height": 64,
+              "color": 4294967295,
+              "antialias": 1
+            }
+          },
+          {
+            "op": "add_component",
+            "component": "GameShader",
+            "fields": {
+              "material": "LayaBlueMarkerMaterial",
+              "shape": "LayaBlueMarkerShape",
+              "bounds_x": 32,
+              "bounds_y": 32
+            }
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_prototype",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaBlueMarker",
+          "path": "content/prototypes/LayaBlueMarker.json",
+          "before_hash": "0000000000000000",
+          "operation_count": 3,
+          "component_count": 3,
+          "behavior_count": 0,
+          "changed": true,
+          "dry_run": false,
+          "after_hash": "8b3a9ed99ca788b0",
+          "after_bytes": 640,
+          "published": true,
+          "hash": "8b3a9ed99ca788b0",
+          "bytes": 640
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same prototype asset selector.",
+          "Call runScenario to verify prototype behavior."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaBlueMarker"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaBlueMarker",
+          "path": "content/prototypes/LayaBlueMarker.json",
+          "bytes": 640,
+          "hash": "8b3a9ed99ca788b0",
+          "diagnostics": [],
+          "identity": "prototype-272494c5ec14e268",
+          "components": 3,
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "buildScene",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab",
+        "create": true,
+        "operations": [
+          {
+            "op": "set_presentation",
+            "presentation": "2d"
+          },
+          {
+            "op": "add_entity",
+            "name": "Marker",
+            "prototype": "LayaBlueMarker"
+          }
+        ],
+        "dry_run": true
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_scene",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "bytes": 0,
+          "hash": "0000000000000000",
+          "published": false,
+          "before_hash": "0000000000000000",
+          "operation_count": 2,
+          "entity_count": 1,
+          "presentation": "2d",
+          "changed": true,
+          "dry_run": true,
+          "after_hash": "c42213a4922bd272",
+          "after_bytes": 384
+        },
+        "ok": true,
+        "next_steps": [
+          "Review the dry-run diagnostics and proposed changes.",
+          "Call the same build tool with dry_run false and the current expected_hash to publish."
+        ]
+      }
+    },
+    {
+      "tool": "buildScene",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab",
+        "create": true,
+        "operations": [
+          {
+            "op": "set_presentation",
+            "presentation": "2d"
+          },
+          {
+            "op": "add_entity",
+            "name": "Marker",
+            "prototype": "LayaBlueMarker"
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_scene",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "before_hash": "0000000000000000",
+          "operation_count": 2,
+          "entity_count": 1,
+          "presentation": "2d",
+          "changed": true,
+          "dry_run": false,
+          "after_hash": "c42213a4922bd272",
+          "after_bytes": 384,
+          "published": true,
+          "hash": "c42213a4922bd272",
+          "bytes": 384
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same scene asset selector.",
+          "Call previewScene or runScenario to check the composed scene."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "bytes": 384,
+          "hash": "c42213a4922bd272",
+          "diagnostics": [],
+          "scene_name": "LayaLab",
+          "entities": 1,
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "runScenario",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab",
+        "frames": 30
+      },
+      "result": {
+        "contract": 1,
+        "operation": "run_scenario",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "bytes": 384,
+          "hash": "c42213a4922bd272",
+          "frames": 30,
+          "fixed_dt": 0.016666666666666666,
+          "world_hash": "b46b4b0ae58642ac",
+          "live_entities": 1,
+          "authored_entities": 1,
+          "timing": {
+            "frame": 30,
+            "simulation_steps": 30,
+            "simulation_time": 0.5,
+            "fixed_dt": 0.016666666666666666
+          },
+          "saved_state": {}
+        },
+        "ok": true,
+        "next_steps": [
+          "Call captureRuntimeSnapshot for selected entity fields or profileScenario for timing."
+        ]
+      }
+    },
+    {
+      "tool": "describeComponents",
+      "args": {
+        "names": [
+          "GameCamera"
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "describe_components",
+        "result": {
+          "components": [
+            {
+              "key": "GAME.GameCamera",
+              "name": "GameCamera",
+              "id": 16311651766510470000,
+              "bytes": 20,
+              "layout_hash": 1929279209604771000,
+              "type": "GameCamera",
+              "fields": [
+                {
+                  "name": "width",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "height",
+                  "type": "float",
+                  "bytes": 4,
+                  "writable": true,
+                  "type_name": "float"
+                },
+                {
+                  "name": "offset",
+                  "type": "struct",
+                  "bytes": 8,
+                  "writable": true,
+                  "type_name": "CF_V2"
+                },
+                {
+                  "name": "disabled",
+                  "type": "bool",
+                  "bytes": 1,
+                  "writable": true,
+                  "type_name": "_Bool"
+                }
+              ],
+              "defaults": {
+                "disabled": false,
+                "height": 0,
+                "offset": {
+                  "x": 0,
+                  "y": 0
+                },
+                "width": 0
+              }
+            }
+          ],
+          "count": 1
+        },
+        "ok": true,
+        "next_steps": [
+          "Pass the reflected field information to buildPrototype."
+        ]
+      }
+    },
+    {
+      "tool": "readAsset",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaBlueMarker"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "read_asset",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaBlueMarker",
+          "path": "content/prototypes/LayaBlueMarker.json",
+          "bytes": 619,
+          "hash": "b139de0aa2076809",
+          "document": {
+            "name": "LayaBlueMarker",
+            "identity": "prototype-272494c5ec14e268",
+            "components": {
+              "GAME.GameAppearance": {
+                "antialias": 1,
+                "border_color": 0,
+                "border_width": 0,
+                "color": 4294967295,
+                "glow_color": 0,
+                "glow_radius": 0,
+                "height": 48,
+                "layer": 0,
+                "shape": 1,
+                "stroke_width": 0,
+                "width": 48
+              },
+              "GAME.GameShader": {
+                "bounds_x": 0,
+                "bounds_y": 0,
+                "material": "LayaBlueMarkerMaterial",
+                "parameters": "",
+                "shape": ""
+              },
+              "game.GameTransform": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          }
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset after changing the asset."
+        ]
+      }
+    },
+    {
+      "tool": "buildPrototype",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaBlueMarker",
+        "expected_hash": "b139de0aa2076809",
+        "operations": [
+          {
+            "op": "set_field",
+            "component": "GameAppearance",
+            "field": "shape",
+            "value": 1
+          },
+          {
+            "op": "set_field",
+            "component": "GameAppearance",
+            "field": "width",
+            "value": 48
+          },
+          {
+            "op": "set_field",
+            "component": "GameAppearance",
+            "field": "height",
+            "value": 48
+          },
+          {
+            "op": "set_field",
+            "component": "GameShader",
+            "field": "shape",
+            "value": ""
+          },
+          {
+            "op": "set_field",
+            "component": "GameShader",
+            "field": "bounds_x",
+            "value": 0
+          },
+          {
+            "op": "set_field",
+            "component": "GameShader",
+            "field": "bounds_y",
+            "value": 0
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_prototype",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaBlueMarker",
+          "path": "content/prototypes/LayaBlueMarker.json",
+          "before_hash": "b139de0aa2076809",
+          "operation_count": 6,
+          "component_count": 3,
+          "behavior_count": 0,
+          "changed": false,
+          "dry_run": false,
+          "after_hash": "b139de0aa2076809",
+          "after_bytes": 619,
+          "published": true,
+          "hash": "b139de0aa2076809",
+          "bytes": 619
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same prototype asset selector.",
+          "Call runScenario to verify prototype behavior."
+        ]
+      }
+    },
+    {
+      "tool": "buildPrototype",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaLabCamera",
+        "create": true,
+        "operations": [
+          {
+            "op": "add_component",
+            "component": "GameTransform"
+          },
+          {
+            "op": "add_component",
+            "component": "GameCamera",
+            "fields": {
+              "width": 160,
+              "height": 160
+            }
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_prototype",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaLabCamera",
+          "path": "content/prototypes/LayaLabCamera.json",
+          "before_hash": "0000000000000000",
+          "operation_count": 2,
+          "component_count": 2,
+          "behavior_count": 0,
+          "changed": true,
+          "dry_run": false,
+          "after_hash": "da2be64c3ba78bcd",
+          "after_bytes": 324,
+          "published": true,
+          "hash": "da2be64c3ba78bcd",
+          "bytes": 324
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same prototype asset selector.",
+          "Call runScenario to verify prototype behavior."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaLabCamera"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaLabCamera",
+          "path": "content/prototypes/LayaLabCamera.json",
+          "bytes": 324,
+          "hash": "da2be64c3ba78bcd",
+          "diagnostics": [],
+          "identity": "prototype-9682eb1acd4ea5e2",
+          "components": 2,
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "readAsset",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "read_asset",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "bytes": 384,
+          "hash": "c42213a4922bd272",
+          "document": {
+            "version": 1,
+            "name": "LayaLab",
+            "presentation": "2d",
+            "physics": {
+              "workers": 0,
+              "substeps": 4,
+              "sleep": true,
+              "continuous": true,
+              "force_drive": false,
+              "contact_hertz": 30,
+              "contact_damping": 10
+            },
+            "entities": [
+              {
+                "name": "Marker",
+                "prototype": "LayaBlueMarker",
+                "components": {},
+                "behaviors": []
+              }
+            ]
+          }
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset after changing the asset."
+        ]
+      }
+    },
+    {
+      "tool": "buildScene",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab",
+        "expected_hash": "c42213a4922bd272",
+        "operations": [
+          {
+            "op": "add_entity",
+            "name": "Camera",
+            "prototype": "LayaLabCamera"
+          }
+        ]
+      },
+      "result": {
+        "contract": 1,
+        "operation": "edit_scene",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "before_hash": "c42213a4922bd272",
+          "operation_count": 1,
+          "entity_count": 2,
+          "presentation": "2d",
+          "changed": true,
+          "dry_run": false,
+          "after_hash": "a87a3995c426652c",
+          "after_bytes": 503,
+          "published": true,
+          "hash": "a87a3995c426652c",
+          "bytes": 503
+        },
+        "ok": true,
+        "next_steps": [
+          "Call validateAsset with the same scene asset selector.",
+          "Call previewScene or runScenario to check the composed scene."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "prototype",
+        "name": "LayaBlueMarker"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "prototype",
+          "name": "LayaBlueMarker",
+          "path": "content/prototypes/LayaBlueMarker.json",
+          "bytes": 619,
+          "hash": "b139de0aa2076809",
+          "diagnostics": [],
+          "identity": "prototype-272494c5ec14e268",
+          "components": 3,
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "validateAsset",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab"
+      },
+      "result": {
+        "contract": 1,
+        "operation": "validate_asset",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "bytes": 503,
+          "hash": "a87a3995c426652c",
+          "diagnostics": [],
+          "scene_name": "LayaLab",
+          "entities": 2,
+          "valid": true,
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        },
+        "ok": true,
+        "next_steps": [
+          "Correct reported diagnostics, then call validateAsset again."
+        ]
+      }
+    },
+    {
+      "tool": "runScenario",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab",
+        "frames": 30
+      },
+      "result": {
+        "contract": 1,
+        "operation": "run_scenario",
+        "result": {
+          "kind": "scene",
+          "name": "LayaLab",
+          "path": "content/scenes/LayaLab.json",
+          "bytes": 503,
+          "hash": "a87a3995c426652c",
+          "frames": 30,
+          "fixed_dt": 0.016666666666666666,
+          "world_hash": "af75f0c1b70e6dce",
+          "live_entities": 2,
+          "authored_entities": 2,
+          "timing": {
+            "frame": 30,
+            "simulation_steps": 30,
+            "simulation_time": 0.5,
+            "fixed_dt": 0.016666666666666666
+          },
+          "saved_state": {}
+        },
+        "ok": true,
+        "next_steps": [
+          "Call captureRuntimeSnapshot for selected entity fields or profileScenario for timing."
+        ]
+      }
+    },
+    {
+      "tool": "previewScene",
+      "args": {
+        "kind": "scene",
+        "name": "LayaLab",
+        "width": 512,
+        "height": 512,
+        "frames": 1
+      },
+      "result": {
+        "ok": true,
+        "contract": 1,
+        "operation": "preview_scene",
+        "result": {
+          "initial_state": {
+            "world_hash": "af75f0c1b70e6dce",
+            "frame": 1,
+            "sound_cues": 0,
+            "visibility": {
+              "enabled": false
+            }
+          },
+          "final_state": {
+            "world_hash": "af75f0c1b70e6dce",
+            "frame": 1,
+            "sound_cues": 0,
+            "visibility": {
+              "enabled": false
+            }
+          },
+          "backend": "CF_BACKEND_TYPE_METAL",
+          "performance": {
+            "frozen": false,
+            "instrumented": false,
+            "samples": 0,
+            "warmup_frames": 0,
+            "median_ms": 0,
+            "p95_ms": 0,
+            "p99_ms": 0,
+            "simulation_average_ms": 0,
+            "render_average_ms": 0,
+            "particles": 0,
+            "entities": 2,
+            "hrc_scale": 0.9768829941749573
+          },
+          "preview": {
+            "mime_type": "image/png",
+            "width": 512,
+            "height": 512
+          }
+        },
+        "next_steps": [
+          "Call buildScene or buildPrototype to change the authored composition."
+        ]
+      }
+    }
+  ],
+  "completed": true,
+  "runtime": {
+    "kind": "scene",
+    "name": "LayaLab",
+    "path": "content/scenes/LayaLab.json",
+    "bytes": 503,
+    "hash": "a87a3995c426652c",
+    "frames": 30,
+    "fixed_dt": 0.016666666666666666,
+    "world_hash": "af75f0c1b70e6dce",
+    "live_entities": 2,
+    "authored_entities": 2,
+    "timing": {
+      "frame": 30,
+      "simulation_steps": 30,
+      "simulation_time": 0.5,
+      "fixed_dt": 0.016666666666666666
+    },
+    "saved_state": {}
+  },
+  "visual_correction": "Codex observed a square. GameAppearance owns the 2D footprint; set its shape to circle, removed unused shader shape binding, and added a camera for the scene preview. The separate circle shader asset remains validated.",
+  "preview": {
+    "initial_state": {
+      "world_hash": "af75f0c1b70e6dce",
+      "frame": 1,
+      "sound_cues": 0,
+      "visibility": {
+        "enabled": false
+      }
+    },
+    "final_state": {
+      "world_hash": "af75f0c1b70e6dce",
+      "frame": 1,
+      "sound_cues": 0,
+      "visibility": {
+        "enabled": false
+      }
+    },
+    "backend": "CF_BACKEND_TYPE_METAL",
+    "performance": {
+      "frozen": false,
+      "instrumented": false,
+      "samples": 0,
+      "warmup_frames": 0,
+      "median_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "simulation_average_ms": 0,
+      "render_average_ms": 0,
+      "particles": 0,
+      "entities": 2,
+      "hrc_scale": 0.9768829941749573
+    },
+    "preview": {
+      "mime_type": "image/png",
+      "width": 512,
+      "height": 512
+    }
+  }
+}

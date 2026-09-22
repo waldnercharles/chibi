@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laya-jev
+spec:
+  template:
+    spec:
+      containers:
+        - name: laya
+          env:
+            - name: LAYA_MODEL_PATH
+              value: /models/laya
+            - name: HF_HUB_OFFLINE
+              value: "1"

@@ -69,7 +69,7 @@ def reference(output, name, width, height, rays, shift=0, fog=.2):
 
 def run(binary, output, label, method, scene="lens", width=240, height=135,
         rays=1024, directions=32, display=(2560,1440), change=None, repeats=3,
-        warmup=128, frames=64, fog=.2, boundary_filter=0):
+        warmup=128, frames=64, fog=.2, boundary_filter=0, iterations=4, cycles=1):
     directory = output / label
     directory.mkdir(exist_ok=True)
     reports = []
@@ -79,6 +79,7 @@ def run(binary, output, label, method, scene="lens", width=240, height=135,
             "--directions", str(directions), "--display-width", str(display[0]),
             "--display-height", str(display[1]), "--frames", str(frames),
             "--warmup", str(warmup), "--fog", str(fog),
+            "--iterations", str(iterations), "--cycles", str(cycles),
             "--boundary-filter", str(boundary_filter),
             "--output", str(directory/f"run{repeat}")]
         if change:
@@ -113,7 +114,7 @@ def run(binary, output, label, method, scene="lens", width=240, height=135,
         initial = captures[0]["integrated_fluence"]
         for capture in captures:
             capture["remaining_fluence_fraction"] = capture["integrated_fluence"]/initial
-        if method in ("trace", "coarse"):
+        if method in ("trace", "coarse", "multigrid"):
             assert all(c["integrated_fluence"] == 0 for c in captures if c["frame"] >= 1)
     report["captures"] = captures
     (directory / "report.json").write_text(json.dumps(report, indent=2)+"\n")
@@ -128,15 +129,20 @@ def gallery(output, reports):
         for capture in report["captures"]:
             metrics = (f"L1 {capture['relative_l1']*100:.2f}%" if "relative_l1" in capture else
                        f"remaining light {capture['remaining_fluence_fraction']*100:.1f}%")
+            if "same_grid_l1" in capture:
+                metrics += f" · solver error {capture['same_grid_l1']*100:.2f}%"
             images.append(f"<figure><img src='{capture['image']}'><figcaption>Frame {capture['frame']} · {metrics}</figcaption></figure>")
         first = report["captures"][0]
         if "reference" in first:
             images.insert(0, f"<figure><img src='{first['reference']}'><figcaption>CPU reference · same samples</figcaption></figure>")
-        rows.append(f"<section><h2>{html.escape(report['label'])}</h2><p>{report['median_ms']:.3f} ms median · {report['worst_p95_ms']:.3f} ms worst repeat p95</p><div>{''.join(images)}</div></section>")
+        timing = ("Cold convergence reference; timing is not a steady-frame benchmark"
+                  if report.get("cold_reference") else
+                  f"{report['median_ms']:.3f} ms median · {report['worst_p95_ms']:.3f} ms worst repeat p95")
+        rows.append(f"<section><h2>{html.escape(report['label'])}</h2><p>{timing}</p><div>{''.join(images)}</div></section>")
     page = """<!doctype html><meta charset='utf-8'><title>GPU optics experiments</title>
 <style>body{background:#14171b;color:#e4e7ec;font:15px system-ui;margin:32px;max-width:1500px}h1{font-size:28px}h2{font-size:19px}section{border-top:1px solid #454950;margin-top:28px;padding-top:8px}section div{display:flex;flex-wrap:wrap;gap:16px}figure{margin:0}img{width:384px;max-width:100%;image-rendering:auto;background:black}figcaption{padding:8px 0;color:#c7ccd4}p{max-width:1000px;line-height:1.5}</style>
 <h1>GPU optics experiments</h1><p>Hidden native GPU runs. Timings cover optical transport and one display reconstruction, including synchronized GPU completion. They exclude diffuse GI, simulation, scene rasterization and final game composition. These images show planar ballistic fluence in persistent fog, not a camera view or multiple scattering. All previews use exposure 0.25.</p>
-<p>Trace splits reflection and transmission through at most four interfaces. Iterate keeps a directional field across frames. Coarse rebuilds a hierarchy each frame, prolonging the coarse solution before fine iterations; it is not a reconstruction of Grant Kot's private solver or a residual-correction multigrid method. Temporal frame zero is the settled image; the change occurs at frame one.</p>""" + "".join(rows)
+<p>Trace splits reflection and transmission through at most four interfaces. Iterate keeps a directional field across frames. Coarse rebuilds a hierarchy each frame, prolonging the coarse solution before fine iterations. Multigrid computes and restricts residuals, solves signed coarse corrections, adds them to the fine solution, and relaxes again. Neither method reconstructs Grant Kot's private solver. Solver error measures convergence to the same fine-grid discretization; L1 measures disagreement with the independent ray reference. Temporal frame zero is the settled image; the change occurs at frame one.</p>""" + "".join(rows)
     (output / "comparison.html").write_text(page)
     (output / "summary.json").write_text(json.dumps(reports,indent=2)+"\n")
 
@@ -147,6 +153,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--check", action="store_true", help="Short physical GPU regression checks")
     parser.add_argument("--filtered", action="store_true", help="Only test interpolation that respects optical boundaries")
+    parser.add_argument("--multigrid", action="store_true", help="Check residual-correction convergence and motion at matched discretization")
     parser.add_argument("--repeats", type=int, default=3)
     args = parser.parse_args()
     assert args.repeats > 0
@@ -160,7 +167,41 @@ def main():
                       presentation="Hidden swapchain acquisition bypassed; CPU dispatch plus GPU completion")
     (output/"provenance.json").write_text(json.dumps(provenance,indent=2)+"\n")
     reports=[]
-    if args.filtered:
+    if args.multigrid:
+        def values(report):
+            return read_pfm((output/report["captures"][-1]["image"]).with_suffix(".pfm"))[2]
+        for name in SCENES:
+            controls = []
+            for steps in (1024, 2048):
+                report = run(binary, output, f"{name}-converged-{steps}", "multigrid",
+                             scene=name, width=120, height=68, rays=2048,
+                             iterations=steps, cycles=0, boundary_filter=1,
+                             warmup=0, frames=1, repeats=1)
+                report["cold_reference"] = True
+                controls.append(report)
+            settled = values(controls[-1])
+            convergence = difference(settled, values(controls[0]), 120, 68)["relative_l1"]
+            assert convergence < .002, (name, "Fine-grid reference is not settled", convergence)
+            reports.append(controls[-1])
+            for count in (1, 2, 4, 8):
+                report = run(binary, output, f"{name}-multigrid-{count}", "multigrid",
+                             scene=name, width=120, height=68, rays=2048,
+                             cycles=count, boundary_filter=1,
+                             warmup=16, frames=32, repeats=args.repeats)
+                report["captures"][-1]["same_grid_l1"] = difference(settled, values(report), 120, 68)["relative_l1"]
+                report["control_convergence_l1"] = convergence
+                reports.append(report)
+                gallery(output, reports)
+        for change in ("off", "move"):
+            reports.append(run(binary, output, f"lens-multigrid-{change}", "multigrid",
+                               width=120, height=68, rays=2048, cycles=4,
+                               change=change, boundary_filter=1,
+                               warmup=16, frames=32, repeats=args.repeats))
+        for count in (1, 4):
+            reports.append(run(binary, output, f"lens-multigrid-{count}-240", "multigrid",
+                               rays=2048, cycles=count, boundary_filter=1,
+                               warmup=16, frames=32, repeats=args.repeats))
+    elif args.filtered:
         for name in ("lens", "mirror"):
             for method in ("iterate", "coarse"):
                 reports.append(run(binary,output,f"{name}-{method}-filtered",method,scene=name,boundary_filter=1,repeats=args.repeats))

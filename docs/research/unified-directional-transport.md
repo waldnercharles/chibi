@@ -81,5 +81,55 @@ controls. Evaluate a unified directional transport candidate with:
 
 The existing `coarse` candidate only initializes coarse-to-fine and relaxes. It
 is **not** a multigrid residual-correction implementation, and its failure does
-not reject this unified approach. No unified replacement has passed the quality
-and frame-time requirements yet. The active goal remains open.
+not reject this unified approach.
+
+## Residual-correction prototype
+
+`tools/gi_lab/multigrid.c` now implements a spatial V-cycle over the same angular
+transport operator as `iterate`. The fixed-scene equation is `L = E + K L`.
+After relaxation, it computes `r = E + K L - L`, restricts the residual to a
+coarser grid, solves a signed correction with homogeneous emitter boundaries,
+prolongs and adds the correction, then relaxes again. Coarse residuals scale by
+the ratio of transport step lengths. Geometry is rediscretized on each grid;
+this is not a Galerkin coarse operator. Angular resolution stays constant.
+Only the physical fine-grid correction is limited to nonnegative radiance;
+error fields remain signed. All fields use 32-bit floats for this experiment.
+
+Every frame starts from zero. This measures same-frame propagation and avoids
+hidden dependence on settled history. `--cycles 0 --iterations N` runs just
+fine-grid relaxation in the same precision. The 1024/2048-sweep controls agree
+within 0.00004% on the tested fixtures, establishing their settled state.
+
+Reproduction:
+
+```sh
+python3 tools/benchmark_optics.py --multigrid --repeats 2 \
+  --output build-release/multigrid-evidence/benchmark
+```
+
+The initial lens results at 120x68, 32 directions and 1440p reconstruction are:
+
+| V-cycles | Median ms | Worst repeat p95 ms | Error vs settled grid | Error vs ray reference |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 3.26 | 3.44 | 32.87% | 41.19% |
+| 2 | 6.25 | 6.58 | 11.79% | 25.35% |
+| 4 | 12.19 | 12.58 | 4.30% | 22.28% |
+| 8 | 23.80 | 24.20 | 1.54% | 21.46% |
+
+These are hidden GPU-completion timings for transport and reconstruction only,
+with four pre/post sweeps, 16 warmup frames and 32 measured frames per repeat.
+Cold convergence-control timings are not steady-frame benchmarks. At 240x135,
+one cycle took 7.80 ms and four took 29.45 ms. No complete-game 4K60 claim follows.
+
+The settled lens field still has 20.95% error against the continuous-path
+reference and 47.53% focal-region error. Slab and prism settled errors are about
+40.8% and 41.2%; the mirror is about 3.05%. More cycles cannot repair the fine
+operator's spatial/angular discretization bias. Slab convergence is also not
+monotone, exposing the limitations of this coarse correction. All primary light
+disappears on the first light-off frame. Moving-glass results are captured too.
+
+This is a useful convergence control, not a viable renderer replacement yet.
+The next work must improve the transport discretization and boundary handling,
+and avoid recomputing geometry/filter decisions on every relaxation sweep.
+HRC/SDF acceleration for straight spans remains relevant. No unified replacement
+has passed the quality and frame-time requirements. The active goal remains open.

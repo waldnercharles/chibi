@@ -1,4 +1,5 @@
 /* Hidden GPU experiments. Fixture content stays in this tooling target. */
+#include "multigrid.h"
 #include "platform/cute.h"
 #include "support/xalloc.h"
 
@@ -14,7 +15,8 @@ typedef struct
     int width, height, display_width, display_height, directions;
     int rays, events, iterations, warmup, frames, off_frame, move_frame, scene;
     float fog, shift, move_shift;
-    bool iterative, coarse;
+    bool iterative, coarse, multigrid;
+    int cycles;
     int boundary_filter;
     const char *output;
 } Options;
@@ -98,6 +100,7 @@ static Options options(int argc, char **argv)
                   .rays = 1024,
                   .events = 4,
                   .iterations = 4,
+                  .cycles = 1,
                   .warmup = 128,
                   .frames = 64,
                   .off_frame = -1,
@@ -115,10 +118,11 @@ static Options options(int argc, char **argv)
         if (!strcmp(key, "--method")) {
             assert(
                 !strcmp(value, "trace") || !strcmp(value, "iterate") ||
-                !strcmp(value, "coarse")
+                !strcmp(value, "coarse") || !strcmp(value, "multigrid")
             );
             o.iterative = strcmp(value, "trace") != 0;
             o.coarse = !strcmp(value, "coarse");
+            o.multigrid = !strcmp(value, "multigrid");
         } else if (!strcmp(key, "--width")) {
             o.width = atoi(value);
         } else if (!strcmp(key, "--height")) {
@@ -135,6 +139,8 @@ static Options options(int argc, char **argv)
             o.events = atoi(value);
         } else if (!strcmp(key, "--iterations")) {
             o.iterations = atoi(value);
+        } else if (!strcmp(key, "--cycles")) {
+            o.cycles = atoi(value);
         } else if (!strcmp(key, "--warmup")) {
             o.warmup = atoi(value);
         } else if (!strcmp(key, "--frames")) {
@@ -167,9 +173,10 @@ static Options options(int argc, char **argv)
     );
     assert(o.directions >= 8 && o.directions <= 64 && o.directions % 8 == 0);
     assert(o.boundary_filter == 0 || o.boundary_filter == 1);
+    assert(o.cycles >= 0 && o.cycles <= 64);
     assert(o.events >= 0 && o.events <= 4 && o.rays > 0 && o.rays <= 16384);
     assert(
-        o.iterations > 0 && o.iterations <= 64 && o.warmup >= 0 &&
+        o.iterations > 0 && o.iterations <= 4096 && o.warmup >= 0 &&
         o.frames > 0 && o.frames <= 4096
     );
     assert(
@@ -211,8 +218,12 @@ int main(int argc, char **argv)
         levels++;
     }
     CF_StorageBuffer accumulator = { 0 };
+    gi_multigrid *multigrid = NULL;
     CF_ComputeShader clear = { 0 }, trace = { 0 }, solve = { 0 };
-    if (o.iterative) {
+    if (o.multigrid) {
+        multigrid = gi_multigrid_create(o.width, o.height, o.directions);
+        solve = shader("gather.shd");
+    } else if (o.iterative) {
         for (int level = 0; level < levels; level++) {
             for (int i = 0; i < 2; i++) {
                 field[level][i] = canvas(
@@ -245,7 +256,9 @@ int main(int argc, char **argv)
     cf_material_set_uniform_cs(m, "u_scene", scene, CF_UNIFORM_TYPE_FLOAT, 4);
     size_t field_bytes = (size_t)o.width * o.height * (16 + (o.iterative ? 0 : 12)) +
                          (size_t)o.display_width * o.display_height * 4;
-    if (o.iterative) {
+    if (o.multigrid) {
+        field_bytes += gi_multigrid_bytes(multigrid);
+    } else if (o.iterative) {
         for (int level = 0; level < levels; level++) {
             field_bytes += (size_t)widths[level] * heights[level] * o.directions * 16;
         }
@@ -261,7 +274,18 @@ int main(int argc, char **argv)
         scene[2] = o.shift +
                    (o.move_frame >= 0 && frame >= o.move_frame ? o.move_shift : 0);
         cf_material_set_uniform_cs(m, "u_scene", scene, CF_UNIFORM_TYPE_FLOAT, 4);
-        if (o.iterative) {
+        if (o.multigrid) {
+            CF_Texture transport = gi_multigrid_solve(multigrid, grid, budget, scene, o.cycles, o.iterations);
+            cf_material_set_texture_cs(m, "u_previous", transport);
+            dispatch_image(
+                solve,
+                m,
+                cf_canvas_get_target(result),
+                (o.width + 15) / 16,
+                (o.height + 15) / 16,
+                1
+            );
+        } else if (o.iterative) {
             for (int level = levels - 1; level >= 0; level--) {
                 int w = widths[level], h = heights[level];
                 grid[0] = w;
@@ -372,14 +396,15 @@ int main(int argc, char **argv)
         "{\"method\":\"%s\",\"scene\":%d,\"hidden_window\":true,\"grid\":[%d,%"
         "d],"
         "\"display\":[%d,%d],\"directions\":%d,\"rays\":%d,\"events\":%d,"
-        "\"iterations\":%d,"
+        "\"iterations\":%d,\"cycles\":%d,"
         "\"warmup\":%d,\"frames\":%d,\"p50_ms\":%.4f,\"p95_ms\":%.4f,\"p99_"
         "ms\":%.4f,"
         "\"boundary_filter\":%d,\"allocated_field_mib\":%.3f,\"levels\":%d,"
         "\"timing\":\"CPU dispatch "
         "plus synchronized GPU completion; optical field and display "
         "reconstruction only\"}\n",
-        o.coarse      ? "coarse"
+        o.multigrid   ? "multigrid"
+        : o.coarse    ? "coarse"
         : o.iterative ? "iterate"
                       : "trace",
         o.scene,
@@ -391,6 +416,7 @@ int main(int argc, char **argv)
         o.rays,
         o.events,
         o.iterations,
+        o.cycles,
         o.warmup,
         o.frames,
         times[o.frames / 2],
@@ -398,7 +424,7 @@ int main(int argc, char **argv)
         times[(int)(o.frames * .99)],
         o.boundary_filter,
         (double)field_bytes / (1024 * 1024),
-        levels
+        multigrid ? gi_multigrid_levels(multigrid) : levels
     );
     free(times);
     if (accumulator.id) {
@@ -414,7 +440,12 @@ int main(int argc, char **argv)
     if (clear.id) {
         cf_destroy_compute_shader(clear);
     }
-    cf_destroy_compute_shader(trace);
+    if (trace.id) {
+        cf_destroy_compute_shader(trace);
+    }
+    if (multigrid) {
+        gi_multigrid_destroy(multigrid);
+    }
     cf_destroy_compute_shader(solve);
     cf_destroy_compute_shader(present);
     cf_destroy_canvas(result);

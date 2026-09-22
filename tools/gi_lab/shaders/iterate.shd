@@ -2,48 +2,7 @@
 layout(set=0,binding=0) uniform sampler2D u_previous;
 layout(set=1,binding=0,rgba16f) uniform writeonly image2D u_next;
 layout(local_size_x=8,local_size_y=8) in;
-vec3 sample_direction(vec2 p, int angle) {
-    if (any(lessThan(p,vec2(0))) || any(greaterThanEqual(p,EXTENT))) return vec3(0);
-    angle=(angle+u_grid.z)%u_grid.z;
-    // Clamp within each tile to prevent interpolation across unrelated directions.
-    vec2 dims=vec2(textureSize(u_previous,0))/vec2(8,u_grid.z/8);
-    vec2 pixel=clamp(p/EXTENT*dims,vec2(.5),dims-.5);
-    vec2 tile=vec2(angle%8,angle/8);
-    if (u_budget.w==0) return texture(u_previous,(tile*dims+pixel)/vec2(textureSize(u_previous,0))).rgb;
-    vec2 grid=pixel-.5, f=fract(grid);
-    ivec2 base=ivec2(floor(grid));
-    vec3 sum=vec3(0); float total=0;
-    bool material=inside(p);
-    for (int y=0;y<2;y++) for (int x=0;x<2;x++) {
-        ivec2 cell=clamp(base+ivec2(x,y),ivec2(0),ivec2(dims)-1);
-        vec2 q=(vec2(cell)+.5)/dims*EXTENT;
-        if (material ? !inside(q) : inside(q)) continue;
-        if (u_grid.w==4) {
-            vec2 delta=q-p,n;
-            float distance=length(delta);
-            if (distance>EPS && hit(p,delta/distance,n)<distance) continue;
-        }
-        float weight=(x==0 ? 1-f.x : f.x)*(y==0 ? 1-f.y : f.y);
-        sum+=texelFetch(u_previous,ivec2(tile*dims)+cell,0).rgb*weight;
-        total+=weight;
-    }
-    return total>1e-6 ? sum/total : vec3(0);
-}
-vec3 sample_field(vec2 p, vec2 d) {
-    float angle=mod(atan(d.y,d.x)+2*PI,2*PI)*float(u_grid.z)/(2*PI);
-    int a=int(floor(angle));
-    return mix(sample_direction(p,a),sample_direction(p,a+1),fract(angle));
-}
-vec3 pull(vec2 p, vec2 back, float length) {
-    // Boundary emitter, with unit total power integrated over its .4 world-unit span.
-    if (back.x<-.999999) {
-        float t=(.06-p.x)/back.x;
-        float y=p.y+back.y*t;
-        if (t>=0 && t<=length && y>=.3625 && y<.7625)
-            return vec3(u_scene.y/(.4*(2*PI/float(u_grid.z))))*exp(-extinction(p,false)*t);
-    }
-    return sample_field(p+back*length,-back)*exp(-extinction(p,inside(p))*length);
-}
+#include "transport.shd"
 void main() {
     ivec2 xy=ivec2(gl_GlobalInvocationID.xy); int angle=int(gl_GlobalInvocationID.z);
     if (any(greaterThanEqual(xy,u_grid.xy))) return;
@@ -51,25 +10,9 @@ void main() {
     if (u_budget.z==1) { imageStore(u_next,at,vec4(0)); return; }
     vec2 p=(vec2(xy)+.5)/vec2(u_grid.xy)*EXTENT;
     float theta=float(angle)*2*PI/float(u_grid.z);
-    vec2 back=-vec2(cos(theta),sin(theta)), n;
+    vec2 back=-vec2(cos(theta),sin(theta));
     if (u_budget.z==2) { imageStore(u_next,at,vec4(sample_field(p,-back),1)); return; }
     float step_length=u_scene.w*EXTENT.x/float(u_grid.x);
-    // A grid center can lie exactly on a mirror. Skipping t=0 would let the
-    // direct beam leak through that entire row. Select the outgoing side.
-    float t=hit_near(p,back,-EPS,n);
-    vec3 value;
-    if (t>step_length) value=pull(p,back,step_length);
-    else {
-        bool glass=inside(t<=EPS ? p-back*EPS*4 : p);
-        if (dot(n,back)>0) n=-n;
-        vec2 transmitted, reflected=reflect(back,n), q=p+t*back;
-        float ni=glass?1.5:1, nt=glass?1:1.5;
-        float f=u_grid.w == 4 ? 1 : fresnel(back,n,ni,nt,transmitted);
-        value=f*pull(q+reflected*EPS*4,reflected,step_length-t)*
-            (u_grid.w == 4 ? vec3(.95,.85,.7) : vec3(1));
-        // Intrinsic 2D radiance conserves L/n across refraction, not 3D L/n^2.
-        if (f<1) value+=(1-f)*(ni/nt)*pull(q+transmitted*EPS*4,transmitted,step_length-t);
-        value*=exp(-extinction(p,glass)*t);
-    }
+    vec3 value=transport(p,back,step_length,u_scene.y,false);
     imageStore(u_next,at,vec4(value,1));
 }

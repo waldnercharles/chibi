@@ -1,0 +1,57 @@
+#include "common.shd"
+layout(set=0,binding=0) uniform sampler2D u_previous;
+layout(set=0,binding=1) uniform sampler2D u_rhs;
+layout(set=1,binding=0,rgba32f) uniform writeonly image2D u_next;
+layout(local_size_x=8,local_size_y=8) in;
+#include "transport.shd"
+const int CLEAR=0;
+const int SOURCE=1;
+const int RELAX=2;
+const int RESIDUAL=3;
+const int RESTRICT=4;
+const int CORRECT=5;
+
+// Keep values in step-integrated units: A_h L = (I - K_h) L = b_h.
+// Coarse residuals scale with the larger transport step, h_coarse / h_fine.
+vec3 restrict_residual(ivec2 xy, int angle, vec2 p) {
+    ivec2 dims=textureSize(u_previous,0)/ivec2(8,u_grid.z/8);
+    vec2 ratio=vec2(dims)/vec2(u_grid.xy);
+    vec2 lo=vec2(xy)*ratio, hi=vec2(xy+1)*ratio;
+    ivec2 base=ivec2(floor(lo)), tile=ivec2(angle%8,angle/8)*dims;
+    vec3 sum=vec3(0); float weight=0;
+    for (int y=0;y<3;y++) for (int x=0;x<3;x++) {
+        ivec2 cell=base+ivec2(x,y);
+        if (any(greaterThanEqual(cell,dims))) continue;
+        vec2 overlap=max(vec2(0),min(vec2(cell+1),hi)-max(vec2(cell),lo));
+        float w=overlap.x*overlap.y;
+        if (w==0) continue;
+        vec2 q=(vec2(cell)+.5)/vec2(dims)*EXTENT;
+        if (u_budget.w!=0 && (inside(p) ? !inside(q) : inside(q))) continue;
+        sum+=texelFetch(u_previous,tile+cell,0).rgb*w;
+        weight+=w;
+    }
+    return weight>0 ? sum/weight*ratio.x : vec3(0);
+}
+void main() {
+    ivec2 xy=ivec2(gl_GlobalInvocationID.xy); int angle=int(gl_GlobalInvocationID.z);
+    if (any(greaterThanEqual(xy,u_grid.xy))) return;
+    ivec2 at=xy+ivec2(angle%8,angle/8)*u_grid.xy;
+    int mode=u_multigrid.x;
+    if (mode==CLEAR) { imageStore(u_next,at,vec4(0)); return; }
+    vec2 p=(vec2(xy)+.5)/vec2(u_grid.xy)*EXTENT;
+    vec2 back=-vec2(cos(float(angle)*2*PI/float(u_grid.z)),sin(float(angle)*2*PI/float(u_grid.z)));
+    vec3 value;
+    if (mode==RESTRICT) value=restrict_residual(xy,angle,p);
+    else if (mode==CORRECT) {
+        value=texelFetch(u_rhs,at,0).rgb+sample_direction(p,angle);
+        // Error fields must stay signed. Only the physical fine-grid solution
+        // is limited to nonnegative radiance after a coarse correction.
+        if (u_multigrid.y!=0) value=max(vec3(0),value);
+    } else {
+        float step_length=u_scene.w*EXTENT.x/float(u_grid.x);
+        value=transport(p,back,step_length,mode==SOURCE ? u_scene.y : 0,mode==SOURCE);
+        if (mode!=SOURCE) value+=texelFetch(u_rhs,at,0).rgb;
+        if (mode==RESIDUAL) value-=texelFetch(u_previous,at,0).rgb;
+    }
+    imageStore(u_next,at,vec4(value,1));
+}

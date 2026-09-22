@@ -368,7 +368,7 @@ set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIO
 
 # Hidden native GPU optics experiments, independent of authored game content.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    add_executable(gi_lab tools/gi_lab/main.c)
+    add_executable(gi_lab tools/gi_lab/main.c tools/gi_lab/multigrid.c)
     target_compile_definitions(gi_lab PRIVATE GI_LAB_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tools/gi_lab/shaders")
     target_link_libraries(gi_lab PRIVATE core cute)
     # The lab validates argument ranges, shader resources, and HDR readback in Release too.

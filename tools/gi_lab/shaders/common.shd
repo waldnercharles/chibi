@@ -9,6 +9,7 @@ layout(set=2, binding=0) uniform Params {
     ivec4 u_grid; // width, height, directions, scene (0 empty, 1 lens, 2 slab, 3 prism, 4 mirror)
     ivec4 u_budget; // paths, interfaces, initialize, boundary filter
     vec4 u_scene; // fog extinction, light power, lens Y shift, iteration step in cells
+    ivec4 u_multigrid; // residual solver operation, physical solution, reserved
 };
 float cross2(vec2 a, vec2 b) { return a.x*b.y-a.y*b.x; }
 vec2 fixture_vertex(int i) {

@@ -13,6 +13,7 @@
 #include "render/reflections.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
+#include "render/shader_dir.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
 #include "runtime/generated.h"
@@ -67,7 +68,7 @@ void app_scene_renderer_initialize()
     if (!render_image_mount_content("content", message, sizeof message)) {
         fprintf(stderr, "%s\n", message);
     }
-    cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
+    cf_fs_mount(render_shader_dir(), "/chibi-render", true);
     cf_shader_directory("/chibi-render");
 }
 

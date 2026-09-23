@@ -9,6 +9,7 @@
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
+#include "render/shader_dir.h"
 #include "render/shader_images.h"
 #include "render/shader_preview.h"
 #include "support/array.h"
@@ -751,7 +752,7 @@ static bool render_asset(
         cf_destroy_app();
         return false;
     }
-    cf_fs_mount(CHIBI_RENDER_SHADER_DIR, "/chibi-render", true);
+    cf_fs_mount(render_shader_dir(), "/chibi-render", true);
     cf_shader_directory("/chibi-render");
     shader_error shader_error = { 0 };
     render_shader_preview *renderer = render_shader_preview_new(asset, width, height, options, &shader_error);

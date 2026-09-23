@@ -14,6 +14,7 @@ import {
   validateAuthoringArguments,
 } from "./authoring.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
+import { editorCommand, editorCommandDefinition } from "./editor-command.mjs";
 
 const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
@@ -812,6 +813,7 @@ function rawToolDefinitions() {
       outputSchema,
     },
     ...authoringToolDefinitions(),
+    editorCommandDefinition,
   ];
 }
 
@@ -971,6 +973,7 @@ async function toolCall(name, args, requestId) {
     throw protocolError(-32602, "tools/call requires a tool name");
   }
   validateToolArguments(name, args);
+  if (name === "editorCommand") return editorCommand(args);
   if (isAuthoringTool(name)) {
     return authoringToolCall(name, args, { nativeRequest, renderRequest, root, requestId });
   }
@@ -1066,6 +1069,8 @@ function toolSummary(name, response) {
     return summary;
   }
   const scalarKeys = [
+    "status",
+    "reason",
     "project_root",
     "content_root",
     "kind",

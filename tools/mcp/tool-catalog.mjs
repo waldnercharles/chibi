@@ -353,6 +353,14 @@ const entries = [
     nextSteps: ["Use the public names in tools/list when calling the MCP."],
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
+  {
+    name: "editorCommand", operation: "editorCommand", adapter: "live-editor",
+    title: "Run a command in a live editor",
+    description: "Use the shared Cmd+K runtime through a native socket or registered browser session. Inspect, submit, poll, clarify, review, and cancel revision-checked editor transactions.",
+    intentTerms: ["editor", "command"],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false, openWorldHint: false },
+    candidates: ["editorCommand"], nextSteps: ["Poll the returned task ID. Reply to listed choices or review concrete operations. Verify applied status before continuing."],
+  },
 ];
 
 export const toolCatalog = Object.freeze(entries.map((entry) => Object.freeze(entry)));

@@ -27,6 +27,13 @@ activates, and Escape or Tab returns focus to the editor. The existing document
 tabs and document-list popup still use ImGui. The list opens from its retained
 button's current bounds, including when invoked by keyboard.
 
+Use `--design-preview` on desktop or `?design-preview=1` in the browser to review
+only the converted menus and toolbar. Panels, document tabs, the activity rail,
+native tooltips and their View entries are hidden. Commands that need the full
+workspace are disabled; Reduce Motion remains available. This preview skips
+authoring input and simulation and does not save changes to the workspace layout.
+Launch without the flag to use the full editor.
+
 Menu labels share a centered 18dp line box. Popups align with their triggers,
 and checkable and ordinary View items share one text column. Pointer presses
 give immediate color feedback; keyboard navigation suppresses hover highlights
@@ -54,7 +61,7 @@ markup. Text entry and IME, custom graph elements, accessibility integration and
 docking need their own working conversions before ImGui can be removed.
 
 `build/test_suite --rmlui-menu` exercises command dispatch, keyboard focus,
-disabled items, pane state, menu alignment, toolbar navigation, scaling and
+disabled items, design preview, pane state, menu alignment, toolbar navigation, scaling and
 context teardown without a GPU. The `--rmlui-menu-render` smoke test covers GPU
 composition, display scaling, resize and preserving queued scene geometry.
 `make test-render` includes that smoke test. Set `CHIBI_RMLUI_CAPTURE_DIR` to an

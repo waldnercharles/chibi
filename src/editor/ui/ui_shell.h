@@ -143,6 +143,8 @@ void editor_ui_set_inline_edge_nodes(bool enabled);
 
 /* Register workspace preferences before the first ImGui frame loads settings. */
 void editor_ui_initialize(bool persist);
+/* Show converted controls only, without changing workspace visibility preferences. */
+void editor_ui_set_design_preview(bool enabled);
 void editor_ui_prepare(void);
 /* Compose retained UI after document panes and before presenting the frame. */
 void editor_ui_render();

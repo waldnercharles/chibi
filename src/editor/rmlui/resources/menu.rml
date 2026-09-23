@@ -29,21 +29,21 @@
             <div class="menu-wrap" id="view-wrap">
                 <button id="view.menu" class="menu-trigger" data-menu-trigger="view" role="menuitem" aria-haspopup="true" aria-expanded="false"><span id="view.label">View</span></button>
                 <div id="view.popup" class="menu-popup view-popup" data-menu-popup="view" role="menu" aria-label="View" aria-hidden="true">
-                    <button id="view.graph_and_scene" class="menu-item" data-action="view.graph_and_scene" role="menuitem"><span class="item-label">Reset Workspace</span></button>
-                    <div class="separator"></div>
-                    <button id="view.navigator" class="menu-item checkable" data-action="view.navigator" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Navigator</span></button>
-                    <button id="view.inspector" class="menu-item checkable" data-action="view.inspector" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Inspector</span></button>
-                    <button id="view.node_canvas" class="menu-item checkable" data-action="view.node_canvas" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Node Canvas</span></button>
-                    <button id="view.scene" class="menu-item checkable" data-action="view.scene" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Scene</span></button>
-                    <div class="separator"></div>
-                    <button id="view.compiler_results" class="menu-item checkable" data-action="view.compiler_results" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Compiler Results</span></button>
-                    <button id="view.output_log" class="menu-item checkable" data-action="view.output_log" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Output Log</span></button>
-                    <button id="view.performance" class="menu-item checkable" data-action="view.performance" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Performance</span></button>
-                    <div class="separator"></div>
-                    <button id="view.inline_edge_nodes" class="menu-item checkable" data-action="view.inline_edge_nodes" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Inline nodes on edge drop</span></button>
+                    <button id="view.graph_and_scene" class="workspace-only menu-item" data-action="view.graph_and_scene" role="menuitem"><span class="item-label">Reset Workspace</span></button>
+                    <div class="workspace-only separator"></div>
+                    <button id="view.navigator" class="workspace-only menu-item checkable" data-action="view.navigator" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Navigator</span></button>
+                    <button id="view.inspector" class="workspace-only menu-item checkable" data-action="view.inspector" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Inspector</span></button>
+                    <button id="view.node_canvas" class="workspace-only menu-item checkable" data-action="view.node_canvas" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Node Canvas</span></button>
+                    <button id="view.scene" class="workspace-only menu-item checkable" data-action="view.scene" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Scene</span></button>
+                    <div class="workspace-only separator"></div>
+                    <button id="view.compiler_results" class="workspace-only menu-item checkable" data-action="view.compiler_results" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Compiler Results</span></button>
+                    <button id="view.output_log" class="workspace-only menu-item checkable" data-action="view.output_log" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Output Log</span></button>
+                    <button id="view.performance" class="workspace-only menu-item checkable" data-action="view.performance" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Performance</span></button>
+                    <div class="workspace-only separator"></div>
+                    <button id="view.inline_edge_nodes" class="workspace-only menu-item checkable" data-action="view.inline_edge_nodes" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Inline nodes on edge drop</span></button>
                     <button id="view.reduced_motion" class="menu-item checkable" data-action="view.reduced_motion" role="menuitemcheckbox" aria-checked="false"><span class="check-mark">✓</span><span class="item-label">Reduce Motion</span></button>
-                    <div class="separator"></div>
-                    <button id="view.reset_layout" class="menu-item" data-action="view.reset_layout" role="menuitem"><span class="item-label">Reset Layout</span></button>
+                    <div class="workspace-only separator"></div>
+                    <button id="view.reset_layout" class="workspace-only menu-item" data-action="view.reset_layout" role="menuitem"><span class="item-label">Reset Layout</span></button>
                 </div>
             </div>
         </div>

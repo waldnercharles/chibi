@@ -398,6 +398,14 @@ void handle_keydown(editor_rml_menu *menu, Rml::Event &event)
 
 void apply_state(editor_rml_menu *menu)
 {
+    menu->bar->SetClass("design-preview", menu->state.design_preview);
+    Rml::Element *view = menu->document->GetElementById("view.popup");
+    for (int index = 0; index < view->GetNumChildren(); ++index) {
+        Rml::Element *item = view->GetChild(index);
+        if (item->IsClassSet("workspace-only") && item->HasAttribute("data-action")) {
+            set_enabled(item, !menu->state.design_preview);
+        }
+    }
     set_enabled(
         menu->document->GetElementById("workspace.quick_open"),
         menu->state.commands_available
@@ -448,6 +456,7 @@ void apply_state(editor_rml_menu *menu)
 bool states_equal(const editor_rml_menu_state &left, const editor_rml_menu_state &right)
 {
     if (left.commands_available != right.commands_available ||
+        left.design_preview != right.design_preview ||
         left.can_undo != right.can_undo || left.can_redo != right.can_redo ||
         left.navigator_visible != right.navigator_visible ||
         left.inline_edge_nodes != right.inline_edge_nodes ||
@@ -465,7 +474,7 @@ bool states_equal(const editor_rml_menu_state &left, const editor_rml_menu_state
 
 bool rect_for_element(const editor_rml_menu *menu, Rml::Element *element, editor_rml_menu_rect *out)
 {
-    if (!menu || !element || !out) {
+    if (!menu || !element || !out || !element->IsVisible()) {
         return false;
     }
     const float scale = std::max(menu->context->GetDensityIndependentPixelRatio(), 0.001f);

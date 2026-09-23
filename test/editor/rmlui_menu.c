@@ -389,6 +389,65 @@ static bool toggle_pane(editor_ui_pane pane, const char *item)
            editor_ui_pane_visible(pane) == before;
 }
 
+static bool design_preview(rmlui_menu_fixture *fixture)
+{
+    dismiss_menu();
+    bool panes[EDITOR_UI_PANE_COUNT];
+    for (int i = 0; i < EDITOR_UI_PANE_COUNT; i++) {
+        panes[i] = editor_ui_pane_visible((editor_ui_pane)i);
+    }
+    bool motion = editor_ui_reduced_motion();
+    editor_ui_set_document_bar_visible(true);
+    editor_ui_set_navigation_available(true, true);
+    editor_ui_set_design_preview(true);
+    menu_frame();
+    menu_frame();
+
+    int before = fixture->command_count;
+    bool disabled = editor_ui_run_command(EDITOR_UI_COMMAND_QUICK_OPEN) == -1;
+    disabled &= click_item("content.quick_open");
+    disabled &= click_item("workspace.back");
+    disabled &= click_item("workspace.forward");
+    disabled &= editor_ui_take_navigation() == 0;
+    disabled &= click_item("workspace.documents.list");
+    disabled &= !editor_ui_take_document_list_request();
+    disabled &= click_item("file.menu");
+    disabled &= click_item("file.save");
+    disabled &= fixture->command_count == before;
+    dismiss_menu();
+
+    bool hidden = click_item("view.menu");
+    static const char *const hidden_ids[] = {
+        "view.graph_and_scene", "view.navigator",   "view.inspector",
+        "view.node_canvas",     "view.scene",       "view.compiler_results",
+        "view.output_log",      "view.performance", "view.inline_edge_nodes",
+        "view.reset_layout",
+    };
+    for (int i = 0; i < (int)(sizeof hidden_ids / sizeof *hidden_ids); i++) {
+        hidden &= !item_center(hidden_ids[i], &(ImVec2){ 0 });
+    }
+    hidden &= item_center("view.reduced_motion", &(ImVec2){ 0 });
+    menu_key(ImGuiKey_Home);
+    menu_key(ImGuiKey_DownArrow);
+    menu_key(ImGuiKey_Enter);
+    bool keyboard = editor_ui_reduced_motion() != motion;
+    dismiss_menu();
+
+    editor_ui_set_design_preview(false);
+    editor_ui_set_reduced_motion(motion);
+    menu_frame();
+    bool restored = click_item("view.menu");
+    restored &= item_center("view.inspector", &(ImVec2){ 0 });
+    for (int i = 0; i < EDITOR_UI_PANE_COUNT; i++) {
+        restored &= editor_ui_pane_visible((editor_ui_pane)i) == panes[i];
+    }
+    dismiss_menu();
+    restored &= click_item("content.quick_open");
+    restored &= fixture->command_count == before + 1;
+    editor_ui_set_navigation_available(false, false);
+    return disabled && hidden && keyboard && restored;
+}
+
 bool test_rmlui_menu()
 {
     bool panes_before[EDITOR_UI_PANE_COUNT];
@@ -608,6 +667,9 @@ bool test_rmlui_menu()
         toolbar_action_ok = toolbar_actions(&fixture, toolbar_rects_1x);
         toolbar_layout_1x = toolbar_layout(toolbar_rects_1x);
         toolbar_keyboard_ok = toolbar_keyboard_actions(&fixture);
+        bool preview_ok = design_preview(&fixture);
+        printf("rmlui-design-preview %s\n", preview_ok ? "PASS" : "FAIL");
+        ok &= preview_ok;
 
         io->DisplayFramebufferScale = (ImVec2){ 2, 2 };
         editor_ui_set_framebuffer_target(true);

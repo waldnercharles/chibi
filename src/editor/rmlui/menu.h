@@ -25,6 +25,7 @@ extern "C"
     typedef struct editor_rml_menu_state
     {
         bool commands_available;
+        bool design_preview;
         bool can_undo;
         bool can_redo;
         bool navigator_visible;

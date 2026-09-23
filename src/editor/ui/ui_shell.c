@@ -75,6 +75,7 @@ static bool ui_navigation_back;
 static bool ui_navigation_forward;
 static int ui_navigation_request;
 static bool ui_document_bar_visible;
+static bool ui_design_preview;
 static bool ui_document_list_requested;
 static ImVec2 ui_document_bar_pos;
 static ImVec2 ui_document_bar_size;
@@ -608,7 +609,8 @@ bool editor_ui_begin_document_bar()
     float width = editor_menu_toolbar_draw(cursor.x, y, height);
     ImGui_Dummy((ImVec2){ width, height });
     ImGui_SameLineEx(0, 8.0f);
-    if (!editor_ui_captures_keyboard() && ImGui_IsWindowHovered(0)) {
+    if (!ui_design_preview && !editor_ui_captures_keyboard() &&
+        ImGui_IsWindowHovered(0)) {
         static const struct
         {
             const char *id;
@@ -691,7 +693,9 @@ void editor_ui_show_graph_and_scene(void)
 
 int editor_ui_run_command(editor_ui_command command)
 {
-    return ui_command_handler ? ui_command_handler(command, ui_command_user) : -1;
+    return ui_command_handler && !ui_design_preview
+             ? ui_command_handler(command, ui_command_user)
+             : -1;
 }
 
 void editor_ui_set_runtime_state(bool playing, bool session)
@@ -1714,7 +1718,8 @@ static void ui_draw_menu(void)
         { "view.performance", EDITOR_UI_PANE_PERFORMANCE },
     };
     editor_rml_menu_state state = {
-        .commands_available = ui_command_handler != NULL,
+        .commands_available = ui_command_handler != NULL && !ui_design_preview,
+        .design_preview = ui_design_preview,
         .can_undo = ui_can_undo,
         .can_redo = ui_can_redo,
         .navigator_visible = ui_navigator_visible(),
@@ -1726,9 +1731,9 @@ static void ui_draw_menu(void)
         state.panes[i] = editor_ui_pane_visible(panes[i].pane);
     }
     editor_rml_toolbar_state toolbar = {
-        .back = ui_navigation_back,
-        .forward = ui_navigation_forward,
-        .commands_available = ui_command_handler != NULL,
+        .back = ui_navigation_back && !ui_design_preview,
+        .forward = ui_navigation_forward && !ui_design_preview,
+        .commands_available = ui_command_handler != NULL && !ui_design_preview,
         .reduced_motion = ui_reduce_motion,
     };
     editor_menu_toolbar_state(&toolbar, ui_document_bar_visible);
@@ -1736,6 +1741,9 @@ static void ui_draw_menu(void)
     ui_menu_bottom = ImGui_GetMainViewport()->Pos.y + editor_menu_height();
     const char *action;
     while ((action = editor_menu_take_action())) {
+        if (ui_design_preview && strcmp(action, "view.reduced_motion") != 0) {
+            continue;
+        }
         if (strcmp(action, "workspace.back") == 0) {
             editor_ui_request_navigation(-1);
         }
@@ -2058,6 +2066,11 @@ static void ui_prepare_sidebars()
     ImGui_PopStyleVarEx(2);
 }
 
+void editor_ui_set_design_preview(bool enabled)
+{
+    ui_design_preview = enabled;
+}
+
 void editor_ui_prepare(void)
 {
     afree(ui_item_hits);
@@ -2092,6 +2105,19 @@ void editor_ui_prepare(void)
                                          UI_DOCUMENT_BAR_HEIGHT };
         ui_workspace.WorkPos.y += UI_DOCUMENT_BAR_HEIGHT;
         ui_workspace.WorkSize.y = fmaxf(1.0f, ui_workspace.WorkSize.y - UI_DOCUMENT_BAR_HEIGHT);
+    }
+    if (ui_design_preview) {
+        ImVec2 end = {
+            ui_workspace.WorkPos.x + ui_workspace.WorkSize.x,
+            ui_workspace.WorkPos.y + ui_workspace.WorkSize.y,
+        };
+        ImDrawList_AddRectFilled(
+            ImGui_GetBackgroundDrawList(),
+            ui_workspace.WorkPos,
+            end,
+            ImGui_ColorConvertFloat4ToU32(UI_DOCK_EMPTY)
+        );
+        return;
     }
     ui_prepare_sidebars();
     ImGuiViewport layout = ui_workspace;
@@ -2131,6 +2157,7 @@ bool editor_ui_restore_checkpoint(const char *ini)
 void editor_ui_deactivate()
 {
     editor_menu_shutdown();
+    ui_design_preview = false;
     ui_document_list_requested = false;
     ui_context = NULL;
     ImGui_ClearActiveID();

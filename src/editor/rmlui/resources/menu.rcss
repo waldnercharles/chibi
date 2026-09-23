@@ -190,3 +190,6 @@ button {
 .menu-bar.reduced-motion .menu-trigger:hover {
     transition: none;
 }
+.menu-bar.design-preview .workspace-only {
+    display: none;
+}

@@ -186,6 +186,8 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/execute.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/quick_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/model.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/codex_auth.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/codex_response.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/commands/task.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_index.c

@@ -1,3 +1,4 @@
+#include "editor/commands/codex_response.h"
 #include "editor/commands/internal.h"
 #include "editor/commands/model.h"
 #include "editor/ui/command_transport.h"
@@ -328,6 +329,116 @@ void test_editor_command_model()
     } else {
         test_check(false, "command model parses a named color proposal");
     }
+
+    test_check(
+        editor_command_model_set_settings("codex", "gpt-6-luna", error, sizeof error),
+        "command model selects the ChatGPT Codex provider"
+    );
+    char *codex_request = editor_command_model_prepare(packet, error, sizeof error);
+    test_check(codex_request != NULL, "command model builds a Codex Responses request");
+    if (codex_request) {
+        yyjson_doc *codex_doc = NULL;
+        yyjson_val *codex_root = test_json_root(codex_request, &codex_doc);
+        const char *url = command_string(codex_root, "url");
+        const char *body = command_string(codex_root, "body");
+        yyjson_doc *body_doc = NULL;
+        yyjson_val *body_root = *body ? test_json_root(body, &body_doc) : NULL;
+        yyjson_val *input = yyjson_arr_get(yyjson_obj_get(body_root, "input"), 0);
+        yyjson_val *content = yyjson_arr_get(yyjson_obj_get(input, "content"), 0);
+        yyjson_val *tool = yyjson_arr_get(yyjson_obj_get(body_root, "tools"), 0);
+        test_check(
+            !strcmp(command_string(codex_root, "provider"), "codex") &&
+                !strcmp(url, "https://chatgpt.com/backend-api/codex/responses"),
+            "Codex request envelope selects the fixed Responses endpoint"
+        );
+        test_check(
+            !strcmp(command_string(body_root, "model"), "gpt-6-luna") &&
+                yyjson_is_str(yyjson_obj_get(body_root, "instructions")) &&
+                !strcmp(command_string(content, "type"), "input_text") &&
+                strstr(command_string(content, "text"), "make it green") &&
+                !strcmp(command_string(tool, "name"), "submit_plan"),
+            "Codex request uses Responses input and the submit_plan tool"
+        );
+        test_check(
+            yyjson_obj_size(codex_root) == 3 && !yyjson_obj_get(codex_root, "token") &&
+                !yyjson_obj_get(codex_root, "access_token") &&
+                !yyjson_obj_get(body_root, "token") &&
+                !yyjson_obj_get(body_root, "access_token") &&
+                !strstr(codex_request, "Bearer "),
+            "Codex request envelope and body contain no authentication token"
+        );
+        yyjson_doc_free(body_doc);
+        yyjson_doc_free(codex_doc);
+    }
+    free(codex_request);
+
+    const char *completed_sse =
+        "event: response.completed\n"
+        "data: "
+        "{\"type\":\"response.completed\",\"response\":{\"status\":"
+        "\"completed\",\"output\":["
+        "{\"type\":\"function_call\",\"name\":\"submit_plan\",\"arguments\":"
+        "\"{\\\"decision\\\":\\\"act\\\",\\\"operations\\\":[{"
+        "\\\"op\\\":\\\"set\\\",\\\"target\\\":\\\"object:1\\\","
+        "\\\"field\\\":\\\"color\\\",\\\"value\\\":\\\"#00ff00\\\"}],"
+        "\\\"question\\\":\\\"\\\",\\\"choices\\\":[],"
+        "\\\"unsupported\\\":\\\"\\\"}\"}]}}\n\n";
+    char codex_error[256] = { 0 };
+    char *normalized = editor_codex_response_normalize(completed_sse, codex_error, sizeof codex_error);
+    test_check(normalized != NULL, "Codex completed submit_plan event normalizes successfully");
+    if (normalized) {
+        char *result = editor_command_model_result(packet, normalized, error, sizeof error);
+        test_check(result != NULL, "normalized Codex submit_plan passes command validation");
+        if (result) {
+            yyjson_doc *result_doc = NULL;
+            yyjson_val *result_root = test_json_root(result, &result_doc);
+            yyjson_val *operation = yyjson_arr_get(yyjson_obj_get(result_root, "operations"), 0);
+            test_check(
+                !strcmp(command_string(result_root, "status"), "needs_review") &&
+                    yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x00ff0044u,
+                "normalized Codex proposal retains the grounded color edit"
+            );
+            yyjson_doc_free(result_doc);
+        }
+        free(result);
+    }
+    free(normalized);
+
+    const char
+        *failed_sse = "event: response.failed\n"
+                      "data: "
+                      "{\"type\":\"response.failed\",\"response\":{\"error\":{"
+                      "\"message\":\"Codex request failed\"}}}\n\n";
+    normalized = editor_codex_response_normalize(failed_sse, codex_error, sizeof codex_error);
+    test_check(!normalized && strstr(codex_error, "Codex request failed"), "Codex failed events return their error");
+    free(normalized);
+
+    const char
+        *incomplete_sse = "event: response.incomplete\n"
+                          "data: "
+                          "{\"type\":\"response.incomplete\",\"response\":{"
+                          "\"status\":\"incomplete\"}}\n\n";
+    normalized = editor_codex_response_normalize(incomplete_sse, codex_error, sizeof codex_error);
+    test_check(!normalized && strstr(codex_error, "incomplete"), "Codex incomplete events are rejected");
+    free(normalized);
+
+    const char *multiple_calls_sse =
+        "event: response.completed\n"
+        "data: {\"type\":\"response.completed\",\"response\":{\"output\":["
+        "{\"type\":\"function_call\",\"name\":\"submit_plan\",\"arguments\":\"{"
+        "}\"},"
+        "{\"type\":\"function_call\",\"name\":\"submit_plan\",\"arguments\":\"{"
+        "}\"}]}}\n\n";
+    normalized = editor_codex_response_normalize(multiple_calls_sse, codex_error, sizeof codex_error);
+    test_check(!normalized && strstr(codex_error, "more than one function call"), "Codex multiple function calls are rejected");
+    free(normalized);
+
+    normalized = editor_codex_response_normalize("", codex_error, sizeof codex_error);
+    test_check(
+        !normalized && strstr(codex_error, "before response.completed"),
+        "Codex streams without a completed event are rejected"
+    );
+    free(normalized);
 
     free(result);
     free(request);

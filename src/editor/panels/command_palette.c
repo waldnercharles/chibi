@@ -1,5 +1,6 @@
 #include "editor/panels/command_palette.h"
 
+#include "editor/commands/codex_auth.h"
 #include "editor/commands/command.h"
 #include "editor/commands/model.h"
 #include "editor/ui/ui_shell.h"
@@ -20,6 +21,7 @@ struct editor_command_palette
     int choice, host_choice;
     char query[1025], reply[4097], message[256];
     char host[256], model[128];
+    editor_codex_login *login;
 };
 
 static const struct
@@ -30,6 +32,9 @@ static const struct
     { "Ollama", "http://127.0.0.1:11435/api" },
     { "MLX", "http://127.0.0.1:11436/v1" },
     { "llama.cpp", "http://127.0.0.1:11437/v1" },
+#ifndef __EMSCRIPTEN__
+    { "ChatGPT", "codex" },
+#endif
 };
 
 static const char *string(yyjson_val *root, const char *key)
@@ -90,11 +95,26 @@ void editor_command_palette_open(app_scene_authoring *scene)
 
 void editor_command_palette_free(editor_command_palette *palette)
 {
+    if (!palette) {
+        return;
+    }
+    editor_codex_login_free(palette->login);
     free(palette);
 }
 void editor_command_palette_frame(app_scene_authoring *scene)
 {
     editor_commands_frame(scene);
+    editor_command_palette *palette = scene->commands;
+    if (palette && palette->login &&
+        editor_codex_login_poll(
+            palette->login,
+            NULL,
+            palette->message,
+            sizeof palette->message
+        )) {
+        editor_codex_login_free(palette->login);
+        palette->login = NULL;
+    }
 }
 
 static void draw_settings(editor_command_palette *p)
@@ -106,9 +126,6 @@ static void draw_settings(editor_command_palette *p)
     if (!ImGui_BeginPopup("command_settings", 0)) {
         return;
     }
-    ImGui_Text("Host");
-    ImGui_SetNextItemWidth(360.0f);
-    ImGui_InputText("##command_host", p->host, sizeof p->host, 0);
     const char *preview = "Custom";
     for (int i = 0; i < (int)(sizeof host_presets / sizeof host_presets[0]); i++) {
         if (!strcmp(p->host, host_presets[i].host)) {
@@ -116,22 +133,48 @@ static void draw_settings(editor_command_palette *p)
             p->host_choice = i;
         }
     }
-    if (ImGui_BeginCombo("Preset", preview, 0)) {
+    if (ImGui_BeginCombo("Provider", preview, 0)) {
         for (int i = 0; i < (int)(sizeof host_presets / sizeof host_presets[0]); i++) {
             bool selected = !strcmp(p->host, host_presets[i].host);
             if (ImGui_SelectableEx(host_presets[i].label, selected, 0, (ImVec2){ 0, 0 })) {
                 snprintf(p->host, sizeof p->host, "%s", host_presets[i].host);
                 p->host_choice = i;
+                if (!strcmp(p->host, "codex")) {
+                    snprintf(p->model, sizeof p->model, "gpt-6-luna");
+                }
             }
         }
         ImGui_EndCombo();
     }
+    bool codex = !strcmp(p->host, "codex");
+    if (!codex) {
+        ImGui_Text("Host");
+        ImGui_SetNextItemWidth(360.0f);
+        ImGui_InputText("##command_host", p->host, sizeof p->host, 0);
+    }
     ImGui_Text("Model");
     ImGui_SetNextItemWidth(360.0f);
     ImGui_InputText("##command_model", p->model, sizeof p->model, 0);
-    bool json_schema = editor_command_model_json_schema();
-    if (ImGui_Checkbox("JSON schema", &json_schema)) {
-        editor_command_model_set_json_schema(json_schema);
+    if (codex) {
+        ImGui_Text("Account: %s", editor_codex_authenticated() ? "Signed in" : "Signed out");
+        if (!p->login && !editor_codex_authenticated() && ImGui_Button("Sign in")) {
+            p->login = editor_codex_login_start(p->message, sizeof p->message);
+            if (p->login) {
+                snprintf(p->message, sizeof p->message, "Complete sign-in in your browser");
+            }
+        }
+        if (!p->login && editor_codex_authenticated() && ImGui_Button("Sign out")) {
+            editor_codex_sign_out();
+            p->message[0] = 0;
+        }
+    } else {
+        bool json_schema = editor_command_model_json_schema();
+        if (ImGui_Checkbox("JSON schema", &json_schema)) {
+            editor_command_model_set_json_schema(json_schema);
+        }
+    }
+    if (p->message[0]) {
+        ImGui_TextWrapped("%s", p->message);
     }
     if (ImGui_Button("Save")) {
         char error[128];

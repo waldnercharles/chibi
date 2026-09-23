@@ -18,6 +18,8 @@
 #define MODEL_ENDPOINT_SIZE 512
 #define MODEL_ERROR_SIZE 256
 #define MODEL_DEFAULT_MAX_TOKENS 800
+#define CODEX_HOST "codex"
+#define CODEX_RESPONSES_URL "https://chatgpt.com/backend-api/codex/responses"
 
 static char model_host[MODEL_HOST_SIZE];
 static char model_name[MODEL_NAME_SIZE];
@@ -67,6 +69,12 @@ bool editor_command_model_set_settings(const char *host, const char *model, char
     if (!model || !*model || strlen(model) >= MODEL_NAME_SIZE) {
         set_error(error, error_size, "Enter a model name");
         return false;
+    }
+    if (!strcmp(host, CODEX_HOST)) {
+        initialize_settings();
+        snprintf(model_host, sizeof model_host, "%s", host);
+        snprintf(model_name, sizeof model_name, "%s", model);
+        return true;
     }
     if (strncmp(host, "https://", 8) == 0) {
         set_error(error, error_size, "Use an HTTP OpenAI-compatible host");
@@ -593,7 +601,7 @@ static char *resolved_request(yyjson_val *packet)
     return resolved;
 }
 
-static char *prompt_for_packet(yyjson_val *packet, bool ollama, char *error, size_t error_size)
+static char *prompt_for_packet(yyjson_val *packet, bool focus, char *error, size_t error_size)
 {
     yyjson_val *catalog = yyjson_obj_get(packet, "catalog");
     char *command = resolved_request(packet);
@@ -605,9 +613,7 @@ static char *prompt_for_packet(yyjson_val *packet, bool ollama, char *error, siz
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_doc *focused_catalog = ollama || model_json_schema
-                                        ? model_catalog(catalog, command)
-                                        : NULL;
+    yyjson_mut_doc *focused_catalog = focus ? model_catalog(catalog, command) : NULL;
     yyjson_mut_obj_add_val(
         doc,
         root,
@@ -927,6 +933,13 @@ static char *policy_for_packet(const char *packet_json)
 char *editor_command_model_prepare(const char *packet_json, char *error, size_t error_size)
 {
     initialize_settings();
+    bool codex = !strcmp(model_host, CODEX_HOST);
+#ifdef __EMSCRIPTEN__
+    if (codex) {
+        set_error(error, error_size, "ChatGPT sign-in requires the desktop editor");
+        return NULL;
+    }
+#endif
     char *quick = !strncmp(model_name, "gpt-oss", 7)
                     ? editor_command_quick_edit(packet_json)
                     : NULL;
@@ -944,7 +957,9 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
         return NULL;
     }
     char endpoint[MODEL_ENDPOINT_SIZE];
-    if (!append_endpoint(model_host, endpoint, sizeof endpoint)) {
+    if (codex) {
+        snprintf(endpoint, sizeof endpoint, "%s", CODEX_RESPONSES_URL);
+    } else if (!append_endpoint(model_host, endpoint, sizeof endpoint)) {
         set_error(error, error_size, "Invalid model host");
         yyjson_doc_free(packet_doc);
         return NULL;
@@ -956,7 +971,7 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
                            text_has_phrase(command, "make a copy") ||
                            text_has_phrase(command, "create a copy") ||
                            !strncasecmp(command, "copy ", 5);
-    char *prompt = prompt_for_packet(packet, ollama, error, error_size);
+    char *prompt = prompt_for_packet(packet, !codex && (ollama || model_json_schema), error, error_size);
     if (!prompt) {
         yyjson_doc_free(packet_doc);
         return NULL;
@@ -967,8 +982,10 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     yyjson_mut_val *body = yyjson_mut_obj(body_doc);
     yyjson_mut_doc_set_root(body_doc, body);
     yyjson_mut_obj_add_str(body_doc, body, "model", model_name);
-    yyjson_mut_val *messages = yyjson_mut_obj_add_arr(body_doc, body, "messages");
-    bool json_schema = model_json_schema && !ollama;
+    yyjson_mut_val *messages = codex
+                                 ? NULL
+                                 : yyjson_mut_obj_add_arr(body_doc, body, "messages");
+    bool json_schema = model_json_schema && !ollama && !codex;
     const char *output_instruction =
         ollama || json_schema
             ? "Return the JSON proposal directly in assistant content."
@@ -977,62 +994,100 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     size_t system_size = strlen(instructions()) + strlen(output_instruction) + 2;
     char *system_content = xmalloc(system_size);
     snprintf(system_content, system_size, "%s %s", instructions(), output_instruction);
-    add_message(body_doc, messages, "system", system_content);
-    free(system_content);
-    if (ollama) {
-        add_message(body_doc, messages, "user", "{\"request\":\"Change Scout's color to blue\",\"catalog\":{\"revision\":\"example\",\"document\":\"scene-example\",\"capabilities\":[\"set\"],\"panels\":[],\"objects\":[{\"id\":\"entity:example:1\",\"name\":\"Scout\",\"kind\":\"entity\",\"prototype\":\"DemoShip\"},{\"id\":\"/example/content/prototypes/DemoShip.json\",\"name\":\"DemoShip\",\"kind\":\"prototype\",\"fields\":[{\"id\":\"GAME.GameAppearance.color\",\"name\":\"color\",\"label\":\"Appearance Color\",\"type\":\"color\",\"value\":4294967295}]}]}}");
-        add_message(body_doc, messages, "assistant", "{\"decision\":\"act\",\"operations\":[{\"op\":\"set\",\"target\":\"/example/content/prototypes/DemoShip.json\",\"field\":\"GAME.GameAppearance.color\",\"value\":\"#0000FF\"}]}");
+    if (codex) {
+        yyjson_mut_obj_add_strcpy(body_doc, body, "instructions", system_content);
+    } else {
+        add_message(body_doc, messages, "system", system_content);
     }
-    add_message(body_doc, messages, "user", prompt);
-    if (ollama) {
-        yyjson_mut_obj_add_str(body_doc, body, "think", "low");
-        yyjson_mut_obj_add_str(body_doc, body, "keep_alive", "30m");
+    free(system_content);
+    if (codex) {
+        yyjson_mut_obj_add_bool(body_doc, body, "store", false);
+        yyjson_mut_obj_add_bool(body_doc, body, "stream", true);
+        yyjson_mut_val *input = yyjson_mut_obj_add_arr(body_doc, body, "input");
+        yyjson_mut_val *user = yyjson_mut_arr_add_obj(body_doc, input);
+        yyjson_mut_obj_add_str(body_doc, user, "role", "user");
+        yyjson_mut_val *content = yyjson_mut_obj_add_arr(body_doc, user, "content");
+        yyjson_mut_val *text = yyjson_mut_arr_add_obj(body_doc, content);
+        yyjson_mut_obj_add_str(body_doc, text, "type", "input_text");
+        yyjson_mut_obj_add_strcpy(body_doc, text, "text", prompt);
+        yyjson_mut_val *tools = yyjson_mut_obj_add_arr(body_doc, body, "tools");
+        yyjson_mut_val *tool = yyjson_mut_arr_add_obj(body_doc, tools);
+        yyjson_mut_obj_add_str(body_doc, tool, "type", "function");
+        yyjson_mut_obj_add_str(body_doc, tool, "name", "submit_plan");
+        yyjson_mut_obj_add_str(body_doc, tool, "description", "Submit one complete editor proposal");
         yyjson_mut_obj_add_val(
             body_doc,
-            body,
-            "format",
+            tool,
+            "parameters",
             model_schema(body_doc, allow_duplicate, schema_catalog, command)
         );
-        yyjson_mut_val *options = yyjson_mut_obj_add_obj(body_doc, body, "options");
-        yyjson_mut_obj_add_int(body_doc, options, "temperature", 0);
-        yyjson_mut_obj_add_int(body_doc, options, "num_predict", max_tokens());
-        yyjson_mut_obj_add_bool(body_doc, body, "stream", false);
+        yyjson_mut_obj_add_null(body_doc, tool, "strict");
+        yyjson_mut_val *choice = yyjson_mut_obj_add_obj(body_doc, body, "tool_choice");
+        yyjson_mut_obj_add_str(body_doc, choice, "type", "function");
+        yyjson_mut_obj_add_str(body_doc, choice, "name", "submit_plan");
+        yyjson_mut_obj_add_bool(body_doc, body, "parallel_tool_calls", false);
+        yyjson_mut_val *verbosity = yyjson_mut_obj_add_obj(body_doc, body, "text");
+        yyjson_mut_obj_add_str(body_doc, verbosity, "verbosity", "low");
+        yyjson_mut_val *include = yyjson_mut_obj_add_arr(body_doc, body, "include");
+        yyjson_mut_arr_add_str(body_doc, include, "reasoning.encrypted_content");
+        yyjson_mut_val *reasoning = yyjson_mut_obj_add_obj(body_doc, body, "reasoning");
+        yyjson_mut_obj_add_str(body_doc, reasoning, "effort", "low");
     } else {
-        yyjson_mut_obj_add_int(body_doc, body, "temperature", 0);
-        yyjson_mut_obj_add_int(body_doc, body, "max_tokens", max_tokens());
-        yyjson_mut_obj_add_bool(body_doc, body, "stream", false);
-        if (json_schema) {
-            yyjson_mut_val *format = yyjson_mut_obj_add_obj(body_doc, body, "response_format");
-            yyjson_mut_obj_add_str(body_doc, format, "type", "json_schema");
-            yyjson_mut_val *spec = yyjson_mut_obj_add_obj(body_doc, format, "json_schema");
-            yyjson_mut_obj_add_str(body_doc, spec, "name", "submit_plan");
-            yyjson_mut_obj_add_bool(body_doc, spec, "strict", true);
+        if (ollama) {
+            add_message(body_doc, messages, "user", "{\"request\":\"Change Scout's color to blue\",\"catalog\":{\"revision\":\"example\",\"document\":\"scene-example\",\"capabilities\":[\"set\"],\"panels\":[],\"objects\":[{\"id\":\"entity:example:1\",\"name\":\"Scout\",\"kind\":\"entity\",\"prototype\":\"DemoShip\"},{\"id\":\"/example/content/prototypes/DemoShip.json\",\"name\":\"DemoShip\",\"kind\":\"prototype\",\"fields\":[{\"id\":\"GAME.GameAppearance.color\",\"name\":\"color\",\"label\":\"Appearance Color\",\"type\":\"color\",\"value\":4294967295}]}]}}");
+            add_message(body_doc, messages, "assistant", "{\"decision\":\"act\",\"operations\":[{\"op\":\"set\",\"target\":\"/example/content/prototypes/DemoShip.json\",\"field\":\"GAME.GameAppearance.color\",\"value\":\"#0000FF\"}]}");
+        }
+        add_message(body_doc, messages, "user", prompt);
+        if (ollama) {
+            yyjson_mut_obj_add_str(body_doc, body, "think", "low");
+            yyjson_mut_obj_add_str(body_doc, body, "keep_alive", "30m");
             yyjson_mut_obj_add_val(
                 body_doc,
-                spec,
-                "schema",
+                body,
+                "format",
                 model_schema(body_doc, allow_duplicate, schema_catalog, command)
             );
+            yyjson_mut_val *options = yyjson_mut_obj_add_obj(body_doc, body, "options");
+            yyjson_mut_obj_add_int(body_doc, options, "temperature", 0);
+            yyjson_mut_obj_add_int(body_doc, options, "num_predict", max_tokens());
+            yyjson_mut_obj_add_bool(body_doc, body, "stream", false);
         } else {
-            yyjson_mut_obj_add_str(body_doc, body, "reasoning_effort", "low");
-            yyjson_mut_val *tools = yyjson_mut_obj_add_arr(body_doc, body, "tools");
-            yyjson_mut_val *tool = yyjson_mut_arr_add_obj(body_doc, tools);
-            yyjson_mut_obj_add_str(body_doc, tool, "type", "function");
-            yyjson_mut_val *function = yyjson_mut_obj_add_obj(body_doc, tool, "function");
-            yyjson_mut_obj_add_str(body_doc, function, "name", "submit_plan");
-            yyjson_mut_obj_add_str(body_doc, function, "description", "Submit one complete editor proposal");
-            yyjson_mut_obj_add_bool(body_doc, function, "strict", false);
-            yyjson_mut_obj_add_val(
-                body_doc,
-                function,
-                "parameters",
-                model_schema(body_doc, allow_duplicate, schema_catalog, command)
-            );
-            yyjson_mut_val *choice = yyjson_mut_obj_add_obj(body_doc, body, "tool_choice");
-            yyjson_mut_obj_add_str(body_doc, choice, "type", "function");
-            yyjson_mut_val *choice_function = yyjson_mut_obj_add_obj(body_doc, choice, "function");
-            yyjson_mut_obj_add_str(body_doc, choice_function, "name", "submit_plan");
-            yyjson_mut_obj_add_bool(body_doc, body, "parallel_tool_calls", false);
+            yyjson_mut_obj_add_int(body_doc, body, "temperature", 0);
+            yyjson_mut_obj_add_int(body_doc, body, "max_tokens", max_tokens());
+            yyjson_mut_obj_add_bool(body_doc, body, "stream", false);
+            if (json_schema) {
+                yyjson_mut_val *format = yyjson_mut_obj_add_obj(body_doc, body, "response_format");
+                yyjson_mut_obj_add_str(body_doc, format, "type", "json_schema");
+                yyjson_mut_val *spec = yyjson_mut_obj_add_obj(body_doc, format, "json_schema");
+                yyjson_mut_obj_add_str(body_doc, spec, "name", "submit_plan");
+                yyjson_mut_obj_add_bool(body_doc, spec, "strict", true);
+                yyjson_mut_obj_add_val(
+                    body_doc,
+                    spec,
+                    "schema",
+                    model_schema(body_doc, allow_duplicate, schema_catalog, command)
+                );
+            } else {
+                yyjson_mut_obj_add_str(body_doc, body, "reasoning_effort", "low");
+                yyjson_mut_val *tools = yyjson_mut_obj_add_arr(body_doc, body, "tools");
+                yyjson_mut_val *tool = yyjson_mut_arr_add_obj(body_doc, tools);
+                yyjson_mut_obj_add_str(body_doc, tool, "type", "function");
+                yyjson_mut_val *function = yyjson_mut_obj_add_obj(body_doc, tool, "function");
+                yyjson_mut_obj_add_str(body_doc, function, "name", "submit_plan");
+                yyjson_mut_obj_add_str(body_doc, function, "description", "Submit one complete editor proposal");
+                yyjson_mut_obj_add_bool(body_doc, function, "strict", false);
+                yyjson_mut_obj_add_val(
+                    body_doc,
+                    function,
+                    "parameters",
+                    model_schema(body_doc, allow_duplicate, schema_catalog, command)
+                );
+                yyjson_mut_val *choice = yyjson_mut_obj_add_obj(body_doc, body, "tool_choice");
+                yyjson_mut_obj_add_str(body_doc, choice, "type", "function");
+                yyjson_mut_val *choice_function = yyjson_mut_obj_add_obj(body_doc, choice, "function");
+                yyjson_mut_obj_add_str(body_doc, choice_function, "name", "submit_plan");
+                yyjson_mut_obj_add_bool(body_doc, body, "parallel_tool_calls", false);
+            }
         }
     }
     char *body_json = yyjson_mut_write(body_doc, 0, NULL);
@@ -1047,6 +1102,9 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     yyjson_mut_doc *envelope_doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *envelope = yyjson_mut_obj(envelope_doc);
     yyjson_mut_doc_set_root(envelope_doc, envelope);
+    if (codex) {
+        yyjson_mut_obj_add_str(envelope_doc, envelope, "provider", "codex");
+    }
     yyjson_mut_obj_add_str(envelope_doc, envelope, "url", endpoint);
     yyjson_mut_obj_add_strcpy(envelope_doc, envelope, "body", body_json);
     char *result = yyjson_mut_write(envelope_doc, 0, NULL);

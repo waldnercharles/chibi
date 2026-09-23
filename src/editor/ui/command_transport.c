@@ -1,5 +1,7 @@
 #include "editor/ui/command_transport.h"
 
+#include "editor/commands/codex_auth.h"
+#include "editor/commands/codex_response.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL.h>
@@ -26,8 +28,10 @@ EM_JS(char *, web_poll, (int id), {
 EM_JS(void, web_cancel, (int id), { Module.chibiCommandCancel?.(id); })
 // clang-format on
 #else
+#include <curl/curl.h>
 #include <errno.h>
 #include <netdb.h>
+#include <openssl/crypto.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -36,6 +40,10 @@ EM_JS(void, web_cancel, (int id), { Module.chibiCommandCancel?.(id); })
 
 #define COMMAND_RESPONSE_LIMIT (1024 * 1024)
 #define COMMAND_ERROR_SIZE 256
+
+#ifndef __EMSCRIPTEN__
+static bool curl_initialized;
+#endif
 
 char *editor_command_response_body(const char *response, char *error, int error_size)
 {
@@ -125,7 +133,7 @@ struct editor_command_request
 {
     Uint64 started;
     char *immediate;
-    bool local;
+    bool local, codex;
 #ifdef __EMSCRIPTEN__
     int id;
 #else
@@ -170,6 +178,111 @@ static bool request_cancelled(editor_command_request *request)
     bool cancelled = request->cancelled;
     SDL_UnlockMutex(request->mutex);
     return cancelled;
+}
+
+typedef struct
+{
+    char *data;
+    size_t size;
+    bool overflow;
+} codex_buffer;
+
+static size_t codex_write(char *data, size_t size, size_t count, void *context)
+{
+    codex_buffer *buffer = context;
+    if (size && count > (COMMAND_RESPONSE_LIMIT - buffer->size) / size) {
+        buffer->overflow = true;
+        return 0;
+    }
+    size_t length = size * count;
+    buffer->data = xrealloc(buffer->data, buffer->size + length + 1);
+    memcpy(buffer->data + buffer->size, data, length);
+    buffer->size += length;
+    buffer->data[buffer->size] = 0;
+    return length;
+}
+
+static int codex_progress(void *context, curl_off_t, curl_off_t, curl_off_t, curl_off_t)
+{
+    return request_cancelled(context) ? 1 : 0;
+}
+
+static char *codex_post(editor_command_request *request)
+{
+    char error[COMMAND_ERROR_SIZE] = { 0 };
+    char *token = NULL, *account = NULL;
+    if (!editor_codex_token(&token, &account, error, sizeof error)) {
+        return error_response(error);
+    }
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        OPENSSL_cleanse(token, strlen(token));
+        free(token);
+        free(account);
+        return error_response("Could not start HTTPS request");
+    }
+    size_t authorization_size = strlen(token) + 24;
+    size_t account_size = strlen(account) + 24;
+    char *authorization = xmalloc(authorization_size);
+    char *account_header = xmalloc(account_size);
+    snprintf(authorization, authorization_size, "Authorization: Bearer %s", token);
+    snprintf(account_header, account_size, "chatgpt-account-id: %s", account);
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, authorization);
+    headers = curl_slist_append(headers, account_header);
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept: text/event-stream");
+    headers = curl_slist_append(headers, "OpenAI-Beta: responses=experimental");
+    headers = curl_slist_append(headers, "originator: chibi");
+    OPENSSL_cleanse(authorization, strlen(authorization));
+    free(authorization);
+    free(account_header);
+    OPENSSL_cleanse(token, strlen(token));
+    free(token);
+    free(account);
+    codex_buffer buffer = { 0 };
+    curl_easy_setopt(curl, CURLOPT_URL, request->url);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "chibi-editor/1");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request->body);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(request->body));
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, codex_write);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, codex_progress);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, request);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 10000L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 60000L);
+    CURLcode status = curl_easy_perform(curl);
+    long http_status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    char *result = NULL;
+    if (buffer.overflow) {
+        result = error_response("Model response is too large");
+    } else if (request_cancelled(request)) {
+        result = error_response("Model request cancelled");
+    } else if (status != CURLE_OK) {
+        result = error_response("Could not reach ChatGPT");
+    } else if (http_status == 401 || http_status == 403) {
+        result = error_response("ChatGPT sign-in expired or this model is unavailable");
+    } else if (http_status == 429) {
+        result = error_response("ChatGPT usage limit reached");
+    } else if (http_status < 200 || http_status >= 300) {
+        snprintf(error, sizeof error, "ChatGPT returned HTTP %ld", http_status);
+        result = error_response(error);
+    } else {
+        char *normalized = editor_codex_response_normalize(
+            buffer.data ? buffer.data : "",
+            error,
+            sizeof error
+        );
+        result = normalized ? normalized : error_response(error);
+    }
+    free(buffer.data);
+    return result;
 }
 
 static char *url_request_parts(
@@ -363,7 +476,7 @@ static void request_release(editor_command_request *request)
 static int model_thread(void *data)
 {
     editor_command_request *request = data;
-    char *output = http_post(request);
+    char *output = request->codex ? codex_post(request) : http_post(request);
     SDL_LockMutex(request->mutex);
     if (request->cancelled) {
         free(output);
@@ -414,6 +527,8 @@ editor_command_request *editor_command_request_start(const char *json)
     yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
     const char *url = yyjson_get_str(yyjson_obj_get(root, "url"));
     const char *body = yyjson_get_str(yyjson_obj_get(root, "body"));
+    const char *provider = yyjson_get_str(yyjson_obj_get(root, "provider"));
+    bool codex = provider && !strcmp(provider, "codex");
     if (!url || !body || !*url || !*body) {
         yyjson_doc_free(doc);
         free(request);
@@ -421,6 +536,24 @@ editor_command_request *editor_command_request_start(const char *json)
     }
     request->url = xstrdup(url);
     request->body = xstrdup(body);
+    request->codex = codex;
+    if (codex && strcmp(url, "https://chatgpt.com/backend-api/codex/responses")) {
+        yyjson_doc_free(doc);
+        free(request->url);
+        free(request->body);
+        free(request);
+        return NULL;
+    }
+    if (codex) {
+        if (!curl_initialized && curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+            yyjson_doc_free(doc);
+            free(request->url);
+            free(request->body);
+            free(request);
+            return NULL;
+        }
+        curl_initialized = true;
+    }
     request->socket = -1;
     request->mutex = SDL_CreateMutex();
     yyjson_doc_free(doc);
@@ -452,7 +585,7 @@ char *editor_command_request_poll(editor_command_request *request)
         request->immediate = NULL;
         return result;
     }
-    if (SDL_GetTicks() - request->started > 30000) {
+    if (SDL_GetTicks() - request->started > (request->codex ? 60000u : 30000u)) {
 #ifdef __EMSCRIPTEN__
         return xstrdup("{\"ok\":false,\"error\":\"Command model timed out\"}");
 #else

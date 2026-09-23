@@ -398,6 +398,11 @@ add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GE
 add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    find_package(CURL REQUIRED)
+    find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+    target_link_libraries(editor PUBLIC CURL::libcurl OpenSSL::Crypto)
+endif()
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
@@ -597,6 +602,8 @@ add_executable(test_suite
     src/editor/commands/execute.c
     src/editor/commands/quick_edit.c
     src/editor/commands/model.c
+    src/editor/commands/codex_auth.c
+    src/editor/commands/codex_response.c
     src/editor/commands/task.c
     src/editor/workspace/asset_index.c
     src/editor/panels/asset_browser.c

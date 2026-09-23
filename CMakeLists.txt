@@ -16,9 +16,35 @@ set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(CHIBI_ENABLE_SANITIZERS
+       "Enable the selected sanitizer for native targets" ON)
+option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
+option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
+if(CHIBI_ENABLE_CCACHE)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        cmake_path(IS_PREFIX CMAKE_SOURCE_DIR "${CMAKE_BINARY_DIR}" NORMALIZE CHIBI_IN_TREE_BUILD)
+        foreach(language C CXX OBJC)
+            if(NOT DEFINED CMAKE_${language}_COMPILER_LAUNCHER)
+                set(CMAKE_${language}_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
+                    "${language} compiler launcher")
+            endif()
+            if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_CONFIGURATION_TYPES AND
+               NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+               NOT CHIBI_ENABLE_SANITIZERS AND NOT CHIBI_DEVELOPMENT_RELOAD AND
+               NOT CHIBI_ENABLE_TRACY AND CHIBI_IN_TREE_BUILD AND
+               CMAKE_${language}_COMPILER_LAUNCHER STREQUAL CCACHE_PROGRAM)
+                # Keep fetched sources and build outputs private to each worktree.
+                # ccache reuses matching Release objects across those paths.
+                set(CMAKE_${language}_COMPILER_LAUNCHER
+                    "${CMAKE_COMMAND};-E;env;CCACHE_BASEDIR=${CMAKE_SOURCE_DIR};${CCACHE_PROGRAM}")
+            endif()
+        endforeach()
+    endif()
+endif()
+
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
-option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
 else()
@@ -104,13 +130,10 @@ endif()
 
 option(CHIBI_ENABLE_WARNINGS
        "Enable strict compiler warnings for project targets" ON)
-option(CHIBI_ENABLE_SANITIZERS
-       "Enable the selected sanitizer for native targets" ON)
 set(CHIBI_SANITIZERS "address,undefined" CACHE STRING
     "Sanitizer runtime to use: address, undefined, address,undefined, or thread")
 set_property(CACHE CHIBI_SANITIZERS PROPERTY STRINGS
     address undefined "address,undefined" thread)
-option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 
 # --- optional Tracy instrumentation ----------------------------------------
 option(CHIBI_ENABLE_TRACY
@@ -179,16 +202,6 @@ if(CHIBI_ENABLE_SANITIZERS AND
     endif()
     add_compile_options("-fsanitize=${CHIBI_SANITIZERS}" -fno-omit-frame-pointer)
     add_link_options("-fsanitize=${CHIBI_SANITIZERS}")
-endif()
-
-if(CHIBI_ENABLE_CCACHE)
-    find_program(CCACHE_PROGRAM ccache)
-    if(CCACHE_PROGRAM)
-        set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
-            "C compiler launcher")
-        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
-            "CXX compiler launcher")
-    endif()
 endif()
 
 # Emscripten labels its SDL3 port experimental independently of source warnings.

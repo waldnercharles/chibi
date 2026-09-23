@@ -162,6 +162,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/ui_shell.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/retained_menu.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/editor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/frame_profile.c
 )

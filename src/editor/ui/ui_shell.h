@@ -142,6 +142,9 @@ void editor_ui_set_inline_edge_nodes(bool enabled);
 /* Register workspace preferences before the first ImGui frame loads settings. */
 void editor_ui_initialize(bool persist);
 void editor_ui_prepare(void);
+/* Compose retained UI after document panes and before presenting the frame. */
+void editor_ui_render();
+bool editor_ui_captures_keyboard();
 void editor_ui_reset_layout(void);
 void editor_ui_set_framebuffer_target(bool target);
 void editor_ui_set_framebuffer_size(int width, int height);

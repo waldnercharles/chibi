@@ -1,5 +1,6 @@
 #include "editor/ui/ui_shell.h"
 
+#include "editor/ui/retained_menu.h"
 #include "editor/workspace/editor.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -225,6 +226,7 @@ static void ui_settings_write(ImGuiContext *, ImGuiSettingsHandler *, ImGuiTextB
 
 void editor_ui_initialize(bool persist)
 {
+    editor_menu_shutdown();
     editor_initialize_fonts();
     ImGui_GetIO()->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     if (!persist) {
@@ -1469,6 +1471,11 @@ bool editor_ui_item_center(const char *id, float *x, float *y)
 
 bool editor_ui_item_rect(const char *id, editor_ui_rect *out)
 {
+    editor_rml_menu_rect rect;
+    if (editor_menu_item_rect(id, &rect)) {
+        *out = (editor_ui_rect){ rect.x, rect.y, rect.width, rect.height };
+        return true;
+    }
     ImGuiID hash = cImHashStr(id);
     for (int i = 0; i < acount(ui_item_hits); i++) {
         if (ui_item_hits[i].id == hash) {
@@ -1640,15 +1647,6 @@ static void ui_build_default_layout(void)
     ImGui_DockBuilderFinish(UI_DOCKSPACE_ID);
 }
 
-static void ui_pane_menu_item(const char *label, const char *id, editor_ui_pane pane)
-{
-    bool visible = editor_ui_pane_visible(pane);
-    if (ImGui_MenuItemEx(label, NULL, visible, true)) {
-        editor_ui_set_pane_visible(pane, !visible);
-    }
-    editor_ui_track_item(id);
-}
-
 void editor_ui_set_history_available(bool undo, bool redo)
 {
     ui_can_undo = undo;
@@ -1667,77 +1665,78 @@ void editor_ui_set_runtime_status(const char *label)
     (void)label;
 }
 
-static void ui_document_action(const char *label, const char *shortcut, const char *id, editor_ui_command command)
-{
-    bool enabled = ui_command_handler != NULL;
-    if (command == EDITOR_UI_COMMAND_UNDO) {
-        enabled &= ui_can_undo;
-    }
-    if (command == EDITOR_UI_COMMAND_REDO) {
-        enabled &= ui_can_redo;
-    }
-    if (ImGui_MenuItemEx(label, shortcut, false, enabled)) {
-        editor_ui_run_command(command);
-    }
-    editor_ui_track_item(id);
-}
-
 static void ui_draw_menu(void)
 {
-    if (!ImGui_BeginMainMenuBar()) {
-        return;
+    static const struct
+    {
+        const char *id;
+        editor_ui_command command;
+    } commands[] = {
+        { "file.save", EDITOR_UI_COMMAND_SAVE },
+        { "file.save_as", EDITOR_UI_COMMAND_SAVE_AS },
+        { "file.save_all", EDITOR_UI_COMMAND_SAVE_ALL },
+        { "file.reload", EDITOR_UI_COMMAND_RELOAD },
+        { "edit.undo", EDITOR_UI_COMMAND_UNDO },
+        { "edit.redo", EDITOR_UI_COMMAND_REDO },
+        { "workspace.quick_open", EDITOR_UI_COMMAND_QUICK_OPEN },
+    };
+    static const struct
+    {
+        const char *id;
+        editor_ui_pane pane;
+    } panes[] = {
+        { "view.inspector", EDITOR_UI_PANE_INSPECTOR },
+        { "view.node_canvas", EDITOR_UI_PANE_NODE_CANVAS },
+        { "view.scene", EDITOR_UI_PANE_SCENE },
+        { "view.compiler_results", EDITOR_UI_PANE_COMPILER_RESULTS },
+        { "view.output_log", EDITOR_UI_PANE_OUTPUT_LOG },
+        { "view.performance", EDITOR_UI_PANE_PERFORMANCE },
+    };
+    editor_rml_menu_state state = {
+        .commands_available = ui_command_handler != NULL,
+        .can_undo = ui_can_undo,
+        .can_redo = ui_can_redo,
+        .navigator_visible = ui_navigator_visible(),
+        .inline_edge_nodes = ui_inline_edge_nodes,
+        .reduced_motion = ui_reduce_motion,
+        .mac_shortcuts = ImGui_GetIO()->ConfigMacOSXBehaviors,
+    };
+    for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
+        state.panes[i] = editor_ui_pane_visible(panes[i].pane);
     }
-    ui_menu_bottom = ImGui_GetWindowPos().y + ImGui_GetWindowSize().y;
-    ImGui_TextColoredUnformatted(UI_ACCENT, "Chibi");
-    bool open = ImGui_BeginMenu("File");
-    editor_ui_track_item("file.menu");
-    if (open) {
-        ui_document_action("Save", "Ctrl+S", "file.save", EDITOR_UI_COMMAND_SAVE);
-        ui_document_action("Save As", NULL, "file.save_as", EDITOR_UI_COMMAND_SAVE_AS);
-        ui_document_action("Save All", NULL, "file.save_all", EDITOR_UI_COMMAND_SAVE_ALL);
-        ui_document_action("Reload", NULL, "file.reload", EDITOR_UI_COMMAND_RELOAD);
-        ImGui_EndMenu();
-    }
-    bool edit = ImGui_BeginMenu("Edit");
-    editor_ui_track_item("edit.menu");
-    if (edit) {
-        ui_document_action("Undo", "Ctrl+Z", "edit.undo", EDITOR_UI_COMMAND_UNDO);
-        ui_document_action("Redo", "Ctrl+Shift+Z", "edit.redo", EDITOR_UI_COMMAND_REDO);
-        ImGui_EndMenu();
-    }
-    bool view = ImGui_BeginMenu("View");
-    editor_ui_track_item("view.menu");
-    if (view) {
-        if (ImGui_MenuItemEx("Reset Workspace", NULL, false, true)) {
+    editor_menu_frame(&state);
+    ui_menu_bottom = ImGui_GetMainViewport()->Pos.y + editor_menu_height();
+    const char *action;
+    while ((action = editor_menu_take_action())) {
+        for (int i = 0; i < (int)(sizeof commands / sizeof *commands); i++) {
+            if (strcmp(action, commands[i].id) == 0) {
+                editor_ui_run_command(commands[i].command);
+            }
+        }
+        for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
+            if (strcmp(action, panes[i].id) == 0) {
+                editor_ui_set_pane_visible(
+                    panes[i].pane,
+                    !editor_ui_pane_visible(panes[i].pane)
+                );
+            }
+        }
+        if (strcmp(action, "view.graph_and_scene") == 0) {
             editor_ui_show_graph_and_scene();
         }
-        editor_ui_track_item("view.graph_and_scene");
-        ImGui_Separator();
-        if (ImGui_MenuItemEx("Navigator", NULL, ui_navigator_visible(), true)) {
+        if (strcmp(action, "view.navigator") == 0) {
             ui_set_navigator_visible(!ui_navigator_visible());
         }
-        editor_ui_track_item("view.navigator");
-        ui_pane_menu_item("Inspector", "view.inspector", EDITOR_UI_PANE_INSPECTOR);
-        ui_pane_menu_item("Node Canvas", "view.node_canvas", EDITOR_UI_PANE_NODE_CANVAS);
-        ui_pane_menu_item("Scene", "view.scene", EDITOR_UI_PANE_SCENE);
-        ImGui_Separator();
-        ui_pane_menu_item("Compiler Results", "view.compiler_results", EDITOR_UI_PANE_COMPILER_RESULTS);
-        ui_pane_menu_item("Output Log", "view.output_log", EDITOR_UI_PANE_OUTPUT_LOG);
-        ui_pane_menu_item("Performance", "view.performance", EDITOR_UI_PANE_PERFORMANCE);
-        ImGui_Separator();
-        bool inline_edge_nodes = editor_ui_inline_edge_nodes();
-        if (ImGui_MenuItemEx("Inline nodes on edge drop", NULL, inline_edge_nodes, true)) {
-            editor_ui_set_inline_edge_nodes(!inline_edge_nodes);
+        if (strcmp(action, "view.inline_edge_nodes") == 0) {
+            editor_ui_set_inline_edge_nodes(!ui_inline_edge_nodes);
         }
-        editor_ui_track_item("view.inline_edge_nodes");
-        ImGui_Separator();
-        if (ImGui_MenuItemEx("Reset Layout", NULL, false, true)) {
+        if (strcmp(action, "view.reduced_motion") == 0) {
+            editor_ui_set_reduced_motion(!ui_reduce_motion);
+        }
+        if (strcmp(action, "view.reset_layout") == 0) {
             editor_ui_reset_layout();
         }
-        editor_ui_track_item("view.reset_layout");
-        ImGui_EndMenu();
     }
-    ImGui_EndMainMenuBar();
 }
 
 void editor_ui_reset_layout(void)
@@ -2033,6 +2032,7 @@ void editor_ui_prepare(void)
         return;
     }
     if (context != ui_context) {
+        editor_menu_shutdown();
         ImGui_GetIO()->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ui_apply_theme();
         ui_context = context;
@@ -2043,8 +2043,7 @@ void editor_ui_prepare(void)
     ui_draw_menu();
     ImGuiIO *io = ImGui_GetIO();
     ui_workspace = ui_layout_viewport();
-    /* Framebuffer targets reset WorkPos before BeginMainMenuBar reserves space
-     * for the next frame. Keep this frame's anchored panes below the menu. */
+    /* RmlUi publishes the bar's measured height before dock layout. */
     if (ui_workspace.WorkPos.y < ui_menu_bottom) {
         float inset = ui_menu_bottom - ui_workspace.WorkPos.y;
         ui_workspace.WorkPos.y += inset;
@@ -2094,6 +2093,8 @@ bool editor_ui_restore_checkpoint(const char *ini)
 
 void editor_ui_deactivate()
 {
+    editor_menu_shutdown();
+    ui_context = NULL;
     ImGui_ClearActiveID();
     ImGui_ClosePopupsOverWindow(NULL, false);
     ImGui_RemoveSettingsHandler("Chibi");
@@ -2102,4 +2103,14 @@ void editor_ui_deactivate()
     ui_graph_debug_header = NULL;
     ui_graph_debug_user = NULL;
     afree(ui_item_hits);
+}
+
+void editor_ui_render()
+{
+    editor_menu_render();
+}
+
+bool editor_ui_captures_keyboard()
+{
+    return editor_menu_captures_keyboard();
 }

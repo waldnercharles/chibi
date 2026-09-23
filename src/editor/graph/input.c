@@ -323,7 +323,7 @@ void ed_handle_shortcuts(editor *e)
     if (!ImGui_IsWindowFocused(0)) {
         return;
     }
-    if (ImGui_GetIO()->WantTextInput) {
+    if (editor_ui_captures_keyboard() || ImGui_GetIO()->WantTextInput) {
         return;
     }
     bool modifier = app_input_down(APP_INPUT_COMMAND) ||

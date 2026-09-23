@@ -227,8 +227,8 @@ int editor_host_captures_keyboard(void)
      * Callers already require viewport focus; only active UI interaction should
      * prevent that viewport from receiving gameplay keys. Clicking the viewport
      * image holds its window move ID, which owns the pointer rather than keys. */
-    return io->WantTextInput || active_control ||
-           ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup) ||
+    return editor_ui_captures_keyboard() || io->WantTextInput ||
+           active_control || ImGui_IsPopupOpen(NULL, ImGuiPopupFlags_AnyPopup) ||
            (io->WantCaptureKeyboard && !io->NavActive);
 }
 

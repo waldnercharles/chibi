@@ -141,6 +141,7 @@ test-render:
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-mcp-gpu test_suite chibi
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
+	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-menu-render
 	env $(NATIVE_RUNTIME_ENV) CHIBI_EVENT_BATCH_STATUS_ONLY=1 ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-ui
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
 

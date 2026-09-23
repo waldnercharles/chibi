@@ -392,12 +392,13 @@ target_link_libraries(engine PUBLIC runtime_support ecs core cute)
 target_compile_options(engine PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(engine)
 
-# --- editor canvas (graph model + native dcimgui widget) ---
+# --- editor UI (RmlUi shell and existing ImGui panes) ---
 
+include(cmake/rmlui.cmake)
 add_library(editor STATIC ${EDITOR_SOURCES} ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT})
 add_dependencies(editor generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font)
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph)
+target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
@@ -533,6 +534,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/project.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
@@ -545,6 +547,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.json@project.json"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
     )
 endif()
@@ -691,6 +694,7 @@ endif()
 if(CLANG_FORMAT)
   file(GLOB_RECURSE FORMAT_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/*.c ${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/test/*.c ${CMAKE_CURRENT_SOURCE_DIR}/test/*.h

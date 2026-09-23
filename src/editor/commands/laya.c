@@ -250,6 +250,17 @@ static bool field_matches(const char *goal, yyjson_val *field)
         return false;
     }
     unsigned requested_color;
+    bool collision = word(goal, "collider") || word(goal, "collision") ||
+                     word(goal, "collide") || word(goal, "hitbox") ||
+                     word(goal, "overlap") || contains(goal, "hit region");
+    bool visual = word(goal, "sprite") || word(goal, "appearance") ||
+                  contains(goal, "GameAppearance") || word(goal, "visible") ||
+                  word(goal, "rendered") || word(goal, "drawn") ||
+                  word(goal, "art") || word(goal, "visual") ||
+                  word(goal, "graphic") || contains(goal, "pixels wide");
+    bool width = word(goal, "width") || word(goal, "wide") ||
+                 word(goal, "wider") || word(goal, "broaden") ||
+                 word(goal, "broader") || word(goal, "span");
     bool color = word(goal, "color") || word(goal, "colour") ||
                  (!(word(goal, "size") || word(goal, "sizes") ||
                     word(goal, "larger") || word(goal, "smaller")) &&
@@ -272,12 +283,26 @@ static bool field_matches(const char *goal, yyjson_val *field)
         }
         return contains(id, "GameAppearance.color");
     }
-    if (word(goal, "hitbox") || word(goal, "collider")) {
-        return contains(id, "GameCollider.") &&
-               (word(goal, "shape") || word(goal, "circle") || word(goal, "circular") ||
-                        word(goal, "round") || word(goal, "rectangle")
-                    ? !strcmp(name, "shape")
-                    : word(goal, name));
+    if (width) {
+        if (strcmp(name, "width")) {
+            return false;
+        }
+        if (visual && (!collision || contains(goal, "keep") ||
+                       contains(goal, "without changing"))) {
+            return contains(id, "GameAppearance.width");
+        }
+        if (collision && !visual) {
+            return contains(id, "GameCollider.width");
+        }
+        return true;
+    }
+    if (collision &&
+        (word(goal, "shape") || word(goal, "circle") || word(goal, "circular") ||
+         word(goal, "round") || word(goal, "rectangle") || word(goal, "box"))) {
+        return contains(id, "GameCollider.shape");
+    }
+    if (collision) {
+        return contains(id, "GameCollider.") && word(goal, name);
     }
     if (word(goal, "shape")) {
         return !strcmp(name, "shape");
@@ -306,7 +331,7 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
     }
     if (word(goal, "if") || word(goal, "when") || word(goal, "unless") ||
         word(goal, "while") || word(goal, "and") || word(goal, "also") ||
-        word(goal, "or") || word(goal, "but")) {
+        word(goal, "or") || word(goal, "but") || word(goal, "except")) {
         return "Command needs multiple or conditional edits";
     }
     if (*target_id) {
@@ -341,6 +366,9 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
         const char *kind = command_string(object, "kind");
         if (strcmp(kind, "prototype") && strcmp(kind, "entity") &&
             strcmp(kind, "node")) {
+            continue;
+        }
+        if (instance && !strcmp(kind, "prototype")) {
             continue;
         }
         if (name_matches(goal, command_string(object, "name"))) {
@@ -431,6 +459,30 @@ static char *local_response(const char *key, const char *message)
     free(body);
     char *result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
+    return result;
+}
+
+char *editor_command_laya_local_prepare(const char *packet_json)
+{
+    yyjson_doc *read = yyjson_read(packet_json, strlen(packet_json), 0);
+    yyjson_val *packet = read ? yyjson_doc_get_root(read) : NULL;
+    laya_menu menu = { 0 };
+    const char *problem = build_menu(packet, &menu);
+    const char *bound = problem
+                          ? ""
+                          : command_string(yyjson_obj_get(packet, "bindings"), menu.binding);
+    char *result = NULL;
+    if (!problem && (*bound || menu.count == 1)) {
+        const char *choice = *bound ? bound
+                                    : command_string(menu.options[0].item, "id");
+        for (int i = 0; i < menu.count; i++) {
+            if (!strcmp(command_string(menu.options[i].item, "id"), choice)) {
+                result = local_response("local_choice", choice);
+                break;
+            }
+        }
+    }
+    yyjson_doc_free(read);
     return result;
 }
 
@@ -658,37 +710,36 @@ static bool color_value(const char *text, yyjson_val *field, unsigned *out)
                    { "orange", 0xff8000 },  { "purple", 0x8000ff },
                    { "magenta", 0xff00ff }, { "cyan", 0x00ffff },
                    { "gray", 0x808080 },    { "grey", 0x808080 } };
-    unsigned rgb = 0;
-    bool found = false;
+    for (const char *at = text; at && *at; at++) {
+        if (*at != '#') {
+            continue;
+        }
+        unsigned value = 0;
+        int digits = 0;
+        while (digits < 8 && hex_digit(at[digits + 1]) >= 0) {
+            value = (value << 4) | (unsigned)hex_digit(at[++digits]);
+        }
+        if (hex_digit(at[digits + 1]) >= 0) {
+            continue;
+        }
+        if (digits == 8) {
+            *out = value;
+            return true;
+        }
+        if (digits == 6) {
+            *out = (value << 8) |
+                   (yyjson_get_uint(yyjson_obj_get(field, "value")) & 255u);
+            return true;
+        }
+    }
     for (size_t i = 0; i < sizeof colors / sizeof colors[0]; i++) {
         if (word(text, colors[i].name)) {
-            rgb = colors[i].rgb;
-            found = true;
-            break;
+            *out = (colors[i].rgb << 8) |
+                   (yyjson_get_uint(yyjson_obj_get(field, "value")) & 255u);
+            return true;
         }
     }
-    if (!found) {
-        for (const char *at = text; at && *at; at++) {
-            if (*at != '#') {
-                continue;
-            }
-            unsigned value = 0;
-            int digits = 0;
-            while (digits < 6 && hex_digit(at[digits + 1]) >= 0) {
-                value = (value << 4) | (unsigned)hex_digit(at[++digits]);
-            }
-            if (digits == 6 && hex_digit(at[7]) < 0) {
-                rgb = value;
-                found = true;
-                break;
-            }
-        }
-    }
-    if (!found) {
-        return false;
-    }
-    *out = (rgb << 8) | (yyjson_get_uint(yyjson_obj_get(field, "value")) & 255u);
-    return true;
+    return false;
 }
 
 static bool number_value(const char *text, yyjson_val *field, double *out)
@@ -707,7 +758,8 @@ static bool number_value(const char *text, yyjson_val *field, double *out)
         }
     }
     if (!amount && (word(text, "increase") || word(text, "decrease") ||
-                    word(text, "larger") || word(text, "smaller"))) {
+                    word(text, "larger") || word(text, "smaller") ||
+                    word(text, "wider") || word(text, "broaden"))) {
         double current = yyjson_get_num(yyjson_obj_get(field, "value"));
         double difference = fabs(current) * 0.25;
         if (yyjson_get_bool(yyjson_obj_get(field, "integer"))) {
@@ -721,8 +773,16 @@ static bool number_value(const char *text, yyjson_val *field, double *out)
         return isfinite(*out);
     }
     if (!amount) {
-        const char *last = strrchr(text, ' ');
-        amount = last ? last + 1 : text;
+        for (const char *at = text; *at; at++) {
+            if ((isdigit((unsigned char)*at) || *at == '-' || *at == '.') &&
+                (at == text || (!isalnum((unsigned char)at[-1]) && at[-1] != '#' &&
+                                at[-1] != '-' && at[-1] != '.'))) {
+                amount = at;
+            }
+        }
+        if (!amount) {
+            return false;
+        }
     }
     if (!isdigit((unsigned char)*amount) && *amount != '-' && *amount != '.') {
         return false;
@@ -730,6 +790,10 @@ static bool number_value(const char *text, yyjson_val *field, double *out)
     char *end;
     double value = strtod(amount, &end);
     if (end == amount || !isfinite(value)) {
+        return false;
+    }
+    if (*end && !isspace((unsigned char)*end) && *end != '%' && *end != '.' &&
+        *end != ',' && *end != ';' && *end != ')') {
         return false;
     }
     bool percent = *end == '%';

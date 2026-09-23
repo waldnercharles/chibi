@@ -17,7 +17,7 @@
 
 struct editor_command_palette
 {
-    bool open, focus, settings_requested;
+    bool open, focus, settings_requested, json_schema;
     int choice, host_choice;
     char query[1025], reply[4097], message[256];
     char host[256], model[128], token[257];
@@ -86,6 +86,7 @@ void editor_command_palette_open(app_scene_authoring *scene)
             scene->commands->model,
             sizeof scene->commands->model
         );
+        scene->commands->json_schema = editor_command_model_json_schema();
     }
     scene->commands->open = scene->commands->focus = true;
 }
@@ -124,6 +125,7 @@ static void draw_settings(editor_command_palette *p)
             if (ImGui_SelectableEx(host_presets[i].label, selected, 0, (ImVec2){ 0, 0 })) {
                 snprintf(p->host, sizeof p->host, "%s", host_presets[i].host);
                 snprintf(p->model, sizeof p->model, "%s", i == 0 ? "laya" : "gpt-oss:20b");
+                p->json_schema = i == 3;
                 p->host_choice = i;
             }
         }
@@ -132,6 +134,9 @@ static void draw_settings(editor_command_palette *p)
     ImGui_Text("Model");
     ImGui_SetNextItemWidth(360.0f);
     ImGui_InputText("##command_model", p->model, sizeof p->model, 0);
+    if (strcmp(p->model, "laya") && !strstr(p->host, "/api")) {
+        ImGui_Checkbox("JSON schema", &p->json_schema);
+    }
 #ifndef __EMSCRIPTEN__
     if (!strcmp(p->model, "laya")) {
         ImGui_Text("API key");
@@ -152,6 +157,7 @@ static void draw_settings(editor_command_palette *p)
         } else if (!editor_command_model_set_settings(p->host, p->model, error, sizeof error)) {
             snprintf(p->message, sizeof p->message, "%s", error);
         } else {
+            editor_command_model_set_json_schema(p->json_schema);
             p->message[0] = 0;
             ImGui_CloseCurrentPopup();
         }

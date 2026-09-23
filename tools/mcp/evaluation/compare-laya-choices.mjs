@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-const fixture = JSON.parse(readFileSync(new URL("./laya-property-cases.json", import.meta.url)));
+const fixtureName = process.env.LAYA_EVAL_FIXTURE || "laya-property-cases.json";
+const fixture = JSON.parse(readFileSync(new URL(`./${fixtureName}`, import.meta.url)));
 const keyFile = process.env.LAYA_API_KEY_FILE;
 const key = process.env.LAYA_API_KEY || (keyFile ? readFileSync(keyFile, "utf8").trim() : "");
 const endpoint = process.env.LAYA_URL || "http://127.0.0.1:8768/v1/decide";
@@ -107,24 +108,26 @@ async function run(testCase, mode, order) {
     raw = result.id;
     confidence = result.confidence;
     calls = 1;
-  } else if (["scoped", "scoped_compact", "scoped_no_defer", "scoped_observed", "scoped_noul"].includes(mode)) {
+  } else if (["scoped", "scoped_compact", "scoped_no_defer", "scoped_observed", "scoped_observed_defer", "scoped_noul"].includes(mode)) {
     const target = namedTarget(testCase.goal);
     if (target) {
       const compact = mode === "scoped_compact" || mode === "scoped_no_defer";
-      const observed = mode === "scoped_observed";
+      const observed = mode === "scoped_observed" || mode === "scoped_observed_defer";
       const fields = options([
         ...Object.entries(fieldLabels).map(([id, label]) => ({
           id: `${target}_${id}`,
           label: observed ? observedFields[id] : compact ? `Change ${label}` : `Change ${targetLabels[target]}: ${label}`,
         })),
-        ...(mode === "scoped_no_defer" || observed ? [] : [
-          { ...deferral, label: compact ? "None of these edits" : deferral.label },
+        ...(mode === "scoped_no_defer" || mode === "scoped_observed" ? [] : [
+          { ...deferral, label: compact ? "None of these edits" : observed ? "None; unsupported, ambiguous, conditional, conflicting, or multiple edits are needed" : deferral.label },
         ]),
       ], order);
       const result = mode === "scoped_noul"
         ? await scoreFields(testCase, target, order)
         : await choose(testCase,
-          observed ? "Which property best fulfills the user's request?" :
+          observed ? mode === "scoped_observed_defer"
+            ? "Which one property best fulfills the user's request? Choose None if the request is unsupported, ambiguous, conditional, conflicts with its scope, or needs multiple edits."
+            : "Which property best fulfills the user's request?" :
             compact ? `Which single change to ${target} fulfills the request?` :
               `Which one property edit on the ${target} prototype fully satisfies the request? Defer if none does.`,
           fields,
@@ -161,6 +164,7 @@ async function run(testCase, mode, order) {
   const accepted = confidence >= threshold ? raw : null;
   return {
     id: testCase.id,
+    category: testCase.category,
     goal: testCase.goal,
     expected: testCase.expected,
     mode,
@@ -185,6 +189,11 @@ function summarize(rows) {
     cases: rows.length,
     eligible: eligible.length,
     unsupported: deferrals.length,
+    raw_abstentions: rows.filter((row) => row.raw === null).length,
+    raw_correct_deferrals: deferrals.filter((row) => row.raw === null).length,
+    accepted_actions: rows.filter((row) => row.accepted !== null).length,
+    raw_task_success: rows.filter((row) => row.raw === row.expected).length,
+    accepted_task_success: rows.filter((row) => row.accepted === row.expected).length,
     raw_correct: eligible.filter((row) => row.raw === row.expected).length,
     accepted_correct: eligible.filter((row) => row.accepted === row.expected).length,
     accepted_wrong: rows.filter((row) => row.accepted !== null && row.accepted !== row.expected).length,
@@ -215,7 +224,9 @@ for (const testCase of fixture.cases) {
 const summary = Object.fromEntries(modes.map((mode) => [mode,
   Object.fromEntries(orders.map((order) => [order,
     summarize(rows.filter((row) => row.mode === mode && row.order === order))]))]));
-const output = { fixture: "laya-property-cases.json", threshold, endpoint, summary, rows };
+const categories = Object.fromEntries([...new Set(rows.map((row) => row.category || "uncategorized"))]
+  .map((category) => [category, summarize(rows.filter((row) => (row.category || "uncategorized") === category))]));
+const output = { fixture: fixtureName, threshold, endpoint, summary, categories, rows };
 const outputPath = process.env.LAYA_EVAL_OUTPUT;
 if (outputPath) writeFileSync(outputPath, JSON.stringify(output, null, 2) + "\n");
 process.stdout.write(JSON.stringify(summary, null, 2) + "\n");

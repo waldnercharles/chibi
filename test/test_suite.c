@@ -52,6 +52,7 @@ void test_input_bindings();
 void test_graph_optimizer();
 void test_editor_command_model();
 void test_editor_command_laya();
+int test_editor_command_laya_live(const char *provider, const char *path);
 int scene_documents_run(const char *program);
 
 static int fails;
@@ -188,6 +189,14 @@ int main(int argc, char **argv)
         test_editor_command_model();
         test_editor_command_laya();
         return fails ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--laya-live")) {
+        registry_validate();
+        return test_editor_command_laya_live("laya", argv[2]);
+    }
+    if (argc == 4 && !strcmp(argv[1], "--command-live")) {
+        registry_validate();
+        return test_editor_command_laya_live(argv[2], argv[3]);
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();

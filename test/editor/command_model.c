@@ -27,6 +27,7 @@ void test_editor_command_model()
 {
     char previous_host[256];
     char previous_model[128];
+    bool previous_schema = editor_command_model_json_schema();
     char error[256];
     editor_command_model_get_settings(previous_host, sizeof previous_host, previous_model, sizeof previous_model);
     test_check(
@@ -77,6 +78,23 @@ void test_editor_command_model()
         test_check(body && strstr(body, "make it green"), "command model sends the observed request");
         yyjson_doc_free(request_doc);
     }
+    editor_command_model_set_json_schema(true);
+    char *schema_request = editor_command_model_prepare(packet, error, sizeof error);
+    yyjson_doc *schema_doc = NULL;
+    yyjson_val *schema_root = schema_request
+                                ? test_json_root(schema_request, &schema_doc)
+                                : NULL;
+    const char *schema_body = command_string(schema_root, "body");
+    test_check(
+        strstr(schema_body, "\"response_format\"") &&
+            strstr(schema_body, "\"json_schema\"") &&
+            !strstr(schema_body, "\"tools\"") &&
+            !strstr(schema_body, "\"reasoning_effort\""),
+        "OpenAI-compatible JSON schema mode omits tool calls"
+    );
+    yyjson_doc_free(schema_doc);
+    free(schema_request);
+    editor_command_model_set_json_schema(false);
     test_check(
         editor_command_model_set_settings("http://127.0.0.1:19999/api", "test-model", error, sizeof error),
         "command model accepts the native Ollama API host"
@@ -134,6 +152,64 @@ void test_editor_command_model()
         yyjson_doc_free(native_doc);
     }
     free(native_request);
+
+    test_check(
+        editor_command_model_set_settings("http://127.0.0.1:11435/api", "gpt-oss:20b", error, sizeof error),
+        "command model selects GPT-OSS"
+    );
+    char *fast_request = editor_command_model_prepare(focused_packet, error, sizeof error);
+    yyjson_doc *fast_doc = NULL;
+    yyjson_val *fast_root = fast_request ? test_json_root(fast_request, &fast_doc)
+                                         : NULL;
+    const char *fast_response = command_string(fast_root, "local_response");
+    test_check(
+        *fast_response && !yyjson_obj_get(fast_root, "url"),
+        "GPT-OSS uses a catalog-grounded local choice for a clear property edit"
+    );
+    char *fast_result = editor_command_model_result(focused_packet, fast_response, error, sizeof error);
+    yyjson_doc *fast_result_doc = NULL;
+    yyjson_val *fast_result_root = fast_result
+                                     ? test_json_root(fast_result, &fast_result_doc)
+                                     : NULL;
+    test_check(
+        !strcmp(command_string(fast_result_root, "status"), "continue") &&
+            !strcmp(command_string(fast_result_root, "provider"), "native"),
+        "GPT-OSS local choice binds a native editor target without calling Laya"
+    );
+    yyjson_doc_free(fast_result_doc);
+    yyjson_doc_free(fast_doc);
+    free(fast_result);
+    free(fast_request);
+    editor_command_model_set_settings("http://127.0.0.1:19999/api", "test-model", error, sizeof error);
+
+    const char *scope_packet =
+        "{\"command\":\"Set Scout's color to #42C6A5FF\",\"catalog\":{"
+        "\"revision\":\"r1\",\"document\":\"scene\",\"objects\":["
+        "{\"id\":\"entity:1\",\"name\":\"Scout\",\"kind\":\"entity\","
+        "\"prototype\":\"Ship\"},"
+        "{\"id\":\"prototype:ship\",\"name\":\"Ship\",\"kind\":\"prototype\","
+        "\"fields\":[{\"id\":\"GAME.GameAppearance.color\",\"name\":\"color\","
+        "\"type\":\"color\",\"value\":4294967295}]}]}}";
+    const char
+        *scope_response = "{\"choices\":[{\"message\":{\"content\":\"{"
+                          "\\\"decision\\\":\\\"act\\\","
+                          "\\\"operations\\\":[{\\\"op\\\":\\\"set\\\","
+                          "\\\"target\\\":\\\"entity:1\\\","
+                          "\\\"field\\\":\\\"GAME.GameAppearance.color\\\","
+                          "\\\"value\\\":\\\"#FFFFFF\\\"}]}\"}}]}";
+    char *scope_result = editor_command_model_result(scope_packet, scope_response, error, sizeof error);
+    yyjson_doc *scope_doc = NULL;
+    yyjson_val *scope_root = scope_result ? test_json_root(scope_result, &scope_doc)
+                                          : NULL;
+    yyjson_val *scope_operation = yyjson_arr_get(yyjson_obj_get(scope_root, "operations"), 0);
+    test_check(
+        !strcmp(command_string(scope_operation, "target"), "prototype:ship") &&
+            yyjson_get_uint(yyjson_obj_get(scope_operation, "value")) == 0x42c6a5ffu,
+        "command model resolves scene names to prototype edits and copies an "
+        "explicit RGBA literal"
+    );
+    yyjson_doc_free(scope_doc);
+    free(scope_result);
 
     const char *semantic_packet =
         "{\"command\":\"Increase the size of the particles\",\"catalog\":{"
@@ -198,6 +274,28 @@ void test_editor_command_model()
             "command model normalizes color values before execution"
         );
         yyjson_doc_free(result_doc);
+    }
+
+    const char *rgba_response =
+        "{\"choices\":[{\"message\":{\"content\":"
+        "\"{\\\"decision\\\":\\\"act\\\",\\\"operations\\\":[{"
+        "\\\"op\\\":\\\"set\\\",\\\"target\\\":\\\"object:1\\\","
+        "\\\"field\\\":\\\"color\\\",\\\"value\\\":\\\"#42C6A5FF\\\","
+        "\\\"alpha\\\":null}],\\\"question\\\":\\\"\\\","
+        "\\\"choices\\\":[],\\\"unsupported\\\":\\\"\\\"}\"}}]}";
+    free(result);
+    result = editor_command_model_result(packet, rgba_response, error, sizeof error);
+    if (result) {
+        yyjson_doc *result_doc = NULL;
+        yyjson_val *root = test_json_root(result, &result_doc);
+        yyjson_val *operation = yyjson_arr_get(yyjson_obj_get(root, "operations"), 0);
+        test_check(
+            yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x42c6a5ffu,
+            "command model accepts an explicit eight-digit RGBA value"
+        );
+        yyjson_doc_free(result_doc);
+    } else {
+        test_check(false, "command model accepts an explicit eight-digit RGBA value");
     }
 
     const char *ollama_response =
@@ -301,4 +399,5 @@ void test_editor_command_model()
     free(request);
     free(tool_call_response);
     editor_command_model_set_settings(previous_host, previous_model, error, sizeof error);
+    editor_command_model_set_json_schema(previous_schema);
 }

@@ -25,7 +25,7 @@ typedef struct
     yyjson_mut_doc *packet;
     editor_command_request *request;
     Uint64 started, elapsed;
-    int steps, reobservations;
+    int steps, reobservations, model_calls;
     bool dry, measuring, laya, local;
 } command_task;
 
@@ -117,6 +117,7 @@ static void set_result(command_task *task, char *json)
     yyjson_mut_obj_remove_key(root, "task_id");
     yyjson_mut_obj_add_str(doc, root, "task_id", task->id);
     yyjson_mut_obj_remove_key(root, "elapsed_ms");
+    yyjson_mut_obj_remove_key(root, "model_calls");
     Uint64 now = SDL_GetTicks();
     if (task->measuring) {
         task->elapsed += now - task->started;
@@ -124,6 +125,7 @@ static void set_result(command_task *task, char *json)
     task->started = now;
     task->measuring = !strcmp(command_string(yyjson_doc_get_root(read), "status"), "pending");
     yyjson_mut_obj_add_uint(doc, root, "elapsed_ms", task->elapsed);
+    yyjson_mut_obj_add_int(doc, root, "model_calls", task->model_calls);
     free(task->result);
     task->result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
@@ -202,8 +204,6 @@ static void execute(app_scene_authoring *scene, command_task *task)
     task->measuring = true;
     char error[256] = { 0 };
     yyjson_doc *read = yyjson_read(task->result, strlen(task->result), 0);
-    bool laya_proposal = task->laya &&
-                         !strcmp(command_string(yyjson_doc_get_root(read), "provider"), "laya");
     yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
     yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
     yyjson_mut_obj_remove_key(root, "dry_run");
@@ -227,14 +227,18 @@ static void execute(app_scene_authoring *scene, command_task *task)
     free(history_after);
     yyjson_val *ops = yyjson_obj_get(yyjson_doc_get_root(read), "operations");
     const char *first = command_string(yyjson_arr_get(ops, 0), "op");
+    bool check_readback = yyjson_arr_size(ops) > 0;
+    for (size_t i = 0; i < yyjson_arr_size(ops); i++) {
+        check_readback &= !strcmp(command_string(yyjson_arr_get(ops, i), "op"), "set");
+    }
     bool content = !strcmp(first, "set") || !strcmp(first, "assert") ||
                    !strcmp(first, "duplicate") || !strcmp(first, "connect");
     yyjson_mut_obj_add_bool(doc, root, "undoable", applied && !task->dry && content && changed);
     char *after = editor_commands_catalog(scene);
     yyjson_doc *after_doc = yyjson_read(after, strlen(after), 0);
-    bool verified = applied && !task->dry && laya_proposal &&
+    bool verified = applied && !task->dry && check_readback &&
                     verify_sets(ops, yyjson_doc_get_root(after_doc));
-    if (applied && !task->dry && laya_proposal) {
+    if (applied && !task->dry && check_readback) {
         yyjson_mut_obj_add_bool(doc, root, "verified", verified);
     }
     yyjson_mut_obj_add_strcpy(
@@ -272,15 +276,15 @@ static void execute(app_scene_authoring *scene, command_task *task)
     yyjson_mut_obj_remove_key(root, "status");
     yyjson_mut_obj_remove_key(root, "message");
     yyjson_mut_obj_remove_key(root, "ok");
-    yyjson_mut_obj_add_bool(doc, root, "ok", applied && (!laya_proposal || task->dry || verified));
+    yyjson_mut_obj_add_bool(doc, root, "ok", applied && (!check_readback || task->dry || verified));
     yyjson_mut_obj_add_str(
         doc,
         root,
         "status",
-        !applied                     ? "failed"
-        : task->dry                  ? "ready"
-        : laya_proposal && !verified ? "unverified"
-                                     : "applied"
+        !applied                      ? "failed"
+        : task->dry                   ? "ready"
+        : check_readback && !verified ? "unverified"
+                                      : "applied"
     );
     yyjson_mut_obj_add_str(
         doc,
@@ -288,12 +292,12 @@ static void execute(app_scene_authoring *scene, command_task *task)
         "message",
         !applied    ? error
         : task->dry ? "Validated"
-        : laya_proposal && !verified
+        : check_readback && !verified
             ? "Applied, but readback did not match. Review or undo the change."
             : ""
     );
     set_result(task, yyjson_mut_write(doc, 0, NULL));
-    if (applied && !task->dry && (!laya_proposal || verified)) {
+    if (applied && !task->dry && (!check_readback || verified)) {
         free(runtime(scene)->context);
         runtime(scene)->context = context ? yyjson_mut_val_write(context, 0, NULL)
                                           : NULL;
@@ -323,6 +327,9 @@ static bool start(command_task *task)
                   NULL;
     yyjson_doc_free(request_doc);
     task->request = model_request ? editor_command_request_start(model_request) : NULL;
+    if (task->request && !task->local) {
+        task->model_calls++;
+    }
     free(model_request);
     set_result(
         task,
@@ -398,6 +405,30 @@ static void bind(command_task *task, const char *key, const char *value)
     );
 }
 
+static bool validate_review(app_scene_authoring *scene, command_task *task)
+{
+    yyjson_doc *read = yyjson_read(task->result, strlen(task->result), 0);
+    const char *status = command_string(yyjson_doc_get_root(read), "status");
+    if (strcmp(status, "needs_review") && strcmp(status, "ready")) {
+        yyjson_doc_free(read);
+        return true;
+    }
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_obj_remove_key(root, "dry_run");
+    yyjson_mut_obj_add_bool(doc, root, "dry_run", true);
+    char *proposal = yyjson_mut_write(doc, 0, NULL);
+    char error[256] = { 0 };
+    bool valid = !editor_commands_apply(scene, task->catalog, proposal, error, sizeof error);
+    free(proposal);
+    yyjson_mut_doc_free(doc);
+    yyjson_doc_free(read);
+    if (!valid) {
+        set_result(task, response("failed", error));
+    }
+    return valid;
+}
+
 const char *editor_commands_result(app_scene_authoring *scene)
 {
     command_task *task = runtime(scene)->latest;
@@ -468,6 +499,11 @@ void editor_commands_frame(app_scene_authoring *scene)
         }
     }
     set_result(task, result);
+    if (!validate_review(scene, task)) {
+        runtime(scene)->active = NULL;
+        trace(task);
+        return;
+    }
     yyjson_doc *doc = yyjson_read(task->result, strlen(task->result), 0);
     yyjson_val *reply = yyjson_doc_get_root(doc);
     const char *status = command_string(reply, "status");

@@ -8,6 +8,8 @@
  * OpenAI-compatible chat-completions interface. */
 void editor_command_model_get_settings(char *host, size_t host_size, char *model, size_t model_size);
 bool editor_command_model_set_settings(const char *host, const char *model, char *error, size_t error_size);
+bool editor_command_model_json_schema();
+void editor_command_model_set_json_schema(bool enabled);
 
 /* The transport consumes this envelope and returns the provider response. */
 char *editor_command_model_prepare(const char *packet, char *error, size_t error_size);

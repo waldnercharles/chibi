@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <yyjson.h>
 
 #define MODEL_HOST_SIZE 256
@@ -21,6 +22,7 @@
 static char model_host[MODEL_HOST_SIZE];
 static char model_name[MODEL_NAME_SIZE];
 static bool model_initialized;
+static bool model_json_schema;
 
 static void set_error(char *error, size_t size, const char *message)
 {
@@ -83,6 +85,16 @@ bool editor_command_model_set_settings(const char *host, const char *model, char
     return true;
 }
 
+bool editor_command_model_json_schema()
+{
+    return model_json_schema;
+}
+
+void editor_command_model_set_json_schema(bool enabled)
+{
+    model_json_schema = enabled;
+}
+
 static bool append_endpoint(const char *host, char *endpoint, size_t size)
 {
     const char *prefix = strncmp(host, "http://", 7) ? "http://" : "";
@@ -129,9 +141,7 @@ static yyjson_mut_val *schema_operation(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_str(doc, operation, "type", "object");
     yyjson_mut_obj_add_bool(doc, operation, "additionalProperties", false);
     yyjson_mut_val *required = yyjson_mut_obj_add_arr(doc, operation, "required");
-    const char *required_names[] = { "op",    "target", "field",
-                                     "value", "alpha",  "destination",
-                                     "pin",   "result", "result_target" };
+    const char *required_names[] = { "op" };
     for (int i = 0; i < (int)(sizeof required_names / sizeof required_names[0]); i++) {
         yyjson_mut_arr_add_str(doc, required, required_names[i]);
     }
@@ -176,7 +186,7 @@ static yyjson_mut_val *model_schema(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_str(doc, schema, "type", "object");
     yyjson_mut_obj_add_bool(doc, schema, "additionalProperties", false);
     yyjson_mut_val *required = yyjson_mut_obj_add_arr(doc, schema, "required");
-    const char *required_names[] = { "decision", "operations", "question", "choices", "unsupported" };
+    const char *required_names[] = { "decision" };
     for (int i = 0; i < (int)(sizeof required_names / sizeof required_names[0]); i++) {
         yyjson_mut_arr_add_str(doc, required, required_names[i]);
     }
@@ -226,6 +236,27 @@ static bool text_has_phrase(const char *text, const char *phrase)
         }
     }
     return false;
+}
+
+static bool request_instance(const char *request)
+{
+    if ((text_has_phrase(request, "every") || text_has_phrase(request, "all")) &&
+        (text_has_phrase(request, "instance") || text_has_phrase(request, "instances")) &&
+        !text_has_phrase(request, "only")) {
+        return false;
+    }
+    return text_has_phrase(request, "instance") ||
+           text_has_phrase(request, "this entity") ||
+           text_has_phrase(request, "this object") ||
+           text_has_phrase(request, "only this") ||
+           text_has_phrase(request, "just this") ||
+           text_has_phrase(request, "alone") ||
+           text_has_phrase(request, "selected") ||
+           (text_has_phrase(request, "prototype") &&
+            (text_has_phrase(request, "untouched") ||
+             text_has_phrase(request, "unchanged") ||
+             text_has_phrase(request, "do not edit"))) ||
+           (text_has_phrase(request, "default") && text_has_phrase(request, "keep"));
 }
 
 static bool text_matches_request(const char *request, const char *text)
@@ -380,9 +411,7 @@ static yyjson_mut_doc *model_catalog(yyjson_val *catalog, const char *request)
     }
     yyjson_mut_val *objects = yyjson_mut_obj_add_arr(doc, root, "objects");
     yyjson_val *source_objects = yyjson_obj_get(catalog, "objects");
-    bool instance = text_has_phrase(request, "instance") ||
-                    text_has_phrase(request, "this entity") ||
-                    text_has_phrase(request, "this object");
+    bool instance = request_instance(request);
     bool focused = false;
     size_t i, count;
     yyjson_val *source;
@@ -391,10 +420,16 @@ static yyjson_mut_doc *model_catalog(yyjson_val *catalog, const char *request)
         if (!text_has_phrase(request, command_string(source, "name"))) {
             continue;
         }
+        if (instance && !strcmp(command_string(source, "kind"), "prototype")) {
+            continue;
+        }
         focused = true;
         bool entity = !strcmp(command_string(source, "kind"), "entity");
         model_add_object(doc, objects, source, !entity || instance, NULL);
         if (!entity) {
+            continue;
+        }
+        if (instance) {
             continue;
         }
         const char *prototype_name = command_string(source, "prototype");
@@ -434,10 +469,6 @@ static yyjson_mut_doc *model_catalog(yyjson_val *catalog, const char *request)
                 }
             }
         }
-        if (!yyjson_mut_arr_size(objects)) {
-            yyjson_mut_doc_free(doc);
-            return NULL;
-        }
     }
     return doc;
 }
@@ -453,7 +484,9 @@ static char *prompt_for_packet(yyjson_val *packet, bool ollama, char *error, siz
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_doc *focused_catalog = ollama ? model_catalog(catalog, command) : NULL;
+    yyjson_mut_doc *focused_catalog = ollama || model_json_schema
+                                        ? model_catalog(catalog, command)
+                                        : NULL;
     yyjson_mut_obj_add_val(
         doc,
         root,
@@ -512,8 +545,8 @@ static const char *instructions()
            "follow-ups and "
            "reply values for a previous clarification. Numeric values are JSON "
            "numbers; "
-           "booleans are JSON booleans. Colors may be #RRGGBB with optional "
-           "alpha 0-255. "
+           "booleans are JSON booleans. Copy explicit hex colors exactly as "
+           "#RRGGBB or #RRGGBBAA. Colors may also specify alpha 0-255. "
            "A color without alpha preserves the observed alpha. Use exact "
            "listed choice "
            "values. A set uses a final absolute value calculated from the "
@@ -543,8 +576,8 @@ static const char *instructions()
            "explicitly asks for that instance. For an unqualified color "
            "request, use "
            "Appearance Color rather than border, glow, or material colors. "
-           "Return all five proposal fields: "
-           "decision, operations, question, choices, and unsupported.";
+           "Return only the fields needed for the selected decision and "
+           "operation.";
 }
 
 static void add_message(yyjson_mut_doc *doc, yyjson_mut_val *messages, const char *role, const char *content)
@@ -565,6 +598,12 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     initialize_settings();
     if (!strcmp(model_name, "laya")) {
         return editor_command_laya_prepare(packet_json, model_host, error, error_size);
+    }
+    char *local = !strncmp(model_name, "gpt-oss", 7)
+                    ? editor_command_laya_local_prepare(packet_json)
+                    : NULL;
+    if (local) {
+        return local;
     }
     yyjson_doc *packet_doc = NULL;
     yyjson_val *packet = packet_root(packet_json, &packet_doc, error, error_size);
@@ -588,8 +627,12 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     yyjson_mut_doc_set_root(body_doc, body);
     yyjson_mut_obj_add_str(body_doc, body, "model", model_name);
     yyjson_mut_val *messages = yyjson_mut_obj_add_arr(body_doc, body, "messages");
+    bool json_schema = model_json_schema && !ollama;
     const char *output_instruction =
-        ollama ? "Return the JSON proposal directly in assistant content." : "Call submit_plan exactly once with the complete proposal. Do not call any other tool or provide shell commands.";
+        ollama || json_schema
+            ? "Return the JSON proposal directly in assistant content."
+            : "Call submit_plan exactly once with the complete proposal. Do "
+              "not call any other tool or provide shell commands.";
     size_t system_size = strlen(instructions()) + strlen(output_instruction) + 2;
     char *system_content = xmalloc(system_size);
     snprintf(system_content, system_size, "%s %s", instructions(), output_instruction);
@@ -597,7 +640,7 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     free(system_content);
     if (ollama) {
         add_message(body_doc, messages, "user", "{\"request\":\"Change Scout's color to blue\",\"catalog\":{\"revision\":\"example\",\"document\":\"scene-example\",\"capabilities\":[\"set\"],\"panels\":[],\"objects\":[{\"id\":\"entity:example:1\",\"name\":\"Scout\",\"kind\":\"entity\",\"prototype\":\"DemoShip\"},{\"id\":\"/example/content/prototypes/DemoShip.json\",\"name\":\"DemoShip\",\"kind\":\"prototype\",\"fields\":[{\"id\":\"GAME.GameAppearance.color\",\"name\":\"color\",\"label\":\"Appearance Color\",\"type\":\"color\",\"value\":4294967295}]}]}}");
-        add_message(body_doc, messages, "assistant", "{\"decision\":\"act\",\"operations\":[{\"op\":\"set\",\"target\":\"/example/content/prototypes/DemoShip.json\",\"field\":\"GAME.GameAppearance.color\",\"value\":\"#0000FF\",\"alpha\":null,\"destination\":\"\",\"pin\":\"\",\"result\":\"\",\"result_target\":\"\"}],\"question\":\"\",\"choices\":[],\"unsupported\":\"\"}");
+        add_message(body_doc, messages, "assistant", "{\"decision\":\"act\",\"operations\":[{\"op\":\"set\",\"target\":\"/example/content/prototypes/DemoShip.json\",\"field\":\"GAME.GameAppearance.color\",\"value\":\"#0000FF\"}]}");
     }
     add_message(body_doc, messages, "user", prompt);
     if (ollama) {
@@ -611,21 +654,30 @@ char *editor_command_model_prepare(const char *packet_json, char *error, size_t 
     } else {
         yyjson_mut_obj_add_int(body_doc, body, "temperature", 0);
         yyjson_mut_obj_add_int(body_doc, body, "max_tokens", max_tokens());
-        yyjson_mut_obj_add_str(body_doc, body, "reasoning_effort", "low");
         yyjson_mut_obj_add_bool(body_doc, body, "stream", false);
-        yyjson_mut_val *tools = yyjson_mut_obj_add_arr(body_doc, body, "tools");
-        yyjson_mut_val *tool = yyjson_mut_arr_add_obj(body_doc, tools);
-        yyjson_mut_obj_add_str(body_doc, tool, "type", "function");
-        yyjson_mut_val *function = yyjson_mut_obj_add_obj(body_doc, tool, "function");
-        yyjson_mut_obj_add_str(body_doc, function, "name", "submit_plan");
-        yyjson_mut_obj_add_str(body_doc, function, "description", "Submit one complete editor proposal");
-        yyjson_mut_obj_add_bool(body_doc, function, "strict", false);
-        yyjson_mut_obj_add_val(body_doc, function, "parameters", model_schema(body_doc));
-        yyjson_mut_val *choice = yyjson_mut_obj_add_obj(body_doc, body, "tool_choice");
-        yyjson_mut_obj_add_str(body_doc, choice, "type", "function");
-        yyjson_mut_val *choice_function = yyjson_mut_obj_add_obj(body_doc, choice, "function");
-        yyjson_mut_obj_add_str(body_doc, choice_function, "name", "submit_plan");
-        yyjson_mut_obj_add_bool(body_doc, body, "parallel_tool_calls", false);
+        if (json_schema) {
+            yyjson_mut_val *format = yyjson_mut_obj_add_obj(body_doc, body, "response_format");
+            yyjson_mut_obj_add_str(body_doc, format, "type", "json_schema");
+            yyjson_mut_val *spec = yyjson_mut_obj_add_obj(body_doc, format, "json_schema");
+            yyjson_mut_obj_add_str(body_doc, spec, "name", "submit_plan");
+            yyjson_mut_obj_add_bool(body_doc, spec, "strict", true);
+            yyjson_mut_obj_add_val(body_doc, spec, "schema", model_schema(body_doc));
+        } else {
+            yyjson_mut_obj_add_str(body_doc, body, "reasoning_effort", "low");
+            yyjson_mut_val *tools = yyjson_mut_obj_add_arr(body_doc, body, "tools");
+            yyjson_mut_val *tool = yyjson_mut_arr_add_obj(body_doc, tools);
+            yyjson_mut_obj_add_str(body_doc, tool, "type", "function");
+            yyjson_mut_val *function = yyjson_mut_obj_add_obj(body_doc, tool, "function");
+            yyjson_mut_obj_add_str(body_doc, function, "name", "submit_plan");
+            yyjson_mut_obj_add_str(body_doc, function, "description", "Submit one complete editor proposal");
+            yyjson_mut_obj_add_bool(body_doc, function, "strict", false);
+            yyjson_mut_obj_add_val(body_doc, function, "parameters", model_schema(body_doc));
+            yyjson_mut_val *choice = yyjson_mut_obj_add_obj(body_doc, body, "tool_choice");
+            yyjson_mut_obj_add_str(body_doc, choice, "type", "function");
+            yyjson_mut_val *choice_function = yyjson_mut_obj_add_obj(body_doc, choice, "function");
+            yyjson_mut_obj_add_str(body_doc, choice_function, "name", "submit_plan");
+            yyjson_mut_obj_add_bool(body_doc, body, "parallel_tool_calls", false);
+        }
     }
     char *body_json = yyjson_mut_write(body_doc, 0, NULL);
     yyjson_mut_doc_free(body_doc);
@@ -690,7 +742,68 @@ static int hex_digit(char value)
     return -1;
 }
 
-static bool normalize_operation(yyjson_mut_doc *doc, yyjson_mut_val *operation, yyjson_val *catalog)
+static bool explicit_hex(const char *request, unsigned *value, int *digits)
+{
+    int matches = 0;
+    for (const char *at = request; *at; at++) {
+        if (*at != '#') {
+            continue;
+        }
+        unsigned parsed = 0;
+        int count = 0;
+        while (count < 8 && hex_digit(at[count + 1]) >= 0) {
+            parsed = (parsed << 4) | (unsigned)hex_digit(at[++count]);
+        }
+        if ((count != 6 && count != 8) || hex_digit(at[count + 1]) >= 0) {
+            continue;
+        }
+        *value = parsed;
+        *digits = count;
+        matches++;
+    }
+    return matches == 1;
+}
+
+static yyjson_val *requested_choice(yyjson_val *field, const char *request)
+{
+    yyjson_val *choices = yyjson_obj_get(field, "choices");
+    yyjson_val *best = NULL;
+    int best_score = 0;
+    size_t i, count;
+    yyjson_val *choice;
+    yyjson_arr_foreach(choices, i, count, choice)
+    {
+        const char *label = command_string(choice, "label");
+        if (!*label || !text_has_phrase(request, label)) {
+            continue;
+        }
+        char phrase[128];
+        snprintf(phrase, sizeof phrase, "to %s", label);
+        int score = text_has_phrase(request, phrase) ? 3 : 1;
+        snprintf(phrase, sizeof phrase, "as %s", label);
+        if (text_has_phrase(request, phrase)) {
+            score = 3;
+        }
+        snprintf(phrase, sizeof phrase, "%s instead", label);
+        if (text_has_phrase(request, phrase) && score < 2) {
+            score = 2;
+        }
+        if (score > best_score) {
+            best = choice;
+            best_score = score;
+        } else if (score == best_score) {
+            best = NULL;
+        }
+    }
+    return best;
+}
+
+static bool normalize_operation(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *operation,
+    yyjson_val *catalog,
+    const char *request
+)
 {
     const char *op = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "op"));
     if (!op) {
@@ -716,24 +829,68 @@ static bool normalize_operation(yyjson_mut_doc *doc, yyjson_mut_val *operation, 
         const char *target = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "target"));
         const char *field_id = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "field"));
         yyjson_val *object = catalog_object(catalog, target ? target : "");
+        if (object && !strcmp(command_string(object, "kind"), "entity") &&
+            !request_instance(request)) {
+            const char *prototype_name = command_string(object, "prototype");
+            yyjson_val *objects = yyjson_obj_get(catalog, "objects");
+            size_t i, count;
+            yyjson_val *candidate;
+            yyjson_arr_foreach(objects, i, count, candidate)
+            {
+                if (!strcmp(command_string(candidate, "kind"), "prototype") &&
+                    !strcmp(command_string(candidate, "name"), prototype_name)) {
+                    object = candidate;
+                    yyjson_mut_obj_remove_key(operation, "target");
+                    yyjson_mut_obj_add_strcpy(doc, operation, "target", command_string(object, "id"));
+                    break;
+                }
+            }
+        }
         yyjson_val *field = object ? catalog_field(object, field_id ? field_id : "")
                                    : NULL;
         yyjson_mut_val *value = yyjson_mut_obj_get(operation, "value");
+        yyjson_val *choice = field ? requested_choice(field, request) : NULL;
+        if (choice) {
+            yyjson_mut_obj_remove_key(operation, "value");
+            yyjson_mut_obj_add_val(
+                doc,
+                operation,
+                "value",
+                yyjson_val_mut_copy(doc, yyjson_obj_get(choice, "value"))
+            );
+            value = yyjson_mut_obj_get(operation, "value");
+        }
+        unsigned literal;
+        int digits;
+        if (field && !strcmp(command_string(field, "type"), "color") &&
+            explicit_hex(request, &literal, &digits)) {
+            unsigned alpha = (unsigned)yyjson_get_uint(yyjson_obj_get(field, "value")) &
+                             255u;
+            yyjson_mut_obj_remove_key(operation, "value");
+            yyjson_mut_obj_add_uint(doc, operation, "value", digits == 8 ? literal : (literal << 8) | alpha);
+            yyjson_mut_obj_remove_key(operation, "alpha");
+            return true;
+        }
         if (field && !strcmp(command_string(field, "type"), "color") &&
             yyjson_mut_is_str(value)) {
             const char *text = yyjson_mut_get_str(value);
-            if (strlen(text) != 7 || text[0] != '#') {
+            size_t length = strlen(text);
+            if ((length != 7 && length != 9) || text[0] != '#') {
                 return false;
             }
-            unsigned rgb = 0;
-            for (int i = 0; i < 6; i++) {
+            unsigned packed = 0;
+            for (size_t i = 0; i < length - 1; i++) {
                 int digit = hex_digit(text[i + 1]);
                 if (digit < 0) {
                     return false;
                 }
-                rgb = (rgb << 4) | (unsigned)digit;
+                packed = (packed << 4) | (unsigned)digit;
             }
             yyjson_mut_val *alpha_value = yyjson_mut_obj_get(operation, "alpha");
+            if (length == 9 && yyjson_mut_is_num(alpha_value) &&
+                yyjson_mut_get_uint(alpha_value) != (packed & 255u)) {
+                return false;
+            }
             unsigned alpha = yyjson_mut_is_num(alpha_value)
                                ? (unsigned)yyjson_mut_get_uint(alpha_value)
                                : (unsigned)(yyjson_get_uint(yyjson_obj_get(field, "value")) &
@@ -742,7 +899,12 @@ static bool normalize_operation(yyjson_mut_doc *doc, yyjson_mut_val *operation, 
                 return false;
             }
             yyjson_mut_obj_remove_key(operation, "value");
-            yyjson_mut_obj_add_uint(doc, operation, "value", ((uint64_t)rgb << 8) | alpha);
+            yyjson_mut_obj_add_uint(
+                doc,
+                operation,
+                "value",
+                length == 9 ? packed : ((uint64_t)packed << 8) | alpha
+            );
             yyjson_mut_obj_remove_key(operation, "alpha");
         }
     }
@@ -817,6 +979,26 @@ char *editor_command_model_result(const char *packet_json, const char *response,
     initialize_settings();
     if (!strcmp(model_name, "laya")) {
         return editor_command_laya_result(packet_json, response, error, error_size);
+    }
+    yyjson_doc *local_doc = response ? yyjson_read(response, strlen(response), 0)
+                                     : NULL;
+    bool local = *command_string(yyjson_doc_get_root(local_doc), "local_choice");
+    yyjson_doc_free(local_doc);
+    if (local) {
+        char *native = editor_command_laya_result(packet_json, response, error, error_size);
+        if (!native) {
+            return NULL;
+        }
+        yyjson_doc *read = yyjson_read(native, strlen(native), 0);
+        yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+        yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+        yyjson_mut_obj_remove_key(root, "provider");
+        yyjson_mut_obj_add_str(doc, root, "provider", "native");
+        char *result = yyjson_mut_write(doc, 0, NULL);
+        yyjson_mut_doc_free(doc);
+        yyjson_doc_free(read);
+        free(native);
+        return result;
     }
     if (!response) {
         set_error(error, error_size, "Model host returned no response");
@@ -958,7 +1140,7 @@ char *editor_command_model_result(const char *packet_json, const char *response,
                 result_doc,
                 yyjson_arr_get(proposed_operations, i)
             );
-            if (!normalize_operation(result_doc, operation, catalog)) {
+            if (!normalize_operation(result_doc, operation, catalog, command_string(packet, "command"))) {
                 set_error(error, error_size, "Model returned an invalid color value");
                 valid = false;
                 break;

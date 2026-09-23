@@ -75,6 +75,11 @@ static void scene_command()
         !strcmp(command_string(result, "status"), "needs_review"),
         "headless command task reaches review without waiting for a model"
     );
+    test_check(
+        yyjson_is_uint(yyjson_obj_get(result, "model_calls")) &&
+            yyjson_get_uint(yyjson_obj_get(result, "model_calls")) == 0,
+        "headless command reports when no Laya decision was needed"
+    );
     yyjson_doc_free(result_doc);
     reply = editor_commands_api(scene, "{\"operation\":\"respond\",\"approve\":true}");
     result_doc = yyjson_read(reply, strlen(reply), 0);
@@ -379,6 +384,21 @@ void test_editor_command_laya()
         !strcmp(command_string(root, "status"), "needs_review") &&
             yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x0000ffffu,
         "color names work without saying the word color"
+    );
+    yyjson_doc_free(read);
+    free(result);
+    free(field_packet);
+    free(phrase);
+    phrase = command_packet(packet, "Tint Ship sea-glass green (#42C6A5FF)");
+    field_packet = bound_packet(phrase, "prototype:player", "GAME.GameAppearance.color");
+    result = local_result(field_packet);
+    read = result ? yyjson_read(result, strlen(result), 0) : NULL;
+    root = read ? yyjson_doc_get_root(read) : NULL;
+    operation = yyjson_arr_get(yyjson_obj_get(root, "operations"), 0);
+    test_check(
+        !strcmp(command_string(root, "status"), "needs_review") &&
+            yyjson_get_uint(yyjson_obj_get(operation, "value")) == 0x42c6a5ffu,
+        "explicit RGBA hex wins over a color word"
     );
     yyjson_doc_free(read);
     free(result);

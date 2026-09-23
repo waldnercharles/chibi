@@ -6,9 +6,9 @@
 <body>
     <div id="menu-root">
         <div id="menu-bar" class="menu-bar" role="menubar" aria-label="Application menu">
-            <div class="brand"><span class="brand-dot"></span><span>Chibi</span></div>
+            <div class="brand"><span class="brand-dot" aria-hidden="true"></span><span id="menu.brand.label">Chibi</span></div>
             <div class="menu-wrap" id="file-wrap">
-                <button id="file.menu" class="menu-trigger" data-menu-trigger="file" role="menuitem" aria-haspopup="true" aria-expanded="false">File</button>
+                <button id="file.menu" class="menu-trigger" data-menu-trigger="file" role="menuitem" aria-haspopup="true" aria-expanded="false"><span id="file.label">File</span></button>
                 <div id="file.popup" class="menu-popup" data-menu-popup="file" role="menu" aria-label="File" aria-hidden="true">
                     <button id="workspace.quick_open" class="menu-item" data-action="workspace.quick_open" role="menuitem"><span class="item-label">Quick Open</span><span id="quick-open-shortcut" class="shortcut">Ctrl+P</span></button>
                     <div class="separator"></div>
@@ -20,14 +20,14 @@
                 </div>
             </div>
             <div class="menu-wrap" id="edit-wrap">
-                <button id="edit.menu" class="menu-trigger" data-menu-trigger="edit" role="menuitem" aria-haspopup="true" aria-expanded="false">Edit</button>
+                <button id="edit.menu" class="menu-trigger" data-menu-trigger="edit" role="menuitem" aria-haspopup="true" aria-expanded="false"><span id="edit.label">Edit</span></button>
                 <div id="edit.popup" class="menu-popup" data-menu-popup="edit" role="menu" aria-label="Edit" aria-hidden="true">
                     <button id="edit.undo" class="menu-item" data-action="edit.undo" data-requires-undo="true" role="menuitem"><span class="item-label">Undo</span><span id="undo-shortcut" class="shortcut">Ctrl+Z</span></button>
                     <button id="edit.redo" class="menu-item" data-action="edit.redo" data-requires-redo="true" role="menuitem"><span class="item-label">Redo</span><span id="redo-shortcut" class="shortcut">Ctrl+Shift+Z</span></button>
                 </div>
             </div>
             <div class="menu-wrap" id="view-wrap">
-                <button id="view.menu" class="menu-trigger" data-menu-trigger="view" role="menuitem" aria-haspopup="true" aria-expanded="false">View</button>
+                <button id="view.menu" class="menu-trigger" data-menu-trigger="view" role="menuitem" aria-haspopup="true" aria-expanded="false"><span id="view.label">View</span></button>
                 <div id="view.popup" class="menu-popup view-popup" data-menu-popup="view" role="menu" aria-label="View" aria-hidden="true">
                     <button id="view.graph_and_scene" class="menu-item" data-action="view.graph_and_scene" role="menuitem"><span class="item-label">Reset Workspace</span></button>
                     <div class="separator"></div>

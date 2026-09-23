@@ -33,7 +33,8 @@ chibi_rmlui_dependencies()
 
 add_library(chibi_rmlui STATIC
     src/editor/rmlui/backend.cpp
-    src/editor/rmlui/menu.cpp)
+    src/editor/rmlui/menu.cpp
+    src/editor/rmlui/toolbar.cpp)
 target_compile_features(chibi_rmlui PRIVATE cxx_std_17)
 target_include_directories(chibi_rmlui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(chibi_rmlui SYSTEM PRIVATE ${cute_framework_SOURCE_DIR}/include)

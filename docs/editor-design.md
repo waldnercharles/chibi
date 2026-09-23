@@ -19,17 +19,30 @@ same C commands and stable UI inspection IDs as the existing editor. Docking,
 documents, graph editing, inspectors and their specialized controls still use
 ImGui during the conversion.
 
+The document bar's Back, Forward, Quick Open and Open Documents buttons now use
+the same RmlUi context. Their commands remain in the C workspace. F6 enters the
+toolbar; arrows, Home and End move between enabled buttons, Enter or Space
+activates, and Escape or Tab returns focus to the editor. The existing document
+tabs and document-list popup still use ImGui. The list opens from its retained
+button's current bounds, including when invoked by keyboard.
+
+Menu labels share a centered 18dp line box. Popups align with their triggers,
+and checkable and ordinary View items share one text column. Pointer presses
+give immediate color feedback; keyboard navigation suppresses hover highlights
+and transitions.
+
 `src/editor/rmlui` owns the RmlUi context, FreeType font rendering, Cute geometry
-backend, menu controller and resources. `src/editor/ui/retained_menu.c` adapts
-the current host input and composes the resulting transparent texture into
-native menu windows. ImGui supplies those temporary window containers so the
-converted menus obey existing popup focus and modal stacking. RmlUi owns the
-menu's layout, hit testing, buttons and styling. Its geometry renderer does not
-depend on ImGui.
+backend, menu and toolbar controllers and resources.
+`src/editor/ui/retained_menu.c` adapts the current host input and composes the
+resulting transparent texture into native menu and toolbar windows. ImGui
+supplies those window containers so the converted controls obey existing popup
+focus and modal stacking. Popup regions are excluded from the other surfaces to
+avoid drawing their translucent pixels twice. RmlUi owns layout, hit testing,
+buttons and styling. Its geometry renderer does not depend on ImGui.
 
 Sizes at the C boundary are logical pixels. The RmlUi context and render canvas
 use framebuffer pixels, and RCSS uses `dp` for display scaling. Application
-deactivation destroys menu documents, context and GPU resources before unloading
+deactivation destroys retained documents, context and GPU resources before unloading
 the application library. Plain game presentation does not create this UI.
 
 Resources live in `src/editor/rmlui/resources` and currently load at startup from
@@ -40,11 +53,12 @@ markup. Text entry and IME, custom graph elements, accessibility integration and
 docking need their own working conversions before ImGui can be removed.
 
 `build/test_suite --rmlui-menu` exercises command dispatch, keyboard focus,
-disabled items, pane state, scaling and context teardown without a GPU. The
-`--rmlui-menu-render` smoke test covers GPU composition, display scaling, resize
-and preserving queued scene geometry. `make test-render` includes that smoke
-test. Set `CHIBI_RMLUI_CAPTURE_DIR` to an existing directory to save its menu
-captures.
+disabled items, pane state, menu alignment, toolbar navigation, scaling and
+context teardown without a GPU. The `--rmlui-menu-render` smoke test covers GPU
+composition, display scaling, resize and preserving queued scene geometry.
+`make test-render` includes that smoke test. Set `CHIBI_RMLUI_CAPTURE_DIR` to an
+existing directory to save menu and toolbar states, including opening and
+dismissed popups.
 
 ## Current goal, September 9, 2026
 

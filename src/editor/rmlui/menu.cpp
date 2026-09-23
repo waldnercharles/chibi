@@ -301,7 +301,7 @@ void handle_click(editor_rml_menu *menu, Rml::Event &event)
     event.StopPropagation();
 }
 
-void handle_mouseover(editor_rml_menu *menu, Rml::Event &event)
+void handle_mousemove(editor_rml_menu *menu, Rml::Event &event)
 {
     if (menu->active_menu < 0) {
         return;
@@ -485,8 +485,8 @@ void MenuListener::ProcessEvent(Rml::Event &event)
         handle_click(menu_, event);
         return;
     }
-    if (event == "mouseover") {
-        handle_mouseover(menu_, event);
+    if (event == "mousemove") {
+        handle_mousemove(menu_, event);
         return;
     }
     if (event == "keydown") {
@@ -541,7 +541,7 @@ extern "C" editor_rml_menu *editor_rml_menu_create(
         return nullptr;
     }
     menu->bar->AddEventListener("click", menu->listener);
-    menu->bar->AddEventListener("mouseover", menu->listener);
+    menu->bar->AddEventListener("mousemove", menu->listener);
     menu->bar->AddEventListener("keydown", menu->listener);
     apply_state(menu);
     return menu;
@@ -553,7 +553,7 @@ extern "C" void editor_rml_menu_destroy(editor_rml_menu *menu)
         return;
     }
     menu->bar->RemoveEventListener("click", menu->listener);
-    menu->bar->RemoveEventListener("mouseover", menu->listener);
+    menu->bar->RemoveEventListener("mousemove", menu->listener);
     menu->bar->RemoveEventListener("keydown", menu->listener);
     if (Rml::Element *focus = menu->context->GetFocusElement();
         focus && menu->bar->Contains(focus)) {

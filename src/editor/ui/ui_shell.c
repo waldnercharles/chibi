@@ -75,6 +75,7 @@ static bool ui_navigation_back;
 static bool ui_navigation_forward;
 static int ui_navigation_request;
 static bool ui_document_bar_visible;
+static bool ui_document_list_requested;
 static ImVec2 ui_document_bar_pos;
 static ImVec2 ui_document_bar_size;
 static const float UI_DOCUMENT_BAR_HEIGHT = 40.0f;
@@ -577,6 +578,13 @@ bool editor_ui_document_bar_visible()
     return ui_document_bar_visible;
 }
 
+bool editor_ui_take_document_list_request()
+{
+    bool requested = ui_document_list_requested;
+    ui_document_list_requested = false;
+    return requested;
+}
+
 bool editor_ui_begin_document_bar()
 {
     assert(ui_document_bar_visible);
@@ -594,22 +602,34 @@ bool editor_ui_begin_document_bar()
     if (!visible) {
         return false;
     }
-    if (editor_ui_icon_button("workspace.back", EDITOR_ICON_FA_ARROW_LEFT, ui_navigation_back)) {
-        editor_ui_request_navigation(-1);
+    ImVec2 cursor = ImGui_GetCursorScreenPos();
+    float height = 26.0f;
+    float y = ui_document_bar_pos.y + (ui_document_bar_size.y - height) * 0.5f;
+    float width = editor_menu_toolbar_draw(cursor.x, y, height);
+    ImGui_Dummy((ImVec2){ width, height });
+    ImGui_SameLineEx(0, 8.0f);
+    if (!editor_ui_captures_keyboard() && ImGui_IsWindowHovered(0)) {
+        static const struct
+        {
+            const char *id;
+            const char *label;
+        } hints[] = {
+            { "workspace.back", "Go back" },
+            { "workspace.forward", "Go forward" },
+            { "content.quick_open", "Open an asset (Cmd+P / Ctrl+P)" },
+            { "workspace.documents.list", "Open documents" },
+        };
+        ImVec2 mouse = ImGui_GetIO()->MousePos;
+        for (int i = 0; i < (int)(sizeof hints / sizeof *hints); i++) {
+            editor_ui_rect rect;
+            if (editor_ui_item_rect(hints[i].id, &rect) && mouse.x >= rect.x &&
+                mouse.x < rect.x + rect.width && mouse.y >= rect.y &&
+                mouse.y < rect.y + rect.height) {
+                ImGui_SetTooltip("%s", hints[i].label);
+                break;
+            }
+        }
     }
-    editor_ui_track_item("workspace.back");
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui_SetTooltip("Go back");
-    }
-    ImGui_SameLine();
-    if (editor_ui_icon_button("workspace.forward", EDITOR_ICON_FA_ARROW_RIGHT, ui_navigation_forward)) {
-        editor_ui_request_navigation(1);
-    }
-    editor_ui_track_item("workspace.forward");
-    if (ImGui_IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui_SetTooltip("Go forward");
-    }
-    ImGui_SameLine();
     return true;
 }
 
@@ -1679,6 +1699,7 @@ static void ui_draw_menu(void)
         { "edit.undo", EDITOR_UI_COMMAND_UNDO },
         { "edit.redo", EDITOR_UI_COMMAND_REDO },
         { "workspace.quick_open", EDITOR_UI_COMMAND_QUICK_OPEN },
+        { "content.quick_open", EDITOR_UI_COMMAND_QUICK_OPEN },
     };
     static const struct
     {
@@ -1704,10 +1725,26 @@ static void ui_draw_menu(void)
     for (int i = 0; i < EDITOR_RML_MENU_PANE_COUNT; i++) {
         state.panes[i] = editor_ui_pane_visible(panes[i].pane);
     }
+    editor_rml_toolbar_state toolbar = {
+        .back = ui_navigation_back,
+        .forward = ui_navigation_forward,
+        .commands_available = ui_command_handler != NULL,
+        .reduced_motion = ui_reduce_motion,
+    };
+    editor_menu_toolbar_state(&toolbar, ui_document_bar_visible);
     editor_menu_frame(&state);
     ui_menu_bottom = ImGui_GetMainViewport()->Pos.y + editor_menu_height();
     const char *action;
     while ((action = editor_menu_take_action())) {
+        if (strcmp(action, "workspace.back") == 0) {
+            editor_ui_request_navigation(-1);
+        }
+        if (strcmp(action, "workspace.forward") == 0) {
+            editor_ui_request_navigation(1);
+        }
+        if (strcmp(action, "workspace.documents.list") == 0) {
+            ui_document_list_requested = true;
+        }
         for (int i = 0; i < (int)(sizeof commands / sizeof *commands); i++) {
             if (strcmp(action, commands[i].id) == 0) {
                 editor_ui_run_command(commands[i].command);
@@ -2094,6 +2131,7 @@ bool editor_ui_restore_checkpoint(const char *ini)
 void editor_ui_deactivate()
 {
     editor_menu_shutdown();
+    ui_document_list_requested = false;
     ui_context = NULL;
     ImGui_ClearActiveID();
     ImGui_ClosePopupsOverWindow(NULL, false);

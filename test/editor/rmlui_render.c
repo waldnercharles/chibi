@@ -21,6 +21,10 @@ static void frame(float scale)
     editor_ui_set_framebuffer_target(true);
     editor_ui_set_framebuffer_size(cf_app_get_canvas_width(), cf_app_get_canvas_height());
     editor_ui_prepare();
+    if (editor_ui_document_bar_visible()) {
+        editor_ui_begin_document_bar();
+        ImGui_End();
+    }
     editor_ui_render();
     cf_app_draw_onto_screen(true);
 }
@@ -170,6 +174,8 @@ int rmlui_render_run(const char *program)
     app_input_initialize();
     editor_ui_initialize(false);
     editor_ui_set_command_handler(menu_command, NULL);
+    editor_ui_set_document_bar_visible(true);
+    editor_ui_set_navigation_available(true, true);
     ImGui_GetIO()->IniFilename = NULL;
     cf_app_set_imgui_render_target(cf_app_get_canvas());
     editor_ui_set_framebuffer_target(true);
@@ -177,6 +183,8 @@ int rmlui_render_run(const char *program)
     float scale = cf_app_get_pixel_scale();
     frames(2, scale);
     assert(click("file.menu"));
+    frames(2, scale);
+    capture("file-popup-opening");
     frames(12, scale);
     assert(item("file.save", &(editor_ui_rect){ 0 }));
     capture("file-popup");
@@ -190,6 +198,7 @@ int rmlui_render_run(const char *program)
     assert(click("view.reduced_motion"));
     assert(editor_ui_reduced_motion() != reduced_motion);
     editor_ui_set_reduced_motion(reduced_motion);
+    capture("workspace-toolbar-menu-dismissed");
     frames(12, scale);
 
     key(ImGuiKey_F10);
@@ -198,6 +207,19 @@ int rmlui_render_run(const char *program)
     capture("keyboard-popup");
     key(ImGuiKey_Escape);
     key(ImGuiKey_Escape);
+
+    assert(click("workspace.back"));
+    assert(editor_ui_take_navigation() == -1);
+    assert(click("workspace.forward"));
+    assert(editor_ui_take_navigation() == 1);
+    key(ImGuiKey_Escape);
+    capture("workspace-toolbar");
+    key(ImGuiKey_F6);
+    capture("workspace-toolbar-keyboard");
+    key(ImGuiKey_Escape);
+    editor_ui_set_navigation_available(false, false);
+    frames(2, scale);
+    capture("workspace-toolbar-disabled");
 
     CF_Canvas witness = cf_make_canvas(cf_canvas_defaults(128, 128));
     assert(witness.id);
@@ -217,6 +239,7 @@ int rmlui_render_run(const char *program)
     assert(item("file.menu", &(editor_ui_rect){ 0 }));
 
     editor_ui_deactivate();
+    editor_ui_set_document_bar_visible(false);
     app_input_shutdown();
     cf_destroy_app();
     puts("RmlUi menu GPU smoke passed");

@@ -1,6 +1,7 @@
 #include "editor/ui/ui_shell.h"
 
 #include <imgui/dcimgui.h>
+#include <math.h>
 #include <stdio.h>
 
 typedef struct
@@ -10,6 +11,8 @@ typedef struct
     int native_presses;
     bool focus_native;
     bool native_focused;
+    editor_ui_rect toolbar_host;
+    bool toolbar_host_visible;
 } rmlui_menu_fixture;
 
 static rmlui_menu_fixture *active_fixture;
@@ -29,6 +32,16 @@ static void menu_frame()
 {
     ImGui_NewFrame();
     editor_ui_prepare();
+    active_fixture->toolbar_host_visible = false;
+    if (editor_ui_document_bar_visible()) {
+        active_fixture->toolbar_host_visible = editor_ui_begin_document_bar();
+        if (active_fixture->toolbar_host_visible) {
+            ImVec2 pos = ImGui_GetWindowPos();
+            ImVec2 size = ImGui_GetWindowSize();
+            active_fixture->toolbar_host = (editor_ui_rect){ pos.x, pos.y, size.x, size.y };
+        }
+        ImGui_End();
+    }
     ImGui_SetNextWindowPos((ImVec2){ 940, 100 }, ImGuiCond_Always);
     ImGui_SetNextWindowSize((ImVec2){ 220, 100 }, ImGuiCond_Always);
     ImGui_Begin(
@@ -57,6 +70,255 @@ static bool item_center(const char *id, ImVec2 *center)
     }
     *center = (ImVec2){ rect.x + rect.width * 0.5f, rect.y + rect.height * 0.5f };
     return true;
+}
+
+static bool menu_rect(const char *id, editor_ui_rect *rect)
+{
+    return editor_ui_item_rect(id, rect) && rect->width > 0 && rect->height > 0;
+}
+
+static float rect_center_y(editor_ui_rect rect)
+{
+    return rect.y + rect.height * 0.5f;
+}
+
+static bool aligned(float left, float right)
+{
+    return fabsf(left - right) <= 1.0f;
+}
+
+static bool command_is(const rmlui_menu_fixture *fixture, int index, editor_ui_command command);
+static bool click_item(const char *id);
+static void menu_key(ImGuiKey key);
+static void dismiss_menu();
+
+static bool shortcut_fits_row(const char *row_id, const char *shortcut_id, float *right)
+{
+    editor_ui_rect row, shortcut;
+    if (!menu_rect(row_id, &row) || !menu_rect(shortcut_id, &shortcut)) {
+        return false;
+    }
+    *right = shortcut.x + shortcut.width;
+    return shortcut.x >= row.x - 1.0f && *right <= row.x + row.width + 1.0f &&
+           shortcut.y >= row.y - 1.0f &&
+           shortcut.y + shortcut.height <= row.y + row.height + 1.0f &&
+           aligned(rect_center_y(shortcut), rect_center_y(row));
+}
+
+static void settle_popup()
+{
+    for (int i = 0; i < 12; i++) {
+        menu_frame();
+    }
+}
+
+static bool popup_aligns_with_trigger(const char *trigger_id, const char *popup_id)
+{
+    editor_ui_rect trigger, popup;
+    return menu_rect(trigger_id, &trigger) && menu_rect(popup_id, &popup) &&
+           aligned(popup.x, trigger.x);
+}
+
+static bool menu_alignment()
+{
+    editor_ui_rect brand, file_label, edit_label, view_label;
+    editor_ui_rect file_trigger, edit_trigger, view_trigger;
+    bool labels = menu_rect("menu.brand.label", &brand) &&
+                  menu_rect("file.label", &file_label) &&
+                  menu_rect("edit.label", &edit_label) &&
+                  menu_rect("view.label", &view_label) &&
+                  aligned(rect_center_y(brand), rect_center_y(file_label)) &&
+                  aligned(rect_center_y(brand), rect_center_y(edit_label)) &&
+                  aligned(rect_center_y(brand), rect_center_y(view_label));
+    bool triggers = menu_rect("file.menu", &file_trigger) &&
+                    menu_rect("edit.menu", &edit_trigger) &&
+                    menu_rect("view.menu", &view_trigger) &&
+                    aligned(rect_center_y(file_trigger), rect_center_y(file_label)) &&
+                    aligned(rect_center_y(edit_trigger), rect_center_y(edit_label)) &&
+                    aligned(rect_center_y(view_trigger), rect_center_y(view_label));
+
+    dismiss_menu();
+    bool file_open = click_item("file.menu");
+    settle_popup();
+    float quick_right = 0.0f, save_right = 0.0f;
+    bool file_popup = file_open &&
+                      popup_aligns_with_trigger("file.menu", "file.popup");
+    bool file_rows = shortcut_fits_row("workspace.quick_open", "quick-open-shortcut", &quick_right) &&
+                     shortcut_fits_row("file.save", "save-shortcut", &save_right) &&
+                     aligned(quick_right, save_right);
+
+    dismiss_menu();
+    bool edit_open = click_item("edit.menu");
+    settle_popup();
+    float undo_right = 0.0f, redo_right = 0.0f;
+    bool edit_popup = edit_open &&
+                      popup_aligns_with_trigger("edit.menu", "edit.popup");
+    bool edit_rows = shortcut_fits_row("edit.undo", "undo-shortcut", &undo_right) &&
+                     shortcut_fits_row("edit.redo", "redo-shortcut", &redo_right) &&
+                     aligned(undo_right, redo_right);
+
+    dismiss_menu();
+    bool view_open = click_item("view.menu");
+    settle_popup();
+    bool view_popup = view_open &&
+                      popup_aligns_with_trigger("view.menu", "view.popup");
+    dismiss_menu();
+    return labels && triggers && file_popup && file_rows && edit_popup &&
+           edit_rows && view_popup;
+}
+
+static const char *const TOOLBAR_ITEM_IDS[] = {
+    "workspace.back",
+    "workspace.forward",
+    "content.quick_open",
+    "workspace.documents.list",
+};
+
+static bool toolbar_layout(editor_ui_rect rects[4])
+{
+    if (!active_fixture->toolbar_host_visible) {
+        return false;
+    }
+    editor_ui_rect host = active_fixture->toolbar_host;
+    for (int i = 0; i < 4; i++) {
+        if (!menu_rect(TOOLBAR_ITEM_IDS[i], &rects[i]) ||
+            rects[i].x < host.x - 1.0f || rects[i].y < host.y - 1.0f ||
+            rects[i].x + rects[i].width > host.x + host.width + 1.0f ||
+            rects[i].y + rects[i].height > host.y + host.height + 1.0f) {
+            return false;
+        }
+        if (i > 0 && (rects[i].x < rects[i - 1].x + rects[i - 1].width - 1.0f ||
+                      !aligned(rect_center_y(rects[0]), rect_center_y(rects[i])))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool toolbar_layout_matches(const editor_ui_rect left[4], const editor_ui_rect right[4])
+{
+    for (int i = 0; i < 4; i++) {
+        if (!aligned(left[i].x, right[i].x) || !aligned(left[i].y, right[i].y) ||
+            !aligned(left[i].width, right[i].width) ||
+            !aligned(left[i].height, right[i].height)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool focus_native_target(rmlui_menu_fixture *fixture)
+{
+    fixture->focus_native = true;
+    menu_frame();
+    menu_frame();
+    return fixture->native_focused;
+}
+
+static bool toolbar_actions(rmlui_menu_fixture *fixture, editor_ui_rect layout_1x[4])
+{
+    editor_ui_set_document_bar_visible(true);
+    editor_ui_set_navigation_available(false, false);
+    menu_frame();
+    menu_frame();
+    bool layout = toolbar_layout(layout_1x);
+
+    bool back_hit = click_item("workspace.back");
+    bool back_disabled = editor_ui_take_navigation() == 0;
+    bool forward_hit = click_item("workspace.forward");
+    bool forward_disabled = editor_ui_take_navigation() == 0;
+
+    editor_ui_set_navigation_available(true, true);
+    menu_frame();
+    bool back_clicked = click_item("workspace.back");
+    bool back_request = editor_ui_take_navigation() == -1;
+    bool forward_clicked = click_item("workspace.forward");
+    bool forward_request = editor_ui_take_navigation() == 1;
+
+    int before = fixture->command_count;
+    bool quick_open_clicked = click_item("content.quick_open");
+    bool quick_open_command = command_is(fixture, before, EDITOR_UI_COMMAND_QUICK_OPEN);
+    (void)editor_ui_take_document_list_request();
+    bool documents_clicked = click_item("workspace.documents.list");
+    bool documents_requested = editor_ui_take_document_list_request();
+    bool documents_consumed = !editor_ui_take_document_list_request();
+    return layout && back_hit && back_disabled && forward_hit &&
+           forward_disabled && back_clicked && back_request &&
+           forward_clicked && forward_request && quick_open_clicked &&
+           quick_open_command && documents_clicked && documents_requested &&
+           documents_consumed && fixture->command_count > before;
+}
+
+static bool toolbar_keyboard_actions(rmlui_menu_fixture *fixture)
+{
+    bool ok = true;
+    dismiss_menu();
+    editor_ui_set_navigation_available(false, true);
+    menu_frame();
+    menu_key(ImGuiKey_F6);
+    bool entered = editor_ui_captures_keyboard();
+    menu_key(ImGuiKey_Enter);
+    bool skipped_disabled_back = editor_ui_take_navigation() == 1;
+    ok &= entered && skipped_disabled_back;
+
+    dismiss_menu();
+    editor_ui_set_navigation_available(true, true);
+    menu_frame();
+    menu_key(ImGuiKey_F6);
+    menu_key(ImGuiKey_RightArrow);
+    menu_key(ImGuiKey_Enter);
+    bool arrow_forward = editor_ui_take_navigation() == 1;
+    ok &= arrow_forward;
+
+    dismiss_menu();
+    menu_key(ImGuiKey_F6);
+    menu_key(ImGuiKey_Home);
+    menu_key(ImGuiKey_Enter);
+    bool home_back = editor_ui_take_navigation() == -1;
+    ok &= home_back;
+
+    dismiss_menu();
+    menu_key(ImGuiKey_F6);
+    menu_key(ImGuiKey_End);
+    menu_key(ImGuiKey_Space);
+    bool end_documents = editor_ui_take_document_list_request();
+    ok &= end_documents;
+
+    dismiss_menu();
+    editor_ui_set_navigation_available(false, false);
+    menu_frame();
+    int before_quick_open = fixture->command_count;
+    menu_key(ImGuiKey_F6);
+    bool quick_open_focused = editor_ui_captures_keyboard();
+    menu_key(ImGuiKey_Space);
+    bool quick_open_space = command_is(fixture, before_quick_open, EDITOR_UI_COMMAND_QUICK_OPEN);
+    ok &= quick_open_focused && quick_open_space;
+
+    dismiss_menu();
+    bool escape_native_before = focus_native_target(fixture);
+    int native_before = fixture->native_presses;
+    menu_key(ImGuiKey_F6);
+    bool escape_entered = editor_ui_captures_keyboard();
+    menu_key(ImGuiKey_Escape);
+    bool escape_restored = !editor_ui_captures_keyboard() && fixture->native_focused;
+    menu_key(ImGuiKey_Space);
+    bool escape_native_activated = fixture->native_presses == native_before + 1;
+    ok &= escape_native_before && escape_entered && escape_restored &&
+          escape_native_activated;
+
+    dismiss_menu();
+    bool tab_native_before = focus_native_target(fixture);
+    native_before = fixture->native_presses;
+    menu_key(ImGuiKey_F6);
+    bool tab_entered = editor_ui_captures_keyboard();
+    menu_key(ImGuiKey_Tab);
+    bool tab_restored = !editor_ui_captures_keyboard() && fixture->native_focused;
+    menu_key(ImGuiKey_Space);
+    bool tab_native_activated = fixture->native_presses == native_before + 1;
+    ok &= tab_native_before && tab_entered && tab_restored && tab_native_activated;
+
+    dismiss_menu();
+    return ok;
 }
 
 static bool click_at(ImVec2 center)
@@ -133,6 +395,11 @@ bool test_rmlui_menu()
     for (int pane = 0; pane < EDITOR_UI_PANE_COUNT; pane++) {
         panes_before[pane] = editor_ui_pane_visible((editor_ui_pane)pane);
     }
+    bool document_bar_before = editor_ui_document_bar_visible();
+    int navigation_request_before = editor_ui_take_navigation();
+    (void)editor_ui_take_document_list_request();
+    editor_ui_set_document_bar_visible(false);
+    editor_ui_set_navigation_available(false, false);
     ImGuiContext *previous = ImGui_GetCurrentContext();
     ImGuiContext *context = ImGui_CreateContext(NULL);
     editor_ui_initialize(false);
@@ -152,8 +419,17 @@ bool test_rmlui_menu()
     bool input_routing = true;
     bool scale_resize = true;
     bool lifecycle = true;
+    bool alignment_1x = false;
+    bool alignment_2x = false;
+    bool toolbar_action_ok = false;
+    bool toolbar_keyboard_ok = false;
+    bool toolbar_layout_1x = false;
+    bool toolbar_layout_2x = false;
+    bool toolbar_scale_stable = false;
+    editor_ui_rect toolbar_rects_1x[4] = { 0 };
     if (ok) {
         menu_frame();
+        alignment_1x = menu_alignment();
         const struct
         {
             const char *item;
@@ -329,9 +605,23 @@ bool test_rmlui_menu()
                          native_focus_retained && native_released && f10_open &&
                          keyboard_command && disabled_skip;
 
+        toolbar_action_ok = toolbar_actions(&fixture, toolbar_rects_1x);
+        toolbar_layout_1x = toolbar_layout(toolbar_rects_1x);
+        toolbar_keyboard_ok = toolbar_keyboard_actions(&fixture);
+
         io->DisplayFramebufferScale = (ImVec2){ 2, 2 };
         editor_ui_set_framebuffer_target(true);
         editor_ui_set_framebuffer_size(1600, 1200);
+        menu_frame();
+        editor_ui_set_document_bar_visible(true);
+        menu_frame();
+        menu_frame();
+        editor_ui_rect toolbar_rects_2x[4] = { 0 };
+        toolbar_layout_2x = toolbar_layout(toolbar_rects_2x);
+        toolbar_scale_stable = toolbar_layout_1x && toolbar_layout_2x &&
+                               toolbar_layout_matches(toolbar_rects_1x, toolbar_rects_2x);
+        alignment_2x = menu_alignment();
+        editor_ui_set_document_bar_visible(document_bar_before);
         menu_frame();
         editor_ui_rect scaled;
         bool scaled_rect = editor_ui_item_rect("file.menu", &scaled) &&
@@ -348,6 +638,8 @@ bool test_rmlui_menu()
                             resized.x + resized.width <= 900.5f &&
                             resized.y + resized.height <= 620.5f;
         scale_resize &= scaled_rect && resized_rect;
+
+        editor_ui_set_navigation_available(false, false);
 
         editor_ui_deactivate();
         ImGui_DestroyContext(context);
@@ -385,7 +677,9 @@ bool test_rmlui_menu()
         ImGui_SetCurrentContext(previous);
         active_fixture = NULL;
         ok &= file_actions && undo_redo && state_actions && input_routing &&
-              scale_resize && lifecycle;
+              scale_resize && alignment_1x && alignment_2x &&
+              toolbar_action_ok && toolbar_keyboard_ok && toolbar_layout_1x &&
+              toolbar_layout_2x && toolbar_scale_stable && lifecycle;
     }
 
     if (context) {
@@ -396,15 +690,30 @@ bool test_rmlui_menu()
     for (int pane = 0; pane < EDITOR_UI_PANE_COUNT; pane++) {
         editor_ui_set_pane_visible((editor_ui_pane)pane, panes_before[pane]);
     }
+    editor_ui_set_document_bar_visible(document_bar_before);
+    editor_ui_set_navigation_available(false, false);
+    (void)editor_ui_take_document_list_request();
+    (void)editor_ui_take_navigation();
+    if (navigation_request_before) {
+        editor_ui_request_navigation(navigation_request_before);
+    }
     printf(
         "rmlui-menu %s: file=%d undo/redo=%d view-state=%d keyboard=%d "
-        "scale/resize=%d lifecycle=%d\n",
+        "scale/resize=%d alignment=%d/%d toolbar=%d/%d layout=%d/%d stable=%d "
+        "lifecycle=%d\n",
         ok ? "PASS" : "FAIL",
         file_actions,
         undo_redo,
         state_actions,
         input_routing,
         scale_resize,
+        alignment_1x,
+        alignment_2x,
+        toolbar_action_ok,
+        toolbar_keyboard_ok,
+        toolbar_layout_1x,
+        toolbar_layout_2x,
+        toolbar_scale_stable,
         lifecycle
     );
     return ok;

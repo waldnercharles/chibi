@@ -922,20 +922,12 @@ void scene_tabs_draw(app_scene_authoring *scene)
     int activate = -1;
     int close = -1;
     if (visible) {
-        if (ImGui_Button("Quick Open")) {
-            asset_browser_request_quick_open(scene);
-        }
-        editor_ui_track_item("content.quick_open");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Open an asset (Cmd+P / Ctrl+P)");
-        }
-        ImGui_SameLine();
-        if (editor_ui_icon_button("workspace.documents.list", EDITOR_ICON_CODICON_CHEVRON_DOWN, true)) {
+        if (editor_ui_take_document_list_request()) {
             ImGui_OpenPopup("workspace.document_list", 0);
         }
-        editor_ui_track_item("workspace.documents.list");
-        if (ImGui_IsItemHovered(0)) {
-            ImGui_SetTooltip("Open documents");
+        editor_ui_rect list;
+        if (editor_ui_item_rect("workspace.documents.list", &list)) {
+            ImGui_SetNextWindowPos((ImVec2){ list.x, list.y + list.height + 4.0f }, ImGuiCond_Always);
         }
         if (ImGui_BeginPopup("workspace.document_list", 0)) {
             for (int i = 0; i < acount(scene->tabs); i++) {
@@ -959,7 +951,6 @@ void scene_tabs_draw(app_scene_authoring *scene)
             }
             ImGui_EndPopup();
         }
-        ImGui_SameLine();
         if (ImGui_BeginTabBar("workspace.documents", ImGuiTabBarFlags_FittingPolicyScroll)) {
             for (int i = 0; i < acount(scene->tabs); i++) {
                 scene_document_tab *tab = &scene->tabs[i];

@@ -122,6 +122,8 @@ void editor_ui_set_document_bar_visible(bool visible);
 bool editor_ui_document_bar_visible();
 /* Pair with ImGui_End(), even when the contents are clipped. */
 bool editor_ui_begin_document_bar();
+/* Consumes the retained toolbar's Open Documents action. */
+bool editor_ui_take_document_list_request();
 bool editor_ui_navigator_visible(void);
 editor_ui_pane editor_ui_navigator_tab(editor_ui_pane outline);
 void editor_ui_restore_navigator_tab(editor_ui_pane tab);

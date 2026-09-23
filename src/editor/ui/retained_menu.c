@@ -24,6 +24,9 @@ typedef struct
 
 static editor_rml_backend *backend;
 static editor_rml_menu *menu;
+static editor_rml_toolbar *toolbar;
+static editor_rml_toolbar_state toolbar_state;
+static bool toolbar_visible;
 static char **actions;
 static char *last_action;
 static int action_index;
@@ -40,6 +43,13 @@ static ImVec2 origin;
 static ImVec2 size;
 static menu_surface bar;
 static menu_surface popup;
+static menu_surface toolbar_surface;
+
+static bool captures_keyboard()
+{
+    return editor_rml_menu_captures_keyboard(menu) ||
+           editor_rml_toolbar_captures_keyboard(toolbar);
+}
 
 static void queue_action(void *, const char *id)
 {
@@ -72,13 +82,18 @@ static void key_input(ImGuiKey native, editor_rml_key key, bool allow)
         ImGui_ClearActiveID();
         editor_rml_menu_focus_bar(menu);
     }
+    if (down && native == ImGuiKey_F6 && toolbar_visible) {
+        editor_rml_menu_close(menu);
+        ImGui_ClearActiveID();
+        editor_rml_toolbar_focus(toolbar);
+    }
     editor_rml_input input = {
         .type = down ? EDITOR_RML_KEY_PRESS : EDITOR_RML_KEY_RELEASE,
         .key = key,
         .modifiers = modifiers(),
     };
     editor_rml_backend_process_input(backend, &input);
-    if (keyboard_captured || editor_rml_menu_captures_keyboard(menu)) {
+    if (keyboard_captured || captures_keyboard()) {
         ImGui_SetKeyOwner(native, MENU_POPUP_ID, ImGuiInputFlags_LockThisFrame);
     }
 }
@@ -96,7 +111,7 @@ static void menu_input()
     int count = context->OpenPopupStack.Size;
     bool other_popup = count && context->OpenPopupStack.Data[count - 1].PopupId !=
                                     MENU_POPUP_ID;
-    keyboard_captured = editor_rml_menu_captures_keyboard(menu);
+    keyboard_captured = captures_keyboard();
     restore_focus = false;
     keyboard_action = false;
     if (!keyboard_captured && context->NavWindow &&
@@ -109,6 +124,7 @@ static void menu_input()
     }
     if (other_popup || io->AppFocusLost) {
         editor_rml_menu_close(menu);
+        editor_rml_toolbar_blur(toolbar);
         keyboard_captured = false;
         return;
     }
@@ -132,10 +148,15 @@ static void menu_input()
         );
         bool over_popup = editor_rml_menu_popup_rect(menu, &rect) &&
                           contains(rect, input.x, input.y);
+        bool over_toolbar = toolbar_visible &&
+                            contains(toolbar_surface.rect, input.x, input.y);
         if (!over_bar && !over_popup) {
-            outside_click = true;
             editor_rml_menu_close(menu);
         }
+        if (!over_toolbar) {
+            editor_rml_toolbar_blur(toolbar);
+        }
+        outside_click = !over_bar && !over_popup && !over_toolbar;
     }
     for (int button = 0; button < 3; button++) {
         input.button = button;
@@ -160,6 +181,7 @@ static void menu_input()
         editor_rml_key key;
     } keys[] = {
         { ImGuiKey_F10, EDITOR_RML_KEY_F10 },
+        { ImGuiKey_F6, EDITOR_RML_KEY_F6 },
         { ImGuiKey_LeftAlt, EDITOR_RML_KEY_LEFT_ALT },
         { ImGuiKey_RightAlt, EDITOR_RML_KEY_RIGHT_ALT },
         { ImGuiKey_Tab, EDITOR_RML_KEY_TAB },
@@ -174,19 +196,18 @@ static void menu_input()
         { ImGuiKey_End, EDITOR_RML_KEY_END },
     };
     for (int i = 0; i < (int)(sizeof keys / sizeof *keys); i++) {
-        bool active = keyboard_captured || editor_rml_menu_captures_keyboard(menu);
-        bool entry = i == 0 ||
-                     (i < 3 && !io->ConfigMacOSXBehaviors && !io->WantTextInput);
+        bool active = keyboard_captured || captures_keyboard();
+        bool alt = keys[i].native == ImGuiKey_LeftAlt ||
+                   keys[i].native == ImGuiKey_RightAlt;
+        bool entry = keys[i].native == ImGuiKey_F10 ||
+                     (keys[i].native == ImGuiKey_F6 && toolbar_visible) ||
+                     (alt && !io->ConfigMacOSXBehaviors && !io->WantTextInput);
         key_input(keys[i].native, keys[i].key, entry || active);
     }
     for (int i = 0; i < 26; i++) {
-        key_input(
-            ImGuiKey_A + i,
-            EDITOR_RML_KEY_A + i,
-            keyboard_captured || editor_rml_menu_captures_keyboard(menu)
-        );
+        key_input(ImGuiKey_A + i, EDITOR_RML_KEY_A + i, keyboard_captured || captures_keyboard());
     }
-    bool active = editor_rml_menu_captures_keyboard(menu);
+    bool active = captures_keyboard();
     restore_focus = keyboard_captured && !active && !outside_click;
     keyboard_captured |= active;
     if (keyboard_captured) {
@@ -248,6 +269,7 @@ static void menu_windows()
 
 void editor_menu_frame(const editor_rml_menu_state *state)
 {
+    toolbar_surface.draw = NULL;
     ImGuiIO *io = ImGui_GetIO();
     ImGuiViewport *viewport = ImGui_GetMainViewport();
     origin = viewport->Pos;
@@ -262,13 +284,39 @@ void editor_menu_frame(const editor_rml_menu_state *state)
         assert(backend);
         menu = editor_rml_menu_create(editor_rml_backend_context(backend), queue_action, NULL);
         assert(menu);
+        toolbar = editor_rml_toolbar_create(editor_rml_backend_context(backend), queue_action, NULL);
+        assert(toolbar);
     }
     editor_rml_backend_resize(backend, width, height, scale);
     editor_rml_menu_set_state(menu, state);
+    editor_rml_toolbar_set_state(toolbar, &toolbar_state);
+    if (!toolbar_visible) {
+        editor_rml_toolbar_hide(toolbar);
+        toolbar_surface = (menu_surface){ 0 };
+    }
     editor_rml_backend_update(backend, io->DeltaTime);
     menu_input();
     editor_rml_backend_update(backend, 0);
     menu_windows();
+}
+
+void editor_menu_toolbar_state(const editor_rml_toolbar_state *state, bool visible)
+{
+    toolbar_state = *state;
+    toolbar_visible = visible;
+}
+
+float editor_menu_toolbar_draw(float x, float y, float height)
+{
+    assert(toolbar && toolbar_visible);
+    float width = editor_rml_toolbar_preferred_width(toolbar);
+    toolbar_surface = (menu_surface){
+        .draw = ImGui_GetWindowDrawList(),
+        .rect = { x - origin.x, y - origin.y, width, height },
+    };
+    editor_rml_toolbar_set_bounds(toolbar, toolbar_surface.rect);
+    editor_rml_backend_update(backend, 0);
+    return width;
 }
 
 const char *editor_menu_take_action()
@@ -291,12 +339,13 @@ float editor_menu_height()
 
 bool editor_menu_captures_keyboard()
 {
-    return menu && (keyboard_captured || editor_rml_menu_captures_keyboard(menu));
+    return menu && (keyboard_captured || captures_keyboard());
 }
 
 bool editor_menu_item_rect(const char *id, editor_rml_menu_rect *out)
 {
-    if (!menu || !editor_rml_menu_item_rect(menu, id, out)) {
+    if (!menu || (!editor_rml_menu_item_rect(menu, id, out) &&
+                  !editor_rml_toolbar_item_rect(toolbar, id, out))) {
         return false;
     }
     out->x += origin.x;
@@ -306,7 +355,7 @@ bool editor_menu_item_rect(const char *id, editor_rml_menu_rect *out)
 
 static void compose(menu_surface surface, ImTextureRef texture)
 {
-    if (!surface.draw) {
+    if (!surface.draw || surface.rect.width <= 0 || surface.rect.height <= 0) {
         return;
     }
     editor_rml_menu_rect r = surface.rect;
@@ -321,6 +370,30 @@ static void compose(menu_surface surface, ImTextureRef texture)
     );
 }
 
+static void compose_outside_popup(menu_surface surface, ImTextureRef texture)
+{
+    editor_rml_menu_rect r = surface.rect;
+    float left = fmaxf(r.x, popup.rect.x);
+    float top = fmaxf(r.y, popup.rect.y);
+    float right = fminf(r.x + r.width, popup.rect.x + popup.rect.width);
+    float bottom = fminf(r.y + r.height, popup.rect.y + popup.rect.height);
+    if (!popup.draw || left >= right || top >= bottom) {
+        compose(surface, texture);
+        return;
+    }
+    // The shared texture already contains the popup and its underlying widgets.
+    // Its native popup window owns that region, including during the fade-in.
+    editor_rml_menu_rect pieces[] = {
+        { r.x, r.y, r.width, top - r.y },
+        { r.x, bottom, r.width, r.y + r.height - bottom },
+        { r.x, top, left - r.x, bottom - top },
+        { right, top, r.x + r.width - right, bottom - top },
+    };
+    for (int i = 0; i < (int)(sizeof pieces / sizeof *pieces); i++) {
+        compose((menu_surface){ surface.draw, pieces[i] }, texture);
+    }
+}
+
 void editor_menu_render()
 {
     if (!backend) {
@@ -329,8 +402,9 @@ void editor_menu_render()
     editor_rml_backend_render(backend);
     CF_Texture target = { .id = editor_rml_backend_texture(backend) };
     ImTextureRef texture = { ._TexID = (ImTextureID)(uintptr_t)cf_texture_handle(target) };
-    compose(bar, texture);
+    compose_outside_popup(bar, texture);
     compose(popup, texture);
+    compose_outside_popup(toolbar_surface, texture);
 }
 
 void editor_menu_shutdown()
@@ -338,14 +412,17 @@ void editor_menu_shutdown()
     if (!backend) {
         return;
     }
+    editor_rml_toolbar_destroy(toolbar);
     editor_rml_menu_destroy(menu);
     editor_rml_backend_destroy(backend);
     menu = NULL;
     backend = NULL;
+    toolbar = NULL;
     while (editor_menu_take_action()) {
     }
     keyboard_captured = false;
     restore_focus = false;
     bar_window_id = return_window_id = return_item_id = 0;
-    bar = popup = (menu_surface){ 0 };
+    bar = popup = toolbar_surface = (menu_surface){ 0 };
+    toolbar_visible = false;
 }

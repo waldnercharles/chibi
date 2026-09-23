@@ -7,8 +7,9 @@ assessment. Its recommendations are not yet implemented.
 
 ## RmlUi conversion, September 23, 2026
 
-RmlUi is the chosen UI foundation. LichtFeld Studio is the reference for compact
-desktop controls, consistent styling and a prominent viewport. Application
+RmlUi is the chosen UI foundation. LichtFeld Studio and
+[Blender](references/blender/README.md) are references for compact desktop
+controls, consistent styling and a prominent viewport. Application
 models, authoring commands and Undo/Redo remain in C. RML owns structure and RCSS
 owns presentation; a C++ adapter contains the RmlUi API and renderer integration.
 This supersedes the earlier decision to retain ImGui for all editor UI.
@@ -461,6 +462,13 @@ and splittable: an event graph and the scene must be usable side by side. Openin
 or focusing a document must not destroy the user's arrangement.
 
 ## Design references
+
+The [Blender screenshot references](references/blender/README.md) record the
+user's desired level of polish: compact aligned controls, restrained chrome,
+clear pane boundaries and inline node editing. Adapt the useful patterns to
+Chibi while keeping primary actions discoverable and secondary controls
+contextual. The supplied images retain their visible version labels; additional
+sourced Blender screenshots must show version 5.2.
 
 Loaded the user-supplied
 [apple-design skill](https://raw.githubusercontent.com/emilkowalski/skills/refs/heads/main/skills/apple-design/SKILL.md)

@@ -815,8 +815,36 @@ static void authored_bounce_and_drive()
     puts("physics authored motion PASS: restitution, angular strike, stop, unwrapped angles and invalid configuration");
 }
 
+static void slow_rotation()
+{
+    float speeds[] = { .12f, -.08f };
+    float starts[] = { .25f, 1.5707963f };
+    for (int test = 0; test < 2; test++) {
+        fixture f = create();
+        ecs_entity actor = body(&f, 0, 0, GAME_BODY_KINEMATIC, 1, 0);
+        GAME_GameBody_get(f.world, actor)->angular_velocity = speeds[test];
+        GAME_GameOrientation_get(f.world, actor)->radians = starts[test];
+        for (int reset = 0; reset < 2; reset++) {
+            float start = reset ? -2 : starts[test];
+            GAME_GameOrientation_get(f.world, actor)->radians = start;
+            for (int i = 0; i < 120; i++) {
+                assert(step(&f, 1.0f / 60) >= 0);
+                float expected = start + speeds[test] * (i + 1) / 60;
+                float actual = GAME_GameOrientation_get(f.world, actor)->radians;
+                if (fabsf(actual - expected) >= .003f) {
+                    fprintf(stderr, "rotation frame %d: %.6f expected %.6f\n", i + 1, actual, expected);
+                }
+                assert(fabsf(actual - expected) < .003f);
+            }
+        }
+        dispose(&f);
+    }
+    puts("physics slow rotation PASS: signed angular velocity and authored angle changes without cumulative drift");
+}
+
 void test_physics()
 {
+    slow_rotation();
     authored_bounce_and_drive();
     test_task_pool();
     configured_motion();

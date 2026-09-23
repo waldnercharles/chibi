@@ -1627,6 +1627,10 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         if (orientation && body->settings.angular_velocity != 0) {
             orientation->radians = body->angle +
                                    remainderf(b2Rot_GetAngle(body->end.q) - body->angle, 6.28318530718f);
+            /* This is our writeback, not an authored rotation edit. Preserve
+             * the solver rotation next tick instead of rebuilding it from an
+             * approximate angle and accumulating conversion error. */
+            body->angle = orientation->radians;
         }
         GameVelocity *velocity = GAME_GameVelocity_get(physics->world, body->entity);
         if (velocity) {

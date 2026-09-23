@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "name": "HRCLabMovingPrism",
+  "presentation": "2d",
+  "physics": {
+    "workers": 0,
+    "substeps": 4,
+    "sleep": true,
+    "continuous": true,
+    "force_drive": false,
+    "contact_hertz": 30.0,
+    "contact_damping": 10.0
+  },
+  "entities": [
+    {
+      "name": "Camera",
+      "prototype": "HRCLabCamera",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "HRC",
+      "prototype": "HRCLabHRC",
+      "components": {
+        "GameHRC2D": {
+          "scale": 0.25,
+          "max_light_size": 480,
+          "ambient": 0.15,
+          "intensity": 2,
+          "fog": 0,
+          "radiance_hysteresis": 1,
+          "bounce_hysteresis": 0.8
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Optics",
+      "prototype": "HRCLabOpticalSettings",
+      "components": {},
+      "behaviors": []
+    },
+    {
+      "name": "Emitter",
+      "prototype": "HRCLabOpticalLight",
+      "components": {
+        "GameLight2D": {
+          "power": 500,
+          "width": 120,
+          "spread": 0.03,
+          "color": 1439694847
+        },
+        "GameTransform": {
+          "x": -420,
+          "y": -40
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Prism",
+      "prototype": "HRCLabGlass",
+      "components": {
+        "GameAppearance": {
+          "shape": 6,
+          "width": 180,
+          "height": 230
+        },
+        "GameTransform": {
+          "x": -135,
+          "y": -40
+        },
+        "GameOrientation": {
+          "radians": 0.25
+        },
+        "GameBody": {
+          "type": 2,
+          "angular_velocity": 0.12
+        },
+        "GameVelocity": {
+          "x": 0,
+          "y": 10
+        },
+        "GameCollider": {
+          "shape": 0,
+          "radius": 5,
+          "category": 1,
+          "mask": 0,
+          "sensor": true
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Medium",
+      "prototype": "HRCLabMedium",
+      "components": {
+        "GameMedium": {
+          "extinction": 0.0012,
+          "depth": 150,
+          "variation": 0.15,
+          "scattering": 3706388479
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "BackWall",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 400,
+          "y": 0
+        },
+        "GameAppearance": {
+          "width": 20,
+          "height": 460
+        },
+        "GameMaterial": {
+          "absorption": 8,
+          "albedo": 2731278335,
+          "scene": 185934591
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Floor",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": 240
+        },
+        "GameAppearance": {
+          "width": 900,
+          "height": 20
+        },
+        "GameMaterial": {
+          "absorption": 8,
+          "albedo": 3716503039,
+          "scene": 571673599
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Ceiling",
+      "prototype": "HRCLabReceiver",
+      "components": {
+        "GameTransform": {
+          "x": 0,
+          "y": -240
+        },
+        "GameAppearance": {
+          "width": 900,
+          "height": 20
+        },
+        "GameMaterial": {
+          "absorption": 8,
+          "albedo": 2006302975,
+          "scene": 185934591
+        }
+      },
+      "behaviors": []
+    },
+    {
+      "name": "Mirror",
+      "prototype": "HRCLabGlass",
+      "components": {
+        "GameTransform": {
+          "x": 100,
+          "y": -170
+        },
+        "GameAppearance": {
+          "shape": 0,
+          "width": 12,
+          "height": 190
+        },
+        "GameOrientation": {
+          "radians": 1.57079632679
+        },
+        "GameOpticalSurface": {
+          "ior": 1,
+          "mirror": 0.95,
+          "absorption": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
+        },
+        "GameMaterial": {
+          "scene": 657869567,
+          "albedo": 3572170751,
+          "absorption": 8
+        },
+        "GameBody": {
+          "type": 2,
+          "angular_velocity": -0.08
+        },
+        "GameVelocity": {
+          "x": 0,
+          "y": 0
+        },
+        "GameCollider": {
+          "shape": 0,
+          "radius": 5,
+          "category": 1,
+          "mask": 0,
+          "sensor": true
+        }
+      },
+      "behaviors": []
+    }
+  ]
+}

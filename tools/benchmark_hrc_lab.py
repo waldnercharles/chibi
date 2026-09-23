@@ -23,6 +23,8 @@ ARENA_SCENES = [
     'NeonSwarmHRCVolume',
 ]
 CLEAN_SCENES = [
+    'HRCLabMovingLens',
+    'HRCLabMovingPrism',
     'HRCLabOpticalLens',
     'HRCLabOpticalPrism',
     'HRCLabPinhole',

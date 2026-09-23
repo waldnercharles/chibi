@@ -45,6 +45,8 @@ jobs:
           cmake --build build-reflect --parallel 4
 
       - name: Build web app
+        env:
+          CCACHE_COMPILERCHECK: content
         run: |
           emcmake cmake -S . -B build-web \
             -DCMAKE_BUILD_TYPE=Release \

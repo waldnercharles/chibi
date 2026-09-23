@@ -13,9 +13,17 @@ layout(set = 0, binding = 0) uniform sampler2D u_emission;
 layout(set = 0, binding = 1) uniform sampler2D u_transmittance;
 layout(set = 0, binding = 2) uniform sampler2D u_bounce;
 
+#ifdef HRC_LUMINANCE
+layout(set = 1, binding = 0, r16f) uniform writeonly image2D u_emission_out;
+#else
 layout(set = 1, binding = 0, rgba16f) uniform writeonly image2D u_emission_out;
+#endif
 layout(set = 1, binding = 1, r16f) uniform writeonly image2D u_transmittance_out;
+#ifdef HRC_LUMINANCE
+layout(set = 1, binding = 2, r16f) uniform writeonly image2D u_bounce_out;
+#else
 layout(set = 1, binding = 2, rgba16f) uniform writeonly image2D u_bounce_out;
+#endif
 
 layout(set = 2, binding = 0) uniform Params
 {
@@ -23,9 +31,54 @@ layout(set = 2, binding = 0) uniform Params
 	int u_canvas_h;
 	int u_work_w;
 	int u_work_h;
+	int u_luminance_only;
 };
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+vec3 transport_color(vec3 value)
+{
+	const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
+	return u_luminance_only != 0 ? vec3(dot(value, luma)) : value;
+}
+
+vec3 emission_sample(ivec2 p, int lod)
+{
+	vec3 value = texelFetch(u_emission, p, lod).rgb;
+	#ifdef HRC_LUMINANCE
+	return vec3(dot(value, vec3(0.2126, 0.7152, 0.0722)));
+	#else
+	return transport_color(value);
+	#endif
+}
+
+vec3 bounce_sample(ivec2 p, int lod)
+{
+	#ifdef HRC_LUMINANCE
+	return vec3(texelFetch(u_bounce, p, lod).r);
+	#else
+	return transport_color(texelFetch(u_bounce, p, lod).rgb);
+	#endif
+}
+
+vec3 emission_sample_lod(vec2 uv, float lod)
+{
+	vec3 value = textureLod(u_emission, uv, lod).rgb;
+	#ifdef HRC_LUMINANCE
+	return vec3(dot(value, vec3(0.2126, 0.7152, 0.0722)));
+	#else
+	return transport_color(value);
+	#endif
+}
+
+vec3 bounce_sample_lod(vec2 uv, float lod)
+{
+	#ifdef HRC_LUMINANCE
+	return vec3(textureLod(u_bounce, uv, lod).r);
+	#else
+	return transport_color(textureLod(u_bounce, uv, lod).rgb);
+	#endif
+}
 
 void main()
 {
@@ -35,12 +88,20 @@ void main()
 	// At an exact 2x reduction the generated mip already is the required
 	// arithmetic 2x2 reduction. Avoid four filtered reads per input texture.
 	if (u_canvas_w == u_work_w * 2 && u_canvas_h == u_work_h * 2) {
-		vec3 emission = texelFetch(u_emission, gid, 1).rgb;
-		vec3 bounce = texelFetch(u_bounce, gid, 1).rgb;
+		vec3 emission = emission_sample(gid, 1);
+		vec3 bounce = bounce_sample(gid, 1);
 		float tau = dot(texelFetch(u_transmittance, gid, 1).rgb, vec3(1.0 / 3.0));
+		#ifdef HRC_LUMINANCE
+		imageStore(u_emission_out, gid, vec4(emission.r, 0, 0, 0));
+		#else
 		imageStore(u_emission_out, gid, vec4(emission, 1.0));
+		#endif
 		imageStore(u_transmittance_out, gid, vec4(tau, 0, 0, 0));
+		#ifdef HRC_LUMINANCE
+		imageStore(u_bounce_out, gid, vec4(bounce.r, 0, 0, 0));
+		#else
 		imageStore(u_bounce_out, gid, vec4(bounce, 1.0));
+		#endif
 		return;
 	}
 
@@ -80,8 +141,8 @@ void main()
 				float px = float(x0 + dx) + 0.5;
 				float py = float(y0 + dy) + 0.5;
 				vec2 uv = vec2(px, py) / vec2(u_canvas_w, u_canvas_h);
-				emission_sum += textureLod(u_emission, uv, emission_lod).rgb;
-				bounce_sum += textureLod(u_bounce, uv, emission_lod).rgb;
+				emission_sum += emission_sample_lod(uv, emission_lod);
+				bounce_sum += bounce_sample_lod(uv, emission_lod);
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 			}
 		}
@@ -100,8 +161,8 @@ void main()
 				float ddy = py - cy;
 				float w = exp(-(ddx * ddx * inv2s2_x + ddy * ddy * inv2s2_y));
 
-				emission_sum += textureLod(u_emission, uv, emission_lod).rgb * w;
-				bounce_sum += textureLod(u_bounce, uv, emission_lod).rgb * w;
+				emission_sum += emission_sample_lod(uv, emission_lod) * w;
+				bounce_sum += bounce_sample_lod(uv, emission_lod) * w;
 				tau_sum += dot(textureLod(u_transmittance, uv, emission_lod).rgb, vec3(1.0/3.0));
 				weight_sum += w;
 			}
@@ -111,7 +172,15 @@ void main()
 		tau_sum /= float(sx * sy);
 	}
 
+	#ifdef HRC_LUMINANCE
+	imageStore(u_emission_out, gid, vec4(emission_sum.r, 0, 0, 0));
+	#else
 	imageStore(u_emission_out, gid, vec4(emission_sum, 1.0));
+	#endif
 	imageStore(u_transmittance_out, gid, vec4(tau_sum, 0, 0, 0));
+	#ifdef HRC_LUMINANCE
+	imageStore(u_bounce_out, gid, vec4(bounce_sum.r, 0, 0, 0));
+	#else
 	imageStore(u_bounce_out, gid, vec4(bounce_sum, 1.0));
+	#endif
 }

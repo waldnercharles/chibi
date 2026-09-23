@@ -8,6 +8,7 @@ typedef struct
     void *library;
     const chibi_application_api *api;
     void *state;
+    int lease;
 } chibi_module;
 
 /* Paths identify immutable, uniquely named completed libraries. Candidate

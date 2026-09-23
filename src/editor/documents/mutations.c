@@ -418,6 +418,13 @@ int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin
     if ((output->flags | input->flags) & PIN_FLAG_SETTING) {
         return 0;
     }
+    if (expected_kind == PIN_DATA && (input->flags & PIN_FLAG_REFERENCE)) {
+        if (!(output->flags & PIN_FLAG_REFERENCE) ||
+            (!(input->flags & PIN_FLAG_WILDCARD) &&
+             (output->type != input->type || output->container != input->container))) {
+            return 0;
+        }
+    }
     if (output->kind != expected_kind || input->kind != expected_kind) {
         return 0;
     }
@@ -492,6 +499,26 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
                    order
                ) == 0;
     }
+    node *old_source = NULL;
+    int old_source_pin = -1;
+    const pin_binding *old_binding = NULL;
+    pin_binding old_binding_copy = { 0 };
+    const node_desc *old_conversion = NULL;
+    bool reference_input = in_spec->flags & PIN_FLAG_REFERENCE;
+    char *reference_before = reference_input ? ed_snapshot(e) : NULL;
+    if (reference_input) {
+        old_binding = graph_pin_binding(e->active_graph, input->n, 0, input->index);
+        if (old_binding) {
+            old_binding_copy = *old_binding;
+        }
+        if (graph_input_source(e->active_graph, input->n, input->index, &old_source, &old_source_pin)) {
+            old_conversion = graph_input_conversion(
+                e->active_graph,
+                input->n,
+                input->index
+            );
+        }
+    }
     int ok = graph_connect_data(
                  e->active_graph,
                  output->n,
@@ -499,24 +526,66 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
                  input->n,
                  input->index
              ) == 0;
+    if (!ok) {
+        if (reference_before) {
+            (void)ed_adopt_behavior_asset(e, reference_before);
+            free(reference_before);
+        }
+        return 0;
+    }
     if (ok && generic_target) {
         ed_format_text_ensure_spare(e, input->n);
     }
     if (ok) {
-        node *expression = output->n->desc == &NODE_CallPureFunction ? output->n : NULL;
-        if (!expression && input->n->desc == &NODE_CallPureFunction) {
+        node *expression = (output->n->desc == &NODE_CallPureFunction ||
+                            output->n->desc == &NODE_BehaviorExpression)
+                             ? output->n
+                             : NULL;
+        if (!expression && (input->n->desc == &NODE_CallPureFunction ||
+                            input->n->desc == &NODE_BehaviorExpression)) {
             expression = input->n;
         }
         if (expression &&
             behavior_asset_find_graph(e->asset, expression->reference_id) &&
             behavior_asset_find_graph(e->asset, expression->reference_id)->math_expression) {
-            math_expression_error error;
-            (void)math_expression_refresh(e->asset, expression, &error);
-            if (error.message[0]) {
-                e->math_error = error;
+            behavior_expression_error error;
+            if (behavior_expression_refresh(e->asset, expression, &error) != 0) {
+                if (reference_before) {
+                    (void)ed_adopt_behavior_asset(e, reference_before);
+                } else if (reference_input) {
+                    (void)graph_remove_edge(
+                        e->active_graph,
+                        output->n,
+                        output->index,
+                        input->n,
+                        input->index
+                    );
+                    if (old_source) {
+                        (void)graph_connect_data_conversion(
+                            e->active_graph,
+                            old_source,
+                            old_source_pin,
+                            input->n,
+                            input->index,
+                            old_conversion
+                        );
+                    }
+                    if (old_binding) {
+                        (void)graph_set_pin_binding(
+                            e->active_graph,
+                            input->n,
+                            0,
+                            input->index,
+                            &old_binding_copy
+                        );
+                    }
+                }
+                e->expression_error = error;
+                free(reference_before);
+                return 0;
             }
         }
-        if (inline_source) {
+        if (inline_source && !reference_input) {
             (void)ed_simplify_component_getter(
                 e,
                 output->n,
@@ -527,6 +596,7 @@ int ed_connect_with_inline(editor *e, const ed_pin_view *a, const ed_pin_view *b
             );
         }
     }
+    free(reference_before);
     return ok;
 }
 
@@ -543,6 +613,19 @@ static bool ed_expression_call_stale(const graph *caller, const node *call)
         }
         const pin_spec *output = &source->output_pins[source_pin];
         const pin_spec *input = &call->input_pins[i];
+        if (input->flags & PIN_FLAG_REFERENCE) {
+            if (!(output->flags & PIN_FLAG_REFERENCE) ||
+                (!(input->flags & PIN_FLAG_WILDCARD) &&
+                 !pin_types_compatible(output, input))) {
+                return true;
+            }
+            pin_binding binding = { 0 };
+            if (graph_resolve_reference((graph *)caller, source, source_pin, &binding) !=
+                0) {
+                return true;
+            }
+            continue;
+        }
         const node_desc *conversion = graph_input_conversion(caller, call, i);
         if (conversion ? conversion_matches_pins(output, input, conversion)
                        : pin_types_compatible(output, input)) {
@@ -550,10 +633,16 @@ static bool ed_expression_call_stale(const graph *caller, const node *call)
         }
         return true;
     }
+    for (int i = 0; i < call->input_count; i++) {
+        if ((call->input_pins[i].flags & PIN_FLAG_REFERENCE) &&
+            call->input_pins[i].binding) {
+            return true;
+        }
+    }
     return false;
 }
 
-void ed_refresh_stale_math_expressions(editor *e)
+void ed_refresh_stale_behavior_expressions(editor *e)
 {
     /* Loading or an older edit can leave a direct edge on a generic expression
      * input after its public pin has fallen back to double. Repair that
@@ -562,7 +651,8 @@ void ed_refresh_stale_math_expressions(editor *e)
         graph *caller = e->asset->graphs[i];
         for (int j = 0; j < acount(caller->nodes); j++) {
             node *call = caller->nodes[j];
-            if (call->desc != &NODE_CallPureFunction) {
+            if (call->desc != &NODE_CallPureFunction &&
+                call->desc != &NODE_BehaviorExpression) {
                 continue;
             }
             graph *generated = behavior_asset_find_graph(e->asset, call->reference_id);
@@ -570,10 +660,10 @@ void ed_refresh_stale_math_expressions(editor *e)
                 !ed_expression_call_stale(caller, call)) {
                 continue;
             }
-            math_expression_error error = { 0 };
-            if (math_expression_refresh(e->asset, call, &error) != 0 &&
+            behavior_expression_error error = { 0 };
+            if (behavior_expression_refresh(e->asset, call, &error) != 0 &&
                 error.message[0]) {
-                e->math_error = error;
+                e->expression_error = error;
             }
         }
     }

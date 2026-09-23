@@ -70,8 +70,8 @@ ImVec4 ed_node_title_color(const node *n)
 
 bool ed_is_graph_call(const node *n)
 {
-    return n && (n->desc == &NODE_CallFunction ||
-                 n->desc == &NODE_CallPureFunction || n->desc == &NODE_CallMacro);
+    return n && (n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction ||
+                 n->desc == &NODE_BehaviorExpression || n->desc == &NODE_CallMacro);
 }
 
 ed_node_presentation ed_node_appearance(const node_desc *desc)
@@ -79,7 +79,8 @@ ed_node_presentation ed_node_appearance(const node_desc *desc)
     if (desc == &NODE_CallMacro) {
         return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SEND };
     }
-    if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction) {
+    if (desc == &NODE_CallFunction || desc == &NODE_CallPureFunction ||
+        desc == &NODE_BehaviorExpression) {
         return (ed_node_presentation){ NULL, EDITOR_ICON_FA_SITEMAP };
     }
     const char *symbol = NULL;
@@ -181,6 +182,11 @@ float ed_node_title_inset(const node *n)
     return symbol ? ed_max(ImGui_CalcTextSize(symbol).x, 20.0f) + 8.0f : 20.0f;
 }
 
+float ed_event_status_width(const node *n)
+{
+    return n->desc->flow_kind == NODE_FLOW_EVENT ? 28.0f : 0.0f;
+}
+
 float ed_node_title_padding(const node *)
 {
     return ED_TITLE_PAD;
@@ -223,14 +229,14 @@ const char *ed_node_title(const editor *e, const node *n, char *buf, size_t cap)
             editor_node_label(n->desc, buf, cap);
             return buf;
         }
-        if (math_expression_source(e->asset, n)) {
+        if (behavior_expression_source(e->asset, n)) {
             snprintf(buf, cap, "%s", name);
         } else {
             editor_identifier_label(name, buf, cap);
         }
         return buf;
     }
-    const char *expression = math_expression_source(e->asset, n);
+    const char *expression = behavior_expression_source(e->asset, n);
     if (expression) {
         snprintf(buf, cap, "%s", expression);
         return buf;

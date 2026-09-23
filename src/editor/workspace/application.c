@@ -118,7 +118,7 @@ static int app_frame(app_loop *loop)
         CHIBI_TRACE_ZONE_BEGIN(ui_zone, "Editor UI");
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
-        editor_frame_profile_draw(&loop->profile, loop->authoring);
+        editor_frame_profile_draw(&loop->profile);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
         CHIBI_TRACE_ZONE_END(ui_zone);
     }

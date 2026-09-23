@@ -72,6 +72,11 @@ int add_actor(app_scene_authoring *scene, const char *name, const char *prototyp
         snprintf(scene->message, sizeof scene->message, "Could not spawn %s: %s", name, error);
         return -1;
     }
+    if (game_entities_rebuild_global_bindings(scene->live->entities) != 0) {
+        game_behavior_destroy_entity(scene->live->behaviors, entity);
+        snprintf(scene->message, sizeof scene->message, "Global binding names must be unique.");
+        return -1;
+    }
     game_prototype *base = game_prototype_clone(asset->prototype, error, sizeof error);
     if (!base) {
         game_behavior_destroy_entity(scene->live->behaviors, entity);

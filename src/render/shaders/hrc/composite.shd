@@ -7,6 +7,7 @@ layout(set = 2, binding = 6) uniform sampler2D normal_tex;
 
 layout(set = 2, binding = 7) uniform sampler2D background_tex;
 layout(set = 2, binding = 8) uniform sampler2D visibility_tex;
+layout(set = 2, binding = 9) uniform sampler2D luminance_tex;
 
 layout(set = 3, binding = 1) uniform shd_uniforms
 {
@@ -17,6 +18,7 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     float fog;
     float dither_phase;
     vec4 crop_uv;
+    int split_lighting;
 };
 
 #include "color.shd"
@@ -43,7 +45,14 @@ vec4 shader(vec4 color, ShaderParams params)
     // Foreground opaque objects remain in front; this is not a depth/Snell solve.
     vec2 pixel_uv = 1.0 / vec2(textureSize(normal_tex, 0));
     vec2 distortion = normal.z < 0.0 ? normal.xy * (-normal.z) * pixel_uv : vec2(0);
-    if (normal.z < 0.0) fluence = max(texture(fluence_tex, source_uv + distortion).rgb, vec3(0));
+    vec2 fluence_uv = source_uv + distortion;
+    if (normal.z < 0.0) fluence = max(texture(fluence_tex, fluence_uv).rgb, vec3(0));
+    if (split_lighting != 0) {
+        const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
+        float Y = texture(luminance_tex, fluence_uv).r;
+        float coarseY = dot(fluence, luma);
+        fluence = coarseY > 1e-8 ? fluence * (Y / coarseY) : vec3(Y);
+    }
     // Sample nearby received light to soften illumination inward from edges.
     // The combined mask hides internal terrain seams. With no light this is zero.
     float edge = 0.0;

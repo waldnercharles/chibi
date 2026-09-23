@@ -14,6 +14,16 @@ static void owned_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *
     free(text);
 }
 
+static char *behavior_source_json(const char *path)
+{
+    char *json = read_scene_file(path);
+    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+    char *source = asset ? behavior_asset_save_json(asset) : NULL;
+    behavior_asset_free(asset);
+    free(json);
+    return source;
+}
+
 static const ecs_component_desc *resolve_component(const char *name, void *)
 {
     for (int i = 0; name && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -316,6 +326,25 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
         checkpoint_text(doc, item, "path", definition->path);
         owned_text(doc, item, "working", behavior_asset_save_json(definition->working));
         owned_text(doc, item, "applied", behavior_asset_save_json(definition->applied));
+        const char *source = scene_behavior_source_snapshot(
+            scene,
+            definition->name,
+            definition->path
+        );
+        char *current_source = NULL;
+        if (!source && definition->path) {
+            current_source = behavior_source_json(definition->path);
+            if (current_source) {
+                scene_behavior_source_set(scene, definition->name, definition->path, current_source);
+                source = scene_behavior_source_snapshot(
+                    scene,
+                    definition->name,
+                    definition->path
+                );
+            }
+        }
+        checkpoint_text(doc, item, "source", source);
+        free(current_source);
         yyjson_mut_obj_add_bool(doc, item, "dirty", definition->dirty);
         yyjson_mut_obj_add_bool(doc, item, "unsaved", definition->unsaved);
     }
@@ -337,6 +366,8 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
 static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
 {
     scene->definition = NULL;
+    scene_behavior_sources_clear(scene);
+    scene_external_behavior_changes_clear(scene);
     while (game_live_definition_count(scene->live)) {
         game_live_definition *definition = game_live_definition_at(scene->live, 0);
         if (game_live_remove_definition(scene->live, definition->name) != 0) {
@@ -366,7 +397,9 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
             }
             behavior_domain domain = applied->domain;
             int stage = domain == BEHAVIOR_DOMAIN_EVENT ? 2
-                      : (domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE)
+                      : (domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                         domain == BEHAVIOR_DOMAIN_SHAPE ||
+                         domain == BEHAVIOR_DOMAIN_FIELD)
                           ? 1
                           : 0;
             if (stage != pass) {
@@ -400,6 +433,19 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
             definition->path = checkpoint_copy_text(item, "path");
             definition->dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty"));
             definition->unsaved = yyjson_get_bool(yyjson_obj_get(item, "unsaved"));
+            if (definition->path) {
+                const char *source = yyjson_get_str(yyjson_obj_get(item, "source"));
+                /* Checkpoints written before source snapshots used the applied
+                 * asset as their only authored baseline. Keep that fallback so
+                 * an existing stale workspace is detected on its next launch. */
+                source = source ? source : applied_json;
+                scene_behavior_source_set(scene, name, definition->path, source);
+                char *current_source = behavior_source_json(definition->path);
+                if (!current_source || strcmp(current_source, source) != 0) {
+                    scene_external_behavior_change_add(scene, name);
+                }
+                free(current_source);
+            }
         }
     }
     return true;

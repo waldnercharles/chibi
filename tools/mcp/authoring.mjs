@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
-const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library"];
+const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
 const SHADER_KINDS = ["material", "shape", "shader-library"];
 const MAX_NODE_SEARCH_LIMIT = 50;
 const MAX_GRAPH_OPERATIONS = 128;
@@ -57,6 +57,7 @@ const operationProperties = {
       "set_input",
       "set_output",
       "set_node",
+      "set_expression",
       "connect",
       "disconnect",
       "remove_node",
@@ -180,6 +181,11 @@ const operationProperties = {
     maxLength: 128,
     description: "Event node name.",
   },
+  source: {
+    type: "string",
+    minLength: 1,
+    description: "Behavior Expression source for add_node or set_expression.",
+  },
   variable: {
     description: "Variable ID, name, or request-local reference.",
   },
@@ -246,7 +252,7 @@ const searchNodesDefinition = {
     },
     domain: {
       type: "string",
-      enum: ["behavior", "shader"],
+      enum: ["behavior", "shader", "field"],
       description: "Restrict results to general behavior nodes or shader nodes.",
     },
     pin_type: {
@@ -359,6 +365,27 @@ const buildBehaviorDefinition = graphDefinition(
   ["behavior", "event", "library"],
   "Behavior asset family: behavior, event, or behavior library.",
 );
+
+const buildFieldDefinition = graphDefinition("buildField", ["field"], "Pure procedural scalar field.");
+const buildSystemDefinition = graphDefinition("buildSystem", ["system"], "Standalone System graph and query.");
+buildSystemDefinition.inputSchema.properties.query = {
+  type: ["object", "null"], additionalProperties: true,
+  description: "Replace the System's typed ECS query; null clears the explicit query.",
+};
+const previewFieldDefinition = {
+  name: "previewField", operation: "preview_field",
+  description: "Bake a ProceduralField into a bounded PNG preview.",
+  inputSchema: object({
+    kind: { type: "string", enum: ["field"] },
+    name: { type: "string" },
+    width: { type: "integer", minimum: 1, maximum: 512 },
+    height: { type: "integer", minimum: 1, maximum: 512 },
+    cell_size: { type: "number", minimum: 0.000001, maximum: 1024 },
+    seed: { type: "integer", minimum: 0, maximum: 4294967295 },
+    parameters: { type: "object", additionalProperties: true },
+  }, ["kind", "name"]),
+  outputSchema: { type: "object", additionalProperties: true },
+};
 
 const prototypeAssetSelectorProperties = {
   ...assetSelectorProperties,
@@ -683,6 +710,9 @@ const definitions = [
   searchNodesDefinition,
   buildShaderDefinition,
   buildBehaviorDefinition,
+  buildFieldDefinition,
+  buildSystemDefinition,
+  previewFieldDefinition,
   editPrototypeDefinition,
   editSceneDefinition,
   optimizeGraphDefinition,
@@ -715,7 +745,7 @@ function hasAssetSelector(args) {
 }
 
 export function validateAuthoringArguments(name, args = {}) {
-  if (name === "buildShader" || name === "buildBehavior") {
+  if (name === "buildShader" || name === "buildBehavior" || name === "buildField" || name === "buildSystem") {
     if (!hasAssetSelector(args)) {
       invalid("arguments requires path or both kind and name");
     }
@@ -766,7 +796,7 @@ export function validateAuthoringArguments(name, args = {}) {
     }
     return;
   }
-  if (name === "previewShader" && !hasAssetSelector(args)) {
+  if ((name === "previewShader" || name === "previewField") && !hasAssetSelector(args)) {
     invalid("arguments requires path or both kind and name");
   }
 }

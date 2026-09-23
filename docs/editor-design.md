@@ -180,7 +180,7 @@ Call signatures ignore projection rows and report stale signatures explicitly.
 Fire Projectile now wires Direction X/Y straight from its entry, removing its
 last Break node. Nested field expansion and dynamic event signatures are supported.
 
-Health has 10 top-level nodes after its MathExpression conversion; Automatic Weapon has eight. Native tests cover
+Health has 10 top-level nodes after its Behavior Expression conversion; Automatic Weapon has eight. Native tests cover
 field expansion, connected-pin preservation, and choosing Origin fields without
 changing existing Direction fields. Pure, executable, and delayed function calls
 pass parameter/result projection and saved roundtrip checks. `make test` passes.
@@ -208,7 +208,7 @@ errors, then navigates into its Move Toward function and back.
 
 Projectile contact and health response are now authored behaviors. Collider
 radius, category, and mask are prototype fields. Contact Begin exposes the other
-entity; Send Damage queues an event whose recipient graph subtracts health and
+entity and a world-space Point (`CF_V2`); Send Damage queues an event whose recipient graph subtracts health and
 handles death. The event catalog is shared by the app and native tests. Native
 code detects contacts and schedules delivery, with no hidden health mutation.
 Scene and isolated-preview tests verify the same authored combat rules.
@@ -662,9 +662,8 @@ without changing node dimensions or pin locations.
 
 The 2D Appearance component provides Width, Height, and packed RGBA Color. Rendering
 requires Transform and 2D Appearance, independently of health or projectile gameplay.
-Health bars remain an optional overlay and follow the authored body height. 2D fixture
-prototypes include Appearance for editor coverage; Player is blue, Enemy coral,
-and Projectile gold. Missing Appearance deliberately means no visible body.
+2D fixture prototypes include Appearance for editor coverage; Player is blue, Enemy
+coral, and Projectile gold. Missing Appearance deliberately means no visible body.
 Nonfinite positions/extents and nonpositive extents are excluded from drawing.
 
 The shared color picker is used by graph inputs, prototype defaults, and scene
@@ -715,10 +714,10 @@ the editor; the renderer falls back to a box. Missing new fields default to zero
 retaining the original box appearance without outlines or glow.
 
 Player and Enemy use dark fills with bright borders and restrained glow; the
-projectile uses a gold circle. Full-health bars are omitted, leaving damage bars
-as feedback when needed. These styles approximate Neon-Swarm's silhouettes and
-emissive look; its wobble, radiance/material, and complete lighting pipeline are
-not implemented. Shape uses shared named-choice controls in the graph,
+projectile uses a gold circle. Health remains gameplay state and is not drawn as a
+viewport overlay. These styles approximate Neon-Swarm's silhouettes and emissive
+look; its wobble, radiance/material, and complete lighting pipeline are not
+implemented. Shape uses shared named-choice controls in the graph,
 Inspector, prototype defaults, and scene instance properties.
 
 Validation: `make test` passes for SDF styling, legacy defaults, persistence,
@@ -1246,9 +1245,9 @@ Navigator retains Back/Forward and its Files, Scene, and Document tabs.
 Navigator and Inspector are movable, dockable windows. Their separate collapsed
 rails preserve saved docking and floating geometry when reopened.
 
-## Math expressions
+## Behavior Expressions
 
-Add-node search includes Math Expression. Creating one selects it and opens its
+Add-node search includes Behavior Expression. Creating one selects it and opens its
 source in Inspector. Enter regenerates an ordinary function graph;
 invalid expressions leave the current source, graph, and history unchanged.
 Named scalar Real inputs are inferred from identifiers. Unchanged input names
@@ -1263,7 +1262,7 @@ Redo restore the expression and its generated graph together.
 When the canvas is in Fit mode, applying a longer expression refits its changed
 bounds. Manual camera framing is preserved.
 
-See [MathExpression reference](math-expressions.md) for syntax, supported functions,
+See [Behavior Expression reference](math-expressions.md) for syntax, supported functions,
 System graph use, generated-definition deletion, and the converted sample graphs.
 
 ## Real-to-integer conversion
@@ -1298,6 +1297,13 @@ View includes `Inline nodes on edge drop`. When enabled, compatible component
 getters selected from an edge are folded into the destination binding; when
 disabled, the getter remains an ordinary graph node. Dedicated inline source
 controls keep their existing inline behavior.
+
+Behavior event graphs also expose their typed event outputs in the same input
+binding picker. Choosing an event output stores the event and pin identity on
+the target input, so the value can be used anywhere in that event's graph
+without another data edge. `Delta Time` remains a compact context node; when
+the active event declares a real `DeltaSeconds` or `Delta Seconds` output, its
+payload supplies that context automatically.
 
 Material, Shape, and Shader Library nodes stack outputs above options and inputs.
 Inputs use the node width for labeled numeric values, vector axes, range endpoints,

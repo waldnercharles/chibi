@@ -125,7 +125,8 @@ int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const
     for (int i = 1; i < 1000; i++) {
         char name[128];
         const char *labels[] = { "Behavior", "Library", "Material",
-                                 "Shape",    "Event",   "ShaderLibrary" };
+                                 "Shape",    "Event",   "ShaderLibrary",
+                                 "Field" };
         snprintf(name, sizeof name, "New%s%d", labels[domain], i);
         if (requested_name) {
             snprintf(name, sizeof name, "%s", requested_name);
@@ -149,6 +150,9 @@ int create_graph_asset(app_scene_authoring *scene, behavior_domain domain, const
         if (domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE) {
             working->bounds[0] = working->bounds[1] = 32;
             shader_graph_add_output(working->graph, domain == BEHAVIOR_DOMAIN_SHAPE);
+        }
+        if (domain == BEHAVIOR_DOMAIN_FIELD) {
+            graph_add_node(working->graph, registry_node_by_name("Field Output"));
         }
         game_live_definition *definition = game_live_definition_new(name, working);
         if (!definition || game_live_add_definition(scene->live, definition) != 0) {
@@ -314,16 +318,17 @@ static int save_behavior_definition(
         return -1;
     }
     int result = write_text_file_atomic(path, json);
-    free(json);
     if (result == 0) {
         game_live_definition_set_path(definition, path);
         definition->unsaved = false;
+        scene_behavior_source_set(scene, definition->name, path, json);
         scene_tabs_mark_document_saved(
             scene,
             APP_EDITOR_DOCUMENT_BEHAVIOR,
             definition->name
         );
     }
+    free(json);
     return result;
 }
 
@@ -383,7 +388,8 @@ static char *document_default_path(app_scene_authoring *scene)
         name = asset && asset->prototype ? asset->prototype->name : NULL;
     } else if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         const char *folders[] = { "behaviors", "libraries", "materials",
-                                  "shapes",    "events",    "shader-libraries" };
+                                  "shapes",    "events",    "shader-libraries",
+                                  "fields" };
         folder = scene->definition ? folders[scene->definition->working->domain]
                                    : "behaviors";
         name = scene->definition ? scene->definition->name : NULL;
@@ -408,9 +414,11 @@ static char *document_default_path(app_scene_authoring *scene)
     return path;
 }
 
-static int reload_behavior_document(app_scene_authoring *scene)
+int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name)
 {
-    game_live_definition *definition = scene->definition;
+    game_live_definition *definition = asset_name
+                                         ? game_live_find_definition(scene->live, asset_name)
+                                         : scene->definition;
     if (!definition) {
         snprintf(scene->message, sizeof scene->message, "No behavior document is active.");
         return -1;
@@ -440,21 +448,35 @@ static int reload_behavior_document(app_scene_authoring *scene)
         );
         return -1;
     }
-    const graph *active = editor_active_graph(scene->graph_editor);
+    const bool active_document = scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
+                                 scene->document.id &&
+                                 !strcmp(scene->document.id, definition->name);
+    const graph *active = active_document ? editor_active_graph(scene->graph_editor)
+                                          : NULL;
     uint64_t graph_id = active ? active->graph_id : loaded->graph->graph_id;
     if (!behavior_asset_find_graph(loaded, graph_id)) {
         graph_id = loaded->graph->graph_id;
     }
-    if (editor_reload_behavior_asset(
-            scene->graph_editor,
-            loaded,
-            graph_id,
-            definition->name
-        ) != 0) {
+    int opened = active_document ? editor_reload_behavior_asset(
+                                       scene->graph_editor,
+                                       loaded,
+                                       graph_id,
+                                       definition->name
+                                   )
+                                 : editor_reload_behavior_asset_document(
+                                       scene->graph_editor,
+                                       loaded,
+                                       definition->name
+                                   );
+    if (opened != 0) {
         behavior_asset_free(loaded);
         snprintf(scene->message, sizeof scene->message, "Could not open reloaded %s.", path);
         return -1;
     }
+    if (!game_live_definition_path(definition)) {
+        game_live_definition_set_path(definition, path);
+    }
+    char *source = behavior_asset_save_json(loaded);
     behavior_asset *previous = definition->working;
     definition->working = loaded;
     definition->dirty = 1;
@@ -463,12 +485,23 @@ static int reload_behavior_document(app_scene_authoring *scene)
     definition->unsaved = false;
     scene->preview_retry = true;
     behavior_asset_free(previous);
-    scene->editor_working = editor_behavior_asset(scene->graph_editor);
-    scene->editor_revision_seen = editor_edit_revision(scene->graph_editor);
-    scene->editor_behavior_asset_seen = scene->editor_working;
-    scene->editor_definition_seen = definition;
-    scene->editor_state_seen = true;
-    scene->behavior_apply_pending = false;
+    scene_behavior_source_set(scene, definition->name, path, source);
+    free(source);
+    scene_external_behavior_change_remove(scene, definition->name);
+    scene_tabs_mark_document_saved(
+        scene,
+        APP_EDITOR_DOCUMENT_BEHAVIOR,
+        definition->name
+    );
+    if (active_document) {
+        scene->definition = definition;
+        scene->editor_working = editor_behavior_asset(scene->graph_editor);
+        scene->editor_revision_seen = editor_edit_revision(scene->graph_editor);
+        scene->editor_behavior_asset_seen = scene->editor_working;
+        scene->editor_definition_seen = definition;
+        scene->editor_state_seen = true;
+        scene->behavior_apply_pending = false;
+    }
     if (applied != 0) {
         snprintf(
             scene->message,
@@ -480,6 +513,11 @@ static int reload_behavior_document(app_scene_authoring *scene)
         snprintf(scene->message, sizeof scene->message, "Reloaded %s.", path);
     }
     return 0;
+}
+
+static int reload_behavior_document(app_scene_authoring *scene)
+{
+    return reload_behavior_from_disk(scene, NULL);
 }
 
 static int reload_prototype_document(app_scene_authoring *scene)

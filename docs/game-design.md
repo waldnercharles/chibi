@@ -1,5 +1,10 @@
 # Space jobs: game design draft
 
+Historical proposal. The current Neon Swarm direction is recorded in
+[Neon Swarm world exploration](neon-world-exploration.md). That brief supersedes
+this draft's contracts, extraction, permanent unlocks, and progression rules for
+the Neon Swarm exploration branch.
+
 Draft 0.1, September 11, 2026. This document defines the proposed game before implementation. It records confirmed direction, recommends concrete rules, and identifies what we need to learn through play. Timings and content counts are starting hypotheses.
 
 ## The game we are making

@@ -43,7 +43,7 @@ class Runner:
             arguments.insert(0, '--render')
         process = subprocess.run([str(command), *arguments],
             input=json.dumps(dict(contract=1,operation=operation,**args)),text=True,capture_output=True)
-        assert process.returncode == 0, process.stderr
+        assert process.returncode == 0, process.stdout or process.stderr
         result = json.loads(process.stdout)
         assert result.get('ok',not result.get('error')), result
         return result['result']
@@ -62,7 +62,7 @@ class Runner:
         return result['structuredContent']['result']
     def snapshot(self, frames, samples, kind='prototype'):
         result = self.call('runtime_snapshot',kind=kind,
-            name='NeonSwarmPlayer' if kind=='prototype' else 'NeonSwarmSandbox',
+            name='Player' if kind=='prototype' else 'Sandbox',
             frames=frames,input_timeline=[s for s in samples if s['frame'] < frames],
             entity_limit=256,component_limit=64,field_limit=64)
         for e in result['entities']:
@@ -70,6 +70,8 @@ class Runner:
                 assert not b['last_failure'], (e.get('name'),b)
         return result
     def checks(self):
+        self.camera_checks()
+        self.behavior_checks()
         self.combat_checks()
         for x,y in [(0,0),(.05,0),(1,0),(0,-1),(.5,.3)]:
             s=self.snapshot(60,[dict(frame=0,input=dict(movement=dict(x=x,y=y),aim=dict(x=0,y=-1,firing=False)))])
@@ -114,6 +116,42 @@ class Runner:
         assert all(c['name']!='GamePointLight' for e in initial['entities'] for c in e['components'])
         (self.output/'burned-cloud.json').write_text(json.dumps(breached,indent=2))
         print('PASS: finite movement, free travel, nose origin, projectile expiry, enemy scale/glow, excavation, finite fuel burnout and deterministic replay',flush=True)
+
+    def behavior_checks(self):
+        for movement, boosting, normal, boost in [
+            (0, False, False, False), (.05, False, False, False),
+            (1, False, True, False), (0, True, False, True),
+        ]:
+            sample = [dict(frame=0, input=dict(movement=dict(x=movement, y=0),
+                aim=dict(x=1, y=0), controls=[3] if boosting else []))]
+            snapshot = self.snapshot(60, sample)
+            emitters = {b['asset']: fields(e)['GameParticleEmitter.active']
+                for e in snapshot['entities'] if 'GameParticleEmitter.active' in fields(e)
+                for b in e['behaviors']}
+            assert emitters['MovementEmitter'] == normal, emitters
+            assert emitters['BoostEmitter'] == boost, emitters
+            if boosting:
+                player = fields(category(snapshot, 1)[0])
+                assert abs(player['GameVelocity.x'] - 240) < .001
+        print('PASS: idle, deadzone, movement exhaust, boost exhaust and boost speed', flush=True)
+
+    def camera_checks(self):
+        initial = self.snapshot(1,[],kind='scene')
+        initial_entities = {entity['name']: entity for entity in initial['entities'] if entity.get('name')}
+        initial_player = fields(initial_entities['Player'])
+        initial_camera = fields(initial_entities['Camera'])
+        for direction, expected in [('positive', 1), ('negative', -1)]:
+            movement = [dict(frame=0,input=dict(movement=dict(x=expected,y=0)))]
+            snapshot = self.snapshot(120,movement,kind='scene')
+            entities = {entity['name']: entity for entity in snapshot['entities'] if entity.get('name')}
+            player = fields(entities['Player'])
+            camera = fields(entities['Camera'])
+            player_delta = player['GameTransform.x'] - initial_player['GameTransform.x']
+            camera_delta = camera['GameTransform.x'] - initial_camera['GameTransform.x']
+            assert player_delta * expected > 0, f'Camera repro must move the player {direction}'
+            assert camera_delta * expected > 0, f'Camera must move {direction} with the player'
+            assert abs(camera['GameTransform.x'] - player['GameTransform.x']) < 40, 'Camera must stay near the player'
+        print('PASS: camera follows the moving player',flush=True)
     def combat_checks(self):
         # Exercise the real projectile and damage graphs in a small authored
         # fixture, without cave walls and old fragments intercepting later shots.
@@ -122,13 +160,13 @@ class Runner:
             shutil.copytree(self.project/'content',project/'content')
             shutil.copyfile(self.project/'project.json',project/'project.json')
             probe = Runner(self.build,self.output,project)
-            asset = probe.author('readAsset',dict(kind='scene',name='NeonSwarmSandbox'))
-            scene = json.loads((project/'content/scenes/NeonSwarmSandbox.json').read_text())
+            asset = probe.author('readAsset',dict(kind='scene',name='Sandbox'))
+            scene = json.loads((project/'content/scenes/Sandbox.json').read_text())
             keep = {'Player','Camera','HRC','FireMouse','FireStick'}
             operations = [dict(op='remove_entity',entity=e['name']) for e in scene['entities'] if e['name'] not in keep]
-            operations.append(dict(op='add_entity',name='Target',prototype='NeonSwarmSwarmer',
+            operations.append(dict(op='add_entity',name='Target',prototype='Swarmer',
                 components={'GameTransform':{'x':-240,'y':0}}))
-            probe.author('buildScene',dict(kind='scene',name='NeonSwarmSandbox',
+            probe.author('buildScene',dict(kind='scene',name='Sandbox',
                 expected_hash=asset['hash'],operations=operations))
             fire=[dict(frame=0,input=dict(aim=dict(x=1,y=0,firing=True),controls=[1])),
                   dict(frame=1,input=dict(aim=dict(x=1,y=0,firing=False),controls=[]))]
@@ -156,9 +194,9 @@ class Runner:
             burst=[dict(frame=0,input=dict(aim=dict(x=1,y=0,firing=True),controls=[1]))]
             burst_result=probe.snapshot(55,burst,kind='scene')
             assert not any(e.get('name')=='Target' for e in burst_result['entities']), 'Real shots must finish an enemy through its chips'
-            asset=probe.author('readAsset',dict(kind='scene',name='NeonSwarmSandbox'))
-            probe.author('buildScene',dict(kind='scene',name='NeonSwarmSandbox',expected_hash=asset['hash'],
-                operations=[dict(op='add_entity',name='Wreck',prototype='NeonSwarmSwarmer',
+            asset=probe.author('readAsset',dict(kind='scene',name='Sandbox'))
+            probe.author('buildScene',dict(kind='scene',name='Sandbox',expected_hash=asset['hash'],
+                operations=[dict(op='add_entity',name='Wreck',prototype='Swarmer',
                     components={'GameTransform':{'x':-270,'y':0},'GameMovement':{'speed':0}})]))
             pierce=[dict(frame=0,input=dict(aim=dict(x=1,y=0,firing=True),controls=[1],events=[
                 dict(name='Damage',target='Wreck',values=[dict(type='int',value=3),dict(type='entity',value='Player')])])),
@@ -177,13 +215,13 @@ class Runner:
             p=fields(category(s,1)[0])
             counts.append(dict(seconds=second,position=[p['GameTransform.x'],p['GameTransform.y']],
                 projectiles=len(category(s,4)),enemies=len(category(s,2)),particles=s['particle_count']))
-            capture=self.call('preview_scene',True,kind='scene',name='NeonSwarmSandbox',frames=frame,
+            capture=self.call('preview_scene',True,kind='scene',name='Sandbox',frames=frame,
                 width=960,height=540,input_timeline=samples)
             (self.output/f'{second:02d}.png').write_bytes(base64.b64decode(capture['preview']['data']))
         (self.output/'counts.json').write_text(json.dumps(counts,indent=2))
         print('Captured eight gameplay frames and pose/population snapshots',flush=True)
     def performance(self):
-        result=self.call('preview_scene',True,kind='scene',name='NeonSwarmSandbox',frames=1200,
+        result=self.call('preview_scene',True,kind='scene',name='Sandbox',frames=1200,
             width=960,height=540,render_frames=360,input_timeline=[s for s in timeline() if s['frame']<1200])
         (self.output/'performance.json').write_text(json.dumps(result['performance'],indent=2))
         (self.output/'performance.png').write_bytes(base64.b64decode(result['preview']['data']))

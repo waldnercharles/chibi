@@ -18,6 +18,8 @@
 #include <float.h>
 #include <limits.h>
 #include <string.h>
+static const node_access pure = { .flags = NODE_EFFECT_PURE };
+
 enum
 {
     GENERIC_ADD,
@@ -403,6 +405,7 @@ static int generic_clamp_direct(void *output, const void *value, const void *low
                       .output_count = 1,                                                                  \
                       .inputs = VAR##_inputs,                                                             \
                       .outputs = VAR##_outputs,                                                           \
+                      .access = &pure,                                                                    \
                       .pure_kind = NODE_PURE_CALL,                                                        \
                       .jit_kind = JIT,                                                                    \
                       .fn = FN,                                                                           \
@@ -423,6 +426,7 @@ node_desc NODE_Clamp = { .name = "Clamp",
                          .output_count = 1,
                          .inputs = NODE_Clamp_inputs,
                          .outputs = NODE_Clamp_outputs,
+                         .access = &pure,
                          .pure_kind = NODE_PURE_CALL,
                          .jit_kind = NODE_JIT_CLAMP,
                          .jit_flags = NODE_JIT_FLAG_FAST_MATH,
@@ -447,6 +451,7 @@ node_desc NODE_Clamp = { .name = "Clamp",
         .output_count = 1,                                                                                 \
         .inputs = VAR##_inputs,                                                                            \
         .outputs = VAR##_outputs,                                                                          \
+        .access = &pure,                                                                                   \
         .pure_kind = NODE_PURE_CALL,                                                                       \
         .jit_kind = JIT,                                                                                   \
         .jit_flags = NODE_JIT_FLAG_FAST_MATH,                                                              \
@@ -506,6 +511,7 @@ GENERIC_UNARY_DESC(NODE_Abs, "Abs", generic_abs, "abs absolute", NODE_JIT_ABS)
         .output_count = 1,                                                     \
         .inputs = VAR##_inputs,                                                \
         .outputs = VAR##_outputs,                                              \
+        .access = &pure,                                                       \
         .pure_kind = NODE_PURE_CALL,                                           \
         .fn = literal_identity,                                                \
         .display_class = NODE_DISPLAY_LITERAL,                                 \
@@ -518,6 +524,7 @@ node_desc NODE_DeltaTime = {
     .name = "Delta Time",
     .output_count = 1,
     .outputs = NODE_DeltaTime_outputs,
+    .access = &pure,
     .pure_kind = NODE_PURE_DELTA,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Time",
@@ -552,6 +559,9 @@ node_desc *const EXTRA_NODES[] = {
     &NODE_Not_Equal,
     &NODE_Integer_Not_Equal,
     &NODE_Has_Any_Flags,
+    &NODE_And,
+    &NODE_Or,
+    &NODE_Not,
     &NODE_DeltaTime,
     &NODE_Bool,
     &NODE_Byte,

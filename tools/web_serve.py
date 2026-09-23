@@ -37,7 +37,7 @@ def save_asset(project, content, request):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, default=Path('build-web'))
-    parser.add_argument('--project', type=Path, default=Path('.'))
+    parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
     args = parser.parse_args()
     project = args.project.resolve()
@@ -76,6 +76,7 @@ def main():
                         return
                     assets = {str(p.relative_to(project)): p.read_text()
                               for p in content.rglob('*.json') if p.resolve().is_relative_to(content)}
+                    assets['project.json'] = (project / 'project.json').read_text()
                     body = json.dumps(assets).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')

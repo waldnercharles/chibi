@@ -229,13 +229,13 @@ static void ed_record_math_edit(editor *e, char *before)
     ed_free_string_stack(&e->redo);
 }
 
-node *editor_add_math_expression(editor *e, const char *source, float x, float y, math_expression_error *error)
+node *editor_add_behavior_expression(editor *e, const char *source, float x, float y, behavior_expression_error *error)
 {
     if (!e || e->active_graph->math_expression) {
         return NULL;
     }
     char *before = ed_snapshot(e);
-    node *n = math_expression_add(e->asset, e->active_graph, source, error);
+    node *n = behavior_expression_add(e->asset, e->active_graph, source, error);
     if (!n) {
         free(before);
         return NULL;
@@ -247,17 +247,17 @@ node *editor_add_math_expression(editor *e, const char *source, float x, float y
     return n;
 }
 
-int editor_set_math_expression(editor *e, node *call, const char *source, math_expression_error *error)
+int editor_set_behavior_expression(editor *e, node *call, const char *source, behavior_expression_error *error)
 {
     if (!e || e->active_graph->math_expression) {
         return -1;
     }
-    const char *current = math_expression_source(e->asset, call);
+    const char *current = behavior_expression_source(e->asset, call);
     if (source && current && !strcmp(source, current)) {
         return 0;
     }
     char *before = ed_snapshot(e);
-    if (math_expression_set(e->asset, call, source, error) != 0) {
+    if (behavior_expression_set(e->asset, call, source, error) != 0) {
         free(before);
         return -1;
     }

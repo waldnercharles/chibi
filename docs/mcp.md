@@ -70,6 +70,10 @@ domain:
   `searchNodes`, inspect with `inspectGraph`, then use `buildShader`.
 - Behavior, event, or behavior-library work: search with `searchAssets` and
   `searchNodes`, inspect with `inspectGraph`, then use `buildBehavior`.
+- Procedural fields: inspect field nodes and libraries, then use `buildField` and
+  `previewField` (CPU evaluation, no GPU required).
+- Standalone Systems: use `buildSystem` for graph and query edits, then
+  `inspectSystem` and `getExecutionStatus`.
 - Prototype or prefab work: use `describeComponents` when field details are
   unclear, then use `buildPrototype`.
 - Scene or level composition: use `buildScene`.
@@ -81,6 +85,9 @@ Call `validateAsset` after every published change. Use `previewShader`,
 saving them. Tool results include complete `structuredContent` and
 `next_steps`.
 
+- `buildField`: create or edit pure scalar field graphs and library calls.
+- `buildSystem`: create or edit standalone System graphs and queries.
+- `previewField`: bake a bounded scalar field and return its PNG, range and hash.
 - `buildShader`: create or edit material, shape, and shader-library graphs.
 - `buildBehavior`: create or edit behavior, event, and behavior-library graphs.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
@@ -201,9 +208,20 @@ Select the owning graph before referring to one of its nodes. Graph selectors
 accept IDs, names, or aliases created in the same request. Function calls can
 resolve `reference_name` without a numeric graph ID.
 
+Add a Behavior Expression with `add_node` and its `source` text, for example
+`{"op":"add_node","type":"Behavior Expression","source":"vec2(x, y)","ref":"motion"}`.
+Use `set_expression` with the node selector and new `source` to regenerate it;
+valid edits reconcile pins and disconnect incompatible wires, while invalid edits
+leave the previous generated graph in place. Bind an assignment's leftmost
+identifier pin with the normal `bind_input` operation; it does not need a special
+name.
+
 For `bind_input`, choose `kind: "variable"` with a variable ID/name/alias,
 `kind: "component"` with a reflected component name or stable key and optional
-`field`, or `kind: "delta_time"`. Omitting `field` binds the whole component.
+`field`, `kind: "delta_time"`, or `kind: "event_output"` with the source
+event's `event_node_id` and `event_pin_id`. Omitting `field` binds the whole
+component. Event output bindings are scoped to the event activation; Tick's
+`DeltaSeconds` payload also supplies the Delta Time context automatically.
 These operations use the same graph model as editor bindings and projections.
 
 `add_node` honors `event_name`. Tick, Input, and Contact Begin events acquire
@@ -303,10 +321,13 @@ printf '%s\n' '{"contract":1,"operation":"status"}' |
   build/chibi_ctl --project-root .
 ```
 
-The repository root is the Arena3D project. Arena2D is an independent project
-at `projects/arena2d`, with its own manifest and `content` tree. Point the
-controller or renderer at the project root when searching, authoring, running,
-or previewing assets; names are resolved only within that project.
+The repository contains two project roots: Arena3D at the repository root and
+Arena2D at `projects/arena2d`, with its own manifest and `content` tree. The
+MCP launcher defaults to Arena2D when that project is present, matching the
+default Make and editor workflows. Set `CHIBI_ROOT` to select a different
+project explicitly. Point the controller or renderer at the project root when
+searching, authoring, running, or previewing assets; names are resolved only
+within that project.
 
 ```sh
 printf '%s\n' '{"contract":1,"operation":"status"}' |
@@ -474,8 +495,9 @@ Catalog, search, and asset-list responses accept a numeric `limit` and `cursor`,
 and return `total`, `count`, `has_more`, and `next_cursor`. Catalog and search
 also accept `summary: true` to omit relationship arrays from each asset record.
 
-The launcher sets `CHIBI_ROOT` and controller paths from its own location.
-When launching `server.mjs` directly outside the repository, set
+The launcher selects the Arena2D project by default when it is present and
+honors an explicit `CHIBI_ROOT`. It sets the controller path from its own
+location. When launching `server.mjs` directly outside the repository, set
 `CHIBI_ROOT` or `CHIBI_CTL` to an explicitly built controller executable.
 
 `make test` includes the MCP protocol and native-controller smoke checks,

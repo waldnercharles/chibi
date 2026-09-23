@@ -1,5 +1,6 @@
 #include "graph/model/graph.h"
 
+#include "ecs/ecs.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
@@ -10,6 +11,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -336,6 +338,12 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
     if ((out->flags | in->flags) & PIN_FLAG_SETTING) {
         return -1;
     }
+    if (in->flags & PIN_FLAG_REFERENCE) {
+        pin_binding binding = { 0 };
+        if (conversion || graph_resolve_reference(g, from, from_pin, &binding) != 0) {
+            return -1;
+        }
+    }
     int numeric_wildcard = (in->flags & PIN_FLAG_WILDCARD) && graph_numeric_node(to);
     if (!conversion && numeric_wildcard) {
         conversion = graph_numeric_unwrap(out);
@@ -389,9 +397,15 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
                 return -1;
             }
             *old = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0, conversion);
+            if (in->flags & PIN_FLAG_REFERENCE) {
+                to->input_pins[to_pin].binding = NULL;
+            }
             graph_changed(g);
             return 0;
         }
+    }
+    if (in->flags & PIN_FLAG_REFERENCE) {
+        to->input_pins[to_pin].binding = NULL;
     }
     apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0, conversion));
     graph_changed(g);
@@ -863,6 +877,114 @@ int graph_input_source(const graph *g, const node *n, int pin, node **src, int *
     return 0;
 }
 
+static int graph_append_reference_field(graph *g, const pin_binding *base, const char *field, pin_binding *out)
+{
+    if (!g || !base || !field || !field[0] || !out ||
+        (base->kind != PIN_BINDING_COMPONENT &&
+         base->kind != PIN_BINDING_COMPONENT_FIELD)) {
+        return -1;
+    }
+    char path[256];
+    int written = snprintf(
+        path,
+        sizeof path,
+        "%s%s%s",
+        base->field_name ? base->field_name : "",
+        base->field_name ? "." : "",
+        field
+    );
+    if (written < 0 || (size_t)written >= sizeof path) {
+        return -1;
+    }
+    char *owned = graph_own_str(g, path, (size_t)written);
+    if (!owned) {
+        return -1;
+    }
+    *out = *base;
+    out->kind = PIN_BINDING_COMPONENT_FIELD;
+    out->field_name = owned;
+    return 0;
+}
+
+int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_binding *binding)
+{
+    if (!g || !source || !binding || source_pin < 0 ||
+        source_pin >= source->output_count || !node_in_graph(g, source)) {
+        return -1;
+    }
+    const pin_spec *pin = &source->output_pins[source_pin];
+    if (pin->kind != PIN_DATA || !(pin->flags & PIN_FLAG_REFERENCE)) {
+        return -1;
+    }
+    if (pin->field_source && !pin->split_parent) {
+        int parent_pin = -1;
+        const type_field *field = graph_output_field(source, source_pin, &parent_pin);
+        if (!field || parent_pin == source_pin) {
+            return -1;
+        }
+        pin_binding base = { 0 };
+        if (graph_resolve_reference(g, source, parent_pin, &base) != 0) {
+            return -1;
+        }
+        return graph_append_reference_field(g, &base, field->name, binding);
+    }
+    if (pin->split_parent && pin->split_type_name && pin->name &&
+        source->desc->component_kind == NODE_COMPONENT_GET_SELF &&
+        source->desc->component && source->desc->component->key) {
+        const type_desc *type = registry_type_by_name(pin->split_type_name);
+        const type_field *field = type ? pin_type_field_path(type, pin->name) : NULL;
+        if (!field || field->type != pin->type ||
+            strcmp(field->type_name ? field->type_name : "", pin->type_name ? pin->type_name : "")) {
+            return -1;
+        }
+        pin_binding base = { 0 };
+        if (pin->field_source) {
+            int parent_pin = -1;
+            for (int i = 0; i < source->output_count; i++) {
+                if (source->output_pins[i].id == pin->field_source) {
+                    parent_pin = i;
+                    break;
+                }
+            }
+            if (parent_pin < 0 ||
+                graph_resolve_reference(g, source, parent_pin, &base) != 0) {
+                return -1;
+            }
+            const pin_spec *parent = &source->output_pins[parent_pin];
+            if (!parent->field_source && pin->field_name) {
+                pin_binding projected = { 0 };
+                if (graph_append_reference_field(g, &base, pin->field_name, &projected) !=
+                    0) {
+                    return -1;
+                }
+                base = projected;
+            }
+        } else {
+            base.kind = PIN_BINDING_COMPONENT;
+            base.component_key = source->desc->component->key;
+        }
+        return graph_append_reference_field(g, &base, field->name, binding);
+    }
+    memset(binding, 0, sizeof *binding);
+    if (source->desc->pure_kind == NODE_PURE_GET) {
+        if (!source->reference_id) {
+            return -1;
+        }
+        binding->kind = PIN_BINDING_VARIABLE;
+        binding->variable_id = source->reference_id;
+        binding->source_asset = g->owner ? g->owner->name : NULL;
+        return 0;
+    }
+    if (source->desc->component_kind == NODE_COMPONENT_GET_SELF &&
+        source->desc->component && source->desc->component->key &&
+        source->desc->component->key[0]) {
+        binding->kind = PIN_BINDING_COMPONENT;
+        binding->component_key = source->desc->component->key;
+        return 0;
+    }
+    return -1;
+}
+
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin)
 {
     if (!g || !n || pin < 0 || pin >= n->input_count) {
@@ -1221,7 +1343,8 @@ int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_bi
     if (binding->kind != PIN_BINDING_VARIABLE &&
         binding->kind != PIN_BINDING_COMPONENT_FIELD &&
         binding->kind != PIN_BINDING_DELTA_TIME &&
-        binding->kind != PIN_BINDING_COMPONENT && binding->kind != PIN_BINDING_LOCAL) {
+        binding->kind != PIN_BINDING_COMPONENT && binding->kind != PIN_BINDING_LOCAL &&
+        binding->kind != PIN_BINDING_EVENT_OUTPUT) {
         return -1;
     }
     if (binding->kind == PIN_BINDING_LOCAL && !graph_local_by_id(g, binding->local_id)) {
@@ -1237,6 +1360,10 @@ int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_bi
     }
     if (binding->kind == PIN_BINDING_COMPONENT &&
         (!binding->component_key || !binding->component_key[0] || binding->field_name)) {
+        return -1;
+    }
+    if (binding->kind == PIN_BINDING_EVENT_OUTPUT &&
+        (!binding->event_node_id || !binding->event_pin_id)) {
         return -1;
     }
     pin_binding *copy = graph_own_block(g, sizeof *copy);
@@ -1449,8 +1576,8 @@ const type_desc *graph_output_struct(const node *n, int index)
     }
     const node_desc *desc = n->desc;
     bool signature = desc == &NODE_Event || desc == &NODE_FunctionEntry ||
-                     desc == &NODE_CallFunction ||
-                     desc == &NODE_CallPureFunction || desc == &NODE_CallMacro;
+                     desc == &NODE_CallFunction || desc == &NODE_CallPureFunction ||
+                     desc == &NODE_BehaviorExpression || desc == &NODE_CallMacro;
     if (!signature && index >= desc->output_count && !n->output_pins[index].field_source) {
         return NULL;
     }
@@ -1527,7 +1654,8 @@ int graph_expose_output_fields(graph *g, node *n, int index)
                          .type_name = field->type_name,
                          .kind = PIN_DATA,
                          .field_source = source,
-                         .field_name = field->name };
+                         .field_name = field->name,
+                         .flags = n->output_pins[index].flags & PIN_FLAG_REFERENCE };
         if (graph_add_pin(g, n, 1, &pin) < 0) {
             return -1;
         }
@@ -1610,7 +1738,10 @@ int graph_split_pin(graph *g, node *n, int output, int index)
             .kind = PIN_DATA,
             .container = PIN_CONTAINER_SINGLE,
             .split_parent = parent_id,
+            .field_source = parent.field_source,
+            .field_name = parent.field_name,
             .split_type_name = type->name,
+            .flags = parent.flags & PIN_FLAG_REFERENCE,
         };
         int at = graph_add_pin(g, n, output, &child);
         if (at < 0) {
@@ -1658,6 +1789,9 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
         return -1;
     }
     uint64_t parent_id = pins[index].split_parent;
+    uint64_t field_source = pins[index].field_source;
+    const char *field_name = pins[index].field_name;
+    const char *parent_name = pins[index].field_source ? pins[index].field_name : NULL;
     const type_desc *type = pins[index].split_type_name
                               ? graph_find_type(pins[index].split_type_name)
                               : graph_split_type(&pins[index]);
@@ -1668,6 +1802,13 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
     while (first > 0 && pins[first - 1].split_parent == parent_id) {
         first--;
     }
+    bool reference = false;
+    for (int i = first; i < count; i++) {
+        if (pins[i].split_parent == parent_id && (pins[i].flags & PIN_FLAG_REFERENCE)) {
+            reference = true;
+            break;
+        }
+    }
     for (int i = count - 1; i >= 0; i--) {
         pins = output ? n->output_pins : n->input_pins;
         if (pins[i].split_parent == parent_id && graph_remove_pin(g, n, output, i)) {
@@ -1675,10 +1816,13 @@ int graph_recombine_pin(graph *g, node *n, int output, int index)
         }
     }
     pin_spec parent = {
-        .name = type->name,
+        .name = parent_name ? parent_name : type->name,
         .type = PIN_STRUCT,
         .type_name = type->name,
         .kind = PIN_DATA,
+        .field_source = field_source,
+        .field_name = field_name,
+        .flags = reference ? PIN_FLAG_REFERENCE : 0,
     };
     int at = graph_add_pin(g, n, output, &parent);
     if (at < 0) {

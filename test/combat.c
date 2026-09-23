@@ -31,6 +31,16 @@ static behavior_asset *contact_observer()
         "Test"
     );
     assert(other);
+    behavior_variable *point = behavior_asset_add_variable(
+        asset,
+        "Point",
+        PIN_STRUCT,
+        "CF_V2",
+        PIN_CONTAINER_SINGLE,
+        NULL,
+        "Test"
+    );
+    assert(point);
     graph *g = asset->graph;
     node *event = graph_add_node(g, registry_node_by_name("Event"));
     assert(graph_set_event_name(g, event, "Contact Begin") == 0);
@@ -39,11 +49,19 @@ static behavior_asset *contact_observer()
                            .type_name = "ecs.entity",
                            .kind = PIN_DATA };
     assert(graph_add_pin(g, event, 1, &parameter) >= 0);
+    pin_spec point_parameter = { .name = "Point",
+                                 .type = PIN_STRUCT,
+                                 .type_name = "CF_V2",
+                                 .kind = PIN_DATA };
+    assert(graph_add_pin(g, event, 1, &point_parameter) >= 0);
+    node *set_point = behavior_asset_add_set_node(asset, point->id);
     node *set = behavior_asset_add_set_node(asset, other->id);
     node *log = graph_add_node(g, registry_node_by_name("Print String"));
     pin_value text = { .type = PIN_STR, .str = "contact" };
     assert(graph_set_pin_default(g, log, 0, 1, &text) == 0);
-    assert(graph_connect_exec(g, event, 0, set, 0, 0) == 0);
+    assert(graph_connect_exec(g, event, 0, set_point, 0, 0) == 0);
+    assert(graph_connect_data(g, event, 2, set_point, 1) == 0);
+    assert(graph_connect_exec(g, set_point, 0, set, 0, 0) == 0);
     assert(graph_connect_data(g, event, 1, set, 1) == 0);
     assert(graph_connect_exec(g, set, 0, log, 0, 0) == 0);
     return asset;
@@ -126,6 +144,16 @@ static void contact_history()
     assert(engine_frame(runtime, 0.2) >= 0);
     assert(engine_frame(runtime, 0.2 + ENGINE_FIXED_SECONDS) >= 0);
     assert(game_behavior_log_count(live->behaviors) == 2);
+    pin_value point;
+    assert(
+        behavior_instance_get_variable(observer, observer->asset->variables[1].id, &point) == 0
+    );
+    assert(point.type == PIN_STRUCT && point.ptr && point.type_name);
+    assert(!strcmp(point.type_name, "CF_V2"));
+    assert(
+        isfinite(((const CF_V2 *)point.ptr)->x) &&
+        isfinite(((const CF_V2 *)point.ptr)->y)
+    );
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(world);

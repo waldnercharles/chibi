@@ -132,39 +132,67 @@ void run_content_catalog_checks()
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
     static const char *const arena2d_behaviors[] = {
-        "NeonSwarmBoostEmitter.json",
-        "NeonSwarmCameraFollow.json",
-        "NeonSwarmDamage.json",
-        "NeonSwarmMovement.json",
-        "NeonSwarmMovementEmitter.json",
-        "NeonSwarmPlayerEffects.json",
-        "NeonSwarmProjectileEffects.json",
-        "NeonSwarmProjectileHit.json",
-        "NeonSwarmPursuit.json",
-        "NeonSwarmSwarmerEffects.json",
-        "NeonSwarmWeapon.json",
-        "ProjectileBehavior.json",
+        "BoostEmitter.json",
+        "CameraFollow.json",
+        "CutMaterial.json",
+        "HullDamage.json",
+        "MaterialImpactHealth.json",
+        "Movement.json",
+        "MovementEmitter.json",
+        "PlayerEffects.json",
+        "ProjectileEffects.json",
+        "ProjectileHit.json",
+        "Pursuit.json",
+        "SwarmerEffects.json",
+        "Weapon.json",
+        "ProjectileLifecycle.json",
     };
     static const char *const arena2d_materials[] = {
-        "NeonSwarmRock.json",
+        "Rock.json",
+    };
+    static const char *const arena2d_events[] = {
+        "CollectExperience.json", "Damage.json",
+        "Damaged.json",           "Died.json",
+        "Material Impact.json",   "Material Result.json",
+        "RefreshEncounter.json",
     };
     static const char *const arena2d_prototypes[] = {
-        "NeonSwarmBoostEmitter.json", "NeonSwarmCamera.json",
-        "NeonSwarmCave.json",         "NeonSwarmCloud.json",
-        "NeonSwarmCrystal.json",      "NeonSwarmDeathEmitter.json",
-        "NeonSwarmFireMouse.json",    "NeonSwarmFireStick.json",
-        "NeonSwarmFuelCloud.json",    "NeonSwarmHardRock.json",
-        "NeonSwarmHRC.json",          "NeonSwarmHitEmitter.json",
-        "NeonSwarmLiquid.json",       "NeonSwarmMovementEmitter.json",
-        "NeonSwarmPlayer.json",       "NeonSwarmProjectile.json",
-        "NeonSwarmSpawnEmitter.json", "NeonSwarmSwarmer.json",
-        "NeonSwarmTrailEmitter.json",
+        "BoostEmitter.json",
+        "Camera.json",
+        "Cave.json",
+        "Cloud.json",
+        "Crystal.json",
+        "DeathEmitter.json",
+        "DriftingMarker.json",
+        "FireMouse.json",
+        "FireStick.json",
+        "FreeMotionSystem.json",
+        "FuelCloud.json",
+        "HardRock.json",
+        "HRC.json",
+        "HitEmitter.json",
+        "Liquid.json",
+        "MovementEmitter.json",
+        "MaterialSpecimen.json",
+        "MaterialStudyCamera.json",
+        "MaterialStudyWorld.json",
+        "Player.json",
+        "Projectile.json",
+        "SpawnEmitter.json",
+        "Swarmer.json",
+        "TrailEmitter.json",
     };
     static const char *const arena2d_scenes[] = {
-        "NeonSwarmSandbox.json",
+        "HRCBounce.json",      "HRCPinhole.json", "HRCShadow.json",
+        "HRCSinglePixel.json", "HRCVolume.json",  "MaterialStudy.json",
+        "Sandbox.json",
     };
     static const char *const arena2d_libraries[] = { "DirectionMath.json",
+                                                     "FieldShapes.json",
                                                      "WeaponActions.json" };
+    static const char *const arena2d_fields[] = { "CaveField.json",
+                                                  "MaterialIslands.json" };
+    static const char *const arena2d_systems[] = { "FreeMotion.json" };
     const char *arena2d_root = "projects/arena2d/content";
     valid = folder_matches(
         arena2d_root,
@@ -172,7 +200,14 @@ void run_content_catalog_checks()
         arena2d_behaviors,
         (int)(sizeof arena2d_behaviors / sizeof *arena2d_behaviors)
     );
-    valid &= folder_matches(arena2d_root, "events", events, (int)(sizeof events / sizeof *events));
+    valid &= folder_matches(arena2d_root, "fields", arena2d_fields, 2);
+    valid &= folder_matches(arena2d_root, "systems", arena2d_systems, 1);
+    valid &= folder_matches(
+        arena2d_root,
+        "events",
+        arena2d_events,
+        (int)(sizeof arena2d_events / sizeof *arena2d_events)
+    );
     valid &= folder_matches(
         arena2d_root,
         "libraries",
@@ -211,6 +246,7 @@ void run_content_catalog_checks()
     chibi_project arena3d = { 0 };
     chibi_project arena2d = { 0 };
     chibi_project arena2d_content = { 0 };
+    chibi_project default_project = { 0 };
     char *arena3d_scene = NULL;
     char *arena2d_scene = NULL;
     char *arena2d_content_scene = NULL;
@@ -218,20 +254,24 @@ void run_content_catalog_checks()
                           chibi_project_open(&arena2d, "projects/arena2d", error, sizeof error) ==
                               0 &&
                           chibi_project_open(&arena2d_content, "projects/arena2d/content", error, sizeof error) ==
+                              0 &&
+                          chibi_project_open(&default_project, NULL, error, sizeof error) ==
                               0;
     if (projects_valid) {
         arena3d_scene = chibi_project_scene_path(&arena3d, NULL);
         arena2d_scene = chibi_project_scene_path(&arena2d, NULL);
         arena2d_content_scene = chibi_project_scene_path(&arena2d_content, NULL);
         projects_valid = arena3d.name && !strcmp(arena3d.name, "Arena3D") &&
-                         arena2d.name && !strcmp(arena2d.name, "Arena2D") &&
+                         arena2d.name && !strcmp(arena2d.name, "Neon Swarm") &&
+                         !strcmp(default_project.root, arena2d.root) &&
+                         !strcmp(default_project.start_scene, arena2d.start_scene) &&
                          arena2d_content.name &&
                          !strcmp(arena2d_content.name, "arena2d") && arena3d_scene &&
                          strstr(arena3d_scene, "/content/scenes/Arena3D.json") &&
                          arena2d_scene &&
-                         strstr(arena2d_scene, "/projects/arena2d/content/scenes/NeonSwarmSandbox.json") &&
+                         strstr(arena2d_scene, "/projects/arena2d/content/scenes/Sandbox.json") &&
                          arena2d_content_scene &&
-                         strstr(arena2d_content_scene, "/projects/arena2d/content/scenes/NeonSwarmSandbox.json");
+                         strstr(arena2d_content_scene, "/projects/arena2d/content/scenes/Sandbox.json");
     }
     test_check(projects_valid, "project roots and legacy content folders resolve independent scenes");
     free(arena3d_scene);
@@ -240,4 +280,5 @@ void run_content_catalog_checks()
     chibi_project_free(&arena3d);
     chibi_project_free(&arena2d);
     chibi_project_free(&arena2d_content);
+    chibi_project_free(&default_project);
 }

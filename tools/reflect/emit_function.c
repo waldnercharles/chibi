@@ -391,6 +391,7 @@ void emit_read_fn(FILE *out, const fn_info *f)
 /* Emit Make + Break node_desc for one struct. */
 void emit_struct_nodes(FILE *out, const struct_info *s)
 {
+    fprintf(out, "static const node_access %s_%s_value_access = {.flags=NODE_EFFECT_PURE};\n", g_prefix, s->name);
     fprintf(out, "static pin_spec %s_%s_make_inputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
         emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, field_type_name(&s->fields[j]));
@@ -406,6 +407,7 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    .inputs = %s_%s_make_inputs,\n", g_prefix, s->name);
     fprintf(out, "    .outputs = %s_%s_make_outputs,\n", g_prefix, s->name);
     fprintf(out, "    .pure_kind = NODE_PURE_MAKE,\n");
+    fprintf(out, "    .access = &%s_%s_value_access,\n", g_prefix, s->name);
     fprintf(out, "    .type = &%s_T_%s,\n", g_prefix, s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);
@@ -425,6 +427,7 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "    .inputs = %s_%s_break_inputs,\n", g_prefix, s->name);
     fprintf(out, "    .outputs = %s_%s_break_outputs,\n", g_prefix, s->name);
     fprintf(out, "    .pure_kind = NODE_PURE_BREAK,\n");
+    fprintf(out, "    .access = &%s_%s_value_access,\n", g_prefix, s->name);
     fprintf(out, "    .type = &%s_T_%s,\n", g_prefix, s->name);
     fprintf(out, "    .flow_kind = NODE_FLOW_NONE,\n");
     fputs("};\n\n", out);

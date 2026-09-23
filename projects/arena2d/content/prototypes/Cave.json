@@ -1,0 +1,74 @@
+{
+  "name": "Cave",
+  "identity": "prototype-e5543b9b7a44303c",
+  "components": {
+    "GAME.GameAppearance": {
+      "antialias": 0.0,
+      "border_color": 0,
+      "border_width": 0.0,
+      "color": 591155711,
+      "glow_color": 0,
+      "glow_radius": 0.0,
+      "height": 0.0,
+      "shape": 0,
+      "stroke_width": 0.0,
+      "width": 0.0
+    },
+    "GAME.GameMaterial": {
+      "absorption": 0.15000000596046448,
+      "albedo": 1316326655,
+      "border_albedo": 0,
+      "border_emission_color": 0,
+      "border_filter": 0,
+      "border_scene": 0,
+      "edge_light": 2.0,
+      "emission_color": 0,
+      "emission_intensity": 0.0,
+      "emission_multiplier": 1.0,
+      "filter": 0,
+      "scene": 591155711
+    },
+    "GAME.GameShader": {
+      "bounds_x": 0.0,
+      "bounds_y": 0.0,
+      "material": "Rock",
+      "parameters": "",
+      "shape": ""
+    },
+    "GAME.GameSubstance": {
+      "blast_multiplier": 1.0,
+      "hardness": 1.0,
+      "retain_chips": false
+    },
+    "game.GameTransform": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "GAME.MaterialBreakProfile": {
+      "chip_speed": 35,
+      "fragment_speed": 30,
+      "blast_speed": 70,
+      "release_speed": 12,
+      "dust_limit": 8,
+      "dust_speed_min": 4,
+      "dust_speed_max": 12,
+      "dust_lifetime_min": 0.15,
+      "dust_lifetime_max": 0.3,
+      "dust_size_min": 0.25,
+      "dust_size_max": 0.5
+    },
+    "GAME.MaterialTerrain": {
+      "category": 8,
+      "cell_size": 2.0,
+      "height": 1536.0,
+      "mask": 15,
+      "min_fragment_cells": 24,
+      "seed": 1729,
+      "width": 4096.0,
+      "field": "CaveField",
+      "parameters": "{\"Radius\":225.0,\"Roughness\":100.0}",
+      "connectivity": 1,
+      "border_cells": 8
+    }
+  }
+}

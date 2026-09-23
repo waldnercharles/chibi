@@ -23,7 +23,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-render clean
 
 all: build
 
@@ -42,6 +42,7 @@ help:
 		'make run-tracy      Run the native Tracy profile' \
 		'make tracy-mcp      Build and run the official Tracy MCP server' \
 		'make test           Run generation, MCP, runtime, and headless checks' \
+		'make test-render    Run GPU previews and hidden-window checks' \
 		'make benchmark      Run optimized benchmarks with symbols' \
 		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
@@ -68,7 +69,7 @@ mcp-setup:
 	node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
 PROJECT ?= projects/arena2d
-SCENE ?= scenes/NeonSwarmSandbox.json
+SCENE ?= scenes/Sandbox.json
 
 run: build-release
 	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
@@ -125,13 +126,22 @@ check-format:
 
 test:
 	python3 test/web_serve_test.py
+	node test/web_workspace_test.mjs
 	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
-	cmake --build $(BUILD_DIR) --target chibi
+
+test-render:
+	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
+		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
+		exit 1; \
+	fi
+	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	cmake --build $(BUILD_DIR) --target check-mcp-gpu test_suite chibi
+	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
+	env $(NATIVE_RUNTIME_ENV) CHIBI_EVENT_BATCH_STATUS_ONLY=1 ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-ui
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
 
 clean:

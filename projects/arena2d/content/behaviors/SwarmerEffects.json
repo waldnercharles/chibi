@@ -1,0 +1,137 @@
+{
+  "version": 3,
+  "name": "SwarmerEffects",
+  "domain": "behavior",
+  "id_counter": 20,
+  "description": "",
+  "owner_type": "ecs.entity",
+  "variables": [],
+  "graphs": [
+    {
+      "kind": "event",
+      "name": "",
+      "description": "",
+      "breakpoints_enabled": true,
+      "comment_boxes": [],
+      "nodes": [
+        {
+          "id": 1,
+          "type": "Event",
+          "x": 0.0,
+          "y": 0.0,
+          "reference_id": 0,
+          "reference_name": "Begin",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [],
+          "outputs": [
+            {
+              "id": 2,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "type": "Call Function",
+          "x": 310.0,
+          "y": 0.0,
+          "reference_id": 256,
+          "reference_name": "Spawn Prototype At",
+          "reference_asset": "WeaponActions",
+          "disabled": false,
+          "show_advanced": false,
+          "breakpoint": false,
+          "breakpoint_enabled": false,
+          "inputs": [
+            {
+              "id": 15,
+              "name": "Exec",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 17,
+              "declaration_id": 261,
+              "name": "Prototype",
+              "type": 12,
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": "SpawnEmitter"
+            },
+            {
+              "id": 18,
+              "declaration_id": 262,
+              "name": "Transform",
+              "type": 15,
+              "type_name": "GameTransform",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "binding": {
+                "kind": "component",
+                "component": "game.GameTransform"
+              },
+              "default": null
+            }
+          ],
+          "outputs": [
+            {
+              "id": 16,
+              "name": "Then",
+              "type": 0,
+              "kind": "exec",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            },
+            {
+              "id": 19,
+              "declaration_id": 263,
+              "name": "Entity",
+              "type": 14,
+              "type_name": "ecs.entity",
+              "kind": "data",
+              "container": 0,
+              "split_parent": 0,
+              "flags": 0,
+              "group": 0,
+              "default": null
+            }
+          ]
+        }
+      ],
+      "edges": [
+        {
+          "from": 1,
+          "from_pin": 2,
+          "to": 14,
+          "to_pin": 15,
+          "kind": "exec",
+          "order": 0
+        }
+      ]
+    }
+  ]
+}

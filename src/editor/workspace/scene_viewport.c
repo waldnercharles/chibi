@@ -745,28 +745,6 @@ void app_scene_authoring_render(void *user)
             }
             draw_appearance(scene->shapes, &visible, transform, radians, motion);
         }
-        const GameHealth *health = GAME_GameHealth_get_const(world, entity);
-        if (!health || health->current >= health->maximum) {
-            continue;
-        }
-        float bar_y = y + appearance->height * 0.5f + 8.0f;
-        float maximum = health->maximum > 0 ? (float)health->maximum : 1.0f;
-        float ratio = (float)health->current / maximum;
-        if (ratio < 0.0f) {
-            ratio = 0.0f;
-        }
-        if (ratio > 1.0f) {
-            ratio = 1.0f;
-        }
-        cf_draw_push_color(cf_make_color_rgb(40, 40, 40));
-        cf_draw_quad_fill(cf_make_aabb_pos_w_h(cf_v2(x, bar_y), 36.0f, 5.0f), 0.0f);
-        cf_draw_pop_color();
-        cf_draw_push_color(cf_make_color_rgb(80, 210, 90));
-        cf_draw_quad_fill(
-            cf_make_aabb_pos_w_h(cf_v2(x - 18.0f + 18.0f * ratio, bar_y), 36.0f * ratio, 3.0f),
-            0.0f
-        );
-        cf_draw_pop_color();
     }
     ecs_query_end(&query);
     if (!material_drawn) {

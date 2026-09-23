@@ -24,7 +24,7 @@ struct chibi_dev
     chibi_process process;
     uint64_t revision, build_revision;
     double changed_at;
-    int jobs, lock;
+    int jobs, lock, initial_lease;
     bool dirty, building, closing, force_rebuild;
 };
 
@@ -52,6 +52,29 @@ static char *append(const char *prefix, const char *suffix)
     char *result = allocate(size);
     snprintf(result, size, "%s%s", prefix, suffix);
     return result;
+}
+
+static int lease_initial_generation(const char *source, const char *directory)
+{
+    char *prefix = append(source, "/.chibi/generations/");
+    size_t length = strlen(prefix);
+    bool managed = !strncmp(directory, prefix, length) && directory[length] &&
+                   !strchr(directory + length, '/');
+    free(prefix);
+    if (!managed) {
+        return -1;
+    }
+    char *path = append(directory, "/.lease");
+    int lease = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    free(path);
+    if (lease < 0) {
+        return -2;
+    }
+    if (flock(lease, LOCK_SH) == 0) {
+        return lease;
+    }
+    close(lease);
+    return -2;
 }
 
 static double now()
@@ -198,7 +221,7 @@ chibi_dev *chibi_dev_create(const char *config, const char *generation, int jobs
         goto done;
     }
     dev = allocate(sizeof *dev);
-    *dev = (chibi_dev){ .lock = -1, .jobs = jobs > 0 ? jobs : 4 };
+    *dev = (chibi_dev){ .lock = -1, .initial_lease = -1, .jobs = jobs > 0 ? jobs : 4 };
     dev->source = copy(text(root, "source_dir"));
     dev->config = copy(config);
     dev->cmake = copy(text(root, "cmake"));
@@ -210,6 +233,13 @@ chibi_dev *chibi_dev_create(const char *config, const char *generation, int jobs
     snprintf(filename, sizeof filename, "/.chibi/build-result-%ld.json", (long)getpid());
     dev->result = append(dev->source, filename);
     dev->initial = copy(text(initial, "application"));
+    dev->initial_lease = lease_initial_generation(dev->source, text(initial, "directory"));
+    if (dev->initial_lease == -2) {
+        fprintf(stderr, "Could not lease initial development generation: %s\n", strerror(errno));
+        chibi_dev_free(dev);
+        dev = NULL;
+        goto done;
+    }
     dev->resident = copy(text(initial, "resident"));
     dev->digest = copy(text(initial, "source_digest"));
     dev->pending_digest = copy(dev->digest);
@@ -397,6 +427,9 @@ void chibi_dev_free(chibi_dev *dev)
     chibi_watch_free(dev->watch);
     if (dev->lock >= 0) {
         close(dev->lock);
+    }
+    if (dev->initial_lease >= 0) {
+        close(dev->initial_lease);
     }
     free(dev->config);
     free(dev->source);

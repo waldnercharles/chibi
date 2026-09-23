@@ -1,5 +1,6 @@
 #include "graph/model/pin_fmt.h"
 
+#include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
 
 #include <stdio.h>
@@ -65,13 +66,21 @@ const char *pin_value_to_string(const pin_value *v)
         case PIN_STRUCT:
             snprintf(buf, PIN_FMT_CAP, "%s", v->type_name ? v->type_name : "struct");
             break;
-        case PIN_ENUM:
+        case PIN_ENUM: {
+            const enum_desc *enumeration = registry_enum_by_name(v->type_name);
+            for (int i = 0; enumeration && i < enumeration->value_count; i++) {
+                if (enumeration->values[i].value == v->e) {
+                    snprintf(buf, PIN_FMT_CAP, "%s", enumeration->values[i].label);
+                    return buf;
+                }
+            }
             if (v->type_name) {
                 snprintf(buf, PIN_FMT_CAP, "%s(%d)", v->type_name, (int)v->e);
             } else {
                 snprintf(buf, PIN_FMT_CAP, "%d", (int)v->e);
             }
             break;
+        }
         case PIN_FLOW:
         default: snprintf(buf, PIN_FMT_CAP, "flow"); break;
     }

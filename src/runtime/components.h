@@ -11,6 +11,14 @@
 typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameTransform;
 typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameVelocity;
 
+/* Publishes this entity as a named global entity value. Behaviors can resolve
+ * it without knowing how the entity was instantiated. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameGlobalBinding)
+{
+    const char *name;
+}
+GameGlobalBinding;
+
 enum
 {
     GAME_BODY_STATIC,
@@ -58,21 +66,45 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 }
 GameDrive;
 
+/* A Scene-owned reference to a standalone System document. */
+typedef NODE_COMPONENT_TYPE_DENSE(EngineSystem)
+{
+    const char *asset;
+    int phase;
+    int order;
+}
+EngineSystem;
+
 /* Optional material world. The camera activates nearby chunks; moving bodies
  * wake additional local regions. Population limits bound retained resources. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialWorld)
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
 {
     float chunk_size;
     float buffer;
     float kernel;
     int particle_limit;
-    int fragment_limit;
     /* Optional gas flow; a zero cell size leaves particles independent. */
     float gas_cell_size;
     float gas_vorticity;
     float gas_drag;
 }
-GameMaterialWorld;
+MaterialFluidWorld;
+
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialDestructionWorld)
+{
+    int fragment_limit;
+}
+MaterialDestructionWorld;
+
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
+{
+    float chip_speed, fragment_speed, blast_speed, release_speed;
+    int dust_limit;
+    float dust_speed_min, dust_speed_max;
+    float dust_lifetime_min, dust_lifetime_max;
+    float dust_size_min, dust_size_max;
+}
+MaterialBreakProfile;
 
 /* Optional local combustion. Heat is a gameplay quantity, not kelvin. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
@@ -136,6 +168,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDestructible)
     int min_fragment_cells;
     /* Release control below this fraction of the original hull; zero disables. */
     float release_fraction;
+    /* Detached fragments may be passed through by continuous sensors. */
+    bool pierceable_fragments;
 }
 GameDestructible;
 
@@ -147,21 +181,28 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFragmentGlow)
 }
 GameFragmentGlow;
 
-/* One-time generated, axis-aligned terrain. Appearance and Material on the
+/* Authored, axis-aligned procedural terrain. Appearance and Material on the
  * source style its chunks; collision and destruction use the generated cells. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameCaveTerrain)
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
 {
     unsigned seed;
     float width;
     float height;
     float cell_size;
-    float tunnel_radius;
-    float roughness;
+    const char *field;
+    const char *parameters;
+    int connectivity;
+    int border_cells;
     unsigned category;
     unsigned mask;
     int min_fragment_cells;
+    /* Zero keeps a bounded terrain resident. Positive radius streams around
+     * cameras; zero width and height then allow unbounded terrain. Generation
+     * is limited to stream_budget tiles per boundary. */
+    float stream_radius;
+    int stream_budget;
 }
-GameCaveTerrain;
+MaterialTerrain;
 
 /* A one-time, elliptical fill in local space; its matter then lives freely. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
@@ -597,7 +638,7 @@ typedef enum
  * target GameInput owners; firing also controls the continuous Aim state. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 {
-    int source;
+    GameControl source;
     const char *action;
     bool firing;
     bool disabled;
@@ -706,6 +747,10 @@ GameStarfield2D;
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     float scale;
+    /* Optional higher-resolution monochrome transport for split-scale HRC. */
+    float luminance_scale;
+    /* 0: independent monochrome transport, 1: derive luminance from RGB gather. */
+    int luminance_mode;
     float min_scale;
     float max_scale;
     bool adaptive;
@@ -731,6 +776,8 @@ GameHRC2D;
 static inline GameHRC2D game_hrc2d_defaults()
 {
     return (GameHRC2D){ .scale = .976883f,
+                        .luminance_scale = 0,
+                        .luminance_mode = 0,
                         .min_scale = .1f,
                         .max_scale = 1,
                         .adaptive = true,

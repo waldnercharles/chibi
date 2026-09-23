@@ -27,10 +27,11 @@ ASan and UBSan by default. Use `make debug-san SANITIZERS=thread` when a TSan
 run is useful; TSan cannot be linked into the same binary as ASan, so the one
 target switches the sanitizer mode in the shared Debug build directory.
 
-To open a project with an editor profile, pass its project root and scene:
-`make debug PROJECT=projects/arena2d SCENE=scenes/Arena2D.json`
-or use `PROJECT=.` and `SCENE=scenes/Arena3D.json` for the 3D reference. Add
-`ARGS=--play` to launch directly into Play.
+Neon Swarm is the default project for native launches, editor profiles, MCP,
+and `make web-serve`. Its manifest selects `scenes/Sandbox.json`.
+Use `make debug PROJECT=.` for the Arena3D reference, or
+`make debug PROJECT=. SCENE=scenes/OrbitPinball.json` for pinball.
+Add `ARGS=--play` to launch into Play.
 
 Run `make help` for the complete target list and the purpose of each target.
 
@@ -60,6 +61,13 @@ LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
 dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
 
+When ccache is installed, native `Release` builds under the source tree can
+reuse compiled objects across worktrees with the same relative build directory
+such as `build-release`. Each worktree still has its own fetched sources and
+linked libraries. The cache checks source, headers, compiler, and flags before
+reusing an object. Run `ccache --show-stats` to check hits. Debug, sanitizer,
+Tracy, reload, and web builds do not use this Release path normalization.
+
 `make dev ARGS="--fps 60"` starts the native development host. Save a source file
 to build a new generation. Build diagnostics go to `.chibi/build.log`.
 A failed build or rejected import leaves the current generation running. A
@@ -76,6 +84,8 @@ Undo/Redo, selection, graph views, navigation, docking and native window geometr
 authored scene with its previous running or paused intent. Live simulation
 memory and in-progress pointer gestures are recreated. Checkpoints live in
 `.chibi/workspace.json`; source documents are saved only through editor Save.
+When a behavior source changed after the checkpoint was written, the editor
+asks whether to reload that source or keep the checkpointed workspace copy.
 
 ## Code map
 

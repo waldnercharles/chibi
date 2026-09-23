@@ -578,6 +578,12 @@ add_executable(test_suite
     src/assets/behavior_loader.c
     src/assets/project.c
     src/editor/workspace/scene_authoring.c
+    src/editor/ui/command_transport.c
+    src/editor/panels/command_palette.c
+    src/editor/commands/catalog.c
+    src/editor/commands/execute.c
+    src/editor/commands/model.c
+    src/editor/commands/task.c
     src/editor/workspace/asset_index.c
     src/editor/panels/asset_browser.c
     src/editor/panels/asset_document.c

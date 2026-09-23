@@ -1,5 +1,6 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
+#include "editor/panels/command_palette.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
@@ -928,6 +929,13 @@ void scene_tabs_draw(app_scene_authoring *scene)
         editor_ui_track_item("content.quick_open");
         if (ImGui_IsItemHovered(0)) {
             ImGui_SetTooltip("Open an asset (Cmd+P / Ctrl+P)");
+        }
+        ImGui_SameLine();
+        if (ImGui_Button("Commands")) {
+            editor_command_palette_open(scene);
+        }
+        if (ImGui_IsItemHovered(0)) {
+            ImGui_SetTooltip("Commands (Cmd+K / Ctrl+K)");
         }
         ImGui_SameLine();
         if (editor_ui_icon_button("workspace.documents.list", EDITOR_ICON_CODICON_CHEVRON_DOWN, true)) {

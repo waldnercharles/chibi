@@ -3,6 +3,7 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
+#include "editor/panels/command_palette.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/event_catalog.h"
@@ -119,6 +120,7 @@ static int app_frame(app_loop *loop)
         app_scene_authoring_draw(loop->authoring);
         editor_draw(loop->graph_editor);
         editor_frame_profile_draw(&loop->profile);
+        editor_command_palette_frame(loop->authoring);
         editor_frame_mark(&loop->profile, EDITOR_FRAME_UI);
         CHIBI_TRACE_ZONE_END(ui_zone);
     }

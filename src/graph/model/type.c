@@ -77,6 +77,35 @@ int pin_read_field_path(const void *base, const type_desc *type, const char *pat
     return -1;
 }
 
+int pin_write_field_path(void *base, const type_desc *type, const char *path, pin_value value)
+{
+    const char *at = path;
+    unsigned char *current = base;
+    for (int depth = 0; current && type && at && *at && depth < PIN_FIELD_PATH_MAX_DEPTH;
+         depth++) {
+        const char *end = strchr(at, '.');
+        size_t length = end ? (size_t)(end - at) : strlen(at);
+        const type_field *field = type_field_segment(type, at, length);
+        if (!field) {
+            return -1;
+        }
+        if (!end) {
+            if (field->type != value.type) {
+                return -1;
+            }
+            pin_write_field(current, field, value);
+            return 0;
+        }
+        if (field->type != PIN_STRUCT || !field->type_name) {
+            return -1;
+        }
+        current += field->offset;
+        type = registry_type_by_name(field->type_name);
+        at = end + 1;
+    }
+    return -1;
+}
+
 void pin_write_field(void *base, const type_field *f, pin_value v)
 {
     unsigned char *dst = (unsigned char *)base + f->offset;

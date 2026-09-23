@@ -1284,14 +1284,10 @@ int game_prototype_read_field(
         return -1;
     }
     game_prototype_component *component = find_component((game_prototype *)prototype, component_name);
-    const type_field *field = component
-                                ? find_field(component->desc->type, field_name)
-                                : NULL;
-    if (!field) {
+    if (!component || !pin_type_field_path(component->desc->type, field_name)) {
         return -1;
     }
-    pin_read_field(component->data, field, out);
-    return 0;
+    return pin_read_field_path(component->data, component->desc->type, field_name, out);
 }
 
 int game_prototype_write_field(
@@ -1306,7 +1302,7 @@ int game_prototype_write_field(
     }
     game_prototype_component *component = find_component(prototype, component_name);
     const type_field *field = component
-                                ? find_field(component->desc->type, field_name)
+                                ? pin_type_field_path(component->desc->type, field_name)
                                 : NULL;
     if (!field || field->type != value.type) {
         return -1;
@@ -1314,8 +1310,7 @@ int game_prototype_write_field(
     if (field->type == PIN_NAME || field->type == PIN_STR) {
         value.str = own_string(prototype, value.str);
     }
-    pin_write_field(component->data, field, value);
-    return 0;
+    return pin_write_field_path(component->data, component->desc->type, field_name, value);
 }
 
 int game_prototype_write_field_json(

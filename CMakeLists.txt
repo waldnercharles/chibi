@@ -596,6 +596,7 @@ add_executable(test_suite
     src/editor/panels/command_palette.c
     src/editor/commands/catalog.c
     src/editor/commands/execute.c
+    src/editor/commands/laya.c
     src/editor/commands/model.c
     src/editor/commands/task.c
     src/editor/workspace/asset_index.c

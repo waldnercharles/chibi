@@ -1,6 +1,7 @@
 #include "editor/panels/command_palette.h"
 
 #include "editor/commands/command.h"
+#include "editor/commands/laya.h"
 #include "editor/commands/model.h"
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/scene_internal.h"
@@ -19,7 +20,7 @@ struct editor_command_palette
     bool open, focus, settings_requested;
     int choice, host_choice;
     char query[1025], reply[4097], message[256];
-    char host[256], model[128];
+    char host[256], model[128], token[257];
 };
 
 static const struct
@@ -27,6 +28,7 @@ static const struct
     const char *label;
     const char *host;
 } host_presets[] = {
+    { "Laya", "http://127.0.0.1:8768/v1/decide" },
     { "Ollama", "http://127.0.0.1:11435/api" },
     { "MLX", "http://127.0.0.1:11436/v1" },
     { "llama.cpp", "http://127.0.0.1:11437/v1" },
@@ -121,6 +123,7 @@ static void draw_settings(editor_command_palette *p)
             bool selected = !strcmp(p->host, host_presets[i].host);
             if (ImGui_SelectableEx(host_presets[i].label, selected, 0, (ImVec2){ 0, 0 })) {
                 snprintf(p->host, sizeof p->host, "%s", host_presets[i].host);
+                snprintf(p->model, sizeof p->model, "%s", i == 0 ? "laya" : "gpt-oss:20b");
                 p->host_choice = i;
             }
         }
@@ -129,13 +132,28 @@ static void draw_settings(editor_command_palette *p)
     ImGui_Text("Model");
     ImGui_SetNextItemWidth(360.0f);
     ImGui_InputText("##command_model", p->model, sizeof p->model, 0);
+#ifndef __EMSCRIPTEN__
+    if (!strcmp(p->model, "laya")) {
+        ImGui_Text("API key");
+        ImGui_SetNextItemWidth(360.0f);
+        ImGui_InputText("##command_token", p->token, sizeof p->token, ImGuiInputTextFlags_Password);
+    }
+#endif
     if (ImGui_Button("Save")) {
         char error[128];
-        if (editor_command_model_set_settings(p->host, p->model, error, sizeof error)) {
+        bool valid = true;
+#ifndef __EMSCRIPTEN__
+        if (!strcmp(p->model, "laya")) {
+            valid = editor_command_laya_set_token(p->token);
+        }
+#endif
+        if (!valid) {
+            snprintf(p->message, sizeof p->message, "Invalid API key");
+        } else if (!editor_command_model_set_settings(p->host, p->model, error, sizeof error)) {
+            snprintf(p->message, sizeof p->message, "%s", error);
+        } else {
             p->message[0] = 0;
             ImGui_CloseCurrentPopup();
-        } else {
-            snprintf(p->message, sizeof p->message, "%s", error);
         }
     }
     ImGui_SameLine();

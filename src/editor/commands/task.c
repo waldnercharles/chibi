@@ -24,6 +24,7 @@ typedef struct
     yyjson_mut_doc *packet;
     editor_command_request *request;
     Uint64 started, elapsed;
+    int steps;
     bool dry, measuring;
 } command_task;
 
@@ -241,11 +242,15 @@ static void execute(app_scene_authoring *scene, command_task *task)
     trace(task);
 }
 
-static void start(command_task *task)
+static bool start(command_task *task)
 {
+    if (++task->steps > 12) {
+        set_result(task, response("failed", "Command decision limit reached"));
+        return false;
+    }
     task->started = SDL_GetTicks();
     task->measuring = true;
-    char error[256];
+    char error[256] = { 0 };
     char *packet = yyjson_mut_write(task->packet, 0, NULL);
     char *model_request = editor_command_model_prepare(packet, error, sizeof error);
     free(packet);
@@ -259,6 +264,22 @@ static void start(command_task *task)
             : error[0]    ? error
                           : "Could not start model request"
         )
+    );
+    return task->request != NULL;
+}
+
+static void bind(command_task *task, const char *key, const char *value)
+{
+    yyjson_mut_val *packet = yyjson_mut_doc_get_root(task->packet);
+    yyjson_mut_val *bindings = yyjson_mut_obj_get(packet, "bindings");
+    if (!bindings) {
+        bindings = yyjson_mut_obj_add_obj(task->packet, packet, "bindings");
+    }
+    yyjson_mut_obj_remove_key(bindings, key);
+    yyjson_mut_obj_add(
+        bindings,
+        yyjson_mut_strcpy(task->packet, key),
+        yyjson_mut_strcpy(task->packet, value)
     );
 }
 
@@ -318,8 +339,23 @@ void editor_commands_frame(app_scene_authoring *scene)
     }
     set_result(task, result);
     yyjson_doc *doc = yyjson_read(task->result, strlen(task->result), 0);
-    const char *status = command_string(yyjson_doc_get_root(doc), "status");
-    if (!strcmp(status, "ready")) {
+    yyjson_val *reply = yyjson_doc_get_root(doc);
+    const char *status = command_string(reply, "status");
+    if (!strcmp(status, "continue")) {
+        const char *key = command_string(reply, "binding");
+        const char *value = command_string(reply, "value");
+        if (!*key || !*value) {
+            set_result(task, response("failed", "Model returned an incomplete decision"));
+            runtime(scene)->active = NULL;
+            trace(task);
+        } else {
+            bind(task, key, value);
+            if (!start(task)) {
+                runtime(scene)->active = NULL;
+                trace(task);
+            }
+        }
+    } else if (!strcmp(status, "ready")) {
         execute(scene, task);
     } else if (strcmp(status, "needs_review") && strcmp(status, "needs_clarification")) {
         runtime(scene)->active = NULL;
@@ -418,14 +454,11 @@ char *editor_commands_api(app_scene_authoring *scene, const char *request)
                     (yyjson_arr_size(choices) && !command_find(choices, value))) {
                     result = response("failed", "Choose a listed answer");
                 } else {
-                    yyjson_mut_val *packet = yyjson_mut_doc_get_root(task->packet);
-                    yyjson_mut_val *bindings = yyjson_mut_obj_get(packet, "bindings");
-                    if (!bindings) {
-                        bindings = yyjson_mut_obj_add_obj(task->packet, packet, "bindings");
+                    bind(task, binding, value);
+                    if (!start(task)) {
+                        state->active = NULL;
+                        trace(task);
                     }
-                    yyjson_mut_obj_remove_key(bindings, binding);
-                    yyjson_mut_obj_add_strcpy(task->packet, bindings, binding, value);
-                    start(task);
                 }
             } else {
                 result = response("failed", "Review the proposed operations");
@@ -481,7 +514,10 @@ char *editor_commands_api(app_scene_authoring *scene, const char *request)
                 set_result(task, xstrdup(request));
                 execute(scene, task);
             } else {
-                start(task);
+                if (!start(task)) {
+                    state->active = NULL;
+                    trace(task);
+                }
             }
             yyjson_doc_free(catalog);
             result = xstrdup(task->result);

@@ -47,5 +47,6 @@ void pin_write_field(void *base, const type_field *f, pin_value v);
 void pin_read_field(const void *base, const type_field *f, pin_value *out);
 const type_field *pin_type_field_path(const type_desc *type, const char *path);
 int pin_read_field_path(const void *base, const type_desc *type, const char *path, pin_value *out);
+int pin_write_field_path(void *base, const type_desc *type, const char *path, pin_value value);
 
 #endif

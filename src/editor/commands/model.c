@@ -1,6 +1,7 @@
 #include "editor/commands/model.h"
 
 #include "editor/commands/internal.h"
+#include "editor/commands/laya.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL.h>
@@ -37,9 +38,9 @@ static void initialize_settings()
         model_host,
         sizeof model_host,
         "%s",
-        getenv("CHIBI_MODEL_URL") ? getenv("CHIBI_MODEL_URL") : "http://127.0.0.1:11435/api"
+        getenv("CHIBI_MODEL_URL") ? getenv("CHIBI_MODEL_URL") : "http://127.0.0.1:8768/v1/decide"
     );
-    snprintf(model_name, sizeof model_name, "%s", getenv("CHIBI_MODEL") ? getenv("CHIBI_MODEL") : "gpt-oss:20b");
+    snprintf(model_name, sizeof model_name, "%s", getenv("CHIBI_MODEL") ? getenv("CHIBI_MODEL") : "laya");
     model_initialized = true;
 }
 
@@ -64,8 +65,12 @@ bool editor_command_model_set_settings(const char *host, const char *model, char
         set_error(error, error_size, "Enter a model name");
         return false;
     }
+    if (strpbrk(host, "\r\n") || strpbrk(model, "\r\n")) {
+        set_error(error, error_size, "Host and model must be single lines");
+        return false;
+    }
     if (strncmp(host, "https://", 8) == 0) {
-        set_error(error, error_size, "Use an HTTP OpenAI-compatible host");
+        set_error(error, error_size, "Use an HTTP model host");
         return false;
     }
     if (strncmp(host, "http://", 7) && strchr(host, ':') == NULL) {
@@ -558,6 +563,9 @@ static bool ollama_api_endpoint(const char *endpoint)
 char *editor_command_model_prepare(const char *packet_json, char *error, size_t error_size)
 {
     initialize_settings();
+    if (!strcmp(model_name, "laya")) {
+        return editor_command_laya_prepare(packet_json, model_host, error, error_size);
+    }
     yyjson_doc *packet_doc = NULL;
     yyjson_val *packet = packet_root(packet_json, &packet_doc, error, error_size);
     if (!packet) {
@@ -806,6 +814,10 @@ static char *provider_content(yyjson_val *message)
 
 char *editor_command_model_result(const char *packet_json, const char *response, char *error, size_t error_size)
 {
+    initialize_settings();
+    if (!strcmp(model_name, "laya")) {
+        return editor_command_laya_result(packet_json, response, error, error_size);
+    }
     if (!response) {
         set_error(error, error_size, "Model host returned no response");
         return NULL;

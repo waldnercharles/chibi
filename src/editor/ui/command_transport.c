@@ -124,11 +124,13 @@ char *editor_command_response_body(const char *response, char *error, int error_
 struct editor_command_request
 {
     Uint64 started;
+    char *immediate;
 #ifdef __EMSCRIPTEN__
     int id;
 #else
     char *url;
     char *body;
+    char *auth;
     char *output;
     SDL_Thread *thread;
     SDL_Mutex *mutex;
@@ -262,9 +264,10 @@ static char *http_post(editor_command_request *request)
         header,
         sizeof header,
         "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\n"
-        "Content-Length: %zu\r\nConnection: close\r\n\r\n",
+        "%sContent-Length: %zu\r\nConnection: close\r\n\r\n",
         path,
         host,
+        request->auth ? request->auth : "",
         strlen(request->body)
     );
     if (header_size < 0 || (size_t)header_size >= sizeof header) {
@@ -373,30 +376,49 @@ editor_command_request *editor_command_request_start(const char *json)
 {
     editor_command_request *request = xcalloc(1, sizeof *request);
     request->started = SDL_GetTicks();
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
+    const char *local = yyjson_get_str(yyjson_obj_get(root, "local_response"));
+    if (local) {
+        request->immediate = xstrdup(local);
+        yyjson_doc_free(doc);
+        return request;
+    }
 #ifdef __EMSCRIPTEN__
+    yyjson_doc_free(doc);
     request->id = web_start(json);
     if (!request->id) {
         free(request);
         return NULL;
     }
 #else
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
-    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
     const char *url = yyjson_get_str(yyjson_obj_get(root, "url"));
     const char *body = yyjson_get_str(yyjson_obj_get(root, "body"));
+    const char *token = yyjson_get_str(yyjson_obj_get(root, "auth_token"));
     if (!url || !body || !*url || !*body) {
+        yyjson_doc_free(doc);
+        free(request);
+        return NULL;
+    }
+    if (token && (strlen(token) > 256 || strchr(token, '\r') || strchr(token, '\n'))) {
         yyjson_doc_free(doc);
         free(request);
         return NULL;
     }
     request->url = xstrdup(url);
     request->body = xstrdup(body);
+    if (token && *token) {
+        size_t size = strlen(token) + 25;
+        request->auth = xmalloc(size);
+        snprintf(request->auth, size, "Authorization: Bearer %s\r\n", token);
+    }
     request->socket = -1;
     request->mutex = SDL_CreateMutex();
     yyjson_doc_free(doc);
     if (!request->mutex) {
         free(request->url);
         free(request->body);
+        free(request->auth);
         free(request);
         return NULL;
     }
@@ -405,6 +427,7 @@ editor_command_request *editor_command_request_start(const char *json)
         SDL_DestroyMutex(request->mutex);
         free(request->url);
         free(request->body);
+        free(request->auth);
         free(request);
         return NULL;
     }
@@ -414,6 +437,11 @@ editor_command_request *editor_command_request_start(const char *json)
 
 char *editor_command_request_poll(editor_command_request *request)
 {
+    if (request->immediate) {
+        char *result = request->immediate;
+        request->immediate = NULL;
+        return result;
+    }
     if (SDL_GetTicks() - request->started > 30000) {
 #ifdef __EMSCRIPTEN__
         return xstrdup("{\"ok\":false,\"error\":\"Command model timed out\"}");
@@ -444,16 +472,22 @@ void editor_command_request_free(editor_command_request *request)
         return;
     }
 #ifdef __EMSCRIPTEN__
-    web_cancel(request->id);
-#else
-    if (!request->complete) {
-        cancel(request);
+    if (request->id) {
+        web_cancel(request->id);
     }
-    SDL_WaitThread(request->thread, NULL);
-    SDL_DestroyMutex(request->mutex);
+#else
+    if (request->thread) {
+        if (!request->complete) {
+            cancel(request);
+        }
+        SDL_WaitThread(request->thread, NULL);
+        SDL_DestroyMutex(request->mutex);
+    }
     free(request->url);
     free(request->body);
+    free(request->auth);
     free(request->output);
 #endif
+    free(request->immediate);
     free(request);
 }

@@ -4,6 +4,8 @@
 #include "editor/ui/ui_shell.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize_internal.h"
+#include "graph/model/type.h"
+#include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <SDL3/SDL.h>
@@ -178,6 +180,39 @@ static yyjson_mut_val *add_field(
     return field;
 }
 
+static void particle_size_fields(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *fields,
+    const ecs_component_desc *desc,
+    const game_prototype_component *component
+)
+{
+    static const char *const paths[] = { "size.start.x",
+                                         "size.start.y",
+                                         "size.end.x",
+                                         "size.end.y",
+                                         "size.exponent" };
+    for (int i = 0; i < (int)(sizeof paths / sizeof paths[0]); i++) {
+        pin_value value;
+        if (pin_read_field_path(component->data, desc->type, paths[i], &value)) {
+            continue;
+        }
+        char id[256], label[256];
+        snprintf(id, sizeof id, "%s.%s", desc->key, paths[i]);
+        snprintf(label, sizeof label, "Particle %s", paths[i]);
+        for (char *at = label; *at; at++) {
+            if (*at == '.') {
+                *at = ' ';
+            }
+        }
+        yyjson_mut_val *field = add_field(doc, fields, id, paths[i], label, value, value_kind(value), NULL);
+        if (field) {
+            yyjson_mut_obj_add_str(doc, field, "component", desc->name);
+            yyjson_mut_obj_add_str(doc, field, "component_key", desc->key);
+        }
+    }
+}
+
 static void component_fields(
     app_scene_authoring *scene,
     yyjson_mut_doc *doc,
@@ -209,8 +244,14 @@ static void component_fields(
             const char *kind = appearance_color_field(desc->type, spec)
                                  ? "color"
                                  : value_kind(value);
-            if (!kind || (component &&
-                          !property_field_visible(desc, spec, component->data))) {
+            if (component && !property_field_visible(desc, spec, component->data)) {
+                continue;
+            }
+            if (!kind) {
+                if (!actor && desc->type == GAME_COMPONENT_GameParticleEmitter.type &&
+                    !strcmp(spec->name, "size")) {
+                    particle_size_fields(doc, fields, desc, component);
+                }
                 continue;
             }
             char id[256], label[256], component_label[96], field_label[96];

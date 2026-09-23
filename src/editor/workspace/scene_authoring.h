@@ -100,6 +100,15 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     engine *runtime,
     const char *content_root
 );
+/* Native editor command tests can operate without a graphics app or window. */
+app_scene_authoring *app_scene_authoring_new_headless(
+    ecs_world *world,
+    game_live_world *live,
+    game_live_definition *definition,
+    const behavior_asset *editor_working,
+    editor *graph_editor,
+    engine *runtime
+);
 void app_scene_authoring_set_editor_working(app_scene_authoring *scene, const behavior_asset *editor_working);
 int app_scene_authoring_apply_pending(app_scene_authoring *scene);
 int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char *path);

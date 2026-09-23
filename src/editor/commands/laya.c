@@ -30,7 +30,7 @@ bool editor_command_laya_set_token(const char *token)
 typedef struct
 {
     yyjson_val *item;
-    char label[65];
+    char label[112];
 } laya_option;
 
 typedef struct
@@ -139,7 +139,34 @@ static yyjson_val *catalog_prototype(yyjson_val *objects, const char *name)
     return NULL;
 }
 
-static void add(laya_menu *menu, yyjson_val *item, const char *kind)
+static void current_value(yyjson_val *field, char *text, size_t size)
+{
+    yyjson_val *value = yyjson_obj_get(field, "value");
+    const char *type = command_string(field, "type");
+    if (!strcmp(type, "color")) {
+        snprintf(text, size, "#%08X", (unsigned)yyjson_get_uint(value));
+    } else if (!strcmp(type, "choice")) {
+        yyjson_val *choices = yyjson_obj_get(field, "choices");
+        size_t i, count;
+        yyjson_val *choice;
+        yyjson_arr_foreach(choices, i, count, choice)
+        {
+            if (yyjson_equals(value, yyjson_obj_get(choice, "value"))) {
+                snprintf(text, size, "%s", command_string(choice, "label"));
+                return;
+            }
+        }
+        snprintf(text, size, "%.6g", yyjson_get_num(value));
+    } else if (yyjson_is_num(value)) {
+        snprintf(text, size, "%.6g", yyjson_get_num(value));
+    } else if (yyjson_is_bool(value)) {
+        snprintf(text, size, "%s", yyjson_get_bool(value) ? "true" : "false");
+    } else {
+        snprintf(text, size, "%.24s", yyjson_get_str(value) ? yyjson_get_str(value) : "");
+    }
+}
+
+static void add(laya_menu *menu, yyjson_val *item, const char *kind, const char *used_by)
 {
     const char *id = command_string(item, "id");
     if (!*id) {
@@ -158,28 +185,32 @@ static void add(laya_menu *menu, yyjson_val *item, const char *kind)
     option->item = item;
     if (kind) {
         const char *name = command_string(item, "name");
+        const char *effect = "properties";
         if ((word(menu->goal, "particle") || word(menu->goal, "particles")) &&
             (word(menu->goal, "size") || word(menu->goal, "larger") ||
              word(menu->goal, "smaller"))) {
-            const char *verb = word(menu->goal, "decrease") || word(menu->goal, "smaller")
-                                 ? "Decrease"
-                                 : "Increase";
-            snprintf(option->label, sizeof option->label, "%s %s %s particle size", verb, name, kind);
+            effect = "particle size";
         } else if (word(menu->goal, "color") || word(menu->goal, "colour")) {
-            snprintf(option->label, sizeof option->label, "Change %s %s color", name, kind);
+            effect = "color";
         } else if (word(menu->goal, "hitbox") || word(menu->goal, "collider")) {
-            snprintf(option->label, sizeof option->label, "Change %s %s hitbox", name, kind);
-        } else {
-            snprintf(option->label, sizeof option->label, "Edit %s %s", name, kind);
+            effect = "hitbox";
         }
-    } else {
         snprintf(
             option->label,
             sizeof option->label,
-            "Change %s on %s",
-            command_string(item, "label"),
-            command_string(menu->target, "name")
+            "Change %s %s %s%s%s",
+            name,
+            kind,
+            effect,
+            used_by && *used_by       ? ", used by "
+            : !strcmp(kind, "entity") ? ", this scene only"
+                                      : "",
+            used_by && *used_by ? used_by : ""
         );
+    } else {
+        char value[32];
+        current_value(item, value, sizeof value);
+        snprintf(option->label, sizeof option->label, "%s, current %s", command_string(item, "label"), value);
     }
 }
 
@@ -291,7 +322,7 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
         yyjson_arr_foreach(fields, i, count, field)
         {
             if (field_matches(goal, field)) {
-                add(menu, field, NULL);
+                add(menu, field, NULL, NULL);
             }
         }
         return menu->overflow ? "Too many matching properties; name a component"
@@ -314,7 +345,10 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
         }
         if (name_matches(goal, command_string(object, "name"))) {
             yyjson_val *owner = owning_object(objects, object, instance);
-            add(menu, owner, command_string(owner, "kind"));
+            add(menu,
+                owner,
+                command_string(owner, "kind"),
+                owner != object ? command_string(object, "name") : NULL);
         }
     }
     if (!menu->count) {
@@ -325,7 +359,10 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
             yyjson_val *found = command_find(objects, yyjson_get_str(id));
             if (found && (!particles || particle_object(found))) {
                 yyjson_val *owner = owning_object(objects, found, instance);
-                add(menu, owner, command_string(owner, "kind"));
+                add(menu,
+                    owner,
+                    command_string(owner, "kind"),
+                    owner != found ? command_string(found, "name") : NULL);
             }
         }
     }
@@ -335,7 +372,10 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
             if (yyjson_get_bool(yyjson_obj_get(object, "selected")) &&
                 (!particles || particle_object(object))) {
                 yyjson_val *owner = owning_object(objects, object, instance);
-                add(menu, owner, command_string(owner, "kind"));
+                add(menu,
+                    owner,
+                    command_string(owner, "kind"),
+                    owner != object ? command_string(object, "name") : NULL);
             }
         }
     }
@@ -347,12 +387,34 @@ static const char *build_menu(yyjson_val *packet, laya_menu *menu)
                 continue;
             }
             yyjson_val *owner = owning_object(objects, object, instance);
-            add(menu, owner, command_string(owner, "kind"));
+            add(menu,
+                owner,
+                command_string(owner, "kind"),
+                owner != object ? command_string(object, "name") : NULL);
         }
     }
     return menu->overflow ? "Too many matching objects; name one target"
          : menu->count    ? NULL
                           : "Name or select an editor object";
+}
+
+static const char *target_source(yyjson_val *packet, yyjson_val *target)
+{
+    if (!target || strcmp(command_string(target, "kind"), "prototype")) {
+        return NULL;
+    }
+    yyjson_val *objects = yyjson_obj_get(yyjson_obj_get(packet, "catalog"), "objects");
+    size_t i, count;
+    yyjson_val *object;
+    yyjson_arr_foreach(objects, i, count, object)
+    {
+        if (!strcmp(command_string(object, "kind"), "entity") &&
+            !strcmp(command_string(object, "prototype"), command_string(target, "name")) &&
+            name_matches(command_string(packet, "command"), command_string(object, "name"))) {
+            return command_string(object, "name");
+        }
+    }
+    return NULL;
 }
 
 static char *local_response(const char *key, const char *message)
@@ -465,11 +527,24 @@ char *editor_command_laya_prepare(const char *packet_json, const char *host, cha
     yyjson_mut_val *state = yyjson_mut_obj_add_obj(body_doc, body, "state");
     yyjson_mut_obj_add_strcpy(body_doc, state, "goal", command_string(packet, "command"));
     char observation[256];
+    const char *kind = command_string(menu.target, "kind");
+    const char *source = target_source(packet, menu.target);
+    const char *scope = !strcmp(kind, "prototype") ? " prototype"
+                      : !strcmp(kind, "entity")    ? " scene instance"
+                                                   : "";
+    char relationship[96] = { 0 };
+    if (source) {
+        snprintf(relationship, sizeof relationship, ", used by %s", source);
+    } else if (!strcmp(kind, "entity")) {
+        snprintf(relationship, sizeof relationship, ", this scene only");
+    }
     snprintf(
         observation,
         sizeof observation,
-        "Current target: %s. Choices come from the editor catalog.",
-        menu.target ? command_string(menu.target, "name") : "not selected"
+        "Current target: %s%s%s. Choices reflect current editor values.",
+        menu.target ? command_string(menu.target, "name") : "not selected",
+        scope,
+        relationship
     );
     yyjson_mut_obj_add_strcpy(body_doc, state, "observation", observation);
     yyjson_mut_val *questions = yyjson_mut_obj_add_obj(body_doc, body, "questions");

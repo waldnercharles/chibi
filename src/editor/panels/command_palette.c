@@ -275,7 +275,8 @@ void editor_command_palette_draw(app_scene_authoring *scene)
         }
     }
     yyjson_val *ops = yyjson_obj_get(root, "operations");
-    if ((review || !strcmp(status, "applied")) && yyjson_arr_size(ops)) {
+    if ((review || !strcmp(status, "applied") || !strcmp(status, "unverified")) &&
+        yyjson_arr_size(ops)) {
         yyjson_val *summary = yyjson_obj_get(root, "summary");
         for (int i = 0; i < (int)yyjson_arr_size(summary); i++) {
             ImGui_TextWrapped("%s", yyjson_get_str(yyjson_arr_get(summary, i)));
@@ -295,7 +296,7 @@ void editor_command_palette_draw(app_scene_authoring *scene)
         p->choice = 0;
     }
     ImGui_EndDisabled();
-    if (!strcmp(status, "applied") &&
+    if ((!strcmp(status, "applied") || !strcmp(status, "unverified")) &&
         yyjson_get_bool(yyjson_obj_get(root, "undoable"))) {
         ImGui_SameLine();
         if (ImGui_Button("Undo")) {

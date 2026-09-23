@@ -60,6 +60,11 @@ static void scene_command()
     free(catalog);
     char *reply = editor_commands_api(scene, "{\"operation\":\"submit\",\"command\":\"Change Player's color to blue\"}");
     free(reply);
+    pin_value red = { .type = PIN_U32, .u = 0xff0000ffu };
+    editor_commands_frame(scene);
+    assert(
+        !app_scene_authoring_set_prototype_field(scene, "Player", "GameAppearance", "color", red)
+    );
     for (int i = 0; i < 6; i++) {
         editor_commands_frame(scene);
     }
@@ -76,9 +81,37 @@ static void scene_command()
     result = yyjson_doc_get_root(result_doc);
     pin_value color;
     int read = app_scene_authoring_read_prototype_field(scene, "Player", "GameAppearance", "color", &color);
-    test_check(!strcmp(command_string(result, "status"), "applied") && !read && color.u == 0x0000ffffu, "headless editor applies the reviewed prototype color through the command palette API");
+    test_check(
+        !strcmp(command_string(result, "status"), "applied") &&
+            yyjson_get_bool(yyjson_obj_get(result, "verified")) && !read &&
+            color.u == 0x0000ffffu,
+        "headless editor reobserves stale choices and verifies the reviewed "
+        "color"
+    );
     yyjson_doc_free(result_doc);
     free(reply);
+
+    reply = editor_commands_api(scene, "{\"operation\":\"submit\",\"command\":\"Change Player's color to blue\"}");
+    free(reply);
+    const unsigned intervening[] = { 0xff00ffffu, 0xffff00ffu, 0x00ffffffu };
+    for (size_t i = 0; i < sizeof intervening / sizeof intervening[0]; i++) {
+        pin_value value = { .type = PIN_U32, .u = intervening[i] };
+        assert(
+            !app_scene_authoring_set_prototype_field(scene, "Player", "GameAppearance", "color", value)
+        );
+        for (int step = 0; step < 3; step++) {
+            editor_commands_frame(scene);
+        }
+    }
+    status = editor_commands_result(scene);
+    result_doc = yyjson_read(status, strlen(status), 0);
+    read = app_scene_authoring_read_prototype_field(scene, "Player", "GameAppearance", "color", &color);
+    test_check(
+        !strcmp(command_string(yyjson_doc_get_root(result_doc), "status"), "failed") &&
+            !read && color.u == intervening[2],
+        "repeated stale observations stop without applying an old decision"
+    );
+    yyjson_doc_free(result_doc);
 
     reply = editor_commands_api(scene, "{\"operation\":\"submit\",\"command\":\"Change the player's hitbox to a circle\"}");
     free(reply);
@@ -486,8 +519,33 @@ void test_editor_command_laya()
     test_check(
         !strcmp(command_string(root, "url"), "http://127.0.0.1:8768/v1/decide") &&
             !strcmp(command_string(root, "auth_token"), "test-key") &&
-            strstr(body, "Player prototype") && strstr(body, "Enemy prototype"),
-        "ambiguous targets produce a bounded authenticated Laya choice request"
+            strstr(body, "Player prototype") &&
+            strstr(body, "Enemy prototype") && strstr(body, "used by Ship"),
+        "ambiguous targets describe prototype ownership in the Laya request"
+    );
+    yyjson_doc_free(read);
+    free(request);
+    const char *size_packet =
+        "{\"command\":\"Increase Ship "
+        "size\",\"bindings\":{\"target\":\"prototype:player\"},"
+        "\"catalog\":{\"revision\":\"r5\",\"document\":\"scene\",\"objects\":["
+        "{\"id\":\"entity:ship\",\"name\":\"Ship\",\"kind\":\"entity\","
+        "\"prototype\":\"Player\"},"
+        "{\"id\":\"prototype:player\",\"name\":\"Player\",\"kind\":"
+        "\"prototype\","
+        "\"fields\":[{\"id\":\"GAME.GameAppearance.width\",\"name\":\"width\","
+        "\"label\":\"Sprite Width\",\"type\":\"number\",\"value\":20},"
+        "{\"id\":\"GAME.GameAppearance.height\",\"name\":\"height\","
+        "\"label\":\"Sprite Height\",\"type\":\"number\",\"value\":30}]}]}}";
+    request = editor_command_model_prepare(size_packet, error, sizeof error);
+    read = request ? yyjson_read(request, strlen(request), 0) : NULL;
+    root = read ? yyjson_doc_get_root(read) : NULL;
+    body = command_string(root, "body");
+    test_check(
+        strstr(body, "Sprite Width") && strstr(body, "current 20") &&
+            strstr(body, "Sprite Height") && strstr(body, "current 30") &&
+            strstr(body, "used by Ship"),
+        "field choices retain prototype ownership and current values"
     );
     yyjson_doc_free(read);
     free(request);

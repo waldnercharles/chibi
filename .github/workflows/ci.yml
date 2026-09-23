@@ -27,13 +27,23 @@ jobs:
             sanitizers: "OFF"
             sljit: "ON"
     env:
+      NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       LOCAL_CMAKE_FLAGS: >-
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
         -DCHIBI_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
         -DCHIBI_ENABLE_SJLIT=${{ matrix.sljit }}
         -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
+        -DLIBCLANG_ROOT=/usr/lib/llvm-18
     steps:
       - uses: actions/checkout@v4
+      - name: Identify dependency sources
+        id: deps
+        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
+      - name: Cache dependency sources
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/chibi-fetchcontent/${{ steps.deps.outputs.key }}
+          key: fetchcontent-${{ runner.os }}-${{ steps.deps.outputs.key }}
       - name: Set up CMake
         uses: lukka/get-cmake@latest
       - name: Set up ccache
@@ -48,11 +58,6 @@ jobs:
             libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev xvfb
-      - name: Configure
-        run: >-
-          cmake -S . -B build $LOCAL_CMAKE_FLAGS
-          -DLIBCLANG_ROOT=/usr/lib/llvm-18
-          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       - name: Build and run headless tests
         run: make test
       - name: Run render tests
@@ -66,42 +71,37 @@ jobs:
       - name: Reject native execution without SLJIT
         if: matrix.build_type == 'Debug'
         run: |
-          cmake -S . -B build-nojit -DCMAKE_BUILD_TYPE=Debug \
+          sh tools/configure_native.sh build-nojit -DCMAKE_BUILD_TYPE=Debug \
             -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=ON \
             -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-nojit --target check-behavior-backend --parallel 2
+          cmake --build build-nojit --target check-behavior-backend --parallel 4
       - name: Build development reload targets
         if: matrix.build_type == 'Debug'
         run: |
-          cmake -S . -B build-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          sh tools/configure_native.sh build-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCHIBI_DEVELOPMENT_RELOAD=ON \
             -DCHIBI_ENABLE_SANITIZERS=OFF \
             -DCHIBI_ENABLE_SJLIT=ON -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-dev --target chibi chibi_dll --parallel 2
+          cmake --build build-dev --target chibi chibi_dll --parallel 4
 
   format:
     name: clang-format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up CMake
-        uses: lukka/get-cmake@latest
       - name: Install clang-format
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget libclang-18-dev libgl1-mesa-dev \
-            libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
-            libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev
+          sudo apt-get install -y wget
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 22
           sudo apt-get install -y clang-format-22
-          echo /usr/lib/llvm-22/bin >> "$GITHUB_PATH"
-      - name: Configure
-        run: >-
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-          -DCHIBI_ENABLE_SJLIT=OFF -DLIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Check format
-        run: cmake --build build --target check-format
+        run: |
+          find src tools/reflect test -type f \( -name '*.c' -o -name '*.h' \) \
+            -exec clang-format-22 --dry-run --Werror --style=file {} +
+          find include -type f -name '*.h' \
+            -exec clang-format-22 --dry-run --Werror --style=file {} +

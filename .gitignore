@@ -1,8 +1,10 @@
 build/
+.worktrees/
 # A second build tree, so verifying a build cannot relink the binary a manual
 # verification session is running out of build/.
 build-verify/
 build-release/
+build-debug/
 build-performance/
 build-web/
 build-reflect/
